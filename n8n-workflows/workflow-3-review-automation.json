@@ -1,0 +1,241 @@
+{
+  "name": "AI Review Intelligence Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "expression": 6
+            }
+          ]
+        }
+      },
+      "id": "q1w2e3r4-1111-2222-3333-444455556666",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.GMB_API_URL}}/api/reviews/fetch",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "businessId",
+              "value": "={{$env.BUSINESS_ID}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "t5y6u7i8-2222-3333-4444-555566667777",
+      "name": "Fetch Reviews",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        400,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "gmb-api-key",
+          "name": "GMB API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.replyText}}",
+              "operation": "isEmpty"
+            }
+          ]
+        }
+      },
+      "id": "o9p0a1s2-3333-4444-5555-666677778888",
+      "name": "Needs Reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "d3f4g5h6-4444-5555-6666-777788889999",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [
+        800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.GMB_API_URL}}/api/reviews/generate-reply",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "reviewId",
+              "value": "={{$node[\"Split In Batches\"].json._id}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "j7k8l9z0-5555-6666-7777-888899990000",
+      "name": "Generate Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1000,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "gmb-api-key",
+          "name": "GMB API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{$env.TWILIO_ACCOUNT_SID}}/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "basicAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "To",
+              "value": "={{$env.ADMIN_WHATSAPP_NUMBER}}"
+            },
+            {
+              "name": "From",
+              "value": "={{$env.TWILIO_WHATSAPP_NUMBER}}"
+            },
+            {
+              "name": "Body",
+              "value": "=⭐ New {{$node[\"Split In Batches\"].json.rating}}-star review from {{$node[\"Split In Batches\"].json.reviewerName}}!\n\nReview: \"{{$node[\"Split In Batches\"].json.reviewText}}\"\n\nAI Draft Reply:\n\"{{$json.replyText}}\"\n\nLogin to dashboard to approve."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "x1c2v3b4-6666-7777-8888-999900001111",
+      "name": "Send Twilio Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1200,
+        300
+      ],
+      "credentials": {
+        "basicAuth": {
+          "id": "twilio-auth",
+          "name": "Twilio Basic Auth"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Reviews": {
+      "main": [
+        [
+          {
+            "node": "Needs Reply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Reply?": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Generate Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Twilio Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Twilio Alert": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "GMB Optimizer"
+    },
+    {
+      "name": "Reputation Management"
+    }
+  ]
+}

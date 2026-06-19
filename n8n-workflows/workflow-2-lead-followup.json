@@ -1,0 +1,404 @@
+{
+  "name": "AI Lead Follow-Up Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "lead-followup",
+        "options": {}
+      },
+      "id": "a1b2c3d4-1111-2222-3333-444455556666",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "webhookId": "c3d4e5f6-abcd-1234-xyz-0987654321"
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "b2c3d4e5-2222-3333-4444-555566667777",
+      "name": "Wait 5s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        300,
+        300
+      ],
+      "webhookId": "wait-node-1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{$env.TWILIO_ACCOUNT_SID}}/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "basicAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "To",
+              "value": "=whatsapp:+{{$json.body.phone}}"
+            },
+            {
+              "name": "From",
+              "value": "={{$env.TWILIO_WHATSAPP_NUMBER}}"
+            },
+            {
+              "name": "Body",
+              "value": "=Hi {{$json.body.leadName}}, thanks for contacting us! Our AI Sales Team will help you shortly."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-3333-4444-5555-666677778888",
+      "name": "Welcome Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        500,
+        300
+      ],
+      "credentials": {
+        "basicAuth": {
+          "id": "twilio-auth",
+          "name": "Twilio Basic Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "days"
+      },
+      "id": "d4e5f6a7-4444-5555-6666-777788889999",
+      "name": "Wait 3 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        700,
+        300
+      ],
+      "webhookId": "wait-node-2"
+    },
+    {
+      "parameters": {
+        "url": "={{$env.GMB_API_URL}}/api/crm/leads/{{$node[\"Webhook Trigger\"].json.body.leadId}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "e5f6a7b8-5555-6666-7777-888899990000",
+      "name": "Check Lead Status 1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "gmb-api-key",
+          "name": "GMB API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.lead.pipelineStage}}",
+              "operation": "notEqual",
+              "value2": "Converted"
+            },
+            {
+              "value1": "={{$json.lead.pipelineStage}}",
+              "operation": "notEqual",
+              "value2": "Not Interested"
+            }
+          ]
+        }
+      },
+      "id": "f6a7b8c9-6666-7777-8888-999900001111",
+      "name": "Still Active? 1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{$env.TWILIO_ACCOUNT_SID}}/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "basicAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "To",
+              "value": "=whatsapp:+{{$node[\"Webhook Trigger\"].json.body.phone}}"
+            },
+            {
+              "name": "From",
+              "value": "={{$env.TWILIO_WHATSAPP_NUMBER}}"
+            },
+            {
+              "name": "Body",
+              "value": "=Hi again {{$node[\"Webhook Trigger\"].json.body.leadName}}, just following up to see if you had any questions?"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "g7b8c9d0-7777-8888-9999-000011112222",
+      "name": "Follow-Up Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1300,
+        200
+      ],
+      "credentials": {
+        "basicAuth": {
+          "id": "twilio-auth",
+          "name": "Twilio Basic Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 7,
+        "unit": "days"
+      },
+      "id": "h8c9d0e1-8888-9999-0000-111122223333",
+      "name": "Wait 7 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        200
+      ],
+      "webhookId": "wait-node-3"
+    },
+    {
+      "parameters": {
+        "url": "={{$env.GMB_API_URL}}/api/crm/leads/{{$node[\"Webhook Trigger\"].json.body.leadId}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "i9d0e1f2-9999-0000-1111-222233334444",
+      "name": "Check Lead Status 2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1700,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "gmb-api-key",
+          "name": "GMB API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.lead.pipelineStage}}",
+              "operation": "notEqual",
+              "value2": "Converted"
+            },
+            {
+              "value1": "={{$json.lead.pipelineStage}}",
+              "operation": "notEqual",
+              "value2": "Not Interested"
+            }
+          ]
+        }
+      },
+      "id": "j0e1f2g3-0000-1111-2222-333344445555",
+      "name": "Still Active? 2",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1900,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{$env.TWILIO_ACCOUNT_SID}}/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "basicAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "To",
+              "value": "=whatsapp:+{{$node[\"Webhook Trigger\"].json.body.phone}}"
+            },
+            {
+              "name": "From",
+              "value": "={{$env.TWILIO_WHATSAPP_NUMBER}}"
+            },
+            {
+              "name": "Body",
+              "value": "Hi there, it's been a while! Are you still interested in learning more?"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "k1f2g3h4-1111-2222-3333-444455556666",
+      "name": "Re-engagement Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2100,
+        100
+      ],
+      "credentials": {
+        "basicAuth": {
+          "id": "twilio-auth",
+          "name": "Twilio Basic Auth"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Wait 5s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 5s": {
+      "main": [
+        [
+          {
+            "node": "Welcome Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Welcome Message": {
+      "main": [
+        [
+          {
+            "node": "Wait 3 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3 Days": {
+      "main": [
+        [
+          {
+            "node": "Check Lead Status 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Lead Status 1": {
+      "main": [
+        [
+          {
+            "node": "Still Active? 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still Active? 1": {
+      "main": [
+        [
+          {
+            "node": "Follow-Up Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Follow-Up Message": {
+      "main": [
+        [
+          {
+            "node": "Wait 7 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 7 Days": {
+      "main": [
+        [
+          {
+            "node": "Check Lead Status 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Lead Status 2": {
+      "main": [
+        [
+          {
+            "node": "Still Active? 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still Active? 2": {
+      "main": [
+        [
+          {
+            "node": "Re-engagement Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "GMB Optimizer"
+    },
+    {
+      "name": "Drip Campaign"
+    }
+  ]
+}

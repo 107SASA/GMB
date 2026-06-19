@@ -1,0 +1,246 @@
+{
+  "name": "AI Content Buffer Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "e1f3a5a7-1234-4567-8901-abcdef123456",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.GMB_API_URL}}/api/scheduler/buffer",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "businessId",
+              "value": "={{$env.BUSINESS_ID}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c2f3a5a7-1234-4567-8901-abcdef123456",
+      "name": "Check Buffer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        450,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "gmb-api-key",
+          "name": "GMB API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.bufferDays}}",
+              "operation": "smaller",
+              "value2": 7
+            }
+          ]
+        }
+      },
+      "id": "d3f3a5a7-1234-4567-8901-abcdef123456",
+      "name": "Buffer < 7 Days?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.GMB_API_URL}}/api/content/generate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "autoGenerate",
+              "value": "true"
+            },
+            {
+              "name": "missingDays",
+              "value": "={{7 - $json.bufferDays}}"
+            },
+            {
+              "name": "businessId",
+              "value": "={{$env.BUSINESS_ID}}"
+            },
+            {
+              "name": "tenantId",
+              "value": "={{$env.TENANT_ID}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e4f3a5a7-1234-4567-8901-abcdef123456",
+      "name": "Auto-Generate Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        850,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "gmb-api-key",
+          "name": "GMB API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{$env.TWILIO_ACCOUNT_SID}}/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "basicAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "To",
+              "value": "={{$env.ADMIN_WHATSAPP_NUMBER}}"
+            },
+            {
+              "name": "From",
+              "value": "={{$env.TWILIO_WHATSAPP_NUMBER}}"
+            },
+            {
+              "name": "Body",
+              "value": "=⚠️ Content buffer was low ({{$node[\"Check Buffer\"].json[\"bufferDays\"]} days). {{$json.generatedCount}} new posts generated automatically for business {{$env.BUSINESS_ID}}."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f5f3a5a7-1234-4567-8901-abcdef123456",
+      "name": "Send Twilio Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1050,
+        200
+      ],
+      "credentials": {
+        "basicAuth": {
+          "id": "twilio-auth",
+          "name": "Twilio Basic Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "Buffer healthy"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "g6f3a5a7-1234-4567-8901-abcdef123456",
+      "name": "Log Healthy",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        850,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Check Buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Buffer": {
+      "main": [
+        [
+          {
+            "node": "Buffer < 7 Days?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buffer < 7 Days?": {
+      "main": [
+        [
+          {
+            "node": "Auto-Generate Content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Healthy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-Generate Content": {
+      "main": [
+        [
+          {
+            "node": "Send Twilio Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "GMB Optimizer"
+    },
+    {
+      "name": "AI Automation"
+    }
+  ]
+}

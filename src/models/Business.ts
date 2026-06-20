@@ -60,6 +60,7 @@ export interface IBusiness extends Document {
   };
   kanbanColumns: string[];
   onboardingCompleted: boolean;
+  faqs?: Array<{ question: string; answer: string }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -124,7 +125,8 @@ const BusinessSchema: Schema = new Schema(
       messageTemplate: { type: String }
     },
     kanbanColumns: [{ type: String }],
-    onboardingCompleted: { type: Boolean, default: false }
+    onboardingCompleted: { type: Boolean, default: false },
+    faqs: [{ question: { type: String }, answer: { type: String } }],
   },
   { timestamps: true }
 );

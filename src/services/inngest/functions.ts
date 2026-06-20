@@ -687,18 +687,58 @@ export const scheduleLeadFollowUpsJob = inngest.createFunction(
   async ({ event, step }) => {
     const { leadId } = event.data;
 
-    // Trigger parallel AI insight analysis
-    await step.run("trigger-ai-insights", async () => {
-      // Inline processing or another event
+    await step.run("ai-lead-scoring", async () => {
       const dbConnect = (await import("@/lib/mongodb")).default;
       await dbConnect();
       const { default: Lead } = await import("@/models/Lead");
+      const { Groq } = await import("groq-sdk");
+
       const lead = await Lead.findById(leadId);
-      if (lead) {
-        lead.aiLeadScore = Math.floor(Math.random() * 40) + 60; // 60-100 score
-        lead.aiInsights = "High intent lead. Recommended action: Send WhatsApp follow-up immediately.";
-        await lead.save();
+      if (!lead) return;
+
+      const scoringPrompt = `You are an AI lead qualification specialist for an education and training business.
+Analyze this lead and return a JSON object with your assessment.
+
+Lead details:
+- Name: ${lead.name}
+- Source: ${lead.source}
+- Interest/Course: ${lead.interest || 'Not specified'}
+- Notes: ${lead.notes || 'None'}
+- Business Type: ${lead.businessType || 'Not specified'}
+
+Return ONLY valid JSON in this exact shape:
+{
+  "score": <integer 0-100>,
+  "insights": "<1-2 sentences explaining the lead's intent and recommended next action>",
+  "urgency": "<High|Medium|Low>",
+  "qualificationStatus": "<Hot|Warm|Cold>"
+}`;
+
+      try {
+        const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+        const response = await groq.chat.completions.create({
+          messages: [{ role: "user", content: scoringPrompt }],
+          model: "llama-3.3-70b-versatile",
+          temperature: 0.3,
+          max_tokens: 200,
+          response_format: { type: "json_object" },
+        });
+
+        const raw = response.choices[0]?.message?.content?.trim() || "{}";
+        const result = JSON.parse(raw);
+
+        lead.aiLeadScore = typeof result.score === "number" ? Math.min(100, Math.max(0, result.score)) : 60;
+        lead.aiInsights = result.insights || null;
+        lead.urgency = result.urgency || null;
+        lead.qualificationStatus = result.qualificationStatus || null;
+      } catch (e) {
+        // Fallback to rule-based score so the follow-up chain isn't blocked
+        const fallbackScores: Record<string, number> = { WhatsApp: 75, Website: 65, Manual: 50 };
+        lead.aiLeadScore = fallbackScores[lead.source] ?? 55;
+        lead.aiInsights = null;
       }
+
+      await lead.save();
     });
 
     const now = new Date();
@@ -740,26 +780,68 @@ export const dispatchWhatsappFollowUpJob = inngest.createFunction(
     await dbConnect();
     const { default: Lead } = await import("@/models/Lead");
     const { default: Activity } = await import("@/models/Activity");
+    const { default: FollowUp } = await import("@/models/FollowUp");
 
     const lead = await Lead.findById(leadId);
     if (!lead || !lead.phone) return { skipped: true, reason: "No phone or lead deleted" };
-    
-    // If converted or lost, don't send follow up
+
     if (lead.pipelineStage === 'Converted' || lead.pipelineStage === 'Not Interested') {
       return { skipped: true, reason: `Lead is ${lead.pipelineStage}` };
     }
 
+    const msg = await step.run("generate-personalized-message", async () => {
+      const fallbacks: Record<string, string> = {
+        "Day 1 Follow-Up": `Hi ${lead.name}, thanks for your interest! We'd love to help you get started. What questions can we answer for you?`,
+        "Day 3 Follow-Up": `Hi ${lead.name}, just checking in — we're still here to help you take the next step. Would you like to book a quick call?`,
+        "Day 7 Final Check": `Hi ${lead.name}, this is our final check-in. If you're ready to move forward, just reply and we'll set everything up for you!`,
+      };
+
+      if (!lead.interest && !lead.notes) {
+        return fallbacks[templateType] ?? fallbacks["Day 1 Follow-Up"];
+      }
+
+      try {
+        const { Groq } = await import("groq-sdk");
+        const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+        const prompt = `You are a friendly sales assistant for an education and training business.
+Write a single short WhatsApp follow-up message (1-2 sentences, max 30 words) for:
+- Lead name: ${lead.name}
+- Their interest: ${lead.interest || lead.notes || 'our courses'}
+- Follow-up type: ${templateType}
+
+Output only the message text, no quotes, no formatting.`;
+
+        const response = await groq.chat.completions.create({
+          messages: [{ role: "user", content: prompt }],
+          model: "llama-3.3-70b-versatile",
+          temperature: 0.6,
+          max_tokens: 80,
+        });
+        return response.choices[0]?.message?.content?.trim() || fallbacks[templateType];
+      } catch {
+        return fallbacks[templateType] ?? fallbacks["Day 1 Follow-Up"];
+      }
+    });
+
     await step.run("send-twilio-message", async () => {
-      const msg = `Hi ${lead.name}, this is an automated ${templateType}. How can we help you today?`;
       await sendOutboundMessage(lead.phone, msg);
     });
 
-    await step.run("log-activity", async () => {
+    await step.run("log-followup-and-activity", async () => {
+      await FollowUp.create({
+        tenantId: lead.tenantId,
+        leadId: lead._id,
+        scheduledFor: new Date(),
+        status: 'completed',
+        messageTemplate: templateType,
+        completedAt: new Date(),
+      });
+
       await Activity.create({
         tenantId: lead.tenantId,
         leadId: lead._id,
         type: "WhatsApp",
-        content: `Sent automated ${templateType}`
+        content: `Sent ${templateType}: ${msg}`,
       });
     });
 

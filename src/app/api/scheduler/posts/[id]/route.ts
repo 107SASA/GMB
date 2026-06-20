@@ -5,36 +5,33 @@ import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
 
-const scheduleSchema = z.object({
-  postId: z.string().min(1),
-  scheduledDate: z.string().min(1),
+const patchSchema = z.object({
+  title: z.string().optional(),
+  content: z.string().optional(),
+  hashtags: z.array(z.string()).optional(),
+  cta: z.string().optional(),
 });
 
-export async function POST(req: Request) {
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
 
+    const { id } = await params;
+
     const body = await req.json();
-    const parsed = scheduleSchema.safeParse(body);
+    const parsed = patchSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid input', details: parsed.error.issues }, { status: 400 });
-    }
-
-    const { postId, scheduledDate } = parsed.data;
-    const targetDate = new Date(scheduledDate);
-
-    // Reject anything before midnight UTC today
-    const startOfToday = new Date();
-    startOfToday.setUTCHours(0, 0, 0, 0);
-    if (targetDate < startOfToday) {
-      return NextResponse.json({ error: 'scheduledDate must be today or in the future' }, { status: 400 });
     }
 
     await dbConnect();
 
     const post = await Post.findOne({
-      _id: new mongoose.Types.ObjectId(postId),
+      _id: new mongoose.Types.ObjectId(id),
       businessId: new mongoose.Types.ObjectId(ctx.businessId),
     });
 
@@ -42,13 +39,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Post not found or access denied' }, { status: 404 });
     }
 
-    post.status = 'scheduled';
-    post.scheduledDate = targetDate;
+    const { title, content, hashtags, cta } = parsed.data;
+    if (title !== undefined) post.title = title;
+    if (content !== undefined) post.content = content;
+    if (hashtags !== undefined) post.hashtags = hashtags;
+    if (cta !== undefined) post.cta = cta;
     await post.save();
 
     return NextResponse.json({ success: true, post }, { status: 200 });
   } catch (error: any) {
-    console.error('Failed to schedule post:', error);
+    console.error('Failed to update post:', error);
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }

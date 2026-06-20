@@ -4,17 +4,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 interface ReviewCardProps {
   review: any;
   onGenerateReply: (id: string, tone: string) => Promise<void>;
-  onPostReply: (id: string, replyText: string) => Promise<void>;
+  onApproveReply: (id: string, replyText: string) => Promise<void>;
+  onPostReply: (id: string) => Promise<void>;
 }
 
-export default function ReviewCard({ review, onGenerateReply, onPostReply }: ReviewCardProps) {
+export default function ReviewCard({ review, onGenerateReply, onApproveReply, onPostReply }: ReviewCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [tone, setTone] = useState('Professional');
   const [generating, setGenerating] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [posting, setPosting] = useState(false);
   const [editableReply, setEditableReply] = useState('');
 
-  // Sync state if AI generates reply
   React.useEffect(() => {
     if (review.aiSuggestedReply) {
       setEditableReply(review.aiSuggestedReply);
@@ -27,9 +28,15 @@ export default function ReviewCard({ review, onGenerateReply, onPostReply }: Rev
     setGenerating(false);
   };
 
+  const handleApprove = async () => {
+    setApproving(true);
+    await onApproveReply(review._id, editableReply);
+    setApproving(false);
+  };
+
   const handlePost = async () => {
     setPosting(true);
-    await onPostReply(review._id, editableReply || review.aiSuggestedReply);
+    await onPostReply(review._id);
     setPosting(false);
   };
 
@@ -43,14 +50,26 @@ export default function ReviewCard({ review, onGenerateReply, onPostReply }: Rev
     }
   };
 
-  const getAvatarInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case 'APPROVED': return 'bg-blue-100 text-blue-800';
+      case 'POSTED': return 'bg-emerald-100 text-emerald-800';
+      default: return 'bg-amber-100 text-amber-800'; // PENDING
+    }
   };
+
+  const getAvatarInitials = (name: string) => {
+    return name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
+  };
+
+  const replyStatus: string = review.replyStatus || 'PENDING';
+  const canApprove = editableReply.trim().length > 0 && replyStatus === 'PENDING';
+  const canPost = replyStatus === 'APPROVED';
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4 transition-all hover:shadow-md">
       <div className="p-5 flex flex-col md:flex-row gap-5">
-        {/* Left side: Avatar & Rating */}
+        {/* Left side: Avatar, Rating & Sentiment */}
         <div className="flex-shrink-0 flex md:flex-col items-center md:items-start gap-4 md:w-48">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-sm">
@@ -61,7 +80,7 @@ export default function ReviewCard({ review, onGenerateReply, onPostReply }: Rev
               <p className="text-xs text-slate-500">{new Date(review.createdAt).toLocaleDateString()}</p>
             </div>
           </div>
-          
+
           <div className="flex flex-col gap-1.5 ml-auto md:ml-0">
             <div className="flex text-amber-400 text-sm">
               {[...Array(5)].map((_, i) => (
@@ -73,21 +92,26 @@ export default function ReviewCard({ review, onGenerateReply, onPostReply }: Rev
             <div className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border inline-block max-w-max ${getSentimentColor(review.sentiment)}`}>
               {review.sentiment}
             </div>
+            <div className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded inline-block max-w-max ${getStatusBadgeColor(replyStatus)}`}>
+              {replyStatus}
+            </div>
           </div>
         </div>
 
         {/* Right side: Review Text & Actions */}
         <div className="flex-grow">
           <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{review.reviewText}</p>
-          
-          {review.replyStatus === 'POSTED' ? (
+
+          {replyStatus === 'POSTED' ? (
             <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
-              <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Replied on {new Date(review.updatedAt).toLocaleDateString()}</h5>
+              <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Replied on {new Date(review.updatedAt).toLocaleDateString()}
+              </h5>
               <p className="text-slate-800 text-sm">{review.response}</p>
             </div>
           ) : (
             <div className="mt-4 border-t border-slate-100 pt-4 flex gap-2">
-              <button 
+              <button
                 onClick={() => setExpanded(!expanded)}
                 className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-lg transition-colors"
               >
@@ -100,8 +124,8 @@ export default function ReviewCard({ review, onGenerateReply, onPostReply }: Rev
 
       {/* Reply Workspace */}
       <AnimatePresence>
-        {expanded && review.replyStatus !== 'POSTED' && (
-          <motion.div 
+        {expanded && replyStatus !== 'POSTED' && (
+          <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -110,7 +134,7 @@ export default function ReviewCard({ review, onGenerateReply, onPostReply }: Rev
             <div className="flex flex-col gap-4 max-w-3xl">
               <div className="flex gap-2">
                 {['Professional', 'Friendly', 'Apology', 'Empathetic'].map(t => (
-                  <button 
+                  <button
                     key={t}
                     onClick={() => setTone(t)}
                     className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
@@ -122,7 +146,7 @@ export default function ReviewCard({ review, onGenerateReply, onPostReply }: Rev
                 ))}
               </div>
 
-              <textarea 
+              <textarea
                 value={editableReply}
                 onChange={(e) => setEditableReply(e.target.value)}
                 placeholder="Click 'Generate AI Reply' or type your own response..."
@@ -130,7 +154,7 @@ export default function ReviewCard({ review, onGenerateReply, onPostReply }: Rev
               />
 
               <div className="flex justify-between items-center">
-                <button 
+                <button
                   onClick={handleGenerate}
                   disabled={generating}
                   className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-70"
@@ -138,14 +162,34 @@ export default function ReviewCard({ review, onGenerateReply, onPostReply }: Rev
                   {generating ? 'Generating...' : '✨ Generate AI Reply'}
                 </button>
 
-                <button 
-                  onClick={handlePost}
-                  disabled={posting || !editableReply.trim()}
-                  className="flex items-center gap-2 px-6 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {posting ? 'Publishing...' : 'Approve & Post'}
-                </button>
+                <div className="flex gap-2">
+                  {canApprove && (
+                    <button
+                      onClick={handleApprove}
+                      disabled={approving}
+                      className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-70"
+                    >
+                      {approving ? 'Approving...' : '✓ Approve Reply'}
+                    </button>
+                  )}
+
+                  {canPost && (
+                    <button
+                      onClick={handlePost}
+                      disabled={posting}
+                      className="flex items-center gap-2 px-6 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {posting ? 'Publishing...' : 'Post Reply'}
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {replyStatus === 'APPROVED' && (
+                <p className="text-xs text-blue-600 font-medium">
+                  Reply approved — click "Post Reply" to publish it.
+                </p>
+              )}
             </div>
           </motion.div>
         )}

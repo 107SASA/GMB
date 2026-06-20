@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
+import { inngest } from '@/services/inngest/client';
 import mongoose from 'mongoose';
 
 export async function GET() {
@@ -41,6 +42,12 @@ export async function POST(req: Request) {
       source: data.source || 'Manual',
       pipelineStage: null,
       notes: data.notes,
+      interest: data.interest,
+    });
+
+    await inngest.send({
+      name: 'crm/lead-created',
+      data: { leadId: lead._id.toString(), businessId: ctx.businessId.toString() },
     });
 
     return NextResponse.json({ success: true, lead }, { status: 201 });

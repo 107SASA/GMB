@@ -20,6 +20,8 @@ export interface GeneratedPost {
   body: string;
   cta: string;
   hashtags: string[];
+  /** Set after the post is persisted to MongoDB as a draft. */
+  _id?: string;
 }
 
 export interface GeneratedFAQ {

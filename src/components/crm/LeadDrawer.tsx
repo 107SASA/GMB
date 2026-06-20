@@ -1,4 +1,3 @@
-import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ActivityTimeline from './ActivityTimeline';
 
@@ -9,21 +8,21 @@ interface LeadDrawerProps {
   onUpdate: () => void;
 }
 
-export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDrawerProps) {
+export default function LeadDrawer({ lead, isOpen, onClose }: LeadDrawerProps) {
   if (!isOpen || !lead) return null;
 
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex justify-end">
-        <motion.div 
-          initial={{ opacity: 0 }} 
-          animate={{ opacity: 1 }} 
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm"
           onClick={onClose}
         />
-        
-        <motion.div 
+
+        <motion.div
           initial={{ x: '100%' }}
           animate={{ x: 0 }}
           exit={{ x: '100%' }}
@@ -47,7 +46,7 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
 
           {/* Body */}
           <div className="flex-1 overflow-y-auto p-6">
-            
+
             {lead.aiInsights && (
               <div className="mb-8 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">
                 <h3 className="text-xs font-bold text-indigo-800 uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -65,6 +64,10 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
                   <span className="font-medium text-slate-900">{lead.source}</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-slate-500">Interest</span>
+                  <span className="font-medium text-slate-900">{lead.interest || '—'}</span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-slate-500">Created</span>
                   <span className="font-medium text-slate-900">{new Date(lead.createdAt).toLocaleDateString()}</span>
                 </div>
@@ -79,7 +82,7 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
               </div>
             </div>
 
-            <div className="h-[400px]">
+            <div>
               <h3 className="text-sm font-bold text-slate-900 mb-4">Activity Timeline</h3>
               <ActivityTimeline leadId={lead._id} />
             </div>

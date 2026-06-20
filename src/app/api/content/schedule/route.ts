@@ -12,6 +12,7 @@ const schedulePostSchema = z.object({
   hashtags: z.array(z.string()).optional(),
   cta: z.string().optional(),
   tone: z.string().optional(),
+  scheduledDate: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -20,28 +21,40 @@ export async function POST(req: Request) {
     const parsed = schedulePostSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid input', details: parsed.error.issues }, { status: 400 });
     }
 
-    // businessId may be passed explicitly in the body or falls back to activeBusinessId cookie
     const ctx = await requireBusinessContext({ businessIdFromBody: body.businessId });
     if (!ctx.ok) return ctx.response;
 
-    await dbConnect();
-
     const postData = parsed.data;
+
+    let parsedScheduledDate: Date | undefined;
+    if (postData.scheduledDate) {
+      parsedScheduledDate = new Date(postData.scheduledDate);
+      if (isNaN(parsedScheduledDate.getTime())) {
+        return NextResponse.json({ error: 'Invalid scheduledDate format' }, { status: 400 });
+      }
+      if (parsedScheduledDate <= new Date()) {
+        return NextResponse.json({ error: 'Scheduled date must be in the future' }, { status: 400 });
+      }
+    }
+
+    await dbConnect();
 
     const newPost = await Post.create({
       tenantId: ctx.organizationId,
       organizationId: ctx.organizationId,
       businessId: new mongoose.Types.ObjectId(ctx.businessId),
+      userId: new mongoose.Types.ObjectId(ctx.userId),
       title: postData.title,
       content: postData.content,
-      postType: postData.postType,
+      contentType: postData.postType,
       hashtags: postData.hashtags || [],
       cta: postData.cta,
       tone: postData.tone,
-      status: 'draft',
+      status: parsedScheduledDate ? 'scheduled' : 'draft',
+      scheduledDate: parsedScheduledDate,
       aiGenerated: true,
       platform: 'gmb',
     });

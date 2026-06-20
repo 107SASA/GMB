@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Business from '@/models/Business';
-import { DEV_CONTEXT } from '@/lib/dev-context';
+import { requireBusinessContext } from '@/lib/tenant';
 
-// GET - fetch kanban columns for a business
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
+    const ctx = await requireBusinessContext();
+    if (!ctx.ok) return ctx.response;
+
     await connectDB();
-    const businessId = DEV_CONTEXT.businessId;
-    const business = await Business.findById(businessId).select('kanbanColumns');
+    const business = await Business.findById(ctx.businessId).select('kanbanColumns');
     if (!business) {
-      // Business doesn't exist yet, return empty columns
       return NextResponse.json({ success: true, kanbanColumns: [] });
     }
     return NextResponse.json({ success: true, kanbanColumns: business.kanbanColumns || [] });
@@ -20,20 +20,20 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// PATCH - save kanban columns for a business
 export async function PATCH(req: NextRequest) {
   try {
+    const ctx = await requireBusinessContext();
+    if (!ctx.ok) return ctx.response;
+
     await connectDB();
-    const businessId = DEV_CONTEXT.businessId;
     const { kanbanColumns } = await req.json();
 
     if (!Array.isArray(kanbanColumns)) {
       return NextResponse.json({ success: false, message: 'kanbanColumns must be an array' }, { status: 400 });
     }
 
-    // upsert: update if exists, create if not
     await Business.findByIdAndUpdate(
-      businessId,
+      ctx.businessId,
       { kanbanColumns },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );

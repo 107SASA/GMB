@@ -9,10 +9,13 @@ interface Business {
   name: string;
   category?: string;
   address?: string;
+  city?: string;
+  state?: string;
   userDefinedCategory?: string;
   googlePlaceId?: string;
   organizationId: string;
   googleConnected: boolean;
+  keywords?: string[];
   whatsappConfig?: {
     isConnected: boolean;
     businessPhone?: string;

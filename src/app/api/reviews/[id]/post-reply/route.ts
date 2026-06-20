@@ -2,13 +2,17 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import Review from "@/models/Review";
 import ReviewReply from "@/models/ReviewReply";
+import { requireBusinessContext } from "@/lib/tenant";
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const ctx = await requireBusinessContext();
+    if (!ctx.ok) return ctx.response;
+
     await dbConnect();
     const { id } = await params;
 
-    const review = await Review.findById(id);
+    const review = await Review.findOne({ _id: id, businessId: ctx.businessId });
     if (!review) {
       return NextResponse.json({ error: "Review not found" }, { status: 404 });
     }
@@ -17,10 +21,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "Reply must be approved before posting" }, { status: 400 });
     }
 
-    // Simulate HTTP request to Google API
     console.log(`[MOCK API] Pushing reply to Google for review ID ${review._id}: "${review.aiSuggestedReply}"`);
-    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
-    
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    review.response = review.aiSuggestedReply;
     review.replyStatus = 'POSTED';
     await review.save();
 
@@ -30,7 +34,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       approved: true,
       posted: true,
       tone: review.replyTone || 'Professional',
-      aiGenerated: true
+      aiGenerated: true,
     });
 
     return NextResponse.json({ success: true, message: "Reply posted successfully", review });

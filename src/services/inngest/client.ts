@@ -42,7 +42,7 @@ type Events = {
     data: { businessId: string };
   };
   "crm/lead-created": {
-    data: { leadId: string };
+    data: { leadId: string; businessId: string };
   };
   "crm/dispatch-whatsapp": {
     data: { leadId: string; templateType: string; scheduledDate: string };

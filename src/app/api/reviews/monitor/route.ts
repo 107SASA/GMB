@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
 import { processNewReviews } from "@/services/reviews";
+import { requireBusinessContext } from "@/lib/tenant";
 
-// This endpoint could be triggered by a Cron Job or n8n webhook
+// Triggered by a cron job or n8n webhook — requires a valid session.
 export async function POST(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const businessId = searchParams.get("businessId");
-    
-    if (!businessId) {
-      return NextResponse.json({ error: "businessId is required" }, { status: 400 });
-    }
+    const businessIdFromQuery = searchParams.get("businessId") ?? undefined;
 
-    const result = await processNewReviews(businessId);
-    
+    const ctx = await requireBusinessContext({ businessIdFromBody: businessIdFromQuery });
+    if (!ctx.ok) return ctx.response;
+
+    const result = await processNewReviews(ctx.businessId);
+
     if (result.success) {
       return NextResponse.json({ success: true, stats: result.stats });
     } else {

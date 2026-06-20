@@ -1,15 +1,50 @@
-import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Flame, Clock, Calendar, CheckCircle, Lightbulb, Activity, Zap } from 'lucide-react';
+import { X, Flame, Clock, Calendar, Lightbulb, Activity, Zap } from 'lucide-react';
 import { format } from 'date-fns';
+
+function ScoreRing({ score }: { score: number }) {
+  const radius = 28;
+  const circumference = 2 * Math.PI * radius;
+  const filled = circumference * (score / 100);
+  const color = score >= 80 ? '#22c55e' : score >= 50 ? '#f59e0b' : '#ef4444';
+
+  return (
+    <div className="relative w-16 h-16 flex items-center justify-center">
+      <svg width="64" height="64" className="-rotate-90">
+        <circle cx="32" cy="32" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="6" />
+        <circle
+          cx="32" cy="32" r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth="6"
+          strokeDasharray={`${filled} ${circumference}`}
+          strokeLinecap="round"
+        />
+      </svg>
+      <span className="absolute text-sm font-black" style={{ color }}>{score}</span>
+    </div>
+  );
+}
 
 export default function LeadDetailsDrawer({ lead, onClose }: any) {
   if (!lead) return null;
 
+  const score: number = lead.aiLeadScore ?? 0;
+  const hasScore = lead.aiLeadScore != null;
+  const scoreColor = score >= 80 ? 'text-green-600' : score >= 50 ? 'text-amber-500' : 'text-red-500';
+  const scoreBg = score >= 80 ? 'bg-green-50 border-green-100' : score >= 50 ? 'bg-amber-50 border-amber-100' : 'bg-red-50 border-red-100';
+
+  // Derive booking interest from real data, not a missing field
+  const bookingEvidence =
+    lead.interest?.toLowerCase().includes('book') ||
+    lead.interest?.toLowerCase().includes('demo') ||
+    lead.aiInsights?.toLowerCase().includes('book') ||
+    lead.aiInsights?.toLowerCase().includes('demo');
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, x: "100%" }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: "100%" }}
@@ -28,16 +63,21 @@ export default function LeadDetailsDrawer({ lead, onClose }: any) {
                   <p className="text-sm text-slate-500">{lead.phone}</p>
                 </div>
               </div>
-              
+
               <div className="flex flex-wrap gap-2 mt-4">
                 <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-[10px] font-bold uppercase tracking-wider">{lead.status}</span>
-                {lead.intentScore >= 80 && (
+                {hasScore && score >= 80 && (
                   <span className="px-3 py-1 bg-orange-100 text-orange-600 border border-orange-200 rounded-full text-[10px] font-bold flex items-center gap-1">
                     <Flame className="w-3 h-3" /> Hot Lead
                   </span>
                 )}
                 {lead.qualificationStatus && (
                   <span className="px-3 py-1 bg-purple-100 text-purple-600 rounded-full text-[10px] font-bold">{lead.qualificationStatus}</span>
+                )}
+                {bookingEvidence && (
+                  <span className="px-3 py-1 bg-green-100 text-green-700 border border-green-200 rounded-full text-[10px] font-bold flex items-center gap-1">
+                    📅 Booking Interest
+                  </span>
                 )}
               </div>
             </div>
@@ -47,6 +87,28 @@ export default function LeadDetailsDrawer({ lead, onClose }: any) {
           </div>
 
           <div className="p-6 space-y-8">
+            {/* AI Lead Score ring */}
+            <div className={`flex items-center gap-5 border rounded-2xl p-5 ${hasScore ? scoreBg : 'bg-slate-50 border-slate-100'}`}>
+              {hasScore ? (
+                <ScoreRing score={score} />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-slate-400 text-xs font-bold">N/A</div>
+              )}
+              <div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">AI Lead Score</div>
+                {hasScore ? (
+                  <div className={`text-2xl font-black ${scoreColor}`}>{score}<span className="text-sm font-medium text-slate-400">/100</span></div>
+                ) : (
+                  <div className="text-sm text-slate-400 italic">Scoring in progress…</div>
+                )}
+                {lead.urgency && (
+                  <div className="flex items-center gap-1 mt-1 text-xs font-semibold text-slate-500">
+                    <Clock className="w-3 h-3" /> Urgency: {lead.urgency}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* AI Insights Panel */}
             <div className="bg-gradient-to-br from-purple-50 to-blue-50 border border-purple-100 rounded-2xl p-5 relative overflow-hidden">
               <div className="absolute top-0 right-0 p-4 opacity-5">
@@ -55,27 +117,9 @@ export default function LeadDetailsDrawer({ lead, onClose }: any) {
               <h3 className="text-sm font-bold text-purple-700 flex items-center gap-2 mb-3">
                 <Zap className="w-4 h-4" /> AI Lead Insights
               </h3>
-              
-              <div className="space-y-4 relative z-10">
-                {lead.intentScore >= 80 && (
-                  <div className="flex items-start gap-2 text-sm text-slate-700">
-                    <span className="text-orange-500">🔥</span> "Lead shows extremely strong buying intent. Highly recommended for immediate demo scheduling."
-                  </div>
-                )}
-                {lead.urgency === 'High' || lead.urgency === 'Urgent' ? (
-                  <div className="flex items-start gap-2 text-sm text-slate-700">
-                    <span className="text-red-500">⏱️</span> "Urgent requirement detected. Prioritize follow-up."
-                  </div>
-                ) : null}
-                {lead.bookingInterested && (
-                  <div className="flex items-start gap-2 text-sm text-slate-700">
-                    <span className="text-green-500">📅</span> "Lead expressed direct interest in booking a call."
-                  </div>
-                )}
-                {!lead.intentScore && !lead.urgency && !lead.bookingInterested && (
-                  <div className="text-sm text-slate-500 italic">AI is currently analyzing this conversation to generate insights.</div>
-                )}
-              </div>
+              <p className="text-sm text-slate-700 leading-relaxed relative z-10">
+                {lead.aiInsights || 'AI is analyzing this lead…'}
+              </p>
             </div>
 
             {/* Extracted Intelligence */}
@@ -98,19 +142,27 @@ export default function LeadDetailsDrawer({ lead, onClose }: any) {
                   </div>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <div className="text-[10px] text-slate-400 mb-1">Intent Score</div>
-                  <div className="font-semibold text-sm text-slate-900 flex items-center gap-2">
+                  <div className="text-[10px] text-slate-400 mb-1">AI Lead Score</div>
+                  <div className={`font-semibold text-sm flex items-center gap-2 ${hasScore ? scoreColor : 'text-slate-400'}`}>
                     <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden flex-1">
-                      <div 
-                        className={`h-full ${lead.intentScore >= 80 ? 'bg-orange-500' : lead.intentScore >= 50 ? 'bg-blue-500' : 'bg-slate-300'}`} 
-                        style={{ width: `${lead.intentScore || 0}%` }} 
+                      <div
+                        className={`h-full ${score >= 80 ? 'bg-green-500' : score >= 50 ? 'bg-amber-500' : 'bg-red-400'}`}
+                        style={{ width: `${score}%` }}
                       />
                     </div>
-                    {lead.intentScore || 0}
+                    {hasScore ? score : '—'}
                   </div>
                 </div>
               </div>
             </div>
+
+            {/* Interest */}
+            {lead.interest && (
+              <div>
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Interest / Course</h3>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm text-slate-800">{lead.interest}</div>
+              </div>
+            )}
 
             {/* Requirements & Summary */}
             {(lead.requirements || lead.aiSummary) && (
@@ -149,11 +201,12 @@ export default function LeadDetailsDrawer({ lead, onClose }: any) {
                     <Calendar className="w-4 h-4 text-slate-400" />
                     <span className="text-sm text-slate-700">Next Follow-up</span>
                   </div>
-                  <span className="text-xs font-bold text-slate-900">{lead.nextFollowUpDate ? format(new Date(lead.nextFollowUpDate), 'MMM d, yyyy') : 'None Scheduled'}</span>
+                  <span className="text-xs font-bold text-slate-900">
+                    {lead.nextFollowUpDate ? format(new Date(lead.nextFollowUpDate), 'MMM d, yyyy') : 'None Scheduled'}
+                  </span>
                 </div>
               </div>
             </div>
-
           </div>
         </motion.div>
       </div>

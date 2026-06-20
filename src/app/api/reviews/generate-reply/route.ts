@@ -3,21 +3,25 @@ import dbConnect from '@/lib/mongodb';
 import Review from '@/models/Review';
 import Business from '@/models/Business';
 import { generateReviewReply } from '@/services/ai/replyEngine';
+import { requireBusinessContext } from '@/lib/tenant';
 
 export async function POST(req: Request) {
   try {
+    const ctx = await requireBusinessContext();
+    if (!ctx.ok) return ctx.response;
+
     const { reviewId, tone } = await req.json();
-    
+
     if (!reviewId || !tone) {
       return NextResponse.json({ error: 'reviewId and tone are required' }, { status: 400 });
     }
 
     await dbConnect();
-    
-    const review = await Review.findById(reviewId);
+
+    const review = await Review.findOne({ _id: reviewId, businessId: ctx.businessId });
     if (!review) return NextResponse.json({ error: 'Review not found' }, { status: 404 });
 
-    const business = await Business.findById(review.businessId);
+    const business = await Business.findById(ctx.businessId);
     const businessName = business?.name || 'Local Business';
 
     const aiReply = await generateReviewReply({

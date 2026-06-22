@@ -5,7 +5,7 @@ import { IAudit } from '@/models/Audit';
 import { Download, Sparkles, Building2, Globe, MapPin, Zap, TrendingUp, Search, MessageSquare, AlertCircle, Calendar, Target, ShieldAlert, Award, Loader2, CheckCircle2 } from 'lucide-react';
 import AuditDebugPanel from './AuditDebugPanel';
 import AuditReportV6 from './AuditReportV6';
-import AuditReportV7 from './AuditReportV7';
+import AuditReportGrexa from './AuditReportGrexa';
 
 /* ─── Main dashboard ──────────────────────────────────────── */
 
@@ -108,12 +108,19 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
   const competitors = data.competitors || [];
   const topKeywords = data.topKeywords || [];
 
-  if (audit.auditVersion === 'V6' || audit.auditVersion === 'V7') {
-    return audit.auditVersion === 'V7' ? (
-      <AuditReportV7 audit={audit} onDownload={handleDownload} onResync={handleResync} isSyncing={isSyncing} />
-    ) : (
-      <AuditReportV6 audit={audit} onDownload={handleDownload} />
+  if (audit.auditVersion === 'V7') {
+    return (
+      <AuditReportGrexa
+        audit={audit}
+        onDownload={handleDownload}
+        onResync={handleResync}
+        isSyncing={isSyncing}
+      />
     );
+  }
+
+  if (audit.auditVersion === 'V6') {
+    return <AuditReportV6 audit={audit} onDownload={handleDownload} />;
   }
 
   return (
@@ -129,6 +136,7 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
             </p>
           </div>
           <button
+            data-pdf-hide="true"
             onClick={handleDownload}
             disabled={downloading}
             className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-bold text-sm transition-colors flex items-center gap-2 disabled:opacity-80"

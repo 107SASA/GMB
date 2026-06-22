@@ -1,4 +1,3 @@
-import React from 'react';
 import { Search, Filter } from 'lucide-react';
 
 interface CRMFilterBarProps {
@@ -39,6 +38,7 @@ export default function CRMFilterBar({
           className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-xl px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
         >
           <option value="all">All Sources</option>
+          <option value="Google Business Profile">Google Business Profile</option>
           <option value="WhatsApp">WhatsApp</option>
           <option value="Website">Website</option>
           <option value="Manual">Manual</option>

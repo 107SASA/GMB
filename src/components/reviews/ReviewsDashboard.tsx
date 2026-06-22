@@ -6,6 +6,63 @@ import ReviewFilterBar from './ReviewFilterBar';
 import ReviewCard from './ReviewCard';
 import { useBusiness } from '@/context/BusinessContext';
 
+function computeAnalytics(reviews: any[]) {
+  const total = reviews.length;
+  const avgRating = total > 0
+    ? parseFloat((reviews.reduce((s, r) => s + (r.rating ?? 0), 0) / total).toFixed(1))
+    : 0;
+  const posted = reviews.filter(r => r.replyStatus === 'POSTED').length;
+  const responseRate = total > 0 ? parseFloat(((posted / total) * 100).toFixed(1)) : 0;
+  const positive = reviews.filter(r => r.sentiment === 'positive' || r.rating >= 4).length;
+  const sentimentScore = total > 0 ? Math.round((positive / total) * 100) : 0;
+  const unansweredCount = reviews.filter(r => r.replyStatus !== 'POSTED').length;
+  const criticalReviews = reviews.filter(r => r.sentiment === 'critical' || r.rating <= 2).length;
+  return { avgRating, responseRate, sentimentScore, unansweredCount, totalReviews: total, criticalReviews };
+}
+
+function SkeletonPulse({ className }: { className: string }) {
+  return <div className={`bg-slate-200 rounded animate-pulse ${className}`} />;
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-end mb-2">
+        <SkeletonPulse className="h-10 w-36 rounded-xl" />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
+            <SkeletonPulse className="h-3 w-20 mb-3" />
+            <SkeletonPulse className="h-7 w-14" />
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="p-5 border-b border-slate-100 last:border-0 space-y-3">
+            <div className="flex items-start gap-3">
+              <SkeletonPulse className="w-10 h-10 rounded-full shrink-0" />
+              <div className="flex-1 space-y-2">
+                <SkeletonPulse className="h-4 w-36" />
+                <SkeletonPulse className="h-3 w-24" />
+              </div>
+              <SkeletonPulse className="h-6 w-16 rounded-full" />
+            </div>
+            <div className="space-y-1.5 ml-13">
+              <SkeletonPulse className="h-3 w-full" />
+              <SkeletonPulse className="h-3 w-5/6" />
+              <SkeletonPulse className="h-3 w-3/4" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ReviewsDashboard() {
   const { activeBusiness, loading: businessLoading } = useBusiness();
   const [reviews, setReviews] = useState<any[]>([]);
@@ -14,9 +71,27 @@ export default function ReviewsDashboard() {
   const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Full sync from provider — use for "Sync Reviews" button only
+  // Fast initial load from DB — no external Google call
+  const loadFromDB = useCallback(async () => {
+    try {
+      const res = await fetch('/api/reviews');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        setReviews(data);
+        setAnalytics(computeAnalytics(data));
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Full sync from Google — "Sync Reviews" button only
   const fetchReviews = useCallback(async () => {
     if (!activeBusiness?._id) return;
+    setSyncing(true);
     try {
       const res = await fetch('/api/reviews/fetch', {
         method: 'POST',
@@ -31,18 +106,20 @@ export default function ReviewsDashboard() {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
       setSyncing(false);
     }
   }, [activeBusiness?._id]);
 
-  // Lightweight DB refresh — use after approve/post to stay in sync without re-syncing from Google
+  // Lightweight DB refresh — use after approve/post
   const refreshReviewList = useCallback(async () => {
     try {
       const res = await fetch('/api/reviews');
       if (!res.ok) return;
       const data = await res.json();
-      if (Array.isArray(data)) setReviews(data);
+      if (Array.isArray(data)) {
+        setReviews(data);
+        setAnalytics(computeAnalytics(data));
+      }
     } catch (err) {
       console.error(err);
     }
@@ -50,14 +127,13 @@ export default function ReviewsDashboard() {
 
   useEffect(() => {
     if (!businessLoading && activeBusiness?._id) {
-      fetchReviews();
+      loadFromDB();
     } else if (!businessLoading && !activeBusiness) {
       setLoading(false);
     }
-  }, [activeBusiness?._id, businessLoading, fetchReviews]);
+  }, [activeBusiness?._id, businessLoading, loadFromDB]);
 
   const handleSync = () => {
-    setSyncing(true);
     fetchReviews();
   };
 
@@ -145,7 +221,7 @@ export default function ReviewsDashboard() {
     negative: reviews.filter(r => r.sentiment === 'negative').length,
   }), [reviews]);
 
-  if (loading) return <div className="p-8 text-center text-slate-500">Loading Reputation Agent...</div>;
+  if (loading) return <LoadingSkeleton />;
 
   if (!activeBusiness) {
     return (
@@ -157,11 +233,7 @@ export default function ReviewsDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">AI Reputation Agent</h1>
-          <p className="text-slate-500 mt-1">Monitor, analyze, and intelligently respond to customer reviews.</p>
-        </div>
+      <div className="flex justify-end mb-2">
         <button
           onClick={handleSync}
           disabled={syncing}

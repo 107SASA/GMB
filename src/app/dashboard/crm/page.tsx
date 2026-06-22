@@ -11,7 +11,7 @@ import { LayoutList, Columns, X } from 'lucide-react';
 
 type ViewMode = 'list' | 'kanban' | 'analytics';
 
-const SOURCES = ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral'] as const;
+const SOURCES = ['Google Business Profile', 'WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral'] as const;
 
 function AddLeadModal({ onClose, onCreated }: { onClose: () => void; onCreated: (lead: any) => void }) {
   const [form, setForm] = useState({ name: '', phone: '', email: '', source: 'Manual', interest: '', notes: '' });

@@ -5,11 +5,12 @@ import Lead from '@/models/Lead';
 import Activity from '@/models/Activity';
 import { inngest } from '@/services/inngest/client';
 
-// Twilio calls this endpoint when someone calls the business's Twilio number.
-// We log the caller as a Lead in the CRM and return empty TwiML.
-// NOTE: This requires a real Twilio voice-capable number (not the WhatsApp sandbox).
-//       In Twilio Console → Phone Numbers → your number → Voice Configuration →
-//       set "A call comes in" webhook to: https://your-domain.com/api/twilio/voice
+// Twilio calls this endpoint when someone calls the business's GBP tracking number.
+// The Twilio number should be set as the phone number on the Google Business Profile.
+// When a customer clicks "Call" on the GBP listing, Twilio fires this webhook and
+// we record the caller as a Google Business Profile lead in the CRM.
+// In Twilio Console → Phone Numbers → your number → Voice Configuration →
+// set "A call comes in" webhook to: https://your-domain.com/api/twilio/voice
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
         businessId,
         name: callerName?.trim() || from,
         phone: from,
-        source: 'Phone Call',
+        source: 'Google Business Profile',
         pipelineStage: 'New',
         status: 'active',
       });
@@ -78,10 +79,11 @@ export async function POST(req: Request) {
       tenantId,
       leadId: lead._id,
       type: 'call',
-      content: `Inbound call${callerName ? ` from ${callerName}` : ''} (${from}) — status: ${callStatus || 'ringing'}`,
+      content: `Inbound call via Google Business Profile${callerName ? ` from ${callerName}` : ''} (${from}) — status: ${callStatus || 'ringing'}`,
       metadata: {
         callSid,
         direction: 'inbound',
+        source: 'Google Business Profile',
         callerName: callerName || null,
         callStatus,
         isNewLead,

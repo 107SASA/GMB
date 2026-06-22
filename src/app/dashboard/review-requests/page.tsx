@@ -1,1 +1,5 @@
-export default function ReviewRequests() { return <div>Review Requests</div>; }
+import { redirect } from 'next/navigation';
+
+export default function ReviewRequestsRedirect() {
+  redirect('/dashboard/reviews');
+}

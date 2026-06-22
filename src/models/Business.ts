@@ -61,6 +61,7 @@ export interface IBusiness extends Document {
   kanbanColumns: string[];
   onboardingCompleted: boolean;
   faqs?: Array<{ question: string; answer: string }>;
+  isDeleted?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -127,6 +128,7 @@ const BusinessSchema: Schema = new Schema(
     kanbanColumns: [{ type: String }],
     onboardingCompleted: { type: Boolean, default: false },
     faqs: [{ question: { type: String }, answer: { type: String } }],
+    isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

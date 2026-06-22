@@ -1,22 +1,17 @@
 "use client";
 
-import { 
-  Rocket, 
-  LayoutDashboard, 
-  MessageSquare, 
-  Calendar, 
-  Users, 
-  BarChart3, 
-  Settings, 
+import {
+  Rocket,
+  LayoutDashboard,
+  MessageSquare,
+  Calendar,
+  Users,
+  BarChart3,
+  Settings,
   LogOut,
-  Search,
   Zap,
   Megaphone,
-  UploadCloud,
   Star,
-  Clock,
-  ChevronDown,
-  Check
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -27,7 +22,6 @@ const sidebarLinks = [
   { name: "Dashboard Home", icon: LayoutDashboard, href: "/dashboard" },
   { name: "Audit Engine", icon: Zap, href: "/dashboard/audit" },
   { name: "Review Management", icon: Star, href: "/dashboard/reviews" },
-  { name: "Review Requests", icon: Users, href: "/dashboard/review-requests" },
   { name: "CRM", icon: MessageSquare, href: "/dashboard/crm" },
   { name: "Content Generator", icon: Megaphone, href: "/dashboard/content" },
   { name: "Content Scheduler", icon: Calendar, href: "/dashboard/scheduler" },
@@ -52,7 +46,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-64 border-r border-slate-200 bg-white flex flex-col hidden lg:flex h-screen fixed top-0 left-0 z-50 overflow-y-auto custom-scrollbar">
+    <aside className="w-64 border-r border-slate-200 bg-white flex-col hidden lg:flex h-screen fixed top-0 left-0 z-50 overflow-y-auto custom-scrollbar">
       <div className="p-6">
         <Link href="/" className="flex items-center gap-2 mb-6 group">
           <div className="w-8 h-8 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center justify-center group-hover:rotate-12 transition-transform duration-300">

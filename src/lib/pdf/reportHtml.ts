@@ -1,6 +1,5 @@
 import type {
   IAudit, IAuditData, IChecklistItem, IGeoGridKeyword,
-  IPriorityFix, IStrengthWeakness, IThirtyDayPlan, INinetyDayPlan,
 } from '@/models/Audit';
 
 export interface ReportContext {
@@ -20,175 +19,201 @@ function h(s: unknown): string {
     .replace(/"/g, '&quot;');
 }
 
-function svgRing(pct: number, color: string, size = 110): string {
-  const c = Math.min(100, Math.max(0, pct));
-  const r = (size - 16) / 2;
+// Circular gauge matching the React CircularGauge component style
+function svgRing(value: number, color: string, size = 96): string {
+  const strokeWidth = Math.round(size * 0.1);
+  const r = (size - strokeWidth) / 2;
   const circ = 2 * Math.PI * r;
-  const fill = (c / 100) * circ;
+  const v = Math.min(100, Math.max(0, value));
+  const used = (v / 100) * circ;
   const cx = size / 2;
-  const fontSize = Math.round(size * 0.19);
-  const subSize = Math.round(size * 0.1);
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block;margin:0 auto;">
-    <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="#E8EDF4" stroke-width="10"/>
-    <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${color}" stroke-width="10"
-      stroke-dasharray="${fill.toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"
-      transform="rotate(-90 ${cx} ${cx})"/>
-    <text x="${cx}" y="${cx - 4}" dominant-baseline="middle" text-anchor="middle"
-      font-size="${fontSize}" font-weight="900" fill="${color}"
-      font-family="Inter,-apple-system,sans-serif">${c}%</text>
-    <text x="${cx}" y="${cx + fontSize * 0.75}" dominant-baseline="middle" text-anchor="middle"
-      font-size="${subSize}" font-weight="500" fill="#94A3B8"
-      font-family="Inter,-apple-system,sans-serif">score</text>
-  </svg>`;
+  const fontSize = Math.round(size * 0.22);
+  return `<div style="position:relative;width:${size}px;height:${size}px;display:inline-block;flex-shrink:0;">
+  <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="#f1f5f9" stroke-width="${strokeWidth}"/>
+    <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"
+      stroke-dasharray="${used.toFixed(1)} ${(circ - used).toFixed(1)}"
+      stroke-linecap="round" transform="rotate(-90 ${cx} ${cx})"/>
+    <text x="${cx}" y="${cx}" dominant-baseline="middle" text-anchor="middle"
+      font-size="${fontSize}" font-weight="900" fill="#0f172a"
+      font-family="Inter,-apple-system,sans-serif">${v}%</text>
+  </svg>
+</div>`;
 }
 
-function rankMeta(rank: number | undefined) {
-  if (rank === undefined || rank >= 21)
-    return { text: '#94A3B8', bg: '#F1F5F9', label: 'Not in Top 20', display: '20+' };
-  if (rank <= 5)
-    return { text: '#059669', bg: '#DCFCE7', label: 'Good — Top 5', display: rank.toFixed(1) };
-  if (rank <= 10)
-    return { text: '#D97706', bg: '#FEF3C7', label: 'Average — Position 6–10', display: rank.toFixed(1) };
-  return { text: '#DC2626', bg: '#FEE2E2', label: 'Poor — Position 11+', display: rank.toFixed(1) };
-}
-
-function rankBadge(rank: number): string {
-  const m = rankMeta(rank);
-  const display = rank >= 21 ? '20+' : rank.toFixed(1);
-  return `<span style="display:inline-block;padding:3px 11px;border-radius:20px;font-size:10px;font-weight:800;
-    background:${m.bg};color:${m.text};">${display}</span>`;
+function rankMeta(rank: number | undefined): { color: string; display: string } {
+  if (rank === undefined) return { color: '#ef4444', display: '—' };
+  if (rank <= 5)  return { color: '#22c55e', display: rank.toFixed(1) };
+  if (rank <= 10) return { color: '#eab308', display: rank.toFixed(1) };
+  return { color: '#ef4444', display: rank.toFixed(1) };
 }
 
 function starRow(rating: number): string {
-  if (!rating) return '';
   const full = Math.floor(rating);
-  const empty = 5 - full;
-  return '★'.repeat(full) + '☆'.repeat(empty);
+  let out = '';
+  for (let i = 1; i <= 5; i++) {
+    out += `<span style="color:${i <= full ? '#FBBF24' : '#cbd5e1'};font-size:16px;">★</span>`;
+  }
+  return out;
+}
+
+function statusBadge(status: string): string {
+  const map: Record<string, string> = {
+    Good:    'background:#22c55e;color:#fff;',
+    Poor:    'background:#ef4444;color:#fff;',
+    Average: 'background:#eab308;color:#fff;',
+    Low:     'background:#22c55e;color:#fff;',
+    High:    'background:#ef4444;color:#fff;',
+    Medium:  'background:#eab308;color:#fff;',
+  };
+  const style = map[status] ?? 'background:#94a3b8;color:#fff;';
+  return `<span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;${style}">${h(status)}</span>`;
 }
 
 function checkIcon(status: IChecklistItem['status'] | string): string {
   if (status === 'Complete')
-    return `<div style="width:20px;height:20px;border-radius:50%;background:#DCFCE7;flex-shrink:0;
-      display:flex;align-items:center;justify-content:center;">
-      <svg width="11" height="11" viewBox="0 0 11 11">
-        <path d="M2.5 5.5L4.5 7.5L8.5 3.5" stroke="#059669" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg></div>`;
+    return `<svg width="20" height="20" viewBox="0 0 24 24" style="flex-shrink:0;">
+      <circle cx="12" cy="12" r="10" fill="#22c55e"/>
+      <path d="M8 12l3 3 5-5" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>`;
   if (status === 'Partial')
-    return `<div style="width:20px;height:20px;border-radius:50%;background:#FEF3C7;flex-shrink:0;
-      display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#D97706;">~</div>`;
-  if (status === 'Unknown')
-    return `<div style="width:20px;height:20px;border-radius:50%;background:#FEF3C7;flex-shrink:0;
-      display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#D97706;">?</div>`;
-  return `<div style="width:20px;height:20px;border-radius:50%;background:#FEE2E2;flex-shrink:0;
-    display:flex;align-items:center;justify-content:center;">
-    <svg width="11" height="11" viewBox="0 0 11 11">
-      <path d="M3 3L8 8M8 3L3 8" stroke="#DC2626" stroke-width="1.6" stroke-linecap="round"/>
-    </svg></div>`;
+    return `<svg width="20" height="20" viewBox="0 0 24 24" style="flex-shrink:0;">
+      <circle cx="12" cy="12" r="10" fill="#f97316"/>
+      <path d="M12 7v5M12 16h.01" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+    </svg>`;
+  return `<svg width="20" height="20" viewBox="0 0 24 24" style="flex-shrink:0;">
+    <circle cx="12" cy="12" r="10" fill="#ef4444"/>
+    <path d="M15 9l-6 6M9 9l6 6" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+  </svg>`;
 }
 
-function statusColor(s: string) {
-  if (s === 'Complete') return { text: '#059669', bg: '#DCFCE7', border: '#BBF7D0', rowBg: '#F0FDF4' };
-  if (s === 'Partial' || s === 'Unknown') return { text: '#D97706', bg: '#FEF3C7', border: '#FDE68A', rowBg: '#FFFBEB' };
-  return { text: '#DC2626', bg: '#FEE2E2', border: '#FECACA', rowBg: '#FFF5F5' };
+function googleSvg(size = 18): string {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24">
+    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+  </svg>`;
 }
 
-function impactStyle(level: string) {
-  if (level === 'High') return { text: '#DC2626', bg: '#FEE2E2' };
-  if (level === 'Medium') return { text: '#D97706', bg: '#FEF3C7' };
-  return { text: '#059669', bg: '#DCFCE7' };
+function buildingIcon(): string {
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
+    <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
+  </svg>`;
 }
 
-function effortStyle(level: string) {
-  if (level === 'Low') return { text: '#059669', bg: '#DCFCE7' };
-  if (level === 'Medium') return { text: '#D97706', bg: '#FEF3C7' };
-  return { text: '#DC2626', bg: '#FEE2E2' };
+function buildStaticMapUrlForPdf(
+  pts: Array<{ lat: number; lng: number; rank: number }>,
+  apiKey: string,
+  gridSpacingKm = 1.5,
+): string {
+  const center = pts[4] ?? pts[0];
+  const zoom = gridSpacingKm <= 1 ? 14 : gridSpacingKm <= 2 ? 13 : 12;
+  const parts: string[] = [
+    `center=${center.lat},${center.lng}`,
+    `zoom=${zoom}`,
+    'size=580x320',
+    'scale=2',
+    'maptype=roadmap',
+    'style=feature:poi%7Celement:labels%7Cvisibility:off',
+    'style=feature:transit%7Cvisibility:off',
+  ];
+  for (let i = 0; i < pts.length; i++) {
+    if (i === 4) continue;
+    const p = pts[i];
+    let color: string; let labelPart = '';
+    if (p.rank <= 5)       { color = '0x22c55e'; if (p.rank <= 9) labelPart = `%7Clabel:${p.rank}`; }
+    else if (p.rank <= 10) { color = '0xf59e0b'; if (p.rank <= 9) labelPart = `%7Clabel:${p.rank}`; }
+    else if (p.rank <= 20) { color = '0xef4444'; }
+    else                   { color = '0x94a3b8'; }
+    parts.push(`markers=color:${color}%7Csize:mid${labelPart}%7C${p.lat},${p.lng}`);
+  }
+  parts.push(`markers=color:0x1d4ed8%7Csize:large%7Clabel:Y%7C${center.lat},${center.lng}`);
+  parts.push(`key=${encodeURIComponent(apiKey)}`);
+  return `https://maps.googleapis.com/maps/api/staticmap?${parts.join('&')}`;
 }
 
-function gridPointColor(rank: number): { bg: string; text: string } {
-  if (rank >= 21) return { bg: '#F1F5F9', text: '#94A3B8' };
-  if (rank <= 5) return { bg: '#DCFCE7', text: '#065F46' };
-  if (rank <= 10) return { bg: '#FEF3C7', text: '#92400E' };
-  return { bg: '#FEE2E2', text: '#991B1B' };
-}
+function renderGeoGridMap(kw: IGeoGridKeyword, mapsApiKey?: string, gridSpacingKm = 1.5): string {
+  const pts = [...kw.points]
+    .sort((a, b) => b.lat - a.lat || a.lng - b.lng)
+    .slice(0, 9);
+  const fallbackLat = pts.reduce((s, p) => s + p.lat, 0) / (pts.length || 1);
+  const fallbackLng = pts.reduce((s, p) => s + p.lng, 0) / (pts.length || 1);
+  while (pts.length < 9) pts.push({ lat: fallbackLat, lng: fallbackLng, rank: 21 });
 
-function renderGeoGrid(kw: IGeoGridKeyword): string {
-  const m = rankMeta(kw.avgRank);
-  const pts = [...kw.points];
-  while (pts.length < 9) pts.push({ lat: 0, lng: 0, rank: 21 });
+  const { color: rankColor, display: rankDisplay } = rankMeta(kw.avgRank);
 
-  const cells = pts.slice(0, 9).map((p, i) => {
-    const c = gridPointColor(p.rank);
-    const disp = p.rank >= 21 ? '20+' : String(p.rank);
+  const cells = pts.map((pt, i) => {
     const isCenter = i === 4;
-    return `<div style="background:${isCenter ? '#EFF6FF' : c.bg};color:${isCenter ? '#1D4ED8' : c.text};
-      border-radius:8px;padding:10px 4px;text-align:center;font-weight:900;font-size:13px;line-height:1.1;
-      ${isCenter ? 'border:2px solid #2563EB;' : ''}">
-      ${disp}
-      ${isCenter ? '<div style="font-size:6px;font-weight:700;color:#2563EB;margin-top:3px;text-transform:uppercase;letter-spacing:0.4px;">YOU</div>' : ''}
+    let bg: string;
+    if (isCenter)            { bg = '#1d4ed8'; }
+    else if (pt.rank <= 5)   { bg = '#22c55e'; }
+    else if (pt.rank <= 10)  { bg = '#f59e0b'; }
+    else if (pt.rank <= 20)  { bg = '#f97316'; }
+    else                     { bg = '#ef4444'; }
+    const disp = pt.rank > 20 ? '20+' : String(pt.rank);
+    const sz = isCenter ? 46 : 38;
+    const fs = disp.length > 2 ? 9 : isCenter ? 13 : 12;
+    const shadow = isCenter
+      ? `box-shadow:0 0 0 3px ${bg}40,0 4px 12px rgba(0,0,0,.4);border:3px solid white;`
+      : `box-shadow:0 2px 6px rgba(0,0,0,.35);border:2px solid rgba(255,255,255,.7);`;
+    return `<div style="display:flex;align-items:center;justify-content:center;">
+      <div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${bg};color:#fff;
+        display:flex;align-items:center;justify-content:center;font-weight:900;font-size:${fs}px;
+        ${shadow}flex-shrink:0;position:relative;">${disp}${isCenter ? `<span style="position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:3px;font-size:7px;font-weight:700;color:#fff;background:#1d4ed8;border-radius:4px;padding:1px 4px;white-space:nowrap;">YOU</span>` : ''}</div>
     </div>`;
   }).join('');
 
-  return `<div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:18px;break-inside:avoid;
-    box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-    <div style="margin-bottom:10px;">
-      <div style="font-size:9px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Keyword</div>
-      <div style="font-size:12px;font-weight:700;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${h(kw.keyword)}"</div>
-    </div>
-    <div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:14px;padding:4px 10px;
-      background:${m.bg};border-radius:20px;">
-      <span style="font-size:9px;font-weight:600;color:${m.text};">Avg. Rank:</span>
-      <span style="font-size:12px;font-weight:900;color:${m.text};">${m.display}</span>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:12px;">${cells}</div>
-    <div style="display:flex;gap:5px;flex-wrap:wrap;">
-      <span style="background:#DCFCE7;color:#065F46;font-size:8px;font-weight:700;padding:2px 8px;border-radius:10px;">● 1–5 Good</span>
-      <span style="background:#FEF3C7;color:#92400E;font-size:8px;font-weight:700;padding:2px 8px;border-radius:10px;">● 6–10 Avg</span>
-      <span style="background:#FEE2E2;color:#991B1B;font-size:8px;font-weight:700;padding:2px 8px;border-radius:10px;">● 11+ Poor</span>
-    </div>
-  </div>`;
-}
+  const hasMap = !!mapsApiKey;
+  const mapUrl = hasMap ? buildStaticMapUrlForPdf(pts, mapsApiKey!, gridSpacingKm) : '';
 
-function staticMapUrl(
-  cLat: number, cLng: number,
-  points: Array<{ lat: number; lng: number; rank: number }>,
-  apiKey: string,
-): string {
-  const base = 'https://maps.googleapis.com/maps/api/staticmap';
-  const parts = [
-    `center=${cLat},${cLng}`, 'zoom=13', 'size=560x300', 'scale=2', 'maptype=roadmap',
-    `markers=color:blue%7Clabel:Y%7Csize:mid%7C${cLat},${cLng}`,
-  ];
-  for (const p of points) {
-    const color = p.rank <= 5 ? 'green' : p.rank <= 10 ? 'orange' : p.rank < 21 ? 'red' : 'gray';
-    const lbl = p.rank >= 1 && p.rank <= 9 ? `%7Clabel:${p.rank}` : '';
-    parts.push(`markers=color:${color}%7Csize:mid${lbl}%7C${p.lat},${p.lng}`);
-  }
-  parts.push(`key=${encodeURIComponent(apiKey)}`);
-  return `${base}?${parts.join('&')}`;
-}
+  const mapBg = hasMap
+    ? `background:#e8edf2;`
+    : `background:#e8edf2;background-image:linear-gradient(rgba(148,163,184,.25) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.25) 1px,transparent 1px);background-size:24px 24px;`;
 
-function gridCenter(pts: Array<{ lat: number; lng: number }>) {
-  const lat = pts.reduce((s, p) => s + p.lat, 0) / pts.length;
-  const lng = pts.reduce((s, p) => s + p.lng, 0) / pts.length;
-  return { lat: parseFloat(lat.toFixed(6)), lng: parseFloat(lng.toFixed(6)) };
-}
+  const mapContent = hasMap
+    ? `<img src="${mapUrl}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" alt="map"/>`
+    : '';
 
-function sectionDivider(title: string, right = ''): string {
-  return `
-<div style="display:flex;align-items:center;justify-content:space-between;
-  margin-bottom:16px;padding-bottom:10px;border-bottom:1.5px solid #E2E8F0;">
-  <div style="display:flex;align-items:center;gap:10px;">
-    <div style="width:4px;height:20px;background:linear-gradient(180deg,#2563EB,#7C3AED);border-radius:2px;flex-shrink:0;"></div>
-    <span style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#0F172A;">${h(title)}</span>
+  const legend = [
+    { bg: '#1d4ed8', label: 'You' },
+    { bg: '#22c55e', label: '1–5' },
+    { bg: '#f59e0b', label: '6–10' },
+    { bg: '#f97316', label: '11–20' },
+    { bg: '#ef4444', label: '20+' },
+  ].map(({ bg, label }) =>
+    `<div style="display:flex;align-items:center;gap:4px;">
+      <div style="width:10px;height:10px;border-radius:50%;background:${bg};flex-shrink:0;"></div>
+      <span style="font-size:10px;color:#64748b;font-weight:600;">${label}</span>
+    </div>`
+  ).join('');
+
+  return `<div style="border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;break-inside:avoid;display:flex;flex-direction:column;">
+  <div style="padding:12px 16px;background:linear-gradient(to right,#f8fafc,#fff);border-bottom:1px solid #e2e8f0;">
+    <p style="margin:0 0 2px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.7px;">Keyword</p>
+    <p style="margin:0;font-size:13px;font-weight:700;color:#2563eb;line-height:1.3;">${h(kw.keyword)}</p>
+    <div style="display:flex;align-items:baseline;gap:5px;margin-top:5px;">
+      <span style="font-size:11px;color:#64748b;">Avg Rank</span>
+      <span style="font-size:20px;font-weight:900;color:${rankColor};">${rankDisplay}</span>
+    </div>
   </div>
-  ${right ? `<span style="font-size:10px;color:#94A3B8;font-weight:500;">${right}</span>` : ''}
+  <div style="position:relative;flex:1;min-height:220px;${mapBg}">
+    ${mapContent}
+    <div style="position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);padding:${hasMap ? '18px' : '14px'};gap:${hasMap ? '10px' : '8px'};">
+      ${cells}
+    </div>
+  </div>
+  <div style="padding:8px 14px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    ${legend}
+  </div>
 </div>`;
 }
 
 // ── Main builder ───────────────────────────────────────────────────────────────
 
 export function buildReportHtml(ctx: ReportContext): string {
-  const { audit, businessRating, coordinates, mapsApiKey } = ctx;
+  const { audit, businessRating } = ctx;
   const data = (audit.auditData ?? {}) as IAuditData & Record<string, unknown>;
 
   // ── Data extraction ──────────────────────────────────────────────────────────
@@ -204,46 +229,69 @@ export function buildReportHtml(ctx: ReportContext): string {
   const responseRatePct: number = parseInt(responseRateStr, 10) || 0;
   const geoGridKeywords: IGeoGridKeyword[] = data.geoGridRank?.keywords ?? [];
   const overallAvgRank: number | undefined = data.geoGridRank?.overallAvgRank;
-  const gridSpacingKm: number = data.geoGridRank?.gridSpacingKm ?? 1.5;
   const areaSqKm: number = data.geoGridRank?.areaSqKm ?? 9;
-  const hasGeoGrid = geoGridKeywords.length > 0;
+  const gridSpacingKm: number = data.geoGridRank?.gridSpacingKm ?? 1.5;
   const localPackComps = (data.localPackCompetitors ?? []) as any[];
   const missingOpps: string[] = data.seoScore?.optimizationOpportunities ?? [];
   const missingKeywords: string[] = data.seoScore?.missingKeywords ?? [];
+  const hasGeoGrid = geoGridKeywords.length > 0;
 
-  // AI fields
-  const strengths: IStrengthWeakness[] = data.strengths ?? [];
-  const weaknesses: IStrengthWeakness[] = data.weaknesses ?? [];
-  const priorityFixes: IPriorityFix[] = data.priorityFixes ?? [];
-  const thirtyDayPlan: IThirtyDayPlan[] = data.thirtyDayPlan ?? [];
-  const ninetyDayPlan: INinetyDayPlan[] = data.ninetyDayPlan ?? [];
-  const executiveSummary: string = (data.executiveSummary as string) ?? '';
-  const quickWins: string[] = (data.quickWins as string[]) ?? [];
-  const businessTier: string = (data.businessTier as string) ?? '';
-  const hasAiData = strengths.length > 0 || weaknesses.length > 0 || priorityFixes.length > 0;
+  // Missing SEO fields
+  const missingFields: string[] = [];
+  const opLower = missingOpps.map((o) => o.toLowerCase()).join(' ');
+  if (opLower.includes('title')       || missingKeywords.length > 0) missingFields.push('Title');
+  if (opLower.includes('categor')     || missingKeywords.length > 0) missingFields.push('Additional Category');
+  if (opLower.includes('service')     || missingKeywords.length > 0) missingFields.push('Services');
+  if (opLower.includes('description') || missingKeywords.length > 0) missingFields.push('Description');
+  if (missingFields.length === 0 && seoScore < 80)
+    missingFields.push('Title', 'Additional Category', 'Services', 'Description');
 
-  // Derived
-  const rankM = rankMeta(overallAvgRank);
-  const genDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
-  const completeCount = checklist.filter(c => c.status === 'Complete').length;
+  // Services / categories
+  const servicesItem   = checklist.find((c) => c.field.toLowerCase().includes('service'));
+  const categoriesItem = checklist.find((c) => c.field.toLowerCase().includes('categor'));
+  const servicesOk     = servicesItem?.status === 'Complete';
+  const categoriesOk   = !(categoriesItem?.status === 'Missing' || categoriesItem?.status === 'Unknown');
+  const evidence: Record<string, any> = (data as any).evidence ?? {};
+  const servicesCnt    = evidence.servicesCount    ?? null;
+  const categoriesCnt  = evidence.categoriesCount  ?? null;
 
   // Suspension risk
-  let suspLevel: string, suspColor: string, suspBg: string, suspPct: number;
+  let suspLevel: string, suspColor: string, suspPct: number;
   if (completionPct < 40 && reviewCount < 5) {
-    suspLevel = 'High'; suspColor = '#DC2626'; suspBg = '#FEE2E2'; suspPct = 85;
+    suspLevel = 'High';   suspColor = '#ef4444'; suspPct = 85;
   } else if (completionPct < 70 || reviewCount < 10) {
-    suspLevel = 'Medium'; suspColor = '#D97706'; suspBg = '#FEF3C7'; suspPct = 45;
+    suspLevel = 'Medium'; suspColor = '#eab308'; suspPct = 45;
   } else {
-    suspLevel = 'Low'; suspColor = '#059669'; suspBg = '#DCFCE7'; suspPct = 0;
+    suspLevel = 'Low';    suspColor = '#22c55e'; suspPct = 0;
   }
 
-  // Checklist status helpers
-  const findChecklist = (keyword: string): IChecklistItem | undefined =>
-    checklist.find(c => c.field.toLowerCase().includes(keyword.toLowerCase()));
-  const servicesItem = findChecklist('service');
-  const categoriesItem = findChecklist('categor');
-  const servGood = servicesItem?.status === 'Complete';
-  const catGood = categoriesItem?.status === 'Complete';
+  // Rank + colors
+  const rankM        = rankMeta(overallAvgRank);
+  const profileColor = overallScore >= 80 ? '#22c55e' : overallScore >= 60 ? '#eab308' : '#ef4444';
+  const seoColor     = seoScore    >= 80 ? '#22c55e' : seoScore    >= 50 ? '#eab308' : '#ef4444';
+  const genDate      = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  // Checklist columns
+  const defaultChecklist: IChecklistItem[] = [
+    { field: 'Title',                          status: 'Complete' },
+    { field: 'Primary Category',               status: 'Complete' },
+    { field: 'Additional Categories',          status: 'Missing'  },
+    { field: 'Business Services',              status: 'Complete' },
+    { field: 'Description',                    status: 'Partial'  },
+    { field: 'Address',                        status: 'Complete' },
+    { field: 'Phone',                          status: 'Complete' },
+    { field: 'Listing Attributes/Service Options', status: 'Complete' },
+    { field: 'Photos',                         status: 'Complete' },
+    { field: 'Logo',                           status: 'Complete' },
+    { field: 'Website',                        status: 'Complete' },
+    { field: 'Service Area',                   status: 'Complete' },
+    { field: 'Business Hours',                 status: 'Complete' },
+    { field: 'Appointment/Ordering Links',     status: 'Complete' },
+  ];
+  const displayChecklist = checklist.length >= 4 ? checklist : defaultChecklist;
+  const half   = Math.ceil(displayChecklist.length / 2);
+  const leftCL = displayChecklist.slice(0, half);
+  const rightCL = displayChecklist.slice(half);
 
   // ── CSS ──────────────────────────────────────────────────────────────────────
   const css = `
@@ -252,585 +300,346 @@ export function buildReportHtml(ctx: ReportContext): string {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
-    html, body { margin: 0; padding: 0; background: #F1F5F9;
+    html, body {
+      margin: 0; padding: 0;
+      background: #f8fafc;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      font-size: 12px; color: #0F172A; }
-    @page { size: A4 portrait; margin: 12mm 14mm; }
+      font-size: 13px; color: #0f172a;
+    }
+    @page { size: A4 portrait; margin: 10mm 12mm; }
     table { width: 100%; border-collapse: collapse; }
-    img { max-width: 100%; display: block; }
-    .nb { break-inside: avoid; }
-    .pb { break-before: page; }
+    img   { max-width: 100%; display: block; }
+    p, h1, h2, h3 { margin: 0; }
   `;
 
-  // ── HEADER ───────────────────────────────────────────────────────────────────
+  // ── 1. REPORT HEADER ─────────────────────────────────────────────────────────
   const headerHtml = `
-<div class="nb" style="background:linear-gradient(135deg,#0F172A 0%,#1E3A8A 50%,#1D4ED8 100%);
-  padding:30px 32px;border-radius:16px;margin-bottom:20px;color:#fff;">
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;">
-    <div style="flex:1;min-width:0;">
-      <div style="display:inline-flex;align-items:center;gap:8px;
-        background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.18);
-        border-radius:20px;padding:4px 14px;margin-bottom:14px;">
-        <div style="width:16px;height:16px;background:#fff;border-radius:4px;
-          display:flex;align-items:center;justify-content:center;
-          font-size:9px;font-weight:900;color:#1E3A8A;">G</div>
-        <span style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
-          color:rgba(255,255,255,0.65);">GMBBoost · Google Business Profile Audit</span>
-      </div>
-      <h1 style="font-size:24px;font-weight:900;margin:0 0 10px;line-height:1.2;letter-spacing:-0.3px;">${h(audit.businessName)}</h1>
-      ${avgRating > 0 ? `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-        <span style="font-size:17px;color:#FBBF24;letter-spacing:2px;">${starRow(avgRating)}</span>
-        <span style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.85);">${avgRating.toFixed(1)}</span>
-        <span style="font-size:11px;color:rgba(255,255,255,0.5);">(${reviewCount} reviews)</span>
-      </div>` : ''}
-      ${audit.address ? `<div style="font-size:11px;color:rgba(255,255,255,0.55);display:flex;gap:5px;">
-        <span>📍</span><span>${h(audit.address)}</span></div>` : ''}
-      ${audit.location ? `<div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:4px;">${h(audit.location)}</div>` : ''}
+<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;margin-bottom:14px;break-inside:avoid;">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 20px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      ${googleSvg(18)}
+      <span style="font-size:13px;font-weight:600;color:#374151;">Google Search Rank Report for Your Business Profile</span>
     </div>
-    <div style="text-align:right;flex-shrink:0;">
-      <div style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);
-        border-radius:12px;padding:10px 16px;">
-        <div style="font-size:9px;color:rgba(255,255,255,0.45);text-transform:uppercase;
-          letter-spacing:1px;margin-bottom:4px;">Report Generated</div>
-        <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.9);">${genDate}</div>
-      </div>
+    <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);border-radius:6px;padding:4px 10px;">
+      <span style="font-size:11px;font-weight:700;color:#fff;letter-spacing:0.5px;">GMBBoost</span>
+    </div>
+  </div>
+  <div style="padding:16px 20px;">
+    <h1 style="font-size:22px;font-weight:800;color:#0f172a;margin-bottom:7px;line-height:1.2;">${h(audit.businessName)}</h1>
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:13px;color:#64748b;">
+      ${avgRating > 0 ? `<div style="display:flex;align-items:center;gap:2px;">${starRow(avgRating)}</div>
+      <span style="font-weight:700;color:#1e293b;">${avgRating.toFixed(1)}</span>
+      ${reviewCount > 0 ? `<span style="color:#94a3b8;">(${reviewCount})</span>` : ''}` : ''}
+      ${audit.address ? `${avgRating > 0 ? `<span style="color:#cbd5e1;">|</span>` : ''}
+      <span style="color:#64748b;">${h(audit.address)}</span>` : ''}
     </div>
   </div>
 </div>`;
 
-  // ── HERO CARDS ───────────────────────────────────────────────────────────────
+  // ── 2. HERO CARDS ────────────────────────────────────────────────────────────
   const heroHtml = `
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
 
   <!-- Search Rank -->
-  <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-    padding:24px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:18px;">
-      <span style="font-size:16px;font-weight:900;
-        background:linear-gradient(90deg,#4285F4,#EA4335,#FBBC05,#34A853);
-        -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-        color:#4285F4;">Google</span>
-      <span style="font-size:13px;font-weight:700;color:#374151;">Search Rank</span>
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;break-inside:avoid;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+      ${googleSvg(18)}
+      <span style="font-size:13px;font-weight:700;color:#374151;">Google Search Rank</span>
     </div>
     ${hasGeoGrid ? `
-    <div style="font-size:62px;font-weight:900;color:${rankM.text};line-height:1;margin-bottom:8px;letter-spacing:-2px;">${rankM.display}</div>
-    <div style="font-size:10px;color:#64748B;line-height:1.5;margin-bottom:16px;">
-      Overall average rank for the <strong style="color:#374151;">${geoGridKeywords.length}</strong> most searched keywords on Google for your business
+    <div style="margin-bottom:5px;">
+      <span style="font-size:68px;font-weight:900;line-height:1;letter-spacing:-2px;color:${rankM.color};">${rankM.display}</span>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;">
-      <div style="display:flex;align-items:center;gap:4px;padding:4px 11px;background:#DCFCE7;border-radius:20px;">
-        <div style="width:7px;height:7px;border-radius:50%;background:#059669;"></div>
-        <span style="font-size:9px;font-weight:700;color:#065F46;">Top 5</span>
+    <p style="font-size:11px;color:#64748b;line-height:1.6;margin-bottom:16px;">
+      Overall average rank for the
+      <strong style="color:#374151;">${geoGridKeywords.length} most searched keywords</strong>
+      on Google for your business
+    </p>
+    <div style="display:flex;gap:14px;">
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div style="width:11px;height:11px;border-radius:50%;background:#22c55e;flex-shrink:0;"></div>
+        <span style="font-size:11px;color:#374151;">Top 5</span>
       </div>
-      <div style="display:flex;align-items:center;gap:4px;padding:4px 11px;background:#FEF3C7;border-radius:20px;">
-        <div style="width:7px;height:7px;border-radius:50%;background:#D97706;"></div>
-        <span style="font-size:9px;font-weight:700;color:#92400E;">Under 10</span>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div style="width:11px;height:11px;border-radius:50%;background:#eab308;flex-shrink:0;"></div>
+        <span style="font-size:11px;color:#374151;">Under 10</span>
       </div>
-      <div style="display:flex;align-items:center;gap:4px;padding:4px 11px;background:#FEE2E2;border-radius:20px;">
-        <div style="width:7px;height:7px;border-radius:50%;background:#DC2626;"></div>
-        <span style="font-size:9px;font-weight:700;color:#991B1B;">Beyond 10</span>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div style="width:11px;height:11px;border-radius:50%;background:#ef4444;flex-shrink:0;"></div>
+        <span style="font-size:11px;color:#374151;">Beyond 10</span>
       </div>
-    </div>` : `<div style="font-size:13px;color:#94A3B8;padding:20px 0;text-align:center;">Geo-grid data unavailable</div>`}
+    </div>` : `
+    <div style="font-size:13px;color:#94a3b8;padding:20px 0;text-align:center;">Geo-grid data unavailable</div>`}
   </div>
 
   <!-- Profile Score -->
-  <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-    padding:24px;box-shadow:0 1px 4px rgba(0,0,0,0.05);
-    text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:18px;">
-      <span style="font-size:16px;font-weight:900;
-        background:linear-gradient(90deg,#4285F4,#EA4335,#FBBC05,#34A853);
-        -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-        color:#4285F4;">Google</span>
-      <span style="font-size:13px;font-weight:700;color:#374151;">Profile Score</span>
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;break-inside:avoid;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+      ${googleSvg(18)}
+      <span style="font-size:13px;font-weight:700;color:#374151;">Google Profile Score</span>
     </div>
-    ${svgRing(overallScore, '#2563EB', 130)}
-    <div style="font-size:10px;color:#64748B;margin-top:14px;line-height:1.6;max-width:190px;">
-      Based on 25+ parameters — SEO, Reviews, Completion, Rating.
+    <div style="display:flex;align-items:center;gap:18px;">
+      ${svgRing(overallScore, profileColor, 120)}
+      <div>
+        <p style="font-size:11px;color:#64748b;line-height:1.6;margin-bottom:10px;">
+          Based on 25+ parameters — SEO, Reviews, Completion, Rating.
+        </p>
+        <p style="font-size:11px;font-weight:600;color:#374151;">
+          Good businesses score more than 90%
+        </p>
+      </div>
     </div>
-    <div style="margin-top:8px;font-size:10px;font-weight:700;padding:4px 14px;border-radius:20px;
-      background:${overallScore >= 90 ? '#DCFCE7' : overallScore >= 60 ? '#FEF3C7' : '#FEE2E2'};
-      color:${overallScore >= 90 ? '#059669' : overallScore >= 60 ? '#D97706' : '#DC2626'};">
-      ${overallScore >= 90 ? '✓ Excellent' : overallScore >= 60 ? '⚠ Needs Improvement' : '✗ Poor — Action Required'}
-    </div>
-    <div style="font-size:9px;color:#94A3B8;margin-top:6px;">Good businesses score more than 90%</div>
   </div>
 
 </div>`;
 
-  // ── RANK ANALYTICS ────────────────────────────────────────────────────────────
-  const rankAnalyticsHtml = `
-<div style="margin-bottom:20px;">
-  ${sectionDivider('Your Google Rank Analytics')}
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+  // ── 3. RANK ANALYTICS ────────────────────────────────────────────────────────
+  const rankAnalyticsHtml = hasGeoGrid ? `
+<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:14px;break-inside:avoid;">
+  <h2 style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:16px;">Your Google Rank Analytics</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
 
-    <!-- Keyword rank table -->
-    <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-      padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-      <div style="font-size:9px;font-weight:700;color:#64748B;text-transform:uppercase;
-        letter-spacing:1px;margin-bottom:10px;">Your rank for top keywords</div>
-      ${hasGeoGrid ? `
+    <!-- Keywords table -->
+    <div style="padding-right:20px;border-right:1px solid #e2e8f0;">
+      <p style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;">
+        Your rank for top ${geoGridKeywords.length} keywords
+      </p>
       <table>
         <thead>
-          <tr>
-            <th style="font-size:9px;font-weight:700;color:#94A3B8;text-transform:uppercase;
-              letter-spacing:.8px;padding:6px 8px;text-align:left;border-bottom:1.5px solid #F1F5F9;">KEYWORD</th>
-            <th style="font-size:9px;font-weight:700;color:#94A3B8;text-transform:uppercase;
-              letter-spacing:.8px;padding:6px 8px;text-align:center;border-bottom:1.5px solid #F1F5F9;white-space:nowrap;">AVG RANK</th>
+          <tr style="border-bottom:2px solid #e2e8f0;">
+            <th style="text-align:left;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;padding-bottom:8px;">KEYWORD</th>
+            <th style="text-align:right;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;padding-bottom:8px;">AVG RANK</th>
           </tr>
         </thead>
         <tbody>
-          ${geoGridKeywords.map((k, i) => `
-          <tr style="background:${i % 2 === 0 ? '#FAFAFA' : '#fff'};">
-            <td style="padding:9px 8px;font-size:11px;color:#334155;font-weight:500;
-              max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-              border-bottom:1px solid #F1F5F9;">${h(k.keyword)}</td>
-            <td style="padding:9px 8px;text-align:center;border-bottom:1px solid #F1F5F9;">${rankBadge(k.avgRank)}</td>
-          </tr>`).join('')}
+          ${geoGridKeywords.slice(0, 5).map((kw) => {
+            const m = rankMeta(kw.avgRank);
+            return `<tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:10px 12px 10px 0;font-size:12px;color:#2563eb;font-weight:500;">${h(kw.keyword)}</td>
+            <td style="padding:10px 0;text-align:right;">
+              <span style="font-size:13px;font-weight:800;color:${m.color};">${m.display}</span>
+            </td>
+          </tr>`;
+          }).join('')}
         </tbody>
-      </table>` : `<div style="padding:16px;text-align:center;color:#94A3B8;font-size:11px;">No keyword data available</div>`}
+      </table>
     </div>
 
-    <!-- Competitor table -->
-    <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-      padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-      <div style="font-size:9px;font-weight:700;color:#64748B;text-transform:uppercase;
-        letter-spacing:1px;margin-bottom:10px;">Competitors ranking higher at your locations</div>
+    <!-- Competitors table -->
+    <div style="padding-left:20px;">
+      <p style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;">
+        Competitors ranking higher at your locations
+      </p>
       ${localPackComps.length > 0 ? `
       <table>
         <thead>
-          <tr>
-            <th style="font-size:9px;font-weight:700;color:#94A3B8;text-transform:uppercase;
-              letter-spacing:.8px;padding:6px 8px;text-align:left;border-bottom:1.5px solid #F1F5F9;">NAME</th>
-            <th style="font-size:9px;font-weight:700;color:#94A3B8;text-transform:uppercase;
-              letter-spacing:.8px;padding:6px 8px;text-align:center;border-bottom:1.5px solid #F1F5F9;white-space:nowrap;">AVG RANK</th>
+          <tr style="border-bottom:2px solid #e2e8f0;">
+            <th style="text-align:left;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;padding-bottom:8px;">NAME</th>
+            <th style="text-align:right;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;padding-bottom:8px;">AVG RANK</th>
           </tr>
         </thead>
         <tbody>
-          ${localPackComps.slice(0, 6).map((c, i) => `
-          <tr style="background:${i % 2 === 0 ? '#FAFAFA' : '#fff'};">
-            <td style="padding:9px 8px;border-bottom:1px solid #F1F5F9;">
-              <div style="display:flex;align-items:center;gap:7px;">
-                <div style="width:22px;height:22px;border-radius:6px;background:#F1F5F9;
-                  display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;">🏢</div>
-                <span style="font-size:11px;color:#334155;font-weight:500;overflow:hidden;
-                  text-overflow:ellipsis;white-space:nowrap;max-width:155px;">${h(String(c.name ?? ''))}</span>
+          ${localPackComps.slice(0, 5).map((c: any) => {
+            const rank = Number(c.avgRank ?? 21);
+            const m = rankMeta(rank);
+            return `<tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:10px 12px 10px 0;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:26px;height:26px;border-radius:6px;background:#f1f5f9;border:1px solid #e2e8f0;
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  ${buildingIcon()}
+                </div>
+                <span style="font-size:12px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:155px;">${h(String(c.name ?? ''))}</span>
               </div>
             </td>
-            <td style="padding:9px 8px;text-align:center;border-bottom:1px solid #F1F5F9;">
-              ${rankBadge(Number(c.avgRank ?? 21))}
+            <td style="padding:10px 0;text-align:right;">
+              <span style="font-size:13px;font-weight:800;color:${m.color};">${m.display}</span>
             </td>
-          </tr>`).join('')}
+          </tr>`;
+          }).join('')}
         </tbody>
-      </table>` : `<div style="padding:16px;text-align:center;color:#94A3B8;font-size:11px;">No competitor data available</div>`}
+      </table>` : `
+      <div style="padding:16px;text-align:center;color:#94a3b8;font-size:12px;background:#f8fafc;border-radius:8px;">
+        No competitor data available
+      </div>`}
     </div>
 
   </div>
-</div>`;
+</div>` : '';
 
-  // ── GEO-GRID MAPS ─────────────────────────────────────────────────────────────
-  let mapSectionHtml = '';
+  // ── 4. GEO-GRID MAPS (top 2 keywords only) ───────────────────────────────────
+  let geoGridHtml = '';
   if (hasGeoGrid) {
-    // Build grid visualizations for all keywords, 2-per-row
-    const gridCards = geoGridKeywords.map(kw => renderGeoGrid(kw));
-    const gridRows: string[] = [];
-    for (let i = 0; i < gridCards.length; i += 2) {
-      const pair = gridCards.slice(i, i + 2);
-      if (pair.length < 2) pair.push('<div></div>');
-      gridRows.push(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">${pair.join('')}</div>`);
-    }
-
-    // Optional: static maps for first 2 keywords if API key present
-    let staticMaps = '';
-    if (mapsApiKey) {
-      const toMap = geoGridKeywords.slice(0, 2);
-      const cards = toMap.map(kw => {
-        const center = coordinates ?? gridCenter(kw.points);
-        const mapSrc = staticMapUrl(center.lat, center.lng, kw.points, mapsApiKey);
-        const m = rankMeta(kw.avgRank);
-        return `
-<div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-  overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-  <div style="padding:12px 16px;border-bottom:1px solid #F1F5F9;">
-    <div style="font-size:9px;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:2px;">Street-level view</div>
-    <div style="font-size:11px;font-weight:700;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${h(kw.keyword)}"</div>
-    <div style="margin-top:4px;font-size:10px;font-weight:700;color:${m.text};">Avg. Rank: ${m.display} · ${m.label}</div>
-  </div>
-  <img src="${mapSrc}" alt="Map for ${h(kw.keyword)}"
-    style="width:100%;height:200px;object-fit:cover;"
-    onerror="this.parentElement.style.display='none'"/>
-  <div style="padding:8px 16px;background:#F8FAFC;display:flex;gap:10px;align-items:center;font-size:9px;font-weight:700;">
-    <span style="color:#1D4ED8;">Y = Your Location</span>
-    <span style="color:#059669;">● 1–5</span>
-    <span style="color:#D97706;">● 6–10</span>
-    <span style="color:#DC2626;">● 11+</span>
-  </div>
-</div>`;
-      });
-      staticMaps = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">${cards.join('')}</div>`;
-    }
-
-    mapSectionHtml = `
-<div style="margin-bottom:20px;break-before:page;">
-  ${sectionDivider(
-    `Your Google Search Rank at Nearby Locations (${areaSqKm} sq. km. area)`,
-    `${gridSpacingKm} km spacing · ${geoGridKeywords.length} keywords tracked`,
-  )}
-  ${gridRows.join('')}
-  ${staticMaps}
+    const mapKws = geoGridKeywords.slice(0, 2);
+    const gridCards = mapKws.map((kw) => renderGeoGridMap(kw, ctx.mapsApiKey, gridSpacingKm));
+    const rowContent = gridCards.length === 1
+      ? `<div style="max-width:480px;">${gridCards[0]}</div>`
+      : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">${gridCards.join('')}</div>`;
+    geoGridHtml = `
+<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:14px;">
+  <h2 style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:3px;">
+    Your Google Search Rank at Nearby Locations
+    <span style="font-size:12px;font-weight:400;color:#64748b;margin-left:6px;">(${areaSqKm} sq. km. area)</span>
+  </h2>
+  <p style="font-size:11px;color:#94a3b8;margin-bottom:14px;margin-top:3px;">Grid spacing: ${gridSpacingKm} km &nbsp;·&nbsp; Showing top ${mapKws.length} keywords</p>
+  ${rowContent}
 </div>`;
   }
 
-  // ── PROFILE SCORE BREAKDOWN (Page 2) ─────────────────────────────────────────
+  // ── 5. PROFILE SCORE BREAKDOWN ───────────────────────────────────────────────
   const profileBreakdownHtml = `
-<div style="margin-bottom:20px;break-before:page;">
-  ${sectionDivider(`Your Profile Score (${overallScore}%)`, 'Detailed breakdown across all audit dimensions')}
+<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:14px;">
+  <h2 style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:16px;">Your Profile Score (${overallScore}%)</h2>
 
   <!-- Row 1: SEO Score + Services/Categories -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px;">
 
-    <!-- SEO Score ring + missing areas -->
-    <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-      padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-      <div style="font-size:9px;font-weight:700;color:#64748B;text-transform:uppercase;
-        letter-spacing:1px;margin-bottom:14px;">Profile SEO Score</div>
-      <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px;">
-        ${svgRing(seoScore, '#7C3AED', 90)}
-        <div>
-          <div style="font-size:9px;color:#94A3B8;font-weight:600;margin-bottom:6px;">Should be above 80%</div>
-          <div style="display:inline-block;padding:3px 12px;border-radius:20px;font-size:9px;font-weight:700;
-            background:${seoScore >= 80 ? '#DCFCE7' : '#FEE2E2'};
-            color:${seoScore >= 80 ? '#059669' : '#DC2626'};">
-            ${seoScore >= 80 ? 'Good' : 'Needs Improvement'}
-          </div>
+    <!-- SEO Score -->
+    <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;break-inside:avoid;">
+      <p style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:12px;">Profile SEO Score</p>
+      <div style="display:flex;align-items:flex-start;gap:16px;">
+        <div style="flex-shrink:0;">
+          ${svgRing(seoScore, seoColor, 96)}
+          <p style="font-size:10px;text-align:center;color:#94a3b8;margin-top:5px;">Should be above 80%</p>
+        </div>
+        <div style="flex:1;padding-top:4px;">
+          <p style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px;">Top searched keywords are missing in</p>
+          <ul style="list-style:none;margin:0;padding:0;">
+            ${(missingFields.length > 0 ? missingFields : ['Title', 'Additional Category', 'Services', 'Description']).map((f) =>
+              `<li style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span style="width:6px;height:6px;border-radius:50%;background:#ef4444;flex-shrink:0;display:inline-block;"></span>
+                <span style="font-size:12px;color:#dc2626;font-weight:500;">${h(f)}</span>
+              </li>`
+            ).join('')}
+          </ul>
         </div>
       </div>
-      ${(missingOpps.length > 0 || missingKeywords.length > 0) ? `
-      <div style="border-top:1px solid #F1F5F9;padding-top:12px;">
-        <div style="font-size:9px;font-weight:700;color:#64748B;margin-bottom:8px;
-          text-transform:uppercase;letter-spacing:0.8px;">Top searched keywords are missing in:</div>
-        <div style="display:flex;flex-direction:column;gap:5px;">
-          ${missingOpps.slice(0, 5).map(o => `
-          <div style="display:flex;align-items:flex-start;gap:6px;padding:5px 9px;
-            background:#FFF5F5;border-radius:7px;border-left:2px solid #FCA5A5;">
-            <span style="color:#DC2626;font-size:9px;flex-shrink:0;margin-top:1px;font-weight:700;">•</span>
-            <span style="font-size:10px;color:#374151;line-height:1.4;">${h(o)}</span>
-          </div>`).join('')}
-          ${missingKeywords.slice(0, 2).map(k => `
-          <div style="display:flex;align-items:center;gap:6px;padding:4px 9px;
-            background:#F8FAFC;border-radius:7px;">
-            <span style="font-size:9px;font-weight:700;color:#94A3B8;">MISSING:</span>
-            <span style="font-size:10px;color:#DC2626;font-weight:600;">${h(k)}</span>
-          </div>`).join('')}
-        </div>
-      </div>` : `<div style="border-top:1px solid #F1F5F9;padding-top:12px;font-size:10px;color:#059669;font-weight:600;">
-        ✓ All key areas covered</div>`}
     </div>
 
-    <!-- Services + Categories + Tier boxes -->
+    <!-- Services + Categories -->
     <div style="display:flex;flex-direction:column;gap:10px;">
-      <!-- Services -->
-      <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-        padding:16px 20px;box-shadow:0 1px 4px rgba(0,0,0,0.05);
-        display:flex;align-items:center;justify-content:space-between;">
-        <div>
-          <div style="font-size:13px;font-weight:800;color:#0F172A;margin-bottom:3px;">Services</div>
-          <div style="font-size:10px;color:#64748B;">Should add up to 20 services</div>
+      <div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px;flex:1;break-inside:avoid;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+          <span style="font-size:13px;font-weight:600;color:#1e293b;">
+            ${servicesCnt !== null ? `${servicesCnt} Services Added` : 'Services'}
+          </span>
+          ${statusBadge(servicesOk ? 'Good' : 'Poor')}
         </div>
-        <div style="padding:5px 14px;border-radius:20px;font-size:11px;font-weight:700;
-          background:${servGood ? '#DCFCE7' : '#FEE2E2'};color:${servGood ? '#059669' : '#DC2626'};">
-          ${servGood ? 'Added ✓' : 'Missing ✗'}
-        </div>
+        <p style="font-size:10px;color:#94a3b8;">Should add up to 20 services</p>
       </div>
-      <!-- Additional Categories -->
-      <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-        padding:16px 20px;box-shadow:0 1px 4px rgba(0,0,0,0.05);
-        display:flex;align-items:center;justify-content:space-between;">
-        <div>
-          <div style="font-size:13px;font-weight:800;color:#0F172A;margin-bottom:3px;">Additional Categories</div>
-          <div style="font-size:10px;color:#64748B;">Should have 5+ categories</div>
+      <div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px;flex:1;break-inside:avoid;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+          <span style="font-size:13px;font-weight:600;color:#1e293b;">
+            ${categoriesCnt !== null ? `${categoriesCnt} Categories Added` : 'Categories'}
+          </span>
+          ${statusBadge(categoriesOk ? 'Good' : 'Poor')}
         </div>
-        <div style="padding:5px 14px;border-radius:20px;font-size:11px;font-weight:700;
-          background:${catGood ? '#DCFCE7' : '#FEE2E2'};color:${catGood ? '#059669' : '#DC2626'};">
-          ${catGood ? 'Added ✓' : 'Missing ✗'}
-        </div>
+        <p style="font-size:10px;color:#94a3b8;">Should have 5+ categories</p>
       </div>
-      ${businessTier ? `
-      <!-- Business Tier -->
-      <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-        padding:16px 20px;box-shadow:0 1px 4px rgba(0,0,0,0.05);
-        display:flex;align-items:center;justify-content:space-between;">
-        <div>
-          <div style="font-size:13px;font-weight:800;color:#0F172A;margin-bottom:3px;">Business Tier</div>
-          <div style="font-size:10px;color:#64748B;">AI-classified market position</div>
-        </div>
-        <div style="padding:5px 14px;border-radius:20px;font-size:11px;font-weight:700;
-          background:#EDE9FE;color:#6D28D9;">${h(businessTier)}</div>
-      </div>` : ''}
     </div>
 
   </div>
 
-  <!-- Row 2: Reviews/Week + Response Rate + Suspension Risk -->
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
+  <!-- Row 2: Reviews/Week | Response % | Suspension Risk -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
 
     <!-- Reviews Per Week -->
-    <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-      padding:18px;box-shadow:0 1px 4px rgba(0,0,0,0.05);text-align:center;">
-      <div style="font-size:9px;font-weight:700;color:#64748B;text-transform:uppercase;
-        letter-spacing:1px;margin-bottom:14px;">Reviews Per Week</div>
-      <div style="font-size:40px;font-weight:900;line-height:1;margin-bottom:8px;
-        color:${reviewsPerWeek >= industryAvg ? '#059669' : '#DC2626'};">${reviewsPerWeek.toFixed(2)}</div>
-      <div style="display:inline-block;padding:3px 12px;border-radius:20px;font-size:9px;font-weight:700;margin-bottom:8px;
-        background:${reviewsPerWeek >= industryAvg ? '#DCFCE7' : '#FEE2E2'};
-        color:${reviewsPerWeek >= industryAvg ? '#059669' : '#DC2626'};">
-        ${reviewsPerWeek >= industryAvg ? 'Good' : 'Poor'}
+    <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;break-inside:avoid;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <span style="font-size:12px;font-weight:600;color:#374151;">Reviews Per Week</span>
+        ${statusBadge(reviewsPerWeek >= industryAvg ? 'Good' : 'Poor')}
       </div>
-      <div style="font-size:9px;color:#94A3B8;">Industry average is <strong>${industryAvg}/week</strong></div>
+      <div style="margin-bottom:4px;">
+        <span style="font-size:38px;font-weight:900;color:#0f172a;">${reviewsPerWeek.toFixed(2)}</span>
+        <span style="font-size:14px;font-weight:600;color:#94a3b8;margin-left:3px;">/Week</span>
+      </div>
+      <p style="font-size:10px;color:#94a3b8;">Industry Average is <strong style="color:#64748b;">${industryAvg}</strong>/week</p>
     </div>
 
     <!-- Response Percentage -->
-    <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-      padding:18px;box-shadow:0 1px 4px rgba(0,0,0,0.05);text-align:center;">
-      <div style="font-size:9px;font-weight:700;color:#64748B;text-transform:uppercase;
-        letter-spacing:1px;margin-bottom:12px;">Response Percentage</div>
-      ${svgRing(responseRatePct, '#0891B2', 92)}
-      <div style="margin-top:8px;display:inline-block;padding:3px 12px;border-radius:20px;font-size:9px;font-weight:700;
-        background:${responseRatePct >= 80 ? '#DCFCE7' : '#FEE2E2'};
-        color:${responseRatePct >= 80 ? '#059669' : '#DC2626'};">
-        ${responseRatePct >= 80 ? 'Good' : 'Poor'}
+    <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;break-inside:avoid;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-size:12px;font-weight:600;color:#374151;">Response Percentage</span>
+        ${statusBadge(responseRatePct >= 80 ? 'Good' : 'Poor')}
       </div>
-      <div style="font-size:9px;color:#94A3B8;margin-top:6px;">Should reply to 80% of reviews</div>
+      <div style="display:flex;justify-content:center;margin-bottom:6px;">
+        ${svgRing(responseRatePct, responseRatePct >= 80 ? '#22c55e' : '#ef4444', 80)}
+      </div>
+      <p style="font-size:10px;color:#94a3b8;text-align:center;">Should reply to <strong style="color:#64748b;">80%</strong> of the reviews</p>
     </div>
 
     <!-- Suspension Risk -->
-    <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-      padding:18px;box-shadow:0 1px 4px rgba(0,0,0,0.05);text-align:center;">
-      <div style="font-size:9px;font-weight:700;color:#64748B;text-transform:uppercase;
-        letter-spacing:1px;margin-bottom:12px;">Suspension Risk</div>
-      ${svgRing(suspPct, suspColor, 92)}
-      <div style="margin-top:8px;display:inline-block;padding:3px 12px;border-radius:20px;font-size:9px;font-weight:700;
-        background:${suspBg};color:${suspColor};">
-        ${suspLevel}
+    <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;break-inside:avoid;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-size:12px;font-weight:600;color:#374151;">Suspension Risk</span>
+        ${statusBadge(suspLevel)}
       </div>
-      <div style="font-size:9px;color:#94A3B8;margin-top:6px;">0 Policy Violation</div>
+      <div style="display:flex;justify-content:center;margin-bottom:6px;">
+        ${svgRing(suspPct, suspColor, 80)}
+      </div>
+      <p style="font-size:10px;color:#94a3b8;text-align:center;">0 Policy Violation</p>
     </div>
 
   </div>
 </div>`;
 
-  // ── PROFILE COMPLETION CHECKLIST ──────────────────────────────────────────────
-  const half = Math.ceil(checklist.length / 2);
-  const col1 = checklist.slice(0, half);
-  const col2 = checklist.slice(half);
-
-  const renderChecklistItem = (item: IChecklistItem) => {
-    const sc = statusColor(item.status);
-    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:9px;
-      margin-bottom:4px;break-inside:avoid;background:${sc.rowBg};border:1px solid ${sc.border};">
-      ${checkIcon(item.status)}
-      <span style="font-size:11px;font-weight:500;color:#1E293B;flex:1;">${h(item.field)}</span>
-      <span style="font-size:9px;font-weight:700;color:${sc.text};">${item.status}</span>
-    </div>`;
-  };
-
+  // ── 6. PROFILE COMPLETION ─────────────────────────────────────────────────────
   const checklistHtml = `
-<div style="margin-bottom:20px;">
-  <div style="display:flex;align-items:center;justify-content:space-between;
-    margin-bottom:14px;padding-bottom:10px;border-bottom:1.5px solid #E2E8F0;">
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="width:4px;height:20px;background:linear-gradient(180deg,#2563EB,#7C3AED);border-radius:2px;flex-shrink:0;"></div>
-      <span style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#0F172A;">Your Profile Completion</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:14px;">
-      <div style="display:flex;gap:8px;font-size:9px;">
-        <span style="display:flex;align-items:center;gap:3px;">
-          <span style="width:9px;height:9px;border-radius:50%;background:#DCFCE7;border:1.5px solid #059669;display:inline-block;"></span>
-          <span style="font-weight:700;color:#059669;">Complete</span>
-        </span>
-        <span style="display:flex;align-items:center;gap:3px;">
-          <span style="width:9px;height:9px;border-radius:50%;background:#FEF3C7;border:1.5px solid #D97706;display:inline-block;"></span>
-          <span style="font-weight:700;color:#D97706;">Partial</span>
-        </span>
-        <span style="display:flex;align-items:center;gap:3px;">
-          <span style="width:9px;height:9px;border-radius:50%;background:#FEE2E2;border:1.5px solid #DC2626;display:inline-block;"></span>
-          <span style="font-weight:700;color:#DC2626;">Incomplete</span>
-        </span>
+<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:14px;">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+    <h2 style="font-size:15px;font-weight:700;color:#0f172a;">Your Profile Completion (${completionPct}%)</h2>
+    <div style="display:flex;align-items:center;gap:14px;font-size:11px;color:#374151;flex-wrap:wrap;">
+      <span style="color:#94a3b8;font-weight:500;">Should be 100%</span>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#22c55e"/><path d="M8 12l3 3 5-5" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
+        <span>Complete</span>
       </div>
-      <span style="font-size:14px;font-weight:900;color:#2563EB;">${completionPct}%</span>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#f97316"/><path d="M12 7v5M12 16h.01" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
+        <span>Partially Complete</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#ef4444"/><path d="M15 9l-6 6M9 9l6 6" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
+        <span>Incomplete</span>
+      </div>
     </div>
   </div>
 
-  <!-- Progress bar -->
-  <div style="height:7px;background:#E8EDF4;border-radius:4px;margin-bottom:16px;overflow:hidden;">
-    <div style="height:100%;background:linear-gradient(90deg,#2563EB,#7C3AED);
-      width:${completionPct}%;border-radius:4px;"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #f1f5f9;">
+    <div style="padding-right:20px;border-right:1px solid #f1f5f9;">
+      ${leftCL.map((item) => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #f1f5f9;">
+        <span style="font-size:12px;color:#374151;">${h(item.field)}</span>
+        ${checkIcon(item.status)}
+      </div>`).join('')}
+    </div>
+    <div style="padding-left:20px;">
+      ${rightCL.map((item) => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #f1f5f9;">
+        <span style="font-size:12px;color:#374151;">${h(item.field)}</span>
+        ${checkIcon(item.status)}
+      </div>`).join('')}
+    </div>
   </div>
-
-  ${checklist.length > 0 ? `
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-    <div>${col1.map(renderChecklistItem).join('')}</div>
-    <div>${col2.map(renderChecklistItem).join('')}</div>
-  </div>
-  <div style="margin-top:12px;padding:10px 14px;background:#EFF6FF;border-radius:9px;
-    border:1px solid #BFDBFE;display:flex;align-items:center;gap:8px;">
-    <span style="font-size:15px;">ℹ️</span>
-    <span style="font-size:10px;color:#1D4ED8;font-weight:500;">
-      ${completeCount} of ${checklist.length} profile fields complete.
-      ${checklist.length - completeCount > 0 ? `Complete the remaining ${checklist.length - completeCount} fields to reach 100%.` : 'Your profile is fully complete!'}
-    </span>
-  </div>` : `<div style="padding:20px;background:#F8FAFC;border-radius:10px;color:#94A3B8;
-    font-size:12px;text-align:center;">Profile completion checklist not available</div>`}
 </div>`;
 
-  // ── AI INSIGHTS PAGE ──────────────────────────────────────────────────────────
-  let aiHtml = '';
-  if (hasAiData) {
-    aiHtml = `
-<div style="break-before:page;">
-  ${sectionDivider('AI-Powered Growth Intelligence', 'Actionable recommendations powered by GMBBoost AI')}
-
-  ${executiveSummary ? `
-  <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-    padding:18px 20px;margin-bottom:16px;border-left:4px solid #2563EB;
-    box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-    <div style="font-size:9px;font-weight:700;color:#64748B;text-transform:uppercase;
-      letter-spacing:1px;margin-bottom:8px;">Executive Summary</div>
-    <div style="font-size:11px;color:#334155;line-height:1.65;">${h(executiveSummary)}</div>
-  </div>` : ''}
-
-  ${(strengths.length > 0 || weaknesses.length > 0) ? `
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
-    ${strengths.length > 0 ? `
-    <div class="nb" style="background:#fff;border:1px solid #BBF7D0;border-radius:14px;
-      padding:18px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-      <div style="display:flex;align-items:center;gap:7px;margin-bottom:12px;">
-        <div style="width:10px;height:10px;border-radius:50%;background:#059669;"></div>
-        <span style="font-size:9px;font-weight:700;color:#064E3B;text-transform:uppercase;letter-spacing:1px;">Strengths</span>
-      </div>
-      ${strengths.slice(0, 4).map(s => `
-      <div style="margin-bottom:8px;padding:9px 12px;background:#F0FDF4;border-radius:8px;
-        border-left:2px solid #34D399;">
-        <div style="font-size:10px;font-weight:700;color:#065F46;margin-bottom:2px;">${h(s.title)}</div>
-        ${s.evidence ? `<div style="font-size:9px;color:#059669;line-height:1.4;">${h(s.evidence)}</div>` : ''}
-      </div>`).join('')}
-    </div>` : ''}
-    ${weaknesses.length > 0 ? `
-    <div class="nb" style="background:#fff;border:1px solid #FECACA;border-radius:14px;
-      padding:18px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-      <div style="display:flex;align-items:center;gap:7px;margin-bottom:12px;">
-        <div style="width:10px;height:10px;border-radius:50%;background:#DC2626;"></div>
-        <span style="font-size:9px;font-weight:700;color:#7F1D1D;text-transform:uppercase;letter-spacing:1px;">Weaknesses</span>
-      </div>
-      ${weaknesses.slice(0, 4).map(w => `
-      <div style="margin-bottom:8px;padding:9px 12px;background:#FFF5F5;border-radius:8px;
-        border-left:2px solid #FCA5A5;">
-        <div style="font-size:10px;font-weight:700;color:#991B1B;margin-bottom:2px;">${h(w.title)}</div>
-        ${w.evidence ? `<div style="font-size:9px;color:#DC2626;line-height:1.4;">${h(w.evidence)}</div>` : ''}
-      </div>`).join('')}
-    </div>` : ''}
-  </div>` : ''}
-
-  ${priorityFixes.length > 0 ? `
-  <div style="margin-bottom:16px;">
-    <div style="font-size:9px;font-weight:700;color:#64748B;text-transform:uppercase;
-      letter-spacing:1px;margin-bottom:10px;">Priority Action Plan</div>
-    <div style="display:flex;flex-direction:column;gap:8px;">
-      ${priorityFixes.slice(0, 5).map((fix, i) => {
-        const imp = impactStyle(fix.impact);
-        const eff = effortStyle(fix.effort);
-        return `
-      <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;
-        padding:14px 16px;display:flex;align-items:flex-start;gap:12px;
-        box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-        <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#1E3A8A,#2563EB);
-          display:flex;align-items:center;justify-content:center;
-          font-size:11px;font-weight:900;color:#fff;flex-shrink:0;">${i + 1}</div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:11px;font-weight:700;color:#0F172A;margin-bottom:4px;">${h(fix.title)}</div>
-          <div style="font-size:10px;color:#64748B;margin-bottom:8px;line-height:1.45;">${h(fix.reason)}</div>
-          <div style="display:flex;flex-wrap:wrap;gap:5px;">
-            <span style="padding:2px 9px;border-radius:20px;font-size:8px;font-weight:700;
-              background:${imp.bg};color:${imp.text};">Impact: ${fix.impact}</span>
-            <span style="padding:2px 9px;border-radius:20px;font-size:8px;font-weight:700;
-              background:${eff.bg};color:${eff.text};">Effort: ${fix.effort}</span>
-            ${fix.expectedScoreGain ? `<span style="padding:2px 9px;border-radius:20px;font-size:8px;font-weight:700;
-              background:#EDE9FE;color:#6D28D9;">Score: +${h(fix.expectedScoreGain)}</span>` : ''}
-          </div>
-        </div>
-      </div>`;
-      }).join('')}
-    </div>
-  </div>` : ''}
-
-  ${quickWins.length > 0 ? `
-  <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-    padding:16px 18px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-    <div style="font-size:9px;font-weight:700;color:#64748B;text-transform:uppercase;
-      letter-spacing:1px;margin-bottom:10px;">⚡ Quick Wins</div>
-    <div style="display:flex;flex-wrap:wrap;gap:7px;">
-      ${quickWins.map(w => `<span style="padding:4px 12px;background:#EFF6FF;color:#1D4ED8;
-        border:1px solid #BFDBFE;border-radius:20px;font-size:10px;font-weight:600;">${h(w)}</span>`).join('')}
-    </div>
-  </div>` : ''}
-
-  ${(thirtyDayPlan.length > 0 || ninetyDayPlan.length > 0) ? `
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-    ${thirtyDayPlan.length > 0 ? `
-    <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-      padding:18px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-        <div style="width:30px;height:30px;border-radius:9px;background:#DBEAFE;
-          display:flex;align-items:center;justify-content:center;font-size:14px;">📅</div>
-        <span style="font-size:11px;font-weight:800;color:#1E3A8A;">30-Day Plan</span>
-      </div>
-      ${thirtyDayPlan.map(w => `
-      <div style="margin-bottom:10px;">
-        <div style="font-size:9px;font-weight:700;color:#2563EB;margin-bottom:4px;
-          text-transform:uppercase;letter-spacing:0.5px;">${h(w.week)}</div>
-        ${w.tasks.map(t => `<div style="font-size:10px;color:#475569;padding:2px 0;padding-left:12px;
-          position:relative;"><span style="position:absolute;left:0;color:#94A3B8;">›</span>${h(t)}</div>`).join('')}
-        ${w.expectedOutcome ? `<div style="font-size:9px;color:#059669;margin-top:5px;
-          font-style:italic;">→ ${h(w.expectedOutcome)}</div>` : ''}
-      </div>`).join('')}
-    </div>` : ''}
-    ${ninetyDayPlan.length > 0 ? `
-    <div class="nb" style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;
-      padding:18px;box-shadow:0 1px 4px rgba(0,0,0,0.05);">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-        <div style="width:30px;height:30px;border-radius:9px;background:#EDE9FE;
-          display:flex;align-items:center;justify-content:center;font-size:14px;">🗓️</div>
-        <span style="font-size:11px;font-weight:800;color:#5B21B6;">90-Day Plan</span>
-      </div>
-      ${ninetyDayPlan.map(m => `
-      <div style="margin-bottom:10px;">
-        <div style="font-size:9px;font-weight:700;color:#7C3AED;margin-bottom:4px;
-          text-transform:uppercase;letter-spacing:0.5px;">${h(m.month)}</div>
-        ${m.tasks.slice(0, 3).map(t => `<div style="font-size:10px;color:#475569;padding:2px 0;padding-left:12px;
-          position:relative;"><span style="position:absolute;left:0;color:#94A3B8;">›</span>${h(t)}</div>`).join('')}
-      </div>`).join('')}
-    </div>` : ''}
-  </div>` : ''}
-</div>`;
-  }
-
-  // ── FOOTER ────────────────────────────────────────────────────────────────────
-  const footerHtml = `
-<div class="nb" style="margin-top:24px;background:linear-gradient(135deg,#0F172A 0%,#1E3A8A 50%,#1D4ED8 100%);
-  border-radius:16px;padding:22px 28px;color:#fff;
-  display:flex;align-items:center;justify-content:space-between;">
-  <div style="display:flex;align-items:center;gap:14px;">
-    <div style="width:38px;height:38px;background:rgba(255,255,255,0.12);border-radius:10px;
-      display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;">G</div>
+  // ── 7. CTA BANNER ─────────────────────────────────────────────────────────────
+  const ctaHtml = `
+<div style="border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);break-inside:avoid;">
+  <div style="padding:26px 30px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;">
     <div>
-      <div style="font-size:15px;font-weight:900;letter-spacing:0.3px;margin-bottom:2px;">GMBBoost</div>
-      <div style="font-size:10px;color:rgba(255,255,255,0.5);">AI-Powered Google Business Growth Platform</div>
+      <h3 style="font-size:20px;font-weight:900;color:#fff;margin-bottom:5px;line-height:1.3;">
+        Would you like to <span style="color:#fde047;">be on top in</span> Google local searches?
+      </h3>
+      <p style="font-size:12px;color:rgba(199,210,254,0.9);">Our AI platform optimizes your Google Business Profile automatically.</p>
+    </div>
+    <div style="background:#fbbf24;border-radius:10px;padding:12px 24px;font-weight:800;font-size:13px;color:#1e293b;flex-shrink:0;">
+      Get in touch
     </div>
   </div>
-  <div style="text-align:right;">
-    <div style="font-size:10px;font-weight:600;color:rgba(255,255,255,0.65);margin-bottom:3px;">Google Business Profile Audit Report</div>
-    <div style="font-size:9px;color:rgba(255,255,255,0.35);">Confidential · Generated ${genDate}</div>
+  <div style="padding:8px 30px;background:rgba(0,0,0,0.15);display:flex;align-items:center;justify-content:space-between;">
+    <span style="font-size:10px;color:rgba(255,255,255,0.6);">GMBBoost · AI-Powered Google Business Growth Platform</span>
+    <span style="font-size:10px;color:rgba(255,255,255,0.4);">Report Generated ${genDate}</span>
   </div>
 </div>`;
 
@@ -840,7 +649,7 @@ export function buildReportHtml(ctx: ReportContext): string {
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>GMBBoost Audit Report – ${h(audit.businessName)}</title>
+<title>GMBBoost Report – ${h(audit.businessName)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"/>
 <style>${css}</style>
@@ -849,11 +658,10 @@ export function buildReportHtml(ctx: ReportContext): string {
 ${headerHtml}
 ${heroHtml}
 ${rankAnalyticsHtml}
-${mapSectionHtml}
+${geoGridHtml}
 ${profileBreakdownHtml}
 ${checklistHtml}
-${aiHtml}
-${footerHtml}
+${ctaHtml}
 </body>
 </html>`;
 }

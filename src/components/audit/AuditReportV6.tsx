@@ -33,6 +33,7 @@ export default function AuditReportV6({ audit, onDownload }: { audit: IAudit; on
           <p className="text-slate-400 font-medium">Complete Google Business Profile Audit</p>
         </div>
         <button
+          data-pdf-hide="true"
           onClick={onDownload}
           className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-bold transition-colors flex items-center gap-2 w-max"
         >

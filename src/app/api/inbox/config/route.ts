@@ -27,6 +27,9 @@ export async function GET(req: Request) {
         aiTone: 'Professional and helpful',
         salesRules: 'Never offer discounts. Always collect email before booking.',
         aiEnabled: true,
+        aiPersonality: 'Professional',
+        tone: 'Formal',
+        maxResponseLength: 100,
       });
     }
 
@@ -39,7 +42,16 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const data = await req.json();
-    const { businessId: businessIdFromBody, systemPrompt, aiTone, salesRules, aiEnabled } = data;
+    const {
+      businessId: businessIdFromBody,
+      systemPrompt,
+      aiTone,
+      salesRules,
+      aiEnabled,
+      aiPersonality,
+      tone,
+      maxResponseLength,
+    } = data;
 
     const ctx = await requireBusinessContext({ businessIdFromBody });
     if (!ctx.ok) return ctx.response;
@@ -48,7 +60,16 @@ export async function POST(req: Request) {
 
     const config = await BusinessAIConfig.findOneAndUpdate(
       { businessId: new mongoose.Types.ObjectId(ctx.businessId) },
-      { tenantId: ctx.organizationId, systemPrompt, aiTone, salesRules, aiEnabled },
+      {
+        tenantId: ctx.organizationId,
+        systemPrompt,
+        aiTone,
+        salesRules,
+        aiEnabled,
+        aiPersonality,
+        tone,
+        maxResponseLength,
+      },
       { new: true, upsert: true }
     );
 

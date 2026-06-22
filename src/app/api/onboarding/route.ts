@@ -77,6 +77,18 @@ export async function POST(req: Request) {
       metaBusinessProfileUrl: body.metaBusinessProfileUrl,
       facebookPageUrl: body.facebookPageUrl,
       instagramUrl: body.instagramUrl,
+      // integrations.whatsappNumber is the Twilio WhatsApp number for this business.
+      // The webhook routes incoming messages by matching To against this field.
+      // whatsappConfig.businessPhone stores the same value for display / Meta future use.
+      //
+      // Migration for existing records (run once in MongoDB shell):
+      // db.businesses.updateMany(
+      //   { 'whatsappConfig.businessPhone': { $exists: true, $ne: '' }, 'integrations.whatsappNumber': { $exists: false } },
+      //   [{ $set: { 'integrations.whatsappNumber': '$whatsappConfig.businessPhone' } }]
+      // )
+      integrations: {
+        whatsappNumber: body.whatsappBusinessNumber || undefined,
+      },
       whatsappConfig: {
         provider: 'meta',
         businessPhone: body.whatsappBusinessNumber,

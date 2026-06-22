@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import DemoBooking from '@/models/DemoBooking';
-import { requireSuperAdmin } from '@/lib/auth';
+import { requireSuperAdmin } from '@/lib/superAdminAuth';
 
 const connectDB = async () => {
   if (mongoose.connections[0].readyState) return;

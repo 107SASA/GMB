@@ -2,21 +2,43 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, ShieldCheck } from 'lucide-react';
+import { Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
 
 export default function AdminLoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: { preventDefault(): void; currentTarget: HTMLFormElement }) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
 
-    // DEV MODE BYPASS — matches existing login page pattern
-    setTimeout(() => {
-      router.push('/admin/dashboard');
+    const form = e.currentTarget;
+    const email = (form.elements.namedItem('email') as HTMLInputElement).value;
+    const password = (form.elements.namedItem('password') as HTMLInputElement).value;
+
+    try {
+      const res = await fetch('/api/admin/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setError(data.error || 'Invalid credentials');
+        setLoading(false);
+        return;
+      }
+
+      router.push('/admin');
       router.refresh();
-    }, 500);
+    } catch {
+      setError('Network error — please try again');
+      setLoading(false);
+    }
   };
 
   return (
@@ -30,13 +52,20 @@ export default function AdminLoginPage() {
           <p className="text-sm text-slate-500">Restricted access — authorised personnel only.</p>
         </div>
 
+        {error && (
+          <div className="flex items-center gap-2 mb-5 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleLogin} className="space-y-5">
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2">Email Address</label>
             <input
               type="email"
+              name="email"
               required
-              defaultValue="superadmin@gmbboost.com"
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-violet-600 focus:border-transparent outline-none transition-all font-medium text-slate-900 placeholder-slate-400"
               placeholder="admin@yourdomain.com"
             />
@@ -45,8 +74,8 @@ export default function AdminLoginPage() {
             <label className="block text-sm font-bold text-slate-700 mb-2">Password</label>
             <input
               type="password"
+              name="password"
               required
-              defaultValue="superadmin123"
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-violet-600 focus:border-transparent outline-none transition-all font-medium text-slate-900 placeholder-slate-400"
               placeholder="••••••••"
             />

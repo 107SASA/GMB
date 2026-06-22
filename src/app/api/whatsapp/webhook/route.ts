@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Lead from '@/models/Lead';
 import ConversationThread from '@/models/ConversationThread';
+import Business from '@/models/Business';
 import mongoose from 'mongoose';
 import { inngest } from '@/services/inngest/client';
 import Customer from '@/models/Customer';
@@ -25,11 +26,23 @@ export async function POST(req: Request) {
     
     await dbConnect();
     
-    // Dynamically lookup the tenant/business by the receiving Twilio/WhatsApp number
-    // We add a '+' back if it was stripped, or match the exact string format.
-    const business = await dbConnect().then(() => mongoose.model('Business').findOne({ 
-      'integrations.whatsappNumber': { $regex: new RegExp(toPhone.replace('+', ''), 'i') } 
-    }));
+    // Normalize the number — strip '+' so both '+14155238886' and '14155238886' match
+    const normalizedToPhone = toPhone.replace(/\+/g, '').trim();
+    console.log(`[webhook] Incoming To: ${toPayload} | searching for: ${normalizedToPhone}`);
+    console.log(`[webhook] DB name: ${mongoose.connection.db?.databaseName}`);
+    const bizCount = await Business.countDocuments();
+    console.log(`[webhook] Total businesses in DB: ${bizCount}`);
+
+    const business = await Business.findOne({
+      $or: [
+        { 'integrations.whatsappNumber': toPhone },
+        { 'integrations.whatsappNumber': normalizedToPhone },
+        { 'whatsappConfig.businessPhone': toPhone },
+        { 'whatsappConfig.businessPhone': normalizedToPhone },
+      ]
+    });
+
+    console.log(`[webhook] Business lookup result: ${business?._id ?? 'NOT FOUND'}`);
 
     if (!business) {
       console.error(`No business found mapped to WhatsApp number: ${toPayload}`);

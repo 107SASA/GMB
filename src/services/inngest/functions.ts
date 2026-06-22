@@ -116,7 +116,7 @@ export const processWhatsappMessage = inngest.createFunction(
 
     // 4. Send Outbound
     const outboundSid = await step.run("send-outbound", async () => {
-      return await sendOutboundMessage(phone, aiReply, leadId); // returns message sid
+      return await sendOutboundMessage(phone, aiReply, leadId, businessId); // returns message sid
     });
 
     // 5. Log outbound message & Update Thread
@@ -145,6 +145,70 @@ export const processWhatsappMessage = inngest.createFunction(
         content: aiReply,
         metadata: { isAI: true }
       });
+    });
+
+    // 6. Detect booking intent and create Appointment record if confirmed
+    await step.run("detect-booking", async () => {
+      const { Groq } = await import("groq-sdk");
+      const { default: LeadModel } = await import("@/models/Lead");
+      const { default: AppointmentModel } = await import("@/models/Appointment");
+      const { default: ActivityModel } = await import("@/models/Activity");
+
+      const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+      let classifyResult: {
+        isBooking: boolean;
+        proposedDate: string | null;
+        serviceInterest: string | null;
+        email: string | null;
+      } = { isBooking: false, proposedDate: null, serviceInterest: null, email: null };
+
+      try {
+        const resp = await groq.chat.completions.create({
+          messages: [{
+            role: 'user',
+            content: `Given this AI sales reply: "${aiReply}" — does it confirm or propose a specific appointment or demo booking? Extract any details mentioned. Reply with valid JSON only:\n{"isBooking": boolean, "proposedDate": "ISO date string or null", "serviceInterest": "string or null", "email": "email string or null"}`
+          }],
+          model: "llama-3.3-70b-versatile",
+          max_tokens: 100,
+          temperature: 0,
+          response_format: { type: "json_object" }
+        });
+        classifyResult = JSON.parse(resp.choices[0]?.message?.content || '{}');
+      } catch (e) {
+        console.error("Booking classifier error:", e);
+        return { booked: false };
+      }
+
+      if (!classifyResult.isBooking) return { booked: false };
+
+      const lead = await LeadModel.findById(leadId).select('interest email').lean() as any;
+
+      let parsedDate: Date | null = null;
+      if (classifyResult.proposedDate) {
+        const d = new Date(classifyResult.proposedDate);
+        if (!isNaN(d.getTime())) parsedDate = d;
+      }
+
+      await AppointmentModel.create({
+        leadId,
+        businessId,
+        tenantId,
+        proposedDate: parsedDate,
+        serviceInterest: classifyResult.serviceInterest || lead?.interest || null,
+        email: classifyResult.email || lead?.email || null,
+        source: 'WhatsApp AI',
+        status: 'Pending Confirmation',
+      });
+
+      await ActivityModel.create({
+        tenantId,
+        leadId,
+        type: 'meeting',
+        content: 'AI booked a demo via WhatsApp — pending confirmation',
+      });
+
+      return { booked: true };
     });
 
     return { success: true };
@@ -378,7 +442,7 @@ export const processContentJob = inngest.createFunction(
 export const processReviewCampaign = inngest.createFunction(
   { id: "process-review-campaign", retries: 3, triggers: [{ event: "campaigns/review.request.start" }] },
   async ({ event, step }) => {
-    const { customerId, businessId, tenantId, channel } = event.data;
+    const { customerId, businessId, tenantId, channel, campaignId } = event.data;
 
     const dbConnect = (await import("@/lib/mongodb")).default;
     await dbConnect();
@@ -395,8 +459,9 @@ export const processReviewCampaign = inngest.createFunction(
     const aiMessage = await step.run("generate-ai-message", async () => {
       const { Groq } = await import("groq-sdk");
       const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-      const prompt = `You are a customer success assistant. Write a short, warm, 2-sentence WhatsApp review request for ${customer.name}. Mention they recently got ${customer.service || 'our service'}. Ask them to leave a review using this link: https://gmbboost.com/api/campaigns/track/{{REQUEST_ID}}. Include: Reply STOP to opt-out.`;
-      
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+      const prompt = `You are a customer success assistant. Write a short, warm, 2-sentence WhatsApp review request for ${customer.name}. Mention they recently got ${customer.service || 'our service'}. Ask them to leave a review using this link: ${baseUrl}/api/campaigns/track/{{REQUEST_ID}}. Include: Reply STOP to opt-out.`;
+
       try {
         const response = await groq.chat.completions.create({
           messages: [{ role: 'system', content: prompt }],
@@ -404,9 +469,9 @@ export const processReviewCampaign = inngest.createFunction(
           temperature: 0.7,
           max_tokens: 150,
         });
-        return response.choices[0]?.message?.content?.trim() || "Hi! We'd love a review: https://gmbboost.com/api/campaigns/track/{{REQUEST_ID}}";
+        return response.choices[0]?.message?.content?.trim() || `Hi! We'd love a review: ${baseUrl}/api/campaigns/track/{{REQUEST_ID}}`;
       } catch (e) {
-        return "Hi! We'd love a review: https://gmbboost.com/api/campaigns/track/{{REQUEST_ID}} (Reply STOP to opt-out)";
+        return `Hi! We'd love a review: ${baseUrl}/api/campaigns/track/{{REQUEST_ID}} (Reply STOP to opt-out)`;
       }
     });
 
@@ -419,7 +484,8 @@ export const processReviewCampaign = inngest.createFunction(
         customerId,
         channel,
         message: 'pending generation',
-        status: 'Pending'
+        status: 'Pending',
+        ...(campaignId && { campaignId })
       });
       req.message = aiMessage.replace('{{REQUEST_ID}}', req._id.toString());
       await req.save();
@@ -430,7 +496,7 @@ export const processReviewCampaign = inngest.createFunction(
     await step.run("send-initial-message", async () => {
       const { default: ReviewRequest } = await import("@/models/ReviewRequest");
       if (channel === 'whatsapp' && customer.phone) {
-        await sendOutboundMessage(customer.phone, reviewRequest.message);
+        await sendOutboundMessage(customer.phone, reviewRequest.message, undefined, businessId);
       }
       await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { status: 'Sent', sentAt: new Date(), followUpStage: 0 });
     });
@@ -450,8 +516,9 @@ export const processReviewCampaign = inngest.createFunction(
     if (shouldSendRem1) {
       await step.run("send-reminder-1", async () => {
         const { default: ReviewRequest } = await import("@/models/ReviewRequest");
-        const msg = `Hi ${customer.name}, just a quick reminder! We'd really appreciate a review of your recent ${customer.service || 'visit'}: https://gmbboost.com/api/campaigns/track/${reviewRequest._id}\nReply STOP to opt-out.`;
-        if (channel === 'whatsapp' && customer.phone) await sendOutboundMessage(customer.phone, msg);
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+        const msg = `Hi ${customer.name}, just a quick reminder! We'd really appreciate a review of your recent ${customer.service || 'visit'}: ${baseUrl}/api/campaigns/track/${reviewRequest._id}\nReply STOP to opt-out.`;
+        if (channel === 'whatsapp' && customer.phone) await sendOutboundMessage(customer.phone, msg, undefined, businessId);
         await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { followUpStage: 1 });
       });
     }
@@ -471,14 +538,22 @@ export const processReviewCampaign = inngest.createFunction(
     if (shouldSendRem2) {
       await step.run("send-final-reminder", async () => {
         const { default: ReviewRequest } = await import("@/models/ReviewRequest");
-        const msg = `Hi ${customer.name}, last bother from us! If you have a minute, a review would mean the world to our team: https://gmbboost.com/api/campaigns/track/${reviewRequest._id}\nReply STOP to opt-out.`;
-        if (channel === 'whatsapp' && customer.phone) await sendOutboundMessage(customer.phone, msg);
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+        const msg = `Hi ${customer.name}, last bother from us! If you have a minute, a review would mean the world to our team: ${baseUrl}/api/campaigns/track/${reviewRequest._id}\nReply STOP to opt-out.`;
+        if (channel === 'whatsapp' && customer.phone) await sendOutboundMessage(customer.phone, msg, undefined, businessId);
         await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { followUpStage: 2, automationStatus: 'Completed' });
       });
     } else {
       await step.run("mark-completed", async () => {
         const { default: ReviewRequest } = await import("@/models/ReviewRequest");
         await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { automationStatus: 'Completed' });
+      });
+    }
+
+    if (campaignId) {
+      await step.run("increment-campaign-delivered", async () => {
+        const { default: Campaign } = await import("@/models/Campaign");
+        await Campaign.findByIdAndUpdate(campaignId, { $inc: { delivered: 1 } });
       });
     }
 
@@ -572,8 +647,10 @@ export const processPublishPostJob = inngest.createFunction(
       await post.save();
       
       await AutomationLog.create({
-        type: 'api_publish',
-        workflow: 'content-scheduler',
+        tenantId: post.tenantId?.toString(),
+        businessId: post.businessId?.toString(),
+        type: 'inngest_job',
+        workflow: 'publish-cron',
         action: 'publish_post',
         status: 'success',
       });
@@ -674,7 +751,7 @@ export const criticalAlertWorker = inngest.createFunction(
 
     await step.run("send-twilio-alert", async () => {
       const msg = `🚨 *Reputation Alert*\n${business.name} just received a critical/1-star review. Please check your Reputation Dashboard immediately to generate an AI response.`;
-      await sendOutboundMessage(business.phone, msg);
+      await sendOutboundMessage(business.phone, msg, undefined, business._id.toString());
     });
 
     return { success: true };

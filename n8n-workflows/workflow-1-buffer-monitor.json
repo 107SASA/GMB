@@ -1,6 +1,19 @@
 {
   "name": "AI Content Buffer Monitor",
+  "active": true,
   "nodes": [
+    {
+      "parameters": {
+        "content": "## AI Content Buffer Monitor\n\n**Required env vars in n8n:**\n- `GMB_API_URL` — base URL of your GMBBoost instance (e.g. https://app.yourdomain.com)\n- `GMB_BUSINESS_ID` — MongoDB ObjectId of the business this workflow manages\n- `AUTOMATION_API_KEY` — value of AUTOMATION_API_KEY from your GMBBoost .env\n- `TWILIO_ACCOUNT_SID`, `TWILIO_WHATSAPP_NUMBER`, `ADMIN_WHATSAPP_NUMBER`\n\n**Set these under Settings → Environment Variables in n8n before activating.**\n\nFor multi-tenant setups, run one n8n instance (or one copy of this workflow) per business.",
+        "height": 200,
+        "width": 420
+      },
+      "id": "sticky-1",
+      "name": "Setup Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [250, 80]
+    },
     {
       "parameters": {
         "rule": {
@@ -16,14 +29,11 @@
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
-      "position": [
-        250,
-        300
-      ]
+      "position": [250, 300]
     },
     {
       "parameters": {
-        "url": "={{$env.GMB_API_URL}}/api/scheduler/buffer",
+        "url": "={{$env.GMB_API_URL}}/api/n8n/buffer-check",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendQuery": true,
@@ -31,7 +41,7 @@
           "parameters": [
             {
               "name": "businessId",
-              "value": "={{$env.BUSINESS_ID}}"
+              "value": "={{$env.GMB_BUSINESS_ID}}"
             }
           ]
         },
@@ -41,10 +51,7 @@
       "name": "Check Buffer",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        450,
-        300
-      ],
+      "position": [450, 300],
       "credentials": {
         "httpHeaderAuth": {
           "id": "gmb-api-key",
@@ -68,15 +75,12 @@
       "name": "Buffer < 7 Days?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [
-        650,
-        300
-      ]
+      "position": [650, 300]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{$env.GMB_API_URL}}/api/content/generate",
+        "url": "={{$env.GMB_API_URL}}/api/n8n/generate-content",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -92,11 +96,7 @@
             },
             {
               "name": "businessId",
-              "value": "={{$env.BUSINESS_ID}}"
-            },
-            {
-              "name": "tenantId",
-              "value": "={{$env.TENANT_ID}}"
+              "value": "={{$env.GMB_BUSINESS_ID}}"
             }
           ]
         },
@@ -106,10 +106,7 @@
       "name": "Auto-Generate Content",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        850,
-        200
-      ],
+      "position": [850, 200],
       "credentials": {
         "httpHeaderAuth": {
           "id": "gmb-api-key",
@@ -136,7 +133,7 @@
             },
             {
               "name": "Body",
-              "value": "=⚠️ Content buffer was low ({{$node[\"Check Buffer\"].json[\"bufferDays\"]} days). {{$json.generatedCount}} new posts generated automatically for business {{$env.BUSINESS_ID}}."
+              "value": "=⚠️ Content buffer was low ({{$node[\"Check Buffer\"].json[\"bufferDays\"]}} days). {{$json.generatedCount}} new posts triggered for business {{$env.GMB_BUSINESS_ID}}."
             }
           ]
         },
@@ -146,10 +143,7 @@
       "name": "Send Twilio Alert",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        1050,
-        200
-      ],
+      "position": [1050, 200],
       "credentials": {
         "basicAuth": {
           "id": "twilio-auth",
@@ -173,10 +167,7 @@
       "name": "Log Healthy",
       "type": "n8n-nodes-base.set",
       "typeVersion": 2,
-      "position": [
-        850,
-        400
-      ]
+      "position": [850, 400]
     }
   ],
   "connections": {

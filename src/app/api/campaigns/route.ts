@@ -1,18 +1,24 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Campaign from '@/models/Campaign';
+import { requireBusinessContext } from '@/lib/tenant';
 
 export async function GET() {
+  const ctx = await requireBusinessContext();
+  if (!ctx.ok) return ctx.response;
+
   try {
     await dbConnect();
-    const campaigns = await Campaign.find().sort({ createdAt: -1 });
-    
-    // Compute stats dynamically or use stored stats
+    const campaigns = await Campaign.find({ businessId: ctx.businessId }).sort({ createdAt: -1 });
+
     const formattedCampaigns = campaigns.map((c: any) => ({
       id: c._id,
       name: c.name,
       channel: c.channel,
       status: c.status,
+      day2Reminder: c.day2Reminder,
+      day5Reminder: c.day5Reminder,
+      stopOnReview: c.stopOnReview,
       stats: {
         total: c.totalRequests || 0,
         sent: c.delivered || 0,
@@ -28,27 +34,27 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const ctx = await requireBusinessContext();
+  if (!ctx.ok) return ctx.response;
+
   try {
     await dbConnect();
-    const { name, channel, customerIds } = await request.json();
+    const { name, channel, day2Reminder, day5Reminder, stopOnReview } = await request.json();
 
-    if (!name || !channel || !customerIds) {
-      return NextResponse.json({ success: false, message: 'Missing fields' }, { status: 400 });
+    if (!name || !channel) {
+      return NextResponse.json({ success: false, message: 'Missing required fields' }, { status: 400 });
     }
-
-    // Default businessId (should come from session/auth ideally)
-    const businessId = '666666666666666666666666'; // Mock ObjectId for now
 
     const campaign = await Campaign.create({
       name,
-      channel,
+      channel: channel.toUpperCase(),
       status: 'DRAFT',
-      totalRequests: customerIds.length,
-      businessId,
+      businessId: ctx.businessId,
+      tenantId: ctx.organizationId,
+      day2Reminder: day2Reminder ?? true,
+      day5Reminder: day5Reminder ?? true,
+      stopOnReview: stopOnReview ?? true,
     });
-
-    // In a real app we'd also store the relationship between campaign and customerIds
-    // in ReviewRequest with status = 'QUEUED'. For now we just create the campaign.
 
     return NextResponse.json({ success: true, campaign });
   } catch (error: any) {

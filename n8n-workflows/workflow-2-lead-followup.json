@@ -1,20 +1,25 @@
 {
   "name": "AI Lead Follow-Up Automation",
+  "active": true,
   "nodes": [
     {
       "parameters": {
         "path": "lead-followup",
+        "authentication": "headerAuth",
         "options": {}
       },
       "id": "a1b2c3d4-1111-2222-3333-444455556666",
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [
-        100,
-        300
-      ],
-      "webhookId": "c3d4e5f6-abcd-1234-xyz-0987654321"
+      "position": [100, 300],
+      "webhookId": "c3d4e5f6-abcd-1234-xyz-0987654321",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "gmb-webhook-secret",
+          "name": "GMB Webhook Secret"
+        }
+      }
     },
     {
       "parameters": {
@@ -25,10 +30,7 @@
       "name": "Wait 5s",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1,
-      "position": [
-        300,
-        300
-      ],
+      "position": [300, 300],
       "webhookId": "wait-node-1"
     },
     {
@@ -60,10 +62,7 @@
       "name": "Welcome Message",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        500,
-        300
-      ],
+      "position": [500, 300],
       "credentials": {
         "basicAuth": {
           "id": "twilio-auth",
@@ -80,10 +79,7 @@
       "name": "Wait 3 Days",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1,
-      "position": [
-        700,
-        300
-      ],
+      "position": [700, 300],
       "webhookId": "wait-node-2"
     },
     {
@@ -97,10 +93,7 @@
       "name": "Check Lead Status 1",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        900,
-        300
-      ],
+      "position": [900, 300],
       "credentials": {
         "httpHeaderAuth": {
           "id": "gmb-api-key",
@@ -129,10 +122,7 @@
       "name": "Still Active? 1",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [
-        1100,
-        300
-      ]
+      "position": [1100, 300]
     },
     {
       "parameters": {
@@ -163,10 +153,7 @@
       "name": "Follow-Up Message",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        1300,
-        200
-      ],
+      "position": [1300, 200],
       "credentials": {
         "basicAuth": {
           "id": "twilio-auth",
@@ -183,10 +170,7 @@
       "name": "Wait 7 Days",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1,
-      "position": [
-        1500,
-        200
-      ],
+      "position": [1500, 200],
       "webhookId": "wait-node-3"
     },
     {
@@ -200,10 +184,7 @@
       "name": "Check Lead Status 2",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        1700,
-        200
-      ],
+      "position": [1700, 200],
       "credentials": {
         "httpHeaderAuth": {
           "id": "gmb-api-key",
@@ -232,10 +213,7 @@
       "name": "Still Active? 2",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [
-        1900,
-        200
-      ]
+      "position": [1900, 200]
     },
     {
       "parameters": {
@@ -266,10 +244,7 @@
       "name": "Re-engagement Message",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        2100,
-        100
-      ],
+      "position": [2100, 100],
       "credentials": {
         "basicAuth": {
           "id": "twilio-auth",

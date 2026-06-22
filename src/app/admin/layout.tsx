@@ -1,5 +1,5 @@
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
-import { requireSuperAdmin } from '@/lib/auth';
+import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import { redirect } from 'next/navigation';
 
 export default async function AdminLayout({

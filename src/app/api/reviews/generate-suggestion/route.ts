@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { generateReviewSuggestions, personalizeReviewMessage } from '@/services/ai';
+import { requireBusinessContext } from '@/lib/tenant';
 
 export async function POST(request: Request) {
+  const ctx = await requireBusinessContext();
+  if (!ctx.ok) return ctx.response;
+
   try {
     const { action, businessName, customerName, service, rating, channel } = await request.json();
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { requireSuperAdmin } from '@/lib/auth';
+import { requireSuperAdmin } from '@/lib/superAdminAuth';
 
 export async function POST(req: Request) {
   try {

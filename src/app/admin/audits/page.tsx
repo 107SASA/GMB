@@ -1,7 +1,7 @@
 import { Zap, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
 import dbConnect from '@/lib/mongodb';
 import Audit from '@/models/Audit';
-import { requireSuperAdmin } from '@/lib/auth';
+import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 

@@ -2,6 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface ICampaign extends Document {
   businessId: mongoose.Types.ObjectId;
+  tenantId?: string;
   name: string;
   channel: 'WHATSAPP' | 'EMAIL' | 'SMS';
   status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED';
@@ -25,6 +26,7 @@ export interface ICampaign extends Document {
 const CampaignSchema: Schema = new Schema(
   {
     businessId: { type: Schema.Types.ObjectId, ref: 'Business', required: true, index: true },
+    tenantId: { type: String },
     name: { type: String, required: true },
     channel: { type: String, enum: ['WHATSAPP', 'EMAIL', 'SMS'], required: true },
     status: { 

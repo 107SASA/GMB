@@ -4,6 +4,8 @@ import dbConnect from '@/lib/mongodb';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import AIUsageLog from '@/models/AIUsageLog';
 import ContentGenerationLog from '@/models/ContentGenerationLog';
+import MessageQueue from '@/models/MessageQueue';
+import AutomationLog from '@/models/AutomationLog';
 import User from '@/models/User';
 
 export async function GET(req: NextRequest) {
@@ -14,36 +16,93 @@ export async function GET(req: NextRequest) {
     await dbConnect();
 
     const { searchParams } = new URL(req.url);
-    const range = searchParams.get('range') || '7'; // days
-    const days = Math.min(90, Math.max(1, parseInt(range)));
+    const tab  = searchParams.get('tab') || 'ai';
+    const range = searchParams.get('range') || '7';
+    const days  = Math.min(90, Math.max(1, parseInt(range)));
 
     const since = new Date();
     since.setDate(since.getDate() - days);
     since.setHours(0, 0, 0, 0);
 
-    // ── 1. OVERVIEW STATS ────────────────────────────────────────────────────
-    const [
-      totalGenerations,
-      totalTokensAgg,
-      totalCostAgg,
-      failedCount,
-      contentLogCount,
-    ] = await Promise.all([
-      AIUsageLog.countDocuments(),
-      AIUsageLog.aggregate([
-        { $group: { _id: null, total: { $sum: '$tokensUsed' } } },
-      ]),
-      AIUsageLog.aggregate([
-        { $group: { _id: null, total: { $sum: '$estimatedCost' } } },
-      ]),
-      AIUsageLog.countDocuments({ status: 'failed' }),
-      ContentGenerationLog.countDocuments(),
-    ]);
+    // ── API USAGE TAB ─────────────────────────────────────────────────────────
+    if (tab === 'api') {
+      const [groqTotal, groqTokensAgg, groqCostAgg, groqByDay,
+             twilioSent, twilioFailed, twilioPending, twilioByDay,
+             serpCount] = await Promise.all([
+        AIUsageLog.countDocuments({ createdAt: { $gte: since }, aiModel: { $regex: /groq/i } }),
+        AIUsageLog.aggregate([
+          { $match: { createdAt: { $gte: since }, aiModel: { $regex: /groq/i } } },
+          { $group: { _id: null, total: { $sum: '$tokensUsed' } } },
+        ]),
+        AIUsageLog.aggregate([
+          { $match: { createdAt: { $gte: since }, aiModel: { $regex: /groq/i } } },
+          { $group: { _id: null, total: { $sum: '$estimatedCost' } } },
+        ]),
+        AIUsageLog.aggregate([
+          { $match: { createdAt: { $gte: since }, aiModel: { $regex: /groq/i } } },
+          { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, calls: { $sum: 1 }, tokens: { $sum: '$tokensUsed' } } },
+          { $sort: { _id: 1 } },
+        ]),
+        MessageQueue.countDocuments({ createdAt: { $gte: since }, direction: 'OUTBOUND', status: 'SENT' }),
+        MessageQueue.countDocuments({ createdAt: { $gte: since }, direction: 'OUTBOUND', status: 'FAILED' }),
+        MessageQueue.countDocuments({ createdAt: { $gte: since }, direction: 'OUTBOUND', status: 'PENDING' }),
+        MessageQueue.aggregate([
+          { $match: { createdAt: { $gte: since }, direction: 'OUTBOUND' } },
+          { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, sent: { $sum: { $cond: [{ $eq: ['$status', 'SENT'] }, 1, 0] } }, failed: { $sum: { $cond: [{ $eq: ['$status', 'FAILED'] }, 1, 0] } }, pending: { $sum: { $cond: [{ $eq: ['$status', 'PENDING'] }, 1, 0] } } } },
+          { $sort: { _id: 1 } },
+        ]),
+        AutomationLog.countDocuments({
+          createdAt: { $gte: since },
+          $or: [{ workflow: { $regex: /serp/i } }, { action: { $regex: /serp/i } }],
+        }),
+      ]);
 
-    const totalTokens  = totalTokensAgg[0]?.total  ?? 0;
-    const totalCost    = totalCostAgg[0]?.total     ?? 0;
+      return NextResponse.json({
+        success: true,
+        data: {
+          groq: {
+            tracked: true,
+            calls:   groqTotal,
+            tokens:  groqTokensAgg[0]?.total ?? 0,
+            cost:    Math.round((groqCostAgg[0]?.total ?? 0) * 10000) / 10000,
+            byDay:   groqByDay,
+          },
+          twilio: {
+            tracked: true,
+            sent:    twilioSent,
+            failed:  twilioFailed,
+            pending: twilioPending,
+            total:   twilioSent + twilioFailed + twilioPending,
+            byDay:   twilioByDay,
+          },
+          serp: {
+            tracked: serpCount > 0,
+            calls:   serpCount,
+            note: serpCount === 0
+              ? 'No SerpApi entries found in AutomationLog for this period. Dedicated SerpApi log tracking is not yet configured.'
+              : null,
+          },
+          googlePlaces: {
+            tracked: false,
+            note: 'Google Places API tracking requires a dedicated PlacesAPILog model. Not yet configured.',
+          },
+        },
+      });
+    }
 
-    // ── 2. PERIOD STATS (within selected range) ───────────────────────────────
+    // ── AI USAGE TAB (original logic, unchanged) ──────────────────────────────
+    const [totalGenerations, totalTokensAgg, totalCostAgg, failedCount, contentLogCount] =
+      await Promise.all([
+        AIUsageLog.countDocuments(),
+        AIUsageLog.aggregate([{ $group: { _id: null, total: { $sum: '$tokensUsed' } } }]),
+        AIUsageLog.aggregate([{ $group: { _id: null, total: { $sum: '$estimatedCost' } } }]),
+        AIUsageLog.countDocuments({ status: 'failed' }),
+        ContentGenerationLog.countDocuments(),
+      ]);
+
+    const totalTokens = totalTokensAgg[0]?.total ?? 0;
+    const totalCost   = totalCostAgg[0]?.total   ?? 0;
+
     const [periodGenerations, periodTokensAgg, periodCostAgg, periodFailed] =
       await Promise.all([
         AIUsageLog.countDocuments({ createdAt: { $gte: since } }),
@@ -58,24 +117,20 @@ export async function GET(req: NextRequest) {
         AIUsageLog.countDocuments({ status: 'failed', createdAt: { $gte: since } }),
       ]);
 
-    // ── 3. DAILY BREAKDOWN ────────────────────────────────────────────────────
     const dailyRaw = await AIUsageLog.aggregate([
       { $match: { createdAt: { $gte: since } } },
       {
         $group: {
-          _id: {
-            $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
-          },
+          _id:         { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
           generations: { $sum: 1 },
-          tokens:       { $sum: '$tokensUsed' },
-          cost:         { $sum: '$estimatedCost' },
-          failed:       { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
+          tokens:      { $sum: '$tokensUsed' },
+          cost:        { $sum: '$estimatedCost' },
+          failed:      { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
         },
       },
       { $sort: { _id: 1 } },
     ]);
 
-    // Fill gaps so the chart has every day
     const dailyMap: Record<string, any> = {};
     dailyRaw.forEach(d => { dailyMap[d._id] = d; });
     const dailyStats = [];
@@ -92,7 +147,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // ── 4. TOP USERS ──────────────────────────────────────────────────────────
     const topUsersRaw = await AIUsageLog.aggregate([
       { $match: { createdAt: { $gte: since } } },
       {
@@ -107,7 +161,7 @@ export async function GET(req: NextRequest) {
       { $limit: 10 },
     ]);
 
-    const topUserIds = topUsersRaw.map(u => u._id);
+    const topUserIds  = topUsersRaw.map(u => u._id);
     const topUserDocs = await User.find({ _id: { $in: topUserIds } })
       .select('fullName email subscriptionPlan')
       .lean();
@@ -115,30 +169,28 @@ export async function GET(req: NextRequest) {
     topUserDocs.forEach((u: any) => { userMap[u._id.toString()] = u; });
 
     const topUsers = topUsersRaw.map(u => ({
-      userId:          u._id,
-      fullName:        userMap[u._id.toString()]?.fullName   ?? 'Unknown',
-      email:           userMap[u._id.toString()]?.email      ?? '—',
-      plan:            userMap[u._id.toString()]?.subscriptionPlan ?? 'Free',
-      generations:     u.generations,
-      tokens:          u.tokens,
-      estimatedCost:   u.cost,
+      userId:        u._id,
+      fullName:      userMap[u._id.toString()]?.fullName        ?? 'Unknown',
+      email:         userMap[u._id.toString()]?.email           ?? '—',
+      plan:          userMap[u._id.toString()]?.subscriptionPlan ?? 'Free',
+      generations:   u.generations,
+      tokens:        u.tokens,
+      estimatedCost: u.cost,
     }));
 
-    // ── 5. PROMPT TYPE BREAKDOWN ──────────────────────────────────────────────
     const promptBreakdown = await AIUsageLog.aggregate([
       { $match: { createdAt: { $gte: since } } },
       {
         $group: {
-          _id:         '$promptType',
-          count:       { $sum: 1 },
-          tokens:      { $sum: '$tokensUsed' },
+          _id:    '$promptType',
+          count:  { $sum: 1 },
+          tokens: { $sum: '$tokensUsed' },
         },
       },
       { $sort: { count: -1 } },
       { $limit: 8 },
     ]);
 
-    // ── 6. RECENT AI ACTIVITY ─────────────────────────────────────────────────
     const recentActivity = await AIUsageLog.find()
       .sort({ createdAt: -1 })
       .limit(10)
@@ -149,10 +201,10 @@ export async function GET(req: NextRequest) {
       success: true,
       data: {
         overview: {
-          totalGenerations:   totalGenerations + contentLogCount,
+          totalGenerations:  totalGenerations + contentLogCount,
           totalTokens,
-          totalCost:          Math.round(totalCost * 10000) / 10000,
-          failedGenerations:  failedCount,
+          totalCost:         Math.round(totalCost * 10000) / 10000,
+          failedGenerations: failedCount,
           successRate:
             totalGenerations > 0
               ? Math.round(((totalGenerations - failedCount) / totalGenerations) * 100)
@@ -160,10 +212,10 @@ export async function GET(req: NextRequest) {
         },
         period: {
           days,
-          generations:    periodGenerations,
-          tokens:         periodTokensAgg[0]?.total ?? 0,
-          cost:           Math.round((periodCostAgg[0]?.total ?? 0) * 10000) / 10000,
-          failedCount:    periodFailed,
+          generations: periodGenerations,
+          tokens:      periodTokensAgg[0]?.total ?? 0,
+          cost:        Math.round((periodCostAgg[0]?.total ?? 0) * 10000) / 10000,
+          failedCount: periodFailed,
         },
         dailyStats,
         topUsers,

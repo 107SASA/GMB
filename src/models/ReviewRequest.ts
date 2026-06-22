@@ -14,7 +14,8 @@ export interface IReviewRequest extends Document {
   rating?: number;
   followUpStage: number; // 0=Initial, 1=Reminder 1, 2=Reminder 2
   automationStatus: 'Active' | 'Completed' | 'Stopped';
-  inngestEventId?: string; // To allow cancellation
+  inngestEventId?: string;
+  campaignId?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -42,7 +43,8 @@ const ReviewRequestSchema = new Schema(
       enum: ['Active', 'Completed', 'Stopped'],
       default: 'Active'
     },
-    inngestEventId: { type: String }
+    inngestEventId: { type: String },
+    campaignId: { type: Schema.Types.ObjectId, ref: 'Campaign', index: true }
   },
   { timestamps: true }
 );

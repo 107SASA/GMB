@@ -9,7 +9,7 @@ export interface ILead extends Document {
   name: string;
   email?: string;
   phone?: string;
-  source: 'WhatsApp' | 'Website' | 'Manual' | 'Instagram' | 'Facebook' | 'Referral' | 'Demo Booking';
+  source: 'WhatsApp' | 'Website' | 'Manual' | 'Instagram' | 'Facebook' | 'Referral' | 'Demo Booking' | 'Phone Call';
   leadType: 'Client Prospect' | 'Platform Prospect';
   status: 'active' | 'inactive';
   pipelineStage: string | null;
@@ -43,7 +43,7 @@ const LeadSchema: Schema = new Schema(
     phone: { type: String },
     source: { 
       type: String, 
-      enum: ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking'],
+      enum: ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking', 'Phone Call'],
       default: 'Manual'
     },
     leadType: {

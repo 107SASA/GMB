@@ -12,36 +12,52 @@ import {
   Zap,
   DollarSign,
   Users,
-  MessageSquare,
   Star,
   Megaphone,
   Clock,
-  Headset,
-  Settings,
-  Calendar
+  SlidersHorizontal,
+  KanbanSquare,
+  MessageCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
-const adminLinks = [
-  { name: 'Dashboard',     icon: LayoutDashboard, href: '/admin' },
-  { name: 'Customers',     icon: Users,           href: '/admin/customers' },
-  { name: 'Demo Bookings', icon: Calendar,        href: '/admin/demo-bookings' },
-  { name: 'Businesses',    icon: Building2,       href: '/admin/businesses' },
-  { name: 'Subscriptions', icon: CreditCard,      href: '/admin/subscriptions' },
-  { name: 'Revenue',       icon: DollarSign,      href: '/admin/revenue' },
-  { name: 'Audit Monitor', icon: Zap,             href: '/admin/audits' },
-  { name: 'CRM Monitor',   icon: MessageSquare,   href: '/admin/crm' },
-  { name: 'WhatsApp Monitor', icon: MessageSquare, href: '/admin/whatsapp' },
-  { name: 'Review Monitor', icon: Star,           href: '/admin/reviews' },
-  { name: 'Content Monitor', icon: Megaphone,     href: '/admin/content' },
-  { name: 'System Health', icon: Activity,        href: '/admin/system' },
-  { name: 'API Usage',     icon: Activity,        href: '/admin/api-usage' },
-  { name: 'AI Usage',      icon: BrainCircuit,    href: '/admin/ai-usage' },
-  { name: 'Queues & Jobs', icon: Clock,           href: '/admin/jobs' },
-  { name: 'Support',       icon: Headset,         href: '/admin/support' },
-  { name: 'Settings',      icon: Settings,        href: '/admin/settings' },
+const adminGroups = [
+  {
+    label: null,
+    links: [
+      { name: 'Dashboard',     icon: LayoutDashboard, href: '/admin' },
+      { name: 'Customers',     icon: Users,           href: '/admin/customers' },
+      { name: 'Businesses',    icon: Building2,       href: '/admin/businesses' },
+      { name: 'Subscriptions', icon: CreditCard,      href: '/admin/subscriptions' },
+      { name: 'Revenue',       icon: DollarSign,      href: '/admin/revenue' },
+    ],
+  },
+  {
+    label: 'OPERATIONS',
+    links: [
+      { name: 'System Health',  icon: Activity,        href: '/admin/system' },
+      { name: 'Queues & Jobs',  icon: Clock,           href: '/admin/jobs' },
+      { name: 'AI & API Usage', icon: BrainCircuit,    href: '/admin/ai-usage' },
+    ],
+  },
+  {
+    label: 'ACTIVITY MONITOR',
+    links: [
+      { name: 'Audit Monitor',    icon: Zap,           href: '/admin/audits' },
+      { name: 'Content Monitor',  icon: Megaphone,     href: '/admin/content' },
+      { name: 'CRM Monitor',      icon: KanbanSquare,  href: '/admin/crm' },
+      { name: 'Review Monitor',   icon: Star,          href: '/admin/reviews' },
+      { name: 'WhatsApp Monitor', icon: MessageCircle, href: '/admin/whatsapp' },
+    ],
+  },
+  {
+    label: 'ADMIN',
+    links: [
+      { name: 'Settings', icon: SlidersHorizontal, href: '/admin/settings' },
+    ],
+  },
 ];
 
 export function AdminSidebar() {
@@ -73,25 +89,38 @@ export function AdminSidebar() {
           </span>
         </div>
 
-        <nav className="space-y-1">
-          {adminLinks.map(link => {
-            const isActive = pathname === link.href || pathname.startsWith(link.href + '/');
-            return (
-              <Link
-                key={link.name}
-                href={link.href}
-                className={cn(
-                  'w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border border-transparent',
-                  isActive
-                    ? 'bg-violet-50 text-violet-700 border-violet-100 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-                )}
-              >
-                <link.icon className="w-5 h-5" />
-                <span className="font-medium text-sm">{link.name}</span>
-              </Link>
-            );
-          })}
+        <nav>
+          {adminGroups.map((group, gi) => (
+            <div key={gi}>
+              {group.label && (
+                <div className="px-4 pt-5 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  {group.label}
+                </div>
+              )}
+              <div className="space-y-1">
+                {group.links.map(link => {
+                  const isActive =
+                    pathname === link.href ||
+                    (link.href !== '/admin' && pathname.startsWith(link.href + '/'));
+                  return (
+                    <Link
+                      key={link.name}
+                      href={link.href}
+                      className={cn(
+                        'w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border border-transparent',
+                        isActive
+                          ? 'bg-violet-50 text-violet-700 border-violet-100 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                      )}
+                    >
+                      <link.icon className="w-5 h-5" />
+                      <span className="font-medium text-sm">{link.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
       </div>
 

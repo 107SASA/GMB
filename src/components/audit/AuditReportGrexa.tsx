@@ -110,21 +110,14 @@ function rankTextClass(rank: number) {
   if (rank <= 10) return 'text-amber-500';
   return 'text-red-500';
 }
-function rankCircleStyle(rank: number, isCenter = false) {
-  if (isCenter) return { bg: '#1d4ed8', text: '#fff', border: 'white' };
-  if (rank <= 5)  return { bg: '#22c55e', text: '#fff', border: 'rgba(255,255,255,0.7)' };
-  if (rank <= 10) return { bg: '#f59e0b', text: '#fff', border: 'rgba(255,255,255,0.7)' };
-  if (rank <= 20) return { bg: '#f97316', text: '#fff', border: 'rgba(255,255,255,0.7)' };
-  return                { bg: '#ef4444', text: '#fff', border: 'rgba(255,255,255,0.7)' };
-}
 
-/* ─── Geo Grid Map ──────────────────────────────────────────────────────────── */
+
+/* ─── Geo Map Card ──────────────────────────────────────────────────────────── */
 function GeoGridMap({
   auditId,
   kwIndex,
   keyword,
   avgRank,
-  points,
 }: {
   auditId: string;
   kwIndex: number;
@@ -133,106 +126,46 @@ function GeoGridMap({
   points: IGeoGridPoint[];
 }) {
   const [mapOk, setMapOk] = useState(true);
-
-  const sorted: Array<{ lat: number; lng: number; rank: number }> = [...points]
-    .sort((a, b) => b.lat - a.lat || a.lng - b.lng)
-    .slice(0, 9);
-  while (sorted.length < 9) sorted.push({ lat: 0, lng: 0, rank: 21 });
-
-  const fmt = (r: number) => (r > 20 ? '20+' : String(r));
   const rankCls = rankTextClass(avgRank);
 
   return (
     <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-md flex flex-col">
       {/* Header */}
-      <div className="px-5 py-3 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
-        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Keyword</p>
-        <p className="text-sm font-bold text-blue-700 leading-tight truncate">{keyword}</p>
-        <div className="flex items-baseline gap-1.5 mt-1.5">
-          <span className="text-xs text-slate-500">Avg Rank</span>
-          <span className={`text-xl font-black ${rankCls}`}>{avgRank.toFixed(1)}</span>
-        </div>
+      <div className="px-5 py-3 bg-slate-900">
+        <p className="text-xs text-slate-300 mb-0.5">
+          Keyword: <span className="font-bold text-white">{keyword}</span>
+        </p>
+        <p className="text-sm text-slate-300">
+          Avg Rank: <span className={`font-black text-base ${rankCls}`}>{avgRank.toFixed(1)}</span>
+        </p>
       </div>
 
-      {/* Map area */}
-      <div className="relative flex-1" style={{ minHeight: 240 }}>
-        {/* Google Maps image */}
-        {mapOk && (
-          <img
-            src={`/api/audit/${auditId}/geo-map?kwIndex=${kwIndex}`}
-            className="absolute inset-0 w-full h-full object-cover"
-            alt={`Map for ${keyword}`}
-            onError={() => setMapOk(false)}
-          />
-        )}
-
-        {/* Grid background when map fails */}
-        {!mapOk && (
-          <div
-            className="absolute inset-0"
-            style={{
-              background: '#e8edf2',
-              backgroundImage:
-                'linear-gradient(rgba(148,163,184,.25) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.25) 1px,transparent 1px)',
-              backgroundSize: '24px 24px',
-            }}
-          />
-        )}
-
-        {/* 3×3 rank badge overlay */}
-        <div
-          className="absolute inset-0 grid grid-cols-3 grid-rows-3"
-          style={{ padding: mapOk ? '18px' : '14px', gap: mapOk ? '10px' : '8px' }}
-        >
-          {sorted.map((pt, i) => {
-            const isCenter = i === 4;
-            const { bg, text, border } = rankCircleStyle(pt.rank, isCenter);
-            const display = fmt(pt.rank);
-            const fontSize = display.length > 2 ? 9 : isCenter ? 13 : 12;
-            const sz = isCenter ? 46 : 38;
-            return (
-              <div key={i} className="flex items-center justify-center">
-                <div
-                  className="flex items-center justify-center font-black rounded-full select-none"
-                  style={{
-                    width: sz, height: sz,
-                    background: bg, color: text,
-                    border: `${isCenter ? 3 : 2}px solid ${border}`,
-                    fontSize,
-                    boxShadow: isCenter
-                      ? `0 0 0 3px ${bg}40, 0 4px 12px rgba(0,0,0,0.4)`
-                      : '0 2px 6px rgba(0,0,0,0.35)',
-                    zIndex: isCenter ? 10 : 1,
-                    position: 'relative',
-                  }}
-                >
-                  {display}
-                  {isCenter && (
-                    <span
-                      className="absolute font-bold text-white"
-                      style={{
-                        top: '100%', left: '50%', transform: 'translateX(-50%)',
-                        marginTop: 3, fontSize: 7, whiteSpace: 'nowrap',
-                        background: '#1d4ed8', borderRadius: 4, padding: '1px 4px',
-                      }}
-                    >
-                      YOU
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+      {/* Map — full size, markers already baked in by geo-map API */}
+      {mapOk ? (
+        <img
+          src={`/api/audit/${auditId}/geo-map?kwIndex=${kwIndex}`}
+          className="w-full object-cover"
+          style={{ minHeight: 320 }}
+          alt={`Rank map for ${keyword}`}
+          onError={() => setMapOk(false)}
+        />
+      ) : (
+        <div className="flex flex-col items-center justify-center gap-2 bg-slate-100" style={{ minHeight: 320 }}>
+          <svg className="w-10 h-10 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+              d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+          </svg>
+          <p className="text-xs text-slate-400 font-medium">Map preview unavailable</p>
+          <p className="text-[10px] text-slate-400">Ensure GOOGLE_MAPS_API_KEY is configured</p>
         </div>
-      </div>
+      )}
 
       {/* Legend */}
-      <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center gap-3 flex-wrap">
+      <div className="px-4 py-2.5 bg-white border-t border-slate-100 flex items-center gap-4 flex-wrap">
         {[
           { bg: '#1d4ed8', label: 'You' },
           { bg: '#22c55e', label: '1–5' },
           { bg: '#f59e0b', label: '6–10' },
-          { bg: '#f97316', label: '11–20' },
           { bg: '#ef4444', label: '20+' },
         ].map(({ bg, label }) => (
           <div key={label} className="flex items-center gap-1.5">
@@ -569,7 +502,7 @@ export default function AuditReportGrexa({
             </span>
           </h2>
           <p className="text-xs text-slate-400 mt-0.5 mb-5">
-            Grid spacing: {geoGrid?.gridSpacingKm ?? 1.5} km · Showing top {mapKeywords.length} keywords
+            Showing top {mapKeywords.length} {mapKeywords.length === 1 ? 'keyword' : 'keywords'} · Search rank at surrounding locations
           </p>
           <div className={`grid gap-5 ${mapKeywords.length === 1 ? 'grid-cols-1 max-w-md' : 'grid-cols-2'}`}>
             {mapKeywords.map((kw: IGeoGridKeyword, i: number) => (

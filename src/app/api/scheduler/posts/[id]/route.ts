@@ -5,6 +5,38 @@ import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
 
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const ctx = await requireBusinessContext();
+    if (!ctx.ok) return ctx.response;
+
+    const { id } = await params;
+    await dbConnect();
+
+    const post = await Post.findOne({
+      _id: new mongoose.Types.ObjectId(id),
+      businessId: new mongoose.Types.ObjectId(ctx.businessId),
+    });
+
+    if (!post) {
+      return NextResponse.json({ error: 'Post not found or access denied' }, { status: 404 });
+    }
+
+    if (post.status === 'published') {
+      return NextResponse.json({ error: 'Published posts cannot be deleted' }, { status: 400 });
+    }
+
+    await post.deleteOne();
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch (error: any) {
+    console.error('Failed to delete post:', error);
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+  }
+}
+
 const patchSchema = z.object({
   title: z.string().optional(),
   content: z.string().optional(),

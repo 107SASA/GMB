@@ -20,6 +20,7 @@ import {
   X,
   Pencil,
   Check,
+  Trash2,
   LayoutGrid,
   CalendarDays,
 } from 'lucide-react';
@@ -181,17 +182,21 @@ function PostDetailModal({
   onPublish,
   onReschedule,
   onEditSave,
+  onDelete,
 }: {
   post: any;
   onClose: () => void;
   onPublish: (id: string) => void;
   onReschedule: (postId: string, newDate: Date) => Promise<void>;
   onEditSave: (postId: string, updates: Partial<any>) => void;
+  onDelete: (postId: string) => Promise<void>;
 }) {
   const [mode, setMode] = useState<'view' | 'edit' | 'reschedule'>('view');
   const [editTitle, setEditTitle] = useState(post.title ?? '');
   const [editContent, setEditContent] = useState(post.content ?? '');
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Default reschedule date: today (or existing scheduledDate)
   const defaultDate = post.scheduledDate
@@ -230,6 +235,18 @@ function PostDetailModal({
       alert(err.message ?? 'Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const doDelete = async () => {
+    setDeleting(true);
+    try {
+      await onDelete(post._id);
+      onClose();
+    } catch (err: any) {
+      alert(err.message ?? 'Failed to delete');
+      setDeleting(false);
+      setConfirmDelete(false);
     }
   };
 
@@ -360,6 +377,35 @@ function PostDetailModal({
         <div className="px-6 py-4 border-t border-slate-100 flex gap-2 justify-end">
           {mode === 'view' && (
             <>
+              {post.status !== 'published' && (
+                confirmDelete ? (
+                  <>
+                    <span className="text-sm text-rose-600 font-medium self-center mr-auto">Delete this post?</span>
+                    <button
+                      onClick={() => setConfirmDelete(false)}
+                      className="px-4 py-2.5 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={doDelete}
+                      disabled={deleting}
+                      className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      {deleting ? 'Deleting…' : 'Yes, Delete'}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDelete(true)}
+                    className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors mr-auto"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </button>
+                )
+              )}
               <button
                 onClick={() => { setEditTitle(post.title ?? ''); setEditContent(post.content ?? ''); setMode('edit'); }}
                 className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
@@ -511,6 +557,15 @@ export default function WeeklyCalendar({ posts, onPublish, onReschedule }: Weekl
   const handleEditSave = useCallback((postId: string, updates: Partial<any>) => {
     setLocalPosts(prev => prev.map(p => (p._id === postId ? { ...p, ...updates } : p)));
     setSelectedPost((prev: any) => (prev?._id === postId ? { ...prev, ...updates } : prev));
+  }, []);
+
+  const handleDelete = useCallback(async (postId: string) => {
+    const res = await fetch(`/api/scheduler/posts/${postId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? 'Delete failed');
+    }
+    setLocalPosts(prev => prev.filter(p => p._id !== postId));
   }, []);
 
   const monthLabel = displayDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -709,6 +764,7 @@ export default function WeeklyCalendar({ posts, onPublish, onReschedule }: Weekl
           onPublish={id => { onPublish(id); setSelectedPost(null); }}
           onReschedule={onReschedule}
           onEditSave={handleEditSave}
+          onDelete={handleDelete}
         />
       )}
     </DndContext>

@@ -52,7 +52,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireClient();
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) {
+    console.error('[geo-map] Auth failed');
+    return auth.response;
+  }
 
   const { id } = await params;
   const { searchParams } = new URL(request.url);
@@ -61,26 +64,37 @@ export async function GET(
   await dbConnect();
 
   const audit = await Audit.findById(id).lean() as any;
-  if (!audit) return new Response('Not found', { status: 404 });
+  if (!audit) {
+    console.error(`[geo-map] Audit not found: ${id}`);
+    return new Response('Not found', { status: 404 });
+  }
 
   const isOwner =
     String(audit.userId) === String(auth.userId) ||
     (auth.user as any)?.role === 'SUPER_ADMIN' ||
     process.env.NODE_ENV !== 'production';
 
-  if (!isOwner) return new Response('Forbidden', { status: 403 });
+  if (!isOwner) {
+    console.error(`[geo-map] Forbidden: userId=${auth.userId} auditUserId=${audit.userId}`);
+    return new Response('Forbidden', { status: 403 });
+  }
 
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) return new Response('Maps API not configured', { status: 503 });
+  if (!apiKey) {
+    console.error('[geo-map] GOOGLE_MAPS_API_KEY not set');
+    return new Response('Maps API not configured', { status: 503 });
+  }
 
   const geoGrid = audit.auditData?.geoGridRank;
   const keywords: any[] = geoGrid?.keywords ?? [];
   const kw = keywords[Math.min(kwIndex, keywords.length - 1)];
-  if (!kw?.points?.length) return new Response('No geo data', { status: 404 });
+  if (!kw?.points?.length) {
+    console.error(`[geo-map] No geo points for audit=${id} kwIndex=${kwIndex}, keywords=${keywords.length}`);
+    return new Response('No geo data', { status: 404 });
+  }
 
   const business = await Business.findById(audit.businessId).lean() as any;
 
-  // Sort points geographically (N→S, W→E) to match the 3×3 grid layout
   const pts: Array<{ lat: number; lng: number; rank: number }> = [...kw.points]
     .sort((a: any, b: any) => b.lat - a.lat || a.lng - b.lng)
     .slice(0, 9);
@@ -94,18 +108,30 @@ export async function GET(
   const gridSpacingKm: number = geoGrid?.gridSpacingKm ?? 1.5;
 
   const mapUrl = buildStaticMapUrl(cLat, cLng, pts, apiKey, gridSpacingKm);
+  console.log(`[geo-map] Fetching: ${mapUrl.replace(apiKey, 'KEY_REDACTED')}`);
 
   try {
     const res = await fetch(mapUrl, { signal: AbortSignal.timeout(12_000) });
-    if (!res.ok) return new Response('Map unavailable', { status: 502 });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error(`[geo-map] Google API error: status=${res.status} body=${body.slice(0, 200)}`);
+      return new Response('Map unavailable', { status: 502 });
+    }
+    const contentType = res.headers.get('Content-Type') ?? '';
+    if (!contentType.startsWith('image/')) {
+      const body = await res.text().catch(() => '');
+      console.error(`[geo-map] Google returned non-image: contentType=${contentType} body=${body.slice(0, 300)}`);
+      return new Response('Map unavailable', { status: 502 });
+    }
     const buf = await res.arrayBuffer();
     return new Response(buf, {
       headers: {
-        'Content-Type': res.headers.get('Content-Type') ?? 'image/png',
+        'Content-Type': contentType,
         'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
       },
     });
-  } catch {
+  } catch (err: any) {
+    console.error('[geo-map] Fetch error:', err?.message);
     return new Response('Map unavailable', { status: 502 });
   }
 }

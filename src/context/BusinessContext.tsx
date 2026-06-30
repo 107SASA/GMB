@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { DEV_CONTEXT } from "@/lib/dev-context";
 
@@ -33,18 +33,19 @@ interface BusinessContextType {
   activeBusiness: Business | null;
   loading: boolean;
   switchBusiness: (businessId: string) => Promise<void>;
+  refreshBusinesses: () => Promise<void>;
 }
 
 const BusinessContext = createContext<BusinessContextType | undefined>(undefined);
 
 export function BusinessProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  
+
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [activeBusiness, setActiveBusiness] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchBusinesses = async () => {
+  const fetchBusinesses = useCallback(async () => {
     try {
       const res = await fetch('/api/business/all');
       const json = await res.json();
@@ -54,7 +55,6 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
         const active = json.businesses.find((b: any) => b._id === activeId) || json.businesses[0];
         setActiveBusiness(active);
       } else {
-        // No businesses found
         setBusinesses([]);
         setActiveBusiness(null);
       }
@@ -65,11 +65,11 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchBusinesses();
-  }, []);
+  }, [fetchBusinesses]);
 
   const switchBusiness = async (businessId: string) => {
     try {
@@ -82,7 +82,7 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
         const selected = businesses.find(b => b._id === businessId);
         if (selected) {
           setActiveBusiness(selected);
-          router.refresh(); // Refresh the page to reload SSR components with new cookie
+          router.refresh();
         }
       }
     } catch (err) {
@@ -90,8 +90,14 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Call this after adding a new workspace so the list and active state refresh.
+  const refreshBusinesses = useCallback(async () => {
+    setLoading(true);
+    await fetchBusinesses();
+  }, [fetchBusinesses]);
+
   return (
-    <BusinessContext.Provider value={{ businesses, activeBusiness, loading, switchBusiness }}>
+    <BusinessContext.Provider value={{ businesses, activeBusiness, loading, switchBusiness, refreshBusinesses }}>
       {children}
     </BusinessContext.Provider>
   );

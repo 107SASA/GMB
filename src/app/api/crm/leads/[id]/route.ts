@@ -28,6 +28,7 @@ export async function PATCH(
     if (Object.prototype.hasOwnProperty.call(data, 'notes')) lead.notes = data.notes;
     if (Object.prototype.hasOwnProperty.call(data, 'status')) lead.status = data.status;
     if (Object.prototype.hasOwnProperty.call(data, 'tags')) lead.tags = data.tags;
+    if (Object.prototype.hasOwnProperty.call(data, 'lifeCycleStage')) lead.lifeCycleStage = data.lifeCycleStage;
 
     lead.lastActivityAt = new Date();
     await lead.save();

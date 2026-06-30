@@ -12,6 +12,7 @@ export interface ILead extends Document {
   source: 'WhatsApp' | 'Website' | 'Manual' | 'Instagram' | 'Facebook' | 'Referral' | 'Demo Booking' | 'Google Business Profile';
   leadType: 'Client Prospect' | 'Platform Prospect';
   status: 'active' | 'inactive';
+  lifeCycleStage: 'initial' | 'active' | 'closed' | 'converted';
   pipelineStage: string | null;
   tags: string[];
   notes?: string;
@@ -52,6 +53,11 @@ const LeadSchema: Schema = new Schema(
       default: 'Client Prospect'
     },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
+    lifeCycleStage: {
+      type: String,
+      enum: ['initial', 'active', 'closed', 'converted'],
+      default: 'initial',
+    },
     pipelineStage: { type: String, default: null },
     tags: [{ type: String }],
     notes: { type: String },

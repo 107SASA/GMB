@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     const business = await Business.findById(review.businessId).select('name').lean();
     const businessName = (business as any)?.name || 'Local Business';
 
-    const aiReply = await generateReviewReply({
+    const { reply: aiReply } = await generateReviewReply({
       reviewText: review.reviewText,
       rating: review.rating,
       tone: 'Professional',

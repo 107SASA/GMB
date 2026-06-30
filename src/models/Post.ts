@@ -9,6 +9,7 @@ export interface IPost extends Document {
   content: string;
   media: string[];
   imageUrl?: string;
+  thumbnailPrompt?: string;
   platform: string;
   status: string;
   aiGenerated: boolean;
@@ -40,6 +41,7 @@ const PostSchema: Schema = new Schema(
     content: { type: String, required: true },
     media: [{ type: String }],
     imageUrl: { type: String },
+    thumbnailPrompt: { type: String },
     platform: { type: String, default: 'gmb' },
     status: { type: String, enum: ['draft', 'pending_approval', 'approved', 'rejected', 'scheduled', 'published', 'failed', 'archived'], default: 'draft', index: true },
     aiGenerated: { type: Boolean, default: false },

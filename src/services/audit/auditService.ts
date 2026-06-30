@@ -3,6 +3,7 @@ import Audit from '../../models/Audit';
 import Business from '../../models/Business';
 import Review from '../../models/Review';
 import { generateAIAudit } from '../ai/auditEngine';
+import { logAIUsage } from '../../lib/logAIUsage';
 
 export async function processAuditJob(auditId: string) {
   await dbConnect();
@@ -220,8 +221,20 @@ export async function processAuditJob(auditId: string) {
     };
 
     // ── AI analysis ───────────────────────────────────────────
+    const auditStartMs = Date.now();
     const aiResult = await generateAIAudit(enrichedBusinessData);
     if (aiResult === 'Data Unavailable') throw new Error('Data Unavailable');
+
+    void logAIUsage({
+      userId:      audit.userId,
+      businessId:  audit.businessId?.toString(),
+      promptType:  'audit_generation',
+      aiModel:     'llama-3.3-70b-versatile',
+      promptTokens:     aiResult._usage?.promptTokens    ?? 0,
+      completionTokens: aiResult._usage?.completionTokens ?? 0,
+      status:      'success',
+      durationMs:  Date.now() - auditStartMs,
+    });
 
     // ── Merge native truths over AI output ───────────────────
     if (typeof aiResult === 'object') {

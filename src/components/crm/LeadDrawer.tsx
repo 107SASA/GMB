@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ActivityTimeline from './ActivityTimeline';
 
@@ -8,8 +11,42 @@ interface LeadDrawerProps {
   onUpdate: () => void;
 }
 
-export default function LeadDrawer({ lead, isOpen, onClose }: LeadDrawerProps) {
+const STAGE_STYLES: Record<string, { bg: string; dot: string; label: string }> = {
+  initial:   { bg: 'bg-slate-100 text-slate-600',     dot: 'bg-slate-400',    label: 'Initial' },
+  active:    { bg: 'bg-blue-100 text-blue-700',       dot: 'bg-blue-500',     label: 'Active' },
+  closed:    { bg: 'bg-rose-100 text-rose-700',       dot: 'bg-rose-500',     label: 'Closed' },
+  converted: { bg: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500',  label: 'Converted' },
+};
+
+function StageBadge({ stage }: { stage?: string }) {
+  const s = STAGE_STYLES[stage || 'initial'] ?? STAGE_STYLES.initial;
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${s.bg}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+      {s.label}
+    </span>
+  );
+}
+
+export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDrawerProps) {
+  const [updatingStage, setUpdatingStage] = useState(false);
+
   if (!isOpen || !lead) return null;
+
+  const handleStageChange = async (newStage: string) => {
+    setUpdatingStage(true);
+    try {
+      await fetch(`/api/crm/leads/${lead._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lifeCycleStage: newStage }),
+      });
+      lead.lifeCycleStage = newStage;
+      onUpdate();
+    } finally {
+      setUpdatingStage(false);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -32,8 +69,11 @@ export default function LeadDrawer({ lead, isOpen, onClose }: LeadDrawerProps) {
           {/* Header */}
           <div className="p-6 border-b border-slate-100 flex justify-between items-start">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-bold px-2 py-0.5 bg-slate-100 text-slate-600 rounded uppercase">{lead.pipelineStage}</span>
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <StageBadge stage={lead.lifeCycleStage} />
+                {lead.pipelineStage && (
+                  <span className="text-xs font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-100 uppercase">{lead.pipelineStage}</span>
+                )}
                 <span className="text-xs font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded uppercase">AI Score: {lead.aiLeadScore || 'N/A'}</span>
               </div>
               <h2 className="text-2xl font-black text-slate-900">{lead.name}</h2>
@@ -55,6 +95,32 @@ export default function LeadDrawer({ lead, isOpen, onClose }: LeadDrawerProps) {
                 <p className="text-sm text-indigo-900 leading-relaxed">{lead.aiInsights}</p>
               </div>
             )}
+
+            {/* Life Cycle Stage Selector */}
+            <div className="mb-8 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Life Cycle Stage</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {(['initial', 'active', 'closed', 'converted'] as const).map((stage) => {
+                  const s = STAGE_STYLES[stage];
+                  const isActive = (lead.lifeCycleStage || 'initial') === stage;
+                  return (
+                    <button
+                      key={stage}
+                      disabled={updatingStage}
+                      onClick={() => handleStageChange(stage)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                        isActive
+                          ? `${s.bg} border-current shadow-sm`
+                          : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                      } disabled:opacity-50`}
+                    >
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? s.dot : 'bg-slate-300'}`} />
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <div className="mb-8">
               <h3 className="text-sm font-bold text-slate-900 mb-4">Lead Details</h3>

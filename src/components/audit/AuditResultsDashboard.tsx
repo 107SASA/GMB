@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { IAudit } from '@/models/Audit';
-import { Download, Sparkles, Building2, Globe, MapPin, Zap, TrendingUp, Search, MessageSquare, AlertCircle, Calendar, Target, ShieldAlert, Award, Loader2, CheckCircle2 } from 'lucide-react';
+import { Download, Sparkles, Building2, Globe, MapPin, Zap, TrendingUp, Search, MessageSquare, AlertCircle, Calendar, Target, ShieldAlert, Award, Loader2, CheckCircle2, Share2, Copy, Check } from 'lucide-react';
 import AuditDebugPanel from './AuditDebugPanel';
 import AuditReportV6 from './AuditReportV6';
 import AuditReportGrexa from './AuditReportGrexa';
@@ -14,6 +14,9 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [shareUrl, setShareUrl]   = useState<string | null>(null);
+  const [sharing, setSharing]     = useState(false);
+  const [copied, setCopied]       = useState(false);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -54,6 +57,29 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
     } finally {
       setIsSyncing(false);
     }
+  }
+
+  async function handleShare() {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      const res  = await fetch(`/api/audit/${auditId}/share`, { method: 'POST' });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      const url = `${window.location.origin}/reports/${json.token}`;
+      setShareUrl(url);
+    } catch (err) {
+      console.error('[handleShare]', err);
+    } finally {
+      setSharing(false);
+    }
+  }
+
+  async function handleCopy() {
+    if (!shareUrl) return;
+    await navigator.clipboard.writeText(shareUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   async function handleDownload() {
@@ -110,12 +136,57 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
 
   if (audit.auditVersion === 'V7') {
     return (
-      <AuditReportGrexa
-        audit={audit}
-        onDownload={handleDownload}
-        onResync={handleResync}
-        isSyncing={isSyncing}
-      />
+      <>
+        <AuditReportGrexa
+          audit={audit}
+          onDownload={handleDownload}
+          onResync={handleResync}
+          onShare={handleShare}
+          isSyncing={isSyncing}
+        />
+
+        {/* Share link modal */}
+        {shareUrl && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center">
+                  <Share2 className="w-5 h-5 text-violet-600" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-900">Share Report</h2>
+                  <p className="text-xs text-slate-500">Anyone with this link can view the report for 30 days</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4">
+                <span className="flex-1 text-xs text-slate-600 truncate">{shareUrl}</span>
+                <button
+                  onClick={handleCopy}
+                  className="shrink-0 flex items-center gap-1 text-xs font-bold text-violet-600 hover:text-violet-700 transition-colors"
+                >
+                  {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              <button
+                onClick={() => setShareUrl(null)}
+                className="w-full text-sm text-slate-500 hover:text-slate-700 transition-colors py-2"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+
+        {sharing && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
+            <div className="bg-white rounded-2xl shadow-xl px-8 py-6 flex items-center gap-3">
+              <Loader2 className="w-5 h-5 animate-spin text-violet-600" />
+              <span className="text-sm font-medium text-slate-700">Generating share link…</span>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 

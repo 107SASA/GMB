@@ -21,6 +21,23 @@ const getSourceBadge = (source: string) => {
   }
 };
 
+const STAGE_STYLES: Record<string, { bg: string; dot: string; label: string }> = {
+  initial:   { bg: 'bg-slate-100 text-slate-600',    dot: 'bg-slate-400',   label: 'Initial' },
+  active:    { bg: 'bg-blue-100 text-blue-700',      dot: 'bg-blue-500',    label: 'Active' },
+  closed:    { bg: 'bg-rose-100 text-rose-700',      dot: 'bg-rose-500',    label: 'Closed' },
+  converted: { bg: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500', label: 'Converted' },
+};
+
+function StageBadge({ stage }: { stage?: string }) {
+  const s = STAGE_STYLES[stage || 'initial'] ?? STAGE_STYLES.initial;
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${s.bg}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+      {s.label}
+    </span>
+  );
+}
+
 export default function LeadListView({ leads, onLeadClick }: LeadListViewProps) {
   if (leads.length === 0) {
     return (
@@ -43,9 +60,10 @@ export default function LeadListView({ leads, onLeadClick }: LeadListViewProps) 
         <div className="col-span-3">Lead</div>
         <div className="col-span-2">Phone / Email</div>
         <div className="col-span-2">Source</div>
-        <div className="col-span-2">Category</div>
+        <div className="col-span-2">Stage</div>
+        <div className="col-span-1">Pipeline</div>
         <div className="col-span-1 text-center">AI Score</div>
-        <div className="col-span-2 text-right">Added</div>
+        <div className="col-span-1 text-right">Added</div>
       </div>
 
       {/* Table Rows */}
@@ -58,7 +76,7 @@ export default function LeadListView({ leads, onLeadClick }: LeadListViewProps) 
           >
             {/* Name + Avatar */}
             <div className="col-span-3 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 font-black text-sm flex items-center justify-center flex-shrink-0">
+              <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 font-black text-sm flex items-center justify-center shrink-0">
                 {lead.name?.charAt(0)?.toUpperCase() || '?'}
               </div>
               <span className="font-semibold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors truncate">
@@ -78,14 +96,19 @@ export default function LeadListView({ leads, onLeadClick }: LeadListViewProps) 
               </span>
             </div>
 
-            {/* Category (pipelineStage) */}
+            {/* Life Cycle Stage */}
             <div className="col-span-2">
+              <StageBadge stage={lead.lifeCycleStage} />
+            </div>
+
+            {/* Pipeline Stage */}
+            <div className="col-span-1">
               {lead.pipelineStage ? (
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 truncate block max-w-20">
                   {lead.pipelineStage}
                 </span>
               ) : (
-                <span className="text-xs text-slate-400 italic">Unassigned</span>
+                <span className="text-xs text-slate-400 italic">—</span>
               )}
             </div>
 
@@ -97,8 +120,8 @@ export default function LeadListView({ leads, onLeadClick }: LeadListViewProps) 
             </div>
 
             {/* Date */}
-            <div className="col-span-2 text-xs text-slate-400 text-right">
-              {new Date(lead.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+            <div className="col-span-1 text-xs text-slate-400 text-right">
+              {new Date(lead.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
             </div>
           </div>
         ))}

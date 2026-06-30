@@ -11,6 +11,7 @@ export interface ContentGenerationRequest {
   tone: string;
   keywords: string[];
   contentTypes: string[];
+  topic?: string;
 }
 
 export interface GeneratedPost {
@@ -20,8 +21,11 @@ export interface GeneratedPost {
   body: string;
   cta: string;
   hashtags: string[];
+  thumbnailPrompt: string;
   /** Set after the post is persisted to MongoDB as a draft. */
   _id?: string;
+  /** Set after thumbnail image is generated via NanoBanana. */
+  imageUrl?: string;
 }
 
 export interface GeneratedFAQ {
@@ -36,9 +40,14 @@ export interface ContentGenerationResult {
   contentScore: number;
   seoScore: number;
   engagementPrediction: 'High' | 'Medium' | 'Low';
+  _usage?: { promptTokens: number; completionTokens: number };
 }
 
 export async function generateAIContent(request: ContentGenerationRequest): Promise<ContentGenerationResult> {
+  const topicLine = request.topic
+    ? `- Campaign Topic: ${request.topic}`
+    : '';
+
   const prompt = `
 You are an expert AI marketing assistant and copywriter. Generate content for the following business based on the requirements.
 Output STRICT JSON matching the schema below. DO NOT wrap the output in markdown code blocks.
@@ -49,6 +58,7 @@ BUSINESS DETAILS:
 - Location: ${request.location}
 - Tone: ${request.tone}
 - Keywords: ${request.keywords.join(', ')}
+${topicLine}
 - Requested Content Types: ${request.contentTypes.join(', ')}
 
 REQUIRED JSON OUTPUT SCHEMA:
@@ -60,9 +70,10 @@ REQUIRED JSON OUTPUT SCHEMA:
       "title": "Catchy title",
       "body": "Main content of the post (1-2 paragraphs)",
       "cta": "Call to action string (e.g. Call Now, Learn More, Visit Website)",
-      "hashtags": ["#tag1", "#tag2"]
+      "hashtags": ["#tag1", "#tag2"],
+      "thumbnailPrompt": "A detailed English image generation prompt for a professional social media thumbnail that visually represents this post's topic. Include style (e.g. photorealistic, flat design), mood, colors, and subject. Keep it under 100 words."
     }
-  ], // Generate EXACTLY 7 posts
+  ], // Generate EXACTLY 7 posts${request.topic ? `. All posts must revolve around the campaign topic: "${request.topic}"` : ''}
   "seoDescription": "SEO optimized description (max 750 characters) targeting the location and keywords.",
   "faqs": [
     {
@@ -81,7 +92,7 @@ REQUIRED JSON OUTPUT SCHEMA:
       model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
-      temperature: 0.7, // Slightly creative
+      temperature: 0.7,
     });
 
     const content = response.choices[0].message?.content;
@@ -90,6 +101,10 @@ REQUIRED JSON OUTPUT SCHEMA:
     }
 
     const parsed = JSON.parse(content) as ContentGenerationResult;
+    parsed._usage = {
+      promptTokens:    response.usage?.prompt_tokens    ?? 0,
+      completionTokens: response.usage?.completion_tokens ?? 0,
+    };
     return parsed;
   } catch (error: any) {
     console.error('Error generating AI content:', error);

@@ -2,9 +2,23 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import Business from "@/models/Business";
 import { generatePost } from "@/services/ai";
+import { requireBusinessContext } from '@/lib/tenant';
+import { checkUsageLimit } from '@/lib/featureGating';
 
 export async function POST(req: Request) {
   try {
+    const ctx = await requireBusinessContext();
+    if (!ctx.ok) return ctx.response;
+
+    // Check AI generation limit before calling AI
+    const limitCheck = await checkUsageLimit(ctx.userId, ctx.businessId, 'aiGenerations');
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        { error: limitCheck.reason, code: limitCheck.code ?? 'UPGRADE_REQUIRED', limit: limitCheck.limit, used: limitCheck.used },
+        { status: 403 }
+      );
+    }
+
     await dbConnect();
     const body = await req.json();
     let businessProfile;
@@ -12,10 +26,7 @@ export async function POST(req: Request) {
     if (body.businessId) {
       businessProfile = await Business.findById(body.businessId);
     } else {
-      const { getActiveBusinessContext } = await import('@/lib/business-context');
-      const context = await getActiveBusinessContext();
-      if (!context.ok) return NextResponse.json({ message: 'No active business context found' }, { status: 400 });
-      businessProfile = context.business;
+      businessProfile = await Business.findById(ctx.businessId);
     }
 
     if (!businessProfile) {

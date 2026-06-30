@@ -1008,3 +1008,133 @@ export const processDemoBooking = inngest.createFunction(
 );
 
 
+
+// ── GBP nightly sync cron ─────────────────────────────────────────────────────
+
+export const gbpNightlySyncScheduler = inngest.createFunction(
+  { id: "gbp-nightly-sync-scheduler", triggers: [{ cron: "0 3 * * *" }] },
+  async ({ step }) => {
+    const { default: dbConnect } = await import("@/lib/mongodb");
+    const { default: BusinessModel } = await import("@/models/Business");
+    await dbConnect();
+
+    const connectedBusinesses = await BusinessModel.find(
+      { googleConnected: true, isDeleted: { $ne: true } },
+      { _id: 1 }
+    ).lean();
+
+    await Promise.all(
+      connectedBusinesses.map((b: any) =>
+        step.sendEvent(`gbp-sync-${b._id}`, {
+          name: "gbp/sync.requested",
+          data: { businessId: b._id.toString() },
+        })
+      )
+    );
+
+    return { dispatched: connectedBusinesses.length };
+  }
+);
+
+export const gbpSyncWorker = inngest.createFunction(
+  { id: "gbp-sync-worker", triggers: [{ event: "gbp/sync.requested" }], retries: 2 },
+  async ({ event, step }) => {
+    const { businessId } = event.data;
+
+    await step.run("sync-gbp-data", async () => {
+      const { default: dbConnect } = await import("@/lib/mongodb");
+      const { default: GBPTokenModel } = await import("@/models/GBPToken");
+      const { default: GBPInsightsModel } = await import("@/models/GBPInsights");
+      const { default: GBPKeywordModel } = await import("@/models/GBPKeyword");
+      const { fetchDailyMetrics, fetchSearchKeywords, GBPAuthError } =
+        await import("@/lib/gbpClient");
+      const { default: BusinessModel } = await import("@/models/Business");
+
+      await dbConnect();
+
+      const tokenDoc = await GBPTokenModel.findOne({ businessId });
+      if (!tokenDoc) return { skipped: true, reason: "No token" };
+
+      const now = new Date();
+      const endDate = new Date(now);
+      endDate.setDate(endDate.getDate() - 1);
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - 27);
+
+      let dailyData: any[] = [];
+      try {
+        dailyData = await fetchDailyMetrics(businessId, startDate, endDate);
+      } catch (err: any) {
+        if (err instanceof GBPAuthError) {
+          await BusinessModel.findByIdAndUpdate(businessId, { googleConnected: false });
+          console.error(`[GBP Sync] Token revoked for ${businessId}`, err.message);
+          return { skipped: true, reason: "Token revoked" };
+        }
+        throw err;
+      }
+
+      await Promise.all(
+        dailyData.map((d: any) =>
+          GBPInsightsModel.findOneAndUpdate(
+            { businessId, date: new Date(d.date) },
+            {
+              $set: {
+                businessId,
+                organizationId: tokenDoc.organizationId,
+                date: new Date(d.date),
+                views: d.views,
+                viewsMaps: d.viewsMaps,
+                viewsSearch: d.viewsSearch,
+                callClicks: d.callClicks,
+                websiteClicks: d.websiteClicks,
+                directionRequests: d.directionRequests,
+                conversations: d.conversations,
+                syncedAt: now,
+              },
+            },
+            { upsert: true }
+          )
+        )
+      );
+
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+      const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+
+      const [currentKeywords, prevKeywords] = await Promise.all([
+        fetchSearchKeywords(businessId, currentYear, currentMonth).catch(() => []),
+        fetchSearchKeywords(businessId, prevYear, prevMonth).catch(() => []),
+      ]);
+
+      const allKeywords = [
+        ...currentKeywords.map((k: any) => ({ ...k, year: currentYear, month: currentMonth })),
+        ...prevKeywords.map((k: any) => ({ ...k, year: prevYear, month: prevMonth })),
+      ];
+
+      await Promise.all(
+        allKeywords.map((k: any) =>
+          GBPKeywordModel.findOneAndUpdate(
+            { businessId, keyword: k.keyword, month: k.month, year: k.year },
+            {
+              $set: {
+                businessId,
+                organizationId: tokenDoc.organizationId,
+                keyword: k.keyword,
+                impressions: k.impressions,
+                month: k.month,
+                year: k.year,
+                type: k.type,
+                syncedAt: now,
+              },
+            },
+            { upsert: true }
+          )
+        )
+      );
+
+      await GBPTokenModel.findOneAndUpdate({ businessId }, { $set: { lastSyncAt: now } });
+      return { daysProcessed: dailyData.length, keywordsProcessed: allKeywords.length };
+    });
+  }
+);

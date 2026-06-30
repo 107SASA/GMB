@@ -9,7 +9,7 @@ import {
   ILocalPackCompetitor,
   IGeoGridPoint,
 } from '@/models/Audit';
-import { Download, RefreshCw } from 'lucide-react';
+import { Download, RefreshCw, Share2, Copy, Check } from 'lucide-react';
 
 /* ─── Google Logo ───────────────────────────────────────────────────────────── */
 function GoogleLogo({ size = 18 }: { size?: number }) {
@@ -185,11 +185,13 @@ export default function AuditReportGrexa({
   audit,
   onDownload,
   onResync,
+  onShare,
   isSyncing = false,
 }: {
   audit: IAudit;
   onDownload: () => void;
   onResync?: () => void;
+  onShare?: () => void;
   isSyncing?: boolean;
 }) {
   const data = audit.auditData as IAuditData;
@@ -303,6 +305,16 @@ export default function AuditReportGrexa({
                 title="Re-sync reviews"
               >
                 <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              </button>
+            )}
+            {onShare && (
+              <button
+                data-pdf-hide="true"
+                onClick={onShare}
+                className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-semibold px-4 py-2 rounded-xl transition-colors shadow-sm"
+              >
+                <Share2 className="w-4 h-4" />
+                Share
               </button>
             )}
             <button

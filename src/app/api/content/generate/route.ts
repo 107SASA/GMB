@@ -2,9 +2,15 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import mongoose from 'mongoose';
 import { generateAIContent, ContentGenerationRequest } from '@/services/ai/contentEngine';
+import { generateThumbnail } from '@/services/ai/imageGenerator';
 import { requireBusinessContext } from '@/lib/tenant';
 import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
+import { logAIUsage } from '@/lib/logAIUsage';
+import { checkUsageLimit } from '@/lib/featureGating';
+
+// Allow up to 2 minutes — sequential thumbnail generation adds time
+export const maxDuration = 120;
 
 const generateContentSchema = z.object({
   businessName: z.string().min(2).optional(),
@@ -13,6 +19,7 @@ const generateContentSchema = z.object({
   tone: z.string().min(2, 'Tone is required'),
   keywords: z.array(z.string()).optional(),
   contentTypes: z.array(z.string()).min(1, 'At least one content type is required'),
+  topic: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -30,6 +37,15 @@ export async function POST(req: Request) {
     const { business } = ctx;
     const data = parsed.data;
 
+    // Check AI generation limit
+    const limitCheck = await checkUsageLimit(ctx.userId, ctx.businessId, 'aiGenerations');
+    if (!limitCheck.allowed) {
+      return NextResponse.json(
+        { error: limitCheck.reason, code: limitCheck.code ?? 'UPGRADE_REQUIRED', limit: limitCheck.limit, used: limitCheck.used },
+        { status: 403 }
+      );
+    }
+
     const businessLocation =
       [business.city, business.state].filter(Boolean).join(', ') ||
       business.address ||
@@ -42,6 +58,7 @@ export async function POST(req: Request) {
       tone: data.tone,
       keywords: data.keywords?.length ? data.keywords : (business.keywords || []),
       contentTypes: data.contentTypes,
+      topic: data.topic || undefined,
     };
 
     if (!request.businessName || !request.businessType || !request.location) {
@@ -57,10 +74,20 @@ export async function POST(req: Request) {
       );
     }
 
+    const contentStartMs = Date.now();
     const aiResult = await generateAIContent(request);
 
-    // Immediately persist the generated posts as drafts so they appear in the
-    // scheduler's drafts tray even if the user navigates away before scheduling.
+    void logAIUsage({
+      userId: ctx.userId,
+      businessId: ctx.businessId,
+      promptType: 'content_generation',
+      aiModel: 'llama-3.3-70b-versatile',
+      promptTokens:    aiResult._usage?.promptTokens    ?? 0,
+      completionTokens: aiResult._usage?.completionTokens ?? 0,
+      status: 'success',
+      durationMs: Date.now() - contentStartMs,
+    });
+
     await dbConnect();
     const savedDrafts = await Post.insertMany(
       aiResult.posts.map(p => ({
@@ -71,18 +98,35 @@ export async function POST(req: Request) {
         postType: p.postType,
         hashtags: p.hashtags ?? [],
         cta: p.cta,
+        thumbnailPrompt: p.thumbnailPrompt,
         status: 'draft',
         platform: 'gmb',
         aiGenerated: true,
-        automationMetadata: { generatedVia: 'manual-generator' },
+        automationMetadata: { generatedVia: 'manual-generator', topic: data.topic || null },
       }))
     );
 
-    // Attach the MongoDB _id to each post so the UI can schedule without duplicating.
+    // Attach draft IDs immediately
     const postsWithIds = aiResult.posts.map((p, i) => ({
       ...p,
       _id: savedDrafts[i]._id.toString(),
+      imageUrl: undefined as string | undefined,
     }));
+
+    // Generate thumbnails sequentially (NanoBanana allows 1 concurrent request)
+    for (let i = 0; i < postsWithIds.length; i++) {
+      const prompt = aiResult.posts[i].thumbnailPrompt;
+      if (!prompt) continue;
+
+      const imageUrl = await generateThumbnail(prompt);
+      if (imageUrl) {
+        postsWithIds[i].imageUrl = imageUrl;
+        await Post.updateOne(
+          { _id: savedDrafts[i]._id },
+          { $set: { imageUrl } }
+        );
+      }
+    }
 
     return NextResponse.json(
       { success: true, data: { ...aiResult, posts: postsWithIds } },

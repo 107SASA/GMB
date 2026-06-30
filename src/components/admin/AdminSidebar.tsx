@@ -39,6 +39,7 @@ const adminGroups = [
     links: [
       { name: 'System Health',  icon: Activity,        href: '/admin/system' },
       { name: 'Queues & Jobs',  icon: Clock,           href: '/admin/jobs' },
+      { name: 'Automations',    icon: Zap,             href: '/admin/automations' },
       { name: 'AI & API Usage', icon: BrainCircuit,    href: '/admin/ai-usage' },
     ],
   },

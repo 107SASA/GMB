@@ -7,6 +7,7 @@ import WeeklyPostsTab from './WeeklyPostsTab';
 import SEOTab from './SEOTab';
 import FAQTab from './FAQTab';
 import ContentHistoryTab from './ContentHistoryTab';
+import UpgradeLimitModal from '@/components/ui/UpgradeLimitModal';
 
 type TabId = 'posts' | 'seo' | 'faq' | 'history';
 
@@ -21,6 +22,7 @@ export default function ContentWorkspace() {
   const [activeTab, setActiveTab] = useState<TabId>('posts');
   const [contentData, setContentData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [upgradeMsg, setUpgradeMsg] = useState<string | null>(null);
 
   const handleGenerate = async (formData: any) => {
     setIsLoading(true);
@@ -32,7 +34,13 @@ export default function ContentWorkspace() {
       });
 
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
+      if (!response.ok) {
+        if (result.code === 'UPGRADE_REQUIRED') {
+          setUpgradeMsg(result.error);
+          return;
+        }
+        throw new Error(result.error);
+      }
 
       setContentData(result.data);
       setActiveTab('posts');
@@ -47,6 +55,9 @@ export default function ContentWorkspace() {
     return (
       <div className="max-w-3xl mx-auto mt-10">
         <ContentGeneratorForm onGenerate={handleGenerate} isLoading={isLoading} />
+        {upgradeMsg && (
+          <UpgradeLimitModal message={upgradeMsg} onClose={() => setUpgradeMsg(null)} />
+        )}
       </div>
     );
   }

@@ -1,11 +1,17 @@
 import { Groq } from "groq-sdk";
 
+export interface ReplyResult {
+  reply: string;
+  promptTokens: number;
+  completionTokens: number;
+}
+
 export async function generateReviewReply(params: {
   reviewText: string;
   rating: number;
   tone: string;
   businessName: string;
-}): Promise<string> {
+}): Promise<ReplyResult> {
   const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
   });
@@ -33,7 +39,12 @@ Guidelines:
       max_tokens: 150,
     });
 
-    return response.choices[0]?.message?.content?.trim() || "Thank you for your feedback.";
+    const reply = response.choices[0]?.message?.content?.trim() || "Thank you for your feedback.";
+    return {
+      reply,
+      promptTokens:    response.usage?.prompt_tokens    ?? 0,
+      completionTokens: response.usage?.completion_tokens ?? 0,
+    };
   } catch (error) {
     console.error("Failed to generate AI reply:", error);
     throw new Error("AI Reply Generation failed");

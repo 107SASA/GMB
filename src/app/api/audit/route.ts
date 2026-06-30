@@ -53,9 +53,9 @@ export async function POST(req: Request) {
     // Check feature gating limits — set AUDIT_BYPASS_MODE=true in .env.local to skip
     const bypassMode = process.env.AUDIT_BYPASS_MODE === 'true';
     if (!bypassMode) {
-      const usageCheck = await checkUsageLimit(business._id, 'audits');
+      const usageCheck = await checkUsageLimit(authResult.userId, business._id, 'audits');
       if (!usageCheck.allowed) {
-        return NextResponse.json({ error: usageCheck.reason, code: 'UPGRADE_REQUIRED' }, { status: 403 });
+        return NextResponse.json({ error: usageCheck.reason, code: usageCheck.code ?? 'UPGRADE_REQUIRED', limit: usageCheck.limit, used: usageCheck.used }, { status: 403 });
       }
       await incrementUsage(business._id, 'audits');
     }

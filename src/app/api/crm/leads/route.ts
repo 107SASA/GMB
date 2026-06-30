@@ -43,6 +43,7 @@ export async function POST(req: Request) {
       pipelineStage: null,
       notes: data.notes,
       interest: data.interest,
+      lifeCycleStage: data.lifeCycleStage || 'initial',
     });
 
     await inngest.send({

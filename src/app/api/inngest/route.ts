@@ -18,7 +18,9 @@ import {
   scheduleLeadFollowUpsJob,
   dispatchWhatsappFollowUpJob,
   processDemoBooking,
-  generateAuditJob
+  generateAuditJob,
+  gbpNightlySyncScheduler,
+  gbpSyncWorker
 } from "@/services/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
@@ -41,6 +43,8 @@ export const { GET, POST, PUT } = serve({
     scheduleLeadFollowUpsJob,
     dispatchWhatsappFollowUpJob,
     processDemoBooking,
-    generateAuditJob
+    generateAuditJob,
+    gbpNightlySyncScheduler,
+    gbpSyncWorker,
   ],
 });

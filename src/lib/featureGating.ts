@@ -1,81 +1,122 @@
 import mongoose from 'mongoose';
-import Subscription from '@/models/Subscription';
-import Plan from '@/models/Plan';
+import dbConnect from '@/lib/mongodb';
+import User from '@/models/User';
+import UserLimitOverride from '@/models/UserLimitOverride';
 import SubscriptionUsage from '@/models/SubscriptionUsage';
+import AIUsageLog from '@/models/AIUsageLog';
+import PlanConfig from '@/models/PlanConfig';
+import { PLAN_DEFAULTS, FALLBACK_LIMITS, type PlanLimits } from '@/lib/planDefaults';
 
-export async function getActivePlan(businessId: string | mongoose.Types.ObjectId) {
-  const sub = await Subscription.findOne({ 
-    businessId, 
-    status: { $in: ['active', 'trialing'] } 
-  }).populate('planId');
-  
-  if (!sub || !sub.planId) {
-    return null;
+async function getPlanLimitsFromDB(planName: string): Promise<PlanLimits> {
+  try {
+    const config = await PlanConfig.findOne({ plan: planName }).lean() as any;
+    if (config) {
+      return {
+        maxAuditsPerBusiness:      config.maxAuditsPerBusiness,
+        maxPostsPerMonth:          config.maxPostsPerMonth,
+        maxWhatsAppMessagesPerDay: config.maxWhatsAppMessagesPerDay,
+        reviewRequestCooldownDays: config.reviewRequestCooldownDays,
+        maxAIGenerations:          config.maxAIGenerations,
+      };
+    }
+  } catch { /* fall through to hardcoded */ }
+  return PLAN_DEFAULTS[planName] ?? FALLBACK_LIMITS;
+}
+
+async function resolveUserLimits(
+  userId: string | mongoose.Types.ObjectId,
+  planName: string
+): Promise<PlanLimits> {
+  const [planLimits, override] = await Promise.all([
+    getPlanLimitsFromDB(planName),
+    UserLimitOverride.findOne({ userId }).lean() as any,
+  ]);
+
+  if (!override) return planLimits;
+
+  return {
+    maxAuditsPerBusiness:      override.maxAuditsPerBusiness      ?? planLimits.maxAuditsPerBusiness,
+    maxPostsPerMonth:          override.maxPostsPerMonth          ?? planLimits.maxPostsPerMonth,
+    maxWhatsAppMessagesPerDay: override.maxWhatsAppMessagesPerDay ?? planLimits.maxWhatsAppMessagesPerDay,
+    reviewRequestCooldownDays: override.reviewRequestCooldownDays ?? planLimits.reviewRequestCooldownDays,
+    maxAIGenerations:          override.maxAIGenerations          ?? planLimits.maxAIGenerations,
+  };
+}
+
+function metricLabel(metric: string): string {
+  switch (metric) {
+    case 'posts':           return 'post generations';
+    case 'audits':          return 'audit reports';
+    case 'aiGenerations':   return 'AI generations';
+    case 'whatsappMessages':return 'WhatsApp messages';
+    default:                return 'actions';
   }
-  return sub.planId as any; // Returns the populated Plan document
 }
 
-export async function checkPlanAccess(businessId: string | mongoose.Types.ObjectId, featureName: string): Promise<boolean> {
-  const plan = await getActivePlan(businessId);
-  if (!plan) return false;
-  
-  // Example features checking
-  return plan.features.some((f: string) => f.toLowerCase().includes(featureName.toLowerCase()));
-}
-
-export type UsageMetric = 'posts' | 'audits' | 'businesses' | 'reviewRequests' | 'whatsappMessages';
+export type UsageMetric = 'posts' | 'audits' | 'aiGenerations' | 'whatsappMessages';
 
 export async function checkUsageLimit(
-  businessId: string | mongoose.Types.ObjectId, 
-  metric: UsageMetric, 
+  userId: string | mongoose.Types.ObjectId,
+  businessId: string | mongoose.Types.ObjectId,
+  metric: UsageMetric,
   amount: number = 1
-): Promise<{ allowed: boolean; reason?: string; limit?: number; used?: number }> {
-  const plan = await getActivePlan(businessId);
-  if (!plan) return { allowed: false, reason: 'No active plan found.' };
+): Promise<{ allowed: boolean; reason?: string; code?: string; limit?: number; used?: number }> {
+  await dbConnect();
 
+  const user = await User.findById(userId).select('subscriptionPlan').lean() as any;
+  const planName = user?.subscriptionPlan || 'Free';
+
+  const limits = await resolveUserLimits(userId, planName);
   const month = new Date().toISOString().slice(0, 7); // YYYY-MM
-  
-  const usage = await SubscriptionUsage.findOneAndUpdate(
-    { businessId, month },
-    { $setOnInsert: { businessId, month } },
-    { upsert: true, new: true }
-  );
 
   let limit = -1;
   let currentUsage = 0;
 
   switch (metric) {
-    case 'posts':
-      limit = plan.maxPosts;
-      currentUsage = usage.postsUsed;
+    case 'audits': {
+      limit = limits.maxAuditsPerBusiness;
+      const usage = await SubscriptionUsage.findOne({ businessId, month }).lean() as any;
+      currentUsage = usage?.auditsUsed ?? 0;
       break;
-    case 'audits':
-      limit = plan.maxAudits;
-      currentUsage = usage.auditsUsed;
+    }
+    case 'posts': {
+      limit = limits.maxPostsPerMonth;
+      const usage = await SubscriptionUsage.findOne({ businessId, month }).lean() as any;
+      currentUsage = usage?.postsUsed ?? 0;
       break;
-    case 'businesses':
-      limit = plan.maxBusinesses;
-      currentUsage = usage.businessesUsed;
+    }
+    case 'aiGenerations': {
+      limit = limits.maxAIGenerations;
+      const startOfMonth = new Date(`${month}-01T00:00:00.000Z`);
+      const endOfMonth = new Date(startOfMonth);
+      endOfMonth.setUTCMonth(endOfMonth.getUTCMonth() + 1);
+      currentUsage = await AIUsageLog.countDocuments({
+        userId: userId.toString(),
+        status: 'success',
+        createdAt: { $gte: startOfMonth, $lt: endOfMonth },
+      });
       break;
-    case 'reviewRequests':
-      // Only Pro/Agency have unlimited, Growth has basic.
-      limit = plan.name.includes('Pro') || plan.name.includes('Agency') ? -1 : 50; 
-      currentUsage = usage.reviewRequestsUsed;
+    }
+    case 'whatsappMessages': {
+      limit = limits.maxWhatsAppMessagesPerDay;
+      const usage = await SubscriptionUsage.findOne({ businessId, month }).lean() as any;
+      currentUsage = usage?.whatsappMessagesUsed ?? 0;
       break;
-    case 'whatsappMessages':
-      limit = plan.name.includes('Pro') || plan.name.includes('Agency') ? -1 : 0; // Only Pro+
-      currentUsage = usage.whatsappMessagesUsed;
-      break;
+    }
     default:
       return { allowed: false, reason: 'Unknown metric.' };
   }
 
-  if (limit === -1) {
-    return { allowed: true, limit, used: currentUsage };
-  }
+  if (limit === -1) return { allowed: true, limit, used: currentUsage };
 
   if (currentUsage + amount > limit) {
-    return { allowed: false, reason: `Plan limit of ${limit} ${metric} exceeded.`, limit, used: currentUsage };
+    return {
+      allowed: false,
+      reason: `You are out of your ${metricLabel(metric)} limit (${currentUsage}/${limit} used). Upgrade your plan to get more.`,
+      code: 'UPGRADE_REQUIRED',
+      limit,
+      used: currentUsage,
+    };
   }
 
   return { allowed: true, limit, used: currentUsage };
@@ -87,13 +128,14 @@ export async function incrementUsage(
   amount: number = 1
 ) {
   const month = new Date().toISOString().slice(0, 7);
-  
-  const updateObj: any = {};
-  if (metric === 'posts') updateObj.postsUsed = amount;
-  else if (metric === 'audits') updateObj.auditsUsed = amount;
-  else if (metric === 'businesses') updateObj.businessesUsed = amount;
-  else if (metric === 'reviewRequests') updateObj.reviewRequestsUsed = amount;
+
+  const updateObj: Record<string, number> = {};
+  if (metric === 'posts')            updateObj.postsUsed            = amount;
+  else if (metric === 'audits')      updateObj.auditsUsed           = amount;
   else if (metric === 'whatsappMessages') updateObj.whatsappMessagesUsed = amount;
+  // aiGenerations are tracked implicitly via AIUsageLog — no SubscriptionUsage counter
+
+  if (Object.keys(updateObj).length === 0) return;
 
   await SubscriptionUsage.findOneAndUpdate(
     { businessId, month },

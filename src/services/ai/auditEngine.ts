@@ -124,6 +124,10 @@ RULES:
     const jsonStr = jsonMatch ? jsonMatch[1] : content;
 
     const parsed = JSON.parse(jsonStr.trim());
+    parsed._usage = {
+      promptTokens:    response.usage?.prompt_tokens    ?? 0,
+      completionTokens: response.usage?.completion_tokens ?? 0,
+    };
     return parsed;
   } catch (error: any) {
     console.error('Error generating AI audit:', error);

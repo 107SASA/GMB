@@ -5,6 +5,7 @@ import ReviewAnalyticsCards from './ReviewAnalyticsCards';
 import ReviewFilterBar from './ReviewFilterBar';
 import ReviewCard from './ReviewCard';
 import { useBusiness } from '@/context/BusinessContext';
+import UpgradeLimitModal from '@/components/ui/UpgradeLimitModal';
 
 function computeAnalytics(reviews: any[]) {
   const total = reviews.length;
@@ -70,6 +71,7 @@ export default function ReviewsDashboard() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [upgradeMsg, setUpgradeMsg] = useState<string | null>(null);
 
   // Fast initial load from DB — no external Google call
   const loadFromDB = useCallback(async () => {
@@ -145,6 +147,10 @@ export default function ReviewsDashboard() {
         body: JSON.stringify({ reviewId, tone })
       });
       const data = await res.json();
+      if (data.code === 'UPGRADE_REQUIRED') {
+        setUpgradeMsg(data.error);
+        return;
+      }
       if (data.success) {
         setReviews(prev => prev.map(r =>
           r._id === reviewId ? { ...r, aiSuggestedReply: data.reply, replyTone: tone } : r
@@ -283,6 +289,10 @@ export default function ReviewsDashboard() {
             )}
           </div>
         </div>
+      )}
+
+      {upgradeMsg && (
+        <UpgradeLimitModal message={upgradeMsg} onClose={() => setUpgradeMsg(null)} />
       )}
     </div>
   );

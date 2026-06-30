@@ -17,6 +17,7 @@ export default function ContentGeneratorForm({ onGenerate, isLoading }: ContentG
     businessType: '',
     location: '',
     tone: 'Professional',
+    topic: '',
   });
 
   const [keywordInput, setKeywordInput] = useState('');
@@ -24,16 +25,15 @@ export default function ContentGeneratorForm({ onGenerate, isLoading }: ContentG
   const [contentTypes, setContentTypes] = useState<string[]>(['GMB Posts', 'SEO Description', 'FAQs']);
   const [showOverrideFields, setShowOverrideFields] = useState(false);
 
-  // Pre-fill from the active business whenever it resolves or changes
   useEffect(() => {
     if (!activeBusiness) return;
     const locationStr = [activeBusiness.city, activeBusiness.state].filter(Boolean).join(', ');
-    setFormData({
+    setFormData(prev => ({
+      ...prev,
       businessName: activeBusiness.name,
       businessType: activeBusiness.userDefinedCategory || activeBusiness.category || '',
       location: locationStr,
-      tone: 'Professional',
-    });
+    }));
     if (activeBusiness.keywords?.length) {
       setKeywords(activeBusiness.keywords);
     }
@@ -62,7 +62,6 @@ export default function ContentGeneratorForm({ onGenerate, isLoading }: ContentG
   const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    // Auto-add any keyword still sitting in the input (user forgot to press Enter)
     const finalKeywords = [...keywords];
     if (keywordInput.trim() && !finalKeywords.includes(keywordInput.trim())) {
       finalKeywords.push(keywordInput.trim());
@@ -96,7 +95,7 @@ export default function ContentGeneratorForm({ onGenerate, isLoading }: ContentG
 
       <form onSubmit={handleSubmit} className="space-y-6">
 
-        {/* Business identity — compact strip when pre-filled, full fields otherwise */}
+        {/* Business identity */}
         {isBusinessPrefilled && !showOverrideFields ? (
           <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl">
             <div className="text-sm text-slate-700">
@@ -163,7 +162,21 @@ export default function ContentGeneratorForm({ onGenerate, isLoading }: ContentG
           </div>
         )}
 
+        {/* Topic + Tone row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-slate-700">
+              Campaign Topic <span className="text-slate-400 font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-colors"
+              placeholder="e.g. Summer Sale, Product Launch, Diwali Offers…"
+              value={formData.topic}
+              onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
+            />
+            <p className="text-xs text-slate-400">All 7 posts will be built around this theme.</p>
+          </div>
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700">Content Tone</label>
             <select
@@ -250,7 +263,7 @@ export default function ContentGeneratorForm({ onGenerate, isLoading }: ContentG
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 />
               </svg>
-              Generating Magic...
+              Generating Posts & Thumbnails…
             </>
           ) : (
             <>
@@ -261,6 +274,12 @@ export default function ContentGeneratorForm({ onGenerate, isLoading }: ContentG
             </>
           )}
         </button>
+
+        {isLoading && (
+          <p className="text-center text-xs text-slate-400">
+            Generating 7 posts + thumbnails via AI — this may take ~30–60 seconds.
+          </p>
+        )}
       </form>
     </motion.div>
   );

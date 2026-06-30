@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useBusiness } from '@/context/BusinessContext';
 import { Zap, AlertTriangle, CheckCircle2, Building2, MapPin, Tag, Globe, Phone, Map as MapIcon, Edit3 } from 'lucide-react';
+import UpgradeLimitModal from '@/components/ui/UpgradeLimitModal';
 
 export default function AuditForm() {
   const router = useRouter();
   const { activeBusiness } = useBusiness();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [upgradeMsg, setUpgradeMsg] = useState<string | null>(null);
 
   // Editable overrides — pre-filled from profile, user can adjust before each audit run
   const [categoryOverride, setCategoryOverride] = useState(
@@ -42,6 +44,10 @@ export default function AuditForm() {
       const data = await res.json();
 
       if (!res.ok) {
+        if (data.code === 'UPGRADE_REQUIRED') {
+          setUpgradeMsg(data.error);
+          return;
+        }
         throw new Error(data.error || 'Failed to generate audit');
       }
 
@@ -62,6 +68,9 @@ export default function AuditForm() {
 
   return (
     <div className="max-w-3xl mx-auto">
+      {upgradeMsg && (
+        <UpgradeLimitModal message={upgradeMsg} onClose={() => setUpgradeMsg(null)} />
+      )}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

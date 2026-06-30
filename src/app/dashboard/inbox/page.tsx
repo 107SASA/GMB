@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ConversationThreadList from '@/components/inbox/ConversationThreadList';
 import ChatWindow from '@/components/inbox/ChatWindow';
 import PromptEditor from '@/components/inbox/PromptEditor';
@@ -11,29 +11,69 @@ export default function InboxDashboard() {
   const [threads, setThreads] = useState<any[]>([]);
   const [activeThread, setActiveThread] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'inbox' | 'config'>('inbox');
+  const [isLive, setIsLive] = useState(false);
+  const esRef = useRef<EventSource | null>(null);
 
   const businessId = activeBusiness?._id ?? '';
   const tenantId = activeBusiness?.organizationId ?? '';
 
-  const fetchThreads = async () => {
-    // Threads route is now auth'd via cookie — no businessId needed in URL
+  // Merge updated threads from SSE into local state (newest-first)
+  const mergeThreads = useCallback((incoming: any[]) => {
+    setThreads(prev => {
+      const map = new Map(prev.map(t => [t._id, t]));
+      for (const t of incoming) map.set(t._id, t);
+      return [...map.values()].sort(
+        (a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime()
+      );
+    });
+  }, []);
+
+  // Initial full load
+  const fetchThreads = useCallback(async () => {
     try {
-      const res = await fetch('/api/inbox/threads');
+      const res  = await fetch('/api/inbox/threads');
       const data = await res.json();
-      if (data.success) {
-        setThreads(data.threads);
-      }
+      if (data.success) setThreads(data.threads);
     } catch (e) {
       console.error(e);
     }
-  };
+  }, []);
 
+  // SSE connection — reconnects automatically when businessId changes
   useEffect(() => {
     if (!businessId) return;
+
     fetchThreads();
-    const interval = setInterval(fetchThreads, 15000);
-    return () => clearInterval(interval);
-  }, [businessId]);
+
+    const connect = () => {
+      const es = new EventSource('/api/inbox/sse');
+      esRef.current = es;
+
+      es.addEventListener('connected', () => setIsLive(true));
+      es.addEventListener('ping', () => {/* heartbeat — no-op */});
+      es.addEventListener('threads', (e: MessageEvent) => {
+        try {
+          const updated = JSON.parse(e.data);
+          mergeThreads(updated);
+        } catch { /* ignore parse errors */ }
+      });
+
+      es.onerror = () => {
+        setIsLive(false);
+        es.close();
+        // Reconnect after a short delay
+        setTimeout(connect, 4000);
+      };
+    };
+
+    connect();
+
+    return () => {
+      esRef.current?.close();
+      esRef.current = null;
+      setIsLive(false);
+    };
+  }, [businessId, fetchThreads, mergeThreads]);
 
   const handleUpdateThread = (threadId: string, updates: any) => {
     setThreads(prev => prev.map(t => t._id === threadId ? { ...t, ...updates } : t));
@@ -62,7 +102,13 @@ export default function InboxDashboard() {
     <div className="h-[calc(100vh-4rem)] bg-white flex flex-col">
       {/* Top Bar */}
       <div className="h-14 border-b border-slate-200 flex items-center px-6 bg-white shrink-0 justify-between">
-        <h1 className="text-xl font-bold text-slate-800">Sales Inbox</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-bold text-slate-800">Sales Inbox</h1>
+          <span className={`flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${isLive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+            {isLive ? 'Live' : 'Connecting…'}
+          </span>
+        </div>
         <div className="flex bg-slate-100 p-1 rounded-lg">
           <button
             onClick={() => setActiveTab('inbox')}

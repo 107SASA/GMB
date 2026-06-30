@@ -41,6 +41,9 @@ type Events = {
   "reviews/critical-alert": {
     data: { businessId: string };
   };
+  "gbp/sync.requested": {
+    data: { businessId: string };
+  };
   "crm/lead-created": {
     data: { leadId: string; businessId: string };
   };

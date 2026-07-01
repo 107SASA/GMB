@@ -1,44 +1,90 @@
 import React from 'react';
+import { Users, TrendingUp, Star, MessageSquare, Megaphone } from 'lucide-react';
 
 interface MetricsGridProps {
   metrics: {
     totalLeads: number;
     convertedLeads: number;
+    conversionRate: number;
     totalReviews: number;
     avgRating: number;
     unansweredReviews: number;
     postsPublished: number;
-    bufferDays: number;
   };
 }
 
 export default function MetricsGrid({ metrics }: MetricsGridProps) {
-  const isBufferLow = metrics.bufferDays < 7;
-  const leadConversionRate = metrics.totalLeads > 0 ? Math.round((metrics.convertedLeads / metrics.totalLeads) * 100) : 0;
-
   const cards = [
-    { label: 'Total Leads', value: metrics.totalLeads, icon: 'Users', trend: '+12%', color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { label: 'Conversion Rate', value: `${leadConversionRate}%`, icon: 'TrendingUp', trend: '+2.4%', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Avg Rating', value: metrics.avgRating.toFixed(1), icon: 'Star', trend: 'Stable', color: 'text-amber-500', bg: 'bg-amber-50' },
-    { label: 'Reviews', value: metrics.totalReviews, icon: 'MessageSquare', alert: metrics.unansweredReviews > 0 ? `${metrics.unansweredReviews} unread` : null, color: 'text-blue-500', bg: 'bg-blue-50' },
-    { label: 'Content Buffer', value: `${metrics.bufferDays} Days`, icon: 'Calendar', isDanger: isBufferLow, color: isBufferLow ? 'text-rose-600' : 'text-slate-600', bg: isBufferLow ? 'bg-rose-50' : 'bg-slate-50' },
-    { label: 'Posts Published', value: metrics.postsPublished, icon: 'Megaphone', trend: '+5', color: 'text-violet-600', bg: 'bg-violet-50' }
+    {
+      label: 'Total Leads',
+      value: metrics.totalLeads.toLocaleString(),
+      sub: null,
+      Icon: Users,
+      color: 'text-indigo-600',
+      bg: 'bg-indigo-50',
+      ring: 'ring-indigo-100',
+      badge: null as React.ReactNode,
+    },
+    {
+      label: 'Conversion Rate',
+      value: `${metrics.conversionRate}%`,
+      sub: `${metrics.convertedLeads} of ${metrics.totalLeads} converted`,
+      Icon: TrendingUp,
+      color: 'text-emerald-600',
+      bg: 'bg-emerald-50',
+      ring: 'ring-emerald-100',
+      badge: null as React.ReactNode,
+    },
+    {
+      label: 'Avg Rating',
+      value: metrics.avgRating > 0 ? metrics.avgRating.toFixed(1) : '—',
+      sub: `${metrics.totalReviews} reviews total`,
+      Icon: Star,
+      color: 'text-amber-500',
+      bg: 'bg-amber-50',
+      ring: 'ring-amber-100',
+      badge: null as React.ReactNode,
+    },
+    {
+      label: 'Unanswered Reviews',
+      value: metrics.unansweredReviews.toLocaleString(),
+      sub: metrics.unansweredReviews > 0 ? 'Need your reply' : 'All caught up!',
+      Icon: MessageSquare,
+      color: metrics.unansweredReviews > 0 ? 'text-rose-500' : 'text-blue-500',
+      bg: metrics.unansweredReviews > 0 ? 'bg-rose-50' : 'bg-blue-50',
+      ring: metrics.unansweredReviews > 0 ? 'ring-rose-100' : 'ring-blue-100',
+      badge: metrics.unansweredReviews > 0
+        ? <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full">Action needed</span>
+        : null,
+    },
+    {
+      label: 'Posts Published',
+      value: metrics.postsPublished.toLocaleString(),
+      sub: 'All time published',
+      Icon: Megaphone,
+      color: 'text-violet-600',
+      bg: 'bg-violet-50',
+      ring: 'ring-violet-100',
+      badge: null as React.ReactNode,
+    },
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
       {cards.map((c, i) => (
-        <div key={i} className={`bg-white rounded-2xl p-4 border shadow-sm transition-all hover:shadow-md ${c.isDanger ? 'border-rose-300 ring-2 ring-rose-100' : 'border-slate-200'}`}>
-          <div className="flex justify-between items-start mb-2">
-            <div className={`p-2 rounded-xl ${c.bg}`}>
-              {/* Simple generic icon fallback based on label to avoid massive SVG block */}
-              <div className={`w-5 h-5 ${c.color} font-bold text-center leading-5`}>{c.icon.charAt(0)}</div>
+        <div
+          key={i}
+          className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all group"
+        >
+          <div className="flex justify-between items-start mb-3">
+            <div className={`p-2.5 rounded-xl ${c.bg} ring-4 ${c.ring} transition-all group-hover:ring-8`}>
+              <c.Icon className={`w-4 h-4 ${c.color}`} strokeWidth={2.5} />
             </div>
-            {c.trend && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">{c.trend}</span>}
-            {c.alert && <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">{c.alert}</span>}
+            {c.badge}
           </div>
-          <h3 className="text-sm font-medium text-slate-500 mb-1">{c.label}</h3>
-          <p className={`text-2xl font-bold ${c.isDanger ? 'text-rose-600' : 'text-slate-900'}`}>{c.value}</p>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">{c.label}</p>
+          <p className="text-2xl font-bold text-slate-900">{c.value}</p>
+          {c.sub && <p className="text-[11px] text-slate-400 mt-1">{c.sub}</p>}
         </div>
       ))}
     </div>

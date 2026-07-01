@@ -4,6 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import GBPToken from '@/models/GBPToken';
 import Business from '@/models/Business';
 import { encrypt } from '@/lib/crypto';
+import { inngest } from '@/services/inngest/client';
 
 function getSigningKey(): Uint8Array {
   const secret = process.env.SESSION_SECRET;
@@ -172,9 +173,20 @@ export async function GET(request: NextRequest) {
     googleLocationId: locationId,
   });
 
-  // --- Clear state cookie and redirect ---
+  // --- Trigger automatic GBP sync in the background ---
+  try {
+    await inngest.send({
+      name: 'gbp/sync.requested',
+      data: { businessId },
+    });
+  } catch (e) {
+    // Non-blocking — sync will be retried by the nightly cron if this fails
+    console.error('Failed to trigger GBP auto-sync:', e);
+  }
+
+  // --- Clear state cookie and redirect to Dashboard (GBP section is now inline) ---
   const response = NextResponse.redirect(
-    new URL('/dashboard/insights?connected=true', request.url)
+    new URL('/dashboard?connected=true', request.url)
   );
   response.cookies.set('gbp_oauth_state', '', { maxAge: 0, path: '/' });
   return response;

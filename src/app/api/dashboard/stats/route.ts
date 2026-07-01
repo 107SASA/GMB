@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Lead from '@/models/Lead';
 import Review from '@/models/Review';
 import Post from '@/models/Post';
-import Activity from '@/models/Activity';
+import AIUsageLog from '@/models/AIUsageLog';
 import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
@@ -16,32 +17,60 @@ export async function GET() {
 
     const bid = new mongoose.Types.ObjectId(ctx.businessId);
 
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Resolve date range from query params
+    const { searchParams } = new URL(req.url);
+    const rangeParam = searchParams.get('range');
+    const startParam = searchParams.get('start');
+    const endParam   = searchParams.get('end');
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+    let rangeStart: Date;
+    let rangeEnd: Date = new Date(now);
 
-    const next7Days = new Date();
-    next7Days.setDate(today.getDate() + 7);
+    if (startParam && endParam) {
+      rangeStart = new Date(startParam);
+      rangeEnd   = new Date(endParam);
+      rangeEnd.setHours(23, 59, 59, 999);
+    } else {
+      const days = rangeParam ? parseInt(rangeParam, 10) : 30;
+      rangeStart = new Date(now);
+      rangeStart.setDate(now.getDate() - days);
+    }
 
-    // 1. Leads Aggregation
+    const rangeDays = Math.ceil((rangeEnd.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
+
+    // 1. Leads — all-time conversion rate (matches CRM logic exactly) + range chart + recent
     const leadsPromise = Lead.aggregate([
       { $match: { businessId: bid } },
       {
         $facet: {
+          // All-time totals — same flags CRM uses
           metrics: [
             {
               $group: {
                 _id: null,
                 total: { $sum: 1 },
-                converted: { $sum: { $cond: [{ $eq: ['$pipelineStage', 'Converted'] }, 1, 0] } },
+                converted: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $or: [
+                          { $eq: ['$lifeCycleStage', 'converted'] },
+                          { $eq: ['$pipelineStage', 'Converted'] },
+                        ],
+                      },
+                      1,
+                      0,
+                    ],
+                  },
+                },
               },
             },
           ],
           sourceDonut: [{ $group: { _id: '$source', count: { $sum: 1 } } }],
+          // Chart filtered by selected range
           leadsOverTime: [
-            { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+            { $match: { createdAt: { $gte: rangeStart, $lte: rangeEnd } } },
             {
               $group: {
                 _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
@@ -50,12 +79,17 @@ export async function GET() {
             },
             { $sort: { _id: 1 } },
           ],
-          recentLeads: [{ $sort: { createdAt: -1 } }, { $limit: 5 }],
+          // Recent leads in the selected range
+          recentLeads: [
+            { $match: { createdAt: { $gte: rangeStart, $lte: rangeEnd } } },
+            { $sort: { createdAt: -1 } },
+            { $limit: 5 },
+          ],
         },
       },
     ]);
 
-    // 2. Reviews Aggregation
+    // 2. Reviews — all-time totals
     const reviewsPromise = Review.aggregate([
       { $match: { businessId: bid } },
       {
@@ -80,89 +114,57 @@ export async function GET() {
       },
     ]);
 
-    // 3. Posts (Scheduler) Aggregation
-    const postsPromise = Post.aggregate([
-      { $match: { businessId: bid } },
-      {
-        $facet: {
-          metrics: [
-            {
-              $group: {
-                _id: null,
-                published: { $sum: { $cond: [{ $eq: ['$status', 'published'] }, 1, 0] } },
-                scheduled: { $sum: { $cond: [{ $eq: ['$status', 'scheduled'] }, 1, 0] } },
-              },
-            },
-          ],
-          calendar: [
-            { $match: { scheduledAt: { $gte: today, $lte: next7Days } } },
-            { $sort: { scheduledAt: 1 } },
-          ],
-          lastScheduledPost: [
-            { $match: { status: 'scheduled' } },
-            { $sort: { scheduledAt: -1 } },
-            { $limit: 1 },
-          ],
-        },
-      },
-    ]);
+    // 3. Posts — total all-time published count
+    const postsPromise = Post.countDocuments({ businessId: bid, status: 'published' });
 
-    // 4. Active leads needing attention
-    const followUpsPromise = Lead.find({
-      businessId: bid,
-      pipelineStage: { $in: ['New', 'Contacted', 'Qualified'] },
-    })
-      .sort({ lastInteractionTime: 1 })
-      .limit(5)
-      .lean();
-
-    // 5. Activity Feed
-    const activityPromise = Activity.find({ businessId: bid })
+    // 4. AI Activity from AIUsageLog
+    const aiActivitiesPromise = AIUsageLog.find({ businessId: bid })
       .sort({ createdAt: -1 })
-      .limit(8)
-      .populate('leadId', 'name')
+      .limit(10)
       .lean();
 
-    const [leadsRes, reviewsRes, postsRes, followUps, activities] = await Promise.all([
+    const [leadsRes, reviewsRes, postsPublished, aiActivities] = await Promise.all([
       leadsPromise,
       reviewsPromise,
       postsPromise,
-      followUpsPromise,
-      activityPromise,
+      aiActivitiesPromise,
     ]);
 
-    const leads = leadsRes[0];
+    const leads   = leadsRes[0];
     const reviews = reviewsRes[0];
-    const posts = postsRes[0];
 
-    let bufferDays = 0;
-    if (posts.lastScheduledPost.length > 0) {
-      const lastDate = new Date(posts.lastScheduledPost[0].scheduledAt);
-      bufferDays = Math.max(0, Math.ceil((lastDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
-    }
+    const totalLeads     = leads.metrics[0]?.total     ?? 0;
+    const convertedLeads = leads.metrics[0]?.converted ?? 0;
+    // Same formula the CRM page uses
+    const conversionRate = totalLeads > 0 ? Math.round((convertedLeads / totalLeads) * 100) : 0;
 
     const payload = {
+      range: { start: rangeStart.toISOString(), end: rangeEnd.toISOString(), days: rangeDays },
       metrics: {
-        totalLeads: leads.metrics[0]?.total || 0,
-        convertedLeads: leads.metrics[0]?.converted || 0,
-        totalReviews: reviews.metrics[0]?.total || 0,
-        avgRating: reviews.metrics[0]?.avgRating
+        totalLeads,
+        convertedLeads,
+        conversionRate,
+        totalReviews:      reviews.metrics[0]?.total      ?? 0,
+        avgRating:         reviews.metrics[0]?.avgRating
           ? Number(reviews.metrics[0].avgRating.toFixed(1))
           : 0,
-        unansweredReviews: reviews.metrics[0]?.unanswered || 0,
-        postsPublished: posts.metrics[0]?.published || 0,
-        bufferDays,
+        unansweredReviews: reviews.metrics[0]?.unanswered ?? 0,
+        postsPublished,
       },
       charts: {
-        leadsOverTime: leads.leadsOverTime.map((d: any) => ({ date: d._id, leads: d.count })),
-        sourceDonut: leads.sourceDonut.map((d: any) => ({ name: d._id || 'Unknown', value: d.count })),
+        leadsOverTime:     leads.leadsOverTime.map((d: any) => ({ date: d._id, leads: d.count })),
+        sourceDonut:       leads.sourceDonut.map((d: any) => ({ name: d._id || 'Unknown', value: d.count })),
         starsDistribution: reviews.starsDistribution.map((d: any) => ({ star: d._id, count: d.count })),
       },
       panels: {
         recentLeads: leads.recentLeads,
-        calendar: posts.calendar,
-        followUps,
-        activities,
+        aiActivities: aiActivities.map((a: any) => ({
+          promptType: a.promptType,
+          status:     a.status,
+          aiModel:    a.aiModel,
+          tokensUsed: a.tokensUsed,
+          createdAt:  a.createdAt,
+        })),
       },
     };
 

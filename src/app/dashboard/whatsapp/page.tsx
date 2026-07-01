@@ -63,20 +63,31 @@ export default function InboxDashboard() {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'inbox' ? (
           <div className="flex h-full">
-            <ConversationThreadList 
-              threads={threads} 
-              activeThreadId={activeThread?._id || null} 
-              onSelectThread={setActiveThread} 
-            />
-            <ChatWindow 
-              thread={activeThread} 
-              businessId={businessId} 
-              tenantId={tenantId}
-              onUpdateThread={handleUpdateThread}
-            />
+            <div className={`
+              flex flex-col w-full md:w-80 md:flex-none md:border-r md:border-slate-100
+              ${activeThread ? 'hidden md:flex' : 'flex'}
+            `}>
+              <ConversationThreadList
+                threads={threads}
+                activeThreadId={activeThread?._id || null}
+                onSelectThread={setActiveThread}
+              />
+            </div>
+            <div className={`
+              flex-1 flex flex-col overflow-hidden
+              ${activeThread ? 'flex' : 'hidden md:flex'}
+            `}>
+              <ChatWindow
+                thread={activeThread}
+                businessId={businessId}
+                tenantId={tenantId}
+                onUpdateThread={handleUpdateThread}
+                onBack={() => setActiveThread(null)}
+              />
+            </div>
           </div>
         ) : (
-          <div className="p-8 h-full overflow-y-auto bg-slate-50">
+          <div className="p-4 sm:p-8 h-full overflow-y-auto bg-slate-50">
             <PromptEditor businessId={businessId} />
           </div>
         )}

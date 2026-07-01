@@ -357,7 +357,17 @@ export default function CRMDashboard() {
   const [stats, setStats] = useState({ total: 0, converted: 0, conversionRate: 0, avgScore: 0 });
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  // Default to list view (SSR-safe). On mobile, auto-switch back to list if user resizes down.
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const handler = (e: MediaQueryListEvent) => {
+      if (!e.matches && viewMode === 'kanban') setViewMode('list');
+    };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [viewMode]);
   const [kanbanColumns, setKanbanColumns] = useState<string[]>([]);
   const [showAddLead, setShowAddLead] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -465,11 +475,11 @@ export default function CRMDashboard() {
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">AI Lead Manager</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">AI Lead Manager</h1>
             <p className="text-slate-500 mt-1">Intelligent CRM with automated follow-ups and LLaMA scoring.</p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {/* View Toggle */}
             <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
               <button

@@ -149,7 +149,7 @@ export default function HistoryPage() {
         </div>
 
         {selected && (
-          <div className="w-full lg:w-96 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm h-fit sticky top-8">
+          <div className="w-full lg:w-96 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm h-fit lg:sticky lg:top-8">
             <div className="flex items-start justify-between border-b border-slate-100 pb-4 mb-4">
               <h3 className="font-bold text-slate-900 pr-4">{selected.title}</h3>
               <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-900 transition">

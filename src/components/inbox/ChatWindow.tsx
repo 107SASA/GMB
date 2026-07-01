@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { ChevronLeft } from 'lucide-react';
 
 interface ChatWindowProps {
   thread: any;
   businessId: string;
   tenantId: string;
   onUpdateThread: (threadId: string, updates: any) => void;
+  onBack?: () => void;
 }
 
-export default function ChatWindow({ thread, businessId, tenantId, onUpdateThread }: ChatWindowProps) {
+export default function ChatWindow({ thread, businessId, tenantId, onUpdateThread, onBack }: ChatWindowProps) {
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState('');
@@ -114,12 +116,24 @@ export default function ChatWindow({ thread, businessId, tenantId, onUpdateThrea
     <div className="flex-1 flex flex-col bg-white h-full relative">
       {/* Header */}
       <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white z-10 shadow-sm">
-        <div>
-          <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-            {lead.name}
-            <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full uppercase tracking-wider">{lead.pipelineStage}</span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">{lead.phone}</p>
+        <div className="flex items-center gap-2 min-w-0">
+          {/* Back button — visible on mobile when onBack is provided */}
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="md:hidden p-1.5 -ml-1 rounded-lg hover:bg-slate-100 transition-colors shrink-0"
+              aria-label="Back to conversations"
+            >
+              <ChevronLeft className="w-5 h-5 text-slate-600" />
+            </button>
+          )}
+          <div className="min-w-0">
+            <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2 truncate">
+              {lead.name}
+              <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">{lead.pipelineStage}</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">{lead.phone}</p>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">

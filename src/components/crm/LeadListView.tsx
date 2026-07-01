@@ -55,76 +55,114 @@ export default function LeadListView({ leads, onLeadClick }: LeadListViewProps) 
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      {/* Table Header */}
-      <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-        <div className="col-span-3">Lead</div>
-        <div className="col-span-2">Phone / Email</div>
-        <div className="col-span-2">Source</div>
-        <div className="col-span-2">Stage</div>
-        <div className="col-span-1">Pipeline</div>
-        <div className="col-span-1 text-center">AI Score</div>
-        <div className="col-span-1 text-right">Added</div>
-      </div>
-
-      {/* Table Rows */}
-      <div className="divide-y divide-slate-100">
+      {/* Mobile: card layout (below md) */}
+      <div className="md:hidden divide-y divide-slate-100">
         {leads.map((lead) => (
           <div
             key={lead._id}
             onClick={() => onLeadClick(lead)}
-            className="grid grid-cols-12 gap-4 px-6 py-4 hover:bg-indigo-50/30 cursor-pointer transition-colors group items-center"
+            className="p-4 hover:bg-indigo-50/30 cursor-pointer transition-colors active:bg-indigo-50"
           >
-            {/* Name + Avatar */}
-            <div className="col-span-3 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 font-black text-sm flex items-center justify-center shrink-0">
-                {lead.name?.charAt(0)?.toUpperCase() || '?'}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 font-black text-sm flex items-center justify-center shrink-0">
+                  {lead.name?.charAt(0)?.toUpperCase() || '?'}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-slate-900 text-sm truncate">{lead.name}</p>
+                  <p className="text-xs text-slate-500 truncate">{lead.phone || lead.email || '—'}</p>
+                </div>
               </div>
-              <span className="font-semibold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors truncate">
-                {lead.name}
-              </span>
-            </div>
-
-            {/* Phone / Email */}
-            <div className="col-span-2 text-sm text-slate-500 truncate">
-              {lead.phone || lead.email || '—'}
-            </div>
-
-            {/* Source */}
-            <div className="col-span-2">
-              <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${getSourceBadge(lead.source)}`}>
-                {lead.source || 'Manual'}
-              </span>
-            </div>
-
-            {/* Life Cycle Stage */}
-            <div className="col-span-2">
-              <StageBadge stage={lead.lifeCycleStage} />
-            </div>
-
-            {/* Pipeline Stage */}
-            <div className="col-span-1">
-              {lead.pipelineStage ? (
-                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 truncate block max-w-20">
-                  {lead.pipelineStage}
-                </span>
-              ) : (
-                <span className="text-xs text-slate-400 italic">—</span>
-              )}
-            </div>
-
-            {/* AI Score */}
-            <div className="col-span-1 flex justify-center">
-              <span className={`text-xs font-black px-2 py-0.5 rounded-full ${getScoreColor(lead.aiLeadScore)}`}>
+              <span className={`text-xs font-black px-2 py-0.5 rounded-full shrink-0 ${getScoreColor(lead.aiLeadScore)}`}>
                 {lead.aiLeadScore || 'N/A'}
               </span>
             </div>
-
-            {/* Date */}
-            <div className="col-span-1 text-xs text-slate-400 text-right">
-              {new Date(lead.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            <div className="flex flex-wrap items-center gap-1.5 mt-2 ml-12">
+              <StageBadge stage={lead.lifeCycleStage} />
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${getSourceBadge(lead.source)}`}>
+                {lead.source || 'Manual'}
+              </span>
+              <span className="text-xs text-slate-400">
+                {new Date(lead.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+              </span>
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Desktop: 12-column grid table (md and above) */}
+      <div className="hidden md:block">
+        {/* Table Header */}
+        <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+          <div className="col-span-3">Lead</div>
+          <div className="col-span-2">Phone / Email</div>
+          <div className="col-span-2">Source</div>
+          <div className="col-span-2">Stage</div>
+          <div className="col-span-1">Pipeline</div>
+          <div className="col-span-1 text-center">AI Score</div>
+          <div className="col-span-1 text-right">Added</div>
+        </div>
+
+        {/* Table Rows */}
+        <div className="divide-y divide-slate-100">
+          {leads.map((lead) => (
+            <div
+              key={lead._id}
+              onClick={() => onLeadClick(lead)}
+              className="grid grid-cols-12 gap-4 px-6 py-4 hover:bg-indigo-50/30 cursor-pointer transition-colors group items-center"
+            >
+              {/* Name + Avatar */}
+              <div className="col-span-3 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 font-black text-sm flex items-center justify-center shrink-0">
+                  {lead.name?.charAt(0)?.toUpperCase() || '?'}
+                </div>
+                <span className="font-semibold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors truncate">
+                  {lead.name}
+                </span>
+              </div>
+
+              {/* Phone / Email */}
+              <div className="col-span-2 text-sm text-slate-500 truncate">
+                {lead.phone || lead.email || '—'}
+              </div>
+
+              {/* Source */}
+              <div className="col-span-2">
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${getSourceBadge(lead.source)}`}>
+                  {lead.source || 'Manual'}
+                </span>
+              </div>
+
+              {/* Life Cycle Stage */}
+              <div className="col-span-2">
+                <StageBadge stage={lead.lifeCycleStage} />
+              </div>
+
+              {/* Pipeline Stage */}
+              <div className="col-span-1">
+                {lead.pipelineStage ? (
+                  <span className="text-xs font-semibold px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 truncate block max-w-20">
+                    {lead.pipelineStage}
+                  </span>
+                ) : (
+                  <span className="text-xs text-slate-400 italic">—</span>
+                )}
+              </div>
+
+              {/* AI Score */}
+              <div className="col-span-1 flex justify-center">
+                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${getScoreColor(lead.aiLeadScore)}`}>
+                  {lead.aiLeadScore || 'N/A'}
+                </span>
+              </div>
+
+              {/* Date */}
+              <div className="col-span-1 text-xs text-slate-400 text-right">
+                {new Date(lead.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

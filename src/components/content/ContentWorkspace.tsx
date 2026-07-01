@@ -64,39 +64,41 @@ export default function ContentWorkspace() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-end">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-2">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Content Workspace</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Content Workspace</h1>
           <p className="text-slate-500 mt-1">Review, edit, and schedule your AI-generated content.</p>
         </div>
         <button
           onClick={() => setContentData(null)}
-          className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
+          className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors self-start sm:self-auto"
         >
           &larr; Generate New Content
         </button>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200 bg-slate-50/50 px-6">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`py-4 px-6 font-medium text-sm transition-colors border-b-2 ${
-                activeTab === tab.id
-                  ? 'border-slate-900 text-slate-900 bg-white'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        {/* Tab Navigation — horizontally scrollable on narrow screens */}
+        <div className="overflow-x-auto border-b border-slate-200 bg-slate-50/50">
+          <div className="flex px-4 sm:px-6 min-w-max">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`whitespace-nowrap py-4 px-5 sm:px-6 font-medium text-sm transition-colors border-b-2 ${
+                  activeTab === tab.id
+                    ? 'border-slate-900 text-slate-900 bg-white'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Tab Content */}
-        <div className="p-8 bg-white min-h-150">
+        <div className="p-4 sm:p-8 bg-white min-h-150">
           <AnimatePresence mode="wait">
             {activeTab === 'posts' && (
               <motion.div

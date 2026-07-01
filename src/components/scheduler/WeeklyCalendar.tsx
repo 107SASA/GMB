@@ -175,6 +175,51 @@ function DroppableWeekColumn({
   );
 }
 
+// ─── Mobile: droppable day row (vertical list layout) ────────────────────────
+function DroppableMobileDayRow({
+  date,
+  children,
+}: {
+  date: Date;
+  children: ReactNode;
+}) {
+  const dateStr = toLocalDateStr(date);
+  const { setNodeRef, isOver } = useDroppable({ id: dateStr });
+  const isToday = dateStr === toLocalDateStr(new Date());
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex gap-3 items-start px-4 py-3 border-b border-slate-100 transition-colors duration-100 ${
+        isOver ? 'bg-blue-50' : isToday ? 'bg-blue-50/40' : 'bg-white'
+      }`}
+    >
+      {/* Date column */}
+      <div className="w-11 shrink-0 text-center pt-0.5">
+        <div className="text-[10px] font-bold text-slate-400 uppercase leading-none">
+          {date.toLocaleDateString('en-US', { weekday: 'short' })}
+        </div>
+        <div className={`text-xl font-bold leading-tight ${isToday ? 'text-blue-600' : 'text-slate-900'}`}>
+          {date.getDate()}
+        </div>
+        <div className="text-[10px] text-slate-400 leading-none">
+          {date.toLocaleDateString('en-US', { month: 'short' })}
+        </div>
+      </div>
+
+      {/* Posts + drop hint */}
+      <div className="flex-1 min-w-0 py-1">
+        {children}
+        {isOver && (
+          <div className="mt-1 border-2 border-dashed border-blue-300 rounded-lg h-8 flex items-center justify-center text-xs text-blue-500 font-medium">
+            Drop to schedule
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Post detail modal ────────────────────────────────────────────────────────
 function PostDetailModal({
   post,
@@ -579,7 +624,7 @@ export default function WeeklyCalendar({ posts, onPublish, onReschedule }: Weekl
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
 
         {/* ── Toolbar ───────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
             {viewMode === 'month' && (
               <>
@@ -589,7 +634,7 @@ export default function WeeklyCalendar({ posts, onPublish, onReschedule }: Weekl
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
-                <span className="text-base font-bold text-slate-900 w-44 text-center">
+                <span className="text-sm sm:text-base font-bold text-slate-900 text-center min-w-0">
                   {monthLabel}
                 </span>
                 <button
@@ -601,7 +646,7 @@ export default function WeeklyCalendar({ posts, onPublish, onReschedule }: Weekl
               </>
             )}
             {viewMode === 'week' && (
-              <span className="text-base font-bold text-slate-900">
+              <span className="text-sm sm:text-base font-bold text-slate-900">
                 Week of{' '}
                 {weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
@@ -612,25 +657,25 @@ export default function WeeklyCalendar({ posts, onPublish, onReschedule }: Weekl
           <div className="flex rounded-xl border border-slate-200 overflow-hidden text-sm font-semibold">
             <button
               onClick={() => setViewMode('month')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 transition-colors ${
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 transition-colors ${
                 viewMode === 'month'
                   ? 'bg-blue-600 text-white'
                   : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
               <LayoutGrid className="w-4 h-4" />
-              Month
+              <span className="hidden sm:inline">Month</span>
             </button>
             <button
               onClick={() => setViewMode('week')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 border-l border-slate-200 transition-colors ${
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 border-l border-slate-200 transition-colors ${
                 viewMode === 'week'
                   ? 'bg-blue-600 text-white'
                   : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
               <CalendarDays className="w-4 h-4" />
-              Week
+              <span className="hidden sm:inline">Week</span>
             </button>
           </div>
         </div>
@@ -638,86 +683,133 @@ export default function WeeklyCalendar({ posts, onPublish, onReschedule }: Weekl
         {/* ── Month view ─────────────────────────────────────────────────────── */}
         {viewMode === 'month' && (
           <>
-            {/* Day-of-week header */}
-            <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50">
-              {WEEKDAYS.map(d => (
-                <div
-                  key={d}
-                  className="py-2.5 text-center text-xs font-bold text-slate-500 uppercase tracking-wider border-r border-slate-100 last:border-r-0"
-                >
-                  {d}
+            {/* Desktop: 7-column grid (md and above) */}
+            <div className="hidden md:block">
+              {/* Day-of-week header */}
+              <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50">
+                {WEEKDAYS.map(d => (
+                  <div
+                    key={d}
+                    className="py-2.5 text-center text-xs font-bold text-slate-500 uppercase tracking-wider border-r border-slate-100 last:border-r-0"
+                  >
+                    {d}
+                  </div>
+                ))}
+              </div>
+              {/* Rows */}
+              {monthGrid.map((week, wi) => (
+                <div key={wi} className="grid grid-cols-7">
+                  {week.map((day, di) => {
+                    const isCurrentMonth = day.getMonth() === displayDate.getMonth();
+                    const dayPosts = getPostsForDate(day);
+                    const visible = dayPosts.slice(0, 3);
+                    const overflow = dayPosts.length - visible.length;
+                    return (
+                      <DroppableMonthCell key={di} date={day} isCurrentMonth={isCurrentMonth}>
+                        {visible.map(post => (
+                          <DraggableChip key={post._id} post={post} onClick={() => setSelectedPost(post)} />
+                        ))}
+                        {overflow > 0 && (
+                          <button className="text-[10px] text-blue-600 font-semibold px-1 hover:underline">
+                            +{overflow} more
+                          </button>
+                        )}
+                      </DroppableMonthCell>
+                    );
+                  })}
                 </div>
               ))}
             </div>
 
-            {/* Rows */}
-            {monthGrid.map((week, wi) => (
-              <div key={wi} className="grid grid-cols-7">
-                {week.map((day, di) => {
-                  const isCurrentMonth = day.getMonth() === displayDate.getMonth();
+            {/* Mobile: vertical day list (below md) */}
+            <div className="md:hidden">
+              {monthGrid.flat()
+                .filter(d => d.getMonth() === displayDate.getMonth())
+                .map((day, i) => {
                   const dayPosts = getPostsForDate(day);
-                  const visible = dayPosts.slice(0, 3);
+                  const visible = dayPosts.slice(0, 5);
                   const overflow = dayPosts.length - visible.length;
                   return (
-                    <DroppableMonthCell key={di} date={day} isCurrentMonth={isCurrentMonth}>
+                    <DroppableMobileDayRow key={i} date={day}>
                       {visible.map(post => (
                         <DraggableChip key={post._id} post={post} onClick={() => setSelectedPost(post)} />
                       ))}
                       {overflow > 0 && (
-                        <button className="text-[10px] text-blue-600 font-semibold px-1 hover:underline">
+                        <button className="text-[10px] text-blue-600 font-semibold hover:underline mt-0.5">
                           +{overflow} more
                         </button>
                       )}
-                    </DroppableMonthCell>
+                      {dayPosts.length === 0 && (
+                        <div className="text-xs text-slate-300 py-1">No posts</div>
+                      )}
+                    </DroppableMobileDayRow>
                   );
                 })}
-              </div>
-            ))}
+            </div>
           </>
         )}
 
         {/* ── Week view ──────────────────────────────────────────────────────── */}
         {viewMode === 'week' && (
           <>
-            {/* Header */}
-            <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50">
-              {weekDays.map((day, i) => {
-                const isToday = toLocalDateStr(day) === toLocalDateStr(today);
-                return (
-                  <div key={i} className="py-3 text-center border-r border-slate-100 last:border-r-0">
-                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                      {WEEKDAYS[day.getDay()]}
+            {/* Desktop: 7-column grid (md and above) */}
+            <div className="hidden md:block">
+              {/* Header */}
+              <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50">
+                {weekDays.map((day, i) => {
+                  const isToday = toLocalDateStr(day) === toLocalDateStr(today);
+                  return (
+                    <div key={i} className="py-3 text-center border-r border-slate-100 last:border-r-0">
+                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        {WEEKDAYS[day.getDay()]}
+                      </div>
+                      <div
+                        className={`mx-auto mt-1 w-9 h-9 flex items-center justify-center rounded-full text-base font-bold ${
+                          isToday ? 'bg-blue-600 text-white' : 'text-slate-900'
+                        }`}
+                      >
+                        {day.getDate()}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        {day.toLocaleDateString('en-US', { month: 'short' })}
+                      </div>
                     </div>
-                    <div
-                      className={`mx-auto mt-1 w-9 h-9 flex items-center justify-center rounded-full text-base font-bold ${
-                        isToday ? 'bg-blue-600 text-white' : 'text-slate-900'
-                      }`}
-                    >
-                      {day.getDate()}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">
-                      {day.toLocaleDateString('en-US', { month: 'short' })}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+              {/* Columns */}
+              <div className="grid grid-cols-7">
+                {weekDays.map((day, i) => {
+                  const dayPosts = getPostsForDate(day);
+                  return (
+                    <DroppableWeekColumn key={i} date={day}>
+                      {dayPosts.map(post => (
+                        <DraggableChip key={post._id} post={post} onClick={() => setSelectedPost(post)} />
+                      ))}
+                      {dayPosts.length === 0 && (
+                        <div className="h-full min-h-10 flex items-center justify-center border-2 border-dashed border-slate-100 rounded-lg text-[10px] text-slate-300 font-medium">
+                          Empty
+                        </div>
+                      )}
+                    </DroppableWeekColumn>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Columns */}
-            <div className="grid grid-cols-7">
+            {/* Mobile: vertical day list (below md) */}
+            <div className="md:hidden">
               {weekDays.map((day, i) => {
                 const dayPosts = getPostsForDate(day);
                 return (
-                  <DroppableWeekColumn key={i} date={day}>
+                  <DroppableMobileDayRow key={i} date={day}>
                     {dayPosts.map(post => (
                       <DraggableChip key={post._id} post={post} onClick={() => setSelectedPost(post)} />
                     ))}
                     {dayPosts.length === 0 && (
-                      <div className="h-full min-h-10 flex items-center justify-center border-2 border-dashed border-slate-100 rounded-lg text-[10px] text-slate-300 font-medium">
-                        Empty
-                      </div>
+                      <div className="text-xs text-slate-300 py-1">No posts</div>
                     )}
-                  </DroppableWeekColumn>
+                  </DroppableMobileDayRow>
                 );
               })}
             </div>

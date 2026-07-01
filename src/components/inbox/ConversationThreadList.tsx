@@ -8,7 +8,7 @@ interface ThreadListProps {
 
 export default function ConversationThreadList({ threads, activeThreadId, onSelectThread }: ThreadListProps) {
   return (
-    <div className="w-80 border-r border-slate-200 bg-white h-full flex flex-col flex-shrink-0">
+    <div className="w-full border-r border-slate-200 bg-white h-full flex flex-col flex-shrink-0">
       <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
         <h2 className="font-bold text-slate-800">Inbox</h2>
         <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-1 rounded-full">

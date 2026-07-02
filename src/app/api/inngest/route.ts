@@ -1,0 +1,50 @@
+import { serve } from "inngest/next";
+import { inngest } from "@/services/inngest/client";
+import {
+  processWhatsappMessage,
+  followUpCron,
+  processFollowUpJob,
+  bufferMonitorWorker,
+  manualContentGenerate,
+  processContentJob,
+  processReviewCampaign,
+  reviewAutopollCron,
+  processReviewAutopollJob,
+  publishScheduledPostsCron,
+  processPublishPostJob,
+  reviewSyncWorker,
+  processReviewSyncJob,
+  criticalAlertWorker,
+  scheduleLeadFollowUpsJob,
+  dispatchWhatsappFollowUpJob,
+  processDemoBooking,
+  generateAuditJob,
+  gbpNightlySyncScheduler,
+  gbpSyncWorker
+} from "@/services/inngest/functions";
+
+export const { GET, POST, PUT } = serve({
+  client: inngest,
+  functions: [
+    processWhatsappMessage,
+    followUpCron,
+    processFollowUpJob,
+    bufferMonitorWorker,
+    manualContentGenerate,
+    processContentJob,
+    processReviewCampaign,
+    reviewAutopollCron,
+    processReviewAutopollJob,
+    publishScheduledPostsCron,
+    processPublishPostJob,
+    reviewSyncWorker,
+    processReviewSyncJob,
+    criticalAlertWorker,
+    scheduleLeadFollowUpsJob,
+    dispatchWhatsappFollowUpJob,
+    processDemoBooking,
+    generateAuditJob,
+    gbpNightlySyncScheduler,
+    gbpSyncWorker,
+  ],
+});

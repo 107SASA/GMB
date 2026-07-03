@@ -94,16 +94,14 @@ export const sendEmailOtp = async (to: string, otp: string, purpose: 'verify' | 
       html,
     });
 
-    console.log(`\n================================`);
-    console.log(`🔑 [DEV MODE] OTP for ${to}: ${otp}`);
-    console.log(`================================\n`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`\n================================`);
+      console.log(`🔑 [DEV MODE] OTP for ${to}: ${otp}`);
+      console.log(`================================\n`);
+    }
 
     if (error) {
       console.error('Resend API Error:', error);
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('Swallowing Resend error in development mode. Please use the OTP printed above.');
-        return { success: true, messageId: 'dev_mock_id' };
-      }
       return { success: false, error: error.message };
     }
 

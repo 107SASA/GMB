@@ -24,10 +24,16 @@ export default function StepCompletion({ data }: Props) {
         body: JSON.stringify(data),
       });
 
+      const body = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
         setError(body.error || `Server error (${res.status}) — check the terminal for details.`);
         setLoading(false);
+        return;
+      }
+
+      if (body.requiresVerification) {
+        router.push(`/verify?email=${encodeURIComponent(body.email)}`);
         return;
       }
 
@@ -56,22 +62,22 @@ export default function StepCompletion({ data }: Props) {
         transition={{ delay: 0.3 }}
         className="text-4xl font-bold text-slate-900 tracking-tight mb-4"
       >
-        Your workspace is ready.
+        Almost there.
       </motion.h1>
-      
-      <motion.p 
+
+      <motion.p
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.4 }}
         className="text-lg text-slate-500 mb-10 max-w-md"
       >
-        We've successfully provisioned the <strong>{data.businessName || 'Acme'}</strong> organization and spun up your AI services.
+        We'll provision the <strong>{data.businessName || 'Acme'}</strong> organization and spin up your AI services. We'll also email you a code to confirm your address before your workspace unlocks.
       </motion.p>
 
       {error && (
         <div className="text-red-500 text-sm font-bold mb-4">{error}</div>
       )}
-      
+
       <motion.button
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -80,7 +86,7 @@ export default function StepCompletion({ data }: Props) {
         disabled={loading}
         className="flex items-center gap-2 px-10 py-5 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl hover:-translate-y-1 disabled:opacity-70 disabled:cursor-not-allowed"
       >
-        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Launch Dashboard'}
+        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Create My Workspace'}
       </motion.button>
     </div>
   );

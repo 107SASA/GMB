@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import ConversationThread from '@/models/ConversationThread';
 import mongoose from 'mongoose';
+import '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
 
 export async function GET(req: Request) {

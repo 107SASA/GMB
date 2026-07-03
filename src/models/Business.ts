@@ -62,6 +62,25 @@ export interface IBusiness extends Document {
   onboardingCompleted: boolean;
   faqs?: Array<{ question: string; answer: string }>;
   isDeleted?: boolean;
+  // ADDITIVE — WhatsApp AI Agent booking configuration (Feature 1).
+  // Opt-in only: bookingEnabled defaults to false so existing businesses
+  // are completely unaffected until they explicitly configure this.
+  whatsappBookingSettings?: {
+    bookingEnabled: boolean;
+    timezone: string;
+    workingDays: {
+      monday: boolean;
+      tuesday: boolean;
+      wednesday: boolean;
+      thursday: boolean;
+      friday: boolean;
+      saturday: boolean;
+      sunday: boolean;
+    };
+    openingTime: string; // 24hr "HH:mm"
+    closingTime: string; // 24hr "HH:mm"
+    slotDurationMinutes: number;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -129,6 +148,25 @@ const BusinessSchema: Schema = new Schema(
     onboardingCompleted: { type: Boolean, default: false },
     faqs: [{ question: { type: String }, answer: { type: String } }],
     isDeleted: { type: Boolean, default: false },
+    // ADDITIVE — see whatsappBookingSettings in IBusiness above. Not required,
+    // no default object is forced onto existing documents; the WhatsApp
+    // appointment agent treats a missing/disabled config as "booking off".
+    whatsappBookingSettings: {
+      bookingEnabled: { type: Boolean, default: false },
+      timezone: { type: String, default: 'Asia/Kolkata' },
+      workingDays: {
+        monday: { type: Boolean, default: true },
+        tuesday: { type: Boolean, default: true },
+        wednesday: { type: Boolean, default: true },
+        thursday: { type: Boolean, default: true },
+        friday: { type: Boolean, default: true },
+        saturday: { type: Boolean, default: true },
+        sunday: { type: Boolean, default: false },
+      },
+      openingTime: { type: String, default: '09:00' },
+      closingTime: { type: String, default: '18:00' },
+      slotDurationMinutes: { type: Number, default: 30 },
+    },
   },
   { timestamps: true }
 );

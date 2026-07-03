@@ -93,6 +93,7 @@ export default function SchedulerDashboard() {
         posts={bufferData.allPosts}
         onPublish={handlePublish}
         onReschedule={handleReschedule}
+        onDataChanged={fetchBuffer}
       />
     </div>
   );

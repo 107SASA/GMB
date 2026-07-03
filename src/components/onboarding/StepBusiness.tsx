@@ -10,6 +10,12 @@ interface Props {
   onBack: () => void;
 }
 
+const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
+
+function normalizePhone(phone: string): string {
+  return phone.replace(/[^\d+]/g, '');
+}
+
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
   useEffect(() => {
@@ -144,6 +150,10 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
   const handleContinue = () => {
     if (!data.businessName || !data.phone || !data.category || !data.city || !data.area || !data.description) {
       setError('Please fill in all required fields: Business Name, Category, Description, Phone, City, and Area.');
+      return;
+    }
+    if (!PHONE_REGEX.test(normalizePhone(data.phone))) {
+      setError('Please enter a valid phone number in international format, e.g. +14155550100.');
       return;
     }
     setError('');

@@ -15,6 +15,10 @@ export interface ICustomer extends Document {
   totalMessagesSent: number;
   lastMessageAt?: Date;
   metadata?: Record<string, any>;
+  // ADDITIVE — used in read-only mode by the WhatsApp AI Agent for
+  // personalization (Feature 9). Defaults to 0, never written by any
+  // existing module, so nothing outside WhatsApp is affected.
+  totalSpend?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,7 +42,8 @@ const CustomerSchema = new Schema(
     },
     totalMessagesSent: { type: Number, default: 0 },
     lastMessageAt: { type: Date },
-    metadata: { type: Schema.Types.Mixed }
+    metadata: { type: Schema.Types.Mixed },
+    totalSpend: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

@@ -9,12 +9,18 @@ interface Props {
   onBack: () => void;
 }
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function StepAccount({ data, updateData, onNext, onBack }: Props) {
   const [error, setError] = useState('');
 
   const handleContinue = () => {
     if (!data.fullName || !data.email) {
       setError('Please fill out all fields.');
+      return;
+    }
+    if (!EMAIL_REGEX.test(data.email)) {
+      setError('Please enter a valid email address.');
       return;
     }
     setError('');

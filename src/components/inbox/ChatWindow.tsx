@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft } from 'lucide-react';
+import CustomerInsightsPanel from './CustomerInsightsPanel';
 
 interface ChatWindowProps {
   thread: any;
@@ -148,59 +149,66 @@ export default function ChatWindow({ thread, businessId, tenantId, onUpdateThrea
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
-        <div className="space-y-6 flex flex-col">
-          {loading && messages.length === 0 ? (
-            <div className="text-center text-sm text-slate-400 py-10">Loading conversation...</div>
-          ) : messages.length === 0 ? (
-            <div className="text-center text-sm text-slate-400 py-10">No messages found.</div>
-          ) : (
-            messages.map((msg, idx) => {
-              const isInbound = msg.direction === 'inbound';
-              
-              return (
-                <div key={msg._id || idx} className={`flex ${isInbound ? 'justify-start' : 'justify-end'}`}>
-                  <div className={`max-w-[70%] ${isInbound ? 'bg-white border border-slate-200 text-slate-800' : 'bg-indigo-600 text-white'} rounded-2xl px-4 py-3 shadow-sm relative group`}>
-                    <p className="text-sm whitespace-pre-wrap">{msg.messageText}</p>
-                    <div className={`text-[10px] mt-1.5 flex items-center gap-1 ${isInbound ? 'text-slate-400' : 'text-indigo-200'}`}>
-                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      {!isInbound && msg.isAI && <span className="font-bold">· AI</span>}
-                      {!isInbound && !msg.isAI && <span className="font-bold">· You</span>}
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-          <div ref={endRef} />
-        </div>
-      </div>
+      {/* Body: messages + composer on the left, read-only customer insights on the right */}
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+            <div className="space-y-6 flex flex-col">
+              {loading && messages.length === 0 ? (
+                <div className="text-center text-sm text-slate-400 py-10">Loading conversation...</div>
+              ) : messages.length === 0 ? (
+                <div className="text-center text-sm text-slate-400 py-10">No messages found.</div>
+              ) : (
+                messages.map((msg, idx) => {
+                  const isInbound = msg.direction === 'inbound';
 
-      {/* Composer */}
-      <div className="p-4 bg-white border-t border-slate-100">
-        {!thread.aiEnabled && (
-          <div className="mb-2 flex items-center justify-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-            <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Human Takeover Active</span>
+                  return (
+                    <div key={msg._id || idx} className={`flex ${isInbound ? 'justify-start' : 'justify-end'}`}>
+                      <div className={`max-w-[70%] ${isInbound ? 'bg-white border border-slate-200 text-slate-800' : 'bg-indigo-600 text-white'} rounded-2xl px-4 py-3 shadow-sm relative group`}>
+                        <p className="text-sm whitespace-pre-wrap">{msg.messageText}</p>
+                        <div className={`text-[10px] mt-1.5 flex items-center gap-1 ${isInbound ? 'text-slate-400' : 'text-indigo-200'}`}>
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {!isInbound && msg.isAI && <span className="font-bold">· AI</span>}
+                          {!isInbound && !msg.isAI && <span className="font-bold">· You</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+              <div ref={endRef} />
+            </div>
           </div>
-        )}
-        <form onSubmit={handleSend} className="relative">
-          <input 
-            type="text" 
-            placeholder="Type a manual response... (This will pause the AI)"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-4 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-          />
-          <button 
-            type="submit" 
-            disabled={!input.trim()}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-          </button>
-        </form>
+
+          {/* Composer */}
+          <div className="p-4 bg-white border-t border-slate-100">
+            {!thread.aiEnabled && (
+              <div className="mb-2 flex items-center justify-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Human Takeover Active</span>
+              </div>
+            )}
+            <form onSubmit={handleSend} className="relative">
+              <input
+                type="text"
+                placeholder="Type a manual response... (This will pause the AI)"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-4 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+              />
+              <button
+                type="submit"
+                disabled={!input.trim()}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <CustomerInsightsPanel leadId={lead._id} />
       </div>
     </div>
   );

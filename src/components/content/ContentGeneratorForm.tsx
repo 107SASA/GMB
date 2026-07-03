@@ -7,9 +7,20 @@ import { useBusiness } from '@/context/BusinessContext';
 interface ContentGeneratorFormProps {
   onGenerate: (data: any) => void;
   isLoading: boolean;
+  keywords: string[];
+  setKeywords: React.Dispatch<React.SetStateAction<string[]>>;
+  keywordInput: string;
+  setKeywordInput: React.Dispatch<React.SetStateAction<string>>;
 }
 
-export default function ContentGeneratorForm({ onGenerate, isLoading }: ContentGeneratorFormProps) {
+export default function ContentGeneratorForm({
+  onGenerate,
+  isLoading,
+  keywords,
+  setKeywords,
+  keywordInput,
+  setKeywordInput,
+}: ContentGeneratorFormProps) {
   const { activeBusiness, loading: businessLoading } = useBusiness();
 
   const [formData, setFormData] = useState({
@@ -20,8 +31,6 @@ export default function ContentGeneratorForm({ onGenerate, isLoading }: ContentG
     topic: '',
   });
 
-  const [keywordInput, setKeywordInput] = useState('');
-  const [keywords, setKeywords] = useState<string[]>([]);
   const [contentTypes, setContentTypes] = useState<string[]>(['GMB Posts', 'SEO Description', 'FAQs']);
   const [showOverrideFields, setShowOverrideFields] = useState(false);
 
@@ -34,16 +43,27 @@ export default function ContentGeneratorForm({ onGenerate, isLoading }: ContentG
       businessType: activeBusiness.userDefinedCategory || activeBusiness.category || '',
       location: locationStr,
     }));
-    if (activeBusiness.keywords?.length) {
-      setKeywords(activeBusiness.keywords);
-    }
-  }, [activeBusiness]);
+    // Only seed default business keywords the first time (when the user hasn't
+    // typed/kept any keywords yet), so custom keywords survive re-renders and
+    // aren't clobbered when this effect re-runs.
+    setKeywords(prev => (prev.length === 0 && activeBusiness.keywords?.length ? activeBusiness.keywords : prev));
+  }, [activeBusiness, setKeywords]);
+
+  // A valid keyword must contain at least one letter (rejects inputs made up
+  // of only punctuation/symbols, e.g. "!!!", "...", AND inputs made up of only
+  // digits, e.g. "123", "2026" — letters+digits together, e.g. "seo2026", are fine).
+  const isValidKeyword = (value: string) => /[a-zA-Z]/.test(value);
 
   const handleAddKeyword = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && keywordInput.trim()) {
       e.preventDefault();
-      if (!keywords.includes(keywordInput.trim())) {
-        setKeywords([...keywords, keywordInput.trim()]);
+      const trimmed = keywordInput.trim();
+      if (!isValidKeyword(trimmed)) {
+        setKeywordInput('');
+        return;
+      }
+      if (!keywords.includes(trimmed)) {
+        setKeywords([...keywords, trimmed]);
       }
       setKeywordInput('');
     }
@@ -63,8 +83,9 @@ export default function ContentGeneratorForm({ onGenerate, isLoading }: ContentG
     e.preventDefault();
 
     const finalKeywords = [...keywords];
-    if (keywordInput.trim() && !finalKeywords.includes(keywordInput.trim())) {
-      finalKeywords.push(keywordInput.trim());
+    const trimmedInput = keywordInput.trim();
+    if (trimmedInput && isValidKeyword(trimmedInput) && !finalKeywords.includes(trimmedInput)) {
+      finalKeywords.push(trimmedInput);
       setKeywords(finalKeywords);
       setKeywordInput('');
     }
@@ -194,9 +215,20 @@ export default function ContentGeneratorForm({ onGenerate, isLoading }: ContentG
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-semibold text-slate-700">
-            Target Keywords <span className="text-slate-400 font-normal">(Press Enter to add)</span>
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-semibold text-slate-700">
+              Target Keywords <span className="text-slate-400 font-normal">(Press Enter to add)</span>
+            </label>
+            {keywords.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setKeywords([])}
+                className="text-xs font-medium text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
           <input
             type="text"
             className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-colors"

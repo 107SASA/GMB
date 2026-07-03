@@ -24,11 +24,14 @@ export async function POST(req: Request) {
     const { postId, scheduledDate } = parsed.data;
     const targetDate = new Date(scheduledDate);
 
-    // Reject anything before midnight UTC today
-    const startOfToday = new Date();
-    startOfToday.setUTCHours(0, 0, 0, 0);
-    if (targetDate < startOfToday) {
-      return NextResponse.json({ error: 'scheduledDate must be today or in the future' }, { status: 400 });
+    if (isNaN(targetDate.getTime())) {
+      return NextResponse.json({ error: 'Invalid scheduledDate format' }, { status: 400 });
+    }
+
+    // Reject anything that has already passed (previously only checked against
+    // midnight, which let past times on the current day slip through)
+    if (targetDate.getTime() <= Date.now()) {
+      return NextResponse.json({ error: 'scheduledDate must be in the future' }, { status: 400 });
     }
 
     await dbConnect();
@@ -40,6 +43,14 @@ export async function POST(req: Request) {
 
     if (!post) {
       return NextResponse.json({ error: 'Post not found or access denied' }, { status: 404 });
+    }
+
+    // A published post is a completed action — it must never be silently
+    // moved back to "scheduled" (e.g. via a drag-and-drop drop event).
+    // Enforced here so this holds regardless of which UI path calls this
+    // endpoint (calendar drag, manual reschedule modal, Content History).
+    if (post.status === 'published') {
+      return NextResponse.json({ error: 'Published posts cannot be rescheduled' }, { status: 409 });
     }
 
     post.status = 'scheduled';

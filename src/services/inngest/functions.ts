@@ -23,7 +23,7 @@ const FALLBACK_MESSAGE = "I'm having a little trouble connecting to my brain rig
 export const processWhatsappMessage = inngest.createFunction(
   { id: "process-whatsapp-message", retries: 3, triggers: [{ event: "whatsapp/incoming" }] },
   async ({ event, step }) => {
-    const { messageSid, from, body, numMedia, leadId, threadId, tenantId, businessId } = event.data;
+    const { messageSid, from, body, numMedia, leadId, threadId, tenantId, businessId, profileName } = event.data;
     
     const dbConnect = (await import("@/lib/mongodb")).default;
     await dbConnect();
@@ -42,6 +42,7 @@ export const processWhatsappMessage = inngest.createFunction(
         tenantId,
         businessId,
         leadId,
+        threadId,
         direction: 'inbound',
         messageText: numMedia > 0 ? '[Media Attachment]' : body,
         isAI: false,
@@ -69,6 +70,115 @@ export const processWhatsappMessage = inngest.createFunction(
       return { success: true, reason: 'AI disabled for this thread' };
     }
 
+    // 2.5 ADDITIVE — WhatsApp AI Agent: appointment lifecycle + personalized
+    // context (Features 1-6, 9, 10). This is entirely opt-in per business:
+    // `processAppointmentIntent` returns { handled: false } immediately (no
+    // extra Groq calls) unless the business has explicitly configured and
+    // enabled `whatsappBookingSettings`. When it does return handled:false,
+    // execution falls straight through to the ORIGINAL, UNCHANGED sales-AI
+    // flow below — every existing business behaves exactly as before.
+    const appointmentOutcome = await step.run("whatsapp-agent-appointment-intent", async () => {
+      const { default: BusinessModel } = await import("@/models/Business");
+      const { default: LeadModel } = await import("@/models/Lead");
+      const { buildCustomerContext, formatContextForPrompt } = await import("@/services/whatsapp-agent/customerContextService");
+      const { processAppointmentIntent } = await import("@/services/whatsapp-agent/appointmentAgent");
+      const { getRecentChatHistory, formatHistoryForPrompt } = await import("@/services/whatsapp-agent/chatHistoryService");
+
+      const [business, lead] = await Promise.all([
+        BusinessModel.findById(businessId).lean(),
+        LeadModel.findById(leadId).select('name email').lean(),
+      ]);
+
+      if (!business) return { handled: false, contextBlock: '', pendingAction: thread.pendingAction || null };
+
+      let contextBlock = '';
+      try {
+        const recentHistory = await getRecentChatHistory(leadId, 12);
+        const conversationContext = formatHistoryForPrompt(recentHistory);
+        const customerContext = await buildCustomerContext({ leadId, businessId, phone });
+        contextBlock = formatContextForPrompt(customerContext);
+
+        const threadState = { pendingAction: thread.pendingAction || null };
+        const leadName = (lead as any)?.name;
+        const customerName = leadName && leadName !== phone ? leadName : (profileName || phone);
+
+        const result = await processAppointmentIntent({
+          tenantId,
+          businessId,
+          leadId,
+          business,
+          thread: threadState,
+          customerName,
+          phone,
+          email: (lead as any)?.email || null,
+          incomingMessage: body,
+          conversationContext,
+        });
+
+        // Persist any pendingAction change made by the agent via a direct
+        // update (NOT thread.save()) since `thread` here is a step-memoized
+        // object, not a live Mongoose document.
+        if (JSON.stringify(threadState.pendingAction) !== JSON.stringify(thread.pendingAction || null)) {
+          await ConversationThread.findByIdAndUpdate(threadId, { pendingAction: threadState.pendingAction });
+        }
+
+        return { ...result, contextBlock, pendingAction: threadState.pendingAction };
+      } catch (e) {
+        console.error('[whatsapp-agent] appointment-intent step error (falling back to generic AI):', e);
+        return { handled: false, contextBlock, pendingAction: thread.pendingAction || null };
+      }
+    });
+
+    if (appointmentOutcome.handled && appointmentOutcome.reply) {
+      const aiReply = appointmentOutcome.reply;
+
+      const outboundSid = await step.run("send-outbound-appointment-reply", async () => {
+        return await sendOutboundMessage(phone, aiReply, leadId, businessId);
+      });
+
+      await step.run("log-outbound-appointment-reply", async () => {
+        await Conversation.create({
+          tenantId,
+          businessId,
+          leadId,
+          threadId,
+          direction: 'outbound',
+          messageText: aiReply,
+          isAI: true,
+          messageStatus: 'sent',
+          twilioSid: outboundSid || 'pending'
+        });
+
+        await ConversationThread.findByIdAndUpdate(threadId, {
+          lastMessage: aiReply,
+          lastActivityAt: new Date()
+        });
+
+        await Activity.create({
+          tenantId,
+          leadId,
+          type: 'WhatsApp',
+          content: aiReply,
+          metadata: { isAI: true, whatsappAgent: 'appointment' }
+        });
+      });
+
+      // Feature 8 — keep the structured conversation summary current.
+      // Best-effort: failures here must never affect message delivery.
+      await step.run("refresh-conversation-summary", async () => {
+        try {
+          const { refreshConversationSummary } = await import("@/services/whatsapp-agent/summaryService");
+          const { getRecentChatHistory } = await import("@/services/whatsapp-agent/chatHistoryService");
+          const history = await getRecentChatHistory(leadId, 20);
+          await refreshConversationSummary({ tenantId, businessId, leadId, threadId, history });
+        } catch (e) {
+          console.error('[whatsapp-agent] summary refresh error:', e);
+        }
+      });
+
+      return { success: true, handledBy: 'whatsapp-appointment-agent' };
+    }
+
     // 3. Generate AI Reply
     const aiReply = await step.run("generate-ai-reply", async () => {
       // Get AI Config
@@ -93,9 +203,10 @@ export const processWhatsappMessage = inngest.createFunction(
       }));
 
       const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+      const contextBlock = appointmentOutcome?.contextBlock;
       const systemMessage = {
         role: 'system',
-        content: `PROMPT: ${config.systemPrompt}\nTONE: ${config.aiTone}\nRULES: ${config.salesRules}`
+        content: `PROMPT: ${config.systemPrompt}\nTONE: ${config.aiTone}\nRULES: ${config.salesRules}${contextBlock ? `\n\nCUSTOMER CONTEXT (use naturally to personalize your reply, don't just repeat it verbatim):\n${contextBlock}` : ''}`
       };
 
       try {
@@ -125,6 +236,7 @@ export const processWhatsappMessage = inngest.createFunction(
         tenantId,
         businessId,
         leadId,
+        threadId,
         direction: 'outbound',
         messageText: aiReply,
         isAI: true,
@@ -209,6 +321,21 @@ export const processWhatsappMessage = inngest.createFunction(
       });
 
       return { booked: true };
+    });
+
+    // Feature 8 — keep the structured conversation summary current for the
+    // generic sales-chat path too. Best-effort only: any failure here is
+    // logged and swallowed so it can never affect message delivery or the
+    // rest of the (unmodified) WhatsApp flow above.
+    await step.run("refresh-conversation-summary-generic", async () => {
+      try {
+        const { refreshConversationSummary } = await import("@/services/whatsapp-agent/summaryService");
+        const { getRecentChatHistory } = await import("@/services/whatsapp-agent/chatHistoryService");
+        const history = await getRecentChatHistory(leadId, 20);
+        await refreshConversationSummary({ tenantId, businessId, leadId, threadId, history });
+      } catch (e) {
+        console.error('[whatsapp-agent] summary refresh error (generic path):', e);
+      }
     });
 
     return { success: true };

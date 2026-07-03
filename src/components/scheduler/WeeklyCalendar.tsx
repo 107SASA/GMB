@@ -6,7 +6,7 @@ import {
   DndContext,
   DragEndEvent,
   DragOverlay,
-  MouseSensor,
+  PointerSensor,
   TouchSensor,
   useDraggable,
   useDroppable,
@@ -23,13 +23,39 @@ import {
   Trash2,
   LayoutGrid,
   CalendarDays,
+  GripVertical,
 } from 'lucide-react';
 
-// ─── Props ────────────────────────────────────────────────────────────────────
+// ─── Responsive helper ────────────────────────────────────────────────────────
+// The month/week views previously rendered BOTH the desktop grid and the
+// mobile list at all times, toggling visibility purely via Tailwind's
+// `hidden` / `md:hidden` classes. Because both trees stayed mounted, every
+// draggable chip and every droppable day cell ended up registered TWICE with
+// dnd-kit under the exact same `id` — which is undefined behavior for
+// dnd-kit's collision detection and is the root cause of drops landing on
+// the wrong date (or not registering at all). This hook lets us render only
+// one layout at a time instead, with identical markup/classes per layout.
+function useIsDesktop(): boolean {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 768px)');
+    setIsDesktop(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
+  return isDesktop;
+}
+
+
 interface WeeklyCalendarProps {
   posts: any[];
   onPublish: (id: string) => void;
   onReschedule: (postId: string, newDate: Date) => Promise<void>;
+  /** Called after a local mutation (delete) that the parent's own data
+   *  (e.g. buffer/health stats) needs to re-sync for — keeps every section
+   *  (calendar, drafts, health bar) consistent without a page reload. */
+  onDataChanged?: () => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -41,6 +67,15 @@ function toLocalDateStr(d: Date): string {
     '-' +
     String(d.getDate()).padStart(2, '0')
   );
+}
+
+/** Local "HH:MM" (24h) for a Date, suitable for an <input type="time"> value. */
+function toLocalTimeStr(d: Date): string {
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function formatDate(iso: string | Date): string {
+  return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 /** Build a grid of Date objects for the given month (fills incomplete first/last rows). */
@@ -92,8 +127,13 @@ function DraggableChip({
   post: any;
   onClick: () => void;
 }) {
+  // Published posts represent a completed action and must never be
+  // rescheduled via drag-and-drop — disable dragging for them entirely
+  // (dnd-kit will not start a drag for a disabled draggable).
+  const isPublished = post.status === 'published';
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: post._id,
+    disabled: isPublished,
   });
 
   return (
@@ -102,12 +142,15 @@ function DraggableChip({
       style={{
         transform: transform ? CSS.Translate.toString(transform) : undefined,
         opacity: isDragging ? 0.3 : 1,
-        touchAction: 'none',
+        touchAction: isPublished ? undefined : 'none',
       }}
-      className={`text-xs px-2 py-0.5 rounded mb-0.5 truncate font-medium cursor-pointer select-none hover:brightness-95 active:brightness-90 ${CHIP_COLORS[post.status] ?? CHIP_COLORS.draft}`}
+      className={`text-xs px-2 py-0.5 rounded mb-0.5 truncate font-medium select-none hover:brightness-95 active:brightness-90 ${
+        isPublished ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'
+      } ${CHIP_COLORS[post.status] ?? CHIP_COLORS.draft}`}
+      title={isPublished ? 'Published posts cannot be rescheduled' : undefined}
       onClick={e => { e.stopPropagation(); onClick(); }}
-      {...attributes}
-      {...listeners}
+      {...(isPublished ? {} : attributes)}
+      {...(isPublished ? {} : listeners)}
     >
       {post.title || 'Untitled'}
     </div>
@@ -223,6 +266,7 @@ function DroppableMobileDayRow({
 // ─── Post detail modal ────────────────────────────────────────────────────────
 function PostDetailModal({
   post,
+  initialMode = 'view',
   onClose,
   onPublish,
   onReschedule,
@@ -230,24 +274,29 @@ function PostDetailModal({
   onDelete,
 }: {
   post: any;
+  initialMode?: 'view' | 'edit' | 'reschedule';
   onClose: () => void;
   onPublish: (id: string) => void;
   onReschedule: (postId: string, newDate: Date) => Promise<void>;
   onEditSave: (postId: string, updates: Partial<any>) => void;
   onDelete: (postId: string) => Promise<void>;
 }) {
-  const [mode, setMode] = useState<'view' | 'edit' | 'reschedule'>('view');
+  const [mode, setMode] = useState<'view' | 'edit' | 'reschedule'>(initialMode);
   const [editTitle, setEditTitle] = useState(post.title ?? '');
   const [editContent, setEditContent] = useState(post.content ?? '');
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Default reschedule date: today (or existing scheduledDate)
+  // Default reschedule date/time: existing scheduledDate, or today at 9:00 AM
   const defaultDate = post.scheduledDate
     ? toLocalDateStr(new Date(post.scheduledDate))
     : toLocalDateStr(new Date());
+  const defaultTime = post.scheduledDate
+    ? toLocalTimeStr(new Date(post.scheduledDate))
+    : '09:00';
   const [rescheduleDate, setRescheduleDate] = useState(defaultDate);
+  const [rescheduleTime, setRescheduleTime] = useState(defaultTime);
   const [rescheduling, setRescheduling] = useState(false);
 
   const badge = STATUS_BADGE[post.status] ?? STATUS_BADGE.draft;
@@ -298,7 +347,8 @@ function PostDetailModal({
   const doReschedule = async () => {
     setRescheduling(true);
     try {
-      const d = new Date(`${rescheduleDate}T09:00:00`);
+      const time = rescheduleTime || '09:00';
+      const d = new Date(`${rescheduleDate}T${time}:00`);
       if (d.getTime() <= Date.now()) d.setTime(Date.now() + 2 * 60 * 1000);
       await onReschedule(post._id, d);
       onClose();
@@ -399,20 +449,33 @@ function PostDetailModal({
 
           {mode === 'reschedule' && (
             <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  New Date
-                </label>
-                <input
-                  type="date"
-                  value={rescheduleDate}
-                  onChange={e => setRescheduleDate(e.target.value)}
-                  min={toLocalDateStr(new Date())}
-                  className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    New Date
+                  </label>
+                  <input
+                    type="date"
+                    value={rescheduleDate}
+                    onChange={e => setRescheduleDate(e.target.value)}
+                    min={toLocalDateStr(new Date())}
+                    className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    New Time
+                  </label>
+                  <input
+                    type="time"
+                    value={rescheduleTime}
+                    onChange={e => setRescheduleTime(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
               </div>
               <p className="text-xs text-slate-500">
-                Post will be scheduled for 9:00 AM on the selected date.
+                Post will be rescheduled for the selected date and time.
               </p>
             </div>
           )}
@@ -519,9 +582,135 @@ function PostDetailModal({
   );
 }
 
+// ─── Draft row (Content-History-style full-width card) ───────────────────────
+function DraftRow({
+  post,
+  selected,
+  onToggleSelect,
+  onView,
+  onEdit,
+  onSchedule,
+  onDelete,
+}: {
+  post: any;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onView: () => void;
+  onEdit: () => void;
+  onSchedule: () => void;
+  onDelete: () => Promise<void>;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
+
+  const runDelete = async () => {
+    setDeleting(true);
+    setError('');
+    try {
+      await onDelete();
+    } catch (err: any) {
+      setError(err.message ?? 'Delete failed');
+      setDeleting(false);
+    }
+  };
+
+  // Draggable via a dedicated handle (not the whole row) so the action
+  // buttons remain simple, reliable clicks — this preserves the existing
+  // "drag a draft onto a calendar day to schedule it" behavior.
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } = useDraggable({
+    id: post._id,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: transform ? CSS.Translate.toString(transform) : undefined,
+        opacity: isDragging ? 0.4 : 1,
+      }}
+      className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm"
+    >
+      <div className="px-3 py-4 flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          className="shrink-0 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 cursor-pointer"
+          aria-label={`Select ${post.title || 'draft'}`}
+        />
+        <button
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          title="Drag to a calendar day to schedule"
+          className="shrink-0 p-1.5 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing touch-none"
+          style={{ touchAction: 'none' }}
+        >
+          <GripVertical className="w-4 h-4" />
+        </button>
+        <div className="flex-1 min-w-0 flex items-center gap-4 pl-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className={`inline-block px-2 py-0.5 text-xs font-semibold rounded-md ${STATUS_BADGE.draft}`}>
+              draft
+            </span>
+            {post.contentType && (
+              <span className="text-xs text-slate-500 border border-slate-200 px-2 py-0.5 rounded-md">
+                {post.contentType}
+              </span>
+            )}
+          </div>
+          <p className="font-semibold text-slate-900 truncate">{post.title || 'Untitled'}</p>
+          <p className="text-xs text-slate-400 mt-0.5">Created {formatDate(post.createdAt)}</p>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0">
+          <button onClick={onView} className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
+            View
+          </button>
+          <button onClick={onEdit} className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
+            Edit
+          </button>
+          <button onClick={onSchedule} className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
+            Schedule
+          </button>
+          {confirmDelete ? (
+            <span className="flex items-center gap-2">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={runDelete}
+                disabled={deleting}
+                className="text-sm font-medium text-red-600 hover:text-red-700 transition-colors disabled:opacity-60"
+              >
+                {deleting ? 'Deleting…' : 'Confirm'}
+              </button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="text-sm font-medium text-red-500 hover:text-red-700 transition-colors"
+            >
+              Delete
+            </button>
+          )}
+        </div>
+        </div>
+      </div>
+      {error && <p className="px-5 pb-3 text-xs text-red-500">{error}</p>}
+    </div>
+  );
+}
+
 // ─── Main calendar ────────────────────────────────────────────────────────────
-export default function WeeklyCalendar({ posts, onPublish, onReschedule }: WeeklyCalendarProps) {
+export default function WeeklyCalendar({ posts, onPublish, onReschedule, onDataChanged }: WeeklyCalendarProps) {
   const today = new Date();
+  const isDesktop = useIsDesktop();
 
   const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
   // displayDate drives the month view; always the 1st of the displayed month
@@ -531,11 +720,28 @@ export default function WeeklyCalendar({ posts, onPublish, onReschedule }: Weekl
   const [localPosts, setLocalPosts] = useState<any[]>(posts);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [selectedPost, setSelectedPost] = useState<any>(null);
+  const [selectedMode, setSelectedMode] = useState<'view' | 'edit' | 'reschedule'>('view');
+  const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const openPost = (post: any, mode: 'view' | 'edit' | 'reschedule' = 'view') => {
+    setSelectedMode(mode);
+    setSelectedPost(post);
+  };
 
   useEffect(() => { setLocalPosts(posts); }, [posts]);
 
+  useEffect(() => {
+    setSelectedDraftIds(prev => {
+      const draftIds = new Set(localPosts.filter(p => p.status === 'draft').map(p => p._id));
+      const next = new Set(Array.from(prev).filter(id => draftIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [localPosts]);
+
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
   );
 
@@ -572,12 +778,25 @@ export default function WeeklyCalendar({ posts, onPublish, onReschedule }: Weekl
       const targetDateStr = over.id as string;
 
       const currentPost = localPosts.find(p => p._id === postId);
+
+      // Published posts represent a completed action and must never be
+      // silently rescheduled. Dragging is already disabled in the UI for
+      // them (DraggableChip); this is a defense-in-depth guard so a
+      // published post is never touched even if a drag event slips through —
+      // no state update and no API call happen.
+      if (currentPost?.status === 'published') return;
+
       if (
         currentPost?.scheduledDate &&
         toLocalDateStr(new Date(currentPost.scheduledDate)) === targetDateStr
       ) return;
 
-      const targetDate = new Date(`${targetDateStr}T09:00:00`);
+      // Preserve the post's existing scheduled time; only default to 9:00 AM
+      // for drafts that have never been scheduled before.
+      const preservedTime = currentPost?.scheduledDate
+        ? toLocalTimeStr(new Date(currentPost.scheduledDate))
+        : '09:00';
+      const targetDate = new Date(`${targetDateStr}T${preservedTime}:00`);
       if (targetDate.getTime() <= Date.now()) targetDate.setTime(Date.now() + 2 * 60 * 1000);
 
       const snapshot = localPosts.slice();
@@ -611,7 +830,37 @@ export default function WeeklyCalendar({ posts, onPublish, onReschedule }: Weekl
       throw new Error(j.error ?? 'Delete failed');
     }
     setLocalPosts(prev => prev.filter(p => p._id !== postId));
-  }, []);
+    onDataChanged?.();
+  }, [onDataChanged]);
+
+  const toggleDraftSelect = (id: string) => {
+    setSelectedDraftIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllDrafts = () => {
+    setSelectedDraftIds(prev =>
+      prev.size === drafts.length ? new Set() : new Set(drafts.map(d => d._id))
+    );
+  };
+
+  const bulkDeleteDrafts = async () => {
+    setBulkDeleting(true);
+    const ids = Array.from(selectedDraftIds);
+    const results = await Promise.allSettled(
+      ids.map(id => fetch(`/api/scheduler/posts/${id}`, { method: 'DELETE' }))
+    );
+    const succeededIds = ids.filter((_, i) => results[i].status === 'fulfilled' && (results[i] as any).value.ok);
+    setLocalPosts(prev => prev.filter(p => !succeededIds.includes(p._id)));
+    setSelectedDraftIds(new Set());
+    setConfirmBulkDelete(false);
+    setBulkDeleting(false);
+    onDataChanged?.();
+  };
 
   const monthLabel = displayDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
@@ -683,152 +932,214 @@ export default function WeeklyCalendar({ posts, onPublish, onReschedule }: Weekl
         {/* ── Month view ─────────────────────────────────────────────────────── */}
         {viewMode === 'month' && (
           <>
-            {/* Desktop: 7-column grid (md and above) */}
-            <div className="hidden md:block">
-              {/* Day-of-week header */}
-              <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50">
-                {WEEKDAYS.map(d => (
-                  <div
-                    key={d}
-                    className="py-2.5 text-center text-xs font-bold text-slate-500 uppercase tracking-wider border-r border-slate-100 last:border-r-0"
-                  >
-                    {d}
+            {isDesktop ? (
+              /* Desktop: 7-column grid (md and above) */
+              <div>
+                {/* Day-of-week header */}
+                <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50">
+                  {WEEKDAYS.map(d => (
+                    <div
+                      key={d}
+                      className="py-2.5 text-center text-xs font-bold text-slate-500 uppercase tracking-wider border-r border-slate-100 last:border-r-0"
+                    >
+                      {d}
+                    </div>
+                  ))}
+                </div>
+                {/* Rows */}
+                {monthGrid.map((week, wi) => (
+                  <div key={wi} className="grid grid-cols-7">
+                    {week.map((day, di) => {
+                      const isCurrentMonth = day.getMonth() === displayDate.getMonth();
+                      const dayPosts = getPostsForDate(day);
+                      const visible = dayPosts.slice(0, 3);
+                      const overflow = dayPosts.length - visible.length;
+                      return (
+                        <DroppableMonthCell key={di} date={day} isCurrentMonth={isCurrentMonth}>
+                          {visible.map(post => (
+                            <DraggableChip key={post._id} post={post} onClick={() => openPost(post, "view")} />
+                          ))}
+                          {overflow > 0 && (
+                            <button className="text-[10px] text-blue-600 font-semibold px-1 hover:underline">
+                              +{overflow} more
+                            </button>
+                          )}
+                        </DroppableMonthCell>
+                      );
+                    })}
                   </div>
                 ))}
               </div>
-              {/* Rows */}
-              {monthGrid.map((week, wi) => (
-                <div key={wi} className="grid grid-cols-7">
-                  {week.map((day, di) => {
-                    const isCurrentMonth = day.getMonth() === displayDate.getMonth();
+            ) : (
+              /* Mobile: vertical day list (below md) */
+              <div>
+                {monthGrid.flat()
+                  .filter(d => d.getMonth() === displayDate.getMonth())
+                  .map((day, i) => {
                     const dayPosts = getPostsForDate(day);
-                    const visible = dayPosts.slice(0, 3);
+                    const visible = dayPosts.slice(0, 5);
                     const overflow = dayPosts.length - visible.length;
                     return (
-                      <DroppableMonthCell key={di} date={day} isCurrentMonth={isCurrentMonth}>
+                      <DroppableMobileDayRow key={i} date={day}>
                         {visible.map(post => (
-                          <DraggableChip key={post._id} post={post} onClick={() => setSelectedPost(post)} />
+                          <DraggableChip key={post._id} post={post} onClick={() => openPost(post, "view")} />
                         ))}
                         {overflow > 0 && (
-                          <button className="text-[10px] text-blue-600 font-semibold px-1 hover:underline">
+                          <button className="text-[10px] text-blue-600 font-semibold hover:underline mt-0.5">
                             +{overflow} more
                           </button>
                         )}
-                      </DroppableMonthCell>
+                        {dayPosts.length === 0 && (
+                          <div className="text-xs text-slate-300 py-1">No posts</div>
+                        )}
+                      </DroppableMobileDayRow>
                     );
                   })}
-                </div>
-              ))}
-            </div>
-
-            {/* Mobile: vertical day list (below md) */}
-            <div className="md:hidden">
-              {monthGrid.flat()
-                .filter(d => d.getMonth() === displayDate.getMonth())
-                .map((day, i) => {
-                  const dayPosts = getPostsForDate(day);
-                  const visible = dayPosts.slice(0, 5);
-                  const overflow = dayPosts.length - visible.length;
-                  return (
-                    <DroppableMobileDayRow key={i} date={day}>
-                      {visible.map(post => (
-                        <DraggableChip key={post._id} post={post} onClick={() => setSelectedPost(post)} />
-                      ))}
-                      {overflow > 0 && (
-                        <button className="text-[10px] text-blue-600 font-semibold hover:underline mt-0.5">
-                          +{overflow} more
-                        </button>
-                      )}
-                      {dayPosts.length === 0 && (
-                        <div className="text-xs text-slate-300 py-1">No posts</div>
-                      )}
-                    </DroppableMobileDayRow>
-                  );
-                })}
-            </div>
+              </div>
+            )}
           </>
         )}
 
         {/* ── Week view ──────────────────────────────────────────────────────── */}
         {viewMode === 'week' && (
           <>
-            {/* Desktop: 7-column grid (md and above) */}
-            <div className="hidden md:block">
-              {/* Header */}
-              <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50">
-                {weekDays.map((day, i) => {
-                  const isToday = toLocalDateStr(day) === toLocalDateStr(today);
-                  return (
-                    <div key={i} className="py-3 text-center border-r border-slate-100 last:border-r-0">
-                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        {WEEKDAYS[day.getDay()]}
+            {isDesktop ? (
+              /* Desktop: 7-column grid (md and above) */
+              <div>
+                {/* Header */}
+                <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50">
+                  {weekDays.map((day, i) => {
+                    const isToday = toLocalDateStr(day) === toLocalDateStr(today);
+                    return (
+                      <div key={i} className="py-3 text-center border-r border-slate-100 last:border-r-0">
+                        <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                          {WEEKDAYS[day.getDay()]}
+                        </div>
+                        <div
+                          className={`mx-auto mt-1 w-9 h-9 flex items-center justify-center rounded-full text-base font-bold ${
+                            isToday ? 'bg-blue-600 text-white' : 'text-slate-900'
+                          }`}
+                        >
+                          {day.getDate()}
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          {day.toLocaleDateString('en-US', { month: 'short' })}
+                        </div>
                       </div>
-                      <div
-                        className={`mx-auto mt-1 w-9 h-9 flex items-center justify-center rounded-full text-base font-bold ${
-                          isToday ? 'bg-blue-600 text-white' : 'text-slate-900'
-                        }`}
-                      >
-                        {day.getDate()}
-                      </div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">
-                        {day.toLocaleDateString('en-US', { month: 'short' })}
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+                {/* Columns */}
+                <div className="grid grid-cols-7">
+                  {weekDays.map((day, i) => {
+                    const dayPosts = getPostsForDate(day);
+                    return (
+                      <DroppableWeekColumn key={i} date={day}>
+                        {dayPosts.map(post => (
+                          <DraggableChip key={post._id} post={post} onClick={() => openPost(post, "view")} />
+                        ))}
+                        {dayPosts.length === 0 && (
+                          <div className="h-full min-h-10 flex items-center justify-center border-2 border-dashed border-slate-100 rounded-lg text-[10px] text-slate-300 font-medium">
+                            Empty
+                          </div>
+                        )}
+                      </DroppableWeekColumn>
+                    );
+                  })}
+                </div>
               </div>
-              {/* Columns */}
-              <div className="grid grid-cols-7">
+            ) : (
+              /* Mobile: vertical day list (below md) */
+              <div>
                 {weekDays.map((day, i) => {
                   const dayPosts = getPostsForDate(day);
                   return (
-                    <DroppableWeekColumn key={i} date={day}>
+                    <DroppableMobileDayRow key={i} date={day}>
                       {dayPosts.map(post => (
-                        <DraggableChip key={post._id} post={post} onClick={() => setSelectedPost(post)} />
+                        <DraggableChip key={post._id} post={post} onClick={() => openPost(post, "view")} />
                       ))}
                       {dayPosts.length === 0 && (
-                        <div className="h-full min-h-10 flex items-center justify-center border-2 border-dashed border-slate-100 rounded-lg text-[10px] text-slate-300 font-medium">
-                          Empty
-                        </div>
+                        <div className="text-xs text-slate-300 py-1">No posts</div>
                       )}
-                    </DroppableWeekColumn>
+                    </DroppableMobileDayRow>
                   );
                 })}
               </div>
-            </div>
-
-            {/* Mobile: vertical day list (below md) */}
-            <div className="md:hidden">
-              {weekDays.map((day, i) => {
-                const dayPosts = getPostsForDate(day);
-                return (
-                  <DroppableMobileDayRow key={i} date={day}>
-                    {dayPosts.map(post => (
-                      <DraggableChip key={post._id} post={post} onClick={() => setSelectedPost(post)} />
-                    ))}
-                    {dayPosts.length === 0 && (
-                      <div className="text-xs text-slate-300 py-1">No posts</div>
-                    )}
-                  </DroppableMobileDayRow>
-                );
-              })}
-            </div>
+            )}
           </>
         )}
 
-        {/* ── Drafts tray ────────────────────────────────────────────────────── */}
+        {/* ── Drafts list ────────────────────────────────────────────────────── */}
         {drafts.length > 0 && (
-          <div className="px-6 py-5 border-t border-slate-100 bg-slate-50">
+          <div className="px-4 sm:px-6 py-5 border-t border-slate-100 bg-slate-50">
             <div className="flex items-baseline gap-2 mb-1">
               <h3 className="text-sm font-bold text-slate-900">Unscheduled Drafts</h3>
               <span className="text-xs text-slate-500">({drafts.length})</span>
             </div>
-            <p className="text-xs text-slate-400 mb-3">Click to view · Drag to a day to schedule</p>
-            <div className="flex flex-wrap gap-2">
+            <p className="text-xs text-slate-400 mb-3">
+              Drag the handle onto a calendar day, or use Schedule below.
+            </p>
+
+            {/* Select all / bulk actions bar */}
+            <div className="flex items-center gap-3 mb-2 px-1">
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={selectedDraftIds.size > 0 && selectedDraftIds.size === drafts.length}
+                  ref={el => {
+                    if (el) el.indeterminate = selectedDraftIds.size > 0 && selectedDraftIds.size < drafts.length;
+                  }}
+                  onChange={toggleSelectAllDrafts}
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400 cursor-pointer"
+                />
+                Select All
+              </label>
+
+              {selectedDraftIds.size > 0 && (
+                <>
+                  <span className="text-xs text-slate-500">{selectedDraftIds.size} selected</span>
+                  {confirmBulkDelete ? (
+                    <span className="flex items-center gap-2 ml-auto">
+                      <span className="text-xs text-rose-600 font-medium">Delete {selectedDraftIds.size} drafts?</span>
+                      <button
+                        onClick={() => setConfirmBulkDelete(false)}
+                        className="text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={bulkDeleteDrafts}
+                        disabled={bulkDeleting}
+                        className="text-xs font-semibold text-white bg-rose-600 rounded-lg px-3 py-1.5 hover:bg-rose-700 disabled:opacity-50"
+                      >
+                        {bulkDeleting ? 'Deleting…' : 'Confirm Delete'}
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmBulkDelete(true)}
+                      className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-rose-600 bg-rose-50 rounded-lg px-3 py-1.5 hover:bg-rose-100"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete Selected
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="space-y-2">
               {drafts.map(post => (
-                <div key={post._id} className="w-52">
-                  <DraggableChip post={post} onClick={() => setSelectedPost(post)} />
-                </div>
+                <DraftRow
+                  key={post._id}
+                  post={post}
+                  selected={selectedDraftIds.has(post._id)}
+                  onToggleSelect={() => toggleDraftSelect(post._id)}
+                  onView={() => openPost(post, 'view')}
+                  onEdit={() => openPost(post, 'edit')}
+                  onSchedule={() => openPost(post, 'reschedule')}
+                  onDelete={() => handleDelete(post._id)}
+                />
               ))}
             </div>
           </div>
@@ -852,8 +1163,9 @@ export default function WeeklyCalendar({ posts, onPublish, onReschedule }: Weekl
       {selectedPost && (
         <PostDetailModal
           post={selectedPost}
-          onClose={() => setSelectedPost(null)}
-          onPublish={id => { onPublish(id); setSelectedPost(null); }}
+          initialMode={selectedMode}
+          onClose={() => { setSelectedPost(null); setSelectedMode('view'); }}
+          onPublish={id => { onPublish(id); setSelectedPost(null); setSelectedMode('view'); }}
           onReschedule={onReschedule}
           onEditSave={handleEditSave}
           onDelete={handleDelete}

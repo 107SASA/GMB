@@ -12,7 +12,10 @@ export interface IConversation extends Document {
   messageStatus: 'sent' | 'delivered' | 'read' | 'failed' | 'received';
   twilioSid?: string;
   metadata?: any;
-  
+  // ADDITIVE — links a message to its ConversationThread (used as the
+  // "Session ID" for WhatsApp AI Agent chat-history storage, Feature 7).
+  threadId?: mongoose.Types.ObjectId;
+
   timestamp: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -35,7 +38,8 @@ const ConversationSchema: Schema = new Schema(
     },
     twilioSid: { type: String },
     metadata: { type: Schema.Types.Mixed },
-    
+    threadId: { type: Schema.Types.ObjectId, ref: 'ConversationThread', index: true },
+
     timestamp: { type: Date, default: Date.now, index: true }
   },
   { timestamps: true }

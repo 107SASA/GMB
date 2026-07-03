@@ -35,6 +35,11 @@ export async function POST(req: Request) {
 
     post.status = 'published';
     post.publishedAt = new Date();
+    // The calendar (and other views) place a post using `scheduledDate`, not
+    // `publishedAt`. Without updating this too, a post scheduled for a future
+    // day would still show up under that future date after being published
+    // immediately. Publishing now should supersede any prior schedule.
+    post.scheduledDate = post.publishedAt;
     await post.save();
 
     await AutomationLog.create({

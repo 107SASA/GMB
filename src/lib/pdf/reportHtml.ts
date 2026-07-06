@@ -1,5 +1,5 @@
 import type {
-  IAudit, IAuditData, IChecklistItem, IGeoGridKeyword,
+  IAudit, IAuditData, IChecklistItem, IGeoGridKeyword, IScoreCriterion,
 } from '@/models/Audit';
 
 export interface ReportContext {
@@ -235,6 +235,8 @@ export function buildReportHtml(ctx: ReportContext): string {
   const missingOpps: string[] = data.seoScore?.optimizationOpportunities ?? [];
   const missingKeywords: string[] = data.seoScore?.missingKeywords ?? [];
   const hasGeoGrid = geoGridKeywords.length > 0;
+  const scoreBreakdown = data.scoreBreakdown;
+  const reviewPeriod   = data.reviewAnalysisPeriod;
 
   // Missing SEO fields
   const missingFields: string[] = [];
@@ -382,7 +384,7 @@ export function buildReportHtml(ctx: ReportContext): string {
       ${svgRing(overallScore, profileColor, 120)}
       <div>
         <p style="font-size:11px;color:#64748b;line-height:1.6;margin-bottom:10px;">
-          Based on 25+ parameters — SEO, Reviews, Completion, Rating.
+          Profile Completeness (35%) + SEO Optimization (25%) + Review Quality (25%) + Review Keyword Coverage (15%). See full breakdown below.
         </p>
         <p style="font-size:11px;font-weight:600;color:#374151;">
           Good businesses score more than 90%
@@ -392,6 +394,43 @@ export function buildReportHtml(ctx: ReportContext): string {
   </div>
 
 </div>`;
+
+  // ── 2b. REVIEW ANALYSIS PERIOD BANNER ──────────────────────────────────────────
+  const reviewPeriodHtml = reviewPeriod ? `
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;background:#eff6ff;border:1px solid #dbeafe;border-radius:12px;margin-bottom:14px;break-inside:avoid;flex-wrap:wrap;">
+  <span style="font-size:12px;color:#1e40af;">
+    Review Analysis Period: <strong>${h(reviewPeriod.label)}</strong>
+    <span style="color:#93c5fd;"> · Total Reviews Analyzed: ${reviewPeriod.totalReviewsAnalyzed}</span>
+    ${reviewPeriod.period !== 'all' && reviewPeriod.totalReviewsAllTime !== reviewPeriod.totalReviewsAnalyzed
+      ? `<span style="color:#93c5fd;"> (of ${reviewPeriod.totalReviewsAllTime} all-time)</span>` : ''}
+  </span>
+</div>` : '';
+
+  // ── 2c. SCORE BREAKDOWN (transparent, no black box) ────────────────────────────
+  const scoreBreakdownHtml = scoreBreakdown ? `
+<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:14px;break-inside:avoid;">
+  <h2 style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:3px;">
+    How Your Score Was Calculated
+    <span style="margin-left:8px;font-size:22px;font-weight:900;color:#2563eb;">${scoreBreakdown.finalScore}/100</span>
+  </h2>
+  <p style="font-size:10px;color:#94a3b8;margin-bottom:14px;">${h(scoreBreakdown.formula)}</p>
+  <div style="display:flex;flex-direction:column;gap:10px;">
+    ${scoreBreakdown.criteria.map((c: IScoreCriterion) => `
+    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;background:#f8fafc;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px;flex-wrap:wrap;">
+        <span style="font-size:13px;font-weight:700;color:#1e293b;">${h(c.label)}</span>
+        <span style="font-size:13px;font-weight:900;color:#0f172a;">${c.earnedPoints}/${c.maxPoints}
+          <span style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;">points (${c.weightPercent}% weight)</span>
+        </span>
+      </div>
+      <div style="height:6px;border-radius:3px;background:#e2e8f0;overflow:hidden;margin-bottom:6px;max-width:260px;">
+        <div style="height:100%;border-radius:3px;width:${c.rawScore}%;background:${c.rawScore >= 80 ? '#22c55e' : c.rawScore >= 50 ? '#f59e0b' : '#ef4444'};"></div>
+      </div>
+      <p style="font-size:11px;color:#64748b;line-height:1.5;margin-bottom:4px;">${h(c.reason)}</p>
+      <p style="font-size:9px;color:#94a3b8;">Data source: ${h(c.dataSource)}</p>
+    </div>`).join('')}
+  </div>
+</div>` : '';
 
   // ── 3. RANK ANALYTICS ────────────────────────────────────────────────────────
   const rankAnalyticsHtml = hasGeoGrid ? `
@@ -657,6 +696,8 @@ export function buildReportHtml(ctx: ReportContext): string {
 <body>
 ${headerHtml}
 ${heroHtml}
+${reviewPeriodHtml}
+${scoreBreakdownHtml}
 ${rankAnalyticsHtml}
 ${geoGridHtml}
 ${profileBreakdownHtml}

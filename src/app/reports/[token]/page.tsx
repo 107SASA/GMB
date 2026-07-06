@@ -132,6 +132,8 @@ export default function PublicReportPage() {
   const plan30      = d.thirtyDayPlan || [];
   const seo         = d.seoScore      || {};
   const overallScore = audit.overallScore ?? profile.overallScore ?? 0;
+  const scoreBreakdown = d.scoreBreakdown;
+  const reviewPeriod   = d.reviewAnalysisPeriod;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -184,6 +186,41 @@ export default function PublicReportPage() {
             )}
           </div>
         </div>
+
+        {/* Review Analysis Period */}
+        {reviewPeriod && (
+          <div className="flex items-center gap-2 px-5 py-3 bg-violet-50 border border-violet-100 rounded-xl text-sm text-violet-800">
+            <Clock className="w-4 h-4 text-violet-500 shrink-0" />
+            <span>
+              Review Analysis Period: <span className="font-bold">{reviewPeriod.label}</span>
+              <span className="text-violet-400"> · Total Reviews Analyzed: {reviewPeriod.totalReviewsAnalyzed}</span>
+              {reviewPeriod.period !== 'all' && reviewPeriod.totalReviewsAllTime !== reviewPeriod.totalReviewsAnalyzed && (
+                <span className="text-violet-400"> (of {reviewPeriod.totalReviewsAllTime} all-time)</span>
+              )}
+            </span>
+          </div>
+        )}
+
+        {/* Transparent score breakdown */}
+        {scoreBreakdown && (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <SectionHeader title={`How Your Score Was Calculated (${scoreBreakdown.finalScore}/100)`} icon={Shield} />
+            <p className="text-xs text-slate-400 mb-4">{scoreBreakdown.formula}</p>
+            <div className="space-y-3">
+              {scoreBreakdown.criteria.map((c: any, i: number) => (
+                <div key={i} className="border border-slate-100 rounded-xl p-4 bg-slate-50/60">
+                  <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+                    <span className="text-sm font-bold text-slate-800">{c.label}</span>
+                    <span className="text-sm font-black text-slate-900">
+                      {c.earnedPoints}/{c.maxPoints} <span className="text-[10px] font-semibold text-slate-400 uppercase">({c.weightPercent}% weight)</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed">{c.reason}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Sub-scores */}
         {Object.keys(profile).length > 0 && (

@@ -146,6 +146,33 @@ export interface IBusinessIntelligence {
   growthPotential: string;
 }
 
+// ── Transparent score breakdown (Problem 1) ─────────────────────────────────────
+export interface IScoreCriterion {
+  label: string;
+  weightPercent: number;
+  maxPoints: number;
+  earnedPoints: number;
+  rawScore: number;
+  reason: string;
+  dataSource: string;
+}
+
+export interface IScoreBreakdown {
+  finalScore: number;
+  criteria: IScoreCriterion[];
+  formula: string;
+}
+
+// ── Review date filter (Problem 4) ──────────────────────────────────────────────
+export type ReviewPeriod = '7' | '15' | '30' | 'all';
+
+export interface IReviewAnalysisPeriod {
+  period: ReviewPeriod;
+  label: string;               // e.g. "Last 7 Days" or "All Reviews"
+  totalReviewsAnalyzed: number; // reviews within the selected period
+  totalReviewsAllTime: number;  // all reviews on file, regardless of period
+}
+
 export interface IAuditData {
   googleSearchRank: IGoogleSearchRank;
   profileScore: IProfileScore;
@@ -174,6 +201,9 @@ export interface IAuditData {
     areaSqKm: number;
   };
   localPackCompetitors?: ILocalPackCompetitor[];
+
+  scoreBreakdown?: IScoreBreakdown;
+  reviewAnalysisPeriod?: IReviewAnalysisPeriod;
 }
 
 export interface IAudit extends Document {
@@ -197,6 +227,9 @@ export interface IAudit extends Document {
   overallScore?: number;
   auditData?: IAuditData;
   metadata?: any;
+  // Review Analysis Period filter (Problem 4). Defaults to 'all' so existing
+  // behavior is unchanged unless the user explicitly narrows the date range.
+  reviewPeriod?: ReviewPeriod;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -227,6 +260,7 @@ const AuditSchema = new Schema<IAudit>(
     overallScore: { type: Number },
     auditData: { type: Schema.Types.Mixed }, // Using Mixed for the root data object since it's large and varies heavily
     metadata: { type: Schema.Types.Mixed },
+    reviewPeriod: { type: String, enum: ['7', '15', '30', 'all'], default: 'all' },
   },
   { timestamps: true }
 );

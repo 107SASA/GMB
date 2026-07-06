@@ -4,6 +4,12 @@ import Business from '../../models/Business';
 import Review from '../../models/Review';
 import { generateAIAudit } from '../ai/auditEngine';
 import { logAIUsage } from '../../lib/logAIUsage';
+import {
+  normalizeReviewPeriod,
+  filterReviewsByPeriod,
+  REVIEW_PERIOD_LABELS,
+  buildScoreBreakdown,
+} from './seoAnalyzer';
 
 export async function processAuditJob(auditId: string) {
   await dbConnect();
@@ -42,15 +48,31 @@ export async function processAuditJob(auditId: string) {
     }
 
     // Include sentiment so scoring functions can use real sentiment data
-    const formattedReviews = reviewsData.map(r => ({
+    //
+    // BUG FIX: this previously read `r.replyText`, but the Review model's owner-reply
+    // field is actually named `response` (see src/models/Review.ts). `replyText` does
+    // not exist on the schema, so it was always `undefined` — every review was treated
+    // as "unanswered" regardless of whether it actually had an owner reply. This was
+    // the root cause of reviews being marked unanswered even when they weren't
+    // (Problem 3).
+    const allFormattedReviews = reviewsData.map(r => ({
       author:        r.reviewer     || 'Anonymous',
       rating:        r.rating       || 0,
       text:          r.reviewText   || '',
       date:          r.createdAt?.toISOString() || new Date().toISOString(),
-      ownerReply:    r.replyText,
+      ownerReply:    r.response,
       sentiment:     r.sentiment    || 'neutral',
       sentimentScore: r.sentimentScore || 0,
     }));
+
+    // ── Review Analysis Period filter (Problem 4) ──────────────────────────────
+    // "all" (the default) is a no-op, so existing behavior is unchanged unless the
+    // user explicitly narrows the date range. This single filter point feeds every
+    // downstream review-based calculation: review metrics, unanswered-review /
+    // response-rate calculation, sentiment breakdown, review quality score, and
+    // keyword coverage — as well as the report and downloaded PDF.
+    const reviewPeriod = normalizeReviewPeriod(audit.reviewPeriod);
+    const formattedReviews = filterReviewsByPeriod(allFormattedReviews, reviewPeriod);
 
     // ── Business data payload for analyzers ───────────────────
     // Extract city from address if the city field was not explicitly set.
@@ -185,10 +207,37 @@ export async function processAuditJob(auditId: string) {
       keywordCoverageScore                  * 0.15,
     ));
 
+    // ── Transparent score breakdown (Problem 1) ─────────────────
+    // Shows exactly how finalScore was derived: max points, earned points,
+    // and a plain-language reason for each of the 4 scoring pillars above.
+    const scoreBreakdown = buildScoreBreakdown({
+      profileCompletionPct:   profileCompletion.completionPercentage,
+      profileChecklist:       profileCompletion.checklist,
+      nativeSeoScore:         nativeSeoScore.score,
+      seoOpportunities:       nativeSeoScore.optimizationOpportunities,
+      reviewQualityScore,
+      reviewCount:            formattedReviews.length,
+      averageRating:          reviewMetrics.averageRating,
+      keywordCoverageScore,
+      mentionedKeywordsCount: reviewKeywordResult.totalMentionedKeywords,
+      targetKeywordsCount:    reviewKeywordResult.totalTargetKeywords,
+      finalScore,
+    });
+
+    // ── Review Analysis Period metadata (Problem 4) ──────────────
+    const reviewAnalysisPeriod = {
+      period:                reviewPeriod,
+      label:                 REVIEW_PERIOD_LABELS[reviewPeriod],
+      totalReviewsAnalyzed:  formattedReviews.length,
+      totalReviewsAllTime:   allFormattedReviews.length,
+    };
+
     // ── Persist debug + sync metadata ────────────────────────
     audit.metadata = audit.metadata || {};
     audit.metadata.reviewsSyncedAt    = new Date().toISOString();
     audit.metadata.reviewsActualCount = formattedReviews.length;
+    audit.metadata.reviewsAllTimeCount = allFormattedReviews.length;
+    audit.metadata.reviewPeriod        = reviewPeriod;
     audit.metadata.debug = {
       businessName:       businessData.businessName,
       category:           businessData.category,
@@ -270,6 +319,8 @@ export async function processAuditJob(auditId: string) {
 
       if (!aiResult.profileScore) aiResult.profileScore = {};
       aiResult.profileScore.overallScore = finalScore;
+      aiResult.scoreBreakdown        = scoreBreakdown;
+      aiResult.reviewAnalysisPeriod  = reviewAnalysisPeriod;
 
       audit.auditVersion = 'V7';
       audit.overallScore = finalScore;

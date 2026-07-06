@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { inngest } from '@/services/inngest/client';
+import { validateTwilioSignature } from '@/lib/twilioSignature';
 
 export const maxDuration = 60; // Webhook handler should be fast, but we'll leave it at 60s
 export const dynamic = 'force-dynamic';
@@ -7,6 +8,10 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
+
+    const verification = await validateTwilioSignature(request, formData);
+    if (!verification.ok) return verification.response;
+
     const body = formData.get('Body')?.toString() || '';
     const from = formData.get('From')?.toString() || '';
     const profileName = formData.get('ProfileName')?.toString() || '';

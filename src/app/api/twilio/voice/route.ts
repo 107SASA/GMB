@@ -4,6 +4,7 @@ import Business from '@/models/Business';
 import Lead from '@/models/Lead';
 import Activity from '@/models/Activity';
 import { inngest } from '@/services/inngest/client';
+import { validateTwilioSignature } from '@/lib/twilioSignature';
 
 // Twilio calls this endpoint when someone calls the business's GBP tracking number.
 // The Twilio number should be set as the phone number on the Google Business Profile.
@@ -48,6 +49,9 @@ export async function POST(req: Request) {
         headers: { 'Content-Type': 'text/xml' },
       });
     }
+
+    const verification = await validateTwilioSignature(req, formData, (business.integrations as any)?.twilioAuthToken);
+    if (!verification.ok) return verification.response;
 
     const tenantId   = business.organizationId.toString();
     const businessId = business._id;

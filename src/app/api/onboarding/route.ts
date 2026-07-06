@@ -4,7 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import User from '@/models/User';
 import Organization from '@/models/Organization';
-import { createSession } from '@/lib/session';
+import { createSession, signSessionToken, SESSION_MAX_AGE_SECONDS } from '@/lib/session';
 import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
@@ -122,6 +122,16 @@ export async function POST(req: Request) {
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 30,
     });
+
+    // Mobile clients get the JWT in the body (no cookie support); web never does.
+    if (req.headers.get('x-client') === 'mobile') {
+      const token = await signSessionToken(newUser._id.toString(), newUser.role);
+      const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
+      return NextResponse.json(
+        { success: true, businessId: newBusiness._id, token, expiresAt },
+        { status: 200 }
+      );
+    }
 
     return NextResponse.json({ success: true, businessId: newBusiness._id }, { status: 200 });
   } catch (error: any) {

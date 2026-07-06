@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import Post from "@/models/Post";
-import { DEV_CONTEXT } from "@/lib/dev-context";
 import Business from "@/models/Business";
 import { generatePost } from "@/services/ai";
+import { requireBusinessContext } from "@/lib/tenant";
 
 export async function GET(req: Request) {
   try {
+    const ctx = await requireBusinessContext();
+    if (!ctx.ok) return ctx.response;
+
     await dbConnect();
-    
+
     const { searchParams } = new URL(req.url);
-    const businessId = DEV_CONTEXT.businessId;
+    const businessId = ctx.businessId;
 
     const filter: any = { businessId };
     const status = searchParams.get("status");
@@ -41,13 +44,16 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const ctx = await requireBusinessContext();
+    if (!ctx.ok) return ctx.response;
+
     await dbConnect();
-    
+
     const body = await req.json();
 
     const post = await Post.create({
       ...body,
-      businessId: DEV_CONTEXT.businessId,
+      businessId: ctx.businessId,
       status: body.status || "PENDING_APPROVAL",
     });
 

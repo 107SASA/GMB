@@ -22,7 +22,7 @@ export async function processAuditJob(auditId: string) {
     // Fetch real reviews — cap at MAX_REVIEWS_PER_AUDIT (default 100)
     const maxReviews = parseInt(process.env.MAX_REVIEWS_PER_AUDIT || '100', 10);
     let reviewsData = await Review.find({ businessId: business._id })
-      .sort({ createdAt: -1 })
+      .sort({ postedAt: -1, createdAt: -1 })
       .limit(maxReviews);
 
     // Auto-sync from SerpApi if no reviews in DB yet
@@ -33,7 +33,7 @@ export async function processAuditJob(auditId: string) {
         const tenantId = business.organizationId?.toString() || audit.tenantId;
         await syncReviewsForBusiness(business._id.toString(), tenantId);
         reviewsData = await Review.find({ businessId: business._id })
-          .sort({ createdAt: -1 })
+          .sort({ postedAt: -1, createdAt: -1 })
           .limit(maxReviews);
         console.log(`[auditService] Auto-synced ${reviewsData.length} reviews for ${business.name}`);
       } catch (syncErr: any) {
@@ -46,7 +46,9 @@ export async function processAuditJob(auditId: string) {
       author:        r.reviewer     || 'Anonymous',
       rating:        r.rating       || 0,
       text:          r.reviewText   || '',
-      date:          r.createdAt?.toISOString() || new Date().toISOString(),
+      // postedAt = Google's real review date; createdAt is only the sync
+      // time and skews reviews-per-week after bulk syncs.
+      date:          (r.postedAt ?? r.createdAt)?.toISOString() || new Date().toISOString(),
       ownerReply:    r.replyText,
       sentiment:     r.sentiment    || 'neutral',
       sentimentScore: r.sentimentScore || 0,

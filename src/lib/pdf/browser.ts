@@ -23,11 +23,12 @@ export async function launchBrowser() {
 
   if (process.env.NODE_ENV === 'production') {
     const { default: chromium } = await import('@sparticuz/chromium');
+    // This @sparticuz/chromium version no longer exposes defaultViewport /
+    // headless statics — puppeteer's defaults (headless, 800x600) apply.
     return puppeteer.launch({
       args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
       executablePath: await chromium.executablePath(),
-      headless: chromium.headless as boolean,
+      headless: true,
     });
   }
 

@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { parse } from "csv-parse/sync";
 import dbConnect from "@/lib/mongodb";
 import Customer from "@/models/Customer";
+import { requireBusinessContext } from "@/lib/tenant";
 
 export async function POST(req: NextRequest) {
   try {
+    const ctx = await requireBusinessContext();
+    if (!ctx.ok) return ctx.response;
+
     await dbConnect();
 
     const formData = await req.formData();
@@ -41,7 +45,7 @@ export async function POST(req: NextRequest) {
           optIn: true
         };
 
-        const existing = await Customer.findOne({ phone });
+        const existing = await Customer.findOne({ phone, businessId: ctx.businessId });
 
         if (existing) {
           // Deduplication: Update metrics for existing customer
@@ -56,6 +60,8 @@ export async function POST(req: NextRequest) {
         } else {
           await Customer.create({
             phone,
+            businessId: ctx.businessId,
+            tenantId: ctx.organizationId,
             ...customerData
           });
           newCount++;

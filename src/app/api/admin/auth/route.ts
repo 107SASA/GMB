@@ -25,12 +25,14 @@ export async function POST(req: Request) {
       );
     }
 
-    let isValid = false;
-    if (user.passwordHash?.startsWith('$2b$') || user.passwordHash?.startsWith('$2a$')) {
-      isValid = await bcrypt.compare(password, user.passwordHash);
-    } else {
-      isValid = user.passwordHash === password;
+    if (!user.passwordHash) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid credentials' },
+        { status: 401 }
+      );
     }
+
+    const isValid = await bcrypt.compare(password, user.passwordHash);
 
     if (!isValid) {
       return NextResponse.json(

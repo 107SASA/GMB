@@ -4,13 +4,14 @@ export interface IReviewRequest extends Document {
   tenantId: string;
   businessId: mongoose.Types.ObjectId;
   customerId: mongoose.Types.ObjectId;
-  channel: 'whatsapp' | 'email';
+  channel: 'whatsapp';
   message: string;
   status: 'Pending' | 'Sent' | 'Delivered' | 'Failed' | 'Cancelled';
   sentAt?: Date;
   clicked: boolean;
   clickedAt?: Date;
   reviewReceived: boolean;
+  reviewedAt?: Date;
   rating?: number;
   followUpStage: number; // 0=Initial, 1=Reminder 1, 2=Reminder 2
   automationStatus: 'Active' | 'Completed' | 'Stopped';
@@ -25,7 +26,7 @@ const ReviewRequestSchema = new Schema(
     tenantId: { type: String, required: true },
     businessId: { type: Schema.Types.ObjectId, ref: 'Business', required: true },
     customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: true },
-    channel: { type: String, enum: ['whatsapp', 'email'], required: true },
+    channel: { type: String, enum: ['whatsapp'], default: 'whatsapp', required: true },
     message: { type: String, required: true },
     status: { 
       type: String, 
@@ -36,6 +37,7 @@ const ReviewRequestSchema = new Schema(
     clicked: { type: Boolean, default: false },
     clickedAt: { type: Date },
     reviewReceived: { type: Boolean, default: false },
+    reviewedAt: { type: Date },
     rating: { type: Number },
     followUpStage: { type: Number, default: 0 },
     automationStatus: {

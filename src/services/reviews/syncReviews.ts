@@ -25,13 +25,16 @@ export async function syncReviewsForBusiness(
   const fetchedReviews = await provider.fetchReviews(businessId);
 
   let criticalFound = false;
+  // Rating + id of the last critical review seen — carried on the alert
+  // event so push notifications can say "New {rating}★ review".
+  let criticalDetails: { rating: number; reviewId: string } | null = null;
   const bid = new mongoose.Types.ObjectId(businessId);
 
   for (const raw of fetchedReviews) {
     const sentimentResult = analyzeSentiment(raw.text, raw.rating);
     if (sentimentResult.label === 'critical') criticalFound = true;
 
-    await Review.findOneAndUpdate(
+    const saved = await Review.findOneAndUpdate(
       { providerReviewId: raw.providerReviewId },
       {
         tenantId,
@@ -42,10 +45,18 @@ export async function syncReviewsForBusiness(
         reviewText: raw.text,
         sentiment: sentimentResult.label,
         sentimentScore: sentimentResult.score,
-        createdAt: new Date(raw.postedAt),
+        // Google's real posted date. NOTE: setting createdAt here does NOT
+        // work — Mongoose timestamps strip it from upserts — which is why
+        // the dedicated postedAt field exists. Existing docs pick it up on
+        // their next sync (upsert matches providerReviewId).
+        postedAt: new Date(raw.postedAt),
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
+
+    if (sentimentResult.label === 'critical' && saved) {
+      criticalDetails = { rating: raw.rating, reviewId: saved._id.toString() };
+    }
   }
 
   // Recompute analytics from the full review set (not just the page we just fetched)
@@ -81,7 +92,10 @@ export async function syncReviewsForBusiness(
     try {
       // Dynamic import avoids circular dependency with inngest/functions.ts
       const { inngest } = await import('@/services/inngest/client');
-      await inngest.send({ name: 'reviews/critical-alert', data: { businessId } });
+      await inngest.send({
+        name: 'reviews/critical-alert',
+        data: { businessId, ...(criticalDetails ?? {}) },
+      });
     } catch (e) {
       console.warn('[syncReviews] Failed to send critical-alert event:', e);
     }
@@ -89,7 +103,10 @@ export async function syncReviewsForBusiness(
 
   return {
     analytics,
-    reviews: allReviews.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+    reviews: allReviews.sort(
+      (a, b) =>
+        (b.postedAt ?? b.createdAt).getTime() - (a.postedAt ?? a.createdAt).getTime()
+    ),
     synced: fetchedReviews.length,
   };
 }

@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Audit from '@/models/Audit';
+import { requireClient } from '@/lib/auth';
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> } // In Next.js 15, params in Route Handlers should be awaited if we follow the latest conventions or they are sync. Actually, in Next.js 15, `params` is a Promise and needs to be awaited.
 ) {
   try {
+    const authResult = await requireClient();
+    if (!authResult.ok) return authResult.response;
+
     const { id } = await params;
     await dbConnect();
 
@@ -14,6 +18,16 @@ export async function GET(
 
     if (!audit) {
       return NextResponse.json({ error: 'Audit not found' }, { status: 404 });
+    }
+
+    const isOwner = audit.userId === authResult.userId;
+    const isOrgMember =
+      !!authResult.user.organizationId &&
+      audit.organizationId === authResult.user.organizationId.toString();
+    const isSuperAdmin = authResult.user.role === 'SUPER_ADMIN';
+
+    if (!isOwner && !isOrgMember && !isSuperAdmin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     return NextResponse.json({ success: true, audit }, { status: 200 });

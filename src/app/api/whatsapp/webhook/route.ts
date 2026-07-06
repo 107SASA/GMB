@@ -6,6 +6,7 @@ import Business from '@/models/Business';
 import mongoose from 'mongoose';
 import { inngest } from '@/services/inngest/client';
 import Customer from '@/models/Customer';
+import { validateTwilioSignature } from '@/lib/twilioSignature';
 
 export async function POST(req: Request) {
   try {
@@ -48,6 +49,9 @@ export async function POST(req: Request) {
       console.error(`No business found mapped to WhatsApp number: ${toPayload}`);
       return new NextResponse('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', { status: 200, headers: { 'Content-Type': 'text/xml' }});
     }
+
+    const verification = await validateTwilioSignature(req, formData, (business.integrations as any)?.twilioAuthToken);
+    if (!verification.ok) return verification.response;
 
     const tenantId = business.organizationId.toString();
     const businessId = business._id;

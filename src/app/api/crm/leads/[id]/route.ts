@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import Lead from '@/models/Lead';
 import Activity from '@/models/Activity';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 
 export async function PATCH(
   req: NextRequest,
@@ -11,6 +12,8 @@ export async function PATCH(
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    const gate = await requireModule(ctx.userId, 'sales_agent');
+    if (!gate.ok) return gate.response;
 
     const resolvedParams = await params;
     const { id } = resolvedParams;
@@ -23,12 +26,19 @@ export async function PATCH(
     if (!lead) return NextResponse.json({ error: 'Lead not found or unauthorized' }, { status: 404 });
 
     const oldStage = lead.pipelineStage;
+    const oldLifeCycleStage = lead.lifeCycleStage;
 
     if (Object.prototype.hasOwnProperty.call(data, 'pipelineStage')) lead.pipelineStage = data.pipelineStage;
     if (Object.prototype.hasOwnProperty.call(data, 'notes')) lead.notes = data.notes;
     if (Object.prototype.hasOwnProperty.call(data, 'status')) lead.status = data.status;
     if (Object.prototype.hasOwnProperty.call(data, 'tags')) lead.tags = data.tags;
     if (Object.prototype.hasOwnProperty.call(data, 'lifeCycleStage')) lead.lifeCycleStage = data.lifeCycleStage;
+    if (Object.prototype.hasOwnProperty.call(data, 'subStage')) {
+      lead.subStage = data.subStage;
+    } else if (Object.prototype.hasOwnProperty.call(data, 'lifeCycleStage') && data.lifeCycleStage !== oldLifeCycleStage) {
+      // Sub-stages belong to a main stage; a stage move invalidates the old one
+      lead.subStage = null;
+    }
 
     lead.lastActivityAt = new Date();
     await lead.save();

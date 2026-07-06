@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import Review from "@/models/Review";
 import { requireBusinessContext } from "@/lib/tenant";
+import { requireModule } from "@/lib/moduleGating";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,8 @@ export async function GET(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    const gate = await requireModule(ctx.userId, 'reputation_agent');
+    if (!gate.ok) return gate.response;
 
     await dbConnect();
 
@@ -20,7 +23,9 @@ export async function GET(req: Request) {
     if (replyStatus) query.replyStatus = replyStatus;
     if (sentiment) query.sentiment = sentiment;
 
-    const reviews = await Review.find(query).sort({ createdAt: -1 });
+    // postedAt = when the customer left the review on Google; createdAt is
+    // only the sync time, kept as tiebreaker/fallback for pre-postedAt docs.
+    const reviews = await Review.find(query).sort({ postedAt: -1, createdAt: -1 });
     return NextResponse.json(reviews);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -31,6 +36,8 @@ export async function POST(request: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    const gate = await requireModule(ctx.userId, 'reputation_agent');
+    if (!gate.ok) return gate.response;
 
     await dbConnect();
     const body = await request.json();

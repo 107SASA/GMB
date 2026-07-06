@@ -4,11 +4,14 @@ import ConversationThread from '@/models/ConversationThread';
 import mongoose from 'mongoose';
 import '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 
 export async function GET(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    const gate = await requireModule(ctx.userId, 'sales_agent');
+    if (!gate.ok) return gate.response;
 
     await dbConnect();
 
@@ -29,6 +32,8 @@ export async function PATCH(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    const gate = await requireModule(ctx.userId, 'sales_agent');
+    if (!gate.ok) return gate.response;
 
     await dbConnect();
     const data = await req.json();

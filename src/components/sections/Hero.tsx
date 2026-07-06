@@ -4,6 +4,15 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight, Play, Sparkles, Calendar } from "lucide-react";
 
+// "Book Free Demo" opens WhatsApp with a pre-filled message so the AI sales
+// agent takes over and the visitor lands in the CRM as a lead. Falls back to
+// the /book-demo form when no platform WhatsApp number is configured.
+const WHATSAPP_NUMBER = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '').replace(/[^\d]/g, '');
+const DEMO_MESSAGE = "Hi! I'd like to book a demo of GMBBoost.";
+const bookDemoHref = WHATSAPP_NUMBER
+  ? `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(DEMO_MESSAGE)}`
+  : '/book-demo';
+
 export function Hero() {
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
@@ -54,7 +63,12 @@ export function Hero() {
             Start Free Audit
             <ArrowRight className="w-5 h-5" />
           </Link>
-          <Link href="/book-demo" className="w-full sm:w-auto px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20">
+          <Link
+            href={bookDemoHref}
+            target={WHATSAPP_NUMBER ? '_blank' : undefined}
+            rel={WHATSAPP_NUMBER ? 'noopener noreferrer' : undefined}
+            className="w-full sm:w-auto px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+          >
             <Calendar className="w-5 h-5" />
             Book Free Demo
           </Link>

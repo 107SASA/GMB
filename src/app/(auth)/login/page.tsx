@@ -68,10 +68,7 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-bold text-slate-700">Password</label>
-              <a href="#" className="text-xs font-bold text-indigo-600 hover:text-indigo-700">Forgot?</a>
-            </div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">Password</label>
             <input 
               type="password" 
               required
@@ -92,7 +89,7 @@ export default function LoginPage() {
         </form>
 
         <p className="text-center text-sm font-medium text-slate-500 mt-8">
-          Don't have an account? <a href="#" className="text-indigo-600 hover:text-indigo-700">Request Access</a>
+          Don't have an account? <a href="/onboarding" className="text-indigo-600 hover:text-indigo-700">Get Started</a>
         </p>
       </div>
     </div>

@@ -9,10 +9,13 @@ export interface ILead extends Document {
   name: string;
   email?: string;
   phone?: string;
-  source: 'WhatsApp' | 'Website' | 'Manual' | 'Instagram' | 'Facebook' | 'Referral' | 'Demo Booking' | 'Google Business Profile';
+  source: 'WhatsApp' | 'Website' | 'Manual' | 'Instagram' | 'Facebook' | 'Referral' | 'Demo Booking' | 'Google Business Profile' | 'Phone Call' | 'Contacts Import';
   leadType: 'Client Prospect' | 'Platform Prospect';
   status: 'active' | 'inactive';
   lifeCycleStage: 'initial' | 'active' | 'closed' | 'converted';
+  // Sub-stage name inside the current lifeCycleStage, from the business's
+  // configurable leadStages (see Business.leadStages). Null = none picked.
+  subStage: string | null;
   pipelineStage: string | null;
   tags: string[];
   notes?: string;
@@ -44,7 +47,7 @@ const LeadSchema: Schema = new Schema(
     phone: { type: String },
     source: { 
       type: String, 
-      enum: ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking', 'Google Business Profile'],
+      enum: ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking', 'Google Business Profile', 'Phone Call', 'Contacts Import'],
       default: 'Manual'
     },
     leadType: {
@@ -58,6 +61,7 @@ const LeadSchema: Schema = new Schema(
       enum: ['initial', 'active', 'closed', 'converted'],
       default: 'initial',
     },
+    subStage: { type: String, default: null },
     pipelineStage: { type: String, default: null },
     tags: [{ type: String }],
     notes: { type: String },

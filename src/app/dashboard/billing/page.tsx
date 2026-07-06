@@ -10,6 +10,23 @@ import {
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 
+interface BillingStatus {
+  planType: string;
+  billingStatus: string;
+  trialStatus?: { isActive: boolean; endsAt?: string };
+  modules?: Record<string, { enabled: boolean }>;
+  hasPaymentMethod: boolean;
+  currentPeriodEnd: string | null;
+}
+
+const MODULE_LABELS: Record<string, string> = {
+  google_ranking_agent: 'Google Ranking Agent',
+  reputation_agent: 'Reputation Agent',
+  sales_agent: 'AI Sales Agent',
+  content_studio: 'Content Studio',
+  marketing_automation: 'Marketing Automation',
+};
+
 interface UsageData {
   plan: string;
   month: string;
@@ -94,6 +111,144 @@ function PlanBadge({ plan }: { plan: string }) {
   );
 }
 
+function SubscriptionCard() {
+  const [status, setStatus] = useState<BillingStatus | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const loadStatus = async () => {
+    try {
+      const res = await fetch('/api/billing/status');
+      const json = await res.json();
+      if (json.success) setStatus(json.subscription);
+    } catch { /* card just doesn't render */ }
+  };
+
+  useEffect(() => { loadStatus(); }, []);
+
+  if (!status) return null;
+
+  const statusStyles: Record<string, string> = {
+    Active:   'bg-emerald-50 text-emerald-700 border-emerald-100',
+    Trialing: 'bg-blue-50 text-blue-700 border-blue-100',
+    PastDue:  'bg-amber-50 text-amber-700 border-amber-100',
+    Canceled: 'bg-slate-100 text-slate-500 border-slate-200',
+  };
+
+  const enabledModules = Object.entries(status.modules ?? {})
+    .filter(([, v]) => v?.enabled)
+    .map(([k]) => MODULE_LABELS[k] ?? k);
+
+  const handleCancel = async () => {
+    setCancelling(true); setMessage('');
+    try {
+      const res = await fetch('/api/billing/cancel', { method: 'POST' });
+      const json = await res.json();
+      if (json.success) {
+        setMessage(json.message);
+        setConfirmCancel(false);
+        // The webhook applies the downgrade — refresh shortly after.
+        setTimeout(loadStatus, 3000);
+      } else {
+        setMessage(json.error || 'Cancellation failed');
+      }
+    } catch {
+      setMessage('Network error');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-base font-bold text-slate-900">Subscription</h2>
+        <span className={cn(
+          'px-2.5 py-1 text-xs font-bold rounded-lg border',
+          statusStyles[status.billingStatus] ?? statusStyles.Canceled
+        )}>
+          {status.billingStatus}
+        </span>
+      </div>
+
+      <div className="space-y-2.5 text-sm">
+        <div className="flex items-center justify-between py-2 border-b border-slate-50">
+          <span className="text-slate-500">Plan</span>
+          <PlanBadge plan={status.planType} />
+        </div>
+        {status.trialStatus?.isActive && status.trialStatus.endsAt && (
+          <div className="flex items-center justify-between py-2 border-b border-slate-50">
+            <span className="text-slate-500">Trial ends</span>
+            <span className="font-bold text-slate-800">
+              {new Date(status.trialStatus.endsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </span>
+          </div>
+        )}
+        {status.currentPeriodEnd && status.billingStatus === 'Active' && (
+          <div className="flex items-center justify-between py-2 border-b border-slate-50">
+            <span className="text-slate-500">Renews on</span>
+            <span className="font-bold text-slate-800">
+              {new Date(status.currentPeriodEnd).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </span>
+          </div>
+        )}
+        <div className="py-2">
+          <span className="text-slate-500 block mb-2">Enabled modules</span>
+          <div className="flex flex-wrap gap-1.5">
+            {enabledModules.length > 0 ? enabledModules.map(m => (
+              <span key={m} className="px-2 py-0.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-md">
+                {m}
+              </span>
+            )) : (
+              <span className="text-xs text-slate-400">None</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {message && (
+        <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">{message}</div>
+      )}
+
+      <div className="mt-4 flex items-center gap-3">
+        <Link
+          href="/pricing"
+          className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-colors"
+        >
+          {status.billingStatus === 'Active' ? 'Change plan' : 'View plans'}
+        </Link>
+        {status.hasPaymentMethod && status.billingStatus === 'Active' && (
+          confirmCancel ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCancel}
+                disabled={cancelling}
+                className="px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {cancelling ? 'Cancelling…' : 'Confirm cancel'}
+              </button>
+              <button
+                onClick={() => setConfirmCancel(false)}
+                className="px-3 py-2 text-sm font-semibold text-slate-500 hover:text-slate-800"
+              >
+                Keep plan
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmCancel(true)}
+              className="px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+            >
+              Cancel subscription
+            </button>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function BillingPage() {
   const router = useRouter();
   const [data, setData] = useState<UsageData | null>(null);
@@ -157,6 +312,9 @@ export default function BillingPage() {
         </div>
       ) : data ? (
         <>
+          {/* Subscription (Razorpay) */}
+          <SubscriptionCard />
+
           {/* Plan card */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex items-center gap-4">
             <div className={cn(
@@ -275,10 +433,13 @@ export default function BillingPage() {
                       </div>
                     ))}
                   </div>
-                  <button className="flex items-center gap-2 px-6 py-3 bg-white text-violet-700 font-bold rounded-xl hover:bg-violet-50 transition-colors shadow-sm text-sm">
-                    Contact us to upgrade
+                  <Link
+                    href="/pricing"
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-white text-violet-700 font-bold rounded-xl hover:bg-violet-50 transition-colors shadow-sm text-sm"
+                  >
+                    View plans & subscribe
                     <ArrowRight className="w-4 h-4" />
-                  </button>
+                  </Link>
                 </div>
               </div>
             </div>

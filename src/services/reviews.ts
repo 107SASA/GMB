@@ -2,93 +2,66 @@ import dbConnect from '@/lib/mongodb';
 import Review from '@/models/Review';
 import Business from '@/models/Business';
 import ReviewMonitorLog from '@/models/ReviewMonitorLog';
-import { generateAIReply, analyzeSentiment } from './ai';
+import { getReviewProvider } from './reviews/providers/index';
+import { analyzeSentiment } from './reviews/sentimentEngine';
+import { generateAIReply } from './ai';
 
 /**
- * MOCK: Fetch new reviews from Google Business Profile
- * In production, this would call the Google My Business API
+ * Review monitor: fetches new reviews from the active provider (SerpApi when
+ * SERPAPI_KEY is set, mock otherwise), drafts an AI reply for each brand-new
+ * review, and raises alerts. Unlike syncReviewsForBusiness (which only stores
+ * reviews + analytics), this is the "auto-draft replies" pipeline behind
+ * POST /api/reviews/monitor.
  */
-export async function fetchGoogleReviews(businessId: string) {
-  // Mocking new reviews that could have been polled from Google
-  return [
-    {
-      reviewerName: 'John Doe',
-      rating: 5,
-      reviewText: 'Great service! The team was very helpful and the quality is amazing.',
-      sourcePlatform: 'Google',
-      createdAt: new Date(),
-    },
-    {
-      reviewerName: 'Jane Smith',
-      rating: 2,
-      reviewText: 'Very slow response time. Not happy with the experience today.',
-      sourcePlatform: 'Google',
-      createdAt: new Date(),
-    }
-  ];
-}
-
 export async function processNewReviews(businessId: string) {
   await dbConnect();
-  
+
   try {
     const business = await Business.findById(businessId);
     if (!business) throw new Error('Business not found');
 
-    const fetchedReviews = await fetchGoogleReviews(businessId);
+    const provider = getReviewProvider();
+    const fetchedReviews = await provider.fetchReviews(businessId);
+
     let newReviewsDetected = 0;
     let aiRepliesGenerated = 0;
+    let firstDraftedReviewId: string | null = null;
+    let criticalDetails: { rating: number; reviewId: string } | null = null;
     const errors: string[] = [];
 
-    for (const data of fetchedReviews) {
-      // Check if review already exists (assuming reviewerName + reviewText is unique enough for mock)
-      const existing = await Review.findOne({
-        businessId: business._id,
-        reviewer: data.reviewerName,
-        rating: data.rating,
-      });
+    for (const raw of fetchedReviews) {
+      // Already stored by a previous monitor run or campaign sync
+      const existing = await Review.findOne({ providerReviewId: raw.providerReviewId });
+      if (existing) continue;
 
-      if (!existing) {
-        newReviewsDetected++;
-        try {
-          const sentiment = await analyzeSentiment(data.reviewText, data.rating);
-          const aiReply = await generateAIReply(data.reviewText, data.rating, data.reviewerName, 'Professional');
+      newReviewsDetected++;
+      try {
+        const sentimentResult = analyzeSentiment(raw.text, raw.rating);
+        const aiReply = await generateAIReply(raw.text, raw.rating, raw.reviewerName, 'Professional');
 
-          const reviewData = {
-            businessId: business._id,
-            reviewer: data.reviewerName,
-            rating: data.rating,
-            reviewText: data.reviewText,
-            sentiment,
-            aiSuggestedReply: aiReply,
-            replyStatus: 'PENDING',
-            replyTone: 'Professional',
-            sourcePlatform: data.sourcePlatform,
-          };
+        const saved = await Review.create({
+          tenantId: business.organizationId?.toString() || undefined,
+          businessId: business._id,
+          providerReviewId: raw.providerReviewId,
+          reviewer: raw.reviewerName,
+          rating: raw.rating,
+          reviewText: raw.text,
+          sentiment: sentimentResult.label,
+          sentimentScore: sentimentResult.score,
+          aiSuggestedReply: aiReply,
+          replyStatus: 'PENDING',
+          replyTone: 'Professional',
+          sourcePlatform: 'Google',
+          postedAt: new Date(raw.postedAt),
+        });
 
-          const savedReview = await Review.create(reviewData);
-          aiRepliesGenerated++;
-          
-          if (sentiment === 'critical' && business?.integrations?.twilioSid && business?.integrations?.twilioAuthToken) {
-            try {
-              const client = require('twilio')(business.integrations.twilioSid, business.integrations.twilioAuthToken);
-              
-              // Find the owner phone (simplified for MVP: send to business phone if no user phone)
-              const alertPhone = business.phone || '+1234567890';
-              
-              await client.messages.create({
-                body: `🚨 Critical Alert: You received a 1-star review from ${data.reviewerName}. Log in to GMBBoost to respond immediately.`,
-                from: business.integrations.whatsappNumber ? `whatsapp:${business.integrations.whatsappNumber}` : 'whatsapp:+14155238886',
-                to: `whatsapp:${alertPhone}`
-              });
-              console.log('Dispatched critical review alert to owner via WhatsApp');
-            } catch (err: any) {
-              console.error('Failed to send critical alert via Twilio:', err.message);
-            }
-          }
-        } catch (err: any) {
-          errors.push(`Failed to process review for ${data.reviewerName}: ${err.message}`);
+        aiRepliesGenerated++;
+        if (!firstDraftedReviewId) firstDraftedReviewId = saved._id.toString();
+        if (sentimentResult.label === 'critical') {
+          criticalDetails = { rating: raw.rating, reviewId: saved._id.toString() };
         }
+      } catch (err: any) {
+        errors.push(`Failed to process review from ${raw.reviewerName}: ${err.message}`);
       }
     }
 
@@ -99,6 +72,35 @@ export async function processNewReviews(businessId: string) {
       aiRepliesGenerated,
       errorLogs: errors,
     });
+
+    // Alerts go through the Inngest workers (push + WhatsApp + dashboard bell)
+    if (criticalDetails) {
+      try {
+        const { inngest } = await import('@/services/inngest/client');
+        await inngest.send({
+          name: 'reviews/critical-alert',
+          data: { businessId: business._id.toString(), ...criticalDetails },
+        });
+      } catch (e) {
+        console.warn('[processNewReviews] Failed to send critical-alert event:', e);
+      }
+    }
+
+    if (aiRepliesGenerated > 0) {
+      try {
+        const { inngest } = await import('@/services/inngest/client');
+        await inngest.send({
+          name: 'reviews/reply-drafted',
+          data: {
+            businessId: business._id.toString(),
+            reviewId: firstDraftedReviewId,
+            count: aiRepliesGenerated,
+          },
+        });
+      } catch (e) {
+        console.warn('[processNewReviews] Failed to send reply-drafted event:', e);
+      }
+    }
 
     return {
       success: true,

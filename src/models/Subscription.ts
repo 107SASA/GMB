@@ -27,6 +27,9 @@ export interface ISubscription extends Document {
   status?: string;
   startDate?: Date;
   endDate?: Date;
+  // Razorpay linkage (website billing) — additive
+  razorpaySubscriptionId?: string;
+  currentPeriodEnd?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,7 +55,10 @@ const SubscriptionSchema: Schema = new Schema(
     planId: { type: Schema.Types.ObjectId, ref: 'Plan' },
     status: { type: String, default: 'active' },
     startDate: { type: Date },
-    endDate: { type: Date }
+    endDate: { type: Date },
+    // Razorpay linkage (website billing) — additive
+    razorpaySubscriptionId: { type: String, index: true, sparse: true },
+    currentPeriodEnd: { type: Date }
   },
   { timestamps: true }
 );

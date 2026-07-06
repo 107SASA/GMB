@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ActivityTimeline from './ActivityTimeline';
+import type { LeadStagesConfig, SubStageGroup } from '@/lib/leadStages';
 
 interface LeadDrawerProps {
   lead: any;
@@ -30,6 +31,18 @@ function StageBadge({ stage }: { stage?: string }) {
 
 export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDrawerProps) {
   const [updatingStage, setUpdatingStage] = useState(false);
+  const [stagesConfig, setStagesConfig] = useState<LeadStagesConfig | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    (async () => {
+      try {
+        const res = await fetch('/api/business/lead-stages');
+        const data = await res.json();
+        if (data.success) setStagesConfig(data.leadStages);
+      } catch { /* sub-stage picker just stays hidden */ }
+    })();
+  }, [isOpen]);
 
   if (!isOpen || !lead) return null;
 
@@ -39,14 +52,37 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
       await fetch(`/api/crm/leads/${lead._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lifeCycleStage: newStage }),
+        // A stage move invalidates the previous sub-stage
+        body: JSON.stringify({ lifeCycleStage: newStage, subStage: null }),
       });
       lead.lifeCycleStage = newStage;
+      lead.subStage = null;
       onUpdate();
     } finally {
       setUpdatingStage(false);
     }
   };
+
+  const handleSubStageChange = async (newSubStage: string | null) => {
+    setUpdatingStage(true);
+    try {
+      await fetch(`/api/crm/leads/${lead._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subStage: newSubStage }),
+      });
+      lead.subStage = newSubStage;
+      onUpdate();
+    } finally {
+      setUpdatingStage(false);
+    }
+  };
+
+  const currentStage: string = lead.lifeCycleStage || 'initial';
+  const subStageOptions =
+    stagesConfig && currentStage !== 'initial'
+      ? stagesConfig[currentStage as SubStageGroup] ?? []
+      : [];
 
   return (
     <AnimatePresence>
@@ -71,6 +107,9 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
             <div>
               <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <StageBadge stage={lead.lifeCycleStage} />
+                {lead.subStage && (
+                  <span className="text-xs font-semibold px-2 py-0.5 bg-violet-50 text-violet-700 rounded-full border border-violet-100">{lead.subStage}</span>
+                )}
                 {lead.pipelineStage && (
                   <span className="text-xs font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-100 uppercase">{lead.pipelineStage}</span>
                 )}
@@ -120,6 +159,43 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
                   );
                 })}
               </div>
+
+              {/* Sub-stage picker — options come from the business's Lead Stages config */}
+              {subStageOptions.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-slate-200">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Sub-stage</h4>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      disabled={updatingStage}
+                      onClick={() => handleSubStageChange(null)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all disabled:opacity-50 ${
+                        !lead.subStage
+                          ? 'bg-slate-200 border-slate-300 text-slate-700'
+                          : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600'
+                      }`}
+                    >
+                      None
+                    </button>
+                    {subStageOptions.map((sub) => {
+                      const isSelected = lead.subStage === sub.name;
+                      return (
+                        <button
+                          key={sub.name}
+                          disabled={updatingStage}
+                          onClick={() => handleSubStageChange(sub.name)}
+                          className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all disabled:opacity-50 ${
+                            isSelected
+                              ? 'bg-violet-100 border-violet-300 text-violet-700 shadow-sm'
+                              : 'bg-white border-slate-200 text-slate-500 hover:border-violet-200 hover:text-violet-600'
+                          }`}
+                        >
+                          {sub.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="mb-8">

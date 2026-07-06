@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { inngest } from '@/services/inngest/client';
+import { requireBusinessContext } from '@/lib/tenant';
 
 export async function POST(req: Request) {
   process.env.INNGEST_DEV = "1";
@@ -8,18 +9,12 @@ export async function POST(req: Request) {
   try {
     const { businessId } = await req.json();
 
-    let finalBusinessId = businessId;
-
-    if (!finalBusinessId) {
-       const { getActiveBusinessContext } = await import('@/lib/business-context');
-       const context = await getActiveBusinessContext();
-       if (!context.ok) return NextResponse.json({ error: 'No active business context found' }, { status: 400 });
-       finalBusinessId = context.business._id.toString();
-    }
+    const ctx = await requireBusinessContext({ businessIdFromBody: businessId });
+    if (!ctx.ok) return ctx.response;
 
     await inngest.send({
       name: 'scheduler/manual-generate',
-      data: { businessId: finalBusinessId, force: true }
+      data: { businessId: ctx.businessId, force: true }
     });
 
     return NextResponse.json({ success: true, message: 'Generation job dispatched successfully.' }, { status: 200 });

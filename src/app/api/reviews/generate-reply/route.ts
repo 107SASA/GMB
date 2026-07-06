@@ -4,6 +4,7 @@ import Review from '@/models/Review';
 import Business from '@/models/Business';
 import { generateReviewReply } from '@/services/ai/replyEngine';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 import { logAIUsage } from '@/lib/logAIUsage';
 import { checkUsageLimit } from '@/lib/featureGating';
 
@@ -11,6 +12,8 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    const gate = await requireModule(ctx.userId, 'reputation_agent');
+    if (!gate.ok) return gate.response;
 
     const { reviewId, tone } = await req.json();
 

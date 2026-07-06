@@ -4,9 +4,10 @@ import Review from '@/models/Review';
 import ReviewAnalytics from '@/models/ReviewAnalytics';
 import { getReviewProvider } from './providers/index';
 import { analyzeSentiment } from './sentimentEngine';
+import { computeReviewMetrics, ReviewMetrics } from './reviewMetrics';
 
 export interface SyncResult {
-  analytics: any;
+  analytics: ReviewMetrics;
   reviews: any[];
   synced: number;
 }
@@ -25,13 +26,16 @@ export async function syncReviewsForBusiness(
   const fetchedReviews = await provider.fetchReviews(businessId);
 
   let criticalFound = false;
+  // Rating + id of the last critical review seen — carried on the alert
+  // event so push notifications can say "New {rating}★ review".
+  let criticalDetails: { rating: number; reviewId: string } | null = null;
   const bid = new mongoose.Types.ObjectId(businessId);
 
   for (const raw of fetchedReviews) {
     const sentimentResult = analyzeSentiment(raw.text, raw.rating);
     if (sentimentResult.label === 'critical') criticalFound = true;
 
-    await Review.findOneAndUpdate(
+    const saved = await Review.findOneAndUpdate(
       { providerReviewId: raw.providerReviewId },
       {
         tenantId,
@@ -42,37 +46,36 @@ export async function syncReviewsForBusiness(
         reviewText: raw.text,
         sentiment: sentimentResult.label,
         sentimentScore: sentimentResult.score,
-        createdAt: new Date(raw.postedAt),
+        // Google's real posted date. NOTE: setting createdAt here does NOT
+        // work — Mongoose timestamps strip it from upserts — which is why
+        // the dedicated postedAt field exists. Existing docs pick it up on
+        // their next sync (upsert matches providerReviewId).
+        postedAt: new Date(raw.postedAt),
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
+
+    if (sentimentResult.label === 'critical' && saved) {
+      criticalDetails = { rating: raw.rating, reviewId: saved._id.toString() };
+    }
   }
 
-  // Recompute analytics from the full review set (not just the page we just fetched)
-  const allReviews = await Review.find({ businessId: bid });
-  const total = allReviews.length;
-  const avgRating = total > 0
-    ? allReviews.reduce((sum, r) => sum + r.rating, 0) / total
-    : 0;
-  const unansweredCount = allReviews.filter(r => !r.response).length;
-  const responseRate = total > 0 ? ((total - unansweredCount) / total) * 100 : 0;
-  const positiveReviews = allReviews.filter(r => r.sentiment === 'positive').length;
-  const negativeReviews = allReviews.filter(r => r.sentiment === 'negative' || r.sentiment === 'critical').length;
-  const overallSentimentScore = total > 0
-    ? allReviews.reduce((sum, r) => sum + (r.sentimentScore || 0), 0) / total
-    : 0;
+  // Recompute analytics from the full review set using the SAME function every other
+  // module reads (Review Management cards, Dashboard). This used to be a separate inline
+  // calculation here, which could silently drift from what the rest of the app displayed.
+  const metrics = await computeReviewMetrics(businessId);
 
-  const analytics = await ReviewAnalytics.findOneAndUpdate(
+  await ReviewAnalytics.findOneAndUpdate(
     { businessId: bid },
     {
       tenantId,
-      avgRating: Number(avgRating.toFixed(1)),
-      responseRate: Math.round(responseRate),
-      sentimentScore: Math.round(overallSentimentScore),
-      unansweredCount,
-      totalReviews: total,
-      positiveReviews,
-      negativeReviews,
+      avgRating: metrics.avgRating,
+      responseRate: metrics.responseRate,
+      sentimentScore: metrics.sentimentScore,
+      unansweredCount: metrics.unansweredCount,
+      totalReviews: metrics.totalReviews,
+      positiveReviews: metrics.positiveReviews,
+      negativeReviews: metrics.negativeReviews,
     },
     { upsert: true, new: true }
   );
@@ -81,15 +84,24 @@ export async function syncReviewsForBusiness(
     try {
       // Dynamic import avoids circular dependency with inngest/functions.ts
       const { inngest } = await import('@/services/inngest/client');
-      await inngest.send({ name: 'reviews/critical-alert', data: { businessId } });
+      await inngest.send({
+        name: 'reviews/critical-alert',
+        data: { businessId, ...(criticalDetails ?? {}) },
+      });
     } catch (e) {
       console.warn('[syncReviews] Failed to send critical-alert event:', e);
     }
   }
 
+  // postedAt = Google's real posted date; createdAt is only sync time.
+  const allReviews = await Review.find({ businessId: bid }).sort({ postedAt: -1, createdAt: -1 });
+
   return {
-    analytics,
-    reviews: allReviews.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+    // Return the full metrics object (includes criticalReviews/starsDistribution, which
+    // the persisted ReviewAnalytics document doesn't carry) so the UI has everything it
+    // needs immediately after a sync, with numbers identical to a normal page load.
+    analytics: metrics,
+    reviews: allReviews,
     synced: fetchedReviews.length,
   };
 }

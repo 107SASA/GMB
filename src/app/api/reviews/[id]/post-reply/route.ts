@@ -3,11 +3,14 @@ import dbConnect from "@/lib/mongodb";
 import Review from "@/models/Review";
 import ReviewReply from "@/models/ReviewReply";
 import { requireBusinessContext } from "@/lib/tenant";
+import { requireModule } from "@/lib/moduleGating";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    const gate = await requireModule(ctx.userId, 'reputation_agent');
+    if (!gate.ok) return gate.response;
 
     await dbConnect();
     const { id } = await params;

@@ -2,16 +2,20 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Customer from '@/models/Customer';
 import { parse } from 'csv-parse/sync';
+import { requireBusinessContext } from '@/lib/tenant';
 
 export async function POST(request: Request) {
   try {
+    const ctx = await requireBusinessContext();
+    if (!ctx.ok) return ctx.response;
+
     await dbConnect();
     const formData = await request.formData();
     const file = formData.get('file') as File;
-    const businessId = formData.get('businessId') as string;
+    const businessId = ctx.businessId;
 
-    if (!file || !businessId) {
-      return NextResponse.json({ success: false, message: 'Missing file or businessId' }, { status: 400 });
+    if (!file) {
+      return NextResponse.json({ success: false, message: 'Missing file' }, { status: 400 });
     }
 
     const fileContent = await file.text();

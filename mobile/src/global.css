@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Theme variables (RGB triplets so Tailwind opacity modifiers keep working).
+ * Light values live in :root; the media query flips to the dark palette when
+ * the phone is in dark mode (app.json userInterfaceStyle: "automatic").
+ * Keep in sync with the palettes in src/lib/theme.ts.
+ */
+:root {
+  --surface: 244 246 252;
+  --surface-raised: 255 255 255;
+  --surface-overlay: 233 237 248;
+  --surface-border: 222 228 242;
+
+  --fg: 18 23 46;
+
+  --brand: 99 102 241;
+  --brand-bright: 79 70 229;
+  --brand-muted: 67 56 202;
+
+  --accent-violet: 124 58 237;
+  --accent-cyan: 14 116 144;
+  --accent-emerald: 5 150 105;
+  --accent-amber: 217 119 6;
+  --accent-rose: 225 29 72;
+
+  /* Role-preserving gray ramp: low numbers = strong text, 800+ = fills. */
+  --zinc-50: 18 23 46;
+  --zinc-100: 26 32 64;
+  --zinc-200: 42 49 85;
+  --zinc-300: 61 69 104;
+  --zinc-400: 90 98 128;
+  --zinc-500: 117 125 158;
+  --zinc-600: 154 161 192;
+  --zinc-700: 198 203 226;
+  --zinc-800: 227 230 243;
+  --zinc-900: 238 241 249;
+  --zinc-950: 246 248 252;
+
+  /* Status accents: darker steps so tinted text stays readable on white. */
+  --emerald-300: 4 120 87;
+  --emerald-400: 5 150 105;
+  --emerald-500: 5 150 105;
+  --amber-300: 180 83 9;
+  --amber-400: 217 119 6;
+  --amber-500: 217 119 6;
+  --rose-300: 190 18 60;
+  --rose-400: 225 29 72;
+  --rose-500: 225 29 72;
+  --indigo-300: 67 56 202;
+  --indigo-400: 79 70 229;
+  --indigo-500: 99 102 241;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: 7 11 20;
+    --surface-raised: 15 21 38;
+    --surface-overlay: 22 29 51;
+    --surface-border: 30 39 66;
+
+    --fg: 255 255 255;
+
+    --brand: 99 102 241;
+    --brand-bright: 129 140 248;
+    --brand-muted: 79 70 229;
+
+    --accent-violet: 168 85 247;
+    --accent-cyan: 34 211 238;
+    --accent-emerald: 52 211 153;
+    --accent-amber: 251 191 36;
+    --accent-rose: 251 113 133;
+
+    --zinc-50: 244 246 254;
+    --zinc-100: 237 239 251;
+    --zinc-200: 221 225 244;
+    --zinc-300: 184 191 221;
+    --zinc-400: 139 147 184;
+    --zinc-500: 102 110 148;
+    --zinc-600: 74 81 117;
+    --zinc-700: 52 58 92;
+    --zinc-800: 35 41 70;
+    --zinc-900: 21 26 51;
+    --zinc-950: 11 15 31;
+
+    --emerald-300: 110 231 183;
+    --emerald-400: 52 211 153;
+    --emerald-500: 16 185 129;
+    --amber-300: 252 211 77;
+    --amber-400: 251 191 36;
+    --amber-500: 245 158 11;
+    --rose-300: 253 164 175;
+    --rose-400: 251 113 133;
+    --rose-500: 244 63 94;
+    --indigo-300: 165 180 252;
+    --indigo-400: 129 140 248;
+    --indigo-500: 99 102 241;
+  }
+}
+
+:root {
+  --font-display:
+    Spline Sans, Inter, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
+    Segoe UI Symbol, Noto Color Emoji;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
+  --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;
+}

@@ -1,13 +1,38 @@
 "use client";
 
-import { Menu, Bell, MapPin, MessageSquare, Store } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Menu, MapPin, MessageSquare, Store } from "lucide-react";
 import { useBusiness } from "@/context/BusinessContext";
 import { useMobileNav } from "@/context/MobileNavContext";
 import { BusinessSwitcher } from "./BusinessSwitcher";
+import { NotificationBell } from "./NotificationBell";
+
+interface HeaderUser {
+  fullName?: string;
+  subscriptionPlan?: string;
+}
+
+function initialsOf(name?: string): string {
+  if (!name) return "U";
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(w => w[0].toUpperCase())
+    .join("") || "U";
+}
 
 export function DashboardHeader() {
   const { activeBusiness, loading } = useBusiness();
   const { toggle } = useMobileNav();
+  const [user, setUser] = useState<HeaderUser | null>(null);
+
+  useEffect(() => {
+    fetch("/api/user/profile")
+      .then(res => (res.ok ? res.json() : null))
+      .then(json => { if (json?.user) setUser(json.user); })
+      .catch(() => {});
+  }, []);
 
   if (loading || !activeBusiness) {
     return (
@@ -75,17 +100,16 @@ export function DashboardHeader() {
       </div>
 
       <div className="flex items-center gap-3 shrink-0">
-        <button className="relative w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-slate-50 flex items-center justify-center hover:bg-slate-100 transition-all border border-slate-200">
-          <Bell className="w-4 h-4 lg:w-5 lg:h-5 text-slate-500" />
-          <div className="absolute top-2 right-2 w-2 h-2 bg-indigo-500 rounded-full border-2 border-white" />
-        </button>
+        <NotificationBell />
         <div className="hidden sm:flex items-center gap-3 pl-3 lg:pl-6 border-l border-slate-200">
           <div className="text-right">
-            <div className="text-sm font-bold text-slate-900">Admin User</div>
-            <div className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Growth Plan</div>
+            <div className="text-sm font-bold text-slate-900">{user?.fullName || "…"}</div>
+            <div className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">
+              {user?.subscriptionPlan ? `${user.subscriptionPlan} Plan` : ""}
+            </div>
           </div>
           <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-slate-900 flex items-center justify-center font-bold text-white shadow-sm text-sm">
-            AD
+            {initialsOf(user?.fullName)}
           </div>
         </div>
       </div>

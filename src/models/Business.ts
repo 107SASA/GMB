@@ -59,6 +59,16 @@ export interface IBusiness extends Document {
     messageTemplate?: string;
   };
   kanbanColumns: string[];
+  // ADDITIVE — configurable Lead Stages (sales pipeline). Main stages are
+  // fixed (initial/active/converted/closed, matching Lead.lifeCycleStage);
+  // owners manage sub-stages inside every main stage except 'initial'.
+  // Missing config means "use DEFAULT_LEAD_STAGES" (see src/lib/leadStages.ts).
+  leadStages?: {
+    initialLabel: string;
+    active: Array<{ name: string; color: string }>;
+    converted: Array<{ name: string; color: string }>;
+    closed: Array<{ name: string; color: string }>;
+  };
   onboardingCompleted: boolean;
   faqs?: Array<{ question: string; answer: string }>;
   isDeleted?: boolean;
@@ -84,6 +94,15 @@ export interface IBusiness extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
+
+// Sub-stage of a main lead stage (see leadStages below).
+const LeadSubStageSchema = new Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    color: { type: String, default: 'slate' },
+  },
+  { _id: false }
+);
 
 const BusinessSchema: Schema = new Schema(
   {
@@ -145,6 +164,20 @@ const BusinessSchema: Schema = new Schema(
       messageTemplate: { type: String }
     },
     kanbanColumns: [{ type: String }],
+    // ADDITIVE — see leadStages in IBusiness above. No default object is
+    // forced onto existing documents; routes fall back to DEFAULT_LEAD_STAGES.
+    leadStages: {
+      type: new Schema(
+        {
+          initialLabel: { type: String, default: 'Open' },
+          active: { type: [LeadSubStageSchema], default: [] },
+          converted: { type: [LeadSubStageSchema], default: [] },
+          closed: { type: [LeadSubStageSchema], default: [] },
+        },
+        { _id: false }
+      ),
+      default: undefined,
+    },
     onboardingCompleted: { type: Boolean, default: false },
     faqs: [{ question: { type: String }, answer: { type: String } }],
     isDeleted: { type: Boolean, default: false },

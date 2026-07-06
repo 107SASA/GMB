@@ -79,6 +79,9 @@ export default function LeadListView({ leads, onLeadClick }: LeadListViewProps) 
             </div>
             <div className="flex flex-wrap items-center gap-1.5 mt-2 ml-12">
               <StageBadge stage={lead.lifeCycleStage} />
+              {lead.subStage && (
+                <span className="text-xs font-semibold px-2 py-0.5 bg-violet-50 text-violet-700 rounded-full border border-violet-100">{lead.subStage}</span>
+              )}
               <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${getSourceBadge(lead.source)}`}>
                 {lead.source || 'Manual'}
               </span>
@@ -134,8 +137,11 @@ export default function LeadListView({ leads, onLeadClick }: LeadListViewProps) 
               </div>
 
               {/* Life Cycle Stage */}
-              <div className="col-span-2">
+              <div className="col-span-2 flex flex-wrap items-center gap-1">
                 <StageBadge stage={lead.lifeCycleStage} />
+                {lead.subStage && (
+                  <span className="text-xs font-semibold px-2 py-0.5 bg-violet-50 text-violet-700 rounded-full border border-violet-100 truncate max-w-full">{lead.subStage}</span>
+                )}
               </div>
 
               {/* Pipeline Stage */}

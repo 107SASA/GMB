@@ -16,6 +16,13 @@ export async function PATCH(_: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ success: false, message: 'Campaign not found' }, { status: 404 });
     }
 
+    if (campaign.status !== 'ACTIVE') {
+      return NextResponse.json(
+        { success: false, message: `Only an active campaign can be paused (current status: ${campaign.status}).` },
+        { status: 400 }
+      );
+    }
+
     campaign.status = 'PAUSED';
     await campaign.save();
 

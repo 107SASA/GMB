@@ -7,11 +7,14 @@ import Lead from '@/models/Lead';
 import mongoose from 'mongoose';
 import { sendOutboundMessage } from '@/services/twilio/client';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 
 export async function GET(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    const gate = await requireModule(ctx.userId, 'sales_agent');
+    if (!gate.ok) return gate.response;
 
     await dbConnect();
     const url = new URL(req.url);
@@ -47,6 +50,8 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    const gate = await requireModule(ctx.userId, 'sales_agent');
+    if (!gate.ok) return gate.response;
 
     await dbConnect();
     // businessId and tenantId come from verified session context — never from body
@@ -61,7 +66,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Lead not found or access denied' }, { status: 403 });
     }
 
-    const twilioSid = await sendOutboundMessage(phone, text, leadId, ctx.businessId);
+    const sendResult = await sendOutboundMessage(phone, text, leadId, ctx.businessId);
 
     const msg = await Conversation.create({
       tenantId: ctx.organizationId,
@@ -70,8 +75,8 @@ export async function POST(req: Request) {
       direction: 'outbound',
       messageText: text,
       isAI: false,
-      messageStatus: 'sent',
-      twilioSid: twilioSid || 'pending',
+      messageStatus: sendResult.success ? 'sent' : 'failed',
+      twilioSid: sendResult.sid || 'pending',
     });
 
     // Human takeover: disable AI for this thread

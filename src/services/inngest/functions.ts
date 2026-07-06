@@ -7,7 +7,6 @@ import FollowUp from "@/models/FollowUp";
 import MessageQueue from "@/models/MessageQueue";
 import Business from "@/models/Business";
 import ReviewRequest from "@/models/ReviewRequest";
-import Review from "@/models/Review";
 import Customer from "@/models/Customer";
 import Campaign from "@/models/Campaign";
 import AutomationLog from "@/models/AutomationLog";
@@ -67,6 +66,25 @@ export const processWhatsappMessage = inngest.createFunction(
     });
 
     if (!thread || !thread.aiEnabled) {
+      // Human is handling this thread — push-notify the business's users so
+      // the message isn't missed. Best-effort: never fail the workflow.
+      if (thread) {
+        await step.run("push-notify-human-inbox", async () => {
+          try {
+            const { sendPushToBusinessUsers } = await import("@/services/push");
+            const { default: LeadModel } = await import("@/models/Lead");
+            const lead = await LeadModel.findById(leadId).select('name').lean() as any;
+            const name = (lead?.name && lead.name !== phone ? lead.name : profileName) || phone;
+            await sendPushToBusinessUsers(businessId, {
+              title: 'New WhatsApp message',
+              body: `New WhatsApp message from ${name}`,
+              data: { leadId: String(leadId) },
+            });
+          } catch (e) {
+            console.error('[push] whatsapp inbox notify failed:', e);
+          }
+        });
+      }
       return { success: true, reason: 'AI disabled for this thread' };
     }
 
@@ -132,7 +150,7 @@ export const processWhatsappMessage = inngest.createFunction(
     if (appointmentOutcome.handled && appointmentOutcome.reply) {
       const aiReply = appointmentOutcome.reply;
 
-      const outboundSid = await step.run("send-outbound-appointment-reply", async () => {
+      const outboundResult = await step.run("send-outbound-appointment-reply", async () => {
         return await sendOutboundMessage(phone, aiReply, leadId, businessId);
       });
 
@@ -145,8 +163,8 @@ export const processWhatsappMessage = inngest.createFunction(
           direction: 'outbound',
           messageText: aiReply,
           isAI: true,
-          messageStatus: 'sent',
-          twilioSid: outboundSid || 'pending'
+          messageStatus: outboundResult.success ? 'sent' : 'failed',
+          twilioSid: outboundResult.sid || 'pending'
         });
 
         await ConversationThread.findByIdAndUpdate(threadId, {
@@ -223,11 +241,30 @@ export const processWhatsappMessage = inngest.createFunction(
       }
     });
 
-    if (!aiReply) return { success: true, reason: 'AI skipped or failed' };
+    if (!aiReply) {
+      // AI handed off (config shutoff or generation failure) — a human needs
+      // to pick this up. Best-effort push, never fail the workflow.
+      await step.run("push-notify-ai-handoff", async () => {
+        try {
+          const { sendPushToBusinessUsers } = await import("@/services/push");
+          const { default: LeadModel } = await import("@/models/Lead");
+          const lead = await LeadModel.findById(leadId).select('name').lean() as any;
+          const name = (lead?.name && lead.name !== phone ? lead.name : profileName) || phone;
+          await sendPushToBusinessUsers(businessId, {
+            title: 'New WhatsApp message',
+            body: `New WhatsApp message from ${name}`,
+            data: { leadId: String(leadId) },
+          });
+        } catch (e) {
+          console.error('[push] whatsapp handoff notify failed:', e);
+        }
+      });
+      return { success: true, reason: 'AI skipped or failed' };
+    }
 
     // 4. Send Outbound
-    const outboundSid = await step.run("send-outbound", async () => {
-      return await sendOutboundMessage(phone, aiReply, leadId, businessId); // returns message sid
+    const outboundResult = await step.run("send-outbound", async () => {
+      return await sendOutboundMessage(phone, aiReply, leadId, businessId);
     });
 
     // 5. Log outbound message & Update Thread
@@ -240,8 +277,8 @@ export const processWhatsappMessage = inngest.createFunction(
         direction: 'outbound',
         messageText: aiReply,
         isAI: true,
-        messageStatus: 'sent',
-        twilioSid: outboundSid || 'pending'
+        messageStatus: outboundResult.success ? 'sent' : 'failed',
+        twilioSid: outboundResult.sid || 'pending'
       });
 
       await ConversationThread.findByIdAndUpdate(threadId, {
@@ -565,124 +602,246 @@ export const processContentJob = inngest.createFunction(
   }
 );
 
-// 4. AI Review Campaigns (Module 9)
+// 4. AI Review Campaigns (Module 9) — WhatsApp-only review requests with
+// owner-configurable reminder delays, editable message templates, group
+// targeting, business-hours sending, and stop-on-review.
+
+const DEFAULT_REMINDER_1 = `Hi {{name}}, just a quick reminder! We'd really appreciate a review of your recent {{service}}: {{link}}\nReply STOP to opt-out.`;
+const DEFAULT_REMINDER_2 = `Hi {{name}}, last bother from us! If you have a minute, a review would mean the world to our team at {{business}}: {{link}}\nReply STOP to opt-out.`;
+
+interface TemplateVars { name: string; service: string; business: string; link: string; }
+
+function fillTemplate(tpl: string, vars: TemplateVars): string {
+  let msg = tpl
+    .replace(/\{\{\s*name\s*\}\}/gi, vars.name)
+    .replace(/\{\{\s*service\s*\}\}/gi, vars.service)
+    .replace(/\{\{\s*business\s*\}\}/gi, vars.business)
+    .replace(/\{\{\s*link\s*\}\}/gi, vars.link);
+  // The review link must always reach the customer, even if the owner's
+  // template forgot the {{link}} placeholder.
+  if (!msg.includes(vars.link)) msg += `\n${vars.link}`;
+  return msg;
+}
+
+// ISO date of the next moment inside the business-hours window, or null if already inside it.
+function nextBizHourDate(startHour: number, endHour: number): string | null {
+  const now = new Date();
+  const h = now.getHours();
+  if (h >= startHour && h < endHour) return null;
+  const next = new Date(now);
+  if (h >= endHour) next.setDate(next.getDate() + 1);
+  next.setHours(startHour, 0, 0, 0);
+  return next.toISOString();
+}
+
 export const processReviewCampaign = inngest.createFunction(
   { id: "process-review-campaign", retries: 3, triggers: [{ event: "campaigns/review.request.start" }] },
   async ({ event, step }) => {
-    const { customerId, businessId, tenantId, channel, campaignId } = event.data;
+    const { customerId, businessId, tenantId, campaignId } = event.data;
 
-    const dbConnect = (await import("@/lib/mongodb")).default;
     await dbConnect();
 
-    // 1. Fetch Customer & Validate
-    const customer = await step.run("fetch-customer", async () => {
-      const { default: Customer } = await import("@/models/Customer");
-      return await Customer.findById(customerId).lean();
+    // 1. Load the owner's campaign settings (defaults for one-off sends)
+    const config = await step.run("load-config", async () => {
+      const defaults = {
+        initialMessage: '',
+        reminder1Enabled: true, reminder1AfterDays: 2, reminder1Message: '',
+        reminder2Enabled: true, reminder2AfterDays: 5, reminder2Message: '',
+        stopOnReview: true, sendOnlyBizHours: false, bizHoursStart: 9, bizHoursEnd: 20,
+      };
+      if (!campaignId) return defaults;
+      const campaign: any = await Campaign.findById(campaignId).lean();
+      if (!campaign) return defaults;
+      return {
+        initialMessage: campaign.initialMessage || '',
+        reminder1Enabled: campaign.reminder1Enabled ?? true,
+        reminder1AfterDays: campaign.reminder1AfterDays ?? 2,
+        reminder1Message: campaign.reminder1Message || '',
+        reminder2Enabled: campaign.reminder2Enabled ?? true,
+        reminder2AfterDays: campaign.reminder2AfterDays ?? 5,
+        reminder2Message: campaign.reminder2Message || '',
+        stopOnReview: campaign.stopOnReview ?? true,
+        sendOnlyBizHours: campaign.sendOnlyBizHours ?? false,
+        bizHoursStart: campaign.bizHoursStart ?? 9,
+        bizHoursEnd: campaign.bizHoursEnd ?? 20,
+      };
     });
 
+    // 2. Fetch customer + business name; WhatsApp-only so a phone is required
+    const target = await step.run("fetch-customer", async () => {
+      const customer: any = await Customer.findById(customerId).lean();
+      const business: any = await Business.findById(businessId).select('name').lean();
+      return { customer, businessName: business?.name || 'our business' };
+    });
+
+    const { customer, businessName } = target as any;
     if (!customer || customer.optedOut) return { skipped: true, reason: 'Customer opted out or not found' };
+    if (!customer.phone) return { skipped: true, reason: 'Customer has no phone number (WhatsApp required)' };
 
-    // 2. Generate AI Message
-    const aiMessage = await step.run("generate-ai-message", async () => {
-      const { Groq } = await import("groq-sdk");
-      const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-      const prompt = `You are a customer success assistant. Write a short, warm, 2-sentence WhatsApp review request for ${customer.name}. Mention they recently got ${customer.service || 'our service'}. Ask them to leave a review using this link: ${baseUrl}/api/campaigns/track/{{REQUEST_ID}}. Include: Reply STOP to opt-out.`;
-
-      try {
-        const response = await groq.chat.completions.create({
-          messages: [{ role: 'system', content: prompt }],
-          model: "llama-3.3-70b-versatile",
-          temperature: 0.7,
-          max_tokens: 150,
-        });
-        return response.choices[0]?.message?.content?.trim() || `Hi! We'd love a review: ${baseUrl}/api/campaigns/track/{{REQUEST_ID}}`;
-      } catch (e) {
-        return `Hi! We'd love a review: ${baseUrl}/api/campaigns/track/{{REQUEST_ID}} (Reply STOP to opt-out)`;
-      }
-    });
-
-    // 3. Create Request Log
+    // 3. Create the request log first so the tracking link exists
     const reviewRequest = await step.run("create-request-log", async () => {
-      const { default: ReviewRequest } = await import("@/models/ReviewRequest");
       const req = await ReviewRequest.create({
         tenantId,
         businessId,
         customerId,
-        channel,
+        channel: 'whatsapp',
         message: 'pending generation',
         status: 'Pending',
         ...(campaignId && { campaignId })
       });
-      req.message = aiMessage.replace('{{REQUEST_ID}}', req._id.toString());
-      await req.save();
       return req.toObject();
     });
 
-    // 4. Send Initial Message
-    await step.run("send-initial-message", async () => {
-      const { default: ReviewRequest } = await import("@/models/ReviewRequest");
-      if (channel === 'whatsapp' && customer.phone) {
-        await sendOutboundMessage(customer.phone, reviewRequest.message, undefined, businessId);
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const trackLink = `${baseUrl}/api/campaigns/track/${reviewRequest._id}`;
+    const templateVars: TemplateVars = {
+      name: customer.name || 'there',
+      service: customer.service || 'visit',
+      business: businessName,
+      link: trackLink,
+    };
+
+    // 4. Build the initial message: the owner's edited template wins;
+    //    otherwise fall back to AI generation per customer.
+    const initialMessage = await step.run("build-initial-message", async () => {
+      let msg = '';
+      if (config.initialMessage.trim()) {
+        msg = fillTemplate(config.initialMessage, templateVars);
+      } else {
+        try {
+          const { Groq } = await import("groq-sdk");
+          const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+          const prompt = `You are a customer success assistant. Write a short, warm, 2-sentence WhatsApp review request for ${templateVars.name} from ${businessName}. Mention they recently got ${templateVars.service}. Ask them to leave a review using this link: ${trackLink}. Include: Reply STOP to opt-out.`;
+          const response = await groq.chat.completions.create({
+            messages: [{ role: 'system', content: prompt }],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.7,
+            max_tokens: 150,
+          });
+          msg = response.choices[0]?.message?.content?.trim() || '';
+        } catch (e) {
+          msg = '';
+        }
+        if (!msg) msg = `Hi ${templateVars.name}! We'd love a review of your recent ${templateVars.service}: ${trackLink}\nReply STOP to opt-out.`;
+        if (!msg.includes(trackLink)) msg += `\n${trackLink}`;
       }
+      await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { message: msg });
+      return msg;
+    });
+
+    // 5. Respect the owner's business-hours window for the initial send
+    if (config.sendOnlyBizHours) {
+      const wakeAt = await step.run("compute-initial-send-time", async () =>
+        nextBizHourDate(config.bizHoursStart, config.bizHoursEnd));
+      if (wakeAt) await step.sleepUntil("wait-biz-hours-initial", wakeAt);
+    }
+
+    // 6. Send the initial WhatsApp message. On a Twilio rejection the request
+    //    is marked Failed (never "Sent") and the reminder sequence is skipped.
+    const initialSend = await step.run("send-initial-message", async () => {
+      const result = await sendOutboundMessage(customer.phone, initialMessage, undefined, businessId);
+
+      if (!result.success) {
+        await ReviewRequest.findByIdAndUpdate(reviewRequest._id, {
+          status: 'Failed',
+          automationStatus: 'Stopped',
+        });
+        await Customer.findByIdAndUpdate(customerId, { reviewStatus: 'Failed' });
+        return { sent: false, error: result.error };
+      }
+
       await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { status: 'Sent', sentAt: new Date(), followUpStage: 0 });
-    });
-
-    // 5. Wait 2 Days
-    await step.sleep("wait-2-days", "2d");
-
-    // 6. Check Status for Reminder 1
-    const shouldSendRem1 = await step.run("check-status-1", async () => {
-      const { default: ReviewRequest } = await import("@/models/ReviewRequest");
-      const { default: Customer } = await import("@/models/Customer");
-      const req = await ReviewRequest.findById(reviewRequest._id);
-      const cust = await Customer.findById(customerId);
-      return !cust?.optedOut && !req?.clicked;
-    });
-
-    if (shouldSendRem1) {
-      await step.run("send-reminder-1", async () => {
-        const { default: ReviewRequest } = await import("@/models/ReviewRequest");
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-        const msg = `Hi ${customer.name}, just a quick reminder! We'd really appreciate a review of your recent ${customer.service || 'visit'}: ${baseUrl}/api/campaigns/track/${reviewRequest._id}\nReply STOP to opt-out.`;
-        if (channel === 'whatsapp' && customer.phone) await sendOutboundMessage(customer.phone, msg, undefined, businessId);
-        await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { followUpStage: 1 });
+      await Customer.findByIdAndUpdate(customerId, {
+        reviewStatus: 'Requested',
+        lastMessageAt: new Date(),
+        $inc: { totalMessagesSent: 1 }
       });
-    }
-
-    // 7. Wait 5 Days
-    await step.sleep("wait-5-days", "5d");
-
-    // 8. Check Status for Final Reminder
-    const shouldSendRem2 = await step.run("check-status-2", async () => {
-      const { default: ReviewRequest } = await import("@/models/ReviewRequest");
-      const { default: Customer } = await import("@/models/Customer");
-      const req = await ReviewRequest.findById(reviewRequest._id);
-      const cust = await Customer.findById(customerId);
-      return !cust?.optedOut && !req?.clicked;
-    });
-
-    if (shouldSendRem2) {
-      await step.run("send-final-reminder", async () => {
-        const { default: ReviewRequest } = await import("@/models/ReviewRequest");
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-        const msg = `Hi ${customer.name}, last bother from us! If you have a minute, a review would mean the world to our team: ${baseUrl}/api/campaigns/track/${reviewRequest._id}\nReply STOP to opt-out.`;
-        if (channel === 'whatsapp' && customer.phone) await sendOutboundMessage(customer.phone, msg, undefined, businessId);
-        await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { followUpStage: 2, automationStatus: 'Completed' });
-      });
-    } else {
-      await step.run("mark-completed", async () => {
-        const { default: ReviewRequest } = await import("@/models/ReviewRequest");
-        await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { automationStatus: 'Completed' });
-      });
-    }
-
-    if (campaignId) {
-      await step.run("increment-campaign-delivered", async () => {
-        const { default: Campaign } = await import("@/models/Campaign");
+      if (campaignId) {
         await Campaign.findByIdAndUpdate(campaignId, { $inc: { delivered: 1 } });
-      });
+      }
+      return { sent: true, error: undefined as string | undefined };
+    });
+
+    if (!initialSend.sent) {
+      return { success: false, reason: `WhatsApp send failed: ${initialSend.error}` };
     }
+
+    // Reminder gate: no reminder once the customer opted out, clicked the
+    // link, left a review (when stopOnReview), or the campaign was paused.
+    const shouldRemind = async () => {
+      const req: any = await ReviewRequest.findById(reviewRequest._id).lean();
+      const cust: any = await Customer.findById(customerId).lean();
+      if (!req || !cust || cust.optedOut || req.clicked) return false;
+      if (config.stopOnReview && req.reviewReceived) return false;
+      if (campaignId) {
+        const camp: any = await Campaign.findById(campaignId).select('status').lean();
+        if (camp && camp.status !== 'ACTIVE') return false;
+      }
+      return true;
+    };
+
+    // 7. Reminder 1 — after the owner's configured number of days
+    if (config.reminder1Enabled) {
+      await step.sleep("wait-reminder-1", `${config.reminder1AfterDays}d`);
+      const sendRem1 = await step.run("check-status-1", shouldRemind);
+      if (sendRem1) {
+        if (config.sendOnlyBizHours) {
+          const wakeAt = await step.run("compute-rem1-send-time", async () =>
+            nextBizHourDate(config.bizHoursStart, config.bizHoursEnd));
+          if (wakeAt) await step.sleepUntil("wait-biz-hours-rem1", wakeAt);
+        }
+        await step.run("send-reminder-1", async () => {
+          // Re-read the template so owner edits made after launch still apply
+          let tpl = config.reminder1Message;
+          if (campaignId) {
+            const camp: any = await Campaign.findById(campaignId).select('reminder1Message').lean();
+            if (camp) tpl = camp.reminder1Message || '';
+          }
+          const msg = fillTemplate(tpl.trim() || DEFAULT_REMINDER_1, templateVars);
+          const result = await sendOutboundMessage(customer.phone, msg, undefined, businessId);
+          if (!result.success) {
+            console.warn(`[reviewCampaign] Reminder 1 failed for request ${reviewRequest._id}: ${result.error}`);
+            return;
+          }
+          await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { followUpStage: 1 });
+          await Customer.findByIdAndUpdate(customerId, { lastMessageAt: new Date(), $inc: { totalMessagesSent: 1 } });
+        });
+      }
+    }
+
+    // 8. Reminder 2 (final) — delay counts from reminder 1
+    if (config.reminder2Enabled) {
+      await step.sleep("wait-reminder-2", `${config.reminder2AfterDays}d`);
+      const sendRem2 = await step.run("check-status-2", shouldRemind);
+      if (sendRem2) {
+        if (config.sendOnlyBizHours) {
+          const wakeAt = await step.run("compute-rem2-send-time", async () =>
+            nextBizHourDate(config.bizHoursStart, config.bizHoursEnd));
+          if (wakeAt) await step.sleepUntil("wait-biz-hours-rem2", wakeAt);
+        }
+        await step.run("send-reminder-2", async () => {
+          // Re-read the template so owner edits made after launch still apply
+          let tpl = config.reminder2Message;
+          if (campaignId) {
+            const camp: any = await Campaign.findById(campaignId).select('reminder2Message').lean();
+            if (camp) tpl = camp.reminder2Message || '';
+          }
+          const msg = fillTemplate(tpl.trim() || DEFAULT_REMINDER_2, templateVars);
+          const result = await sendOutboundMessage(customer.phone, msg, undefined, businessId);
+          if (!result.success) {
+            console.warn(`[reviewCampaign] Final reminder failed for request ${reviewRequest._id}: ${result.error}`);
+            return;
+          }
+          await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { followUpStage: 2 });
+          await Customer.findByIdAndUpdate(customerId, { lastMessageAt: new Date(), $inc: { totalMessagesSent: 1 } });
+        });
+      }
+    }
+
+    // 9. Close out this customer's automation
+    await step.run("mark-completed", async () => {
+      await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { automationStatus: 'Completed' });
+    });
 
     return { success: true };
   }
@@ -692,11 +851,16 @@ export const processReviewCampaign = inngest.createFunction(
 export const reviewAutopollCron = inngest.createFunction(
   { id: "review-autopoll-cron", triggers: [{ cron: "0 * * * *" }] },
   async ({ step }) => {
-    // Simplified: Find clicked > 2h ago, dispatch event per review
+    // Heuristic: a request whose link was clicked >2h ago and never followed
+    // up counts as a received review (no GBP API to match against yet).
     const events = await step.run("fetch-clicked-requests", async () => {
       await dbConnect();
       const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-      const clicked = await ReviewRequest.find({ status: 'CLICKED', clickedAt: { $lte: twoHoursAgo } }).lean();
+      const clicked = await ReviewRequest.find({
+        clicked: true,
+        reviewReceived: { $ne: true },
+        clickedAt: { $lte: twoHoursAgo }
+      }).lean();
       return clicked.map(c => ({ name: "scheduler/review-autopoll", data: { requestId: c._id.toString() } }));
     });
 
@@ -712,18 +876,27 @@ export const processReviewAutopollJob = inngest.createFunction(
   async ({ event, step }) => {
     await step.run("mark-reviewed", async () => {
       await dbConnect();
-      const req = await ReviewRequest.findById(event.data.requestId).populate('customerId');
-      if (req) {
-        req.status = 'REVIEWED';
-        req.reviewedAt = new Date();
-        await req.save();
-        
-        await Review.findOneAndUpdate(
-          { requestId: req._id },
-          { $setOnInsert: { rating: 5, reviewText: 'Auto-tracked review', reviewer: req.customerId?.firstName || 'Customer', createdAt: new Date() } },
-          { upsert: true }
-        );
+      const req = await ReviewRequest.findById(event.data.requestId);
+      if (!req || req.reviewReceived) return;
+
+      req.reviewReceived = true;
+      req.reviewedAt = new Date();
+      req.automationStatus = 'Completed';
+      await req.save();
+
+      await Customer.findByIdAndUpdate(req.customerId, { reviewStatus: 'Completed' });
+      if (req.campaignId) {
+        await Campaign.findByIdAndUpdate(req.campaignId, { $inc: { reviewsReceived: 1 } });
       }
+
+      const customer: any = await Customer.findById(req.customerId).select('name').lean();
+      const { notifyBusinessUsers } = await import("@/services/notifications");
+      await notifyBusinessUsers(req.businessId.toString(), {
+        type: 'review_received',
+        title: 'Review request converted',
+        body: `${customer?.name || 'A customer'} followed your review link — a new review is likely in.`,
+        link: '/dashboard/reviews',
+      });
     });
     return { success: true };
   }
@@ -868,17 +1041,92 @@ export const processReviewSyncJob = inngest.createFunction(
 export const criticalAlertWorker = inngest.createFunction(
   { id: "critical-review-alert-worker", triggers: [{ event: "reviews/critical-alert" }] },
   async ({ event, step }) => {
-    const { businessId } = event.data;
-    
+    // rating/reviewId are additive fields on the event (older events may omit them)
+    const { businessId, rating, reviewId } = event.data;
+
     const dbConnect = (await import("@/lib/mongodb")).default;
     await dbConnect();
     const { default: Business } = await import("@/models/Business");
     const business = await Business.findById(businessId);
-    if (!business || !business.phone) return { skipped: true, reason: "No phone" };
+    if (!business) return { skipped: true, reason: "Business not found" };
+
+    // Mobile push to every user of this business — best-effort.
+    await step.run("send-push-alert", async () => {
+      try {
+        const { sendPushToBusinessUsers } = await import("@/services/push");
+        await sendPushToBusinessUsers(businessId, {
+          title: 'Reputation alert',
+          body:
+            typeof rating === 'number'
+              ? `New ${rating}★ review needs your attention`
+              : 'New critical review needs your attention',
+          data: reviewId ? { reviewId: String(reviewId) } : {},
+        });
+      } catch (e) {
+        console.error('[push] critical review notify failed:', e);
+      }
+    });
+
+    // In-app dashboard notification (bell icon) — best-effort.
+    await step.run("create-dashboard-notification", async () => {
+      const { notifyBusinessUsers } = await import("@/services/notifications");
+      await notifyBusinessUsers(businessId, {
+        type: 'critical_review',
+        title: 'Critical review received',
+        body:
+          typeof rating === 'number'
+            ? `${business.name} received a ${rating}★ review — respond quickly to protect your rating.`
+            : `${business.name} received a critical review — respond quickly to protect your rating.`,
+        link: '/dashboard/reviews',
+      });
+    });
+
+    if (!business.phone) return { success: true, reason: "No phone for WhatsApp alert" };
 
     await step.run("send-twilio-alert", async () => {
       const msg = `🚨 *Reputation Alert*\n${business.name} just received a critical/1-star review. Please check your Reputation Dashboard immediately to generate an AI response.`;
       await sendOutboundMessage(business.phone, msg, undefined, business._id.toString());
+    });
+
+    return { success: true };
+  }
+);
+
+// 8b. Push alert when AI drafts a review reply that awaits human approval.
+// Emitted by services/reviews.ts processNewReviews (same service→event
+// pattern as reviews/critical-alert above).
+export const reviewReplyDraftedWorker = inngest.createFunction(
+  { id: "review-reply-drafted-worker", triggers: [{ event: "reviews/reply-drafted" }] },
+  async ({ event, step }) => {
+    const { businessId, reviewId, count } = event.data;
+
+    await step.run("send-push-reply-drafted", async () => {
+      try {
+        const { sendPushToBusinessUsers } = await import("@/services/push");
+        await sendPushToBusinessUsers(businessId, {
+          title: 'Review reply ready',
+          body:
+            typeof count === 'number' && count > 1
+              ? `${count} review replies are ready for approval`
+              : 'Review reply ready for approval',
+          data: reviewId ? { reviewId: String(reviewId) } : {},
+        });
+      } catch (e) {
+        console.error('[push] reply-drafted notify failed:', e);
+      }
+    });
+
+    await step.run("create-dashboard-notification", async () => {
+      const { notifyBusinessUsers } = await import("@/services/notifications");
+      await notifyBusinessUsers(businessId, {
+        type: 'reply_drafted',
+        title: 'Review reply ready for approval',
+        body:
+          typeof count === 'number' && count > 1
+            ? `${count} AI-drafted review replies are waiting for your approval.`
+            : 'An AI-drafted review reply is waiting for your approval.',
+        link: '/dashboard/reviews',
+      });
     });
 
     return { success: true };

@@ -77,7 +77,7 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
             </div>
             <div>
               <h4 className="font-bold text-slate-900 text-sm">{review.reviewer}</h4>
-              <p className="text-xs text-slate-500">{new Date(review.createdAt).toLocaleDateString()}</p>
+              <p className="text-xs text-slate-500">{new Date(review.postedAt ?? review.createdAt).toLocaleDateString()}</p>
             </div>
           </div>
 

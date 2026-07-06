@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 import GBPToken from '@/models/GBPToken';
 import GBPInsights from '@/models/GBPInsights';
 import GBPKeyword from '@/models/GBPKeyword';
@@ -16,6 +17,8 @@ function pctChange(current: number, previous: number): number | null {
 export async function GET(request: NextRequest) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  const gate = await requireModule(ctx.userId, 'google_ranking_agent');
+  if (!gate.ok) return gate.response;
 
   await dbConnect();
 

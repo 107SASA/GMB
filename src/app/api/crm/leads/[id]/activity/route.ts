@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import Activity from '@/models/Activity';
 import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 
 export async function POST(
   req: Request,
@@ -11,6 +12,8 @@ export async function POST(
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    const gate = await requireModule(ctx.userId, 'sales_agent');
+    if (!gate.ok) return gate.response;
 
     const resolvedParams = await params;
     const { id } = resolvedParams;

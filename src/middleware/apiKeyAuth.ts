@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 
 export function validateApiKey(
   req: Request
@@ -16,7 +17,13 @@ export function validateApiKey(
     };
   }
 
-  if (!apiKey || apiKey !== expected) {
+  const apiKeyBuffer = Buffer.from(apiKey ?? '');
+  const expectedBuffer = Buffer.from(expected);
+  const isValid =
+    apiKeyBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(apiKeyBuffer, expectedBuffer);
+
+  if (!apiKey || !isValid) {
     return {
       ok: false,
       response: NextResponse.json(

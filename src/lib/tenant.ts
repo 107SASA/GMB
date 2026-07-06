@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import { requireClient } from '@/lib/auth';
@@ -25,7 +25,10 @@ export type BusinessContextResult = BusinessContext | ContextFailure;
  *
  * Resolution order:
  *   1. businessIdFromBody — an explicit ID passed by the route handler
- *   2. activeBusinessId cookie — the browser's currently selected workspace
+ *      (routes that read ?businessId= from the query string pass it here too)
+ *   2. x-business-id request header — how mobile clients select a workspace,
+ *      since they have no activeBusinessId cookie
+ *   3. activeBusinessId cookie — the browser's currently selected workspace
  *
  * Returns 401 if not logged in, 400 if no business can be resolved,
  * 403 if the resolved business does not belong to the caller.
@@ -41,6 +44,10 @@ export async function requireBusinessContext(
 
   // --- Resolve which business ID to use ---
   let businessId = options.businessIdFromBody;
+  if (!businessId) {
+    const headerList = await headers();
+    businessId = headerList.get('x-business-id') ?? undefined;
+  }
   if (!businessId) {
     const cookieStore = await cookies();
     businessId = cookieStore.get('activeBusinessId')?.value;

@@ -16,6 +16,12 @@ export interface IReview extends Document {
   replyStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'POSTED' | 'FAILED';
   replyTone?: string;
   sourcePlatform?: string;
+  /**
+   * When the customer posted the review on Google. createdAt is only the
+   * sync time (Mongoose timestamps strip createdAt from upserts), so any
+   * date math (trends, "days since last review") must use postedAt.
+   */
+  postedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,6 +43,7 @@ const ReviewSchema: Schema = new Schema(
     replyStatus: { type: String, enum: ['PENDING', 'APPROVED', 'REJECTED', 'POSTED', 'FAILED'], default: 'PENDING' },
     replyTone: { type: String },
     sourcePlatform: { type: String, default: 'Google' },
+    postedAt: { type: Date, index: true },
   },
   { timestamps: true }
 );

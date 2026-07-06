@@ -10,7 +10,7 @@ export async function POST(req: Request) {
 
   try {
     await dbConnect();
-    const { customerId, channel = 'whatsapp' } = await req.json();
+    const { customerId } = await req.json();
 
     // Verify customer belongs to this business
     const customer = await Customer.findOne({ _id: customerId, businessId: ctx.businessId });
@@ -22,13 +22,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Customer has opted out' }, { status: 400 });
     }
 
+    if (!customer.phone) {
+      return NextResponse.json({ error: 'Customer has no phone number (WhatsApp required)' }, { status: 400 });
+    }
+
     await inngest.send({
       name: 'campaigns/review.request.start',
       data: {
         customerId,
         businessId: ctx.businessId,
-        tenantId: ctx.organizationId,
-        channel
+        tenantId: ctx.organizationId
       }
     });
 

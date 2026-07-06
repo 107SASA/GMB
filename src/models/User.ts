@@ -42,6 +42,9 @@ export interface IUser extends Document {
 
   businessIds: mongoose.Types.ObjectId[];
 
+  // Expo push tokens for the mobile app (one per device/install)
+  pushTokens: string[];
+
   notificationPreferences?: INotificationPreferences;
 
   // Soft delete
@@ -116,6 +119,8 @@ const UserSchema: Schema = new Schema(
     lastLoginAt: { type: Date },
 
     businessIds: [{ type: Schema.Types.ObjectId, ref: 'Business' }],
+
+    pushTokens: [{ type: String }],
 
     notificationPreferences: { type: NotificationPreferencesSchema, default: () => ({}) },
 

@@ -19,14 +19,34 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       return NextResponse.json({ success: false, message: 'Campaign not found' }, { status: 404 });
     }
 
-    // Load eligible customers: not opted out, has a phone number
-    const customers = await Customer.find({
+    // Lifecycle guard: a cancelled campaign can never resume/relaunch, and a completed
+    // campaign is done — both must remain visible in history but cannot be reactivated.
+    if (campaign.status === 'CANCELLED') {
+      return NextResponse.json(
+        { success: false, message: 'This campaign was cancelled and cannot be resumed.' },
+        { status: 400 }
+      );
+    }
+    if (campaign.status === 'COMPLETED') {
+      return NextResponse.json(
+        { success: false, message: 'This campaign has already completed and cannot be relaunched.' },
+        { status: 400 }
+      );
+    }
+
+    // Eligible customers: not opted out, has a phone (WhatsApp-only), and —
+    // when the campaign targets groups — tagged with at least one of them.
+    const customerQuery: any = {
       businessId: ctx.businessId,
       optedOut: { $ne: true },
-      phone: { $exists: true, $ne: null }
-    }).lean();
+      phone: { $exists: true, $nin: [null, ''] }
+    };
+    if (campaign.targetTags?.length > 0) {
+      customerQuery.tags = { $in: campaign.targetTags };
+    }
+    const customers = await Customer.find(customerQuery).lean();
 
-    // Filter out any that already have an Active ReviewRequest for this campaign
+    // Skip customers who already have an active request for this campaign
     const events: Array<{ name: 'campaigns/review.request.start'; data: Record<string, string> }> = [];
     for (const customer of customers) {
       const hasActive = await ReviewRequest.exists({
@@ -41,7 +61,6 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
             customerId: customer._id.toString(),
             businessId: ctx.businessId,
             tenantId: ctx.organizationId,
-            channel: campaign.channel.toLowerCase(),
             campaignId: campaign._id.toString()
           }
         });
@@ -53,7 +72,9 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     }
 
     campaign.status = 'ACTIVE';
-    campaign.totalRequests = events.length;
+    // += so resuming a paused campaign keeps earlier requests in the total
+    campaign.totalRequests = (campaign.totalRequests || 0) + events.length;
+    if (!campaign.startedAt) campaign.startedAt = new Date();
     await campaign.save();
 
     return NextResponse.json({ success: true, launched: true, requestsQueued: events.length });

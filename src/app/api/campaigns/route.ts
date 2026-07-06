@@ -19,6 +19,9 @@ export async function GET() {
       day2Reminder: c.day2Reminder,
       day5Reminder: c.day5Reminder,
       stopOnReview: c.stopOnReview,
+      startDate: c.startedAt ?? null,
+      endDate: c.completedAt ?? c.cancelledAt ?? null,
+      progress: c.totalRequests > 0 ? Math.round(((c.delivered || 0) / c.totalRequests) * 100) : 0,
       stats: {
         total: c.totalRequests || 0,
         sent: c.delivered || 0,

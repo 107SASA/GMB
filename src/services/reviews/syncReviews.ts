@@ -4,9 +4,10 @@ import Review from '@/models/Review';
 import ReviewAnalytics from '@/models/ReviewAnalytics';
 import { getReviewProvider } from './providers/index';
 import { analyzeSentiment } from './sentimentEngine';
+import { computeReviewMetrics, ReviewMetrics } from './reviewMetrics';
 
 export interface SyncResult {
-  analytics: any;
+  analytics: ReviewMetrics;
   reviews: any[];
   synced: number;
 }
@@ -48,31 +49,22 @@ export async function syncReviewsForBusiness(
     );
   }
 
-  // Recompute analytics from the full review set (not just the page we just fetched)
-  const allReviews = await Review.find({ businessId: bid });
-  const total = allReviews.length;
-  const avgRating = total > 0
-    ? allReviews.reduce((sum, r) => sum + r.rating, 0) / total
-    : 0;
-  const unansweredCount = allReviews.filter(r => !r.response).length;
-  const responseRate = total > 0 ? ((total - unansweredCount) / total) * 100 : 0;
-  const positiveReviews = allReviews.filter(r => r.sentiment === 'positive').length;
-  const negativeReviews = allReviews.filter(r => r.sentiment === 'negative' || r.sentiment === 'critical').length;
-  const overallSentimentScore = total > 0
-    ? allReviews.reduce((sum, r) => sum + (r.sentimentScore || 0), 0) / total
-    : 0;
+  // Recompute analytics from the full review set using the SAME function every other
+  // module reads (Review Management cards, Dashboard). This used to be a separate inline
+  // calculation here, which could silently drift from what the rest of the app displayed.
+  const metrics = await computeReviewMetrics(businessId);
 
   const analytics = await ReviewAnalytics.findOneAndUpdate(
     { businessId: bid },
     {
       tenantId,
-      avgRating: Number(avgRating.toFixed(1)),
-      responseRate: Math.round(responseRate),
-      sentimentScore: Math.round(overallSentimentScore),
-      unansweredCount,
-      totalReviews: total,
-      positiveReviews,
-      negativeReviews,
+      avgRating: metrics.avgRating,
+      responseRate: metrics.responseRate,
+      sentimentScore: metrics.sentimentScore,
+      unansweredCount: metrics.unansweredCount,
+      totalReviews: metrics.totalReviews,
+      positiveReviews: metrics.positiveReviews,
+      negativeReviews: metrics.negativeReviews,
     },
     { upsert: true, new: true }
   );
@@ -87,9 +79,14 @@ export async function syncReviewsForBusiness(
     }
   }
 
+  const allReviews = await Review.find({ businessId: bid }).sort({ createdAt: -1 });
+
   return {
-    analytics,
-    reviews: allReviews.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+    // Return the full metrics object (includes criticalReviews/starsDistribution, which
+    // the persisted ReviewAnalytics document doesn't carry) so the UI has everything it
+    // needs immediately after a sync, with numbers identical to a normal page load.
+    analytics: metrics,
+    reviews: allReviews,
     synced: fetchedReviews.length,
   };
 }

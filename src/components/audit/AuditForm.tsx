@@ -4,17 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useBusiness } from '@/context/BusinessContext';
-import { Zap, AlertTriangle, CheckCircle2, Building2, MapPin, Tag, Globe, Phone, Map as MapIcon, Edit3, CalendarRange } from 'lucide-react';
+import { Zap, AlertTriangle, CheckCircle2, Building2, MapPin, Tag, Globe, Phone, Map as MapIcon, Edit3 } from 'lucide-react';
 import UpgradeLimitModal from '@/components/ui/UpgradeLimitModal';
-
-type ReviewPeriod = '7' | '15' | '30' | 'all';
-
-const REVIEW_PERIOD_OPTIONS: { value: ReviewPeriod; label: string }[] = [
-  { value: '7',   label: 'Last 7 Days' },
-  { value: '15',  label: 'Last 15 Days' },
-  { value: '30',  label: 'Last 30 Days' },
-  { value: 'all', label: 'All Reviews (default)' },
-];
 
 export default function AuditForm() {
   const router = useRouter();
@@ -30,7 +21,6 @@ export default function AuditForm() {
   const [cityOverride, setCityOverride] = useState(
     (activeBusiness as any)?.city || ''
   );
-  const [reviewPeriod, setReviewPeriod] = useState<ReviewPeriod>('all');
 
   const missingCategory = !categoryOverride.trim();
   const isReady = !!activeBusiness && !missingCategory;
@@ -48,7 +38,6 @@ export default function AuditForm() {
           businessId: activeBusiness?._id,
           categoryOverride: categoryOverride.trim(),
           cityOverride: cityOverride.trim(),
-          reviewPeriod,
         }),
       });
 
@@ -198,28 +187,6 @@ export default function AuditForm() {
               <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg text-slate-700 font-medium truncate">
                 {activeBusiness.phone || 'N/A'}
               </div>
-            </div>
-
-            {/* Review Analysis Period — EDITABLE */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <CalendarRange className="w-3.5 h-3.5" /> Review Analysis Period
-                <span className="ml-auto text-blue-500 flex items-center gap-0.5 font-normal normal-case tracking-normal text-xs">
-                  <Edit3 className="w-3 h-3" /> editable
-                </span>
-              </label>
-              <select
-                value={reviewPeriod}
-                onChange={e => setReviewPeriod(e.target.value as ReviewPeriod)}
-                className="w-full p-3 border border-blue-200 bg-blue-50 rounded-lg text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-300 transition-colors"
-              >
-                {REVIEW_PERIOD_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-400">
-                Limits review analysis, unanswered-review and sentiment calculations to this window.
-              </p>
             </div>
           </div>
 

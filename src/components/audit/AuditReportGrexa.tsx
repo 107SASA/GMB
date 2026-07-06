@@ -8,9 +8,8 @@ import {
   IGeoGridKeyword,
   ILocalPackCompetitor,
   IGeoGridPoint,
-  IScoreCriterion,
 } from '@/models/Audit';
-import { Download, RefreshCw, Share2, Copy, Check, CalendarRange, Info } from 'lucide-react';
+import { Download, RefreshCw, Share2, Copy, Check } from 'lucide-react';
 
 /* ─── Google Logo ───────────────────────────────────────────────────────────── */
 function GoogleLogo({ size = 18 }: { size?: number }) {
@@ -224,9 +223,6 @@ export default function AuditReportGrexa({
   const completionPct = completion?.completionPercentage ?? 0;
   const checklist     = (completion?.checklist ?? []) as IChecklistItem[];
 
-  const scoreBreakdown = data.scoreBreakdown;
-  const reviewPeriod   = data.reviewAnalysisPeriod;
-
   const localComps: ILocalPackCompetitor[] = data.localPackCompetitors ?? [];
   const fallbackComps = (data.competitors ?? [])
     .filter((c: any) => c.estimatedRank != null)
@@ -408,8 +404,7 @@ export default function AuditReportGrexa({
             <CircularGauge value={profilePct} size={120} color={profileColor} />
             <div>
               <p className="text-xs text-slate-500 leading-relaxed mb-3">
-                Profile Completeness (35%) + SEO Optimization (25%) + Review Quality (25%) + Review Keyword Coverage (15%).{' '}
-                <a href="#score-breakdown" className="text-blue-600 font-semibold hover:underline">See full breakdown ↓</a>
+                Based on 25+ parameters — SEO, Reviews, Completion, Rating.
               </p>
               <p className="text-xs font-semibold text-slate-700">
                 Good businesses score more than 90%
@@ -427,57 +422,6 @@ export default function AuditReportGrexa({
         </div>
 
       </div>
-
-      {/* ══ 2b. REVIEW ANALYSIS PERIOD BANNER ═════════════════════════════ */}
-      {reviewPeriod && (
-        <div className="flex items-center justify-between gap-4 px-5 py-3.5 bg-blue-50 border border-blue-100 rounded-xl text-sm flex-wrap">
-          <div className="flex items-center gap-2.5 text-blue-800">
-            <CalendarRange className="w-4 h-4 text-blue-500 shrink-0" />
-            <span>
-              Review Analysis Period: <span className="font-bold">{reviewPeriod.label}</span>
-              <span className="text-blue-400"> · Total Reviews Analyzed: {reviewPeriod.totalReviewsAnalyzed}</span>
-              {reviewPeriod.period !== 'all' && reviewPeriod.totalReviewsAllTime !== reviewPeriod.totalReviewsAnalyzed && (
-                <span className="text-blue-400"> (of {reviewPeriod.totalReviewsAllTime} all-time)</span>
-              )}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* ══ 2c. SCORE BREAKDOWN (transparent, no black box) ═══════════════ */}
-      {scoreBreakdown && (
-        <div id="score-breakdown" className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-start justify-between mb-2 flex-wrap gap-2">
-            <h2 className="text-base font-bold text-slate-900">
-              How Your Score Was Calculated
-              <span className="ml-2 text-2xl font-black text-blue-600">{scoreBreakdown.finalScore}/100</span>
-            </h2>
-          </div>
-          <p className="text-xs text-slate-400 mb-5">{scoreBreakdown.formula}</p>
-          <div className="space-y-3">
-            {scoreBreakdown.criteria.map((c: IScoreCriterion, i: number) => (
-              <div key={i} className="border border-slate-100 rounded-xl p-4 bg-slate-50/40">
-                <div className="flex items-center justify-between gap-3 mb-1.5 flex-wrap">
-                  <span className="text-sm font-bold text-slate-800">{c.label}</span>
-                  <span className="text-sm font-black text-slate-900">
-                    {c.earnedPoints}/{c.maxPoints} <span className="text-[10px] font-semibold text-slate-400 uppercase">points ({c.weightPercent}% weight)</span>
-                  </span>
-                </div>
-                <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden mb-2 max-w-xs">
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${c.rawScore}%`, background: c.rawScore >= 80 ? '#22c55e' : c.rawScore >= 50 ? '#f59e0b' : '#ef4444' }}
-                  />
-                </div>
-                <p className="text-xs text-slate-500 leading-relaxed">{c.reason}</p>
-                <p className="text-[10px] text-slate-400 mt-1.5 flex items-start gap-1">
-                  <Info className="w-3 h-3 mt-0.5 shrink-0" /> Data source: {c.dataSource}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ══ 3. RANK ANALYTICS ════════════════════════════════════════════ */}
       {keywords.length > 0 && (

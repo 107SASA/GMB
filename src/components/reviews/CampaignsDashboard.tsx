@@ -25,10 +25,13 @@ interface Campaign {
   id: string;
   name: string;
   channel: string;
-  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
   day2Reminder: boolean;
   day5Reminder: boolean;
   stopOnReview: boolean;
+  startDate?: string | null;
+  endDate?: string | null;
+  progress?: number;
   stats: CampaignStats;
 }
 
@@ -58,6 +61,7 @@ const CAMPAIGN_STATUS_BADGE: Record<string, string> = {
   ACTIVE: 'bg-emerald-50 text-emerald-600',
   PAUSED: 'bg-amber-50 text-amber-600',
   COMPLETED: 'bg-blue-50 text-blue-600',
+  CANCELLED: 'bg-rose-50 text-rose-600',
 };
 
 export default function CampaignsDashboard() {
@@ -88,6 +92,9 @@ export default function CampaignsDashboard() {
   const [launchConfirm, setLaunchConfirm] = useState<{ id: string; name: string } | null>(null);
   const [launching, setLaunching] = useState(false);
   const [launchResult, setLaunchResult] = useState<number | null>(null);
+  const [cancelConfirm, setCancelConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [campStatusFilter, setCampStatusFilter] = useState<'all' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED'>('all');
 
   const fetchCustomers = useCallback(async () => {
     setCustLoading(true);
@@ -234,10 +241,33 @@ export default function CampaignsDashboard() {
     fetchCampaigns();
   };
 
+  const handleCancel = async () => {
+    if (!cancelConfirm) return;
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/campaigns/${cancelConfirm.id}/cancel`, { method: 'PATCH' });
+      if (res.ok) {
+        setCancelConfirm(null);
+        fetchCampaigns();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     await fetch(`/api/campaigns/${id}`, { method: 'DELETE' });
     fetchCampaigns();
   };
+
+  const filteredCampaigns = campStatusFilter === 'all'
+    ? campaigns
+    : campaigns.filter(c => c.status === campStatusFilter);
+
+  const formatDate = (d?: string | null) =>
+    d ? new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
 
   return (
     <div className="space-y-6">
@@ -462,6 +492,23 @@ export default function CampaignsDashboard() {
       {/* ===== CAMPAIGNS TAB ===== */}
       {activeTab === 'campaigns' && (
         <>
+          {!campLoading && campaigns.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {(['all', 'ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setCampStatusFilter(f)}
+                  className={`px-3.5 py-1.5 text-xs font-bold rounded-full border transition-colors ${
+                    campStatusFilter === f
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {f === 'all' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
+                </button>
+              ))}
+            </div>
+          )}
           {campLoading ? (
             <div className="flex justify-center py-20">
               <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
@@ -480,9 +527,14 @@ export default function CampaignsDashboard() {
                 <Plus className="w-4 h-4" /> New Campaign
               </button>
             </div>
+          ) : filteredCampaigns.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center">
+              <p className="font-bold text-slate-900 mb-1">No {campStatusFilter.toLowerCase()} campaigns</p>
+              <p className="text-sm text-slate-500">Try a different filter to see other campaigns.</p>
+            </div>
           ) : (
             <div className="grid gap-4">
-              {campaigns.map(camp => (
+              {filteredCampaigns.map(camp => (
                 <div key={camp.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -492,12 +544,31 @@ export default function CampaignsDashboard() {
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 uppercase">{camp.channel}</span>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${CAMPAIGN_STATUS_BADGE[camp.status]}`}>{camp.status}</span>
                         </div>
-                        <div className="flex gap-4 text-xs text-slate-500">
+                        <div className="flex flex-wrap gap-4 text-xs text-slate-500 mb-2">
                           <span>Total: <strong className="text-slate-700">{camp.stats.total}</strong></span>
                           <span>Sent: <strong className="text-slate-700">{camp.stats.sent}</strong></span>
                           <span>Clicked: <strong className="text-slate-700">{camp.stats.clicked}</strong></span>
                           <span>Reviewed: <strong className="text-slate-700">{camp.stats.reviewed}</strong></span>
+                          {camp.status !== 'DRAFT' && (
+                            <>
+                              <span>Started: <strong className="text-slate-700">{formatDate(camp.startDate)}</strong></span>
+                              {(camp.status === 'COMPLETED' || camp.status === 'CANCELLED') && (
+                                <span>Ended: <strong className="text-slate-700">{formatDate(camp.endDate)}</strong></span>
+                              )}
+                            </>
+                          )}
                         </div>
+                        {camp.status !== 'DRAFT' && (
+                          <div className="flex items-center gap-2 max-w-xs">
+                            <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-indigo-500 rounded-full"
+                                style={{ width: `${Math.min(100, Math.max(0, camp.progress ?? 0))}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-bold text-slate-400">{camp.progress ?? 0}%</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -525,7 +596,15 @@ export default function CampaignsDashboard() {
                           <Play className="w-3.5 h-3.5" /> Resume
                         </button>
                       )}
-                      {(camp.status === 'DRAFT' || camp.status === 'COMPLETED') && (
+                      {(camp.status === 'ACTIVE' || camp.status === 'PAUSED') && (
+                        <button
+                          onClick={() => setCancelConfirm({ id: camp.id, name: camp.name })}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl transition-colors border border-rose-200"
+                        >
+                          <X className="w-3.5 h-3.5" /> Cancel
+                        </button>
+                      )}
+                      {camp.status === 'DRAFT' && (
                         <button
                           onClick={() => handleDelete(camp.id)}
                           className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-colors border border-slate-200"
@@ -665,6 +744,37 @@ export default function CampaignsDashboard() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Confirmation Modal */}
+      {cancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center">
+            <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Cancel "{cancelConfirm.name}"?</h3>
+            <p className="text-sm text-slate-500 mb-5">
+              This will stop the campaign immediately. Cancelled campaigns cannot be resumed, but this campaign will remain visible in your history.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCancelConfirm(null)}
+                className="flex-1 px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
+              >
+                Keep Campaign
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={cancelling}
+                className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl disabled:opacity-50"
+              >
+                {cancelling ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                {cancelling ? 'Cancelling…' : 'Cancel Campaign'}
+              </button>
+            </div>
           </div>
         </div>
       )}

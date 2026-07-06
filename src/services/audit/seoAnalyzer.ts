@@ -48,13 +48,7 @@ export function calculateProfileCompletion(business: any) {
   );
   add('Social Links', hasSocial);
 
-  // NOTE: "WhatsApp Connected" was previously scored here as a Google Business
-  // Profile completeness criterion. It is NOT a Google Business Profile field —
-  // it reflects whether the business has connected WhatsApp inside this app.
-  // Including it penalized businesses with a 100%-complete real GBP profile
-  // simply for not having set up an unrelated in-app feature — the exact
-  // "profile says 100% complete but audit shows 58/100" bug that was reported.
-  // Removed from scoring. See docs/AUDIT_SCORING.md ("Bug #1").
+  add('WhatsApp Connected',  !!(business.whatsappConfig?.isConnected));
 
   // These two are populated from the SerpApi place-details response during data_id
   // resolution. If they've never been resolved, status is Unknown (benefit of the doubt).
@@ -168,8 +162,6 @@ export function analyzeReviewKeywords(reviews: any[], business: any): {
   missingKeywords: string[];
   keywordScore: number;
   evidenceSource: string;
-  totalTargetKeywords: number;
-  totalMentionedKeywords: number;
 } {
   // Build target keyword list from stored business data
   const rawKeywords: string[] = [
@@ -195,9 +187,7 @@ export function analyzeReviewKeywords(reviews: any[], business: any): {
       keywordScore: 0,
       evidenceSource: reviews.length === 0
         ? 'No reviews available for keyword analysis'
-        : 'No target keywords configured (add business category/services/keywords)',
-      totalTargetKeywords: targetKeywords.length,
-      totalMentionedKeywords: 0,
+        : 'No target keywords configured (add business category/services/keywords)'
     };
   }
 
@@ -225,9 +215,7 @@ export function analyzeReviewKeywords(reviews: any[], business: any): {
     mentionedKeywords: mentioned.slice(0, 10),
     missingKeywords:   missing.slice(0, 5),
     keywordScore,
-    evidenceSource: `Mined ${reviews.length} reviews (${totalWords} words) for ${targetKeywords.length} target keywords`,
-    totalTargetKeywords: targetKeywords.length,
-    totalMentionedKeywords: mentioned.length,
+    evidenceSource: `Mined ${reviews.length} reviews (${totalWords} words) for ${targetKeywords.length} target keywords`
   };
 }
 
@@ -574,147 +562,6 @@ export function generateNativePriorityFixes(
   }
 
   return fixes;
-}
-
-// ── Review Date Filter ─────────────────────────────────────────────────────────
-// Supports the "Last 7 / 15 / 30 Days / All Reviews" audit filter (Problem 4).
-// "all" is a no-op so existing behavior is unchanged when it is selected.
-
-export type ReviewPeriod = '7' | '15' | '30' | 'all';
-
-export const REVIEW_PERIOD_LABELS: Record<ReviewPeriod, string> = {
-  '7':   'Last 7 Days',
-  '15':  'Last 15 Days',
-  '30':  'Last 30 Days',
-  'all': 'All Reviews',
-};
-
-export function normalizeReviewPeriod(value: any): ReviewPeriod {
-  return value === '7' || value === '15' || value === '30' ? value : 'all';
-}
-
-export function filterReviewsByPeriod<T extends { date: string }>(
-  reviews: T[],
-  period: ReviewPeriod,
-): T[] {
-  if (period === 'all') return reviews;
-  const days = parseInt(period, 10);
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  return reviews.filter(r => new Date(r.date).getTime() >= cutoff);
-}
-
-// ── Transparent Score Breakdown (Problem 1) ────────────────────────────────────
-// Rebuilds the exact same numbers used in the final-score formula in
-// auditService.ts (profile 35% | SEO 25% | review quality 25% | keyword
-// coverage 15%) into a human-readable, per-criterion explanation so the score
-// is never a black box. Every number here is read from data already computed
-// elsewhere — nothing is invented or estimated for display purposes.
-
-export interface IScoreCriterion {
-  label: string;
-  weightPercent: number;   // this pillar's weight in the final 0-100 score
-  maxPoints: number;       // = weightPercent (each pillar's max contribution)
-  earnedPoints: number;    // actual points contributed to the final score
-  rawScore: number;        // the underlying 0-100 sub-score before weighting
-  reason: string;
-  dataSource: string;
-}
-
-export interface IScoreBreakdown {
-  finalScore: number;
-  criteria: IScoreCriterion[];
-  formula: string;
-}
-
-export function buildScoreBreakdown(params: {
-  profileCompletionPct: number;
-  profileChecklist: IChecklistItem[];
-  nativeSeoScore: number;
-  seoOpportunities: string[];
-  reviewQualityScore: number;
-  reviewCount: number;
-  averageRating: number;
-  keywordCoverageScore: number;
-  mentionedKeywordsCount: number;
-  targetKeywordsCount: number;
-  finalScore: number;
-}): IScoreBreakdown {
-  const {
-    profileCompletionPct, profileChecklist, nativeSeoScore, seoOpportunities,
-    reviewQualityScore, reviewCount, averageRating,
-    keywordCoverageScore, mentionedKeywordsCount, targetKeywordsCount, finalScore,
-  } = params;
-
-  const missing = profileChecklist.filter(c => c.status === 'Missing').map(c => c.field);
-  const unknown = profileChecklist.filter(c => c.status === 'Unknown').map(c => c.field);
-
-  const profileReason = missing.length === 0 && unknown.length === 0
-    ? 'All checkable profile fields are present.'
-    : [
-        missing.length > 0 ? `Missing: ${missing.join(', ')}.` : '',
-        unknown.length > 0
-          ? `Cannot be verified without Google Business Profile API access (counted as half-credit, not a deduction for being incomplete): ${unknown.join(', ')}.`
-          : '',
-      ].filter(Boolean).join(' ');
-
-  const reviewReason = reviewCount === 0
-    ? 'No reviews found — this pillar scores 0 until the business collects its first reviews.'
-    : `Based on ${reviewCount} review${reviewCount === 1 ? '' : 's'} analyzed, average rating ${averageRating.toFixed(1)}/5, weighted 60% on rating and 40% on positive-vs-negative sentiment mix.`;
-
-  const keywordReason = targetKeywordsCount === 0
-    ? 'No business keywords/services/category configured to check for — add these to your business profile to enable this check.'
-    : reviewCount === 0
-      ? 'No reviews available to search for keyword mentions.'
-      : `${mentionedKeywordsCount} of ${targetKeywordsCount} target keywords (from your category/services/keywords) were found mentioned in customer reviews.`;
-
-  const seoReason = seoOpportunities.length === 0
-    ? 'All on-page SEO factors (description length, category, keywords, services, website, overall completion) are in good shape.'
-    : `Opportunities: ${seoOpportunities.join('; ')}.`;
-
-  const criteria: IScoreCriterion[] = [
-    {
-      label: 'Profile Completeness',
-      weightPercent: 35,
-      maxPoints: 35,
-      earnedPoints: Math.round(profileCompletionPct * 0.35),
-      rawScore: profileCompletionPct,
-      reason: profileReason,
-      dataSource: 'Fields stored on your Business profile in GMBBoost (name, category, description, address, phone, website, service area, social links, services, keywords) plus photo count / hours resolved via SerpApi.',
-    },
-    {
-      label: 'SEO Optimization',
-      weightPercent: 25,
-      maxPoints: 25,
-      earnedPoints: Math.round(nativeSeoScore * 0.25),
-      rawScore: nativeSeoScore,
-      reason: seoReason,
-      dataSource: 'Computed from Business profile fields: description length, category, keywords, services, website, and overall profile completion.',
-    },
-    {
-      label: 'Review Quality',
-      weightPercent: 25,
-      maxPoints: 25,
-      earnedPoints: Math.round(reviewQualityScore * 0.25),
-      rawScore: reviewQualityScore,
-      reason: reviewReason,
-      dataSource: 'Live Google Reviews fetched via SerpApi and stored in the Reviews collection, restricted to the selected review analysis period.',
-    },
-    {
-      label: 'Review Keyword Coverage',
-      weightPercent: 15,
-      maxPoints: 15,
-      earnedPoints: Math.round(keywordCoverageScore * 0.15),
-      rawScore: keywordCoverageScore,
-      reason: keywordReason,
-      dataSource: 'Text-mined from the same set of Google Reviews used for Review Quality, matched against your configured category/services/keywords.',
-    },
-  ];
-
-  return {
-    finalScore,
-    criteria,
-    formula: 'Final Score = (Profile Completeness × 35%) + (SEO Optimization × 25%) + (Review Quality × 25%) + (Review Keyword Coverage × 15%), rounded to the nearest whole number and capped at 100.',
-  };
 }
 
 export function calculateBusinessIntelligence(

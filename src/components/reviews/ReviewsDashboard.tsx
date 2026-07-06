@@ -7,20 +7,6 @@ import ReviewCard from './ReviewCard';
 import { useBusiness } from '@/context/BusinessContext';
 import UpgradeLimitModal from '@/components/ui/UpgradeLimitModal';
 
-function computeAnalytics(reviews: any[]) {
-  const total = reviews.length;
-  const avgRating = total > 0
-    ? parseFloat((reviews.reduce((s, r) => s + (r.rating ?? 0), 0) / total).toFixed(1))
-    : 0;
-  const posted = reviews.filter(r => r.replyStatus === 'POSTED').length;
-  const responseRate = total > 0 ? parseFloat(((posted / total) * 100).toFixed(1)) : 0;
-  const positive = reviews.filter(r => r.sentiment === 'positive' || r.rating >= 4).length;
-  const sentimentScore = total > 0 ? Math.round((positive / total) * 100) : 0;
-  const unansweredCount = reviews.filter(r => r.replyStatus !== 'POSTED').length;
-  const criticalReviews = reviews.filter(r => r.sentiment === 'critical' || r.rating <= 2).length;
-  return { avgRating, responseRate, sentimentScore, unansweredCount, totalReviews: total, criticalReviews };
-}
-
 function SkeletonPulse({ className }: { className: string }) {
   return <div className={`bg-slate-200 rounded animate-pulse ${className}`} />;
 }
@@ -79,9 +65,9 @@ export default function ReviewsDashboard() {
       const res = await fetch('/api/reviews');
       if (!res.ok) return;
       const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        setReviews(data);
-        setAnalytics(computeAnalytics(data));
+      if (Array.isArray(data.reviews) && data.reviews.length > 0) {
+        setReviews(data.reviews);
+        setAnalytics(data.analytics ?? null);
       }
     } catch (err) {
       console.error(err);
@@ -118,9 +104,9 @@ export default function ReviewsDashboard() {
       const res = await fetch('/api/reviews');
       if (!res.ok) return;
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setReviews(data);
-        setAnalytics(computeAnalytics(data));
+      if (Array.isArray(data.reviews)) {
+        setReviews(data.reviews);
+        setAnalytics(data.analytics ?? null);
       }
     } catch (err) {
       console.error(err);

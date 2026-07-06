@@ -11,9 +11,6 @@ const auditRequestSchema = z.object({
   businessId: z.string().min(1, 'Business ID is required'),
   categoryOverride: z.string().optional(),
   cityOverride: z.string().optional(),
-  // Review Analysis Period filter (Problem 4). Defaults to 'all' — existing
-  // behavior — when not supplied.
-  reviewPeriod: z.enum(['7', '15', '30', 'all']).optional(),
 });
 
 export async function POST(req: Request) {
@@ -28,7 +25,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid input', details: parsed.error.format() }, { status: 400 });
     }
 
-    const { businessId, categoryOverride, cityOverride, reviewPeriod } = parsed.data;
+    const { businessId, categoryOverride, cityOverride } = parsed.data;
 
     await dbConnect();
 
@@ -86,7 +83,6 @@ export async function POST(req: Request) {
 
       location: finalLocation,
       status: 'PENDING',
-      reviewPeriod: reviewPeriod || 'all',
       metadata: {
         userDefinedCategory: effectiveCategory,
       }

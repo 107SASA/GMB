@@ -5,13 +5,15 @@ export interface ICampaign extends Document {
   tenantId?: string;
   name: string;
   channel: 'WHATSAPP' | 'EMAIL' | 'SMS';
-  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
   day2Reminder: boolean;
   day5Reminder: boolean;
   stopOnReview: boolean;
   sendOnlyBizHours: boolean;
   scheduledAt?: Date;
+  startedAt?: Date;
   completedAt?: Date;
+  cancelledAt?: Date;
   
   // Tracking
   totalRequests: number;
@@ -31,7 +33,7 @@ const CampaignSchema: Schema = new Schema(
     channel: { type: String, enum: ['WHATSAPP', 'EMAIL', 'SMS'], required: true },
     status: { 
       type: String, 
-      enum: ['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED'], 
+      enum: ['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED'], 
       default: 'DRAFT',
       index: true
     },
@@ -40,7 +42,9 @@ const CampaignSchema: Schema = new Schema(
     stopOnReview: { type: Boolean, default: true },
     sendOnlyBizHours: { type: Boolean, default: true },
     scheduledAt: { type: Date },
+    startedAt: { type: Date },
     completedAt: { type: Date },
+    cancelledAt: { type: Date },
 
     totalRequests: { type: Number, default: 0 },
     delivered: { type: Number, default: 0 },

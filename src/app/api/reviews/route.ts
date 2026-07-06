@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import Review from "@/models/Review";
 import { requireBusinessContext } from "@/lib/tenant";
+import { computeReviewMetrics } from "@/services/reviews/reviewMetrics";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,10 @@ export async function GET(req: Request) {
     if (sentiment) query.sentiment = sentiment;
 
     const reviews = await Review.find(query).sort({ createdAt: -1 });
-    return NextResponse.json(reviews);
+    // Analytics always reflect the full, unfiltered review set for this business — computed
+    // by the same shared function the Dashboard reads (see src/services/reviews/reviewMetrics.ts).
+    const analytics = await computeReviewMetrics(ctx.businessId);
+    return NextResponse.json({ reviews, analytics });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

@@ -3,6 +3,7 @@ import dbConnect from "@/lib/mongodb";
 import Review from "@/models/Review";
 import { requireBusinessContext } from "@/lib/tenant";
 import { requireModule } from "@/lib/moduleGating";
+import { computeReviewMetrics } from "@/services/reviews/reviewMetrics";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,10 @@ export async function GET(req: Request) {
     // postedAt = when the customer left the review on Google; createdAt is
     // only the sync time, kept as tiebreaker/fallback for pre-postedAt docs.
     const reviews = await Review.find(query).sort({ postedAt: -1, createdAt: -1 });
-    return NextResponse.json(reviews);
+    // Analytics always reflect the full, unfiltered review set for this business — computed
+    // by the same shared function the Dashboard reads (see src/services/reviews/reviewMetrics.ts).
+    const analytics = await computeReviewMetrics(ctx.businessId);
+    return NextResponse.json({ reviews, analytics });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

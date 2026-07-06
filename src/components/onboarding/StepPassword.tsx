@@ -9,6 +9,17 @@ interface Props {
   onBack: () => void;
 }
 
+// Mirrors validatePasswordStrength in src/services/auth/security.ts — kept in sync manually
+// since that file pulls in bcryptjs/jsonwebtoken and can't be imported into a client bundle.
+function validatePasswordStrength(password: string): string | null {
+  if (password.length < 8) return 'Password must be at least 8 characters long.';
+  if (!/[A-Z]/.test(password)) return 'Password must contain an uppercase letter.';
+  if (!/[a-z]/.test(password)) return 'Password must contain a lowercase letter.';
+  if (!/[0-9]/.test(password)) return 'Password must contain a number.';
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) return 'Password must contain a special character.';
+  return null;
+}
+
 export default function StepPassword({ data, updateData, onNext, onBack }: Props) {
   const [error, setError] = useState('');
 
@@ -17,8 +28,9 @@ export default function StepPassword({ data, updateData, onNext, onBack }: Props
       setError('Please fill out both password fields.');
       return;
     }
-    if (data.password.length < 6) {
-      setError('Password must be at least 6 characters.');
+    const passwordError = validatePasswordStrength(data.password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
     if (data.password !== data.confirmPassword) {

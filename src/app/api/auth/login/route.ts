@@ -33,6 +33,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Invalid credentials' }, { status: 401 });
     }
 
+    if (!user.isEmailVerified) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Please verify your email before logging in.',
+          requiresVerification: true,
+          email: user.email,
+        },
+        { status: 403 }
+      );
+    }
+
     await createSession(user._id.toString(), user.role);
 
     // Sync activeBusinessId cookie so client-side context loads the right business

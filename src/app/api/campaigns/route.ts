@@ -21,6 +21,9 @@ function serializeCampaign(c: any) {
     sendOnlyBizHours: c.sendOnlyBizHours ?? true,
     bizHoursStart: c.bizHoursStart ?? 9,
     bizHoursEnd: c.bizHoursEnd ?? 20,
+    startDate: c.startedAt ?? null,
+    endDate: c.completedAt ?? c.cancelledAt ?? null,
+    progress: c.totalRequests > 0 ? Math.round(((c.delivered || 0) / c.totalRequests) * 100) : 0,
     stats: {
       total: c.totalRequests || 0,
       sent: c.delivered || 0,

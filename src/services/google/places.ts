@@ -42,7 +42,7 @@ export class GooglePlacesService {
     const data = await response.json();
 
     if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-      throw new Error(`Google API Error: ${data.status}`);
+      throw new Error(`Google Places API error (${data.status}): ${data.error_message || 'no additional details'}`);
     }
 
     return (data.predictions || []).map((p: any) => ({
@@ -71,7 +71,7 @@ export class GooglePlacesService {
     const data = await response.json();
 
     if (data.status !== "OK") {
-      throw new Error(`Google API Error: ${data.status}`);
+      throw new Error(`Google Places API error (${data.status}): ${data.error_message || 'no additional details'}`);
     }
 
     const r = data.result;

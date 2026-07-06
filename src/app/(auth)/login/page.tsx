@@ -24,10 +24,12 @@ export default function LoginPage() {
       });
       
       const data = await res.json();
-      
+
       if (data.success) {
         router.push('/dashboard');
         router.refresh();
+      } else if (data.requiresVerification) {
+        router.push(`/verify?email=${encodeURIComponent(data.email)}`);
       } else {
         setError(data.error || 'Invalid credentials');
         setLoading(false);

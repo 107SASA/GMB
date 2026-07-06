@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Lead from '@/models/Lead';
-import Review from '@/models/Review';
 import Post from '@/models/Post';
 import AIUsageLog from '@/models/AIUsageLog';
 import { requireBusinessContext } from '@/lib/tenant';
+import { computeReviewMetrics } from '@/services/reviews/reviewMetrics';
 import mongoose from 'mongoose';
 
 export async function GET(req: NextRequest) {
@@ -89,30 +89,10 @@ export async function GET(req: NextRequest) {
       },
     ]);
 
-    // 2. Reviews — all-time totals
-    const reviewsPromise = Review.aggregate([
-      { $match: { businessId: bid } },
-      {
-        $facet: {
-          metrics: [
-            {
-              $group: {
-                _id: null,
-                total: { $sum: 1 },
-                avgRating: { $avg: '$rating' },
-                unanswered: {
-                  $sum: { $cond: [{ $eq: [{ $ifNull: ['$replyText', ''] }, ''] }, 1, 0] },
-                },
-              },
-            },
-          ],
-          starsDistribution: [
-            { $group: { _id: '$rating', count: { $sum: 1 } } },
-            { $sort: { _id: 1 } },
-          ],
-        },
-      },
-    ]);
+    // 2. Reviews — the Dashboard does not calculate this itself. It reads the exact same
+    // computeReviewMetrics() function used by the Review Management module (see
+    // src/services/reviews/reviewMetrics.ts), so the two can never show different numbers.
+    const reviewsPromise = computeReviewMetrics(ctx.businessId);
 
     // 3. Posts — total all-time published count
     const postsPromise = Post.countDocuments({ businessId: bid, status: 'published' });
@@ -123,7 +103,7 @@ export async function GET(req: NextRequest) {
       .limit(10)
       .lean();
 
-    const [leadsRes, reviewsRes, postsPublished, aiActivities] = await Promise.all([
+    const [leadsRes, reviewMetrics, postsPublished, aiActivities] = await Promise.all([
       leadsPromise,
       reviewsPromise,
       postsPromise,
@@ -131,7 +111,6 @@ export async function GET(req: NextRequest) {
     ]);
 
     const leads   = leadsRes[0];
-    const reviews = reviewsRes[0];
 
     const totalLeads     = leads.metrics[0]?.total     ?? 0;
     const convertedLeads = leads.metrics[0]?.converted ?? 0;
@@ -144,17 +123,15 @@ export async function GET(req: NextRequest) {
         totalLeads,
         convertedLeads,
         conversionRate,
-        totalReviews:      reviews.metrics[0]?.total      ?? 0,
-        avgRating:         reviews.metrics[0]?.avgRating
-          ? Number(reviews.metrics[0].avgRating.toFixed(1))
-          : 0,
-        unansweredReviews: reviews.metrics[0]?.unanswered ?? 0,
+        totalReviews:      reviewMetrics.totalReviews,
+        avgRating:         reviewMetrics.avgRating,
+        unansweredReviews: reviewMetrics.unansweredCount,
         postsPublished,
       },
       charts: {
         leadsOverTime:     leads.leadsOverTime.map((d: any) => ({ date: d._id, leads: d.count })),
         sourceDonut:       leads.sourceDonut.map((d: any) => ({ name: d._id || 'Unknown', value: d.count })),
-        starsDistribution: reviews.starsDistribution.map((d: any) => ({ star: d._id, count: d.count })),
+        starsDistribution: reviewMetrics.starsDistribution,
       },
       panels: {
         recentLeads: leads.recentLeads,

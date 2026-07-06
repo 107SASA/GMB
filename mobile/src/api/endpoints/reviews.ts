@@ -26,12 +26,17 @@ export const reviewSchema = z.object({
 });
 export type Review = z.infer<typeof reviewSchema>;
 
-/** GET /api/reviews — bare array, newest first. */
+/**
+ * GET /api/reviews — newest first. The server now returns
+ * `{ reviews, analytics }`; older deployments returned a bare array,
+ * so accept both shapes.
+ */
 export async function fetchReviews(): Promise<Review[]> {
   const { data } = await api.get('/api/reviews');
+  const list = Array.isArray(data) ? data : data?.reviews ?? [];
   return z
     .array(reviewSchema.nullable().catch(null))
-    .parse(data)
+    .parse(list)
     .filter((r): r is Review => r !== null);
 }
 

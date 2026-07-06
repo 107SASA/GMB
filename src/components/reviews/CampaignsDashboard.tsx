@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Fragment } from 'react';
 import {
   UploadCloud, Users, Send, TrendingUp, MessageSquare, Search, X,
   Loader2, Star, Pause, Play, Trash2, Plus, AlertTriangle, Mail,
-  Sparkles, ChevronLeft, ChevronRight, Pencil, Tag, Clock, Wand2, UserPlus, Import
+  Sparkles, ChevronLeft, ChevronRight, Pencil, Tag, Clock, Wand2, UserPlus, Import, Ban
 } from 'lucide-react';
 import CustomerUploadModal from '@/components/campaigns/CustomerUploadModal';
 import { useBusiness } from '@/context/BusinessContext';
@@ -26,7 +26,7 @@ interface Campaign {
   id: string;
   name: string;
   channel: string;
-  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
   targetTags: string[];
   initialMessage: string;
   reminder1Enabled: boolean;
@@ -121,6 +121,7 @@ const CAMPAIGN_STATUS_BADGE: Record<string, string> = {
   ACTIVE: 'bg-emerald-50 text-emerald-600',
   PAUSED: 'bg-amber-50 text-amber-600',
   COMPLETED: 'bg-blue-50 text-blue-600',
+  CANCELLED: 'bg-rose-50 text-rose-600',
 };
 
 const PLACEHOLDER_HELP = 'Placeholders: {{name}} = customer, {{service}} = their service, {{business}} = your business, {{link}} = review link (added automatically if missing)';
@@ -506,6 +507,13 @@ export default function CampaignsDashboard() {
     fetchCampaigns();
   };
 
+  // Terminal: a cancelled campaign stops all pending reminders and can never
+  // be resumed — it stays visible for history.
+  const handleCancel = async (id: string) => {
+    await fetch(`/api/campaigns/${id}/cancel`, { method: 'PATCH' });
+    fetchCampaigns();
+  };
+
   const handleDelete = async (id: string) => {
     await fetch(`/api/campaigns/${id}`, { method: 'DELETE' });
     fetchCampaigns();
@@ -848,12 +856,14 @@ export default function CampaignsDashboard() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => openEdit(camp)}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition-colors border border-slate-200"
-                      >
-                        <Pencil className="w-3.5 h-3.5" /> Edit
-                      </button>
+                      {camp.status !== 'CANCELLED' && (
+                        <button
+                          onClick={() => openEdit(camp)}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition-colors border border-slate-200"
+                        >
+                          <Pencil className="w-3.5 h-3.5" /> Edit
+                        </button>
+                      )}
                       {camp.status === 'DRAFT' && (
                         <button
                           onClick={() => { setLaunchConfirm({ id: camp.id, name: camp.name, targetTags: camp.targetTags }); setLaunchResult(null); }}
@@ -878,11 +888,20 @@ export default function CampaignsDashboard() {
                           <Play className="w-3.5 h-3.5" /> Resume
                         </button>
                       )}
-                      {(camp.status === 'DRAFT' || camp.status === 'COMPLETED') && (
+                      {(camp.status === 'ACTIVE' || camp.status === 'PAUSED') && (
+                        <button
+                          onClick={() => handleCancel(camp.id)}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl transition-colors border border-rose-200"
+                          title="Cancel campaign — stops all pending reminders, cannot be resumed"
+                        >
+                          <Ban className="w-3.5 h-3.5" /> Cancel
+                        </button>
+                      )}
+                      {camp.status === 'DRAFT' && (
                         <button
                           onClick={() => handleDelete(camp.id)}
                           className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-colors border border-slate-200"
-                          title="Delete campaign"
+                          title="Delete draft campaign"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

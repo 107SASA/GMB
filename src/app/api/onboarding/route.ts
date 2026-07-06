@@ -5,32 +5,65 @@ import Business from '@/models/Business';
 import User from '@/models/User';
 import Organization from '@/models/Organization';
 import { createSession, signSessionToken, SESSION_MAX_AGE_SECONDS } from '@/lib/session';
+import { validatePasswordStrength } from '@/services/auth/security';
+import { generateOTP, hashOTP } from '@/services/auth/otp';
+import { sendEmailOtp } from '@/services/email';
 import bcrypt from 'bcryptjs';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
+
+function normalizePhone(phone: string): string {
+  return phone.replace(/[^\d+]/g, '');
+}
 
 export async function POST(req: Request) {
   try {
     await dbConnect();
     const body = await req.json();
 
-    // Hash the password before any DB writes — no plain-text bypass
-    const passwordHash = body.password
-      ? await bcrypt.hash(body.password, 12)
-      : undefined;
-
-    // 1. Find or Create User
-    // If the email already exists we still issue a fresh session for that user,
-    // but we do NOT overwrite their existing password.
     let newUser = await User.findOne({ email: body.email });
+
+    // Only validate email/password/phone when actually creating a new account —
+    // an existing user resuming onboarding keeps their existing credentials.
     if (!newUser) {
+      if (!body.email || !EMAIL_REGEX.test(body.email)) {
+        return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
+      }
+
+      const passwordCheck = validatePasswordStrength(body.password || '');
+      if (!passwordCheck.isValid) {
+        return NextResponse.json({ error: passwordCheck.error }, { status: 400 });
+      }
+
+      const normalizedPhone = normalizePhone(body.phone || '');
+      if (!PHONE_REGEX.test(normalizedPhone)) {
+        return NextResponse.json(
+          { error: 'Please enter a valid phone number in international format, e.g. +14155550100.' },
+          { status: 400 }
+        );
+      }
+
+      // Hash the password before any DB writes — no plain-text bypass
+      const passwordHash = await bcrypt.hash(body.password, 12);
+
+      const otp = generateOTP();
       newUser = await User.create({
         fullName: body.fullName || 'Test User',
         email: body.email,
-        phone: body.phone || `000${Date.now().toString().slice(-7)}`,
+        phone: normalizedPhone,
         passwordHash,
         role: 'CLIENT',
-        isEmailVerified: true,
+        isEmailVerified: false,
         onboardingCompleted: true,
+        emailOtpHash: hashOTP(otp),
+        emailOtpExpiry: new Date(Date.now() + 15 * 60 * 1000),
       });
+
+      const otpResult = await sendEmailOtp(newUser.email, otp, 'verify');
+      if (!otpResult.success) {
+        console.error('Failed to send onboarding OTP email:', otpResult.error);
+      }
     }
 
     // 2. Create Organization
@@ -110,8 +143,17 @@ export async function POST(req: Request) {
       },
     });
 
-    // 5. Issue a signed session for the NEW user — overwrites any stale session
-    //    that was in the browser from a previous account.
+    // 5. Unverified accounts don't get a session until they confirm their email —
+    //    an existing, already-verified user resuming onboarding does.
+    if (!newUser.isEmailVerified) {
+      return NextResponse.json(
+        { success: true, requiresVerification: true, email: newUser.email, businessId: newBusiness._id },
+        { status: 200 }
+      );
+    }
+
+    // Issue a signed session for the verified user — overwrites any stale session
+    // that was in the browser from a previous account.
     await createSession(newUser._id.toString(), newUser.role);
 
     const cookieStore = await cookies();

@@ -6,7 +6,7 @@ export interface ICampaign extends Document {
   name: string;
   // WhatsApp is the only supported channel for review requests.
   channel: 'WHATSAPP';
-  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
 
   // Targeting: customers whose tags include ANY of these. Empty = all customers.
   targetTags: string[];
@@ -27,7 +27,9 @@ export interface ICampaign extends Document {
   bizHoursEnd: number;   // 0-23
 
   scheduledAt?: Date;
+  startedAt?: Date;
   completedAt?: Date;
+  cancelledAt?: Date;
 
   // Tracking
   totalRequests: number;
@@ -47,7 +49,7 @@ const CampaignSchema: Schema = new Schema(
     channel: { type: String, enum: ['WHATSAPP'], default: 'WHATSAPP' },
     status: {
       type: String,
-      enum: ['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED'],
+      enum: ['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED'],
       default: 'DRAFT',
       index: true
     },
@@ -68,7 +70,9 @@ const CampaignSchema: Schema = new Schema(
     bizHoursEnd: { type: Number, default: 20, min: 1, max: 24 },
 
     scheduledAt: { type: Date },
+    startedAt: { type: Date },
     completedAt: { type: Date },
+    cancelledAt: { type: Date },
 
     totalRequests: { type: Number, default: 0 },
     delivered: { type: Number, default: 0 },

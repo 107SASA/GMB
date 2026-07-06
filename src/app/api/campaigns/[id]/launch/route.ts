@@ -19,6 +19,21 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       return NextResponse.json({ success: false, message: 'Campaign not found' }, { status: 404 });
     }
 
+    // Lifecycle guard: a cancelled campaign can never resume/relaunch, and a completed
+    // campaign is done — both must remain visible in history but cannot be reactivated.
+    if (campaign.status === 'CANCELLED') {
+      return NextResponse.json(
+        { success: false, message: 'This campaign was cancelled and cannot be resumed.' },
+        { status: 400 }
+      );
+    }
+    if (campaign.status === 'COMPLETED') {
+      return NextResponse.json(
+        { success: false, message: 'This campaign has already completed and cannot be relaunched.' },
+        { status: 400 }
+      );
+    }
+
     // Load eligible customers: not opted out, has a phone number
     const customers = await Customer.find({
       businessId: ctx.businessId,
@@ -54,6 +69,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
 
     campaign.status = 'ACTIVE';
     campaign.totalRequests = events.length;
+    if (!campaign.startedAt) campaign.startedAt = new Date();
     await campaign.save();
 
     return NextResponse.json({ success: true, launched: true, requestsQueued: events.length });

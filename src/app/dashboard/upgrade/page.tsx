@@ -1,12 +1,18 @@
 "use client";
 
 import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Lock, ArrowRight, Zap, CheckCircle2 } from 'lucide-react';
 
 export default function UpgradePage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const moduleName = searchParams.get('module') || 'Premium Feature';
+  const moduleName = searchParams.get('module');
+
+  // Reached with no ?module= param → this is the freemium "you've used your
+  // one free audit report" gate (redirected here by src/proxy.ts once
+  // freemiumAuditGate.auditUsed is true), not the generic locked-module upsell.
+  const isFreeAuditGate = !moduleName;
 
   const formatModuleName = (name: string) => {
     return name
@@ -14,6 +20,14 @@ export default function UpgradePage() {
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
   };
+
+  const heading = isFreeAuditGate
+    ? "You've used your free audit report"
+    : `Unlock ${formatModuleName(moduleName!)}`;
+
+  const subtext = isFreeAuditGate
+    ? "Your free plan includes one GMB Audit report. Upgrade to keep auditing this business and unlock the rest of the platform — Dashboard, Content Generator, Scheduler, Inbox, Leads and more."
+    : 'This module requires a Premium subscription. Upgrade your workspace to access advanced AI growth tools.';
 
   return (
     <div className="flex flex-col items-center justify-center py-20 px-4">
@@ -25,14 +39,14 @@ export default function UpgradePage() {
 
         <div className="relative z-10">
           <div className="w-20 h-20 bg-slate-50 border border-slate-100 rounded-3xl mx-auto flex items-center justify-center mb-8 shadow-sm">
-            <Lock className="w-10 h-10 text-slate-400" />
+            {isFreeAuditGate ? <Zap className="w-10 h-10 text-amber-500" /> : <Lock className="w-10 h-10 text-slate-400" />}
           </div>
 
           <h1 className="text-3xl font-bold text-slate-900 mb-4 tracking-tight">
-            Unlock {formatModuleName(moduleName)}
+            {heading}
           </h1>
           <p className="text-lg text-slate-500 mb-10 max-w-md mx-auto">
-            This module requires a Premium subscription. Upgrade your workspace to access advanced AI growth tools.
+            {subtext}
           </p>
 
           <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6 mb-10 text-left max-w-md mx-auto">
@@ -57,18 +71,21 @@ export default function UpgradePage() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button 
-              onClick={() => router.back()}
-              className="px-8 py-4 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-2xl font-bold transition-all shadow-sm"
-            >
-              Go Back
-            </button>
-            <button 
+            {!isFreeAuditGate && (
+              <button
+                onClick={() => router.back()}
+                className="px-8 py-4 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-2xl font-bold transition-all shadow-sm"
+              >
+                Go Back
+              </button>
+            )}
+            <Link
+              href="/dashboard/billing"
               className="px-8 py-4 bg-primary hover:bg-primary/90 text-white rounded-2xl font-bold transition-all shadow-md flex items-center justify-center gap-2"
             >
               Upgrade to Premium
               <ArrowRight className="w-5 h-5" />
-            </button>
+            </Link>
           </div>
         </div>
       </div>

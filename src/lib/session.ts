@@ -18,7 +18,7 @@ export async function signSessionToken(userId: string, role: string): Promise<st
     .sign(getSecret());
 }
 
-async function verifySessionToken(token: string): Promise<{ userId: string; role: string } | null> {
+export async function verifySessionToken(token: string): Promise<{ userId: string; role: string } | null> {
   const { payload } = await jwtVerify(token, getSecret());
   const { userId, role } = payload as { userId: string; role: string };
   if (!userId || !role) return null;

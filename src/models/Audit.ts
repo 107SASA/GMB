@@ -197,6 +197,14 @@ export interface IAudit extends Document {
   overallScore?: number;
   auditData?: IAuditData;
   metadata?: any;
+
+  // Review Analysis Range Selector (Feature 2A) — which review window this
+  // audit's review metrics/sentiment/trends/recommendations were computed from.
+  reviewPeriodDays?: 7 | 14 | 21;
+
+  // Improvement Plan Duration (Feature 2B) — drives the generated action plan.
+  actionPlanDurationDays?: 30 | 45 | 90;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -227,6 +235,15 @@ const AuditSchema = new Schema<IAudit>(
     overallScore: { type: Number },
     auditData: { type: Schema.Types.Mixed }, // Using Mixed for the root data object since it's large and varies heavily
     metadata: { type: Schema.Types.Mixed },
+
+    // Review Analysis Range Selector — defaults to 14 days to match prior
+    // (unbounded-but-effectively-recent) behavior for any code path that
+    // doesn't pass a value explicitly.
+    reviewPeriodDays: { type: Number, enum: [7, 14, 21], default: 14 },
+
+    // Improvement Plan Duration — defaults to 30 days, matching the
+    // original hardcoded "30-Day Action Plan" the report always showed.
+    actionPlanDurationDays: { type: Number, enum: [30, 45, 90], default: 30 },
   },
   { timestamps: true }
 );

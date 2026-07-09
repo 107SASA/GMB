@@ -22,6 +22,11 @@ export default function AuditForm() {
     (activeBusiness as any)?.city || ''
   );
 
+  // Feature 2A — Review Analysis Range Selector
+  const [reviewPeriodDays, setReviewPeriodDays] = useState<7 | 14 | 21>(14);
+  // Feature 2B — Improvement Plan Duration
+  const [actionPlanDurationDays, setActionPlanDurationDays] = useState<30 | 45 | 90>(30);
+
   const missingCategory = !categoryOverride.trim();
   const isReady = !!activeBusiness && !missingCategory;
 
@@ -38,6 +43,8 @@ export default function AuditForm() {
           businessId: activeBusiness?._id,
           categoryOverride: categoryOverride.trim(),
           cityOverride: cityOverride.trim(),
+          reviewPeriodDays,
+          actionPlanDurationDays,
         }),
       });
 
@@ -192,6 +199,55 @@ export default function AuditForm() {
 
           <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 text-xs text-slate-500 text-center">
             Category and city can be adjusted for each audit run. Other fields come from your business profile.
+          </div>
+        </div>
+
+        {/* Feature 2 — Review Analysis Range + Improvement Plan Duration selectors */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Review Analysis Period
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {([7, 14, 21] as const).map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  onClick={() => setReviewPeriodDays(days)}
+                  className={`py-2.5 px-3 rounded-lg text-sm font-semibold border transition-colors ${
+                    reviewPeriodDays === days
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'
+                  }`}
+                >
+                  Last {days} Days
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-slate-400">Determines which reviews are fetched and analyzed for sentiment, trends and recommendations.</p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Improvement Plan Duration
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {([30, 45, 90] as const).map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  onClick={() => setActionPlanDurationDays(days)}
+                  className={`py-2.5 px-3 rounded-lg text-sm font-semibold border transition-colors ${
+                    actionPlanDurationDays === days
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'
+                  }`}
+                >
+                  {days} Days
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-slate-400">Shapes the generated action plan/roadmap in your report.</p>
           </div>
         </div>
 

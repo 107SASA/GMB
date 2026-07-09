@@ -4,6 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import User from '@/models/User';
 import Organization from '@/models/Organization';
+import Subscription from '@/models/Subscription';
 import { createSession, signSessionToken, SESSION_MAX_AGE_SECONDS } from '@/lib/session';
 import { validatePasswordStrength } from '@/services/auth/security';
 import { generateOTP, hashOTP } from '@/services/auth/otp';
@@ -58,6 +59,25 @@ export async function POST(req: Request) {
         onboardingCompleted: true,
         emailOtpHash: hashOTP(otp),
         emailOtpExpiry: new Date(Date.now() + 15 * 60 * 1000),
+        // Freemium gate: brand-new signups only get the GMB Audit module
+        // (one report) until they upgrade. Existing/resuming accounts
+        // (the `newUser` branch above is skipped for them) never get this
+        // field set, so they're completely unaffected.
+        freemiumAuditGate: { active: true, auditUsed: false },
+      });
+
+      // Mirrors the freemium gate in the existing module-entitlement system
+      // (src/lib/moduleGating.ts) so API routes that already call
+      // requireModule() — CRM leads, Inbox, Reviews, GBP insights — are
+      // correctly locked for this brand-new user too. Only 'google_ranking_agent'
+      // (the Audit module) is enabled; billingStatus is explicitly 'Active'
+      // (not the schema-default 'Trialing') so the trial bypass in
+      // requireModule() doesn't grant full access.
+      await Subscription.create({
+        userId: newUser._id,
+        planType: 'Free',
+        billingStatus: 'Active',
+        trialStatus: { isActive: false },
       });
 
       const otpResult = await sendEmailOtp(newUser.email, otp, 'verify');

@@ -2,9 +2,68 @@ import Groq from 'groq-sdk';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
+export interface AuditEngineOptions {
+  /** Feature 2B — Improvement Plan Duration selector (30 / 45 / 90 days). */
+  actionPlanDurationDays?: 30 | 45 | 90;
+}
+
+/**
+ * Per-duration instructions for the action plan (Feature 2B). Each bucket
+ * produces a genuinely different plan — different cadence, different
+ * number of periods, and a different strategic focus — not just a
+ * relabeled heading on the same content.
+ */
+const ACTION_PLAN_SPECS: Record<30 | 45 | 90, {
+  label: string;
+  cadenceNoun: string;
+  periodCount: number;
+  periodLabels: string[];
+  focus: string;
+  extendedLabel: string;
+  extendedFocus: string;
+}> = {
+  30: {
+    label: '30-Day Action Plan',
+    cadenceNoun: 'week',
+    periodCount: 4,
+    periodLabels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+    focus:
+      'Prioritize ONLY the highest-impact, lowest-effort fixes and quick wins that can realistically be completed by one person in a single week each. Every task must be concrete and achievable within 7 days — no multi-week initiatives.',
+    extendedLabel: 'Beyond 30 Days — Ongoing Roadmap',
+    extendedFocus:
+      'Summarize, at a high level, what should happen after the 30-day sprint to keep building toward full optimization (do not repeat the 30-day tasks).',
+  },
+  45: {
+    label: '45-Day Action Plan',
+    cadenceNoun: 'phase',
+    periodCount: 3,
+    periodLabels: ['Days 1-15', 'Days 16-30', 'Days 31-45'],
+    focus:
+      'Focus on MEDIUM-TERM improvements: reputation building (review generation & response cadence), content strategy (posting cadence, GBP content), and citation/NAP consistency improvements. These are initiatives that need 2+ weeks to show results, not one-day quick wins.',
+    extendedLabel: 'Beyond 45 Days — Ongoing Roadmap',
+    extendedFocus:
+      'Summarize what should happen after day 45 to sustain the reputation and content gains and move toward full authority building.',
+  },
+  90: {
+    label: '90-Day Roadmap',
+    cadenceNoun: 'month',
+    periodCount: 3,
+    periodLabels: ['Month 1', 'Month 2', 'Month 3'],
+    focus:
+      'Build a COMPLETE optimization roadmap: authority building (backlinks/citations at scale), long-term reputation strategy, a sustained posting schedule, and structural profile growth. Each month should build on the last toward category-leading authority.',
+    extendedLabel: 'Beyond 90 Days — Ongoing Roadmap',
+    extendedFocus:
+      'Summarize the ongoing maintenance cadence (posting, review responses, ranking checks) needed to sustain the gains after the 90-day roadmap ends.',
+  },
+};
+
 export async function generateAIAudit(
-  businessData: any
+  businessData: any,
+  options: AuditEngineOptions = {}
 ): Promise<any> {
+
+  const durationDays = options.actionPlanDurationDays ?? 30;
+  const planSpec = ACTION_PLAN_SPECS[durationDays];
 
   const prompt = `
 You are an elite Enterprise Business Intelligence Engine & Local SEO strategist.
@@ -88,26 +147,32 @@ REQUIRED JSON FORMAT:
     }
   ],
   "thirtyDayPlan": [
-    { "week": "Week 1", "tasks": ["Task 1", "Task 2"], "expectedOutcome": "Outcome" },
-    { "week": "Week 2", "tasks": [], "expectedOutcome": "Outcome" },
-    { "week": "Week 3", "tasks": [], "expectedOutcome": "Outcome" },
-    { "week": "Week 4", "tasks": [], "expectedOutcome": "Outcome" }
+${planSpec.periodLabels.map(p => `    { "week": "${p}", "tasks": ["Task 1", "Task 2"], "expectedOutcome": "Outcome" }`).join(',\n')}
   ],
   "ninetyDayPlan": [
-    { "month": "Month 1", "tasks": [], "focusAreas": ["SEO", "Reviews"] },
-    { "month": "Month 2", "tasks": [], "focusAreas": [] },
-    { "month": "Month 3", "tasks": [], "focusAreas": [] }
-  ]
+    { "month": "${planSpec.extendedLabel}", "tasks": [], "focusAreas": ["SEO", "Reviews"] }
+  ],
+  "actionPlan": {
+    "durationDays": ${durationDays},
+    "planLabel": "${planSpec.label}",
+    "extendedLabel": "${planSpec.extendedLabel}"
+  }
 }
+
+TASK — IMPROVEMENT PLAN (Feature: user selected a "${planSpec.label}" duration):
+Generate "thirtyDayPlan" as exactly ${planSpec.periodCount} items, one per period listed below (use these EXACT period labels as the "week" value, in this order): ${JSON.stringify(planSpec.periodLabels)}.
+Plan focus for this duration: ${planSpec.focus}
+Generate "ninetyDayPlan" as exactly ONE item titled "${planSpec.extendedLabel}" representing what comes AFTER this plan: ${planSpec.extendedFocus}
 
 RULES:
 1. "strengths" MUST be generated from actual data (e.g., if Profile Score is 90%, make that a strength, list the evidence).
 2. "weaknesses" MUST be generated from actual gaps (e.g., use the Competitor Intelligence to find Review Gaps).
 3. Do NOT generate "Data Unavailable". Always provide minimum 3 strengths and 3 weaknesses.
 4. "priorityFixes" MUST perfectly match the items listed in IDENTIFIED NATIVE PRIORITY FIXES. Do not invent new fixes. Just add the Impact/Effort/expectedScoreGain scoring.
-5. "thirtyDayPlan" MUST specifically address the exact data gaps identified in "priorityFixes".
-6. "ninetyDayPlan" MUST build on the thirtyDayPlan and be tailored to the exact tier and review volume of this business. Do not hallucinate generic advice.
-7. EVERYTHING MUST BE STRICTLY DATA-DRIVEN. NO ESTIMATED OR FAKE SCORES.
+5. "thirtyDayPlan" MUST specifically address the exact data gaps identified in "priorityFixes", respecting the duration-specific focus above. Tasks in a ${planSpec.cadenceNoun}-based plan must be realistic to complete within that ${planSpec.cadenceNoun}.
+6. "ninetyDayPlan" (the single "beyond the plan" item) MUST build on "thirtyDayPlan" and be tailored to the exact tier and review volume of this business. Do not hallucinate generic advice.
+7. The ${planSpec.periodCount} periods in "thirtyDayPlan" MUST be genuinely different from each other in substance (not the same tasks reworded) and MUST clearly differ from what a different duration selection would produce — do not fall back to generic, duration-agnostic advice.
+8. EVERYTHING MUST BE STRICTLY DATA-DRIVEN. NO ESTIMATED OR FAKE SCORES.
 `;
 
   try {

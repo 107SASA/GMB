@@ -25,6 +25,7 @@ import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useBusiness } from "@/context/BusinessContext";
 import { useMobileNav } from "@/context/MobileNavContext";
+import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { AddWorkspaceModal } from "./AddWorkspaceModal";
 
 const AVATAR_COLORS = [
@@ -60,7 +61,7 @@ const sidebarLinks = [
   { name: "CRM", icon: MessageSquare, href: "/dashboard/crm" },
   { name: "Content Generator", icon: Megaphone, href: "/dashboard/content" },
   { name: "Content Scheduler", icon: Calendar, href: "/dashboard/scheduler" },
-  { name: "WhatsApp AI Agent", icon: MessageSquare, href: "/dashboard/whatsapp" },
+  { name: "WhatsApp AI Agent", icon: MessageSquare, href: "/dashboard/whatsapp", superAdminOnly: true },
   { name: "Settings", icon: Settings, href: "/dashboard/settings" },
   { name: "Billing", icon: BarChart3, href: "/dashboard/billing" },
   { name: "Profile", icon: Users, href: "/dashboard/profile" },
@@ -123,6 +124,11 @@ export function Sidebar() {
   const router = useRouter();
   const { businesses, activeBusiness, switchBusiness, loading } = useBusiness();
   const { isOpen, close } = useMobileNav();
+  const { isSuperAdmin } = useCurrentUserRole();
+
+  const visibleLinks = sidebarLinks.filter(
+    (link) => !(link as any).superAdminOnly || isSuperAdmin
+  );
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -277,7 +283,7 @@ export function Sidebar() {
 
           {/* Navigation links */}
           <nav className="space-y-1">
-            {sidebarLinks.map((link) => {
+            {visibleLinks.map((link) => {
               const isActive = pathname === link.href;
               const isGbpLink = (link as any).gbpBadge;
               const isGbpConnected = activeBusiness?.googleConnected;
@@ -354,9 +360,9 @@ export function Sidebar() {
             </span>
           </Link>
 
-          {/* Navigation links — same sidebarLinks array */}
+          {/* Navigation links — same visibleLinks array as desktop */}
           <nav className="space-y-1">
-            {sidebarLinks.map((link) => {
+            {visibleLinks.map((link) => {
               const isActive = pathname === link.href;
               return (
                 <Link

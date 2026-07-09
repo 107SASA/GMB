@@ -27,6 +27,8 @@ interface MenuItem {
   tint: keyof Pick<Palette, 'amber' | 'violet' | 'cyan' | 'emerald' | 'rose' | 'brandBright' | 'textDim'>;
   /** When set, a lock icon shows if the mapped module is disabled. */
   surface?: SurfaceKey;
+  /** When true, only shown to Super Admin users. */
+  superAdminOnly?: boolean;
 }
 
 const MENU: { section: string; items: MenuItem[] }[] = [
@@ -42,7 +44,7 @@ const MENU: { section: string; items: MenuItem[] }[] = [
     section: 'Customers',
     items: [
       { label: 'Leads', icon: 'people', href: '/leads', tint: 'brandBright', surface: 'leads' },
-      { label: 'WhatsApp AI Agent', icon: 'logo-whatsapp', href: '/whatsapp', tint: 'emerald' },
+      { label: 'WhatsApp AI Agent', icon: 'logo-whatsapp', href: '/whatsapp', tint: 'emerald', superAdminOnly: true },
     ],
   },
   {
@@ -116,20 +118,24 @@ export default function MoreScreen() {
         <SectionLabel>Workspace</SectionLabel>
         <BusinessSwitcher />
 
-        {MENU.map(({ section, items }) => (
-          <View key={section}>
-            <SectionLabel>{section}</SectionLabel>
-            <View className="overflow-hidden rounded-2xl border border-surface-border bg-surface-raised">
-              {items.map((item) => (
-                <MenuRow
-                  key={item.label}
-                  item={item}
-                  locked={item.surface ? !modules[SURFACE_MODULES[item.surface]] : false}
-                />
-              ))}
+        {MENU.map(({ section, items }) => {
+          const visibleItems = items.filter((item) => !item.superAdminOnly || user?.role === 'SUPER_ADMIN');
+          if (visibleItems.length === 0) return null;
+          return (
+            <View key={section}>
+              <SectionLabel>{section}</SectionLabel>
+              <View className="overflow-hidden rounded-2xl border border-surface-border bg-surface-raised">
+                {visibleItems.map((item) => (
+                  <MenuRow
+                    key={item.label}
+                    item={item}
+                    locked={item.surface ? !modules[SURFACE_MODULES[item.surface]] : false}
+                  />
+                ))}
+              </View>
             </View>
-          </View>
-        ))}
+          );
+        })}
 
         <SectionLabel>Session</SectionLabel>
         <Pressable

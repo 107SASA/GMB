@@ -70,8 +70,13 @@ export default function AdminLoginPage() {
               placeholder="admin@yourdomain.com"
             />
           </div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-bold text-slate-700">Password</label>
+            <a href="/forgot-password?context=admin" className="text-sm font-medium text-violet-600 hover:text-violet-700">
+              Forgot password?
+            </a>
+          </div>
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">Password</label>
             <input
               type="password"
               name="password"

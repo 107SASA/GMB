@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import { resolveWorkingHoursConfig } from '@/services/whatsapp-agent/businessHours';
 import { isValidTimeString } from '@/services/whatsapp-agent/dateTimeUtils';
 
@@ -13,6 +14,10 @@ import { isValidTimeString } from '@/services/whatsapp-agent/dateTimeUtils';
 
 export async function GET(req: Request) {
   try {
+    // WhatsApp AI Agent is a Super Admin–exclusive feature.
+    const authCheck = await requireSuperAdmin();
+    if (!authCheck.ok) return authCheck.response;
+
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
 
@@ -31,6 +36,10 @@ const DAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'satur
 
 export async function PUT(req: Request) {
   try {
+    // WhatsApp AI Agent is a Super Admin–exclusive feature.
+    const authCheck = await requireSuperAdmin();
+    if (!authCheck.ok) return authCheck.response;
+
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
 

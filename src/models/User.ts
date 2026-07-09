@@ -30,10 +30,16 @@ export interface IUser extends Document {
   // OTP Fields (Hashed values)
   emailOtpHash?: string;
   emailOtpExpiry?: Date;
-  passwordResetOtp?: string;
-  passwordResetExpiry?: Date;
   failedOtpAttempts: number;
   emailVerifiedAt?: Date;
+
+  // Forgot Password flow (all hashed / short-lived)
+  passwordResetOtp?: string;
+  passwordResetExpiry?: Date;
+  passwordResetAttempts: number;
+  passwordResetLastSentAt?: Date;
+  passwordResetTokenHash?: string;
+  passwordResetTokenExpiry?: Date;
 
   // Security fields
   failedLoginAttempts: number;
@@ -106,12 +112,18 @@ const UserSchema: Schema = new Schema(
     // OTPs (Stored as hashed values)
     emailOtpHash: { type: String },
     emailOtpExpiry: { type: Date },
-    passwordResetOtp: { type: String },
-    passwordResetExpiry: { type: Date },
 
     // Verification timestamps and rate limiting
     failedOtpAttempts: { type: Number, default: 0 },
     emailVerifiedAt: { type: Date },
+
+    // Forgot Password flow (all hashed / short-lived, never store raw OTP or token)
+    passwordResetOtp: { type: String },
+    passwordResetExpiry: { type: Date },
+    passwordResetAttempts: { type: Number, default: 0 },
+    passwordResetLastSentAt: { type: Date },
+    passwordResetTokenHash: { type: String },
+    passwordResetTokenExpiry: { type: Date },
 
     // Security
     failedLoginAttempts: { type: Number, default: 0 },

@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import { getCurrentSummary, getSummaryHistory } from '@/services/whatsapp-agent/summaryService';
 
 /**
@@ -12,6 +13,10 @@ import { getCurrentSummary, getSummaryHistory } from '@/services/whatsapp-agent/
  */
 export async function GET(req: Request, { params }: { params: Promise<{ leadId: string }> }) {
   try {
+    // WhatsApp AI Agent is a Super Admin–exclusive feature.
+    const authCheck = await requireSuperAdmin();
+    if (!authCheck.ok) return authCheck.response;
+
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
 

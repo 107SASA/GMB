@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useBusiness } from '@/context/BusinessContext';
+import { useCurrentUserRole } from '@/hooks/useCurrentUserRole';
 import {
   Building2,
   Bot,
@@ -17,9 +18,9 @@ import {
 type Tab = 'business' | 'ai-agent' | 'notifications' | 'integrations';
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
+const TABS: { id: Tab; label: string; icon: React.ElementType; superAdminOnly?: boolean }[] = [
   { id: 'business', label: 'Business Profile', icon: Building2 },
-  { id: 'ai-agent', label: 'AI Agent', icon: Bot },
+  { id: 'ai-agent', label: 'AI Agent', icon: Bot, superAdminOnly: true },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'integrations', label: 'Integrations', icon: Plug },
 ];
@@ -100,6 +101,11 @@ function getAIPreview(personality: string, tone: string, businessName: string): 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('business');
   const { activeBusiness } = useBusiness();
+  const { isSuperAdmin, loading: roleLoading } = useCurrentUserRole();
+
+  // The "AI Agent" tab configures the WhatsApp AI Agent, which is a Super
+  // Admin–exclusive feature — hide it entirely for normal users.
+  const visibleTabs = TABS.filter(tab => !tab.superAdminOnly || isSuperAdmin);
 
   // ── Business Profile state ──────────────────────────────────────────────
   const [bpForm, setBpForm] = useState({
@@ -155,11 +161,15 @@ export default function SettingsPage() {
 
   // ── Load all data on mount ──────────────────────────────────────────────
   useEffect(() => {
+    // Wait for the role check to resolve so we know whether to include the
+    // WhatsApp AI Agent config fetch (Super Admin–only) below.
+    if (roleLoading) return;
+
     const load = async () => {
       try {
         const [bRes, aiRes, notifRes, integRes] = await Promise.all([
           fetch('/api/business'),
-          fetch('/api/inbox/config'),
+          isSuperAdmin ? fetch('/api/inbox/config') : Promise.resolve(null),
           fetch('/api/user/notifications'),
           fetch('/api/integrations/status'),
         ]);
@@ -182,7 +192,7 @@ export default function SettingsPage() {
           setBpLoaded(true);
         }
 
-        if (aiRes.ok) {
+        if (aiRes?.ok) {
           const { config } = await aiRes.json();
           setAiForm({
             aiPersonality: config.aiPersonality ?? 'Professional',
@@ -209,7 +219,7 @@ export default function SettingsPage() {
       }
     };
     load();
-  }, []);
+  }, [roleLoading, isSuperAdmin]);
 
   // ── Business Profile save ───────────────────────────────────────────────
   const handleBpSave = async () => {
@@ -315,7 +325,7 @@ export default function SettingsPage() {
       {/* Tab bar — horizontally scrollable on narrow screens */}
       <div className="overflow-x-auto mb-6 border-b border-slate-200 pb-1 -mx-4 sm:mx-0 px-4 sm:px-0">
         <div className="flex gap-2 min-w-max sm:min-w-0 sm:flex-wrap">
-          {TABS.map(tab => {
+          {visibleTabs.map(tab => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
             return (
@@ -494,7 +504,7 @@ export default function SettingsPage() {
       )}
 
       {/* ─── Tab 2: AI Agent ──────────────────────────────────────────── */}
-      {activeTab === 'ai-agent' && (
+      {activeTab === 'ai-agent' && isSuperAdmin && (
         <div className="space-y-6">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5">
             <div className="flex items-center justify-between">

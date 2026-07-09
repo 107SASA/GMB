@@ -18,6 +18,7 @@ import {
   SlidersHorizontal,
   KanbanSquare,
   MessageCircle,
+  MessageSquare,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -51,6 +52,7 @@ const adminGroups = [
       { name: 'CRM Monitor',      icon: KanbanSquare,  href: '/admin/crm' },
       { name: 'Review Monitor',   icon: Star,          href: '/admin/reviews' },
       { name: 'WhatsApp Monitor', icon: MessageCircle, href: '/admin/whatsapp' },
+      { name: 'WhatsApp AI Agent', icon: MessageSquare, href: '/admin/whatsapp-agent' },
     ],
   },
   {
@@ -126,12 +128,6 @@ export function AdminSidebar() {
       </div>
 
       <div className="mt-auto p-6">
-        <div className="mb-3 px-4 py-2 text-xs text-slate-400 font-medium">
-          Back to regular app?{' '}
-          <Link href="/dashboard" className="text-indigo-600 hover:underline">
-            Dashboard
-          </Link>
-        </div>
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-400/10 transition-all"

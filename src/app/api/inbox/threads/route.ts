@@ -5,9 +5,14 @@ import mongoose from 'mongoose';
 import '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
+import { requireSuperAdmin } from '@/lib/superAdminAuth';
 
 export async function GET(req: Request) {
   try {
+    // WhatsApp AI Agent is a Super Admin–exclusive feature.
+    const authCheck = await requireSuperAdmin();
+    if (!authCheck.ok) return authCheck.response;
+
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
     const gate = await requireModule(ctx.userId, 'sales_agent');
@@ -30,6 +35,10 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
+    // WhatsApp AI Agent is a Super Admin–exclusive feature.
+    const authCheck = await requireSuperAdmin();
+    if (!authCheck.ok) return authCheck.response;
+
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
     const gate = await requireModule(ctx.userId, 'sales_agent');

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import WhatsAppAppointment from '@/models/WhatsAppAppointment';
 import { cancelAppointment } from '@/services/whatsapp-agent/appointmentService';
 
@@ -12,6 +13,10 @@ import { cancelAppointment } from '@/services/whatsapp-agent/appointmentService'
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    // WhatsApp AI Agent is a Super Admin–exclusive feature.
+    const authCheck = await requireSuperAdmin();
+    if (!authCheck.ok) return authCheck.response;
+
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
 

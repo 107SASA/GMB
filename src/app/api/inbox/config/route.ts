@@ -2,10 +2,15 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import BusinessAIConfig from '@/models/BusinessAIConfig';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import mongoose from 'mongoose';
 
 export async function GET(req: Request) {
   try {
+    // WhatsApp AI Agent is a Super Admin–exclusive feature.
+    const authCheck = await requireSuperAdmin();
+    if (!authCheck.ok) return authCheck.response;
+
     const url = new URL(req.url);
     const businessIdFromQuery = url.searchParams.get('businessId') ?? undefined;
 
@@ -41,6 +46,10 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    // WhatsApp AI Agent is a Super Admin–exclusive feature.
+    const authCheck = await requireSuperAdmin();
+    if (!authCheck.ok) return authCheck.response;
+
     const data = await req.json();
     const {
       businessId: businessIdFromBody,

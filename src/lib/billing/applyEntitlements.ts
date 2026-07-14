@@ -43,7 +43,14 @@ export async function activatePlan(
     { upsert: true, setDefaultsOnInsert: true }
   );
 
-  await User.findByIdAndUpdate(userId, { $set: { subscriptionPlan: planType } });
+  await User.findByIdAndUpdate(userId, {
+    $set: {
+      subscriptionPlan: planType,
+      // Feature 1 — payment succeeded: remove the freemium audit-only
+      // restriction. No-op for users who never had the gate set.
+      'freemiumAuditGate.active': false,
+    },
+  });
 }
 
 /** Marks the subscription past-due (payment failed); entitlements unchanged. */

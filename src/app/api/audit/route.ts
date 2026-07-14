@@ -11,6 +11,10 @@ const auditRequestSchema = z.object({
   businessId: z.string().min(1, 'Business ID is required'),
   categoryOverride: z.string().optional(),
   cityOverride: z.string().optional(),
+  // Feature 2A — Review Analysis Range Selector
+  reviewPeriodDays: z.union([z.literal(7), z.literal(14), z.literal(21)]).optional(),
+  // Feature 2B — Improvement Plan Duration
+  actionPlanDurationDays: z.union([z.literal(30), z.literal(45), z.literal(90)]).optional(),
 });
 
 export async function POST(req: Request) {
@@ -25,9 +29,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid input', details: parsed.error.format() }, { status: 400 });
     }
 
-    const { businessId, categoryOverride, cityOverride } = parsed.data;
+    const { businessId, categoryOverride, cityOverride, reviewPeriodDays, actionPlanDurationDays } = parsed.data;
 
     await dbConnect();
+
+    // Feature 1 — freemium gate: a gated user gets exactly one COMPLETE
+    // audit report total (not per-business, not per-month — a hard,
+    // permanent cap until they upgrade). Existing users never have
+    // freemiumAuditGate set, so this block is a no-op for them.
+    if (authResult.user.freemiumAuditGate?.active && authResult.user.freemiumAuditGate?.auditUsed) {
+      return NextResponse.json(
+        {
+          error: 'Your free plan includes one audit report. Upgrade to generate more.',
+          code: 'UPGRADE_REQUIRED',
+        },
+        { status: 403 }
+      );
+    }
 
     // Verify business ownership and data completeness
     const business = await Business.findById(businessId);
@@ -83,6 +101,11 @@ export async function POST(req: Request) {
 
       location: finalLocation,
       status: 'PENDING',
+      // Feature 2 — undefined falls through to the schema defaults
+      // (reviewPeriodDays: 14, actionPlanDurationDays: 30), preserving
+      // existing behavior for any caller that doesn't pass these.
+      reviewPeriodDays,
+      actionPlanDurationDays,
       metadata: {
         userDefinedCategory: effectiveCategory,
       }

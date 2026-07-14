@@ -229,6 +229,18 @@ export default function AuditReportGrexa({
     .sort((a: any, b: any) => a.estimatedRank - b.estimatedRank)
     .slice(0, 5);
 
+  /* ── Action Plan (Feature 2B) ─────────────────────────────────────── */
+  const thirtyDayPlan = (data as any).thirtyDayPlan ?? [];
+  const ninetyDayPlan = (data as any).ninetyDayPlan ?? [];
+  const actionPlanMeta = (data as any).actionPlan ?? {};
+  const planDurationDays = actionPlanMeta.durationDays ?? (audit as any).actionPlanDurationDays ?? 30;
+  const planLabel = actionPlanMeta.planLabel ?? `${planDurationDays}-Day Action Plan`;
+  const extendedLabel = actionPlanMeta.extendedLabel ?? `Beyond ${planDurationDays} Days — Ongoing Roadmap`;
+
+  /* ── Review Analysis Period (Feature 2A) ──────────────────────────── */
+  const reviewPeriodDays = (audit as any).reviewPeriodDays ?? (audit as any).metadata?.reviewPeriodDays ?? 14;
+
+
   /* ── Missing SEO fields ───────────────────────────────────────────── */
   const missingFields: string[] = [];
   const opLower = optOps.map((o: string) => o.toLowerCase()).join(' ');
@@ -607,7 +619,7 @@ export default function AuditReportGrexa({
               />
             </div>
             <p className="text-[10px] text-slate-400">
-              Industry avg <strong className="text-slate-600">{industryAvg}</strong>/week
+              Industry avg <strong className="text-slate-600">{industryAvg}</strong>/week · based on last {reviewPeriodDays} days
             </p>
           </div>
 
@@ -685,7 +697,63 @@ export default function AuditReportGrexa({
         </div>
       </div>
 
-      {/* ══ 7. CTA BANNER ══════════════════════════════════════════════ */}
+      {/* ══ 7. ACTION PLAN (Feature 2B — Improvement Plan Duration) ═════ */}
+      {(thirtyDayPlan.length > 0 || ninetyDayPlan.length > 0) && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+            <h2 className="text-base font-bold text-slate-900">{planLabel}</h2>
+            <span className="text-[10px] font-bold px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-full uppercase tracking-wider">
+              {planDurationDays}-Day Plan
+            </span>
+          </div>
+
+          <div className="space-y-5 mb-6">
+            {thirtyDayPlan.map((period: any, i: number) => (
+              <div key={i} className="p-4 bg-slate-50/60 rounded-xl border border-slate-100">
+                <h3 className="font-bold text-indigo-600 text-sm uppercase tracking-wide mb-2">
+                  {period.week || period.month || `Period ${i + 1}`}
+                </h3>
+                <ul className="space-y-1.5">
+                  {(period.tasks || []).map((t: string, j: number) => (
+                    <li key={j} className="text-sm text-slate-600 flex items-start gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 shrink-0" />
+                      <span>{t}</span>
+                    </li>
+                  ))}
+                </ul>
+                {period.expectedOutcome && (
+                  <p className="text-xs text-slate-400 mt-2">Expected outcome: {period.expectedOutcome}</p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {ninetyDayPlan.length > 0 && (
+            <div className="pt-5 border-t border-slate-100">
+              <h3 className="font-bold text-purple-600 text-sm uppercase tracking-wide mb-3">{extendedLabel}</h3>
+              {ninetyDayPlan.map((phase: any, i: number) => (
+                <div key={i} className="mb-3">
+                  <div className="flex gap-2 mb-2 flex-wrap">
+                    {(phase.focusAreas || []).map((fa: string, j: number) => (
+                      <span key={j} className="text-[10px] font-bold px-2 py-0.5 bg-purple-50 text-purple-600 rounded uppercase tracking-wider">{fa}</span>
+                    ))}
+                  </div>
+                  <ul className="space-y-1.5">
+                    {(phase.tasks || []).map((t: string, j: number) => (
+                      <li key={j} className="text-sm text-slate-600 flex items-start gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0" />
+                        <span>{t}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ 8. CTA BANNER ══════════════════════════════════════════════ */}
       <div
         className="rounded-2xl overflow-hidden shadow-lg"
         style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 60%, #9333ea 100%)' }}

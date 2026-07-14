@@ -2,6 +2,7 @@ import dbConnect from '../../lib/mongodb';
 import Audit from '../../models/Audit';
 import Business from '../../models/Business';
 import Review from '../../models/Review';
+import User from '../../models/User';
 import { generateAIAudit } from '../ai/auditEngine';
 import { logAIUsage } from '../../lib/logAIUsage';
 
@@ -19,23 +20,38 @@ export async function processAuditJob(auditId: string) {
     const business = await Business.findById(audit.businessId);
     if (!business) throw new Error(`Business not found for audit ${auditId}`);
 
+    // Feature 2A — Review Analysis Range Selector: only reviews posted
+    // within the selected window are fetched/analyzed. Falls back to the
+    // schema default (14 days) for older jobs / callers that didn't pass one.
+    const reviewPeriodDays = audit.reviewPeriodDays || 14;
+    const reviewPeriodSince = new Date(Date.now() - reviewPeriodDays * 24 * 60 * 60 * 1000);
+    // A review's real-world date is `postedAt` (from Google); `createdAt` is
+    // only when we synced it, so it's used as a fallback for reviews synced
+    // before `postedAt` was backfilled.
+    const reviewDateFilter = {
+      $or: [
+        { postedAt: { $gte: reviewPeriodSince } },
+        { postedAt: { $exists: false }, createdAt: { $gte: reviewPeriodSince } },
+      ],
+    };
+
     // Fetch real reviews — cap at MAX_REVIEWS_PER_AUDIT (default 100)
     const maxReviews = parseInt(process.env.MAX_REVIEWS_PER_AUDIT || '100', 10);
-    let reviewsData = await Review.find({ businessId: business._id })
+    let reviewsData = await Review.find({ businessId: business._id, ...reviewDateFilter })
       .sort({ postedAt: -1, createdAt: -1 })
       .limit(maxReviews);
 
-    // Auto-sync from SerpApi if no reviews in DB yet
+    // Auto-sync from SerpApi if no reviews in DB yet (for the selected period)
     if (reviewsData.length === 0 && process.env.SERPAPI_KEY) {
-      console.log(`[auditService] No reviews in DB for businessId=${audit.businessId} — attempting live fetch`);
+      console.log(`[auditService] No reviews in DB for businessId=${audit.businessId} in the last ${reviewPeriodDays}d — attempting live fetch`);
       try {
         const { syncReviewsForBusiness } = require('../reviews/syncReviews');
         const tenantId = business.organizationId?.toString() || audit.tenantId;
         await syncReviewsForBusiness(business._id.toString(), tenantId);
-        reviewsData = await Review.find({ businessId: business._id })
+        reviewsData = await Review.find({ businessId: business._id, ...reviewDateFilter })
           .sort({ postedAt: -1, createdAt: -1 })
           .limit(maxReviews);
-        console.log(`[auditService] Auto-synced ${reviewsData.length} reviews for ${business.name}`);
+        console.log(`[auditService] Auto-synced ${reviewsData.length} reviews for ${business.name} within the last ${reviewPeriodDays}d`);
       } catch (syncErr: any) {
         console.warn(`[auditService] Review auto-sync failed: ${syncErr.message}`);
       }
@@ -188,15 +204,22 @@ export async function processAuditJob(auditId: string) {
     ));
 
     // ── Persist debug + sync metadata ────────────────────────
+    // Feature 2B — resolved here (before the metadata write below) so both
+    // the metadata and the AI call further down share the same value.
+    const actionPlanDurationDays = audit.actionPlanDurationDays || 30;
+
     audit.metadata = audit.metadata || {};
     audit.metadata.reviewsSyncedAt    = new Date().toISOString();
     audit.metadata.reviewsActualCount = formattedReviews.length;
+    audit.metadata.reviewPeriodDays   = reviewPeriodDays;
+    audit.metadata.actionPlanDurationDays = actionPlanDurationDays;
     audit.metadata.debug = {
       businessName:       businessData.businessName,
       category:           businessData.category,
       area:               businessData.area,
       city:               businessData.city,
       reviewCount:        businessData.reviewCount,
+      reviewPeriodDays,
       reviewQualityScore,
       keywordCoverageScore,
       tier:               targetTier,
@@ -223,8 +246,11 @@ export async function processAuditJob(auditId: string) {
     };
 
     // ── AI analysis ───────────────────────────────────────────
+    // Feature 2B — Improvement Plan Duration: the selected duration (30/45/90
+    // days) shapes the generated action plan's cadence and focus, not just
+    // its heading. See generateAIAudit's per-duration prompt instructions.
     const auditStartMs = Date.now();
-    const aiResult = await generateAIAudit(enrichedBusinessData);
+    const aiResult = await generateAIAudit(enrichedBusinessData, { actionPlanDurationDays });
     if (aiResult === 'Data Unavailable') throw new Error('Data Unavailable');
 
     void logAIUsage({
@@ -281,6 +307,21 @@ export async function processAuditJob(auditId: string) {
 
     await audit.save();
     console.log(`[auditService] V7 audit completed: ${auditId} | score=${finalScore} | reviews=${formattedReviews.length}`);
+
+    // Feature 1 — freemium gate: the user's single free audit report is now
+    // "generated" (COMPLETED, not just requested/PENDING). Only ever
+    // touches users who have freemiumAuditGate.active set (brand-new
+    // signups) — existing users are untouched by this update.
+    if (audit.status === 'COMPLETED') {
+      try {
+        await User.findOneAndUpdate(
+          { _id: audit.userId, 'freemiumAuditGate.active': true },
+          { $set: { 'freemiumAuditGate.auditUsed': true, 'freemiumAuditGate.auditId': audit._id } }
+        );
+      } catch (gateErr) {
+        console.error(`[auditService] Failed to update freemiumAuditGate for user ${audit.userId}:`, gateErr);
+      }
+    }
 
   } catch (error) {
     console.error(`[auditService] Failed audit ${auditId}:`, error);

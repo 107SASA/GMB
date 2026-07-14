@@ -6,6 +6,7 @@ import { Download, Sparkles, Building2, Globe, MapPin, Zap, TrendingUp, Search, 
 import AuditDebugPanel from './AuditDebugPanel';
 import AuditReportV6 from './AuditReportV6';
 import AuditReportGrexa from './AuditReportGrexa';
+import FreeAuditUpgradeModal from './FreeAuditUpgradeModal';
 
 /* ─── Main dashboard ──────────────────────────────────────── */
 
@@ -17,6 +18,22 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
   const [shareUrl, setShareUrl]   = useState<string | null>(null);
   const [sharing, setSharing]     = useState(false);
   const [copied, setCopied]       = useState(false);
+  // Feature 1 — shown once when a freemium (audit-only) user's single free
+  // report finishes generating.
+  const [showFreeAuditUpgrade, setShowFreeAuditUpgrade] = useState(false);
+
+  useEffect(() => {
+    // Only freemium (audit-only) users who have now used their one free
+    // report need to see this; everyone else (existing users, paid users)
+    // never has freemiumAuditGate set and this is a no-op.
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        const gate = data?.user?.freemiumAuditGate;
+        if (gate?.active && gate?.auditUsed) setShowFreeAuditUpgrade(true);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -186,12 +203,23 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
             </div>
           </div>
         )}
+
+        {showFreeAuditUpgrade && audit.status === 'COMPLETED' && (
+          <FreeAuditUpgradeModal onClose={() => setShowFreeAuditUpgrade(false)} />
+        )}
       </>
     );
   }
 
   if (audit.auditVersion === 'V6') {
-    return <AuditReportV6 audit={audit} onDownload={handleDownload} />;
+    return (
+      <>
+        <AuditReportV6 audit={audit} onDownload={handleDownload} />
+        {showFreeAuditUpgrade && audit.status === 'COMPLETED' && (
+          <FreeAuditUpgradeModal onClose={() => setShowFreeAuditUpgrade(false)} />
+        )}
+      </>
+    );
   }
 
   return (
@@ -408,6 +436,10 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
       </div>
 
       <AuditDebugPanel auditData={audit} />
+
+      {showFreeAuditUpgrade && audit.status === 'COMPLETED' && (
+        <FreeAuditUpgradeModal onClose={() => setShowFreeAuditUpgrade(false)} />
+      )}
     </>
   );
 }

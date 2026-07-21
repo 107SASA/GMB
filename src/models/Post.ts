@@ -63,4 +63,10 @@ const PostSchema: Schema = new Schema(
   { timestamps: true }
 );
 
+// The publish cron runs every 15 min: Post.find({ status:'scheduled', scheduledDate:{$lte:now} }).
+// This compound index turns that from a scan into a range lookup.
+PostSchema.index({ status: 1, scheduledDate: 1 });
+// Calendar/list views load one business's posts ordered by date.
+PostSchema.index({ businessId: 1, scheduledDate: 1 });
+
 export default mongoose.models.Post || mongoose.model<IPost>('Post', PostSchema);

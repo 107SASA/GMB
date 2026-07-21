@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { generateOTP, hashOTP } from '@/services/auth/otp';
 import { sendEmailOtp } from '@/services/email';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 
 // How long a password-reset OTP remains valid.
 const OTP_EXPIRY_MINUTES = 10;
@@ -20,6 +21,14 @@ const GENERIC_MESSAGE = 'If an account exists with this email, an OTP has been s
 export async function POST(req: Request) {
   try {
     await dbConnect();
+
+    // Cap reset requests per IP so one client can't cycle many addresses / spam
+    // OTP emails. Stays generic (200) even when throttled so nothing leaks.
+    const rl = checkRateLimit(`forgot:${getClientIp(req)}`, 10, 15 * 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json({ success: true, message: GENERIC_MESSAGE });
+    }
+
     const { email } = await req.json();
 
     if (!email || typeof email !== 'string') {

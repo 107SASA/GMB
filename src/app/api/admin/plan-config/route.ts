@@ -5,7 +5,8 @@ import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import PlanConfig from '@/models/PlanConfig';
 import { PLAN_DEFAULTS, type PlanLimits } from '@/lib/planDefaults';
 
-const PLAN_NAMES = ['Free', 'Pro', 'Enterprise'] as const;
+// Single-plan model: Free (trial/unpaid) + Pro (THE paid plan).
+const PLAN_NAMES = ['Free', 'Pro'] as const;
 
 const LIMIT_KEYS: (keyof PlanLimits)[] = [
   'maxAuditsPerBusiness',

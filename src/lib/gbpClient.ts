@@ -85,31 +85,35 @@ export async function fetchDailyMetrics(
     day: d.getDate(),
   });
 
-  const body = {
-    dailyMetrics: [
-      'BUSINESS_IMPRESSIONS_DESKTOP_SEARCH',
-      'BUSINESS_IMPRESSIONS_DESKTOP_MAPS',
-      'BUSINESS_IMPRESSIONS_MOBILE_SEARCH',
-      'BUSINESS_IMPRESSIONS_MOBILE_MAPS',
-      'CALL_CLICKS',
-      'WEBSITE_CLICKS',
-      'BUSINESS_DIRECTION_REQUESTS',
-      'BUSINESS_CONVERSATIONS',
-    ],
-    dailyRange: {
-      startDate: toDateObj(startDate),
-      endDate: toDateObj(endDate),
-    },
-  };
+  // fetchMultiDailyMetricsTimeSeries is a GET with query params — NOT a POST
+  // with a JSON body. A POST to this path returns an HTML 404.
+  const metrics = [
+    'BUSINESS_IMPRESSIONS_DESKTOP_SEARCH',
+    'BUSINESS_IMPRESSIONS_DESKTOP_MAPS',
+    'BUSINESS_IMPRESSIONS_MOBILE_SEARCH',
+    'BUSINESS_IMPRESSIONS_MOBILE_MAPS',
+    'CALL_CLICKS',
+    'WEBSITE_CLICKS',
+    'BUSINESS_DIRECTION_REQUESTS',
+    'BUSINESS_CONVERSATIONS',
+  ];
 
-  const url = `https://businessprofileperformance.googleapis.com/v1/${tokenDoc.locationId}:fetchMultiDailyMetricsTimeSeries`;
+  const params = new URLSearchParams();
+  for (const metric of metrics) params.append('dailyMetrics', metric);
+  const start = toDateObj(startDate);
+  const end = toDateObj(endDate);
+  params.set('dailyRange.start_date.year', String(start.year));
+  params.set('dailyRange.start_date.month', String(start.month));
+  params.set('dailyRange.start_date.day', String(start.day));
+  params.set('dailyRange.end_date.year', String(end.year));
+  params.set('dailyRange.end_date.month', String(end.month));
+  params.set('dailyRange.end_date.day', String(end.day));
+
+  const url =
+    `https://businessprofileperformance.googleapis.com/v1/${tokenDoc.locationId}` +
+    `:fetchMultiDailyMetricsTimeSeries?${params.toString()}`;
   const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
 
   if (!res.ok) {
@@ -189,11 +193,15 @@ export async function fetchSearchKeywords(
   const tokenDoc = await GBPToken.findOne({ businessId });
   if (!tokenDoc?.locationId) throw new Error('No GBP location linked to this business');
 
+  // Sub-collection path uses a slash ("/searchkeywords/...", not ":") and
+  // requires BOTH start and end month — query a single month by setting them equal.
   const url =
     `https://businessprofileperformance.googleapis.com/v1/${tokenDoc.locationId}` +
-    `:searchkeywords/impressions/monthly` +
-    `?monthly_range.start_month.year=${year}` +
-    `&monthly_range.start_month.month=${month}`;
+    `/searchkeywords/impressions/monthly` +
+    `?monthlyRange.startMonth.year=${year}` +
+    `&monthlyRange.startMonth.month=${month}` +
+    `&monthlyRange.endMonth.year=${year}` +
+    `&monthlyRange.endMonth.month=${month}`;
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -208,9 +216,12 @@ export async function fetchSearchKeywords(
   const keywords: KeywordPoint[] = [];
 
   for (const item of data.searchKeywordsCounts ?? []) {
+    // Low-volume keywords come back as { threshold } instead of { value }:
+    // the true count is below that threshold. Use it as an approximation.
+    const iv = item.insightsValue ?? {};
     keywords.push({
       keyword: item.searchKeyword,
-      impressions: Number(item.insightsValue?.value ?? 0),
+      impressions: Number(iv.value ?? iv.threshold ?? 0),
       type: (item.type as 'DIRECT' | 'INDIRECT' | 'CHAIN') ?? 'DIRECT',
     });
   }

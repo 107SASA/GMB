@@ -15,7 +15,7 @@ const faqs = [
   },
   {
     question: "Can I manage multiple locations?",
-    answer: "Absolutely. Our Growth and Enterprise plans are designed for businesses with multiple branches. You can manage everything from a single dashboard and see aggregated analytics."
+    answer: "Absolutely. Your subscription lets you manage everything from a single dashboard with aggregated analytics — on the website and the mobile app."
   },
   {
     question: "Is manual approval available before posting?",

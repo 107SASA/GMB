@@ -15,6 +15,9 @@ import {
   Clock,
   AlertCircle,
   Zap,
+  IndianRupee,
+  Pencil,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -71,8 +74,188 @@ const MODULE_LABELS: Record<string, string> = {
   marketing_automation:   'Marketing',
 };
 
-const PLAN_OPTIONS   = ['all', 'Free', 'Pro', 'Enterprise'];
+const PLAN_OPTIONS   = ['all', 'Free', 'Pro'];
 const STATUS_OPTIONS = ['all', 'Active', 'Trialing', 'PastDue', 'Canceled'];
+
+// ── The single sellable plan (super-admin editable) ──────────────────────────
+interface BillingPlanData {
+  displayName: string;
+  description: string;
+  priceInr: number;
+  billingCycle: string;
+  razorpayConfigured: boolean;
+  razorpayPlanReady: boolean;
+}
+
+function PlanPricingCard() {
+  const [plan, setPlan]       = useState<BillingPlanData | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState({ displayName: '', description: '', priceInr: 0 });
+  const [saving, setSaving]   = useState(false);
+  const [notice, setNotice]   = useState<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/admin/billing-plan')
+      .then(r => r.json())
+      .then(json => { if (json.success) setPlan(json.data); })
+      .catch(() => {});
+  }, []);
+
+  const startEdit = () => {
+    if (!plan) return;
+    setDraft({ displayName: plan.displayName, description: plan.description, priceInr: plan.priceInr });
+    setNotice(null);
+    setEditing(true);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setNotice(null);
+    try {
+      const res  = await fetch('/api/admin/billing-plan', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(draft),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        setNotice({ kind: 'err', text: json.error || 'Save failed' });
+        return;
+      }
+      setPlan(json.data);
+      setEditing(false);
+      setNotice(json.warning
+        ? { kind: 'warn', text: json.warning }
+        : { kind: 'ok', text: 'Plan updated. New checkouts use the new price; existing subscribers keep their current price.' });
+    } catch {
+      setNotice({ kind: 'err', text: 'Network error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!plan) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center shadow-md shadow-emerald-600/20">
+            <IndianRupee className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="font-bold text-slate-900">Subscription Plan</h2>
+            <p className="text-xs text-slate-400">The single plan every customer subscribes to — full access on web and mobile</p>
+          </div>
+        </div>
+        {!editing && (
+          <button
+            onClick={startEdit}
+            className="flex items-center gap-1.5 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-all"
+          >
+            <Pencil className="w-3.5 h-3.5" /> Edit plan
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Plan name</label>
+            <input
+              type="text"
+              value={draft.displayName}
+              maxLength={60}
+              onChange={e => setDraft(d => ({ ...d, displayName: e.target.value }))}
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Price (₹ / month)</label>
+            <input
+              type="number"
+              min={1}
+              value={draft.priceInr}
+              onChange={e => setDraft(d => ({ ...d, priceInr: Math.max(0, Number(e.target.value) || 0) }))}
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Description</label>
+            <textarea
+              value={draft.description}
+              maxLength={300}
+              rows={2}
+              onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300 resize-none"
+            />
+          </div>
+          <div className="sm:col-span-2 flex items-center gap-3">
+            <button
+              onClick={save}
+              disabled={saving || draft.priceInr < 1 || !draft.displayName.trim()}
+              className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-bold rounded-xl hover:bg-violet-700 transition-colors disabled:opacity-60 shadow-sm"
+            >
+              {saving ? (
+                <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Saving…</>
+              ) : (
+                <><CheckCircle2 className="w-4 h-4" /> Save plan</>
+              )}
+            </button>
+            <button
+              onClick={() => setEditing(false)}
+              className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors"
+            >
+              <X className="w-4 h-4" /> Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-5 flex flex-wrap items-center gap-x-8 gap-y-3">
+          <div>
+            <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              ₹{plan.priceInr.toLocaleString('en-IN')}
+              <span className="text-sm font-medium text-slate-400"> / {plan.billingCycle}</span>
+            </div>
+            <div className="text-sm font-semibold text-slate-600 mt-0.5">{plan.displayName}</div>
+          </div>
+          <p className="text-sm text-slate-500 max-w-md flex-1 min-w-50">{plan.description}</p>
+          <div className="flex flex-col gap-1.5">
+            <span className={cn(
+              'inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border w-fit',
+              plan.razorpayConfigured
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                : 'bg-amber-50 text-amber-700 border-amber-100'
+            )}>
+              {plan.razorpayConfigured ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+              {plan.razorpayConfigured ? 'Razorpay connected' : 'Razorpay keys missing'}
+            </span>
+            <span className={cn(
+              'inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border w-fit',
+              plan.razorpayPlanReady
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                : 'bg-slate-50 text-slate-500 border-slate-200'
+            )}>
+              {plan.razorpayPlanReady ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+              {plan.razorpayPlanReady ? 'Checkout ready' : 'Plan created at first checkout'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {notice && (
+        <div className={cn(
+          'mt-4 px-3 py-2.5 rounded-xl text-xs font-medium border',
+          notice.kind === 'ok'   && 'bg-emerald-50 border-emerald-200 text-emerald-700',
+          notice.kind === 'warn' && 'bg-amber-50 border-amber-200 text-amber-700',
+          notice.kind === 'err'  && 'bg-red-50 border-red-200 text-red-700',
+        )}>
+          {notice.text}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function OverviewCard({
   label, value, icon: Icon, color,
@@ -218,15 +401,17 @@ export default function SubscriptionsPage() {
         </button>
       </div>
 
+      {/* The single sellable plan (price editable) */}
+      <PlanPricingCard />
+
       {/* Overview cards */}
       {overview && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-          <OverviewCard label="Free"       value={overview.byPlan.Free}          icon={Users}        color="bg-slate-500" />
-          <OverviewCard label="Pro"        value={overview.byPlan.Pro}           icon={CreditCard}   color="bg-indigo-600" />
-          <OverviewCard label="Enterprise" value={overview.byPlan.Enterprise}    icon={CreditCard}   color="bg-violet-600" />
-          <OverviewCard label="Active"     value={overview.byStatus.Active}      icon={CheckCircle2} color="bg-emerald-600" />
-          <OverviewCard label="Trialing"   value={overview.byStatus.Trialing}    icon={Clock}        color="bg-cyan-600" />
-          <OverviewCard label="Canceled"   value={overview.byStatus.Canceled}    icon={XCircle}      color="bg-rose-500" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+          <OverviewCard label="Free"     value={overview.byPlan.Free}                                  icon={Users}        color="bg-slate-500" />
+          <OverviewCard label="Paid"     value={overview.byPlan.Pro + overview.byPlan.Enterprise}      icon={CreditCard}   color="bg-indigo-600" />
+          <OverviewCard label="Active"   value={overview.byStatus.Active}                              icon={CheckCircle2} color="bg-emerald-600" />
+          <OverviewCard label="Trialing" value={overview.byStatus.Trialing}                            icon={Clock}        color="bg-cyan-600" />
+          <OverviewCard label="Canceled" value={overview.byStatus.Canceled}                            icon={XCircle}      color="bg-rose-500" />
         </div>
       )}
 

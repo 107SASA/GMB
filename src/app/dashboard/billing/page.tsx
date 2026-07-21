@@ -212,12 +212,14 @@ function SubscriptionCard() {
       )}
 
       <div className="mt-4 flex items-center gap-3">
-        <Link
-          href="/pricing"
-          className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-colors"
-        >
-          {status.billingStatus === 'Active' ? 'Change plan' : 'View plans'}
-        </Link>
+        {status.billingStatus !== 'Active' && (
+          <Link
+            href="/pricing"
+            className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-colors"
+          >
+            Subscribe
+          </Link>
+        )}
         {status.hasPaymentMethod && status.billingStatus === 'Active' && (
           confirmCancel ? (
             <div className="flex items-center gap-2">
@@ -401,32 +403,27 @@ export default function BillingPage() {
             </div>
           </div>
 
-          {/* Upgrade CTA — only shown on Free/Pro */}
-          {data.plan !== 'Enterprise' && (
+          {/* Subscribe CTA — only shown to unpaid users; there is one plan */}
+          {data.plan === 'Free' && (
             <div id="upgrade" className="bg-linear-to-br from-violet-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg shadow-violet-200">
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
                   <TrendingUp className="w-6 h-6" />
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-lg font-bold mb-1">
-                    {data.plan === 'Free' ? 'Upgrade to Pro' : 'Upgrade to Enterprise'}
-                  </h2>
+                  <h2 className="text-lg font-bold mb-1">Unlock all features</h2>
                   <p className="text-violet-200 text-sm mb-4">
-                    Get higher limits, more AI generations, and priority processing.
+                    One plan, everything included — on the website and the mobile app.
                   </p>
                   <div className="grid grid-cols-2 gap-2 mb-5 text-sm">
-                    {(data.plan === 'Free' ? [
-                      '100 AI generations/month',
-                      '10 audits/business',
-                      '50 posts/month',
-                      '200 WhatsApp msgs/day',
-                    ] : [
-                      '500 AI generations/month',
-                      '50 audits/business',
-                      '200 posts/month',
-                      '1000 WhatsApp msgs/day',
-                    ]).map(b => (
+                    {[
+                      'Google Ranking Agent',
+                      'Reputation Agent',
+                      'AI Sales Agent',
+                      'Content Studio',
+                      'Marketing Automation',
+                      'Higher usage limits',
+                    ].map(b => (
                       <div key={b} className="flex items-center gap-2 text-violet-100">
                         <CheckCircle2 className="w-4 h-4 shrink-0" />
                         {b}
@@ -437,7 +434,7 @@ export default function BillingPage() {
                     href="/pricing"
                     className="inline-flex items-center gap-2 px-6 py-3 bg-white text-violet-700 font-bold rounded-xl hover:bg-violet-50 transition-colors shadow-sm text-sm"
                   >
-                    View plans & subscribe
+                    Subscribe now
                     <ArrowRight className="w-4 h-4" />
                   </Link>
                 </div>

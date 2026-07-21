@@ -4,7 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import Subscription from '@/models/Subscription';
 import ProcessedWebhookEvent from '@/models/ProcessedWebhookEvent';
 import { activatePlan, cancelPlan, markPastDue } from '@/lib/billing/applyEntitlements';
-import { getSellablePlan } from '@/lib/billing/planCatalog';
+import { isPaidPlanType } from '@/lib/billing/planCatalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,14 +101,14 @@ export async function POST(request: Request) {
       case 'subscription.activated':
       case 'subscription.charged': {
         const userId = await resolveUserId(subEntity);
-        // planType comes from the notes we set at checkout, validated
-        // against the catalog — never trusted blindly.
-        const plan = getSellablePlan(subEntity?.notes?.planType);
-        if (!userId || !plan) {
+        // planType comes from the notes we set at checkout ('Pro', or
+        // 'Enterprise' on legacy subscriptions) — validated, never trusted
+        // blindly. Either way there is only one paid plan to activate.
+        if (!userId || !isPaidPlanType(subEntity?.notes?.planType)) {
           console.error(`[billing] ${eventType}: cannot resolve user/plan`, subEntity?.id);
           break;
         }
-        await activatePlan(userId, plan.planType, {
+        await activatePlan(userId, {
           razorpaySubscriptionId: subEntity.id,
           currentPeriodEnd:
             typeof subEntity.current_end === 'number'

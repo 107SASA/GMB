@@ -4,7 +4,13 @@ import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import Business from '@/models/Business';
 import { createSession, signSessionToken, SESSION_MAX_AGE_SECONDS } from '@/lib/session';
+import { checkRateLimit, resetRateLimit, getClientIp } from '@/lib/rateLimit';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+
+// Brute-force protection: max failed attempts per IP+email within the window.
+const LOGIN_MAX_ATTEMPTS = 8;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 export async function POST(req: Request) {
   try {
@@ -15,23 +21,46 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Email and password required' }, { status: 400 });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const normalizedEmail = String(email).toLowerCase();
+    const rlKey = `login:${getClientIp(req)}:${normalizedEmail}`;
+    const rl = checkRateLimit(rlKey, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_MS);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { success: false, error: `Too many login attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
+      );
+    }
+
+    const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
       return NextResponse.json({ success: false, error: 'Invalid credentials' }, { status: 401 });
     }
 
     let isValid = false;
-    if (user.passwordHash?.startsWith('$2b$') || user.passwordHash?.startsWith('$2a$')) {
-      isValid = await bcrypt.compare(password, user.passwordHash);
-    } else {
-      // Legacy plain-text passwords stored before bcrypt was enforced
-      isValid = user.passwordHash === password;
+    const isBcrypt = user.passwordHash?.startsWith('$2b$') || user.passwordHash?.startsWith('$2a$');
+    if (isBcrypt) {
+      isValid = await bcrypt.compare(password, user.passwordHash!);
+    } else if (user.passwordHash) {
+      // Legacy plain-text password (pre-bcrypt). Compare in constant time to
+      // avoid a timing oracle, and — if it matches — transparently upgrade the
+      // stored value to a bcrypt hash so plaintext is permanently eliminated
+      // after this login. New plaintext is never written anywhere.
+      const a = Buffer.from(user.passwordHash);
+      const b = Buffer.from(password);
+      isValid = a.length === b.length && crypto.timingSafeEqual(a, b);
+      if (isValid) {
+        user.passwordHash = await bcrypt.hash(password, 12);
+        await user.save();
+      }
     }
 
     if (!isValid) {
       return NextResponse.json({ success: false, error: 'Invalid credentials' }, { status: 401 });
     }
+
+    // Good credentials — clear the throttle so this user isn't penalised.
+    resetRateLimit(rlKey);
 
     if (!user.isEmailVerified) {
       return NextResponse.json(

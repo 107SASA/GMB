@@ -5,8 +5,9 @@ import Razorpay from 'razorpay';
  * degrade to a disabled mode with a console warning instead of crashing —
  * routes then answer 503 "billing not configured".
  *
- * Env: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET,
- * plus RAZORPAY_PLAN_ID_* per sellable plan (see planCatalog.ts).
+ * Env: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET.
+ * The sellable plan's Razorpay Plan id lives in the BillingPlan document
+ * and is created automatically (see planCatalog.ts).
  */
 
 let cached: Razorpay | null | undefined;

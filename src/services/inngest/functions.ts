@@ -14,7 +14,7 @@ import { generateSalesResponse } from "@/services/ai";
 import { generateAIContent } from "@/services/ai/contentEngine";
 import twilio from "twilio";
 import mongoose from "mongoose";
-import { sendOutboundMessage } from "@/services/twilio/client";
+import { sendOutboundMessage } from "@/services/whatsapp/send";
 
 const FALLBACK_MESSAGE = "I'm having a little trouble connecting to my brain right now. Please hold on or call our main line!";
 
@@ -939,9 +939,19 @@ export const processPublishPostJob = inngest.createFunction(
       const post = await Post.findById(postId);
       if (!post || post.status !== "scheduled") return;
 
-      // Mock publishing to Google Business Profile API
-      console.log(`[MOCK] Publishing post to GMB for business ${post.businessId}: ${post.title}`);
-      
+      // SAFETY: pushing a post to a real Google Business Profile is gated behind
+      // GBP_LIVE_WRITES_ENABLED (off by default). While disabled we only mark the
+      // post published in our own DB — nothing reaches the customer's live profile.
+      // Any real Google "localPosts.create" call MUST live inside the enabled branch.
+      const { gbpWritesEnabled } = await import("@/lib/gbpSafety");
+      if (gbpWritesEnabled()) {
+        // TODO: real Google Business Profile localPosts.create call goes here,
+        // once verified on a test account.
+        throw new Error("Live GBP post publishing is not implemented yet.");
+      } else {
+        console.log(`[MOCK] GBP live writes disabled — marking post published locally only for business ${post.businessId}: ${post.title}`);
+      }
+
       post.status = "published";
       post.publishedAt = new Date();
       await post.save();

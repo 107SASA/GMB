@@ -33,6 +33,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Post not found or access denied' }, { status: 404 });
     }
 
+    // SAFETY: this only marks the post published in our own DB. Pushing to a real
+    // Google Business Profile is gated behind GBP_LIVE_WRITES_ENABLED (off by
+    // default) — see src/lib/gbpSafety.ts. Do not add a live Google write here
+    // without guarding it, or the shared publish path (inngest processPublishPostJob).
     post.status = 'published';
     post.publishedAt = new Date();
     // The calendar (and other views) place a post using `scheduledDate`, not

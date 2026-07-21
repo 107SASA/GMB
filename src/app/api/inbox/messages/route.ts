@@ -5,7 +5,7 @@ import ConversationThread from '@/models/ConversationThread';
 import Activity from '@/models/Activity';
 import Lead from '@/models/Lead';
 import mongoose from 'mongoose';
-import { sendOutboundMessage } from '@/services/twilio/client';
+import { sendOutboundMessage } from '@/services/whatsapp/send';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';

@@ -6,9 +6,10 @@ import UserLimitOverride from '@/models/UserLimitOverride';
 import PlanConfig from '@/models/PlanConfig';
 import SubscriptionUsage from '@/models/SubscriptionUsage';
 import AIUsageLog from '@/models/AIUsageLog';
-import { PLAN_DEFAULTS, FALLBACK_LIMITS, type PlanLimits } from '@/lib/planDefaults';
+import { getPlanDefaults, type PlanLimits } from '@/lib/planDefaults';
 
 async function getPlanLimits(planName: string): Promise<PlanLimits> {
+  if (planName === 'Enterprise') planName = 'Pro'; // legacy paid tier → THE paid plan
   try {
     const config = await PlanConfig.findOne({ plan: planName }).lean() as any;
     if (config) {
@@ -21,7 +22,7 @@ async function getPlanLimits(planName: string): Promise<PlanLimits> {
       };
     }
   } catch { /* fall through */ }
-  return PLAN_DEFAULTS[planName] ?? FALLBACK_LIMITS;
+  return getPlanDefaults(planName);
 }
 
 export async function GET() {

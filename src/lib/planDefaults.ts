@@ -11,6 +11,11 @@ export interface PlanLimits {
   maxAIGenerations:          number;
 }
 
+/**
+ * Single-plan model: 'Free' covers trial/unpaid users, 'Pro' is THE paid
+ * plan (see lib/billing/planCatalog.ts). Legacy 'Enterprise' subscriptions
+ * resolve to Pro limits below.
+ */
 export const PLAN_DEFAULTS: Record<string, PlanLimits> = {
   Free: {
     maxAuditsPerBusiness:      2,
@@ -26,18 +31,12 @@ export const PLAN_DEFAULTS: Record<string, PlanLimits> = {
     reviewRequestCooldownDays: 14,
     maxAIGenerations:          100,
   },
-  Enterprise: {
-    maxAuditsPerBusiness:      50,
-    maxPostsPerMonth:          200,
-    maxWhatsAppMessagesPerDay: 1000,
-    reviewRequestCooldownDays: 7,
-    maxAIGenerations:          500,
-  },
 };
 
 export const FALLBACK_LIMITS: PlanLimits = PLAN_DEFAULTS.Free;
 
 export function getPlanDefaults(plan: string): PlanLimits {
+  if (plan === 'Enterprise') plan = 'Pro'; // legacy paid tier
   return PLAN_DEFAULTS[plan] ?? FALLBACK_LIMITS;
 }
 

@@ -5,7 +5,6 @@ import { requireModule } from '@/lib/moduleGating';
 import GBPToken from '@/models/GBPToken';
 import GBPInsights from '@/models/GBPInsights';
 import GBPKeyword from '@/models/GBPKeyword';
-import Business from '@/models/Business';
 
 const VALID_RANGES = [7, 14, 28, 90] as const;
 
@@ -22,8 +21,12 @@ export async function GET(request: NextRequest) {
 
   await dbConnect();
 
-  const business = await Business.findById(ctx.businessId).lean() as any;
-  if (!business?.googleConnected) {
+  // "Connected" must mean a real OAuth grant exists (a GBPToken), NOT just that
+  // onboarding set Business.googleConnected from a pasted Maps URL. Without a
+  // token, /api/gbp/sync can't fetch anything and returns 400 — so the UI has
+  // to show "Connect Account", not a "Sync Now" button that always fails.
+  const tokenDoc = await GBPToken.findOne({ businessId: ctx.businessId }).lean() as any;
+  if (!tokenDoc) {
     return NextResponse.json({ connected: false });
   }
 
@@ -31,7 +34,6 @@ export async function GET(request: NextRequest) {
   const rangeParam = parseInt(searchParams.get('range') ?? '28', 10);
   const range = (VALID_RANGES.includes(rangeParam as any) ? rangeParam : 28) as number;
 
-  const tokenDoc = await GBPToken.findOne({ businessId: ctx.businessId }).lean() as any;
   const twentyFiveHoursAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
   const needsSync =
     !tokenDoc?.lastSyncAt || new Date(tokenDoc.lastSyncAt) < twentyFiveHoursAgo;
@@ -68,6 +70,8 @@ export async function GET(request: NextRequest) {
 
   const summary = {
     totalViews: sumField(currentRows, 'views'),
+    totalSearchViews: sumField(currentRows, 'viewsSearch'),
+    totalMapsViews: sumField(currentRows, 'viewsMaps'),
     totalCallClicks: sumField(currentRows, 'callClicks'),
     totalWebsiteClicks: sumField(currentRows, 'websiteClicks'),
     totalDirectionRequests: sumField(currentRows, 'directionRequests'),
@@ -76,6 +80,8 @@ export async function GET(request: NextRequest) {
 
   const prevSummary = {
     views: sumField(prevRows, 'views'),
+    searchViews: sumField(prevRows, 'viewsSearch'),
+    mapsViews: sumField(prevRows, 'viewsMaps'),
     callClicks: sumField(prevRows, 'callClicks'),
     websiteClicks: sumField(prevRows, 'websiteClicks'),
     directionRequests: sumField(prevRows, 'directionRequests'),
@@ -84,6 +90,8 @@ export async function GET(request: NextRequest) {
 
   const changes = {
     views: pctChange(summary.totalViews, prevSummary.views),
+    searchViews: pctChange(summary.totalSearchViews, prevSummary.searchViews),
+    mapsViews: pctChange(summary.totalMapsViews, prevSummary.mapsViews),
     callClicks: pctChange(summary.totalCallClicks, prevSummary.callClicks),
     websiteClicks: pctChange(summary.totalWebsiteClicks, prevSummary.websiteClicks),
     directionRequests: pctChange(
@@ -102,28 +110,39 @@ export async function GET(request: NextRequest) {
     directionRequests: r.directionRequests ?? 0,
   }));
 
-  // --- Keywords ---
-  const currentMonth = now.getMonth() + 1;
-  const currentYear = now.getFullYear();
+  // --- Keywords (MONTHLY only) ---
+  // Google's searchkeywords endpoint has no daily granularity, so this section
+  // is inherently month-based and does NOT follow the 7/14/28/90-day range.
+  // Use the most recent month that actually has data: the current month is
+  // usually empty for the first days until Google finalizes it.
+  const latestKw = await GBPKeyword.findOne({ businessId: ctx.businessId })
+    .sort({ year: -1, month: -1 })
+    .lean() as any;
 
-  const keywordDocs = await GBPKeyword.find({
-    businessId: ctx.businessId,
-    month: currentMonth,
-    year: currentYear,
-  })
-    .sort({ impressions: -1 })
-    .limit(10)
-    .lean() as any[];
+  let monthKeywords: any[] = [];
+  let keywordMonth: string | null = null;
+  if (latestKw) {
+    monthKeywords = (await GBPKeyword.find({
+      businessId: ctx.businessId,
+      year: latestKw.year,
+      month: latestKw.month,
+    })
+      .sort({ impressions: -1 })
+      .lean()) as any[];
+    keywordMonth = new Date(latestKw.year, latestKw.month - 1, 1).toLocaleString(
+      'en-US',
+      { month: 'short', year: 'numeric' }
+    );
+  }
 
-  const directSearches = keywordDocs
-    .filter((k: any) => k.type === 'DIRECT')
-    .reduce((acc: number, k: any) => acc + (k.impressions ?? 0), 0);
-
-  const discoverySearches = keywordDocs
-    .filter((k: any) => k.type === 'INDIRECT' || k.type === 'CHAIN')
-    .reduce((acc: number, k: any) => acc + (k.impressions ?? 0), 0);
-
-  const topKeywords = keywordDocs.map((k: any) => ({
+  // The API does NOT return a direct-vs-discovery classification (that old split
+  // is deprecated), so we only report what is real: total impressions, the number
+  // of unique search terms, and the top terms themselves.
+  const totalSearchImpressions = monthKeywords.reduce(
+    (acc: number, k: any) => acc + (k.impressions ?? 0),
+    0
+  );
+  const topKeywords = monthKeywords.slice(0, 10).map((k: any) => ({
     keyword: k.keyword,
     impressions: k.impressions ?? 0,
   }));
@@ -137,8 +156,9 @@ export async function GET(request: NextRequest) {
     changes,
     timeSeries,
     searchData: {
-      directSearches,
-      discoverySearches,
+      totalSearchImpressions,
+      uniqueKeywords: monthKeywords.length,
+      keywordMonth,
       topKeywords,
     },
   });

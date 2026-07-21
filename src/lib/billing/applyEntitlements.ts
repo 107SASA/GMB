@@ -2,15 +2,16 @@ import dbConnect from '@/lib/mongodb';
 import Subscription from '@/models/Subscription';
 import User from '@/models/User';
 import {
+  ALL_MODULES,
   buildModulesMap,
   DEFAULT_FREE_MODULES,
-  getSellablePlan,
-  type SellablePlanType,
+  PAID_PLAN_TYPE,
 } from './planCatalog';
 
 /**
- * Applies a paid plan to a user's entitlements. Two stores must stay in
- * sync (confirmed by reading the code, not the spec):
+ * Applies the paid plan to a user's entitlements — there is only one, and it
+ * unlocks every module. Two stores must stay in sync (confirmed by reading
+ * the code, not the spec):
  *  - Subscription (userId 1:1): planType + billingStatus + modules map —
  *    what /api/auth/me and the mobile app read for module gating.
  *  - User.subscriptionPlan: the string featureGating.ts actually reads for
@@ -18,22 +19,18 @@ import {
  */
 export async function activatePlan(
   userId: string,
-  planType: SellablePlanType,
   opts: { razorpaySubscriptionId?: string; currentPeriodEnd?: Date } = {}
 ): Promise<void> {
-  const plan = getSellablePlan(planType);
-  if (!plan) throw new Error(`Unknown sellable plan: ${planType}`);
-
   await dbConnect();
 
   await Subscription.findOneAndUpdate(
     { userId },
     {
       $set: {
-        planType,
+        planType: PAID_PLAN_TYPE,
         billingStatus: 'Active',
         'trialStatus.isActive': false,
-        modules: buildModulesMap(plan.modules),
+        modules: buildModulesMap(ALL_MODULES),
         ...(opts.razorpaySubscriptionId && {
           razorpaySubscriptionId: opts.razorpaySubscriptionId,
         }),
@@ -43,7 +40,16 @@ export async function activatePlan(
     { upsert: true, setDefaultsOnInsert: true }
   );
 
-  await User.findByIdAndUpdate(userId, { $set: { subscriptionPlan: planType } });
+  await User.findByIdAndUpdate(userId, {
+    $set: {
+      // Single sellable plan (PAID_PLAN_TYPE) — kept from the single-plan
+      // billing refactor rather than upstream's per-plan `planType`.
+      subscriptionPlan: PAID_PLAN_TYPE,
+      // Feature 1 — payment succeeded: remove the freemium audit-only
+      // restriction. No-op for users who never had the gate set.
+      'freemiumAuditGate.active': false,
+    },
+  });
 }
 
 /** Marks the subscription past-due (payment failed); entitlements unchanged. */

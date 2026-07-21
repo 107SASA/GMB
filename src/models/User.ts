@@ -51,6 +51,17 @@ export interface IUser extends Document {
   isDeleted?: boolean;
   deletedAt?: Date;
 
+  // Freemium onboarding gate — ONLY ever set for brand-new signups (see
+  // /api/onboarding). Existing accounts never get this field, and the
+  // Subscription/module gating and page-level restriction treat a missing
+  // freemiumAuditGate as "full access", so pre-existing users are
+  // completely unaffected by this feature.
+  freemiumAuditGate?: {
+    active: boolean;       // true until the user upgrades to a paid plan
+    auditUsed: boolean;    // true once their single free audit report has completed
+    auditId?: mongoose.Types.ObjectId; // the one audit they were allowed to generate
+  };
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -127,6 +138,17 @@ const UserSchema: Schema = new Schema(
     // Soft delete
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date },
+
+    // Freemium onboarding gate — see IUser.freemiumAuditGate above.
+    // No top-level default on purpose: only /api/onboarding sets this,
+    // explicitly, for brand-new accounts. Existing documents in the
+    // database simply won't have this key, and every read site treats
+    // "no freemiumAuditGate" as full, unrestricted access.
+    freemiumAuditGate: {
+      active:    { type: Boolean, default: false },
+      auditUsed: { type: Boolean, default: false },
+      auditId:   { type: Schema.Types.ObjectId, ref: 'Audit' },
+    },
   },
   { timestamps: true }
 );

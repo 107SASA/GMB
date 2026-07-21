@@ -45,6 +45,10 @@ export interface IBusiness extends Document {
     provider: string;
     businessPhone?: string;
     metaProfileUrl?: string;
+    /** Meta Cloud API Phone Number ID — maps inbound webhooks to this business. */
+    phoneNumberId?: string;
+    /** Meta WhatsApp Business Account (WABA) ID. */
+    wabaId?: string;
     isConnected: boolean;
   };
   aiSettings: {
@@ -150,6 +154,8 @@ const BusinessSchema: Schema = new Schema(
       provider: { type: String, default: 'meta' },
       businessPhone: { type: String },
       metaProfileUrl: { type: String },
+      phoneNumberId: { type: String },
+      wabaId: { type: String },
       isConnected: { type: Boolean, default: false }
     },
     aiSettings: {
@@ -203,5 +209,11 @@ const BusinessSchema: Schema = new Schema(
   },
   { timestamps: true }
 );
+
+// Hot lookup paths. `userId` is hit on every login (Business.findOne({ userId }))
+// and by the user's business-list routes; `organizationId` (required) scopes
+// almost every tenant query. Without these, those become collection scans.
+BusinessSchema.index({ userId: 1 });
+BusinessSchema.index({ organizationId: 1 });
 
 export default mongoose.models.Business || mongoose.model<IBusiness>('Business', BusinessSchema);

@@ -10,7 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { Eye, Phone, Globe, MapPin, MessageCircle, Search, RefreshCw } from 'lucide-react';
+import { Eye, Phone, Globe, MapPin, MessageCircle, Search, Map, RefreshCw } from 'lucide-react';
 
 type GBPRange = 7 | 14 | 28 | 90;
 
@@ -21,6 +21,8 @@ interface InsightsData {
   googleEmail?: string | null;
   summary?: {
     totalViews: number;
+    totalSearchViews: number;
+    totalMapsViews: number;
     totalCallClicks: number;
     totalWebsiteClicks: number;
     totalDirectionRequests: number;
@@ -28,6 +30,8 @@ interface InsightsData {
   };
   changes?: {
     views: number | null;
+    searchViews: number | null;
+    mapsViews: number | null;
     callClicks: number | null;
     websiteClicks: number | null;
     directionRequests: number | null;
@@ -41,8 +45,9 @@ interface InsightsData {
     directionRequests: number;
   }[];
   searchData?: {
-    directSearches: number;
-    discoverySearches: number;
+    totalSearchImpressions: number;
+    uniqueKeywords: number;
+    keywordMonth: string | null;
     topKeywords: { keyword: string; impressions: number }[];
   };
 }
@@ -99,7 +104,9 @@ function CardSkeleton() {
 }
 
 const METRIC_CONFIG = [
-  { key: 'totalViews',             label: 'Profile Views',    Icon: Eye,           color: 'text-indigo-600',  bg: 'bg-indigo-50',  ring: 'ring-indigo-100',  changeKey: 'views'             },
+  { key: 'totalViews',             label: 'Total Views',      Icon: Eye,           color: 'text-indigo-600',  bg: 'bg-indigo-50',  ring: 'ring-indigo-100',  changeKey: 'views'             },
+  { key: 'totalSearchViews',       label: 'Search Views',     Icon: Search,        color: 'text-sky-600',     bg: 'bg-sky-50',     ring: 'ring-sky-100',     changeKey: 'searchViews'       },
+  { key: 'totalMapsViews',         label: 'Maps Views',       Icon: Map,           color: 'text-rose-600',    bg: 'bg-rose-50',    ring: 'ring-rose-100',    changeKey: 'mapsViews'         },
   { key: 'totalCallClicks',        label: 'Call Clicks',      Icon: Phone,         color: 'text-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-100', changeKey: 'callClicks'        },
   { key: 'totalWebsiteClicks',     label: 'Website Clicks',   Icon: Globe,         color: 'text-blue-600',    bg: 'bg-blue-50',    ring: 'ring-blue-100',    changeKey: 'websiteClicks'     },
   { key: 'totalDirectionRequests', label: 'Directions',       Icon: MapPin,        color: 'text-amber-600',   bg: 'bg-amber-50',   ring: 'ring-amber-100',   changeKey: 'directionRequests' },
@@ -148,7 +155,6 @@ export default function GBPSection() {
   const timeSeries  = data?.timeSeries ?? [];
   const searchData  = data?.searchData;
   const keywords    = searchData?.topKeywords ?? [];
-  const totalSearch = (searchData?.directSearches ?? 0) + (searchData?.discoverySearches ?? 0);
 
   return (
     <div>
@@ -217,10 +223,10 @@ export default function GBPSection() {
         </div>
       </div>
 
-      {/* 5 KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+      {/* KPI Cards — every metric we fetch from Google */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 mb-6">
         {loading
-          ? Array.from({ length: 5 }).map((_, i) => <CardSkeleton key={i} />)
+          ? Array.from({ length: 7 }).map((_, i) => <CardSkeleton key={i} />)
           : METRIC_CONFIG.map((m) => {
               const value  = summary ? (summary as any)[m.key] : 0;
               const change = changes ? (changes as any)[m.changeKey] : null;
@@ -325,39 +331,22 @@ export default function GBPSection() {
             <>
               <div className="space-y-5 mb-6">
                 <div>
-                  <p className="text-2xl font-bold text-slate-900">{(searchData?.directSearches ?? 0).toLocaleString()}</p>
-                  <p className="text-xs font-semibold text-slate-500 mt-0.5">Direct Searches</p>
-                  <p className="text-xs text-slate-400">People searching your business name</p>
+                  <p className="text-2xl font-bold text-slate-900">{(searchData?.totalSearchImpressions ?? 0).toLocaleString()}</p>
+                  <p className="text-xs font-semibold text-slate-500 mt-0.5">Search Impressions</p>
+                  <p className="text-xs text-slate-400">Times you appeared for a search term</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-slate-900">{(searchData?.discoverySearches ?? 0).toLocaleString()}</p>
-                  <p className="text-xs font-semibold text-slate-500 mt-0.5">Discovery Searches</p>
-                  <p className="text-xs text-slate-400">People searching your category</p>
+                  <p className="text-2xl font-bold text-slate-900">{(searchData?.uniqueKeywords ?? 0).toLocaleString()}</p>
+                  <p className="text-xs font-semibold text-slate-500 mt-0.5">Unique Keywords</p>
+                  <p className="text-xs text-slate-400">Distinct terms that surfaced your profile</p>
                 </div>
               </div>
-
-              {totalSearch > 0 && (
-                <div>
-                  <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden flex mb-1.5">
-                    <div
-                      className="h-full bg-indigo-500 rounded-l-full"
-                      style={{ width: `${((searchData?.directSearches ?? 0) / totalSearch) * 100}%` }}
-                    />
-                    <div
-                      className="h-full bg-violet-400 rounded-r-full"
-                      style={{ width: `${((searchData?.discoverySearches ?? 0) / totalSearch) * 100}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[10px] text-indigo-500 font-semibold">Direct</span>
-                    <span className="text-[10px] text-violet-400 font-semibold">Discovery</span>
-                  </div>
-                </div>
-              )}
             </>
           )}
 
-          <p className="text-[10px] text-slate-300 mt-4">Updated monthly by Google</p>
+          <p className="text-[10px] text-slate-300 mt-4">
+            {searchData?.keywordMonth ? `Search terms for ${searchData.keywordMonth} · ` : ''}Updated monthly by Google
+          </p>
         </div>
       </div>
 
@@ -365,7 +354,7 @@ export default function GBPSection() {
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
         <div className="flex items-center justify-between mb-1">
           <h3 className="font-bold text-slate-900">Top Search Keywords</h3>
-          <span className="text-xs text-slate-400">This month</span>
+          <span className="text-xs text-slate-400">{searchData?.keywordMonth ?? 'This month'}</span>
         </div>
         <p className="text-xs text-slate-400 mb-5">Keywords bringing customers to your business on Google</p>
 

@@ -3,9 +3,6 @@ import { inngest } from '@/services/inngest/client';
 import { requireBusinessContext } from '@/lib/tenant';
 
 export async function POST(req: Request) {
-  process.env.INNGEST_DEV = "1";
-  process.env.INNGEST_EVENT_KEY = process.env.INNGEST_EVENT_KEY || "local";
-
   try {
     const { businessId } = await req.json();
 

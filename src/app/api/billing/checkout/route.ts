@@ -3,27 +3,32 @@ import dbConnect from '@/lib/mongodb';
 import Subscription from '@/models/Subscription';
 import { requireClient } from '@/lib/auth';
 import { getRazorpay, getRazorpayKeyId } from '@/lib/billing/razorpay';
-import { getSellablePlan } from '@/lib/billing/planCatalog';
+import { ensureRazorpayPlanId } from '@/lib/billing/planCatalog';
 
 /**
- * Creates a Razorpay Subscription for the chosen plan and returns the
- * params the Razorpay JS widget needs. Entitlements are NOT granted here —
- * only the webhook (subscription.activated/charged) flips them, so a closed
- * checkout window can't leave a half-activated state.
+ * Creates a Razorpay Subscription for THE plan (there is only one) and
+ * returns the params the Razorpay JS widget needs. No request body is
+ * required. Entitlements are NOT granted here — only the webhook
+ * (subscription.activated/charged) flips them, so a closed checkout window
+ * can't leave a half-activated state.
  */
-export async function POST(req: Request) {
+export async function POST() {
   try {
     const auth = await requireClient();
     if (!auth.ok) return auth.response;
 
-    const { planType } = await req.json();
-    const plan = getSellablePlan(planType);
-    if (!plan) {
-      return NextResponse.json({ error: 'Unknown plan' }, { status: 400 });
+    const razorpay = getRazorpay();
+    if (!razorpay) {
+      return NextResponse.json(
+        { error: 'Billing is not configured on this server' },
+        { status: 503 }
+      );
     }
 
-    const razorpay = getRazorpay();
-    if (!razorpay || !plan.razorpayPlanId) {
+    // Resolves the super-admin-configured price, creating a matching
+    // Razorpay Plan on the fly if the price changed since the last one.
+    const plan = await ensureRazorpayPlanId();
+    if (!plan.razorpayPlanId) {
       return NextResponse.json(
         { error: 'Billing is not configured on this server' },
         { status: 503 }
@@ -57,7 +62,7 @@ export async function POST(req: Request) {
         subscriptionId: rpSubscription.id,
         planType: plan.planType,
         name: 'GMB Boost',
-        description: `${plan.displayName} plan — ₹${plan.priceInr}/${plan.billingCycle}`,
+        description: `${plan.displayName} — ₹${plan.priceInr}/${plan.billingCycle}`,
         prefill: {
           email: (auth.user as any).email ?? undefined,
           contact: (auth.user as any).phone ?? undefined,

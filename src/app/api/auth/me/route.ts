@@ -4,7 +4,7 @@ import User from '@/models/User';
 import Subscription from '@/models/Subscription';
 import { requireClient } from '@/lib/auth';
 
-const SAFE_FIELDS = 'fullName email role organizationId activeBusinessId businessIds';
+const SAFE_FIELDS = 'fullName email role organizationId activeBusinessId businessIds freemiumAuditGate';
 
 export async function GET() {
   const auth = await requireClient();
@@ -32,6 +32,12 @@ export async function GET() {
       organizationId: (user as any).organizationId?.toString() ?? null,
       activeBusinessId: (user as any).activeBusinessId?.toString() ?? null,
       businessIds: ((user as any).businessIds ?? []).map((id: any) => id.toString()),
+      freemiumAuditGate: (user as any).freemiumAuditGate
+        ? {
+            active: !!(user as any).freemiumAuditGate.active,
+            auditUsed: !!(user as any).freemiumAuditGate.auditUsed,
+          }
+        : null,
       subscription: subscription
         ? {
             planType: (subscription as any).planType,

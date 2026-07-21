@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { requireClient } from '@/lib/auth';
@@ -31,7 +32,11 @@ export async function POST(req: Request) {
   if (user.passwordHash.startsWith('$2b$') || user.passwordHash.startsWith('$2a$')) {
     isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
   } else {
-    isMatch = user.passwordHash === currentPassword;
+    // Legacy plain-text password — constant-time compare (no timing oracle).
+    // The new password is bcrypt-hashed below, so plaintext is gone after this.
+    const a = Buffer.from(user.passwordHash);
+    const b = Buffer.from(String(currentPassword));
+    isMatch = a.length === b.length && crypto.timingSafeEqual(a, b);
   }
 
   if (!isMatch) {

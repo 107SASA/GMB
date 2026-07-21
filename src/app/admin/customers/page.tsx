@@ -991,12 +991,11 @@ function CustomersTab() {
   return (
     <div>
       {/* Stats row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         {[
-          { label: 'Total Users',      value: stats.totalUsers,      color: 'bg-slate-600' },
-          { label: 'New This Week',    value: stats.newThisWeek,     color: 'bg-cyan-600' },
-          { label: 'Pro Users',        value: stats.proUsers,        color: 'bg-indigo-600' },
-          { label: 'Enterprise Users', value: stats.enterpriseUsers, color: 'bg-violet-600' },
+          { label: 'Total Users',   value: stats.totalUsers,                            color: 'bg-slate-600' },
+          { label: 'New This Week', value: stats.newThisWeek,                           color: 'bg-cyan-600' },
+          { label: 'Paid Users',    value: stats.proUsers + stats.enterpriseUsers,      color: 'bg-indigo-600' },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
             <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center mb-3', s.color)}>
@@ -1029,7 +1028,6 @@ function CustomersTab() {
             <option value="all">All Plans</option>
             <option value="Free">Free</option>
             <option value="Pro">Pro</option>
-            <option value="Enterprise">Enterprise</option>
           </select>
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
         </div>

@@ -99,14 +99,29 @@ export async function GET(request: NextRequest) {
   );
 
   if (!accountsRes.ok) {
+    // NOTE: this is almost never "the user has no account". It's an API error
+    // — most commonly a 403 because the "My Business Account Management API"
+    // isn't enabled in the Cloud project, or Business Profile API access
+    // hasn't been granted yet. Log Google's real response so it's diagnosable
+    // from the server terminal instead of the misleading "no gbp account".
+    const errBody = await accountsRes.text();
+    console.error(
+      `[gbp/callback] accounts.list failed for ${googleEmail}: ` +
+        `${accountsRes.status} ${accountsRes.statusText} — ${errBody}`
+    );
+    const reason = accountsRes.status === 403 ? 'gbp_api_access' : 'gbp_api_error';
     return NextResponse.redirect(
-      new URL('/dashboard/insights?error=no_gbp_account', request.url)
+      new URL(`/dashboard/insights?error=${reason}&status=${accountsRes.status}`, request.url)
     );
   }
 
   const accountsData = await accountsRes.json();
   const accounts: any[] = accountsData.accounts ?? [];
   if (accounts.length === 0) {
+    console.warn(
+      `[gbp/callback] accounts.list returned an EMPTY list for ${googleEmail} ` +
+        `(API is reachable but this Google account manages no Business Profile accounts).`
+    );
     return NextResponse.redirect(
       new URL('/dashboard/insights?error=no_gbp_account', request.url)
     );

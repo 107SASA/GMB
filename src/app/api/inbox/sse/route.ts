@@ -2,6 +2,7 @@ import dbConnect from '@/lib/mongodb';
 import ConversationThread from '@/models/ConversationThread';
 import mongoose from 'mongoose';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -10,6 +11,10 @@ const POLL_INTERVAL_MS = 2500;
 const MAX_DURATION_MS  = 55_000; // stay under 60 s serverless limit
 
 export async function GET(req: Request) {
+  // WhatsApp AI Agent is a Super Admin–exclusive feature.
+  const authCheck = await requireSuperAdmin();
+  if (!authCheck.ok) return authCheck.response;
+
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
 

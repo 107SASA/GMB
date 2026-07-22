@@ -1,4 +1,4 @@
-import AuditResultsDashboard from '@/components/audit/AuditResultsDashboard';
+import GatedAuditReport from '@/components/audit/GatedAuditReport';
 
 export const metadata = {
   title: 'Audit Results | Growwmatic AI',
@@ -12,7 +12,7 @@ export default async function AuditResultsPage(
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 pt-10">
-      <AuditResultsDashboard auditId={id} />
+      <GatedAuditReport auditId={id} />
     </div>
   );
 }

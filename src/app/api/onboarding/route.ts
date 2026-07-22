@@ -19,6 +19,11 @@ function normalizePhone(phone: string): string {
 }
 
 export async function POST(req: Request) {
+  // Track only what THIS request creates, so a failure part-way can be rolled
+  // back without deleting a pre-existing account that was merely resuming.
+  let createdUserId: string | null = null;
+  let createdOrgId: string | null = null;
+
   try {
     await dbConnect();
     const body = await req.json();
@@ -66,6 +71,9 @@ export async function POST(req: Request) {
         freemiumAuditGate: { active: true, auditUsed: false },
       });
 
+      // Newly created in this request → eligible for rollback if a later step fails.
+      createdUserId = newUser._id.toString();
+
       // Mirrors the freemium gate in the existing module-entitlement system
       // (src/lib/moduleGating.ts) so API routes that already call
       // requireModule() — CRM leads, Inbox, Reviews, GBP insights — are
@@ -92,6 +100,7 @@ export async function POST(req: Request) {
       ownerId: newUser._id,
       subscriptionPlan: body.selectedPlan === 'starter' ? 'Free' : 'Pro',
     });
+    createdOrgId = newOrg._id.toString();
 
     // Naive city/state extraction from comma-separated address
     const addressParts = (body.address || '').split(',').map((p: string) => p.trim());
@@ -197,10 +206,64 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, businessId: newBusiness._id }, { status: 200 });
   } catch (error: any) {
+    // Full detail to the server log, never to the browser. This used to return
+    // `error.message` straight through, which is how raw driver text like
+    // "E11000 duplicate key error collection: test.businesses index: placeId_1"
+    // ended up on screen during signup.
     console.error('Onboarding Creation Error:', error);
+
+    // Roll back anything THIS request created, so a retry starts from a clean
+    // slate instead of tripping over a half-built account. Only records created
+    // in this request are removed — a pre-existing user resuming onboarding
+    // (createdUserId stays null) is never touched.
+    await rollbackPartialSignup({ createdUserId, createdOrgId });
+
     return NextResponse.json(
-      { error: error.message || 'Failed to save configuration' },
-      { status: 500 }
+      { error: friendlyOnboardingError(error) },
+      { status: 400 }
     );
   }
+}
+
+/** Deletes records created by a signup attempt that failed partway through. */
+async function rollbackPartialSignup(
+  { createdUserId, createdOrgId }: { createdUserId: string | null; createdOrgId: string | null }
+) {
+  try {
+    if (createdOrgId) await Organization.deleteOne({ _id: createdOrgId });
+    if (createdUserId) {
+      await Subscription.deleteMany({ userId: createdUserId });
+      await User.deleteOne({ _id: createdUserId });
+    }
+  } catch (cleanupError) {
+    // Never let cleanup failure mask the original error the user needs to see.
+    console.error('Onboarding rollback failed:', cleanupError);
+  }
+}
+
+/**
+ * Turns a driver/validation error into something a business owner can act on.
+ * Anything unrecognised becomes a generic message — we never surface internal
+ * collection names, index names or stack traces to the client.
+ */
+function friendlyOnboardingError(error: any): string {
+  if (error?.code === 11000) {
+    const key = Object.keys(error.keyPattern ?? error.keyValue ?? {}).join(',');
+    if (key.includes('placeId')) {
+      return 'This Google Business Profile is already connected to your workspace. Search for a different business, or continue with the one you already added.';
+    }
+    if (key.includes('email')) {
+      return 'An account with this email already exists. Try signing in instead, or use a different email address.';
+    }
+    return 'Some of these details are already registered. Please review your entries and try again.';
+  }
+
+  if (error?.name === 'ValidationError') {
+    const first = Object.values(error.errors ?? {})[0] as any;
+    return first?.message
+      ? `Please check your details: ${first.message}`
+      : 'Some required details are missing or invalid. Please review the form and try again.';
+  }
+
+  return "We couldn't finish setting up your workspace. Please try again — if this keeps happening, contact support.";
 }

@@ -12,7 +12,6 @@ import StepBusiness from './StepBusiness';
 import StepGoogle from './StepGoogle';
 import StepWhatsApp from './StepWhatsApp';
 import StepAI from './StepAI';
-import StepModules from './StepModules';
 import StepCompletion from './StepCompletion';
 
 export function OnboardingWizard() {
@@ -26,6 +25,14 @@ export function OnboardingWizard() {
   const nextStep = () => setCurrentStep(prev => prev + 1);
   const prevStep = () => setCurrentStep(prev => Math.max(0, prev - 1));
 
+  /**
+   * No pricing step here, deliberately.
+   *
+   * Signup runs straight through to the free audit report, and the plan is only
+   * offered alongside that finished report (AuditPaywallSidebar). Showing a
+   * price before the user has seen any value gives them a reason to abandon
+   * before they ever reach the thing that sells the product.
+   */
   const steps = [
     { component: StepWelcome, id: 'welcome' },
     { component: StepAccount, id: 'account' },
@@ -34,7 +41,6 @@ export function OnboardingWizard() {
     { component: StepGoogle, id: 'google' },
     { component: StepWhatsApp, id: 'whatsapp' },
     { component: StepAI, id: 'ai' },
-    { component: StepModules, id: 'modules' },
     { component: StepCompletion, id: 'complete' }
   ];
 

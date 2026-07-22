@@ -68,8 +68,12 @@ export default async function proxy(request: NextRequest) {
 
     if (isAllowedForGatedUser(pathname)) return NextResponse.next();
 
-    // Blocked: send them to the audit module if they still have their free
-    // report available, otherwise straight to the upgrade explainer.
+    // Where a gated user gets sent when they hit a locked page:
+    //  - No report yet  -> /dashboard/audit, which auto-generates their free one
+    //    and then shows it with the pricing card alongside (AuditPaywallSidebar).
+    //  - Report already used -> straight to pricing. They have had the free
+    //    value; the next step is the decision to pay. Their report is still
+    //    readable at /dashboard/audit, which stays in ALLOWED_PREFIXES.
     const destination = gate.auditUsed ? '/dashboard/upgrade' : '/dashboard/audit';
     if (pathname === destination) return NextResponse.next();
 

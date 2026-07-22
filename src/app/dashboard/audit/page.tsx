@@ -1,16 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useBusiness } from '@/context/BusinessContext';
-import { Zap, Clock, ExternalLink, ChevronRight, CheckCircle2, AlertTriangle, FileText } from 'lucide-react';
+import { Zap, Clock, ExternalLink, ChevronRight, CheckCircle2, AlertTriangle, FileText, Loader2 } from 'lucide-react';
 import AuditForm from '@/components/audit/AuditForm';
 
 export default function AuditDashboardPage() {
+  const router = useRouter();
   const { activeBusiness } = useBusiness();
   const [audits, setAudits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewAudit, setShowNewAudit] = useState(false);
+  // Freemium signups get their one report generated FOR them — see autoStart().
+  const [autoStarting, setAutoStarting] = useState(false);
+  const [autoError, setAutoError] = useState('');
+  const autoStartedRef = useRef(false);
 
   useEffect(() => {
     if (activeBusiness) {
@@ -24,6 +30,7 @@ export default function AuditDashboardPage() {
       const data = await res.json();
       if (Array.isArray(data)) {
         setAudits(data);
+        await maybeAutoStart(data);
       }
     } catch (e) {
       console.error(e);
@@ -31,6 +38,65 @@ export default function AuditDashboardPage() {
       setLoading(false);
     }
   };
+
+  /**
+   * A brand-new (freemium-gated) user should never have to hunt for a "Run
+   * Audit" button — the report is the whole point of signing up. If they are
+   * gated and have no audits yet, generate the first one automatically and
+   * send them straight to the report, where the pricing card sits alongside it.
+   *
+   * Guarded by a ref so React StrictMode's double-effect (and any re-fetch)
+   * cannot fire two audits — the free tier allows exactly one.
+   */
+  const maybeAutoStart = async (existing: any[]) => {
+    if (autoStartedRef.current || existing.length > 0 || !activeBusiness) return;
+
+    let gated = false;
+    try {
+      const meRes = await fetch('/api/auth/me');
+      const me = await meRes.json();
+      const gate = me?.user?.freemiumAuditGate;
+      gated = !!gate?.active && !gate?.auditUsed;
+    } catch {
+      return;
+    }
+    if (!gated) return;
+
+    autoStartedRef.current = true;
+    setAutoStarting(true);
+    try {
+      const res = await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessId: (activeBusiness as any)._id }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.auditId) {
+        setAutoError(json.error || 'Could not start your report automatically.');
+        setAutoStarting(false);
+        return;
+      }
+      router.push(`/dashboard/audit/${json.auditId}`);
+    } catch {
+      setAutoError('Could not reach the server to start your report.');
+      setAutoStarting(false);
+    }
+  };
+
+  if (autoStarting) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
+        <Loader2 className="mb-6 h-10 w-10 animate-spin text-blue-600" />
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+          Building your free audit report
+        </h2>
+        <p className="mt-2 max-w-md text-slate-500">
+          We&apos;re analysing {activeBusiness?.name}&apos;s Google Business Profile. This
+          usually takes a minute or two — you&apos;ll be taken to the report automatically.
+        </p>
+      </div>
+    );
+  }
 
   if (showNewAudit) {
     return (
@@ -61,6 +127,16 @@ export default function AuditDashboardPage() {
           Run New Audit
         </button>
       </div>
+
+      {autoError && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700"
+        >
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+          <span>{autoError} You can start it manually with “Run New Audit”.</span>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         {loading ? (

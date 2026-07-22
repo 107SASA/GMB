@@ -3,6 +3,7 @@
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Lock, ArrowRight, Zap, CheckCircle2 } from 'lucide-react';
+import AuditPaywallSidebar from '@/components/audit/AuditPaywallSidebar';
 
 export default function UpgradePage() {
   const searchParams = useSearchParams();
@@ -70,6 +71,14 @@ export default function UpgradePage() {
             </ul>
           </div>
 
+          {/* The real plan, with live price and a working checkout, rather than
+              a link that punts the decision to another page. A returning user
+              who already spent their free report lands here — they should be
+              able to pay in one click. */}
+          <div className="mx-auto mb-6 flex max-w-sm justify-center">
+            <AuditPaywallSidebar />
+          </div>
+
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             {!isFreeAuditGate && (
               <button
@@ -79,13 +88,14 @@ export default function UpgradePage() {
                 Go Back
               </button>
             )}
-            <Link
-              href="/dashboard/billing"
-              className="px-8 py-4 bg-primary hover:bg-primary/90 text-white rounded-2xl font-bold transition-all shadow-md flex items-center justify-center gap-2"
-            >
-              Upgrade to Premium
-              <ArrowRight className="w-5 h-5" />
-            </Link>
+            {isFreeAuditGate && (
+              <Link
+                href="/dashboard/audit"
+                className="px-8 py-4 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-2xl font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+              >
+                View my report again
+              </Link>
+            )}
           </div>
         </div>
       </div>

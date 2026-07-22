@@ -1,4 +1,4 @@
-# GMB Boost Documentation Suite 🚀
+# Growwmatic AI Documentation Suite 🚀
 
 Welcome to the complete enterprise documentation for the AI GMB Optimization & Lead Conversion Platform. This suite contains everything required to deploy, scale, understand, and develop the platform.
 

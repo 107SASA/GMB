@@ -1,8 +1,8 @@
-# GMBBoost n8n Workflows
+# Growwmatic AI n8n Workflows
 
 Three optional n8n workflow files for clients who prefer managing automations outside of the Inngest engine. These workflows call the same underlying business logic via a dedicated `/api/n8n/*` proxy layer that accepts an API key instead of session cookies.
 
-> **Important:** Inngest (built into GMBBoost) already runs all of these automations automatically. Only deploy these n8n workflows if a client explicitly wants to use n8n for external orchestration. **Do not run both simultaneously** — you will generate duplicate posts, send duplicate WhatsApp messages, and double-count review requests.
+> **Important:** Inngest (built into Growwmatic AI) already runs all of these automations automatically. Only deploy these n8n workflows if a client explicitly wants to use n8n for external orchestration. **Do not run both simultaneously** — you will generate duplicate posts, send duplicate WhatsApp messages, and double-count review requests.
 
 ---
 
@@ -12,9 +12,9 @@ Set these in n8n under **Settings → Environment Variables** before activating 
 
 | Variable | Description |
 |---|---|
-| `GMB_API_URL` | Base URL of your GMBBoost instance, e.g. `https://app.yourdomain.com` |
+| `GMB_API_URL` | Base URL of your Growwmatic AI instance, e.g. `https://app.yourdomain.com` |
 | `GMB_BUSINESS_ID` | MongoDB ObjectId of the business this n8n instance manages |
-| `AUTOMATION_API_KEY` | Must match `AUTOMATION_API_KEY` in GMBBoost's `.env.local` |
+| `AUTOMATION_API_KEY` | Must match `AUTOMATION_API_KEY` in Growwmatic AI's `.env.local` |
 | `TWILIO_ACCOUNT_SID` | Your Twilio Account SID |
 | `TWILIO_WHATSAPP_NUMBER` | Twilio WhatsApp sender, e.g. `whatsapp:+14155238886` |
 | `ADMIN_WHATSAPP_NUMBER` | Recipient for admin alerts, e.g. `whatsapp:+44...` |
@@ -49,8 +49,8 @@ Set these in n8n under **Settings → Environment Variables** before activating 
 ### GMB Webhook Secret (`httpHeaderAuth`) — workflow 2 only
 - Name: `GMB Webhook Secret`
 - Header name: `x-webhook-secret`
-- Header value: a shared secret you also store in GMBBoost's `.env.local` as `N8N_WEBHOOK_SECRET`
-- The GMBBoost app must include `x-webhook-secret: <value>` when POSTing to this webhook URL
+- Header value: a shared secret you also store in Growwmatic AI's `.env.local` as `N8N_WEBHOOK_SECRET`
+- The Growwmatic AI app must include `x-webhook-secret: <value>` when POSTing to this webhook URL
 
 ---
 
@@ -60,7 +60,7 @@ Set these in n8n under **Settings → Environment Variables** before activating 
 Runs daily at 8 AM. Calls `/api/n8n/buffer-check?businessId=GMB_BUSINESS_ID`. If fewer than 7 days of scheduled posts remain, calls `/api/n8n/generate-content` which fires the Inngest `scheduler/manual-generate` event. Sends a Twilio WhatsApp alert to the admin on completion.
 
 ### workflow-2-lead-followup.json
-Triggered by a webhook POST from GMBBoost when a new lead is created. Sends a welcome WhatsApp via Twilio, waits 3 days, checks lead status at `/api/crm/leads/{leadId}`, and sends follow-up messages at day 3 and day 7 if the lead is still active. Requires the webhook `x-webhook-secret` header for security.
+Triggered by a webhook POST from Growwmatic AI when a new lead is created. Sends a welcome WhatsApp via Twilio, waits 3 days, checks lead status at `/api/crm/leads/{leadId}`, and sends follow-up messages at day 3 and day 7 if the lead is still active. Requires the webhook `x-webhook-secret` header for security.
 
 ### workflow-3-review-automation.json
 Runs every 6 hours. Calls `/api/n8n/sync-reviews?businessId=GMB_BUSINESS_ID` to fetch reviews without replies. For each review, calls `/api/n8n/generate-reply` to generate an AI draft, then sends the draft to the admin via Twilio WhatsApp for approval.
@@ -71,7 +71,7 @@ Runs every 6 hours. Calls `/api/n8n/sync-reviews?businessId=GMB_BUSINESS_ID` to 
 
 | | Inngest (built-in) | n8n (optional) |
 |---|---|---|
-| Where it runs | Inside GMBBoost (Next.js) | External Docker container or n8n Cloud |
+| Where it runs | Inside Growwmatic AI (Next.js) | External Docker container or n8n Cloud |
 | Triggers | Cron + event-driven | Cron + webhook |
 | Multi-tenant | Yes (loops over all businesses) | No (one instance per business) |
 | Requires setup | No (runs automatically) | Yes (env vars + credentials) |

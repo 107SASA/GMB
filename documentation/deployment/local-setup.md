@@ -1,6 +1,6 @@
 # Local Setup Guide
 
-This guide explains how to run the entire GMB Boost platform locally.
+This guide explains how to run the entire Growwmatic AI platform locally.
 
 ## 1. Prerequisites
 - Node.js (v18+)

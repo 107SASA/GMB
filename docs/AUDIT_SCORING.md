@@ -60,7 +60,7 @@ computed. It re-expresses the same four numbers that produced `finalScore` as a
       reason: "Missing: Additional Keywords, Service Area. Cannot be verified without
                Google Business Profile API access (counted as half-credit, not a
                deduction): Videos, Logo / Cover Image, Attributes, Booking/Appointment Link.",
-      dataSource: "Fields stored on your Business profile in GMBBoost …"
+      dataSource: "Fields stored on your Business profile in Growwmatic AI …"
     },
     { label: "SEO Optimization", … },
     { label: "Review Quality", … },
@@ -113,7 +113,7 @@ add('WhatsApp Connected', !!(business.whatsappConfig?.isConnected));
 ```
 
 `WhatsApp Connected` is **not a Google Business Profile field at all** — it's
-whether the business owner has connected WhatsApp inside GMBBoost's own WhatsApp
+whether the business owner has connected WhatsApp inside Growwmatic AI's own WhatsApp
 AI Agent feature. Scoring it as part of "Profile Completeness" meant a business
 could have a literally 100%-complete Google Business Profile and still lose a
 full checklist point (1/16 → ~6% of the Profile Completeness pillar, ~2% of the

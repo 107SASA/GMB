@@ -1,7 +1,7 @@
 # Google Onboarding Integration
 
 ## Overview
-GMBBoost integrates the Google Places API directly into the onboarding wizard. By using an intelligent autocomplete input in Step 4 ("Business Details"), users can search for their business natively, exactly like they would on Google Maps.
+Growwmatic AI integrates the Google Places API directly into the onboarding wizard. By using an intelligent autocomplete input in Step 4 ("Business Details"), users can search for their business natively, exactly like they would on Google Maps.
 
 ## The UI Flow (`StepBusiness.tsx`)
 1. **Search Mode**: The user is presented with a large, animated search bar.

@@ -90,7 +90,7 @@ export function Hero() {
               <div className="w-3 h-3 rounded-full bg-slate-300" />
               <div className="w-3 h-3 rounded-full bg-slate-300" />
               <div className="w-3 h-3 rounded-full bg-slate-300" />
-              <div className="ml-4 px-3 py-1 rounded-lg bg-white border border-slate-200 text-[10px] text-slate-500 shadow-sm">gmb-boost.ai/dashboard</div>
+              <div className="ml-4 px-3 py-1 rounded-lg bg-white border border-slate-200 text-[10px] text-slate-500 shadow-sm">growwmatics.com/dashboard</div>
             </div>
             
             <div className="grid grid-cols-12 gap-4 h-[400px] md:h-[600px] bg-white rounded-t-2xl border-t border-x border-slate-100 shadow-sm">

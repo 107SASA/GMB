@@ -44,7 +44,7 @@ export function PricingCards() {
 
         <div className="mb-6 flex-grow-0">
           <h3 className="text-[10px] font-bold text-indigo-600 mb-2 uppercase tracking-widest">One Simple Plan</h3>
-          <h4 className="text-xl font-bold text-slate-900 mb-2">{plan?.displayName ?? "GMB Boost"}</h4>
+          <h4 className="text-xl font-bold text-slate-900 mb-2">{plan?.displayName ?? "Growwmatic AI"}</h4>
           <div className="flex items-baseline gap-1 mb-2 text-slate-900">
             {plan ? (
               <span className="text-4xl font-extrabold tracking-tight">

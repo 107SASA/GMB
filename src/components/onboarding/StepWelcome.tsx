@@ -21,7 +21,7 @@ export default function StepWelcome({ onNext }: any) {
         transition={{ delay: 0.3 }}
         className="text-4xl font-bold text-slate-900 tracking-tight mb-4"
       >
-        Welcome to GMBBoost
+        Welcome to Growwmatic AI
       </motion.h1>
       
       <motion.p 

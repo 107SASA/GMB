@@ -8,6 +8,7 @@ import {
   TrendingUp, Crown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { planDisplayLabel, isPaidPlanLabel } from '@/lib/billing/planLabel';
 import Link from 'next/link';
 
 interface BillingStatus {
@@ -98,15 +99,20 @@ function UsageBar({
   );
 }
 
-function PlanBadge({ plan }: { plan: string }) {
-  const map: Record<string, string> = {
-    Free:       'bg-slate-100 text-slate-600 border-slate-200',
-    Pro:        'bg-indigo-50 text-indigo-700 border-indigo-100',
-    Enterprise: 'bg-violet-50 text-violet-700 border-violet-100',
-  };
+function PlanBadge({ plan, planName }: { plan: string; planName?: string | null }) {
+  // 'Pro'/'Enterprise' are internal values, never shown to a customer — there
+  // is only one sellable plan. See src/lib/billing/planLabel.ts.
+  const paid = isPaidPlanLabel(plan);
   return (
-    <span className={cn('px-3 py-1 text-sm font-bold rounded-lg border', map[plan] ?? map.Free)}>
-      {plan}
+    <span
+      className={cn(
+        'px-3 py-1 text-sm font-bold rounded-lg border',
+        paid
+          ? 'bg-indigo-50 text-indigo-700 border-indigo-100'
+          : 'bg-slate-100 text-slate-600 border-slate-200'
+      )}
+    >
+      {planDisplayLabel(plan, planName)}
     </span>
   );
 }
@@ -321,8 +327,7 @@ export default function BillingPage() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex items-center gap-4">
             <div className={cn(
               'w-12 h-12 rounded-xl flex items-center justify-center',
-              data.plan === 'Enterprise' ? 'bg-violet-600' :
-              data.plan === 'Pro'        ? 'bg-indigo-600' : 'bg-slate-400'
+              isPaidPlanLabel(data.plan) ? 'bg-indigo-600' : 'bg-slate-400'
             )}>
               <Crown className="w-6 h-6 text-white" />
             </div>

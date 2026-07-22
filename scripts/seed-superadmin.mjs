@@ -5,8 +5,14 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
-const MONGODB_URI =
-  'mongodb://vaishnavinimse8797_db_user:Nimse8797@ac-uwutnsc-shard-00-00.bnnszbl.mongodb.net:27017,ac-uwutnsc-shard-00-01.bnnszbl.mongodb.net:27017,ac-uwutnsc-shard-00-02.bnnszbl.mongodb.net:27017/?ssl=true&replicaSet=atlas-p3f7v0-shard-0&authSource=admin&appName=GMBBoost';
+// Never hardcode credentials here — this file is committed and this URI points
+// at the PRODUCTION cluster. Pass it in at run time:
+//   MONGODB_URI="mongodb://..." node scripts/seed-superadmin.mjs
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) {
+  console.error('MONGODB_URI is not set. Prefix the command with MONGODB_URI="..."');
+  process.exit(1);
+}
 
 const UserSchema = new mongoose.Schema(
   {

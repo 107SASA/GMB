@@ -47,7 +47,7 @@ export function OnboardingWizard() {
         <div className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center shadow-sm">
           <Rocket className="text-slate-900 w-4 h-4" />
         </div>
-        <span className="text-lg font-bold tracking-tight text-slate-900">GMBBoost</span>
+        <span className="text-lg font-bold tracking-tight text-slate-900">Growwmatic AI</span>
       </div>
 
       <div className="w-full max-w-2xl">

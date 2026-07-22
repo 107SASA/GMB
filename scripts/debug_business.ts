@@ -1,5 +1,16 @@
 import mongoose from 'mongoose';
-const MONGODB_URI = "mongodb+srv://ishantoraskar07_db_user:pTK7ExeS3IYWVfHW@gmbboost.bnnszbl.mongodb.net/gmbboost?retryWrites=true&w=majority&appName=GMBBoost";
+
+// Never hardcode credentials here — this file is committed. Pass the URI in:
+//   MONGODB_URI="mongodb+srv://..." npx tsx scripts/debug_business.ts
+function requireMongoUri(): string {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    console.error('MONGODB_URI is not set. Prefix the command with MONGODB_URI="..."');
+    process.exit(1);
+  }
+  return uri;
+}
+const MONGODB_URI = requireMongoUri();
 
 async function run() {
   await mongoose.connect(MONGODB_URI);

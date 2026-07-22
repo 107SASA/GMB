@@ -8,7 +8,7 @@ const testimonials = [
   {
     name: "Rajesh Kumar",
     business: "RK Dental Clinic",
-    quote: "GMBBoost AI transformed our local ranking. We went from page 3 to the top 3 in just 2 weeks. The AI review replies are a lifesaver!",
+    quote: "Growwmatic AI transformed our local ranking. We went from page 3 to the top 3 in just 2 weeks. The AI review replies are a lifesaver!",
     rating: 5
   },
   {
@@ -72,8 +72,11 @@ export function FinalCTA() {
           <h2 className="text-4xl md:text-6xl font-extrabold text-white mb-8">
             Ready to Grow Your <br /> Local Business Using AI?
           </h2>
+          {/* Copy must match what a signup actually gets. There is no 14-day
+              trial — /api/onboarding sets trialStatus.isActive = false; new
+              users get the freemium audit gate (one free audit, then upgrade). */}
           <p className="text-indigo-100 text-lg md:text-xl max-w-2xl mx-auto mb-12">
-            Join 500+ businesses already automating their growth. Start your 14-day free trial today.
+            Run a free audit of your Google Business Profile in minutes. No credit card required.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link href="/onboarding" className="w-full sm:w-auto px-10 py-5 bg-white text-slate-900 rounded-2xl font-bold hover:bg-slate-50 hover:scale-105 transition-all shadow-xl">

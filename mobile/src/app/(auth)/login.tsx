@@ -57,7 +57,7 @@ export default function LoginScreen() {
             </LinearGradient>
             <View className="items-center gap-1">
               <Text className="text-[32px] font-extrabold tracking-tight text-white">
-                GMB Boost
+                Growwmatic AI
               </Text>
               <Text className="text-base text-zinc-400">
                 Grow your business, from your pocket
@@ -95,7 +95,7 @@ export default function LoginScreen() {
           </View>
 
           <Text className="mt-10 text-center text-xs text-zinc-500">
-            Accounts are managed on the GMB Boost website.
+            Accounts are managed on the Growwmatic AI website.
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>

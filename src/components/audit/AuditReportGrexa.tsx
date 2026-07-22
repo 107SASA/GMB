@@ -778,7 +778,7 @@ export default function AuditReportGrexa({
           </button>
         </div>
         <div className="px-8 py-2.5 flex items-center justify-between bg-black/20">
-          <span className="text-xs text-indigo-200/70">GMBBoost · AI-Powered Google Business Growth Platform</span>
+          <span className="text-xs text-indigo-200/70">Growwmatic AI · AI-Powered Google Business Growth Platform</span>
         </div>
       </div>
 

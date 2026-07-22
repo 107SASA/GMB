@@ -1,5 +1,8 @@
 import mongoose from 'mongoose';
-const MONGODB_URI = "mongodb+srv://ishantoraskar07_db_user:pTK7ExeS3IYWVfHW@gmbboost.bnnszbl.mongodb.net/gmbboost?retryWrites=true&w=majority&appName=GMBBoost";
+
+// Never hardcode credentials here — this file is committed. Pass the URI in:
+//   MONGODB_URI="mongodb+srv://..." npx tsx scripts/find_user.ts
+const MONGODB_URI = process.env.MONGODB_URI;
 
 async function run() {
   if (!MONGODB_URI) {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GooglePlacesService } from '@/services/google/places';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 
 // Resolves a Google Maps / GBP URL to the same place-details shape that
 // /api/google/place-details returns, enabling the "paste a URL" onboarding path.
@@ -11,19 +12,62 @@ import { GooglePlacesService } from '@/services/google/places';
 //   https://maps.google.com/maps?q=NAME
 //   https://www.google.com/maps?cid=<cid>   (cid lookup → name search fallback)
 
-async function expandUrl(url: string): Promise<string> {
+// Hostnames this route is willing to make a server-side request to. Checked on
+// the initial URL *and* on every redirect hop.
+const ALLOWED_HOSTS = new Set([
+  'maps.app.goo.gl',
+  'goo.gl',
+  'www.google.com',
+  'google.com',
+  'maps.google.com',
+]);
+
+function isAllowedHost(url: string): boolean {
   try {
-    const res = await fetch(url, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-      // Signal abort after 5s so we don't hang the request
-      signal: AbortSignal.timeout(5000),
-    });
-    return res.url; // final URL after all redirects
+    const parsed = new URL(url);
+    // Block file:, gopher:, etc. — only real web requests.
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+    return ALLOWED_HOSTS.has(parsed.hostname.toLowerCase());
   } catch {
-    return url; // return original if expansion fails
+    return false;
   }
+}
+
+/**
+ * Expands a Google short link to its final URL.
+ *
+ * Redirects are followed MANUALLY so the hostname can be re-validated at every
+ * hop. With `redirect: 'follow'` a goo.gl link could bounce the server to an
+ * internal address (e.g. the 169.254.169.254 cloud-metadata endpoint) and this
+ * route would happily fetch it — a public SSRF. Every hop must stay on an
+ * allow-listed Google host.
+ */
+async function expandUrl(url: string): Promise<string> {
+  let current = url;
+
+  for (let hop = 0; hop < 5; hop++) {
+    if (!isAllowedHost(current)) return url;
+
+    try {
+      const res = await fetch(current, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        // Signal abort after 5s so we don't hang the request
+        signal: AbortSignal.timeout(5000),
+      });
+
+      const location = res.headers.get('location');
+      if (!location) return current;
+
+      // `location` may be relative — resolve against the current URL.
+      current = new URL(location, current).toString();
+    } catch {
+      return url; // return original if expansion fails
+    }
+  }
+
+  return current;
 }
 
 function extractPlaceNameFromUrl(url: string): string | null {
@@ -43,12 +87,31 @@ function extractPlaceNameFromUrl(url: string): string | null {
   }
 }
 
+// Matches on the parsed HOSTNAME, not anywhere in the raw string. The previous
+// unanchored regex meant "http://169.254.169.254/?x=maps.app.goo.gl" counted as
+// a short link and got fetched server-side.
 function isShortUrl(url: string): boolean {
-  return /maps\.app\.goo\.gl|goo\.gl\/maps/i.test(url);
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === 'maps.app.goo.gl' || host === 'goo.gl';
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(req: Request) {
   try {
+    // Unauthenticated by necessity — the public signup wizard calls this before
+    // the account exists. IP rate limit protects GOOGLE_MAPS_API_KEY billing
+    // and caps outbound fetches from this endpoint.
+    const rl = checkRateLimit(`places-resolve:${getClientIp(req)}`, 30, 5 * 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many requests' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
+      );
+    }
+
     const { url } = await req.json();
     if (!url || typeof url !== 'string') {
       return NextResponse.json({ success: false, error: 'url is required' }, { status: 400 });

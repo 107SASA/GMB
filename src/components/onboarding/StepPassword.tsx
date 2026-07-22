@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { OnboardingData } from './types';
-import { ArrowRight, Lock } from 'lucide-react';
+import { ArrowRight, Lock, AlertCircle } from 'lucide-react';
 
 interface Props {
   data: OnboardingData;
@@ -50,11 +50,6 @@ export default function StepPassword({ data, updateData, onNext, onBack }: Props
         <h2 className="text-3xl font-bold text-slate-900 mb-2">Secure your account</h2>
         <p className="text-slate-500 mb-8">Create a strong password for your new workspace.</p>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-sm font-medium border border-red-100">
-            {error}
-          </div>
-        )}
 
         <div className="space-y-5">
           <div>
@@ -81,7 +76,20 @@ export default function StepPassword({ data, updateData, onNext, onBack }: Props
         </div>
       </div>
 
-      <div className="flex justify-between items-center pt-8 border-t border-slate-100">
+      {/* Error sits directly above the Continue button so it is visible right
+          where the user just clicked, instead of at the top of the form. */}
+      {error && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="mt-4 p-4 bg-red-50 text-red-700 rounded-xl text-sm font-medium border border-red-200 flex items-start gap-3"
+        >
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="flex justify-between items-center pt-6 border-t border-slate-100">
         <button onClick={onBack} className="text-slate-500 font-bold hover:text-slate-900 transition-colors px-4 py-2">
           Back
         </button>

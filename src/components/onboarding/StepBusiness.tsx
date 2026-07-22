@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { OnboardingData } from './types';
-import { ArrowRight, MapPin, Search, Loader2, Store, CheckCircle2, Link } from 'lucide-react';
+import { ArrowRight, MapPin, Search, Loader2, Store, CheckCircle2, Link, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Props {
@@ -91,7 +91,14 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
         const d = json.data;
         const generatedReviewLink = `https://search.google.com/local/writereview?placeid=${placeId}`;
 
-        // DO NOT auto-fill category, description, area, city, state, country
+        // Autofill everything Google can tell us. area/city/state/country come
+        // from address_components (see services/google/places.ts) and category
+        // from the place `types`. The user still reviews all of it below — the
+        // green "Connected to Google Maps" banner prompts them to verify.
+        // `description` stays manual: Places has no equivalent field.
+        //
+        // `|| data.x` keeps any value the user already typed rather than
+        // blanking it when Google has no answer for that component.
         updateData({
           businessName: d.name || mainText,
           address: d.formattedAddress || '',
@@ -104,10 +111,14 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
           rating: d.rating || 0,
           totalReviews: d.totalReviews || 0,
           gbpUrl: generatedReviewLink,
-          // Extract basic location strings if possible, but leave it to the user to verify
-          city: d.city || '',
-          state: d.state || '',
-          country: d.country || ''
+          area: d.area || data.area || '',
+          city: d.city || data.city || '',
+          state: d.state || data.state || '',
+          country: d.country || data.country || '',
+          category: d.primaryCategory || data.category || '',
+          // Google only writes editorial_summary for a minority of listings,
+          // so this is usually empty and the user writes their own.
+          description: d.editorialSummary || data.description || '',
         });
         
         setManualMode(true);
@@ -168,12 +179,6 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
         </div>
         <h2 className="text-3xl font-bold text-slate-900 mb-2">Find your business</h2>
         <p className="text-slate-500 mb-8">Search for your business on Google Maps to autofill your details instantly.</p>
-
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-sm font-medium border border-red-100">
-            {error}
-          </div>
-        )}
 
         {!manualMode && (
           <div className="relative z-50">
@@ -317,7 +322,11 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
                   type="text"
                   value={data.category}
                   onChange={e => updateData({ category: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none capitalize"
+                  /* No `capitalize` class here: CSS text-transform also applies
+                     to the placeholder, which rendered it as "E.G. Dental Clinic".
+                     deriveCategory() in services/google/places.ts already returns
+                     Title Case. */
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
                   placeholder="e.g. Dental Clinic"
                 />
               </div>
@@ -452,7 +461,23 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
         )}
       </div>
 
-      <div className="flex justify-between items-center pt-8 border-t border-slate-100 mt-auto">
+      {/* Errors sit here — directly above the Continue button and OUTSIDE the
+          scrolling content area. Previously this lived at the top of the form:
+          the user would scroll to the bottom, hit Continue, and the message
+          would render off-screen above them, making it look like the button
+          simply did nothing. */}
+      {error && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="mt-4 p-4 bg-red-50 text-red-700 rounded-xl text-sm font-medium border border-red-200 flex items-start gap-3"
+        >
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="flex justify-between items-center pt-6 border-t border-slate-100 mt-auto">
         <button onClick={onBack} className="text-slate-500 font-bold hover:text-slate-900 transition-colors px-4 py-2">
           Back
         </button>

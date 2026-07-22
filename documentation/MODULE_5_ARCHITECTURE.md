@@ -1,7 +1,7 @@
 # Module 5: AI Lead Manager - Architecture
 
 ## Overview
-The AI Lead Manager replaces generic, disconnected CRM solutions by natively integrating into the GMB Optimizer ecosystem. It utilizes `@dnd-kit` for a premium, lightweight Kanban interface and leverages our existing MongoDB and Inngest queues for robust, scalable lead automation.
+The AI Lead Manager replaces generic, disconnected CRM solutions by natively integrating into the Growwmatic AI ecosystem. It utilizes `@dnd-kit` for a premium, lightweight Kanban interface and leverages our existing MongoDB and Inngest queues for robust, scalable lead automation.
 
 ## Database Models
 - **Lead**: Core schema containing the prospect's profile, contact info, pipeline stage, custom fields, and AI scoring metrics (`aiLeadScore`, `aiInsights`). Isolated via `tenantId`.

@@ -1,8 +1,8 @@
 /**
- * One-time script: provisions the "GMBBoost platform" as its own Business
+ * One-time script: provisions the "Growwmatic AI platform" as its own Business
  * record so the WhatsApp AI Agent — already 100% business-agnostic and
  * data-driven (business is resolved purely by the inbound WhatsApp number,
- * see src/app/api/whatsapp/webhook/route.ts) — can run as GMBBoost's own
+ * see src/app/api/whatsapp/webhook/route.ts) — can run as Growwmatic AI's own
  * sales & support assistant instead of a customer's.
  *
  * This does NOT touch any AI logic, webhook code, or the DB schema. It only
@@ -57,16 +57,25 @@ const BusinessAIConfig = mongoose.models.BusinessAIConfig || mongoose.model(
   new mongoose.Schema({}, { strict: false, collection: 'businessaiconfigs' })
 );
 
-const SYSTEM_PROMPT = `You are the GMBBoost platform's own AI sales & support assistant, chatting on WhatsApp with prospective and existing GMBBoost customers (business owners considering or using GMBBoost's Google Business Profile / reputation / AI marketing platform). You are NOT representing an individual local business — you represent GMBBoost itself.
+// Record names for the platform's own Organization/Business. The LEGACY_*
+// values are the pre-rebrand names; they are still matched on lookup so this
+// script stays idempotent against a database seeded before the rename.
+const ORG_NAME = 'Growwmatic AI (Platform)';
+const LEGACY_ORG_NAME = 'GMBBoost (Platform)';
+const BUSINESS_NAME = 'Growwmatic AI (Platform Sales)';
+const LEGACY_BUSINESS_NAME = 'GMBBoost (Platform Sales)';
+
+// ⚠️ PRICING IN THIS PROMPT IS STALE — see the note above the plan list below.
+const SYSTEM_PROMPT = `You are the Growwmatic AI platform's own AI sales & support assistant, chatting on WhatsApp with prospective and existing Growwmatic AI customers (business owners considering or using Growwmatic AI's Google Business Profile / reputation / AI marketing platform). You are NOT representing an individual local business — you represent Growwmatic AI itself.
 
 Your goals, in order:
 1. Understand what the prospect needs and answer platform questions (features, how it works, onboarding, basic troubleshooting).
 2. Qualify the lead: find out their business name, industry, and what problem they're trying to solve (rankings, reviews, content, leads).
 3. Explain the right plan for their needs using ONLY the real plan details below — never invent pricing or features.
 4. Offer to book a demo call when the prospect seems ready or asks for one.
-5. If a question is billing-sensitive, technical/account-specific, or you're unsure, say a member of the GMBBoost team will follow up, and continue the conversation normally — a human can take over this chat at any time from the dashboard.
+5. If a question is billing-sensitive, technical/account-specific, or you're unsure, say a member of the Growwmatic AI team will follow up, and continue the conversation normally — a human can take over this chat at any time from the dashboard.
 
-GMBBoost plans (India pricing, monthly):
+Growwmatic AI plans (India pricing, monthly):
 - Free: Google Business Profile ranking tools only.
 - Pro (₹1,999/mo): Google ranking tools + reputation/review management + AI content studio.
 - Enterprise (₹4,999/mo): everything in Pro, plus this AI WhatsApp sales agent and marketing automation.
@@ -86,26 +95,43 @@ async function main() {
   }
 
   // 1. Organization (owned by the Super Admin, same shape onboarding creates)
-  let org = await Organization.findOne({ name: 'GMBBoost (Platform)', ownerId: superAdmin._id });
+  //
+  // Rebrand note: these names are the idempotency keys. An earlier run of this
+  // script may have created them under the old 'GMBBoost (…)' names, so we look
+  // up BOTH and rename in place — otherwise a re-run would create a duplicate
+  // Organization/Business rather than updating the existing one.
+  let org = await Organization.findOne({
+    name: { $in: [ORG_NAME, LEGACY_ORG_NAME] },
+    ownerId: superAdmin._id,
+  });
   if (!org) {
     org = await Organization.create({
-      name: 'GMBBoost (Platform)',
+      name: ORG_NAME,
       ownerId: superAdmin._id,
       subscriptionPlan: 'Enterprise',
       status: 'Active',
     });
     console.log(`✅ Created Organization ${org._id}`);
   } else {
+    if (org.name !== ORG_NAME) {
+      org.name = ORG_NAME;
+      await org.save();
+      console.log(`↻ Renamed Organization ${org._id} → "${ORG_NAME}"`);
+    }
     console.log(`↺ Organization already exists (${org._id})`);
   }
 
-  // 2. Business — represents GMBBoost itself. Upsert by (userId, name) so
-  //    re-running this script is safe and idempotent.
-  let business = await Business.findOne({ userId: superAdmin._id, name: 'GMBBoost (Platform Sales)' });
+  // 2. Business — represents Growwmatic AI itself. Upsert by (userId, name) so
+  //    re-running this script is safe and idempotent. Matches the legacy name
+  //    too, so a pre-rebrand record is renamed rather than duplicated.
+  let business = await Business.findOne({
+    userId: superAdmin._id,
+    name: { $in: [BUSINESS_NAME, LEGACY_BUSINESS_NAME] },
+  });
   const businessFields = {
-    name: 'GMBBoost (Platform Sales)',
+    name: BUSINESS_NAME,
     category: 'SaaS / Software',
-    description: "GMBBoost's own sales & support line — not a customer business.",
+    description: "Growwmatic AI's own sales & support line — not a customer business.",
     address: 'Remote',
     country: 'India',
     organizationId: org._id,

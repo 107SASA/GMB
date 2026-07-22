@@ -1,7 +1,7 @@
 import AuditResultsDashboard from '@/components/audit/AuditResultsDashboard';
 
 export const metadata = {
-  title: 'Audit Results | GMB Optimizer',
+  title: 'Audit Results | Growwmatic AI',
   description: 'View your AI-powered Google Business Profile audit results.',
 };
 

@@ -11,7 +11,7 @@ export function Footer() {
               <Rocket className="text-white w-5 h-5" />
             </div>
             <span className="text-xl font-bold tracking-tight text-slate-900">
-              GMB<span className="text-primary">Boost</span> AI
+              Groww<span className="text-primary">matic</span> AI
             </span>
           </Link>
           <p className="text-slate-500 text-sm leading-relaxed mb-6">

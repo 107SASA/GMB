@@ -168,7 +168,7 @@ export function Sidebar() {
               <Rocket className="text-primary w-5 h-5" />
             </div>
             <span className="text-lg font-bold tracking-tight text-slate-900">
-              GMB<span className="text-primary">Boost</span>
+              Groww<span className="text-primary">matic</span> AI
             </span>
           </Link>
 
@@ -356,7 +356,7 @@ export function Sidebar() {
               <Rocket className="text-primary w-5 h-5" />
             </div>
             <span className="text-lg font-bold tracking-tight text-slate-900">
-              GMB<span className="text-primary">Boost</span>
+              Groww<span className="text-primary">matic</span> AI
             </span>
           </Link>
 

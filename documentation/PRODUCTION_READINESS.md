@@ -1,9 +1,18 @@
-# Production Readiness — GMBBoost @ growwmatics.com
+# Production Readiness — Growwmatic AI @ growwmatics.com
 
 **Status as of 2026-07-22:** Deployed and serving at https://growwmatics.com.
-Infrastructure is healthy. **Not yet safe or complete as a commercial SaaS** —
-4 security holes are live on the public internet, and the two things customers
-pay for (GBP publishing, WhatsApp messaging) are currently mocked or sandboxed.
+Infrastructure is healthy.
+
+- ✅ **Security holes: fixed in code** (commit `b60925d`) — 4 unauthenticated
+  endpoints plus an SSRF found during the fix. **Not yet deployed**; the droplet
+  still runs the vulnerable build until you pull and rebuild (§2.6).
+- ✅ **Rebrand + truthful plan/marketing copy** (commit `4618b67`) — see §4b.
+- ⚠️ **Still not sellable**: the two things customers pay for — GBP publishing
+  and WhatsApp messaging — remain mocked and sandboxed (§3.1, §3.2), and
+  Razorpay is on test keys (§3.3).
+
+**Outstanding actions that cannot be done in code:** rotate the two Atlas
+passwords (§2.3), deploy (§2.6), and start Google OAuth verification (§3.4).
 
 ---
 
@@ -37,7 +46,7 @@ account configuration, not server work.
 > Item 2.3 additionally requires rotating the passwords in Atlas by hand; the
 > code change alone does not invalidate the credentials already in Git history.
 
-### 2.1 `/api/automation/trigger` is unauthenticated
+### 2.1 `/api/automation/trigger` is unauthenticated — FIXED
 `src/app/api/automation/trigger/route.ts:12` — the `return` inside the auth
 check is commented out, so the `if` body is empty and execution always falls
 through:
@@ -52,13 +61,16 @@ Anyone can `POST https://growwmatics.com/api/automation/trigger` in a loop and
 drive `checkScheduledPosts()` — burning Groq and SerpAPI credits and hammering
 Atlas. **Fix: uncomment the return.**
 
-### 2.2 `/api/posts/[id]` PUT and DELETE are unauthenticated
+### 2.2 `/api/posts/[id]` PUT and DELETE are unauthenticated — FIXED
 `src/app/api/posts/[id]/route.ts` calls `Post.findByIdAndUpdate` / delete with
 no session check and no tenant scoping. Any post ObjectId can be rewritten or
 destroyed by anyone, across tenants. **Fix: add `requireBusinessContext()` and
 scope the query by `businessId`.**
 
-### 2.3 Live Atlas credentials in Git history
+### 2.3 Live Atlas credentials in Git history — PARTLY FIXED
+> Literals removed from all 5 files (now read `process.env.MONGODB_URI`).
+> **The passwords themselves are still valid and still in GitHub history —
+> rotating them in Atlas is a manual step nobody has done yet.**
 Five tracked files contain hardcoded connection strings for **two clusters**:
 
 | File | User |
@@ -221,7 +233,8 @@ call, not a technical one.
 - **Legal pages**: privacy policy, terms of service, refund/cancellation policy.
   Not optional — Google OAuth verification requires the first two, and Razorpay
   requires a refund policy for Indian merchants.
-- **`package.json` name is `"temp-app"`**; no `engines` field pinning Node.
+- ✅ ~~`package.json` name is `"temp-app"`~~ — renamed to `growwmatic-ai`,
+  version `1.0.0`, `engines` pins node `>=20.9.0`, `typecheck` script added.
 - **`node-cron`** is installed but never imported — dead dependency.
 - **Mobile app** (`mobile/`): `EXPO_PUBLIC_API_URL` is set for production but the
   app has not been built or submitted.
@@ -232,8 +245,9 @@ call, not a technical one.
 
 ## 6. Recommended order
 
-1. **Today** — §2.1, §2.2 (code, ~1 hour), then rotate Atlas passwords (§2.3)
-   and restrict the Maps key (§2.4). Redeploy.
+1. ✅ ~~Code fixes for §2.1–§2.5~~ — done (`b60925d`). **Remaining today:**
+   deploy them (§2.6), rotate the two Atlas passwords (§2.3), and restrict the
+   Maps key by referrer + API in Cloud Console (§2.4).
 2. **Day 1** — Start Google OAuth verification (§3.4). It gates the core feature
    and has the longest wait. Publish privacy policy + terms first, since
    verification requires them.
@@ -257,8 +271,17 @@ are encrypted at rest with AES-256-GCM, the Mongoose pool is properly tuned,
 boot-time env validation catches misconfiguration, and `gbpSafety.ts` is a
 genuinely good piece of defensive design. The deployment is clean.
 
-But **this cannot take a paying customer today.** Four endpoints are exploitable,
-the flagship GBP-publishing feature writes to nothing, WhatsApp cannot reach real
-phone numbers, and Razorpay cannot charge a card. Realistically **2–3 weeks** of
+But **this cannot take a paying customer today.** The four exploitable endpoints
+are now fixed in code but still live on the droplet until you deploy; the
+flagship GBP-publishing feature writes to nothing; WhatsApp cannot reach real
+phone numbers; and Razorpay cannot charge a card. Realistically **2–3 weeks** of
 work plus the Google verification wait, which runs in parallel and is the
 critical path.
+
+## 8. Change log
+
+| Date | Commit | Change |
+|---|---|---|
+| 2026-07-21 | `3f8cb77` | Prod-readiness: single-plan billing, Meta WhatsApp migration, GBP write guard, boot-time env validation, rate limiter, security headers |
+| 2026-07-22 | `b60925d` | Security: closed 4 unauthenticated endpoints + SSRF in resolve-gbp-url |
+| 2026-07-22 | `4618b67` | Rebrand to Growwmatic AI; removed fake plan tiers and the false trial claim; plan label mapping |

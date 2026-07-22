@@ -1523,3 +1523,97 @@ export const gbpSyncWorker = inngest.createFunction(
     });
   }
 );
+
+/**
+ * Deletes signups that were started but never actually used, so the database
+ * does not slowly fill with dead accounts from abandoned or bot signups.
+ *
+ * Two rules, both deliberately conservative:
+ *   1. Never confirmed their email after 7 days  -> nothing of value was created.
+ *   2. Confirmed, but never ran their one free audit after 30 days -> they
+ *      signed up and walked away before receiving any value.
+ *
+ * A user who DID run their free report is never touched, paid or not — they had
+ * real value from us and are a live lead worth keeping.
+ *
+ * Hard safety rails (a bug here deletes paying customers):
+ *   - SUPER_ADMIN accounts are excluded outright.
+ *   - Only accounts carrying `freemiumAuditGate.active` are eligible, which is
+ *     set exclusively on brand-new signups — every pre-existing account
+ *     predates that field and is therefore invisible to this job.
+ *   - Anyone with a paid/active subscription is excluded.
+ */
+export const cleanupAbandonedSignups = inngest.createFunction(
+  { id: "cleanup-abandoned-signups", triggers: [{ cron: "0 4 * * *" }] }, // daily 04:00
+  async ({ step }) => {
+    const { default: dbConnect } = await import("@/lib/mongodb");
+    const { default: User } = await import("@/models/User");
+    const { default: Organization } = await import("@/models/Organization");
+    const { default: BusinessModel } = await import("@/models/Business");
+    const { default: Subscription } = await import("@/models/Subscription");
+    const { default: Audit } = await import("@/models/Audit");
+    await dbConnect();
+
+    const now = Date.now();
+    const UNVERIFIED_AFTER = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const NO_AUDIT_AFTER = new Date(now - 30 * 24 * 60 * 60 * 1000);
+
+    const candidates = await step.run("find-abandoned", async () => {
+      const base = {
+        role: { $ne: "SUPER_ADMIN" },
+        "freemiumAuditGate.active": true,
+      };
+
+      const unverified = await User.find(
+        { ...base, isEmailVerified: false, createdAt: { $lt: UNVERIFIED_AFTER } },
+        { _id: 1, email: 1 }
+      ).lean();
+
+      const neverAudited = await User.find(
+        {
+          ...base,
+          isEmailVerified: true,
+          "freemiumAuditGate.auditUsed": { $ne: true },
+          createdAt: { $lt: NO_AUDIT_AFTER },
+        },
+        { _id: 1, email: 1 }
+      ).lean();
+
+      return [...unverified, ...neverAudited].map((u: any) => ({
+        id: u._id.toString(),
+        email: u.email,
+      }));
+    });
+
+    if (candidates.length === 0) return { deleted: 0 };
+
+    const deleted = await step.run("delete-abandoned", async () => {
+      const removed: string[] = [];
+
+      for (const c of candidates) {
+        // Last-line guard: never remove anyone who has paid, and never anyone
+        // who somehow has an audit on record despite the flag.
+        const paid = await Subscription.findOne({
+          userId: c.id,
+          billingStatus: "Active",
+          planType: { $ne: "Free" },
+        }).lean();
+        if (paid) continue;
+
+        const hasAudit = await Audit.findOne({ userId: c.id }).select("_id").lean();
+        if (hasAudit) continue;
+
+        await BusinessModel.deleteMany({ userId: c.id });
+        await Organization.deleteMany({ ownerId: c.id });
+        await Subscription.deleteMany({ userId: c.id });
+        await User.deleteOne({ _id: c.id });
+        removed.push(c.email);
+      }
+
+      return removed;
+    });
+
+    console.log(`[cleanup-abandoned-signups] removed ${deleted.length} account(s)`);
+    return { deleted: deleted.length, emails: deleted };
+  }
+);

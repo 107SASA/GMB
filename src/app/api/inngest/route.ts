@@ -21,7 +21,8 @@ import {
   processDemoBooking,
   generateAuditJob,
   gbpNightlySyncScheduler,
-  gbpSyncWorker
+  gbpSyncWorker,
+  cleanupAbandonedSignups
 } from "@/services/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
@@ -48,5 +49,6 @@ export const { GET, POST, PUT } = serve({
     generateAuditJob,
     gbpNightlySyncScheduler,
     gbpSyncWorker,
+    cleanupAbandonedSignups,
   ],
 });

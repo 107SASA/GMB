@@ -130,7 +130,10 @@ const BusinessSchema: Schema = new Schema(
     website: { type: String },
     rating: { type: Number, default: 0 },
     reviewCount: { type: Number, default: 0 },
-    placeId: { type: String, unique: true, sparse: true },
+    // NOT globally unique — see the compound index at the bottom of this file.
+    // A single Google Business Profile can legitimately be managed by more than
+    // one tenant (the owner and their agency, for example).
+    placeId: { type: String, index: true },
     serpApiDataId: { type: String },
     photoCount: { type: Number },
     hasHours: { type: Boolean },
@@ -215,5 +218,28 @@ const BusinessSchema: Schema = new Schema(
 // almost every tenant query. Without these, those become collection scans.
 BusinessSchema.index({ userId: 1 });
 BusinessSchema.index({ organizationId: 1 });
+
+/**
+ * placeId is unique PER TENANT, not globally.
+ *
+ * It used to be `unique: true` on the field itself, which meant the first
+ * customer to connect a given Google Business Profile permanently blocked every
+ * other customer from connecting it — signup died with a raw
+ * "E11000 duplicate key error ... placeId_1". Two different accounts managing
+ * the same profile is legitimate (business owner + their agency), so the
+ * constraint belongs at the organization level: it still stops one tenant
+ * adding the same profile twice.
+ *
+ * partialFilterExpression (rather than `sparse`) so businesses without a
+ * placeId — manual entries — are excluded from the constraint entirely.
+ */
+BusinessSchema.index(
+  { organizationId: 1, placeId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { placeId: { $type: 'string' } },
+    name: 'org_placeId_unique',
+  }
+);
 
 export default mongoose.models.Business || mongoose.model<IBusiness>('Business', BusinessSchema);

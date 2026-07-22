@@ -54,7 +54,7 @@ function verifySignature(rawBody: string, signature: string | null):
   return { ok: true };
 }
 
-/** Razorpay subscription entity → the GMB Boost user it belongs to. */
+/** Razorpay subscription entity → the Growwmatic AI user it belongs to. */
 async function resolveUserId(subEntity: any): Promise<string | null> {
   const fromNotes = subEntity?.notes?.userId;
   if (typeof fromNotes === 'string' && fromNotes) return fromNotes;

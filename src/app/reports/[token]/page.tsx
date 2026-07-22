@@ -141,7 +141,7 @@ export default function PublicReportPage() {
           <div className="w-8 h-8 bg-violet-600 rounded-lg flex items-center justify-center">
             <Zap className="w-4 h-4 text-white" />
           </div>
-          <span className="font-bold text-slate-900">GMBBoost</span>
+          <span className="font-bold text-slate-900">Growwmatic AI</span>
           <span className="text-slate-300 mx-2">·</span>
           <span className="text-sm text-slate-500">Business Profile Audit Report</span>
         </div>
@@ -348,7 +348,7 @@ export default function PublicReportPage() {
         <div className="bg-violet-600 rounded-2xl p-8 text-center text-white">
           <h2 className="text-2xl font-bold mb-2">Ready to boost your Google ranking?</h2>
           <p className="text-violet-200 text-sm mb-6">
-            GMBBoost automates reviews, content, and GBP optimisation — so you show up first.
+            Growwmatic AI automates reviews, content, and GBP optimisation — so you show up first.
           </p>
           <a
             href="/"

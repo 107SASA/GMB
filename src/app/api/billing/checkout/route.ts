@@ -61,7 +61,7 @@ export async function POST() {
         key: getRazorpayKeyId(),
         subscriptionId: rpSubscription.id,
         planType: plan.planType,
-        name: 'GMB Boost',
+        name: 'Growwmatic AI',
         description: `${plan.displayName} — ₹${plan.priceInr}/${plan.billingCycle}`,
         prefill: {
           email: (auth.user as any).email ?? undefined,

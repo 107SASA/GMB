@@ -39,7 +39,7 @@ export function Footer() {
       </div>
       
       <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-slate-200 text-center text-slate-400 text-xs">
-        © {new Date().getFullYear()} GMBBoost AI. All rights reserved. Built for the future of local SEO.
+        © {new Date().getFullYear()} Growwmatic AI. All rights reserved. Built for the future of local SEO.
       </div>
     </footer>
   );

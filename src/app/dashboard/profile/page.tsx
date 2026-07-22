@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { planDisplayLabel, isPaidPlanLabel } from '@/lib/billing/planLabel';
 import {
   Eye,
   EyeOff,
@@ -310,14 +311,12 @@ export default function ProfilePage() {
             <div className="flex items-center gap-3">
               <span
                 className={`px-3 py-1 rounded-full text-sm font-bold ${
-                  subscription?.planType === 'Enterprise'
-                    ? 'bg-violet-100 text-violet-700'
-                    : subscription?.planType === 'Pro'
+                  isPaidPlanLabel(subscription?.planType)
                     ? 'bg-indigo-100 text-primary'
                     : 'bg-slate-100 text-slate-600'
                 }`}
               >
-                {subscription?.planType ?? 'Free'}
+                {planDisplayLabel(subscription?.planType)}
               </span>
               {(!subscription || subscription.planType === 'Free' || subscription.planType === 'Pro') && (
                 <a

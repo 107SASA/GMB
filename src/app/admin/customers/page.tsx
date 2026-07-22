@@ -1174,7 +1174,7 @@ function RecentDemoRequests() {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-        <h2 className="text-base font-bold text-slate-900">GMBBoost Demo Requests</h2>
+        <h2 className="text-base font-bold text-slate-900">Growwmatic AI Demo Requests</h2>
         <Link href="/admin/demo-bookings" className="text-sm font-semibold text-violet-600 hover:underline flex items-center gap-1">
           View All <ArrowRight className="w-3.5 h-3.5" />
         </Link>

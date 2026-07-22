@@ -8,7 +8,7 @@ import { ArrowRight, Play, Sparkles, Calendar } from "lucide-react";
 // agent takes over and the visitor lands in the CRM as a lead. Falls back to
 // the /book-demo form when no platform WhatsApp number is configured.
 const WHATSAPP_NUMBER = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '').replace(/[^\d]/g, '');
-const DEMO_MESSAGE = "Hi! I'd like to book a demo of GMBBoost.";
+const DEMO_MESSAGE = "Hi! I'd like to book a demo of Growwmatic AI.";
 const bookDemoHref = WHATSAPP_NUMBER
   ? `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(DEMO_MESSAGE)}`
   : '/book-demo';

@@ -352,7 +352,7 @@ export default function SettingsPage() {
           <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 flex gap-3 text-sm text-amber-800">
             <Info className="w-5 h-5 shrink-0 mt-0.5 text-amber-500" />
             <span>
-              Changes here update your <strong>GMBBoost profile</strong>. To update your live Google Business Profile, use the{' '}
+              Changes here update your <strong>Growwmatic AI profile</strong>. To update your live Google Business Profile, use the{' '}
               <strong>Google Business Profile dashboard</strong> directly.
             </span>
           </div>

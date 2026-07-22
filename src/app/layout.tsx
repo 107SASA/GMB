@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "GMBBoost AI | AI-Powered Google Business Growth Platform",
+  title: "Growwmatic AI | AI-Powered Google Business Growth Platform",
   description: "Automate your Google Business Profile, generate more reviews, convert leads instantly, and grow local visibility using AI.",
   keywords: ["Google Business Profile", "Local SEO", "AI Marketing", "WhatsApp Automation", "Business Growth"],
 };

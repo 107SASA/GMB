@@ -174,6 +174,48 @@ All 4 `/api/n8n/*` routes return HTTP 500.
 
 ---
 
+## 4b. Branding & truthful copy (2026-07-22)
+
+Product renamed **GMBBoost → Growwmatic AI** across 20 UI files, emails, PDF
+report headers, page titles and the mobile app. `tenantId = 'gmbboost-internal'`
+(`src/app/api/demo/route.ts:31`) was deliberately left alone — it is a stored DB
+identifier and renaming it would orphan existing demo-booking records.
+
+**Two renames must be done in the ADMIN UI, not in code** — the database record
+overrides the code fallback:
+
+| Where | Current live value | Action |
+|---|---|---|
+| Admin → Subscriptions | `displayName: "GMB Boost"`, `priceInr: 9999` | Rename to `Growwmatic AI` |
+| Admin → Settings | `platformName` | Set to `Growwmatic AI` |
+
+### Copy that did not match the product — fixed
+- **Onboarding step 8 (`StepModules.tsx`)** advertised three invented USD tiers
+  (Starter $49 / Growth $99 / Enterprise $299) and a 14-day free trial. Every
+  new signup saw pricing matching neither the pricing page nor Razorpay. Now
+  renders the single real plan, priced live from `/api/billing/plans`.
+- **"Join 500+ businesses… Start your 14-day free trial today"** (`SocialProof.tsx`)
+  — both halves were false. There is no trial: `/api/onboarding` explicitly sets
+  `trialStatus: { isActive: false }`, overriding the schema default. The real
+  model is the freemium audit gate (one free audit, then upgrade). Copy now
+  matches the "Start Free Audit" button beside it.
+- **Customer-facing `Pro` / `Enterprise` badges** in `/dashboard/billing` and
+  `/dashboard/profile` rendered the raw internal `planType`. They now go through
+  `src/lib/billing/planLabel.ts`, which maps any paid plan to the plan's display
+  name. The internal `'Pro'` value is unchanged — `planCatalog.ts` documents why
+  it must stay for the Subscription enum, featureGating and the mobile contract.
+  Admin pages still show the raw values on purpose, since legacy `Enterprise`
+  subscriptions may exist and admins need to see them.
+
+### ⚠️ Still outstanding: fabricated testimonials
+`src/components/sections/SocialProof.tsx` carries three invented testimonials
+with named individuals, named businesses and specific fake results ("page 3 to
+top 3 in 2 weeks", "engagement up 150%"), all rated 5 stars. These are live on a
+commercial site. Beyond the trust problem, fabricated endorsements are a
+consumer-protection / ASCI issue in India. **Replace with real customer quotes
+or remove the section.** Left in place pending a decision — it is a business
+call, not a technical one.
+
 ## 5. P3 — Commercial completeness
 
 - **Legal pages**: privacy policy, terms of service, refund/cancellation policy.

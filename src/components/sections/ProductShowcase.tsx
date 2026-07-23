@@ -60,14 +60,14 @@ export function ProductShowcase() {
 
           {/* Feature List */}
           <div className="space-y-8">
-            <h3 className="text-3xl font-bold text-slate-900">Smart CRM & WhatsApp Automation</h3>
+            <h3 className="text-3xl font-bold text-slate-900">Smart CRM & Lead Automation</h3>
             <p className="text-slate-500 leading-relaxed">
-              Our integrated CRM automatically categorizes leads coming from Google and WhatsApp, triggering personalized follow-ups that increase conversion by up to 300%.
+              Our integrated CRM automatically captures and categorizes leads coming from your Google Business Profile, triggering personalized follow-ups that increase conversion.
             </p>
             <ul className="space-y-4">
               {[
                 "Automated lead tagging",
-                "Instant WhatsApp notifications",
+                "Review request campaigns",
                 "Multi-location pipeline view",
                 "Performance tracking per agent"
               ].map((item, i) => (
@@ -89,14 +89,6 @@ export function ProductShowcase() {
             <p className="text-slate-500 leading-relaxed">
               Never worry about what to post again. Our AI generates a full month of local-optimized content based on your business category and goals.
             </p>
-            <div className="flex gap-4">
-              <button className="px-6 py-3 bg-white border border-slate-200 shadow-sm text-slate-700 rounded-xl hover:bg-slate-50 transition-colors">
-                View Calendar
-              </button>
-              <button className="px-6 py-3 text-primary font-bold">
-                Learn More →
-              </button>
-            </div>
           </div>
 
           <motion.div

@@ -13,6 +13,18 @@ import {
   Activity,
 } from 'lucide-react';
 
+type ProviderStatus = 'ok' | 'warning' | 'critical' | 'unconfigured' | 'error';
+
+interface ProviderHealth {
+  key: string;
+  name: string;
+  powers: string;
+  status: ProviderStatus;
+  detail: string;
+  usage?: { used: number; limit: number; left: number };
+  actionUrl?: string;
+}
+
 interface SystemHealthData {
   database: { status: 'healthy' | 'down' };
   jobs: { pendingJobs: number; failedJobs24h: number };
@@ -26,7 +38,60 @@ interface SystemHealthData {
     businessId?: string;
     createdAt: string;
   }>;
+  providers?: ProviderHealth[];
   fetchedAt: string;
+}
+
+const PROVIDER_STYLES: Record<ProviderStatus, { badge: string; label: string; card: string; bar: string }> = {
+  ok:           { badge: 'text-emerald-700 bg-emerald-50', label: 'Healthy',       card: 'border-slate-200',  bar: 'bg-emerald-500' },
+  warning:      { badge: 'text-amber-700 bg-amber-50',     label: 'Running low',   card: 'border-amber-300',  bar: 'bg-amber-500' },
+  critical:     { badge: 'text-red-700 bg-red-50',         label: 'Critical',      card: 'border-red-300',    bar: 'bg-red-500' },
+  error:        { badge: 'text-red-700 bg-red-50',         label: 'Check failed',  card: 'border-red-200',    bar: 'bg-red-400' },
+  unconfigured: { badge: 'text-slate-600 bg-slate-100',    label: 'Not set',       card: 'border-slate-200',  bar: 'bg-slate-400' },
+};
+
+function ProviderCard({ p }: { p: ProviderHealth }) {
+  const s = PROVIDER_STYLES[p.status];
+  const pct = p.usage && p.usage.limit > 0
+    ? Math.min(100, Math.max(0, Math.round((p.usage.left / p.usage.limit) * 100)))
+    : null;
+  return (
+    <div className={`bg-white rounded-2xl border p-5 shadow-sm ${s.card}`}>
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <div>
+          <div className="font-semibold text-slate-900">{p.name}</div>
+          <div className="text-xs text-slate-400">{p.powers}</div>
+        </div>
+        <span className={`shrink-0 text-xs font-bold px-2 py-1 rounded-lg ${s.badge}`}>{s.label}</span>
+      </div>
+      {p.usage && (
+        <div className="mt-3">
+          <div className="flex items-baseline justify-between mb-1">
+            <span className="text-2xl font-bold text-slate-900">{p.usage.left.toLocaleString()}</span>
+            <span className="text-xs text-slate-400">of {p.usage.limit.toLocaleString()} left</span>
+          </div>
+          {pct !== null && (
+            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className={`h-full rounded-full ${s.bar}`} style={{ width: `${pct}%` }} />
+            </div>
+          )}
+        </div>
+      )}
+      <p className={`text-xs mt-2 ${p.status === 'critical' || p.status === 'error' ? 'text-red-600 font-medium' : p.status === 'warning' ? 'text-amber-700' : 'text-slate-500'}`}>
+        {p.detail}
+      </p>
+      {p.actionUrl && (p.status === 'critical' || p.status === 'warning' || p.status === 'error' || p.status === 'unconfigured') && (
+        <a
+          href={p.actionUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block mt-2 text-xs font-semibold text-violet-600 hover:text-violet-700"
+        >
+          Manage / top up →
+        </a>
+      )}
+    </div>
+  );
 }
 
 function StatusBadge({ status }: { status: 'healthy' | 'down' }) {
@@ -154,6 +219,26 @@ export default function SystemHealthPage() {
               <StatusBadge status={data.database.status} />
             </div>
           </div>
+
+          {/* API Tokens & Quotas — surfaces metered credits (SerpApi) before
+              they run out and break the live site. */}
+          {data.providers && data.providers.length > 0 && (
+            <div className="mb-8">
+              <div className="flex items-center gap-2 mb-3">
+                <h2 className="font-semibold text-slate-900">API Tokens & Quotas</h2>
+                {data.providers.some((p) => p.status === 'critical' || p.status === 'error') && (
+                  <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg">
+                    <AlertTriangle className="w-3 h-3" /> Action needed
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {data.providers.map((p) => (
+                  <ProviderCard key={p.key} p={p} />
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Stat Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">

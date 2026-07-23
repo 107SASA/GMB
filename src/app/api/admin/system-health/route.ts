@@ -5,6 +5,9 @@ import JobQueue from '@/models/JobQueue';
 import MessageQueue from '@/models/MessageQueue';
 import AutomationLog from '@/models/AutomationLog';
 import mongoose from 'mongoose';
+import { getProviderHealth } from '@/lib/providerHealth';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const auth = await requireSuperAdmin();
@@ -22,6 +25,7 @@ export async function GET() {
       failedJobs24h,
       messageBacklog,
       recentErrors,
+      providers,
     ] = await Promise.all([
       mongoose.connection.db?.command({ ping: 1 }).then(() => true).catch(() => false),
       JobQueue.countDocuments({ status: 'PENDING' }),
@@ -35,6 +39,7 @@ export async function GET() {
         .limit(10)
         .select('workflow action error message businessId createdAt')
         .lean(),
+      getProviderHealth(),
     ]);
 
     return NextResponse.json({
@@ -44,6 +49,7 @@ export async function GET() {
         jobs: { pendingJobs, failedJobs24h },
         messages: { messageBacklog },
         recentErrors,
+        providers,
         fetchedAt: new Date().toISOString(),
       },
     });

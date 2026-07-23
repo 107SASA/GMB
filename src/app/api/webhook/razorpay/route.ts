@@ -2,8 +2,16 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import dbConnect from '@/lib/mongodb';
 import Subscription from '@/models/Subscription';
+import Business from '@/models/Business';
 import ProcessedWebhookEvent from '@/models/ProcessedWebhookEvent';
-import { activatePlan, cancelPlan, markPastDue } from '@/lib/billing/applyEntitlements';
+import {
+  activatePlan,
+  cancelPlan,
+  markPastDue,
+  activateBusinessPlan,
+  cancelBusinessPlan,
+  markBusinessPastDue,
+} from '@/lib/billing/applyEntitlements';
 import { isPaidPlanType } from '@/lib/billing/planCatalog';
 
 export const dynamic = 'force-dynamic';
@@ -68,6 +76,20 @@ async function resolveUserId(subEntity: any): Promise<string | null> {
   return null;
 }
 
+/** Razorpay subscription entity → the workspace (Business) it belongs to. */
+async function resolveBusinessId(subEntity: any): Promise<string | null> {
+  const fromNotes = subEntity?.notes?.businessId;
+  if (typeof fromNotes === 'string' && fromNotes) return fromNotes;
+
+  if (subEntity?.id) {
+    const doc = await Business.findOne({ razorpaySubscriptionId: subEntity.id })
+      .select('_id')
+      .lean() as any;
+    if (doc?._id) return doc._id.toString();
+  }
+  return null;
+}
+
 export async function POST(request: Request) {
   try {
     const rawBody = await request.text();
@@ -108,24 +130,32 @@ export async function POST(request: Request) {
           console.error(`[billing] ${eventType}: cannot resolve user/plan`, subEntity?.id);
           break;
         }
+        const currentPeriodEnd =
+          typeof subEntity.current_end === 'number'
+            ? new Date(subEntity.current_end * 1000)
+            : undefined;
         await activatePlan(userId, {
           razorpaySubscriptionId: subEntity.id,
-          currentPeriodEnd:
-            typeof subEntity.current_end === 'number'
-              ? new Date(subEntity.current_end * 1000)
-              : undefined,
+          currentPeriodEnd,
         });
+        // Per-workspace: unlock THIS workspace's dashboard.
+        const businessId = await resolveBusinessId(subEntity);
+        if (businessId) {
+          await activateBusinessPlan(businessId, { currentPeriodEnd });
+        } else {
+          console.warn(`[billing] ${eventType}: cannot resolve workspace for ${subEntity?.id}`);
+        }
         break;
       }
 
       case 'payment.failed':
       case 'subscription.halted': {
-        const userId = await resolveUserId(subEntity ?? { notes: paymentEntity?.notes });
-        if (!userId) {
-          console.warn(`[billing] ${eventType}: cannot resolve user — ignoring`);
-          break;
-        }
-        await markPastDue(userId);
+        const notesFallback = { notes: paymentEntity?.notes };
+        const userId = await resolveUserId(subEntity ?? notesFallback);
+        if (userId) await markPastDue(userId);
+        else console.warn(`[billing] ${eventType}: cannot resolve user — ignoring`);
+        const businessId = await resolveBusinessId(subEntity ?? notesFallback);
+        if (businessId) await markBusinessPastDue(businessId);
         break;
       }
 
@@ -133,11 +163,10 @@ export async function POST(request: Request) {
       case 'subscription.completed':
       case 'subscription.expired': {
         const userId = await resolveUserId(subEntity);
-        if (!userId) {
-          console.warn(`[billing] ${eventType}: cannot resolve user — ignoring`);
-          break;
-        }
-        await cancelPlan(userId);
+        if (userId) await cancelPlan(userId);
+        else console.warn(`[billing] ${eventType}: cannot resolve user — ignoring`);
+        const businessId = await resolveBusinessId(subEntity);
+        if (businessId) await cancelBusinessPlan(businessId);
         break;
       }
 

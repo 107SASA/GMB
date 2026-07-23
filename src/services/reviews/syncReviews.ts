@@ -22,14 +22,26 @@ export async function syncReviewsForBusiness(
 ): Promise<SyncResult> {
   await dbConnect();
 
+  const bid = new mongoose.Types.ObjectId(businessId);
+
+  // Reviews already stored for this business — passed to the provider so it can
+  // stop paginating once it reaches known reviews ("fetch only new"), turning a
+  // nightly re-sync from ~10 API calls into ~1. Empty on the first-ever sync, so
+  // the provider back-fills normally.
+  const existing = await Review.find({ businessId: bid })
+    .select('providerReviewId')
+    .lean() as Array<{ providerReviewId?: string }>;
+  const knownReviewIds = new Set(
+    existing.map((r) => r.providerReviewId).filter((id): id is string => !!id)
+  );
+
   const provider = getReviewProvider();
-  const fetchedReviews = await provider.fetchReviews(businessId);
+  const fetchedReviews = await provider.fetchReviews(businessId, { knownReviewIds });
 
   let criticalFound = false;
   // Rating + id of the last critical review seen — carried on the alert
   // event so push notifications can say "New {rating}★ review".
   let criticalDetails: { rating: number; reviewId: string } | null = null;
-  const bid = new mongoose.Types.ObjectId(businessId);
 
   for (const raw of fetchedReviews) {
     const sentimentResult = analyzeSentiment(raw.text, raw.rating);

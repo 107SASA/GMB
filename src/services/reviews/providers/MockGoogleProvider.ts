@@ -6,11 +6,22 @@ export interface ProviderReview {
   postedAt: string;
 }
 
+export interface FetchReviewsOptions {
+  /**
+   * providerReviewIds already stored for this business. When present and
+   * non-empty, providers may run in "fetch only new" mode: stop paginating as
+   * soon as an already-known review is reached (reviews are pulled newest-first),
+   * so a nightly re-sync costs ~1 API call instead of ~10.
+   */
+  knownReviewIds?: Set<string>;
+}
+
 export class MockGoogleProvider {
   /**
-   * Simulates fetching recent reviews from a Google Business Profile
+   * Simulates fetching recent reviews from a Google Business Profile.
+   * The mock ignores options (it returns a fixed small set).
    */
-  async fetchReviews(businessId: string): Promise<ProviderReview[]> {
+  async fetchReviews(businessId: string, _options?: FetchReviewsOptions): Promise<ProviderReview[]> {
     // Artificial delay
     await new Promise((resolve) => setTimeout(resolve, 1000));
 

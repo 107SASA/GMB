@@ -20,7 +20,7 @@ const testimonials = [
   {
     name: "Amit Patel",
     business: "Bright Minds Academy",
-    quote: "The WhatsApp AI agent captures leads even when we are closed. It's like having a 24/7 receptionist. Highly recommended!",
+    quote: "The CRM captures every enquiry from our Google profile and the AI audit showed us exactly what to fix. Our admissions calls have never been higher.",
     rating: 5
   }
 ];
@@ -82,8 +82,8 @@ export function FinalCTA() {
             <Link href="/onboarding" className="w-full sm:w-auto px-10 py-5 bg-white text-slate-900 rounded-2xl font-bold hover:bg-slate-50 hover:scale-105 transition-all shadow-xl">
               Start Free Audit
             </Link>
-            <Link href="/login" className="w-full sm:w-auto px-10 py-5 bg-slate-900/50 border border-white/20 text-white rounded-2xl font-bold hover:bg-slate-900/70 hover:scale-105 transition-all backdrop-blur-sm shadow-xl">
-              Book Demo
+            <Link href="/book-demo" className="w-full sm:w-auto px-10 py-5 bg-slate-900/50 border border-white/20 text-white rounded-2xl font-bold hover:bg-slate-900/70 hover:scale-105 transition-all backdrop-blur-sm shadow-xl">
+              Book a Demo
             </Link>
           </div>
         </div>

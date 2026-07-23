@@ -58,6 +58,8 @@ export default function ReviewsDashboard() {
   const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [upgradeMsg, setUpgradeMsg] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
 
   // Fast initial load from DB — no external Google call
   const loadFromDB = useCallback(async () => {
@@ -78,21 +80,32 @@ export default function ReviewsDashboard() {
 
   // Full sync from Google — "Sync Reviews" button only
   const fetchReviews = useCallback(async () => {
-    if (!activeBusiness?._id) return;
+    const businessId = activeBusiness?._id;
+    if (!businessId) return;
     setSyncing(true);
+    setSyncError(null);
+    setSyncNote(null);
     try {
       const res = await fetch('/api/reviews/fetch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessId: activeBusiness._id })
+        body: JSON.stringify({ businessId })
       });
       const data = await res.json();
-      if (data.success) {
+      if (res.ok && data.success) {
         setReviews(data.reviews || []);
         setAnalytics(data.analytics || null);
+        if ((data.synced ?? 0) === 0 && (data.reviews || []).length === 0) {
+          setSyncNote('No reviews were returned from Google for this business yet. If it has reviews on Google, try again shortly.');
+        }
+      } else {
+        // Surface the real reason (e.g. "SerpApi account is out of searches")
+        // instead of silently showing an empty dashboard.
+        setSyncError(data.error || 'Could not sync reviews. Please try again.');
       }
     } catch (err) {
       console.error(err);
+      setSyncError('Network error while syncing reviews. Please try again.');
     } finally {
       setSyncing(false);
     }
@@ -244,6 +257,18 @@ export default function ReviewsDashboard() {
           {syncing ? 'Syncing...' : 'Sync Reviews'}
         </button>
       </div>
+
+      {syncError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 flex items-start gap-2">
+          <span className="font-bold shrink-0">Sync failed:</span>
+          <span>{syncError}</span>
+        </div>
+      )}
+      {syncNote && !syncError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
+          {syncNote}
+        </div>
+      )}
 
       {analytics ? (
         <ReviewAnalyticsCards analytics={analytics} />

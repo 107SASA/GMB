@@ -2,37 +2,51 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken } from '@/lib/session';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
+import Business from '@/models/Business';
+import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
 
 /**
- * Freemium "Audit-Only Access" gate (Feature 1).
+ * Per-workspace subscription gate.
  *
  * Runs on the Node.js runtime (stable as of Next.js 16 — see next.config.ts
  * / package.json "next": "16.2.6") so it can safely query MongoDB via
  * Mongoose, which does not work in the Edge runtime.
  *
- * This is the single, central place that enforces "new users can only
- * access the GMB Audit module until they upgrade" for every navigation —
- * full page loads, client-side transitions, page refresh, browser
- * back/forward, and direct URL entry all go through this file before any
+ * This is the single, central place that enforces "each workspace (Business)
+ * needs its own active subscription before its dashboard is accessible" for
+ * every navigation — full page loads, client-side transitions, refresh,
+ * back/forward, and direct URL entry all pass through here before any
  * /dashboard/* page renders.
  *
- * Existing users are unaffected: `freemiumAuditGate` is only ever set (to
- * `{ active: true, ... }`) for brand-new signups in /api/onboarding. Any
- * user without that flag (i.e. every pre-existing account) sails through
- * untouched.
+ * Behaviour for the ACTIVE workspace (the one selected via the
+ * `activeBusinessId` cookie):
+ *  - SUPER_ADMIN                          -> full access (owner is never gated).
+ *  - subscriptionStatus === 'active'      -> full access.
+ *  - not active, free audit NOT used yet  -> only the audit / billing / upgrade
+ *                                            / profile pages; the free GBP audit
+ *                                            is the hook. Other pages redirect
+ *                                            to /dashboard/audit.
+ *  - not active, free audit already used  -> only billing / upgrade / profile;
+ *                                            everything else redirects to
+ *                                            /dashboard/upgrade to subscribe.
+ *
+ * Fails OPEN (lets the request through to the per-page auth) when there is no
+ * session, no active workspace selected, the workspace can't be found, or on a
+ * DB error — so a transient issue never locks the whole dashboard.
  */
 
 const SESSION_COOKIE = 'session';
+const ACTIVE_BUSINESS_COOKIE = 'activeBusinessId';
 
-// Pages a gated (audit-only) user is allowed to reach.
+// Pages an unsubscribed workspace can always reach.
 const ALLOWED_PREFIXES = [
   '/dashboard/audit',     // the GMB Audit module itself (list, form, results)
-  '/dashboard/billing',   // needed to actually upgrade
-  '/dashboard/upgrade',   // the "you've used your free audit" explainer page
+  '/dashboard/billing',   // needed to actually subscribe
+  '/dashboard/upgrade',   // the "subscribe to unlock this workspace" screen
   '/dashboard/profile',   // basic account/profile management stays available
 ];
 
-function isAllowedForGatedUser(pathname: string): boolean {
+function isAllowedForLockedWorkspace(pathname: string): boolean {
   return ALLOWED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
@@ -41,8 +55,8 @@ export default async function proxy(request: NextRequest) {
 
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   if (!token) {
-    // No session — let the existing per-page auth (requireClient /
-    // DashboardLayout's requireClient() redirect to /login) handle it.
+    // No session — let the existing per-page auth (DashboardLayout's
+    // requireClient() redirect to /login) handle it.
     return NextResponse.next();
   }
 
@@ -56,32 +70,49 @@ export default async function proxy(request: NextRequest) {
 
   try {
     await dbConnect();
-    const user = await User.findById(session.userId)
-      .select('role freemiumAuditGate')
-      .lean<{ role?: string; freemiumAuditGate?: { active?: boolean; auditUsed?: boolean } }>();
 
+    const user = await User.findById(session.userId)
+      .select('role subscriptionPlan')
+      .lean<{ role?: string; subscriptionPlan?: string }>();
     if (!user) return NextResponse.next();
+    // Owner keeps full access to every workspace (incl. their WhatsApp AI).
     if (user.role === 'SUPER_ADMIN') return NextResponse.next();
 
-    const gate = user.freemiumAuditGate;
-    if (!gate?.active) return NextResponse.next();
+    // Which workspace is the user acting on? Without a selected workspace we
+    // can't decide — fail open and let the page/UI drive workspace selection.
+    const businessId = request.cookies.get(ACTIVE_BUSINESS_COOKIE)?.value;
+    if (!businessId) return NextResponse.next();
 
-    if (isAllowedForGatedUser(pathname)) return NextResponse.next();
+    const business = await Business.findById(businessId)
+      .select('subscriptionStatus freeAuditUsed')
+      .lean<{ subscriptionStatus?: string; freeAuditUsed?: boolean }>();
+    if (!business) return NextResponse.next();
 
-    // Where a gated user gets sent when they hit a locked page:
-    //  - No report yet  -> /dashboard/audit, which auto-generates their free one
-    //    and then shows it with the pricing card alongside (AuditPaywallSidebar).
-    //  - Report already used -> straight to pricing. They have had the free
-    //    value; the next step is the decision to pay. Their report is still
-    //    readable at /dashboard/audit, which stays in ALLOWED_PREFIXES.
-    const destination = gate.auditUsed ? '/dashboard/upgrade' : '/dashboard/audit';
+    // Subscribed workspace (or an existing paid user) -> everything is open.
+    if (
+      isWorkspaceUnlocked({
+        subscriptionStatus: business.subscriptionStatus,
+        userSubscriptionPlan: user.subscriptionPlan,
+      })
+    ) {
+      return NextResponse.next();
+    }
+
+    // Unsubscribed workspace: gate everything except the allowed pages.
+    if (isAllowedForLockedWorkspace(pathname)) return NextResponse.next();
+
+    // Where a locked workspace gets sent:
+    //  - Free audit not used yet -> /dashboard/audit, where they can generate
+    //    the one free report (the hook).
+    //  - Free audit already used -> straight to the subscribe screen.
+    const destination = business.freeAuditUsed ? '/dashboard/upgrade' : '/dashboard/audit';
     if (pathname === destination) return NextResponse.next();
 
     return NextResponse.redirect(new URL(destination, request.url));
   } catch (err) {
     // DB/auth error — fail open to the existing per-page auth rather than
     // taking the whole dashboard down for every user.
-    console.error('[proxy] freemium gate check failed:', err);
+    console.error('[proxy] workspace subscription gate check failed:', err);
     return NextResponse.next();
   }
 }

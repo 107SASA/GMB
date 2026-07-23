@@ -2,17 +2,20 @@
 
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Lock, ArrowRight, Zap, CheckCircle2 } from 'lucide-react';
+import { Lock, Zap, CheckCircle2 } from 'lucide-react';
 import AuditPaywallSidebar from '@/components/audit/AuditPaywallSidebar';
+import { useBusiness } from '@/context/BusinessContext';
 
 export default function UpgradePage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const moduleName = searchParams.get('module');
+  const { activeBusiness } = useBusiness();
+  const workspaceName = activeBusiness?.name;
 
-  // Reached with no ?module= param → this is the freemium "you've used your
-  // one free audit report" gate (redirected here by src/proxy.ts once
-  // freemiumAuditGate.auditUsed is true), not the generic locked-module upsell.
+  // Reached with no ?module= param → this is the per-workspace subscription
+  // gate (redirected here by src/proxy.ts once this workspace has used its
+  // free audit), not the generic locked-module upsell.
   const isFreeAuditGate = !moduleName;
 
   const formatModuleName = (name: string) => {
@@ -23,12 +26,14 @@ export default function UpgradePage() {
   };
 
   const heading = isFreeAuditGate
-    ? "You've used your free audit report"
+    ? workspaceName
+      ? `Subscribe to unlock ${workspaceName}`
+      : 'Subscribe to unlock this workspace'
     : `Unlock ${formatModuleName(moduleName!)}`;
 
   const subtext = isFreeAuditGate
-    ? "Your free plan includes one GMB Audit report. Upgrade to keep auditing this business and unlock the rest of the platform — Dashboard, Content Generator, Scheduler, Inbox, Leads and more."
-    : 'This module requires a Premium subscription. Upgrade your workspace to access advanced AI growth tools.';
+    ? `This workspace has used its free GMB Audit report. Subscribe to keep auditing ${workspaceName ?? 'this business'} and unlock the rest of the platform — Dashboard, Content Generator, Scheduler, Reviews, Leads and more. Each workspace is billed separately.`
+    : 'This module requires an active subscription. Subscribe this workspace to access advanced AI growth tools.';
 
   return (
     <div className="flex flex-col items-center justify-center py-20 px-4">
@@ -53,20 +58,20 @@ export default function UpgradePage() {
           <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6 mb-10 text-left max-w-md mx-auto">
             <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
               <Zap className="w-5 h-5 text-amber-500" />
-              Pro Plan Benefits
+              What's included
             </h3>
             <ul className="space-y-3">
-              <li className="flex items-center gap-3 text-sm text-slate-600">
-                <CheckCircle2 className="w-5 h-5 text-primary" />
-                Access to all AI Agents (Sales, Rep, Content)
-              </li>
               <li className="flex items-center gap-3 text-sm text-slate-600">
                 <CheckCircle2 className="w-5 h-5 text-primary" />
                 Unlimited GMB Audits & Insights
               </li>
               <li className="flex items-center gap-3 text-sm text-slate-600">
                 <CheckCircle2 className="w-5 h-5 text-primary" />
-                Automated Review Responses
+                AI Content Generation & Scheduling
+              </li>
+              <li className="flex items-center gap-3 text-sm text-slate-600">
+                <CheckCircle2 className="w-5 h-5 text-primary" />
+                Review Management & CRM Pipeline
               </li>
             </ul>
           </div>

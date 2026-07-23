@@ -15,6 +15,24 @@ export async function GET() {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
 
+  // The #1 cause of "Error 400: redirect_uri_mismatch" is GOOGLE_REDIRECT_URI
+  // not being registered (verbatim) in the OAuth client's Authorized redirect
+  // URIs, or pointing at a different origin than the app is served from. Surface
+  // an obvious log when the origins diverge so the misconfig is easy to spot.
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  try {
+    if (redirectUri && appUrl && new URL(redirectUri).origin !== new URL(appUrl).origin) {
+      console.warn(
+        `[gbp-oauth] GOOGLE_REDIRECT_URI origin (${new URL(redirectUri).origin}) does not match ` +
+          `NEXT_PUBLIC_APP_URL (${new URL(appUrl).origin}). Google will reject with redirect_uri_mismatch ` +
+          `unless the exact redirect URI "${redirectUri}" is registered in the OAuth client.`
+      );
+    }
+  } catch {
+    /* malformed env URLs — ignore, the redirect below will still surface it */
+  }
+
   const state = crypto.randomBytes(16).toString('hex');
 
   // Sign state + businessId into a short-lived JWT stored in a cookie

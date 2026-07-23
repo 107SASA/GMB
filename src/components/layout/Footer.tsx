@@ -4,7 +4,7 @@ import { Rocket } from "lucide-react";
 export function Footer() {
   return (
     <footer className="py-20 px-6 border-t border-slate-200 bg-slate-50">
-      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-12">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
         <div className="col-span-1 md:col-span-1">
           <Link href="/" className="flex items-center gap-2 mb-6">
             <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center shadow-sm">
@@ -33,7 +33,17 @@ export function Footer() {
           <ul className="space-y-4 text-sm text-slate-500">
             <li><Link href="/onboarding" className="hover:text-primary transition-colors">Create Account</Link></li>
             <li><Link href="/login" className="hover:text-primary transition-colors">Sign In</Link></li>
-            <li><Link href="/book-demo" className="hover:text-primary transition-colors">Contact Us</Link></li>
+            <li><Link href="/contact" className="hover:text-primary transition-colors">Contact Us</Link></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-bold text-slate-900 mb-6">Legal</h4>
+          <ul className="space-y-4 text-sm text-slate-500">
+            <li><Link href="/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
+            <li><Link href="/terms" className="hover:text-primary transition-colors">Terms &amp; Conditions</Link></li>
+            <li><Link href="/refund" className="hover:text-primary transition-colors">Refund &amp; Cancellation</Link></li>
+            <li><Link href="/contact" className="hover:text-primary transition-colors">Contact Us</Link></li>
           </ul>
         </div>
       </div>

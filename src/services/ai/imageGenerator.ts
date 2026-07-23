@@ -1,16 +1,23 @@
 const NANOBANANA_BASE = 'https://www.nananobanana.com/api/v1';
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-const GEMINI_IMAGE_MODEL = 'gemini-2.0-flash-preview-image-generation';
+// Google's current image model (nicknamed "Nano Banana"). The previous value,
+// gemini-2.0-flash-preview-image-generation, was DEPRECATED and now returns
+// 404 NOT_FOUND — which silently broke all thumbnail generation. Overridable
+// via env so a future model rename needs no code change.
+// NOTE: Gemini image generation requires BILLING enabled on the key's Google
+// project; the free tier has effectively no image quota (429 RESOURCE_EXHAUSTED).
+const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
 
 /**
  * Generates a thumbnail image and returns a URL or data-URL.
  *
- * Key routing:
+ * Key routing (NANOBANANA_API_KEY):
  *  - "nb_…"  → NanoBanana API (returns a hosted URL)
- *  - anything else → Google AI Studio / Gemini API (returns a base64 data-URL)
+ *  - "AQ.…" / "AIzaSy…" → Google AI Studio / Gemini API (returns a base64 data-URL)
  *
- * When the user gets a NanoBanana key, just put it in NANOBANANA_API_KEY
- * and the routing switches automatically.
+ * Whichever key you use, image generation is a PAID capability — a NanoBanana
+ * plan, or a billing-enabled Google project. The routing switches automatically
+ * based on the key prefix.
  */
 export async function generateThumbnail(prompt: string): Promise<string | null> {
   const apiKey = process.env.NANOBANANA_API_KEY;

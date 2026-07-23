@@ -12,7 +12,6 @@ import Link from "next/link";
 const FEATURES = [
   "Google Ranking Agent — GBP optimization & audits",
   "Reputation Agent — reviews & AI replies",
-  "AI Sales Agent — WhatsApp lead follow-ups",
   "Content Studio — AI posts & SEO content",
   "Marketing Automation — campaigns & CRM",
   "Full access on web and mobile app",

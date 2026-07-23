@@ -51,12 +51,14 @@ export default function AuditDashboardPage() {
   const maybeAutoStart = async (existing: any[]) => {
     if (autoStartedRef.current || existing.length > 0 || !activeBusiness) return;
 
+    // Auto-run the one free audit only for a workspace that is NOT subscribed
+    // and has not yet used its free audit (per-workspace gate).
     let gated = false;
     try {
-      const meRes = await fetch('/api/auth/me');
-      const me = await meRes.json();
-      const gate = me?.user?.freemiumAuditGate;
-      gated = !!gate?.active && !gate?.auditUsed;
+      const statusRes = await fetch('/api/billing/status');
+      const status = await statusRes.json();
+      const ws = status?.workspace;
+      gated = !!ws && !ws.isActive && !ws.freeAuditUsed;
     } catch {
       return;
     }

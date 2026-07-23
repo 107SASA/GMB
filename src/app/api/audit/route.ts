@@ -6,6 +6,7 @@ import Business from '@/models/Business';
 import { requireClient } from '@/lib/auth';
 import { inngest } from '@/services/inngest/client';
 import { checkUsageLimit, incrementUsage } from '@/lib/featureGating';
+import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
 
 const auditRequestSchema = z.object({
   businessId: z.string().min(1, 'Business ID is required'),
@@ -33,24 +34,32 @@ export async function POST(req: Request) {
 
     await dbConnect();
 
-    // Feature 1 — freemium gate: a gated user gets exactly one COMPLETE
-    // audit report total (not per-business, not per-month — a hard,
-    // permanent cap until they upgrade). Existing users never have
-    // freemiumAuditGate set, so this block is a no-op for them.
-    if (authResult.user.freemiumAuditGate?.active && authResult.user.freemiumAuditGate?.auditUsed) {
-      return NextResponse.json(
-        {
-          error: 'Your free plan includes one audit report. Upgrade to generate more.',
-          code: 'UPGRADE_REQUIRED',
-        },
-        { status: 403 }
-      );
-    }
-
     // Verify business ownership and data completeness
     const business = await Business.findById(businessId);
     if (!business) {
       return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+    }
+
+    // Per-workspace subscription gate: an unsubscribed workspace gets exactly
+    // one free audit report. Once freeAuditUsed is set, further audits require
+    // an active subscription for THIS workspace (or a paid user-level plan).
+    // Owner (SUPER_ADMIN) bypasses.
+    const workspaceUnlocked = isWorkspaceUnlocked({
+      subscriptionStatus: business.subscriptionStatus,
+      userSubscriptionPlan: (authResult.user as any).subscriptionPlan,
+    });
+    if (
+      authResult.user.role !== 'SUPER_ADMIN' &&
+      !workspaceUnlocked &&
+      business.freeAuditUsed
+    ) {
+      return NextResponse.json(
+        {
+          error: 'This workspace has used its free audit. Subscribe to keep auditing this business.',
+          code: 'UPGRADE_REQUIRED',
+        },
+        { status: 403 }
+      );
     }
 
     const isOwner = business.userId?.toString() === authResult.userId;

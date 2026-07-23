@@ -1,9 +1,7 @@
 "use client";
 
 import { PricingCards } from "./pricing/PricingCards";
-import { FeatureComparisonTable } from "./pricing/FeatureComparisonTable";
 import { ROICalculator } from "./pricing/ROICalculator";
-import { PricingFAQ } from "./pricing/PricingFAQ";
 
 export function Pricing() {
   return (
@@ -25,13 +23,9 @@ export function Pricing() {
       </div>
 
       <PricingCards />
-      
-      <FeatureComparisonTable />
-      
+
       <ROICalculator />
-      
-      <PricingFAQ />
-      
+
     </section>
   );
 }

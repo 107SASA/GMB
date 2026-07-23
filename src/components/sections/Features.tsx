@@ -2,14 +2,13 @@
 
 import { motion } from "framer-motion";
 import { 
-  Search, 
-  PenTool, 
-  Calendar, 
-  MessageSquare, 
-  MessageCircle, 
-  Users, 
-  Mail, 
-  BarChart3 
+  Search,
+  PenTool,
+  Calendar,
+  MessageSquare,
+  Users,
+  Mail,
+  BarChart3
 } from "lucide-react";
 
 const features = [
@@ -36,12 +35,6 @@ const features = [
     description: "Intelligent, personalized responses to reviews within minutes.",
     icon: MessageSquare,
     color: "bg-green-500/20 text-green-500",
-  },
-  {
-    title: "WhatsApp AI Lead Agent",
-    description: "Convert profile visitors into customers instantly via automated WhatsApp chats.",
-    icon: MessageCircle,
-    color: "bg-emerald-500/20 text-emerald-500",
   },
   {
     title: "Built-in CRM Pipeline",

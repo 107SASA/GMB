@@ -2,16 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Play, Sparkles, Calendar } from "lucide-react";
-
-// "Book Free Demo" opens WhatsApp with a pre-filled message so the AI sales
-// agent takes over and the visitor lands in the CRM as a lead. Falls back to
-// the /book-demo form when no platform WhatsApp number is configured.
-const WHATSAPP_NUMBER = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '').replace(/[^\d]/g, '');
-const DEMO_MESSAGE = "Hi! I'd like to book a demo of Growwmatic AI.";
-const bookDemoHref = WHATSAPP_NUMBER
-  ? `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(DEMO_MESSAGE)}`
-  : '/book-demo';
+import { ArrowRight, Sparkles, Calendar } from "lucide-react";
 
 export function Hero() {
   return (
@@ -50,7 +41,7 @@ export function Hero() {
           transition={{ duration: 0.6, delay: 0.2 }}
           className="text-lg md:text-xl text-slate-500 max-w-2xl mx-auto mb-12 leading-relaxed"
         >
-          Automate your Google Business Profile, generate more reviews, convert leads instantly, and grow local visibility using AI + WhatsApp automation.
+          Automate your Google Business Profile, generate more reviews, convert leads faster, and grow your local visibility with AI.
         </motion.p>
 
         <motion.div
@@ -64,18 +55,12 @@ export function Hero() {
             <ArrowRight className="w-5 h-5" />
           </Link>
           <Link
-            href={bookDemoHref}
-            target={WHATSAPP_NUMBER ? '_blank' : undefined}
-            rel={WHATSAPP_NUMBER ? 'noopener noreferrer' : undefined}
+            href="/book-demo"
             className="w-full sm:w-auto px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
           >
             <Calendar className="w-5 h-5" />
-            Book Free Demo
+            Book a Demo
           </Link>
-          <button className="w-full sm:w-auto px-8 py-4 bg-white border border-slate-200 text-slate-700 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all shadow-sm">
-            <Play className="w-5 h-5 text-slate-400" />
-            Watch Demo
-          </button>
         </motion.div>
 
         {/* Hero Visual - Dashboard Mockup */}
@@ -148,7 +133,7 @@ export function Hero() {
                   <Sparkles className="w-5 h-5 text-emerald-600" />
                 </div>
                 <div>
-                  <div className="text-[10px] text-slate-500 font-medium">New Lead via WhatsApp</div>
+                  <div className="text-[10px] text-slate-500 font-medium">New Lead Captured</div>
                   <div className="text-xs font-bold text-slate-900">Conversion Rate +24%</div>
                 </div>
               </div>

@@ -2,7 +2,6 @@ import dbConnect from '../../lib/mongodb';
 import Audit from '../../models/Audit';
 import Business from '../../models/Business';
 import Review from '../../models/Review';
-import User from '../../models/User';
 import { generateAIAudit } from '../ai/auditEngine';
 import { logAIUsage } from '../../lib/logAIUsage';
 
@@ -35,8 +34,8 @@ export async function processAuditJob(auditId: string) {
       ],
     };
 
-    // Fetch real reviews — cap at MAX_REVIEWS_PER_AUDIT (default 100)
-    const maxReviews = parseInt(process.env.MAX_REVIEWS_PER_AUDIT || '100', 10);
+    // Fetch real reviews — cap at MAX_REVIEWS_PER_AUDIT (default 50)
+    const maxReviews = parseInt(process.env.MAX_REVIEWS_PER_AUDIT || '50', 10);
     let reviewsData = await Review.find({ businessId: business._id, ...reviewDateFilter })
       .sort({ postedAt: -1, createdAt: -1 })
       .limit(maxReviews);
@@ -308,18 +307,18 @@ export async function processAuditJob(auditId: string) {
     await audit.save();
     console.log(`[auditService] V7 audit completed: ${auditId} | score=${finalScore} | reviews=${formattedReviews.length}`);
 
-    // Feature 1 — freemium gate: the user's single free audit report is now
-    // "generated" (COMPLETED, not just requested/PENDING). Only ever
-    // touches users who have freemiumAuditGate.active set (brand-new
-    // signups) — existing users are untouched by this update.
+    // Per-workspace subscription gate: this workspace's single free audit
+    // report is now "generated" (COMPLETED, not just requested/PENDING). Mark
+    // freeAuditUsed so further audits require an active subscription for this
+    // workspace. Only flips workspaces that are not already subscribed.
     if (audit.status === 'COMPLETED') {
       try {
-        await User.findOneAndUpdate(
-          { _id: audit.userId, 'freemiumAuditGate.active': true },
-          { $set: { 'freemiumAuditGate.auditUsed': true, 'freemiumAuditGate.auditId': audit._id } }
+        await Business.updateOne(
+          { _id: audit.businessId, subscriptionStatus: { $ne: 'active' } },
+          { $set: { freeAuditUsed: true } }
         );
       } catch (gateErr) {
-        console.error(`[auditService] Failed to update freemiumAuditGate for user ${audit.userId}:`, gateErr);
+        console.error(`[auditService] Failed to update freeAuditUsed for business ${audit.businessId}:`, gateErr);
       }
     }
 

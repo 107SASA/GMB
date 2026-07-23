@@ -76,6 +76,15 @@ export interface IBusiness extends Document {
   onboardingCompleted: boolean;
   faqs?: Array<{ question: string; answer: string }>;
   isDeleted?: boolean;
+  // ADDITIVE — per-workspace subscription gate. Each workspace (Business) must
+  // have its own active subscription before its dashboard is accessible. New
+  // workspaces default to 'trialing' + freeAuditUsed:false, so they get exactly
+  // one free GBP audit, after which the dashboard locks until subscribed.
+  // Enforced centrally in src/proxy.ts. Owner (SUPER_ADMIN) accounts bypass it.
+  subscriptionStatus?: 'trialing' | 'active' | 'past_due' | 'canceled';
+  freeAuditUsed?: boolean;
+  razorpaySubscriptionId?: string;
+  subscriptionCurrentPeriodEnd?: Date;
   // ADDITIVE — WhatsApp AI Agent booking configuration (Feature 1).
   // Opt-in only: bookingEnabled defaults to false so existing businesses
   // are completely unaffected until they explicitly configure this.
@@ -190,6 +199,15 @@ const BusinessSchema: Schema = new Schema(
     onboardingCompleted: { type: Boolean, default: false },
     faqs: [{ question: { type: String }, answer: { type: String } }],
     isDeleted: { type: Boolean, default: false },
+    // ADDITIVE — per-workspace subscription gate (see IBusiness above).
+    subscriptionStatus: {
+      type: String,
+      enum: ['trialing', 'active', 'past_due', 'canceled'],
+      default: 'trialing',
+    },
+    freeAuditUsed: { type: Boolean, default: false },
+    razorpaySubscriptionId: { type: String, index: true, sparse: true },
+    subscriptionCurrentPeriodEnd: { type: Date },
     // ADDITIVE — see whatsappBookingSettings in IBusiness above. Not required,
     // no default object is forced onto existing documents; the WhatsApp
     // appointment agent treats a missing/disabled config as "booking off".

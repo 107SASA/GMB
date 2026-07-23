@@ -10,12 +10,8 @@ const faqs = [
     answer: "Our AI analyzes your current profile against thousands of high-ranking competitors in your niche. It identifies missing keywords, optimizes business categories, suggests better service descriptions, and generates localized posts to boost your authority."
   },
   {
-    question: "Does this support WhatsApp automation?",
-    answer: "Yes! We provide a built-in WhatsApp AI agent that can handle customer inquiries 24/7. It can book appointments, answer FAQs, and capture lead details directly from your Google profile visitors."
-  },
-  {
-    question: "Can I manage multiple locations?",
-    answer: "Absolutely. Your subscription lets you manage everything from a single dashboard with aggregated analytics — on the website and the mobile app."
+    question: "Can I manage multiple businesses?",
+    answer: "Yes. You can add multiple business workspaces from a single account and switch between them in one dashboard. Each workspace runs on its own subscription, so you only pay for the businesses you're actively growing."
   },
   {
     question: "Is manual approval available before posting?",

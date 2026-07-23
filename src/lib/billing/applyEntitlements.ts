@@ -1,12 +1,46 @@
 import dbConnect from '@/lib/mongodb';
 import Subscription from '@/models/Subscription';
 import User from '@/models/User';
+import Business from '@/models/Business';
 import {
   ALL_MODULES,
   buildModulesMap,
   DEFAULT_FREE_MODULES,
   PAID_PLAN_TYPE,
 } from './planCatalog';
+
+/**
+ * Per-workspace access gate (src/proxy.ts reads Business.subscriptionStatus).
+ * These mirror the user-level entitlement helpers below but flip a single
+ * workspace's access. The webhook calls both: the workspace functions unlock
+ * THIS business's dashboard, while the user-level activatePlan keeps
+ * User.subscriptionPlan in sync for usage limits.
+ */
+export async function activateBusinessPlan(
+  businessId: string,
+  opts: { currentPeriodEnd?: Date } = {}
+): Promise<void> {
+  await dbConnect();
+  await Business.updateOne(
+    { _id: businessId },
+    {
+      $set: {
+        subscriptionStatus: 'active',
+        ...(opts.currentPeriodEnd && { subscriptionCurrentPeriodEnd: opts.currentPeriodEnd }),
+      },
+    }
+  );
+}
+
+export async function markBusinessPastDue(businessId: string): Promise<void> {
+  await dbConnect();
+  await Business.updateOne({ _id: businessId }, { $set: { subscriptionStatus: 'past_due' } });
+}
+
+export async function cancelBusinessPlan(businessId: string): Promise<void> {
+  await dbConnect();
+  await Business.updateOne({ _id: businessId }, { $set: { subscriptionStatus: 'canceled' } });
+}
 
 /**
  * Applies the paid plan to a user's entitlements — there is only one, and it

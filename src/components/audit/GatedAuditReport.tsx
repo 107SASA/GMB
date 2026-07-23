@@ -21,10 +21,12 @@ export default function GatedAuditReport({ auditId }: { auditId: string }) {
   const [gated, setGated] = useState<boolean | null>(null);
   const [generating, setGenerating] = useState(false);
 
+  // Show the subscribe sidebar whenever the active workspace is not subscribed
+  // (per-workspace gate). Paying workspaces never see it.
   useEffect(() => {
-    fetch('/api/auth/me')
+    fetch('/api/billing/status')
       .then((r) => r.json())
-      .then((d) => setGated(!!d?.user?.freemiumAuditGate?.active))
+      .then((d) => setGated(!!d?.workspace && !d.workspace.isActive))
       .catch(() => setGated(false));
   }, []);
 

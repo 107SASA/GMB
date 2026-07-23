@@ -20,8 +20,8 @@ const steps = [
     icon: Zap,
   },
   {
-    title: "Convert Leads with WhatsApp AI",
-    description: "Watch as visitors turn into sales through automated chat flows.",
+    title: "Convert Leads in Your CRM",
+    description: "Track every enquiry from first contact to conversion in one simple pipeline.",
     icon: TrendingUp,
   },
 ];

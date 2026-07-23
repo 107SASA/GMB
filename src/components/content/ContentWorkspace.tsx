@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useBusiness } from '@/context/BusinessContext';
 import ContentGeneratorForm from './ContentGeneratorForm';
 import WeeklyPostsTab from './WeeklyPostsTab';
 import SEOTab from './SEOTab';
@@ -18,26 +19,30 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'history', label: 'Content History' },
 ];
 
-// Same client-storage approach already used elsewhere in the app (see the
-// audit history page's use of localStorage) — reusing localStorage here (not
-// sessionStorage) so Target Keywords survive not just navigating away and
-// back, but also logging out and back in, closing the tab, or refreshing —
-// all without any backend/API change. The user only loses them by explicitly
-// removing/clearing/replacing keywords in the UI.
-const KEYWORDS_STORAGE_KEY = 'gmb_content_generator_keywords';
+// Target Keywords persist in localStorage so they survive refresh / re-login.
+// The key is PER-WORKSPACE (keyed by businessId) — previously it was a single
+// global key, so switching workspaces made e.g. a hospital inherit an IT
+// company's keywords ("Full Stack Development"). A keyword must contain a
+// letter, which drops junk like "." or "123" that leaked in before.
+const KEYWORDS_STORAGE_PREFIX = 'gmb_content_generator_keywords';
+const keywordsKey = (businessId: string) => `${KEYWORDS_STORAGE_PREFIX}:${businessId}`;
+const isValidKeyword = (v: string) => /[a-zA-Z]/.test(v);
 
-function loadStoredKeywords(): string[] {
+function loadStoredKeywords(businessId: string): string[] {
   if (typeof window === 'undefined') return [];
   try {
-    const saved = window.localStorage.getItem(KEYWORDS_STORAGE_KEY);
+    const saved = window.localStorage.getItem(keywordsKey(businessId));
     const parsed = saved ? JSON.parse(saved) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.filter((k) => typeof k === 'string' && isValidKeyword(k)) : [];
   } catch {
     return [];
   }
 }
 
 export default function ContentWorkspace() {
+  const { activeBusiness } = useBusiness();
+  const businessId = activeBusiness?._id;
+
   const [activeTab, setActiveTab] = useState<TabId>('posts');
   const [contentData, setContentData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -48,23 +53,23 @@ export default function ContentWorkspace() {
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState('');
 
-  // Hydrate from localStorage after mount (not in the initializer) so the
-  // client's first render matches the server-rendered HTML and avoids a
-  // hydration mismatch; this restores keywords saved from any earlier visit
-  // — including a previous login session.
+  // Load THIS workspace's saved keywords whenever the active workspace changes,
+  // so keywords never leak across workspaces. Empty when none saved — the form
+  // then seeds from the business's own profile keywords.
   useEffect(() => {
-    const stored = loadStoredKeywords();
-    if (stored.length > 0) setKeywords(stored);
-  }, []);
+    if (!businessId) return;
+    setKeywords(loadStoredKeywords(businessId));
+  }, [businessId]);
 
   useEffect(() => {
+    if (!businessId) return;
     try {
-      window.localStorage.setItem(KEYWORDS_STORAGE_KEY, JSON.stringify(keywords));
+      window.localStorage.setItem(keywordsKey(businessId), JSON.stringify(keywords));
     } catch {
       // Storage unavailable (e.g. private browsing) — keywords still work
       // for the current in-memory session via React state.
     }
-  }, [keywords]);
+  }, [keywords, businessId]);
 
   const handleGenerate = async (formData: any) => {
     setIsLoading(true);
@@ -75,13 +80,26 @@ export default function ContentWorkspace() {
         body: JSON.stringify(formData),
       });
 
-      const result = await response.json();
-      if (!response.ok) {
-        if (result.code === 'UPGRADE_REQUIRED') {
+      // The response may not be JSON (e.g. a gateway 504 HTML page) — parse
+      // defensively so the user sees a clear message, not "Unexpected token '<'".
+      let result: any = null;
+      try {
+        result = await response.json();
+      } catch {
+        result = null;
+      }
+
+      if (!response.ok || !result) {
+        if (result?.code === 'UPGRADE_REQUIRED') {
           setUpgradeMsg(result.error);
           return;
         }
-        throw new Error(result.error);
+        throw new Error(
+          result?.error ||
+            (response.status === 504
+              ? 'The server took too long to respond. Your content may still be generating — check Content History in a moment.'
+              : `Generation failed (HTTP ${response.status}).`)
+        );
       }
 
       setContentData(result.data);

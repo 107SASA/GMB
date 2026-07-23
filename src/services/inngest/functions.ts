@@ -1004,7 +1004,177 @@ export const generateAuditJob = inngest.createFunction(
       await processAuditJob(auditId);
     });
 
+    // Kick off the WhatsApp sales nurture drip (delay + follow-ups are handled
+    // by the salesNurtureRequested function per the super-admin config).
+    await step.sendEvent('start-sales-nurture', {
+      name: 'sales/nurture.requested',
+      data: { auditId },
+    });
+
     return { success: true, auditId };
+  }
+);
+
+// 7b. WhatsApp Sales Nurture drip (platform → lead, after a free audit).
+// Timing (first-message delay + follow-up delays) and content come from the
+// super-admin SalesAgentConfig. Durable sleeps survive restarts.
+export const salesNurtureRequested = inngest.createFunction(
+  { id: 'sales-nurture-requested', triggers: [{ event: 'sales/nurture.requested' }] },
+  async ({ event, step }) => {
+    const { auditId } = event.data;
+
+    const prep = await step.run('prepare-nurture', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { getSalesAgentConfig, extractScores, firstName } = await import('@/services/sales/salesAgent');
+      const { default: Audit } = await import('@/models/Audit');
+      const { default: Business } = await import('@/models/Business');
+      const { default: User } = await import('@/models/User');
+      const { default: SalesConversation } = await import('@/models/SalesConversation');
+      const { isWorkspaceUnlocked } = await import('@/lib/workspaceAccess');
+
+      const config = await getSalesAgentConfig();
+      if (!config.enabled) return { skip: 'agent disabled' as const };
+
+      const audit: any = await Audit.findById(auditId).lean();
+      if (!audit || audit.status !== 'COMPLETED') return { skip: 'audit not completed' as const };
+
+      const business: any = await Business.findById(audit.businessId).lean();
+      if (!business) return { skip: 'no business' as const };
+      if (business.auditNurtureSentAt) return { skip: 'already sent' as const };
+
+      const owner: any = business.userId
+        ? await User.findById(business.userId).select('fullName phone subscriptionPlan').lean()
+        : null;
+      if (isWorkspaceUnlocked({ subscriptionStatus: business.subscriptionStatus, userSubscriptionPlan: owner?.subscriptionPlan })) {
+        return { skip: 'already subscribed' as const };
+      }
+      const phone = owner?.phone || business.phone;
+      if (!phone) return { skip: 'no phone' as const };
+
+      const { normalizePhoneE164, phoneDedupeKey } = await import('@/lib/phone');
+      const scores = extractScores(audit, business);
+      const convo = await SalesConversation.create({
+        businessId: business._id,
+        auditId: audit._id,
+        leadPhone: normalizePhoneE164(phone) || phone,
+        phoneKey: phoneDedupeKey(phone),
+        leadName: owner?.fullName || business.name || '',
+        status: 'active',
+        scores,
+      });
+      // Send-once guard so re-runs don't double-message.
+      await Business.updateOne({ _id: business._id }, { $set: { auditNurtureSentAt: new Date() } });
+
+      return {
+        conversationId: convo._id.toString(),
+        phone,
+        leadName: owner?.fullName || '',
+        firstDelayMinutes: Math.max(0, config.firstMessage.delayMinutes || 0),
+        followUpCount: config.followUps.length,
+      };
+    });
+
+    if ('skip' in prep) return { skipped: prep.skip };
+
+    if (prep.firstDelayMinutes > 0) {
+      await step.sleep('wait-before-first', `${prep.firstDelayMinutes}m`);
+    }
+
+    // Send first message.
+    await step.run('send-first-message', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: SalesConversation } = await import('@/models/SalesConversation');
+      const { getSalesAgentConfig, composeFirstMessage } = await import('@/services/sales/salesAgent');
+      const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+
+      const convo: any = await SalesConversation.findById(prep.conversationId);
+      if (!convo || convo.status !== 'active') return;
+      const config = await getSalesAgentConfig();
+      const msg = await composeFirstMessage(config, convo.scores, convo.leadName);
+      const res = await sendOutboundMessage(convo.leadPhone, msg, undefined, convo.businessId.toString());
+      if (res.success) {
+        convo.messages.push({ role: 'agent', text: msg, at: new Date() });
+        convo.firstSentAt = new Date();
+        convo.lastAgentAt = new Date();
+        await convo.save();
+      }
+    });
+
+    // Follow-up drip.
+    for (let i = 0; i < prep.followUpCount; i++) {
+      const cfg = await step.run(`load-followup-${i}`, async () => {
+        const { getSalesAgentConfig } = await import('@/services/sales/salesAgent');
+        const config = await getSalesAgentConfig();
+        const f = config.followUps[i];
+        return f ? { delayHours: Math.max(0, f.delayHours || 0), onlyIfNoReply: f.onlyIfNoReply } : null;
+      });
+      if (!cfg) break;
+
+      if (cfg.delayHours > 0) {
+        await step.sleep(`wait-followup-${i}`, `${cfg.delayHours}h`);
+      }
+
+      const stop = await step.run(`send-followup-${i}`, async () => {
+        const dbConnect = (await import('@/lib/mongodb')).default;
+        await dbConnect();
+        const { default: SalesConversation } = await import('@/models/SalesConversation');
+        const { getSalesAgentConfig, composeFollowUp } = await import('@/services/sales/salesAgent');
+        const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+
+        const convo: any = await SalesConversation.findById(prep.conversationId);
+        if (!convo || convo.status !== 'active') return true; // stop drip
+        // If the lead engaged, hand off to the live agent — stop the drip.
+        if (cfg.onlyIfNoReply && convo.lastLeadReplyAt && convo.firstSentAt && convo.lastLeadReplyAt > convo.firstSentAt) {
+          return true;
+        }
+        const config = await getSalesAgentConfig();
+        const f = config.followUps[i];
+        if (!f) return true;
+        const msg = await composeFollowUp(f, config, convo.scores, convo.leadName);
+        const res = await sendOutboundMessage(convo.leadPhone, msg, undefined, convo.businessId.toString());
+        if (res.success) {
+          convo.messages.push({ role: 'agent', text: msg, at: new Date() });
+          convo.lastAgentAt = new Date();
+          convo.followUpsSent = (convo.followUpsSent || 0) + 1;
+          await convo.save();
+        }
+        return false;
+      });
+      if (stop) break;
+    }
+
+    return { success: true, conversationId: prep.conversationId };
+  }
+);
+
+// 7c. Live inbound reply from a sales lead → AI sales-agent response.
+export const salesAgentReply = inngest.createFunction(
+  { id: 'sales-agent-reply', retries: 2, triggers: [{ event: 'sales/agent.reply' }] },
+  async ({ event, step }) => {
+    const { conversationId } = event.data;
+    await step.run('reply', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: SalesConversation } = await import('@/models/SalesConversation');
+      const { getSalesAgentConfig, composeAgentReply } = await import('@/services/sales/salesAgent');
+      const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+
+      const convo: any = await SalesConversation.findById(conversationId);
+      if (!convo || convo.status !== 'active') return;
+      const config = await getSalesAgentConfig();
+      if (!config.enabled) return;
+
+      const reply = await composeAgentReply(config, convo);
+      const res = await sendOutboundMessage(convo.leadPhone, reply, undefined, convo.businessId.toString());
+      if (res.success) {
+        convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+        convo.lastAgentAt = new Date();
+        await convo.save();
+      }
+    });
+    return { success: true };
   }
 );
 

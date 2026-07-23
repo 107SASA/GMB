@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import dbConnect from '@/lib/mongodb';
 import Lead from '@/models/Lead';
+import SalesConversation from '@/models/SalesConversation';
 import ConversationThread from '@/models/ConversationThread';
 import Business from '@/models/Business';
 import Conversation from '@/models/Conversation';
@@ -58,6 +59,26 @@ interface InboundMessage {
 async function processInboundMessage({ business, phone, profileName, body, messageSid, numMedia }: InboundMessage) {
   const tenantId = business.organizationId.toString();
   const businessId = business._id;
+
+  // 0. Platform SALES-AGENT interception. If this phone is in an active
+  // post-audit sales conversation, route it to the sales agent instead of the
+  // owner's customer agent. Matched on the last-10-digits key so signup vs
+  // inbound phone-format differences still collide. Takes priority while active.
+  const { phoneDedupeKey } = await import('@/lib/phone');
+  const salesConvo = await SalesConversation.findOne({ phoneKey: phoneDedupeKey(phone), status: 'active' });
+  if (salesConvo) {
+    const normalized = body.trim().toUpperCase();
+    if (['STOP', 'UNSUBSCRIBE', 'CANCEL'].includes(normalized)) {
+      salesConvo.status = 'stopped';
+      await salesConvo.save();
+      return;
+    }
+    salesConvo.messages.push({ role: 'lead', text: body, at: new Date() });
+    salesConvo.lastLeadReplyAt = new Date();
+    await salesConvo.save();
+    await inngest.send({ name: 'sales/agent.reply', data: { conversationId: salesConvo._id.toString(), body } });
+    return;
+  }
 
   // 1. Fetch or Create Lead
   let lead = await Lead.findOne({ phone, businessId });

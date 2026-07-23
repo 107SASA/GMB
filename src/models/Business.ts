@@ -85,6 +85,19 @@ export interface IBusiness extends Document {
   freeAuditUsed?: boolean;
   razorpaySubscriptionId?: string;
   subscriptionCurrentPeriodEnd?: Date;
+  /** When the post-audit WhatsApp sales nurture was sent (send-once guard). */
+  auditNurtureSentAt?: Date;
+  // ADDITIVE — post-payment intake. Rich marketing info collected right after a
+  // workspace subscribes, so audits, content and competitor comparison run on
+  // real data instead of empty/garbage fields. `intakeCompleted` gates the
+  // dashboard (src/proxy.ts) until the owner fills this in once.
+  intakeCompleted?: boolean;
+  intake?: {
+    uniqueSellingPoints?: string;
+    targetAudience?: string;
+    competitorNames?: string[];
+    primaryGoal?: string;
+  };
   // ADDITIVE — WhatsApp AI Agent booking configuration (Feature 1).
   // Opt-in only: bookingEnabled defaults to false so existing businesses
   // are completely unaffected until they explicitly configure this.
@@ -208,6 +221,16 @@ const BusinessSchema: Schema = new Schema(
     freeAuditUsed: { type: Boolean, default: false },
     razorpaySubscriptionId: { type: String, index: true, sparse: true },
     subscriptionCurrentPeriodEnd: { type: Date },
+    // ADDITIVE — when the post-audit WhatsApp sales nurture was sent (send-once).
+    auditNurtureSentAt: { type: Date },
+    // ADDITIVE — post-payment intake (see IBusiness above).
+    intakeCompleted: { type: Boolean, default: false },
+    intake: {
+      uniqueSellingPoints: { type: String },
+      targetAudience: { type: String },
+      competitorNames: [{ type: String }],
+      primaryGoal: { type: String },
+    },
     // ADDITIVE — see whatsappBookingSettings in IBusiness above. Not required,
     // no default object is forced onto existing documents; the WhatsApp
     // appointment agent treats a missing/disabled config as "booking off".

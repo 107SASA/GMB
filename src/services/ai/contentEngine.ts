@@ -1,4 +1,7 @@
 import Groq from 'groq-sdk';
+import { POSTS_PER_WEEK } from '@/lib/contentConfig';
+
+export { POSTS_PER_WEEK };
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
@@ -73,7 +76,7 @@ REQUIRED JSON OUTPUT SCHEMA:
       "hashtags": ["#tag1", "#tag2"],
       "thumbnailPrompt": "A detailed English image generation prompt for a professional social media thumbnail that visually represents this post's topic. Include style (e.g. photorealistic, flat design), mood, colors, and subject. Keep it under 100 words."
     }
-  ], // Generate EXACTLY 7 posts${request.topic ? `. All posts must revolve around the campaign topic: "${request.topic}"` : ''}
+  ], // Generate EXACTLY ${POSTS_PER_WEEK} posts${request.topic ? `. All posts must revolve around the campaign topic: "${request.topic}"` : ''}
   "seoDescription": "SEO optimized description (max 750 characters) targeting the location and keywords.",
   "faqs": [
     {

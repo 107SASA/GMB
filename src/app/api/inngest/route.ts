@@ -20,6 +20,8 @@ import {
   dispatchWhatsappFollowUpJob,
   processDemoBooking,
   generateAuditJob,
+  salesNurtureRequested,
+  salesAgentReply,
   gbpNightlySyncScheduler,
   gbpSyncWorker,
   cleanupAbandonedSignups
@@ -47,6 +49,8 @@ export const { GET, POST, PUT } = serve({
     dispatchWhatsappFollowUpJob,
     processDemoBooking,
     generateAuditJob,
+    salesNurtureRequested,
+    salesAgentReply,
     gbpNightlySyncScheduler,
     gbpSyncWorker,
     cleanupAbandonedSignups,

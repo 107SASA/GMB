@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useBusiness } from '@/context/BusinessContext';
+import { POSTS_PER_WEEK } from '@/lib/contentConfig';
 
 interface ContentGeneratorFormProps {
   onGenerate: (data: any) => void;
@@ -45,8 +46,10 @@ export default function ContentGeneratorForm({
     }));
     // Only seed default business keywords the first time (when the user hasn't
     // typed/kept any keywords yet), so custom keywords survive re-renders and
-    // aren't clobbered when this effect re-runs.
-    setKeywords(prev => (prev.length === 0 && activeBusiness.keywords?.length ? activeBusiness.keywords : prev));
+    // aren't clobbered when this effect re-runs. Filter out junk keywords
+    // (symbol/number-only, e.g. ".") that bad onboarding data can leave behind.
+    const seed = (activeBusiness.keywords || []).filter((k: string) => /[a-zA-Z]/.test(k));
+    setKeywords(prev => (prev.length === 0 && seed.length ? seed : prev));
   }, [activeBusiness, setKeywords]);
 
   // A valid keyword must contain at least one letter (rejects inputs made up
@@ -196,7 +199,7 @@ export default function ContentGeneratorForm({
               value={formData.topic}
               onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
             />
-            <p className="text-xs text-slate-400">All 7 posts will be built around this theme.</p>
+            <p className="text-xs text-slate-400">All {POSTS_PER_WEEK} posts will be built around this theme.</p>
           </div>
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700">Content Tone</label>
@@ -295,7 +298,7 @@ export default function ContentGeneratorForm({
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 />
               </svg>
-              Generating Posts & Thumbnails…
+              Generating Posts…
             </>
           ) : (
             <>
@@ -309,7 +312,7 @@ export default function ContentGeneratorForm({
 
         {isLoading && (
           <p className="text-center text-xs text-slate-400">
-            Generating 7 posts + thumbnails via AI — this may take ~30–60 seconds.
+            Writing your {POSTS_PER_WEEK} posts — usually ~10–20 seconds. Images are added to each post automatically a little after.
           </p>
         )}
       </form>

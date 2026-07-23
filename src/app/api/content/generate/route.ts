@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import mongoose from 'mongoose';
 import { generateAIContent, ContentGenerationRequest } from '@/services/ai/contentEngine';
@@ -113,20 +113,26 @@ export async function POST(req: Request) {
       imageUrl: undefined as string | undefined,
     }));
 
-    // Generate thumbnails sequentially (NanoBanana allows 1 concurrent request)
-    for (let i = 0; i < postsWithIds.length; i++) {
-      const prompt = aiResult.posts[i].thumbnailPrompt;
-      if (!prompt) continue;
-
-      const imageUrl = await generateThumbnail(prompt);
-      if (imageUrl) {
-        postsWithIds[i].imageUrl = imageUrl;
-        await Post.updateOne(
-          { _id: savedDrafts[i]._id },
-          { $set: { imageUrl } }
-        );
+    // Thumbnails are generated AFTER the response is sent (Next.js `after`), not
+    // inline. Each image is a ~10s Gemini call; doing 7 sequentially inside the
+    // request blew past the gateway timeout (Nginx ~60s) and returned an HTML
+    // 504 page — which the client tried to JSON.parse ("Unexpected token '<'").
+    // Now the content returns immediately and images populate into the Post docs
+    // in the background; the posts pages read them from the DB once ready.
+    after(async () => {
+      for (let i = 0; i < savedDrafts.length; i++) {
+        const prompt = aiResult.posts[i].thumbnailPrompt;
+        if (!prompt) continue;
+        try {
+          const imageUrl = await generateThumbnail(prompt);
+          if (imageUrl) {
+            await Post.updateOne({ _id: savedDrafts[i]._id }, { $set: { imageUrl } });
+          }
+        } catch (err) {
+          console.error(`[content/generate] background thumbnail failed for ${savedDrafts[i]._id}:`, err);
+        }
       }
-    }
+    });
 
     return NextResponse.json(
       { success: true, data: { ...aiResult, posts: postsWithIds } },

@@ -50,6 +50,21 @@ function isAllowedForLockedWorkspace(pathname: string): boolean {
   return ALLOWED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+// Post-payment intake: a subscribed workspace must complete the intake once
+// before the rest of the dashboard opens. These pages stay reachable meanwhile
+// so the user isn't fully trapped.
+const INTAKE_PATH = '/dashboard/onboarding/intake';
+const INTAKE_ALLOWED_PREFIXES = [INTAKE_PATH, '/dashboard/profile', '/dashboard/billing'];
+
+// Only NEW workspaces (created on/after this date) are HARD-gated into the
+// intake. Workspaces that existed before are nudged with a notification instead
+// (see scripts backfill), so we don't suddenly wall existing paying customers.
+const INTAKE_ENFORCED_SINCE = new Date('2026-07-23T00:00:00.000Z');
+
+function isAllowedBeforeIntake(pathname: string): boolean {
+  return INTAKE_ALLOWED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -84,17 +99,23 @@ export default async function proxy(request: NextRequest) {
     if (!businessId) return NextResponse.next();
 
     const business = await Business.findById(businessId)
-      .select('subscriptionStatus freeAuditUsed')
-      .lean<{ subscriptionStatus?: string; freeAuditUsed?: boolean }>();
+      .select('subscriptionStatus freeAuditUsed intakeCompleted createdAt')
+      .lean<{ subscriptionStatus?: string; freeAuditUsed?: boolean; intakeCompleted?: boolean; createdAt?: Date }>();
     if (!business) return NextResponse.next();
 
-    // Subscribed workspace (or an existing paid user) -> everything is open.
+    // Subscribed workspace (or an existing paid user) -> dashboard is open,
+    // once the one-time post-payment intake is done. Only NEW workspaces are
+    // hard-gated; older ones are nudged via notification instead.
     if (
       isWorkspaceUnlocked({
         subscriptionStatus: business.subscriptionStatus,
         userSubscriptionPlan: user.subscriptionPlan,
       })
     ) {
+      const isNewWorkspace = !!business.createdAt && new Date(business.createdAt) >= INTAKE_ENFORCED_SINCE;
+      if (isNewWorkspace && !business.intakeCompleted && !isAllowedBeforeIntake(pathname)) {
+        return NextResponse.redirect(new URL(INTAKE_PATH, request.url));
+      }
       return NextResponse.next();
     }
 

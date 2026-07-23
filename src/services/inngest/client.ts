@@ -23,6 +23,12 @@ type Events = {
   "campaign/start": {
     data: { campaignId: string };
   };
+  "sales/nurture.requested": {
+    data: { auditId: string };
+  };
+  "sales/agent.reply": {
+    data: { conversationId: string; body: string };
+  };
   "campaign/send-review-request": {
     data: { campaignId: string; customerId: string };
   };

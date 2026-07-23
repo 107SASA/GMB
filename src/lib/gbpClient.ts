@@ -3,6 +3,9 @@ import GBPToken from '@/models/GBPToken';
 import GBPInsights from '@/models/GBPInsights';
 import Business from '@/models/Business';
 import { encrypt, decrypt } from '@/lib/crypto';
+import { gbpWritesEnabled } from '@/lib/gbpSafety';
+
+const BIZINFO_BASE = 'https://mybusinessbusinessinformation.googleapis.com/v1';
 
 export class GBPAuthError extends Error {
   constructor(message: string) {
@@ -227,4 +230,110 @@ export async function fetchSearchKeywords(
   }
 
   return keywords.sort((a, b) => b.impressions - a.impressions);
+}
+
+// ─── Business Information: live profile read + gated write ─────────────────────
+
+export interface GbpLocationProfile {
+  /** GBP resource name, e.g. "locations/12345". */
+  locationName: string;
+  title: string;
+  description: string;
+  primaryPhone: string;
+  website: string;
+  primaryCategory: string;
+  address: string;
+}
+
+export interface GbpProfilePatch {
+  title?: string;
+  description?: string;
+  primaryPhone?: string;
+  website?: string;
+}
+
+/** Reads the live GBP location profile (name, description, phone, website, …). */
+export async function fetchLocationProfile(businessId: string): Promise<GbpLocationProfile> {
+  const accessToken = await getValidToken(businessId);
+  await dbConnect();
+  const tokenDoc = await GBPToken.findOne({ businessId });
+  if (!tokenDoc?.locationId) throw new Error('No GBP location linked to this business');
+
+  const readMask = 'title,profile.description,phoneNumbers,websiteUri,categories,storefrontAddress';
+  const url = `${BIZINFO_BASE}/${tokenDoc.locationId}?readMask=${encodeURIComponent(readMask)}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`GBP fetchLocationProfile failed: ${res.status} ${err}`);
+  }
+
+  const d = await res.json();
+  const addr = d.storefrontAddress;
+  const address = addr
+    ? [...(addr.addressLines ?? []), addr.locality, addr.administrativeArea, addr.postalCode]
+        .filter(Boolean)
+        .join(', ')
+    : '';
+
+  return {
+    locationName: tokenDoc.locationId,
+    title: d.title ?? '',
+    description: d.profile?.description ?? '',
+    primaryPhone: d.phoneNumbers?.primaryPhone ?? '',
+    website: d.websiteUri ?? '',
+    primaryCategory: d.categories?.primaryCategory?.displayName ?? '',
+    address,
+  };
+}
+
+/**
+ * Applies an edit to the GBP profile. The edit is ALWAYS mirrored into our own
+ * Business doc so the data is captured; the live write to Google only happens
+ * when GBP_LIVE_WRITES_ENABLED is on (until the app is verified for the
+ * business.manage write scope). Returns whether the live write was applied.
+ */
+export async function updateLocationProfile(
+  businessId: string,
+  patch: GbpProfilePatch
+): Promise<{ liveWriteApplied: boolean }> {
+  await dbConnect();
+
+  // Mirror into the local Business record (source of truth for our features).
+  const localSet: Record<string, string> = {};
+  if (patch.title !== undefined) localSet.name = patch.title;
+  if (patch.description !== undefined) localSet.description = patch.description;
+  if (patch.primaryPhone !== undefined) localSet.phone = patch.primaryPhone;
+  if (patch.website !== undefined) localSet.website = patch.website;
+  if (Object.keys(localSet).length) {
+    await Business.updateOne({ _id: businessId }, { $set: localSet });
+  }
+
+  // Live write to Google is gated OFF by default (see lib/gbpSafety.ts).
+  if (!gbpWritesEnabled()) {
+    return { liveWriteApplied: false };
+  }
+
+  const accessToken = await getValidToken(businessId);
+  const tokenDoc = await GBPToken.findOne({ businessId });
+  if (!tokenDoc?.locationId) throw new Error('No GBP location linked to this business');
+
+  const body: Record<string, unknown> = {};
+  const masks: string[] = [];
+  if (patch.title !== undefined) { body.title = patch.title; masks.push('title'); }
+  if (patch.description !== undefined) { body.profile = { description: patch.description }; masks.push('profile.description'); }
+  if (patch.primaryPhone !== undefined) { body.phoneNumbers = { primaryPhone: patch.primaryPhone }; masks.push('phoneNumbers.primaryPhone'); }
+  if (patch.website !== undefined) { body.websiteUri = patch.website; masks.push('websiteUri'); }
+  if (masks.length === 0) return { liveWriteApplied: true };
+
+  const url = `${BIZINFO_BASE}/${tokenDoc.locationId}?updateMask=${encodeURIComponent(masks.join(','))}`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`GBP updateLocationProfile failed: ${res.status} ${err}`);
+  }
+  return { liveWriteApplied: true };
 }

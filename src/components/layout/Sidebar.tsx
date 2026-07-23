@@ -18,6 +18,7 @@ import {
   Plus,
   Building2,
   Bot,
+  MapPin,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -57,6 +58,7 @@ function BusinessAvatar({ name, index, size = "md" }: { name: string; index: num
 const sidebarLinks = [
   { name: "Dashboard Home", icon: LayoutDashboard, href: "/dashboard" },
   { name: "Audit Engine", icon: Zap, href: "/dashboard/audit" },
+  { name: "Google Profile", icon: MapPin, href: "/dashboard/gbp-profile" },
   { name: "Review Management", icon: Star, href: "/dashboard/reviews" },
   { name: "CRM", icon: MessageSquare, href: "/dashboard/crm" },
   { name: "Content Generator", icon: Megaphone, href: "/dashboard/content" },

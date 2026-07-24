@@ -12,6 +12,7 @@ interface HistoryPost {
   status: string;
   scheduledDate?: string;
   createdAt: string;
+  imageUrl?: string;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -341,6 +342,14 @@ export default function ContentHistoryTab() {
 
               {expandedId === post._id && !isEditingRow && (
                 <div className="px-5 pb-5 border-t border-slate-100 bg-slate-50/50">
+                  {post.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={post.imageUrl}
+                      alt={post.title || 'Post thumbnail'}
+                      className="mt-3 w-full max-w-sm rounded-lg border border-slate-200 object-cover"
+                    />
+                  )}
                   <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed pt-3">
                     {post.content}
                   </p>

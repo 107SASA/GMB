@@ -11,7 +11,7 @@ export function Footer() {
               <Rocket className="text-white w-5 h-5" />
             </div>
             <span className="text-xl font-bold tracking-tight text-slate-900">
-              Groww<span className="text-primary">matic</span> AI
+              Groww<span className="text-primary">Matics</span> AI
             </span>
           </Link>
           <p className="text-slate-500 text-sm leading-relaxed mb-6">
@@ -49,7 +49,7 @@ export function Footer() {
       </div>
       
       <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-slate-200 text-center text-slate-400 text-xs">
-        © {new Date().getFullYear()} Growwmatic AI. All rights reserved. Built for the future of local SEO.
+        © {new Date().getFullYear()} GrowwMatics AI. All rights reserved. Built for the future of local SEO.
       </div>
     </footer>
   );

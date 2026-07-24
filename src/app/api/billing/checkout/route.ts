@@ -72,7 +72,7 @@ export async function POST() {
         key: getRazorpayKeyId(),
         subscriptionId: rpSubscription.id,
         planType: plan.planType,
-        name: 'Growwmatic AI',
+        name: 'GrowwMatics AI',
         description: `${plan.displayName} — ₹${plan.priceInr}/${plan.billingCycle}`,
         prefill: {
           email: user?.email ?? undefined,

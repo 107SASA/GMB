@@ -1,6 +1,6 @@
-# Growwmatic AI — Mobile App (Expo)
+# GrowwMatics AI — Mobile App (Expo)
 
-React Native client for the Growwmatic AI backend. The app is a pure API client:
+React Native client for the GrowwMatics AI backend. The app is a pure API client:
 all business logic lives in the Next.js monolith one directory up, and the app
 talks to the same API and MongoDB as the web dashboard.
 

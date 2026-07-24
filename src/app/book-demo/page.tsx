@@ -65,7 +65,7 @@ export default function DemoPage() {
           <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-600/20">
             <Star size={20} className="text-white" fill="white" />
           </div>
-          <span className="text-xl font-bold text-slate-800 tracking-tight">Growwmatic AI</span>
+          <span className="text-xl font-bold text-slate-800 tracking-tight">GrowwMatics AI</span>
         </div>
         <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 mb-3 tracking-tight">Book a Free Demo</h1>
         <p className="text-slate-500 text-lg max-w-xl mx-auto">See how our AI-powered platform can automate your local growth and convert leads instantly.</p>

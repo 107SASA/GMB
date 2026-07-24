@@ -1,7 +1,7 @@
 # SaaS Onboarding Architecture
 
 ## Overview
-Growwmatic AI has transitioned from a single-tenant developer architecture to a fully multi-tenant SaaS application. When a user registers, the system dynamically provisions an isolated workspace hierarchy.
+GrowwMatics AI has transitioned from a single-tenant developer architecture to a fully multi-tenant SaaS application. When a user registers, the system dynamically provisions an isolated workspace hierarchy.
 
 ## The Registration Pipeline (`/register`)
 1. **User Creation**: The user account is created with `role: Owner`.

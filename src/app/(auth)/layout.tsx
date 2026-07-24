@@ -12,7 +12,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Groww<span className="text-primary">matic</span> AI</h1>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Groww<span className="text-primary">Matics</span> AI</h1>
         </div>
         
         {children}

@@ -134,7 +134,7 @@ export const sendEmailOtp = async (
   if (resend) {
     try {
       const { data, error } = await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL || 'Growwmatic AI <onboarding@resend.dev>',
+        from: process.env.RESEND_FROM_EMAIL || 'GrowwMatics AI <onboarding@resend.dev>',
         to: [to],
         subject,
         html,
@@ -160,7 +160,7 @@ export const sendEmailOtp = async (
   if (transporter) {
     try {
       const info = await transporter.sendMail({
-        from: `"${process.env.EMAIL_FROM_NAME || 'Growwmatic AI'}" <${process.env.EMAIL_FROM || 'noreply@example.com'}>`,
+        from: `"${process.env.EMAIL_FROM_NAME || 'GrowwMatics AI'}" <${process.env.EMAIL_FROM || 'noreply@example.com'}>`,
         to,
         subject,
         html,

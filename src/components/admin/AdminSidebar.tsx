@@ -83,7 +83,7 @@ export function AdminSidebar() {
             <Rocket className="text-primary w-5 h-5" />
           </div>
           <span className="text-lg font-bold tracking-tight text-slate-900">
-            Groww<span className="text-primary">matic</span> AI
+            Groww<span className="text-primary">Matics</span> AI
           </span>
         </Link>
 

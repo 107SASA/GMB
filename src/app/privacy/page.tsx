@@ -4,9 +4,9 @@ import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 import { COMPANY } from "@/lib/companyInfo";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Growwmatic AI",
+  title: "Privacy Policy | GrowwMatics AI",
   description:
-    "How Growwmatic AI collects, uses, stores, and protects your data, including Google Business Profile data accessed through the Google APIs.",
+    "How GrowwMatics AI collects, uses, stores, and protects your data, including Google Business Profile data accessed through the Google APIs.",
 };
 
 export default function PrivacyPolicyPage() {
@@ -45,7 +45,7 @@ export default function PrivacyPolicyPage() {
 
       <LegalSection heading="2. Google User Data & Google Business Profile">
         <p>
-          Growwmatic AI's use and transfer of information received from Google APIs adheres to the{" "}
+          GrowwMatics AI's use and transfer of information received from Google APIs adheres to the{" "}
           <a
             href="https://developers.google.com/terms/api-services-user-data-policy"
             target="_blank"

@@ -48,7 +48,7 @@ export default function LoginPage() {
             <span className="text-2xl font-black text-white">G</span>
           </div>
           <h1 className="text-2xl font-bold text-slate-900 mb-2">Welcome Back</h1>
-          <p className="text-sm text-slate-500">Sign in to your Growwmatic AI account.</p>
+          <p className="text-sm text-slate-500">Sign in to your GrowwMatics AI account.</p>
         </div>
 
         {error && (

@@ -1,4 +1,4 @@
-# Growwmatic AI — Complete Project Documentation
+# GrowwMatics AI — Complete Project Documentation
 
 **Product:** AI GMB (Google Business Profile) Optimization & Lead Conversion Platform
 **Codebase:** `GMBBoost-audit-engine` (Next.js 16 App Router monolith)
@@ -36,7 +36,7 @@
 
 ## 1. Product Overview
 
-Growwmatic AI is an enterprise SaaS platform that automates local SEO and lead management for businesses that rely on **Google Business Profile (GBP, formerly "Google My Business")** listings — plumbers, dentists, restaurants, retail, and similar local-service businesses, as well as agencies managing many client profiles from one account.
+GrowwMatics AI is an enterprise SaaS platform that automates local SEO and lead management for businesses that rely on **Google Business Profile (GBP, formerly "Google My Business")** listings — plumbers, dentists, restaurants, retail, and similar local-service businesses, as well as agencies managing many client profiles from one account.
 
 **Core value proposition:**
 - **Audit & diagnose** a business's local-SEO position (Google Maps ranking, competitor gap, review health, profile completeness) with a scored, explainable report.
@@ -48,7 +48,7 @@ Growwmatic AI is an enterprise SaaS platform that automates local SEO and lead m
 **Primary personas:**
 - Local business owner / office manager (day-to-day dashboard user).
 - Marketing agency managing multiple client businesses under one login (multi-business workspace switcher).
-- Growwmatic AI's own internal team (Super Admin panel — separate, isolated admin surface).
+- GrowwMatics AI's own internal team (Super Admin panel — separate, isolated admin surface).
 
 ---
 
@@ -288,7 +288,7 @@ All 41 files live in `src/models/*.ts`. Global patterns that apply to every mode
 
 ### 7.5 CRM, Leads & Conversations
 
-**`Lead`** — a sales/CRM lead: either a prospective client of Growwmatic AI itself ("Platform Prospect") or an end-customer lead for a tenant's own business ("Client Prospect"). `tenantId` (string), `organizationId` (string), `businessId` (→ Business), `assignedUserId` (→ User), `name`, `email`, `phone`, `source: WhatsApp|Website|Manual|Instagram|Facebook|Referral|Demo Booking|Google Business Profile`, `leadType: Client Prospect|Platform Prospect`, `status: active|inactive`, `lifeCycleStage: initial|active|closed|converted`, `pipelineStage` (string|null), `tags[]`, `notes`, `followUpDates[]`, AI qualification fields (`aiLeadScore`, `aiInsights`, `qualificationStatus`, `businessType`, `budget`, `urgency`, `interest`), `lastActivityAt`. Hub of the CRM group — referenced by `Conversation`, `ConversationThread`, `FollowUp`, `Appointment`, `DemoBooking`, `Activity`, `MessageQueue`.
+**`Lead`** — a sales/CRM lead: either a prospective client of GrowwMatics AI itself ("Platform Prospect") or an end-customer lead for a tenant's own business ("Client Prospect"). `tenantId` (string), `organizationId` (string), `businessId` (→ Business), `assignedUserId` (→ User), `name`, `email`, `phone`, `source: WhatsApp|Website|Manual|Instagram|Facebook|Referral|Demo Booking|Google Business Profile`, `leadType: Client Prospect|Platform Prospect`, `status: active|inactive`, `lifeCycleStage: initial|active|closed|converted`, `pipelineStage` (string|null), `tags[]`, `notes`, `followUpDates[]`, AI qualification fields (`aiLeadScore`, `aiInsights`, `qualificationStatus`, `businessType`, `budget`, `urgency`, `interest`), `lastActivityAt`. Hub of the CRM group — referenced by `Conversation`, `ConversationThread`, `FollowUp`, `Appointment`, `DemoBooking`, `Activity`, `MessageQueue`.
 
 **`Customer`** — an end-customer of a tenant's business (distinct from `Lead` — used for review-request/CRM outreach). `tenantId`, `businessId`, `name`, `phone`, `email`, `service`, `serviceDate`, `tags[]`, `notes`, `optedOut`, `reviewStatus: Pending|Requested|Completed|Failed`, `totalMessagesSent`, `lastMessageAt`, `metadata` (Mixed). Two compound **unique partial** indexes dedupe imports: `{businessId,phone}` and `{businessId,email}`, each requiring the field to exist and be non-null.
 
@@ -330,7 +330,7 @@ All 41 files live in `src/models/*.ts`. Global patterns that apply to every mode
 
 **`AIUsageLog`** — per-request AI API usage/cost log for admin analytics and quota enforcement. `userId` (→ User), `businessId` (→ Business), `promptType` (e.g. `content_generation`, `review_reply`, `lead_response`), `aiModel` (typed union but stored loosely as string, default `gpt-4o-mini` — note the app's actual LLM is Groq/Llama, see §11), `tokensUsed`/`promptTokens`/`completionTokens`, `estimatedCost` (USD), `status: success|failed|partial`, `errorMessage`, `durationMs`. Four indexes for admin analytics (`createdAt`, `userId+createdAt`, `status+createdAt`, `promptType+createdAt`).
 
-**`PlatformSettings`** — singleton-style global platform config. `platformName` (default `'Growwmatic AI'`), `supportEmail`, `maxAuditsPerBusiness`, `maxPostsPerMonth`, `maxWhatsAppMessagesPerDay`, `maintenanceMode`, `defaultTrialDays`, `reviewRequestCooldownDays`. No schema-level unique constraint enforcing a single document — app code must guarantee that.
+**`PlatformSettings`** — singleton-style global platform config. `platformName` (default `'GrowwMatics AI'`), `supportEmail`, `maxAuditsPerBusiness`, `maxPostsPerMonth`, `maxWhatsAppMessagesPerDay`, `maintenanceMode`, `defaultTrialDays`, `reviewRequestCooldownDays`. No schema-level unique constraint enforcing a single document — app code must guarantee that.
 
 **`ReportShare`** — public/shareable link token for an Audit report. `auditId` (→ Audit), `token` (unique), `createdBy`, `expiresAt`, `viewCount`.
 

@@ -7,8 +7,8 @@
  * verification.
  */
 export const COMPANY = {
-  name: 'Growwmatic AI',
-  legalName: 'Growwmatic AI',
+  name: 'GrowwMatics AI',
+  legalName: 'GrowwMatics AI',
   domain: 'growwmatics.com',
   siteUrl: 'https://growwmatics.com',
   supportEmail: 'support@growwmatics.com',

@@ -321,7 +321,7 @@ export function buildReportHtml(ctx: ReportContext): string {
       <span style="font-size:13px;font-weight:600;color:#374151;">Google Search Rank Report for Your Business Profile</span>
     </div>
     <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);border-radius:6px;padding:4px 10px;">
-      <span style="font-size:11px;font-weight:700;color:#fff;letter-spacing:0.5px;">Growwmatic AI</span>
+      <span style="font-size:11px;font-weight:700;color:#fff;letter-spacing:0.5px;">GrowwMatics AI</span>
     </div>
   </div>
   <div style="padding:16px 20px;">
@@ -638,7 +638,7 @@ export function buildReportHtml(ctx: ReportContext): string {
     </div>
   </div>
   <div style="padding:8px 30px;background:rgba(0,0,0,0.15);display:flex;align-items:center;justify-content:space-between;">
-    <span style="font-size:10px;color:rgba(255,255,255,0.6);">Growwmatic AI · AI-Powered Google Business Growth Platform</span>
+    <span style="font-size:10px;color:rgba(255,255,255,0.6);">GrowwMatics AI · AI-Powered Google Business Growth Platform</span>
     <span style="font-size:10px;color:rgba(255,255,255,0.4);">Report Generated ${genDate}</span>
   </div>
 </div>`;
@@ -649,7 +649,7 @@ export function buildReportHtml(ctx: ReportContext): string {
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Growwmatic AI Report – ${h(audit.businessName)}</title>
+<title>GrowwMatics AI Report – ${h(audit.businessName)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"/>
 <style>${css}</style>

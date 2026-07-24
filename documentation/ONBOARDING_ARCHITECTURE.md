@@ -1,7 +1,7 @@
 # Onboarding Architecture
 
 ## Overview
-Growwmatic AI utilizes a state-machine architecture for its premium SaaS onboarding flow. Instead of a monolithic registration form, users are guided through a multi-step `Framer Motion` powered wizard.
+GrowwMatics AI utilizes a state-machine architecture for its premium SaaS onboarding flow. Instead of a monolithic registration form, users are guided through a multi-step `Framer Motion` powered wizard.
 
 ## The Orchestrator (`OnboardingWizard.tsx`)
 The `OnboardingWizard` is a client-side wrapper that holds the master `OnboardingData` state.

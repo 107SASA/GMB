@@ -39,7 +39,7 @@ export default function OnboardingPage() {
           <Rocket className="w-10 h-10 text-primary" />
         </div>
 
-        <h1 className="text-4xl font-bold text-slate-900 mb-4 tracking-tight">Welcome to Growwmatic AI</h1>
+        <h1 className="text-4xl font-bold text-slate-900 mb-4 tracking-tight">Welcome to GrowwMatics AI</h1>
         <p className="text-lg text-slate-500 mb-10 max-w-md mx-auto">
           Your AI Growth Platform is ready. Let's start optimizing your local business presence.
         </p>

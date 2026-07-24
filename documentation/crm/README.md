@@ -1,6 +1,6 @@
 # CRM Module Documentation
 
-The CRM is the single source of truth for all leads, customers, and communications within Growwmatic AI. It acts as a lightweight, automated pipeline (similar to HubSpot or Pipedrive) where all data flows into a unified master view.
+The CRM is the single source of truth for all leads, customers, and communications within GrowwMatics AI. It acts as a lightweight, automated pipeline (similar to HubSpot or Pipedrive) where all data flows into a unified master view.
 
 ## Core Principles
 
@@ -43,7 +43,7 @@ Leads without a stage are mapped to the first column (`New` or `Unassigned`).
 
 ## Platform Architecture: Demo Bookings
 
-While the CRM is predominantly used by our clients to manage *their* leads, it also acts as the internal system of record for **Growwmatic AI Platform Prospects** (Demo Bookings). 
+While the CRM is predominantly used by our clients to manage *their* leads, it also acts as the internal system of record for **GrowwMatics AI Platform Prospects** (Demo Bookings). 
 
 When a user visits `/book-demo` and submits the form:
 1. An internal `Lead` is created with `tenantId: 'gmbboost-internal'` and `leadType: 'Platform Prospect'`.

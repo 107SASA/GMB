@@ -42,7 +42,7 @@ export const DEFAULT_FREE_MODULES: ModuleKey[] = ['google_ranking_agent'];
 
 /** Defaults used until the super admin saves the BillingPlan document. */
 export const PLAN_FALLBACK = {
-  displayName: 'Growwmatic AI',
+  displayName: 'GrowwMatics AI',
   description:
     'One plan, everything included — GBP optimization, reviews, AI sales agent, content and marketing automation, on web and mobile.',
   priceInr: 1999,

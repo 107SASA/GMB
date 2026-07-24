@@ -1,4 +1,4 @@
-# Growwmatic AI — Super Admin Feature: Handover Document
+# GrowwMatics AI — Super Admin Feature: Handover Document
 
 **Date:** 2026-05-29  
 **Branch/Context:** Added on top of `integration-branch`  
@@ -8,7 +8,7 @@
 
 ## 1. Overview
 
-A fully self-contained Super Admin panel has been added to the existing Growwmatic AI SaaS project. It is completely isolated from the regular user dashboard — separate routes, separate session cookie, separate API namespace. **Zero changes were made to existing user flows or APIs.**
+A fully self-contained Super Admin panel has been added to the existing GrowwMatics AI SaaS project. It is completely isolated from the regular user dashboard — separate routes, separate session cookie, separate API namespace. **Zero changes were made to existing user flows or APIs.**
 
 ---
 

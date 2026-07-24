@@ -8,7 +8,7 @@ const testimonials = [
   {
     name: "Rajesh Kumar",
     business: "RK Dental Clinic",
-    quote: "Growwmatic AI transformed our local ranking. We went from page 3 to the top 3 in just 2 weeks. The AI review replies are a lifesaver!",
+    quote: "GrowwMatics AI transformed our local ranking. We went from page 3 to the top 3 in just 2 weeks. The AI review replies are a lifesaver!",
     rating: 5
   },
   {

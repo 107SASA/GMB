@@ -1,7 +1,7 @@
 import SchedulerDashboard from '@/components/scheduler/SchedulerDashboard';
 
 export const metadata = {
-  title: 'AI Marketing Automation | Growwmatic AI',
+  title: 'AI Marketing Automation | GrowwMatics AI',
   description: 'Manage your automated 7-day content buffer.',
 };
 

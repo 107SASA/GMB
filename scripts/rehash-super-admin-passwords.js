@@ -1,5 +1,5 @@
 /**
- * Growwmatic AI – Re-hash any plain-text SUPER_ADMIN passwords
+ * GrowwMatics AI – Re-hash any plain-text SUPER_ADMIN passwords
  * ----------------------------------------------------------
  * The admin login route now only accepts bcrypt hashes (no plain-text
  * fallback). Any SUPER_ADMIN whose passwordHash is not already a bcrypt

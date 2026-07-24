@@ -1,4 +1,4 @@
-# Production Readiness — Growwmatic AI @ growwmatics.com
+# Production Readiness — GrowwMatics AI @ growwmatics.com
 
 **Status as of 2026-07-22:** Deployed and serving at https://growwmatics.com.
 Infrastructure is healthy.
@@ -188,7 +188,7 @@ All 4 `/api/n8n/*` routes return HTTP 500.
 
 ## 4b. Branding & truthful copy (2026-07-22)
 
-Product renamed **GMBBoost → Growwmatic AI** across 20 UI files, emails, PDF
+Product renamed **GMBBoost → GrowwMatics AI** across 20 UI files, emails, PDF
 report headers, page titles and the mobile app. `tenantId = 'gmbboost-internal'`
 (`src/app/api/demo/route.ts:31`) was deliberately left alone — it is a stored DB
 identifier and renaming it would orphan existing demo-booking records.
@@ -198,8 +198,8 @@ overrides the code fallback:
 
 | Where | Current live value | Action |
 |---|---|---|
-| Admin → Subscriptions | `displayName: "GMB Boost"`, `priceInr: 9999` | Rename to `Growwmatic AI` |
-| Admin → Settings | `platformName` | Set to `Growwmatic AI` |
+| Admin → Subscriptions | `displayName: "GMB Boost"`, `priceInr: 9999` | Rename to `GrowwMatics AI` |
+| Admin → Settings | `platformName` | Set to `GrowwMatics AI` |
 
 ### Copy that did not match the product — fixed
 - **Onboarding step 8 (`StepModules.tsx`)** advertised three invented USD tiers
@@ -284,4 +284,4 @@ critical path.
 |---|---|---|
 | 2026-07-21 | `3f8cb77` | Prod-readiness: single-plan billing, Meta WhatsApp migration, GBP write guard, boot-time env validation, rate limiter, security headers |
 | 2026-07-22 | `b60925d` | Security: closed 4 unauthenticated endpoints + SSRF in resolve-gbp-url |
-| 2026-07-22 | `4618b67` | Rebrand to Growwmatic AI; removed fake plan tiers and the false trial claim; plan label mapping |
+| 2026-07-22 | `4618b67` | Rebrand to GrowwMatics AI; removed fake plan tiers and the false trial claim; plan label mapping |

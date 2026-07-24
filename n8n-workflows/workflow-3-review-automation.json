@@ -4,7 +4,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## AI Review Intelligence Automation\n\n**Required env vars in n8n:**\n- `GMB_API_URL` — base URL of your Growwmatic AI instance (e.g. https://app.yourdomain.com)\n- `GMB_BUSINESS_ID` — MongoDB ObjectId of the business this workflow manages\n- `AUTOMATION_API_KEY` — value of AUTOMATION_API_KEY from your Growwmatic AI .env\n- `TWILIO_ACCOUNT_SID`, `TWILIO_WHATSAPP_NUMBER`, `ADMIN_WHATSAPP_NUMBER`\n\n**Set these under Settings → Environment Variables in n8n before activating.**\n\nFor multi-tenant setups, run one n8n instance (or one copy of this workflow) per business.",
+        "content": "## AI Review Intelligence Automation\n\n**Required env vars in n8n:**\n- `GMB_API_URL` — base URL of your GrowwMatics AI instance (e.g. https://app.yourdomain.com)\n- `GMB_BUSINESS_ID` — MongoDB ObjectId of the business this workflow manages\n- `AUTOMATION_API_KEY` — value of AUTOMATION_API_KEY from your GrowwMatics AI .env\n- `TWILIO_ACCOUNT_SID`, `TWILIO_WHATSAPP_NUMBER`, `ADMIN_WHATSAPP_NUMBER`\n\n**Set these under Settings → Environment Variables in n8n before activating.**\n\nFor multi-tenant setups, run one n8n instance (or one copy of this workflow) per business.",
         "height": 200,
         "width": 420
       },
@@ -227,7 +227,7 @@
   },
   "tags": [
     {
-      "name": "Growwmatic AI"
+      "name": "GrowwMatics AI"
     },
     {
       "name": "Reputation Management"

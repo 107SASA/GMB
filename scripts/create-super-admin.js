@@ -1,5 +1,5 @@
 /**
- * Growwmatic AI – Create Super Admin User
+ * GrowwMatics AI – Create Super Admin User
  * -----------------------------------
  * Run ONCE to seed the first super_admin account:
  *

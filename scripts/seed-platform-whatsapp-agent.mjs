@@ -1,8 +1,8 @@
 /**
- * One-time script: provisions the "Growwmatic AI platform" as its own Business
+ * One-time script: provisions the "GrowwMatics AI platform" as its own Business
  * record so the WhatsApp AI Agent — already 100% business-agnostic and
  * data-driven (business is resolved purely by the inbound WhatsApp number,
- * see src/app/api/whatsapp/webhook/route.ts) — can run as Growwmatic AI's own
+ * see src/app/api/whatsapp/webhook/route.ts) — can run as GrowwMatics AI's own
  * sales & support assistant instead of a customer's.
  *
  * This does NOT touch any AI logic, webhook code, or the DB schema. It only
@@ -60,22 +60,22 @@ const BusinessAIConfig = mongoose.models.BusinessAIConfig || mongoose.model(
 // Record names for the platform's own Organization/Business. The LEGACY_*
 // values are the pre-rebrand names; they are still matched on lookup so this
 // script stays idempotent against a database seeded before the rename.
-const ORG_NAME = 'Growwmatic AI (Platform)';
+const ORG_NAME = 'GrowwMatics AI (Platform)';
 const LEGACY_ORG_NAME = 'GMBBoost (Platform)';
-const BUSINESS_NAME = 'Growwmatic AI (Platform Sales)';
+const BUSINESS_NAME = 'GrowwMatics AI (Platform Sales)';
 const LEGACY_BUSINESS_NAME = 'GMBBoost (Platform Sales)';
 
 // ⚠️ PRICING IN THIS PROMPT IS STALE — see the note above the plan list below.
-const SYSTEM_PROMPT = `You are the Growwmatic AI platform's own AI sales & support assistant, chatting on WhatsApp with prospective and existing Growwmatic AI customers (business owners considering or using Growwmatic AI's Google Business Profile / reputation / AI marketing platform). You are NOT representing an individual local business — you represent Growwmatic AI itself.
+const SYSTEM_PROMPT = `You are the GrowwMatics AI platform's own AI sales & support assistant, chatting on WhatsApp with prospective and existing GrowwMatics AI customers (business owners considering or using GrowwMatics AI's Google Business Profile / reputation / AI marketing platform). You are NOT representing an individual local business — you represent GrowwMatics AI itself.
 
 Your goals, in order:
 1. Understand what the prospect needs and answer platform questions (features, how it works, onboarding, basic troubleshooting).
 2. Qualify the lead: find out their business name, industry, and what problem they're trying to solve (rankings, reviews, content, leads).
 3. Explain the right plan for their needs using ONLY the real plan details below — never invent pricing or features.
 4. Offer to book a demo call when the prospect seems ready or asks for one.
-5. If a question is billing-sensitive, technical/account-specific, or you're unsure, say a member of the Growwmatic AI team will follow up, and continue the conversation normally — a human can take over this chat at any time from the dashboard.
+5. If a question is billing-sensitive, technical/account-specific, or you're unsure, say a member of the GrowwMatics AI team will follow up, and continue the conversation normally — a human can take over this chat at any time from the dashboard.
 
-Growwmatic AI plans (India pricing, monthly):
+GrowwMatics AI plans (India pricing, monthly):
 - Free: Google Business Profile ranking tools only.
 - Pro (₹1,999/mo): Google ranking tools + reputation/review management + AI content studio.
 - Enterprise (₹4,999/mo): everything in Pro, plus this AI WhatsApp sales agent and marketing automation.
@@ -121,7 +121,7 @@ async function main() {
     console.log(`↺ Organization already exists (${org._id})`);
   }
 
-  // 2. Business — represents Growwmatic AI itself. Upsert by (userId, name) so
+  // 2. Business — represents GrowwMatics AI itself. Upsert by (userId, name) so
   //    re-running this script is safe and idempotent. Matches the legacy name
   //    too, so a pre-rebrand record is renamed rather than duplicated.
   let business = await Business.findOne({
@@ -131,7 +131,7 @@ async function main() {
   const businessFields = {
     name: BUSINESS_NAME,
     category: 'SaaS / Software',
-    description: "Growwmatic AI's own sales & support line — not a customer business.",
+    description: "GrowwMatics AI's own sales & support line — not a customer business.",
     address: 'Remote',
     country: 'India',
     organizationId: org._id,

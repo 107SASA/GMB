@@ -4,9 +4,9 @@ import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 import { COMPANY } from "@/lib/companyInfo";
 
 export const metadata: Metadata = {
-  title: "Refund & Cancellation Policy | Growwmatic AI",
+  title: "Refund & Cancellation Policy | GrowwMatics AI",
   description:
-    "How subscription cancellations and refunds work for Growwmatic AI.",
+    "How subscription cancellations and refunds work for GrowwMatics AI.",
 };
 
 export default function RefundPage() {

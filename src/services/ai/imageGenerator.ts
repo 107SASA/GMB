@@ -111,9 +111,31 @@ async function generateWithGemini(prompt: string, apiKey: string): Promise<strin
     if (!imagePart?.inlineData) return null;
 
     const { mimeType, data: b64 } = imagePart.inlineData;
-    return `data:${mimeType};base64,${b64}`;
+    // Gemini returns full-size PNGs (~2 MB). Downscale to a web thumbnail so the
+    // data-URL we store/ship is ~150 KB instead of megabytes.
+    const compressed = await compressToThumbnail(b64);
+    return compressed ?? `data:${mimeType};base64,${b64}`;
   } catch (err: any) {
     console.error('Gemini thumbnail failed:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Resizes a base64 image down to a web thumbnail JPEG data-URL using sharp
+ * (bundled with Next.js). Falls back to null so callers keep the original if
+ * sharp is unavailable or the input is unusual.
+ */
+async function compressToThumbnail(base64: string): Promise<string | null> {
+  try {
+    const sharp = (await import('sharp')).default;
+    const out = await sharp(Buffer.from(base64, 'base64'))
+      .resize({ width: 1080, height: 1080, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 82 })
+      .toBuffer();
+    return `data:image/jpeg;base64,${out.toString('base64')}`;
+  } catch (err: any) {
+    console.warn('[imageGenerator] thumbnail compression skipped:', err?.message);
     return null;
   }
 }

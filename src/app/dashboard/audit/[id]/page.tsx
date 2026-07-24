@@ -1,7 +1,7 @@
 import GatedAuditReport from '@/components/audit/GatedAuditReport';
 
 export const metadata = {
-  title: 'Audit Results | Growwmatic AI',
+  title: 'Audit Results | GrowwMatics AI',
   description: 'View your AI-powered Google Business Profile audit results.',
 };
 

@@ -22,7 +22,7 @@ export function planDisplayLabel(
 ): string {
   if (!planType || planType === 'Free') return FREE_PLAN_LABEL;
   // Every paid plan — current or legacy — presents as the one sellable plan.
-  return planName?.trim() || 'Growwmatic AI';
+  return planName?.trim() || 'GrowwMatics AI';
 }
 
 /** True for any paid plan, including the legacy 'Enterprise' value. */

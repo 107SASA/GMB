@@ -1,7 +1,7 @@
 import ContentWorkspace from '@/components/content/ContentWorkspace';
 
 export const metadata = {
-  title: 'AI Content Studio | Growwmatic AI',
+  title: 'AI Content Studio | GrowwMatics AI',
   description: 'Generate high-converting GMB posts, SEO content, and FAQs instantly.',
 };
 

@@ -64,7 +64,7 @@ export default function StepModules({ data, updateData, onNext, onBack }: Props)
         <div className="rounded-2xl border-2 border-slate-900 bg-slate-50 p-6">
           <div className="flex items-baseline justify-between gap-4 mb-1">
             <div className="font-bold text-lg text-slate-900">
-              {plan?.displayName ?? 'Growwmatic AI'}
+              {plan?.displayName ?? 'GrowwMatics AI'}
             </div>
             <div className="text-right">
               {plan ? (

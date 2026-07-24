@@ -123,7 +123,7 @@ export default function GbpProfilePage() {
             <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
               <Info className="w-4 h-4 mt-0.5 shrink-0" />
               <span>
-                Editing is in <strong>preview mode</strong>. Your changes are saved in Growwmatic now and will
+                Editing is in <strong>preview mode</strong>. Your changes are saved in GrowwMatics now and will
                 publish to Google automatically once profile verification is enabled for your account.
               </span>
             </div>

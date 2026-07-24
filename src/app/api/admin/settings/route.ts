@@ -18,7 +18,7 @@ export async function GET() {
       return NextResponse.json({
         success: true,
         data: {
-          platformName:              'Growwmatic AI',
+          platformName:              'GrowwMatics AI',
           supportEmail:              '',
           maxAuditsPerBusiness:      10,
           maxPostsPerMonth:          50,

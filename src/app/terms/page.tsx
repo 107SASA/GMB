@@ -4,9 +4,9 @@ import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 import { COMPANY } from "@/lib/companyInfo";
 
 export const metadata: Metadata = {
-  title: "Terms & Conditions | Growwmatic AI",
+  title: "Terms & Conditions | GrowwMatics AI",
   description:
-    "The terms governing your use of the Growwmatic AI website and services.",
+    "The terms governing your use of the GrowwMatics AI website and services.",
 };
 
 export default function TermsPage() {

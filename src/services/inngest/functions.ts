@@ -1507,7 +1507,7 @@ export const processDemoBooking = inngest.createFunction(
             },
             body: JSON.stringify({
               personalizations: [{ to: [{ email: to }] }],
-              from: { email: process.env.EMAIL_FROM!, name: 'Growwmatic AI' },
+              from: { email: process.env.EMAIL_FROM!, name: 'GrowwMatics AI' },
               subject,
               content: [{ type: 'text/html', value: html }],
             }),
@@ -1541,7 +1541,7 @@ export const processDemoBooking = inngest.createFunction(
       // Customer Confirmation
       await sendEmail(
         booking.email,
-        'Demo Booking Confirmed - Growwmatic AI',
+        'Demo Booking Confirmed - GrowwMatics AI',
         `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #2563eb;">Demo Confirmed!</h2>
@@ -1552,7 +1552,7 @@ export const processDemoBooking = inngest.createFunction(
               <p style="margin: 8px 0 0;"><b>Time:</b> ${booking.timeSlot}</p>
             </div>
             <p>Our team will contact you shortly to confirm the meeting link.</p>
-            <p style="color: #64748b; font-size: 14px;">Team Growwmatic AI</p>
+            <p style="color: #64748b; font-size: 14px;">Team GrowwMatics AI</p>
           </div>
         `
       );

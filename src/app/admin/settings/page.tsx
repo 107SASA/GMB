@@ -16,7 +16,7 @@ interface Settings {
 }
 
 const DEFAULT_SETTINGS: Settings = {
-  platformName:              'Growwmatic AI',
+  platformName:              'GrowwMatics AI',
   supportEmail:              '',
   maxAuditsPerBusiness:      10,
   maxPostsPerMonth:          50,

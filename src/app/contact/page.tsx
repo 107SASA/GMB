@@ -5,8 +5,8 @@ import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 import { COMPANY } from "@/lib/companyInfo";
 
 export const metadata: Metadata = {
-  title: "Contact Us | Growwmatic AI",
-  description: "Get in touch with the Growwmatic AI team.",
+  title: "Contact Us | GrowwMatics AI",
+  description: "Get in touch with the GrowwMatics AI team.",
 };
 
 export default function ContactPage() {

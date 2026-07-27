@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import Organization from '@/models/Organization';
+import User from '@/models/User';
 import { requireClient } from '@/lib/auth';
 
 export async function POST(req: Request) {
@@ -65,6 +66,17 @@ export async function POST(req: Request) {
       userId: auth.userId,
       onboardingCompleted: true,
     });
+
+    // Record the workspace on the user so it's a first-class business everywhere
+    // that reads `businessIds` (automation, push/notification targeting, the
+    // business-list routes) and make it the active workspace.
+    await User.updateOne(
+      { _id: auth.userId },
+      {
+        $addToSet: { businessIds: newBusiness._id },
+        $set: { activeBusinessId: newBusiness._id },
+      }
+    );
 
     const cookieStore = await cookies();
     cookieStore.set('activeBusinessId', newBusiness._id.toString(), {

@@ -20,6 +20,7 @@ import {
   MessageCircle,
   MessageSquare,
   Bot,
+  CalendarCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -55,6 +56,7 @@ const adminGroups = [
       { name: 'WhatsApp Monitor', icon: MessageCircle, href: '/admin/whatsapp' },
       { name: 'WhatsApp AI Agent', icon: MessageSquare, href: '/admin/whatsapp-agent' },
       { name: 'Sales Agent', icon: Bot, href: '/admin/sales-agent' },
+      { name: 'Booking Agent', icon: CalendarCheck, href: '/admin/booking-agent' },
     ],
   },
   {

@@ -11,7 +11,6 @@ import StepPassword from './StepPassword';
 import StepBusiness from './StepBusiness';
 import StepGoogle from './StepGoogle';
 import StepWhatsApp from './StepWhatsApp';
-import StepAI from './StepAI';
 import StepCompletion from './StepCompletion';
 
 export function OnboardingWizard() {
@@ -40,7 +39,6 @@ export function OnboardingWizard() {
     { component: StepBusiness, id: 'business' },
     { component: StepGoogle, id: 'google' },
     { component: StepWhatsApp, id: 'whatsapp' },
-    { component: StepAI, id: 'ai' },
     { component: StepCompletion, id: 'complete' }
   ];
 

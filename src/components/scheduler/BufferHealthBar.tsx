@@ -2,12 +2,13 @@ import React from 'react';
 import { motion } from 'framer-motion';
 
 interface BufferHealthBarProps {
-  daysCovered: number;
+  scheduled: number;
+  target: number;
   healthStatus: string;
 }
 
-export default function BufferHealthBar({ daysCovered, healthStatus }: BufferHealthBarProps) {
-  const percentage = Math.min(100, Math.round((daysCovered / 7) * 100));
+export default function BufferHealthBar({ scheduled, target, healthStatus }: BufferHealthBarProps) {
+  const percentage = target > 0 ? Math.min(100, Math.round((scheduled / target) * 100)) : 0;
   
   const statusColors = {
     Healthy: 'from-emerald-400 to-emerald-500',
@@ -29,17 +30,18 @@ export default function BufferHealthBar({ daysCovered, healthStatus }: BufferHea
       <div className="flex-shrink-0 text-center md:text-left">
         <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-1">Buffer Health</h3>
         <div className="flex items-center gap-3 justify-center md:justify-start">
-          <span className="text-3xl font-black text-slate-900">{daysCovered}<span className="text-xl text-slate-400">/7</span></span>
+          <span className="text-3xl font-black text-slate-900">{scheduled}<span className="text-xl text-slate-400">/{target}</span></span>
           <span className={`px-2.5 py-1 rounded-md text-xs font-bold border ${badgeColor}`}>
             {healthStatus}
           </span>
         </div>
+        <p className="text-xs text-slate-400 mt-1">posts scheduled this week</p>
       </div>
-      
+
       <div className="flex-grow w-full">
         <div className="flex justify-between text-xs font-semibold text-slate-500 mb-2">
-          <span>0 Days (Empty)</span>
-          <span>7 Days (Optimal)</span>
+          <span>Empty week</span>
+          <span>{target} posts (Optimal)</span>
         </div>
         <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden relative">
           <motion.div 

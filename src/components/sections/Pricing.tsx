@@ -1,7 +1,6 @@
 "use client";
 
 import { PricingCards } from "./pricing/PricingCards";
-import { ROICalculator } from "./pricing/ROICalculator";
 
 export function Pricing() {
   return (
@@ -23,8 +22,6 @@ export function Pricing() {
       </div>
 
       <PricingCards />
-
-      <ROICalculator />
 
     </section>
   );

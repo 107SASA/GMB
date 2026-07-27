@@ -147,6 +147,81 @@ async function processInboundMessage({ business, phone, profileName, body, messa
   });
 }
 
+// ---------------------------------------------------------------------------
+// Platform (GrowwMatics-owned) inbound pipeline. The public "Book a Demo" CTA
+// and the post-audit sales nurture both run on ONE GrowwMatics WhatsApp number
+// (owner-only line — never a tenant's). Any message to it routes here:
+//   • active post-audit sales conversation → SALES agent
+//   • otherwise                            → BOOKING agent (demo bookings)
+// ---------------------------------------------------------------------------
+
+/** True when an inbound message hit the GrowwMatics platform number. */
+function isPlatformNumber(displayNumber?: string, phoneNumberId?: string): boolean {
+  const pid = process.env.META_WHATSAPP_PHONE_NUMBER_ID;
+  if (phoneNumberId && pid && phoneNumberId === pid) return true;
+
+  const configured = (process.env.PLATFORM_WHATSAPP_NUMBER || process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '')
+    .replace(/[^\d]/g, '');
+  if (!configured) return false;
+  const incoming = (displayNumber || '').replace(/[^\d]/g, '');
+  return incoming.length > 0 && incoming === configured;
+}
+
+interface PlatformInbound {
+  phone: string; // E.164 with '+'
+  profileName: string;
+  body: string;
+  messageSid: string;
+}
+
+async function processPlatformInbound({ phone, profileName, body }: PlatformInbound) {
+  const { phoneDedupeKey, normalizePhoneE164 } = await import('@/lib/phone');
+  const key = phoneDedupeKey(phone);
+  const normalized = (body || '').trim().toUpperCase();
+  const isOptOut = ['STOP', 'UNSUBSCRIBE', 'CANCEL'].includes(normalized);
+
+  // 1. Post-audit SALES nurture takes priority while active.
+  const salesConvo = await SalesConversation.findOne({ phoneKey: key, status: 'active' });
+  if (salesConvo) {
+    if (isOptOut) {
+      salesConvo.status = 'stopped';
+      await salesConvo.save();
+      return;
+    }
+    salesConvo.messages.push({ role: 'lead', text: body, at: new Date() });
+    salesConvo.lastLeadReplyAt = new Date();
+    await salesConvo.save();
+    await inngest.send({ name: 'sales/agent.reply', data: { conversationId: salesConvo._id.toString(), body } });
+    return;
+  }
+
+  // 2. Otherwise it's a demo prospect → BOOKING agent.
+  const { default: BookingConversation } = await import('@/models/BookingConversation');
+  let convo = await BookingConversation.findOne({ phoneKey: key, status: 'active' });
+
+  if (isOptOut) {
+    if (convo) {
+      convo.status = 'stopped';
+      await convo.save();
+    }
+    return;
+  }
+
+  if (!convo) {
+    convo = await BookingConversation.create({
+      leadPhone: normalizePhoneE164(phone) || phone,
+      phoneKey: key,
+      leadName: profileName || '',
+      status: 'active',
+    });
+  }
+  if (!convo.leadName && profileName) convo.leadName = profileName;
+  convo.messages.push({ role: 'lead', text: body, at: new Date() });
+  await convo.save();
+
+  await inngest.send({ name: 'booking/agent.reply', data: { conversationId: convo._id.toString(), body } });
+}
+
 /**
  * Map an inbound business phone number to a Business. Numbers may arrive
  * with/without '+' or 'whatsapp:' prefix depending on provider.
@@ -239,8 +314,11 @@ async function handleMetaWebhook(req: Request) {
 
         const displayNumber = value.metadata?.display_phone_number || '';
         const phoneNumberId = value.metadata?.phone_number_id;
-        const business = await findBusinessByNumber(displayNumber, phoneNumberId);
-        if (!business) {
+
+        // GrowwMatics-owned line → sales/booking agents. Otherwise a tenant.
+        const platform = isPlatformNumber(displayNumber, phoneNumberId);
+        const business = platform ? null : await findBusinessByNumber(displayNumber, phoneNumberId);
+        if (!platform && !business) {
           console.error(`[meta-webhook] No business mapped to WhatsApp number ${displayNumber} (phone_number_id: ${phoneNumberId})`);
           continue;
         }
@@ -258,14 +336,18 @@ async function handleMetaWebhook(req: Request) {
             : message[message.type]?.caption || message.button?.text || message.interactive?.button_reply?.title || '';
           const numMedia = ['image', 'video', 'audio', 'document', 'sticker'].includes(message.type) ? 1 : 0;
 
-          await processInboundMessage({
-            business,
-            phone,
-            profileName,
-            body,
-            messageSid: message.id || '',
-            numMedia,
-          });
+          if (platform) {
+            await processPlatformInbound({ phone, profileName, body, messageSid: message.id || '' });
+          } else {
+            await processInboundMessage({
+              business,
+              phone,
+              profileName,
+              body,
+              messageSid: message.id || '',
+              numMedia,
+            });
+          }
         }
       }
     }
@@ -300,23 +382,37 @@ async function handleTwilioWebhook(req: Request) {
 
     await dbConnect();
 
-    const business = await findBusinessByNumber(toPayload || '');
-    if (!business) {
+    // GrowwMatics-owned line → sales/booking agents. Otherwise a tenant.
+    const platform = isPlatformNumber(toPayload || '');
+    const business = platform ? null : await findBusinessByNumber(toPayload || '');
+    if (!platform && !business) {
       console.error(`No business found mapped to WhatsApp number: ${toPayload}`);
       return twimlOk();
     }
 
-    const verification = await validateTwilioSignature(req, formData, (business.integrations as any)?.twilioAuthToken);
+    const authToken = platform
+      ? process.env.TWILIO_AUTH_TOKEN
+      : (business!.integrations as any)?.twilioAuthToken;
+    const verification = await validateTwilioSignature(req, formData, authToken);
     if (!verification.ok) return verification.response;
 
-    await processInboundMessage({
-      business,
-      phone,
-      profileName: profileName || '',
-      body: body || '',
-      messageSid: messageSid || '',
-      numMedia,
-    });
+    if (platform) {
+      await processPlatformInbound({
+        phone,
+        profileName: profileName || '',
+        body: body || '',
+        messageSid: messageSid || '',
+      });
+    } else {
+      await processInboundMessage({
+        business,
+        phone,
+        profileName: profileName || '',
+        body: body || '',
+        messageSid: messageSid || '',
+        numMedia,
+      });
+    }
 
     // Return instant 200 OK to Twilio (Empty TwiML)
     return twimlOk();

@@ -67,14 +67,21 @@ export async function GET(
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1.5 });
 
-    // Set session + active business cookies before navigation
+    // Set session + active business cookies before navigation.
+    //
+    // Pass `url: auditPageUrl` (NOT a hand-computed domain) so Chrome scopes the
+    // cookie to exactly the host we're about to navigate to. The previous code
+    // used `reqUrl.hostname` — the host of the INCOMING request, which behind a
+    // reverse proxy / in a container is often an internal address (127.0.0.1,
+    // localhost) that differs from NEXT_PUBLIC_APP_URL. When they differed the
+    // cookie wasn't sent, the print page rendered its 401 "Unauthorized" body,
+    // and the resulting PDF looked blank.
     for (const name of ['session', 'activeBusinessId'] as const) {
       if (cookies[name]) {
         await page.setCookie({
           name,
           value: cookies[name],
-          domain: reqUrl.hostname,
-          path: '/',
+          url: auditPageUrl,
           httpOnly: name === 'session',
         });
       }
@@ -82,7 +89,14 @@ export async function GET(
 
     // The print route returns server-rendered HTML with no React hydration needed.
     // 'networkidle2' ensures fonts and any static-map images are fetched before capture.
-    await page.goto(auditPageUrl, { waitUntil: 'networkidle2', timeout: 30_000 });
+    const response = await page.goto(auditPageUrl, { waitUntil: 'networkidle2', timeout: 30_000 });
+
+    // Never emit a silently-blank PDF: if the print page didn't return 200 (auth
+    // failure, audit not found, etc.) surface it as an error instead of shipping
+    // an empty document the user can't diagnose.
+    if (!response || !response.ok()) {
+      throw new Error(`Print page returned HTTP ${response?.status() ?? 'no response'} for ${auditPageUrl}`);
+    }
 
     // Small stabilisation pause for web fonts to finish rendering.
     await new Promise(r => setTimeout(r, 600));

@@ -159,7 +159,7 @@ export default function LeadDetailsDrawer({ lead, onClose }: any) {
             {/* Interest */}
             {lead.interest && (
               <div>
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Interest / Course</h3>
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Interest</h3>
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm text-slate-800">{lead.interest}</div>
               </div>
             )}

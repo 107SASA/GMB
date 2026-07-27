@@ -117,8 +117,15 @@ function PlanBadge({ plan, planName }: { plan: string; planName?: string | null 
   );
 }
 
+interface WorkspaceBilling {
+  cancelAtPeriodEnd?: boolean;
+  currentPeriodEnd?: string | null;
+  isActive?: boolean;
+}
+
 function SubscriptionCard() {
   const [status, setStatus] = useState<BillingStatus | null>(null);
+  const [workspace, setWorkspace] = useState<WorkspaceBilling | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [message, setMessage] = useState('');
@@ -127,7 +134,7 @@ function SubscriptionCard() {
     try {
       const res = await fetch('/api/billing/status');
       const json = await res.json();
-      if (json.success) setStatus(json.subscription);
+      if (json.success) { setStatus(json.subscription); setWorkspace(json.workspace ?? null); }
     } catch { /* card just doesn't render */ }
   };
 
@@ -154,8 +161,9 @@ function SubscriptionCard() {
       if (json.success) {
         setMessage(json.message);
         setConfirmCancel(false);
-        // The webhook applies the downgrade — refresh shortly after.
-        setTimeout(loadStatus, 3000);
+        // Cancel-at-period-end sets the workspace flag synchronously, so the
+        // "won't renew / access until" state shows right away.
+        loadStatus();
       } else {
         setMessage(json.error || 'Cancellation failed');
       }
@@ -191,12 +199,17 @@ function SubscriptionCard() {
             </span>
           </div>
         )}
-        {status.currentPeriodEnd && status.billingStatus === 'Active' && (
+        {(status.currentPeriodEnd || workspace?.currentPeriodEnd) && status.billingStatus === 'Active' && (
           <div className="flex items-center justify-between py-2 border-b border-slate-50">
-            <span className="text-slate-500">Renews on</span>
+            <span className="text-slate-500">{workspace?.cancelAtPeriodEnd ? 'Access until' : 'Renews on'}</span>
             <span className="font-bold text-slate-800">
-              {new Date(status.currentPeriodEnd).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+              {new Date((workspace?.currentPeriodEnd || status.currentPeriodEnd)!).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
             </span>
+          </div>
+        )}
+        {workspace?.cancelAtPeriodEnd && (
+          <div className="flex items-start gap-2 py-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3">
+            <span>Your subscription is cancelled and <strong>won&apos;t renew</strong>. You keep full access until the date above — then this workspace locks. Resubscribe anytime to stay unlocked.</span>
           </div>
         )}
         <div className="py-2">
@@ -218,15 +231,15 @@ function SubscriptionCard() {
       )}
 
       <div className="mt-4 flex items-center gap-3">
-        {status.billingStatus !== 'Active' && (
+        {(status.billingStatus !== 'Active' || workspace?.cancelAtPeriodEnd) && (
           <Link
             href="/pricing"
             className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-colors"
           >
-            Subscribe
+            {workspace?.cancelAtPeriodEnd ? 'Resubscribe' : 'Subscribe'}
           </Link>
         )}
-        {status.hasPaymentMethod && status.billingStatus === 'Active' && (
+        {status.hasPaymentMethod && status.billingStatus === 'Active' && !workspace?.cancelAtPeriodEnd && (
           confirmCancel ? (
             <div className="flex items-center gap-2">
               <button

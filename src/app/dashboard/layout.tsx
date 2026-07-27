@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { BusinessProvider } from "@/context/BusinessContext";
 import { MobileNavProvider } from "@/context/MobileNavContext";
+import WorkspaceLockGate from "@/components/layout/WorkspaceLockGate";
 import { requireClient } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
@@ -25,7 +26,7 @@ export default async function DashboardLayout({
             <DashboardHeader />
             <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 custom-scrollbar">
               <div className="max-w-7xl mx-auto">
-                {children}
+                <WorkspaceLockGate>{children}</WorkspaceLockGate>
               </div>
             </main>
           </div>

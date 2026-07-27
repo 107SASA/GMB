@@ -85,6 +85,11 @@ export interface IBusiness extends Document {
   freeAuditUsed?: boolean;
   razorpaySubscriptionId?: string;
   subscriptionCurrentPeriodEnd?: Date;
+  /** True after the owner cancels: stays 'active' until the period ends (no
+   *  refund — access continues to the paid-through date), then downgrades. */
+  subscriptionCancelAtPeriodEnd?: boolean;
+  /** Day-thresholds (10/5/3/2/1) already reminded, so we don't double-notify. */
+  subscriptionRemindersSent?: number[];
   /** When the post-audit WhatsApp sales nurture was sent (send-once guard). */
   auditNurtureSentAt?: Date;
   // ADDITIVE — post-payment intake. Rich marketing info collected right after a
@@ -221,6 +226,8 @@ const BusinessSchema: Schema = new Schema(
     freeAuditUsed: { type: Boolean, default: false },
     razorpaySubscriptionId: { type: String, index: true, sparse: true },
     subscriptionCurrentPeriodEnd: { type: Date },
+    subscriptionCancelAtPeriodEnd: { type: Boolean, default: false },
+    subscriptionRemindersSent: { type: [Number], default: [] },
     // ADDITIVE — when the post-audit WhatsApp sales nurture was sent (send-once).
     auditNurtureSentAt: { type: Date },
     // ADDITIVE — post-payment intake (see IBusiness above).

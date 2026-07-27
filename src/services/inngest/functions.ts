@@ -472,6 +472,125 @@ export const bufferMonitorWorker = inngest.createFunction(
   }
 );
 
+// 3b. Weekly content reminder — Sunday evening in-app nudge.
+// Reminds ONLY businesses that don't have a full week of content scheduled for
+// the upcoming 7 days, so users who are already stocked up aren't pestered.
+// This is an in-app notification (the platform's supported channel), distinct
+// from bufferMonitorWorker which auto-generates content.
+export const weeklyContentReminder = inngest.createFunction(
+  { id: "weekly-content-reminder", triggers: [{ cron: "0 13 * * 0" }] }, // Sundays ~18:30 IST (evening)
+  async ({ step }) => {
+    const result = await step.run("remind-low-buffer-businesses", async () => {
+      const dbConnect = (await import("@/lib/mongodb")).default;
+      await dbConnect();
+      const { default: Business } = await import("@/models/Business");
+      const { default: Post } = await import("@/models/Post");
+      const { notifyBusinessUsers } = await import("@/services/notifications");
+      const { POSTS_PER_WEEK } = await import("@/lib/contentConfig");
+
+      const now = new Date();
+      const weekAhead = new Date(now);
+      weekAhead.setDate(now.getDate() + 7);
+
+      // NB: use isDeleted (a real field) — the sibling crons filter on a
+      // non-existent `isActive`, which is why they never match anything.
+      const businesses = await Business.find({ isDeleted: { $ne: true } }).select('_id').lean();
+
+      let reminded = 0;
+      for (const b of businesses as any[]) {
+        const scheduled = await Post.countDocuments({
+          businessId: b._id,
+          status: 'scheduled',
+          scheduledDate: { $gte: now, $lte: weekAhead },
+        });
+        if (scheduled >= POSTS_PER_WEEK) continue; // fully stocked — don't nag
+
+        await notifyBusinessUsers(b._id.toString(), {
+          type: 'content_reminder',
+          title: "Plan next week's content",
+          body: scheduled === 0
+            ? 'You have no posts scheduled for the upcoming week. Generate next week’s content to keep your Google profile active.'
+            : `Only ${scheduled} of ${POSTS_PER_WEEK} posts are scheduled for the upcoming week — generate a few more to stay active.`,
+          link: '/dashboard/content',
+        });
+        reminded++;
+      }
+      return { reminded, total: businesses.length };
+    });
+
+    return { success: true, ...result };
+  }
+);
+
+// 3c. Subscription expiry — daily enforce-the-cutoff + countdown reminders.
+// After a customer cancels, they keep access until the paid period ends (no
+// refund). This cron: (a) LOCKS workspaces whose paid period has ended if the
+// Razorpay webhook didn't already (safety net), and (b) sends in-app reminders
+// at 10 / 5 / 3 / 2 / 1 days before the end.
+export const subscriptionExpiryWorker = inngest.createFunction(
+  { id: "subscription-expiry-worker", triggers: [{ cron: "0 6 * * *" }] }, // daily ~11:30 IST
+  async ({ step }) => {
+    const result = await step.run("enforce-and-remind", async () => {
+      const dbConnect = (await import("@/lib/mongodb")).default;
+      await dbConnect();
+      const { default: Business } = await import("@/models/Business");
+      const { notifyBusinessUsers } = await import("@/services/notifications");
+      const { cancelBusinessPlan } = await import("@/lib/billing/applyEntitlements");
+
+      const now = new Date();
+      const DAY = 86_400_000;
+      const REMIND_AT = [10, 5, 3, 2, 1];
+
+      const businesses = await Business.find({
+        subscriptionCancelAtPeriodEnd: true,
+        subscriptionCurrentPeriodEnd: { $exists: true, $ne: null },
+      })
+        .select("_id name subscriptionCurrentPeriodEnd subscriptionRemindersSent")
+        .lean();
+
+      let expired = 0;
+      let reminded = 0;
+
+      for (const b of businesses as any[]) {
+        const end = new Date(b.subscriptionCurrentPeriodEnd);
+
+        // Period ended → lock the workspace now (in case the webhook missed it).
+        if (end.getTime() <= now.getTime()) {
+          await cancelBusinessPlan(b._id.toString());
+          expired++;
+          continue;
+        }
+
+        const daysLeft = Math.ceil((end.getTime() - now.getTime()) / DAY);
+        const sent: number[] = b.subscriptionRemindersSent || [];
+        // Thresholds now crossed but not yet notified.
+        const due = REMIND_AT.filter((t) => daysLeft <= t && !sent.includes(t));
+        if (due.length === 0) continue;
+
+        await notifyBusinessUsers(b._id.toString(), {
+          type: "subscription_expiry",
+          title: `Your subscription ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`,
+          body:
+            `Access to ${b.name} ends on ` +
+            `${end.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}. ` +
+            `Renew to keep everything unlocked — no data is lost.`,
+          link: "/dashboard/billing",
+        });
+        // Mark every crossed threshold sent so a late cancel doesn't backfill spam.
+        await Business.updateOne(
+          { _id: b._id },
+          { $addToSet: { subscriptionRemindersSent: { $each: due } } }
+        );
+        reminded++;
+      }
+
+      return { checked: businesses.length, expired, reminded };
+    });
+
+    return { success: true, ...result };
+  }
+);
+
 export const manualContentGenerate = inngest.createFunction(
   { id: "manual-content-generate", triggers: [{ event: "scheduler/manual-generate" }] },
   async ({ event, step }) => {
@@ -945,9 +1064,16 @@ export const processPublishPostJob = inngest.createFunction(
       // Any real Google "localPosts.create" call MUST live inside the enabled branch.
       const { gbpWritesEnabled } = await import("@/lib/gbpSafety");
       if (gbpWritesEnabled()) {
-        // TODO: real Google Business Profile localPosts.create call goes here,
-        // once verified on a test account.
-        throw new Error("Live GBP post publishing is not implemented yet.");
+        // Real Google Business Profile localPosts.create (gated ON). The image is
+        // attached only when it's a public http(s) URL — Google fetches it, so a
+        // base64 data-URL thumbnail is skipped (post still publishes, text-only).
+        const { createLocalPost } = await import("@/lib/gbpClient");
+        const summary = [post.title, post.content].filter(Boolean).join('\n\n').slice(0, 1500);
+        await createLocalPost(post.businessId.toString(), {
+          summary,
+          mediaUrl: (post as any).imageUrl || undefined,
+        });
+        console.log(`[GBP] Published live post for business ${post.businessId}: ${post.title}`);
       } else {
         console.log(`[MOCK] GBP live writes disabled — marking post published locally only for business ${post.businessId}: ${post.title}`);
       }
@@ -1178,6 +1304,105 @@ export const salesAgentReply = inngest.createFunction(
   }
 );
 
+// 7d. Live inbound from a demo prospect → AI BOOKING-agent response.
+// GrowwMatics-owned, owner-only line. The agent qualifies the prospect, and
+// once it has name + business + a preferred day/time it books the demo
+// (DemoBooking 'Confirmed'), files a CRM lead, and fires demo/booked.
+export const bookingAgentReply = inngest.createFunction(
+  { id: 'booking-agent-reply', retries: 2, triggers: [{ event: 'booking/agent.reply' }] },
+  async ({ event, step }) => {
+    const { conversationId } = event.data;
+
+    await step.run('reply', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: BookingConversation } = await import('@/models/BookingConversation');
+      const { default: Lead } = await import('@/models/Lead');
+      const { default: Activity } = await import('@/models/Activity');
+      const { default: DemoBooking } = await import('@/models/DemoBooking');
+      const { getBookingAgentConfig, composeAgentReply, renderConfirmation } = await import('@/services/booking/bookingAgent');
+      const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+
+      const convo: any = await BookingConversation.findById(conversationId);
+      if (!convo || convo.status !== 'active') return;
+
+      const config = await getBookingAgentConfig();
+      if (!config.enabled) return;
+
+      const { reply, ready, details } = await composeAgentReply(config, convo);
+      convo.details = { ...convo.details, ...details };
+
+      // File the booking + CRM lead the moment we have everything we need.
+      if (ready && convo.status === 'active') {
+        const tenantId = 'gmbboost-internal';
+        const phone = convo.leadPhone;
+        const name = details.name || convo.leadName || phone;
+
+        let lead: any = await Lead.findOne({ phone, tenantId });
+        if (!lead) {
+          lead = await Lead.create({
+            tenantId,
+            name,
+            email: details.email || undefined,
+            phone,
+            source: 'Demo Booking',
+            leadType: 'Platform Prospect',
+            pipelineStage: 'New Request',
+            status: 'active',
+            businessType: details.businessType || undefined,
+            aiLeadScore: 85,
+          });
+        } else {
+          lead.pipelineStage = 'New Request';
+          lead.source = 'Demo Booking';
+          await lead.save();
+        }
+
+        await Activity.create({
+          tenantId,
+          leadId: lead._id,
+          type: 'Demo',
+          content: `Booked a demo via WhatsApp for ${details.preferredDate} at ${details.preferredTime}.`,
+        });
+
+        const booking = await DemoBooking.create({
+          leadId: lead._id,
+          name,
+          email: details.email || undefined,
+          phone,
+          company: details.businessName || name,
+          businessType: details.businessType || undefined,
+          location: details.location || undefined,
+          challenges: details.notes || undefined,
+          date: details.preferredDate,
+          timeSlot: details.preferredTime,
+          status: 'Confirmed',
+          channel: 'whatsapp',
+        });
+
+        convo.status = 'booked';
+        convo.bookedAt = new Date();
+        convo.leadId = lead._id;
+        convo.bookingId = booking._id;
+
+        await inngest.send({ name: 'demo/booked', data: { bookingId: booking._id.toString() } });
+      }
+
+      // Send whatever reply the agent produced (a question, or the confirmation).
+      const outboundText = ready
+        ? (reply || renderConfirmation(config, details))
+        : reply;
+      const res = await sendOutboundMessage(convo.leadPhone, outboundText, convo.leadId?.toString());
+      if (res.success) {
+        convo.messages.push({ role: 'agent', text: outboundText, at: new Date() });
+      }
+      await convo.save();
+    });
+
+    return { success: true };
+  }
+);
+
 // 8. Review Management Automation Workflow (Module 4)
 export const reviewSyncWorker = inngest.createFunction(
   { id: "review-sync-worker", triggers: [{ cron: "0 2 * * *" }] }, // Nightly at 2 AM
@@ -1334,7 +1559,7 @@ Analyze this lead and return a JSON object with your assessment.
 Lead details:
 - Name: ${lead.name}
 - Source: ${lead.source}
-- Interest/Course: ${lead.interest || 'Not specified'}
+- Interest: ${lead.interest || 'Not specified'}
 - Notes: ${lead.notes || 'None'}
 - Business Type: ${lead.businessType || 'Not specified'}
 
@@ -1538,8 +1763,9 @@ export const processDemoBooking = inngest.createFunction(
         );
       }
 
-      // Customer Confirmation
-      await sendEmail(
+      // Customer Confirmation (WhatsApp bookings may have no email — skip then;
+      // the booking agent already sent a WhatsApp confirmation).
+      if (booking.email) await sendEmail(
         booking.email,
         'Demo Booking Confirmed - GrowwMatics AI',
         `

@@ -98,8 +98,12 @@ export default function ReviewsDashboard() {
         if ((data.synced ?? 0) === 0 && (data.reviews || []).length === 0) {
           setSyncNote('No reviews were returned from Google for this business yet. If it has reviews on Google, try again shortly.');
         }
+      } else if (data.needsConnection) {
+        // Not connected to Google — reviews (and replies) require the official
+        // Google Business Profile API, so prompt the user to connect.
+        setSyncError('Connect your Google Business Profile to sync reviews and reply on Google. Go to Settings → Business Profile to connect.');
       } else {
-        // Surface the real reason (e.g. "SerpApi account is out of searches")
+        // Surface the real reason (e.g. "Google connection expired")
         // instead of silently showing an empty dashboard.
         setSyncError(data.error || 'Could not sync reviews. Please try again.');
       }

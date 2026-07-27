@@ -38,18 +38,6 @@ import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
 const SESSION_COOKIE = 'session';
 const ACTIVE_BUSINESS_COOKIE = 'activeBusinessId';
 
-// Pages an unsubscribed workspace can always reach.
-const ALLOWED_PREFIXES = [
-  '/dashboard/audit',     // the GMB Audit module itself (list, form, results)
-  '/dashboard/billing',   // needed to actually subscribe
-  '/dashboard/upgrade',   // the "subscribe to unlock this workspace" screen
-  '/dashboard/profile',   // basic account/profile management stays available
-];
-
-function isAllowedForLockedWorkspace(pathname: string): boolean {
-  return ALLOWED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-}
-
 // Post-payment intake: a subscribed workspace must complete the intake once
 // before the rest of the dashboard opens. These pages stay reachable meanwhile
 // so the user isn't fully trapped.
@@ -119,17 +107,13 @@ export default async function proxy(request: NextRequest) {
       return NextResponse.next();
     }
 
-    // Unsubscribed workspace: gate everything except the allowed pages.
-    if (isAllowedForLockedWorkspace(pathname)) return NextResponse.next();
-
-    // Where a locked workspace gets sent:
-    //  - Free audit not used yet -> /dashboard/audit, where they can generate
-    //    the one free report (the hook).
-    //  - Free audit already used -> straight to the subscribe screen.
-    const destination = business.freeAuditUsed ? '/dashboard/upgrade' : '/dashboard/audit';
-    if (pathname === destination) return NextResponse.next();
-
-    return NextResponse.redirect(new URL(destination, request.url));
+    // Unsubscribed workspace: let every dashboard page RENDER (no redirect) so
+    // the client-side WorkspaceLockGate can show it blurred with an upgrade
+    // overlay — a locked user can see what each tab looks like before paying.
+    // Data stays protected server-side: per-module API routes (CRM, Inbox,
+    // Reviews, GBP insights, …) still enforce requireModule(), so the blurred
+    // view never exposes real gated data.
+    return NextResponse.next();
   } catch (err) {
     // DB/auth error — fail open to the existing per-page auth rather than
     // taking the whole dashboard down for every user.

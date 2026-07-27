@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Mail, Globe, MapPin } from "lucide-react";
 import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 import { COMPANY } from "@/lib/companyInfo";
+import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 
 export const metadata: Metadata = {
   title: "Contact Us | GrowwMatics AI",
@@ -58,11 +58,21 @@ export default function ContactPage() {
           <a href={`mailto:${COMPANY.supportEmail}`} className="text-primary underline">
             {COMPANY.supportEmail}
           </a>
-          . We typically respond within 2 business days. You can also request a walkthrough via our{" "}
-          <Link href="/book-demo" className="text-primary underline">
-            demo booking page
-          </Link>
-          .
+          . We typically respond within 2 business days.
+          {bookDemoOpensWhatsApp && (
+            <>
+              {" "}You can also{" "}
+              <a
+                href={bookDemoLink()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
+                book a demo on WhatsApp
+              </a>
+              .
+            </>
+          )}
         </p>
       </LegalSection>
     </LegalLayout>

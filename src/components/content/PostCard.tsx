@@ -1,17 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { GeneratedPost } from '@/services/ai/contentEngine';
+import { defaultScheduleDateTimeLocal, nowDateTimeLocal } from '@/lib/scheduleTime';
 
 interface PostCardProps {
   post: GeneratedPost;
-}
-
-function getTomorrowAt9AM(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  d.setHours(9, 0, 0, 0);
-  return d.toISOString().slice(0, 16);
 }
 
 function formatScheduledDate(isoLocal: string): string {
@@ -26,15 +20,25 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
   const [isEditing, setIsEditing] = useState(false);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [scheduledDate, setScheduledDate] = useState(getTomorrowAt9AM);
+  const [scheduledDate, setScheduledDate] = useState(defaultScheduleDateTimeLocal);
   const [isScheduling, setIsScheduling] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
   const [confirmedDate, setConfirmedDate] = useState<string | null>(null);
 
   const [imgError, setImgError] = useState(false);
 
+  // Thumbnails are generated in the background after the post is created, so the
+  // parent list polls and feeds a fresh `imageUrl` in via props — sync it in
+  // (without clobbering any in-progress edits to the rest of the post).
+  useEffect(() => {
+    if (initialPost.imageUrl && initialPost.imageUrl !== post.imageUrl) {
+      setPost(p => ({ ...p, imageUrl: initialPost.imageUrl }));
+      setImgError(false);
+    }
+  }, [initialPost.imageUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleScheduleClick = () => {
-    setScheduledDate(getTomorrowAt9AM());
+    setScheduledDate(defaultScheduleDateTimeLocal());
     setScheduleError('');
     setShowDatePicker(true);
   };
@@ -87,6 +91,9 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
   };
 
   const showThumbnail = !!post.imageUrl && !imgError;
+  // A thumbnail is on the way (prompt exists, image not saved yet) → show a
+  // loading state instead of an empty box until the background job finishes.
+  const imagePending = !post.imageUrl && !imgError && !!post.thumbnailPrompt;
 
   if (isEditing) {
     return (
@@ -133,6 +140,17 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
             className="w-full h-full object-cover"
             onError={() => setImgError(true)}
           />
+        </div>
+      ) : imagePending ? (
+        // Thumbnail still generating in the background — animated skeleton.
+        <div className="relative w-full h-40 shrink-0 overflow-hidden bg-linear-to-br from-indigo-50 to-slate-100 flex items-center justify-center animate-pulse">
+          <div className="relative text-center px-4">
+            <svg className="w-6 h-6 text-indigo-400 mx-auto mb-2 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+            <p className="text-xs font-medium text-indigo-500">Your thumbnail is being generated…</p>
+          </div>
         </div>
       ) : (
         <div className="w-full h-40 bg-linear-to-br from-indigo-50 to-slate-100 flex items-center justify-center shrink-0">
@@ -183,7 +201,7 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
             <input
               type="datetime-local"
               value={scheduledDate}
-              min={new Date().toISOString().slice(0, 16)}
+              min={nowDateTimeLocal()}
               onChange={(e) => setScheduledDate(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 focus:outline-none"
             />

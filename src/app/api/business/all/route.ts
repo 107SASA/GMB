@@ -16,7 +16,7 @@ export async function GET() {
     const cookieStore = await cookies();
     let activeBusinessId = cookieStore.get('activeBusinessId')?.value;
 
-    const businesses = await Business.find({ userId: authResult.userId }).lean();
+    const businesses = await Business.find({ userId: authResult.userId, isDeleted: { $ne: true } }).lean();
     
     // Fallback logic if there's no active business ID but they have businesses
     if (!activeBusinessId && businesses.length > 0) {

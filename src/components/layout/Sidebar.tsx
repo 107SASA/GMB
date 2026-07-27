@@ -19,6 +19,8 @@ import {
   Building2,
   Bot,
   MapPin,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -72,6 +74,11 @@ const sidebarLinks = [
 function UsagePill() {
   const [used, setUsed]   = useState<number | null>(null);
   const [limit, setLimit] = useState<number | null>(null);
+  // Only paid/active workspaces see the usage meter. For a brand-new freemium
+  // workspace the free tier is 1 generation, so this pill would briefly flash a
+  // scary red "1/1 · Limit reached" the moment the auto-audit runs — misleading
+  // when the upgrade paywall already covers the upsell. `null` = still checking.
+  const [active, setActive] = useState<boolean | null>(null);
 
   useEffect(() => {
     fetch('/api/user/usage')
@@ -83,8 +90,15 @@ function UsagePill() {
         }
       })
       .catch(() => {});
+
+    fetch('/api/billing/status')
+      .then(r => r.json())
+      .then(json => setActive(!json?.workspace || !!json.workspace.isActive))
+      .catch(() => setActive(false));
   }, []);
 
+  // Hide for locked/freemium workspaces (and until we know) — no scary flash.
+  if (active !== true) return null;
   if (used === null || limit === null) return null;
 
   const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
@@ -124,9 +138,34 @@ function UsagePill() {
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { businesses, activeBusiness, switchBusiness, loading } = useBusiness();
+  const { businesses, activeBusiness, switchBusiness, refreshBusinesses, loading } = useBusiness();
   const { isOpen, close } = useMobileNav();
   const { isSuperAdmin } = useCurrentUserRole();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDeleteWorkspace = async (e: React.MouseEvent, businessId: string, name: string) => {
+    e.stopPropagation();
+    if (deletingId) return;
+    if (!confirm(`Delete workspace "${name}"? It will be removed from your list — you can re-add the business later.`)) return;
+    setDeletingId(businessId);
+    try {
+      const res = await fetch('/api/business/delete-workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessId }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Failed to delete workspace');
+      // The server already moved the active-workspace cookie; refresh context +
+      // server components so the switcher and gate reflect the new state.
+      await refreshBusinesses();
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete workspace');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const visibleLinks = sidebarLinks.filter(
     (link) => !(link as any).superAdminOnly || isSuperAdmin
@@ -218,30 +257,44 @@ export function Sidebar() {
                     {businesses.map((b, i) => {
                       const isActive = b._id === activeBusiness?._id;
                       return (
-                        <button
+                        <div
                           key={b._id}
-                          onClick={() => handleSwitch(b._id)}
                           className={cn(
-                            "w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left",
+                            "group/ws w-full flex items-center gap-1 px-3 py-2.5 hover:bg-slate-50 transition-colors",
                             isActive && "bg-indigo-50/60"
                           )}
                         >
-                          <BusinessAvatar name={b.name} index={i} size="sm" />
-                          <div className="min-w-0 flex-1">
-                            <p
-                              className={cn(
-                                "text-sm font-medium truncate",
-                                isActive ? "text-indigo-700" : "text-slate-800"
+                          <button
+                            onClick={() => handleSwitch(b._id)}
+                            className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+                          >
+                            <BusinessAvatar name={b.name} index={i} size="sm" />
+                            <div className="min-w-0 flex-1">
+                              <p
+                                className={cn(
+                                  "text-sm font-medium truncate",
+                                  isActive ? "text-indigo-700" : "text-slate-800"
+                                )}
+                              >
+                                {b.name}
+                              </p>
+                              {b.category && (
+                                <p className="text-[10px] text-slate-400 truncate">{b.category}</p>
                               )}
-                            >
-                              {b.name}
-                            </p>
-                            {b.category && (
-                              <p className="text-[10px] text-slate-400 truncate">{b.category}</p>
-                            )}
-                          </div>
-                          {isActive && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
-                        </button>
+                            </div>
+                            {isActive && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteWorkspace(e, b._id, b.name)}
+                            disabled={deletingId === b._id}
+                            title="Delete workspace"
+                            className="shrink-0 p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover/ws:opacity-100 focus:opacity-100 transition-all disabled:opacity-100"
+                          >
+                            {deletingId === b._id
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <Trash2 className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
                       );
                     })}
                   </div>

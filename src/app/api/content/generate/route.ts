@@ -120,14 +120,26 @@ export async function POST(req: Request) {
     // Now the content returns immediately and images populate into the Post docs
     // in the background; the posts pages read them from the DB once ready.
     after(async () => {
+      const { isStorageConfigured, rehostImageFromUrl } = await import('@/lib/storage');
       for (let i = 0; i < savedDrafts.length; i++) {
         const prompt = aiResult.posts[i].thumbnailPrompt;
         if (!prompt) continue;
         try {
           const imageUrl = await generateThumbnail(prompt);
-          if (imageUrl) {
-            await Post.updateOne({ _id: savedDrafts[i]._id }, { $set: { imageUrl } });
+          if (!imageUrl) continue;
+          // Gemini returns a base64 data-URL, which Google Business Profile can't
+          // fetch when publishing a post. Re-host to Spaces so the stored imageUrl
+          // is a public URL (also keeps big data-URLs out of the DB). Falls back
+          // to the original URL if storage isn't configured.
+          let finalUrl = imageUrl;
+          if (isStorageConfigured()) {
+            try {
+              finalUrl = await rehostImageFromUrl(imageUrl, `post-thumbnails/${ctx.businessId}`);
+            } catch (e) {
+              console.error(`[content/generate] thumbnail re-host failed for ${savedDrafts[i]._id}, using original:`, e);
+            }
           }
+          await Post.updateOne({ _id: savedDrafts[i]._id }, { $set: { imageUrl: finalUrl } });
         } catch (err) {
           console.error(`[content/generate] background thumbnail failed for ${savedDrafts[i]._id}:`, err);
         }

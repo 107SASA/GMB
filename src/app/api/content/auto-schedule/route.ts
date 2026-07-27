@@ -50,11 +50,13 @@ export async function POST(req: Request) {
       startDate = at9AM(tomorrow);
     }
 
-    // Schedule each post one day apart
+    // Schedule each post on ALTERNATE days (every other day) so a week of
+    // content stays spread out — e.g. Mon, Wed, Fri, Sun — keeping the profile
+    // active throughout the week instead of bunched on consecutive days.
     const scheduledDates: string[] = [];
     for (let i = 0; i < postIds.length; i++) {
       const scheduledDate = new Date(startDate);
-      scheduledDate.setDate(startDate.getDate() + i);
+      scheduledDate.setDate(startDate.getDate() + i * 2);
 
       await Post.updateOne(
         { _id: new mongoose.Types.ObjectId(postIds[i]), businessId: businessObjId },

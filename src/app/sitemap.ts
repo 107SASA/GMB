@@ -1,42 +1,29 @@
 import { MetadataRoute } from "next";
 
+const BASE_URL = "https://growwmatics.com";
+
+type Route = {
+  path: string;
+  changeFrequency: MetadataRoute.Sitemap[number]["changeFrequency"];
+  priority: number;
+};
+
+const routes: Route[] = [
+  { path: "/", changeFrequency: "weekly", priority: 1 },
+  { path: "/pricing", changeFrequency: "weekly", priority: 0.9 },
+  { path: "/contact", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/privacy", changeFrequency: "monthly", priority: 0.5 },
+  { path: "/terms", changeFrequency: "monthly", priority: 0.5 },
+  { path: "/refund", changeFrequency: "monthly", priority: 0.5 },
+];
+
 export default function sitemap(): MetadataRoute.Sitemap {
-  return [
-    {
-      url: "https://growwmatics.com",
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 1,
-    },
-    {
-      url: "https://growwmatics.com/privacy",
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: "https://growwmatics.com/terms",
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: "https://growwmatics.com/contact",
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.7,
-    },
-    {
-      url: "https://growwmatics.com/pricing",
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.8,
-    },
-    {
-      url: "https://growwmatics.com/book-demo",
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-  ];
+  const lastModified = new Date();
+
+  return routes.map(({ path, changeFrequency, priority }) => ({
+    url: `${BASE_URL}${path}`,
+    lastModified,
+    changeFrequency,
+    priority,
+  }));
 }

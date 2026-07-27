@@ -7,7 +7,6 @@ import {
   Building2,
   Bot,
   Bell,
-  Plug,
   Tag,
   X,
   CheckCircle2,
@@ -15,14 +14,13 @@ import {
   Info,
 } from 'lucide-react';
 
-type Tab = 'business' | 'ai-agent' | 'notifications' | 'integrations';
+type Tab = 'business' | 'ai-agent' | 'notifications';
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; superAdminOnly?: boolean }[] = [
   { id: 'business', label: 'Business Profile', icon: Building2 },
   { id: 'ai-agent', label: 'AI Agent', icon: Bot, superAdminOnly: true },
   { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'integrations', label: 'Integrations', icon: Plug },
 ];
 
 // ---------------------------------------------------------------------------
@@ -151,14 +149,6 @@ export default function SettingsPage() {
   });
   const [savedRows, setSavedRows] = useState<Set<string>>(new Set());
 
-  // ── Integrations state ──────────────────────────────────────────────────
-  const [integStatus, setIntegStatus] = useState<{
-    serpapi: boolean;
-    twilio: boolean;
-    groq: boolean;
-    googlePlaces: boolean;
-  } | null>(null);
-
   // ── Load all data on mount ──────────────────────────────────────────────
   useEffect(() => {
     // Wait for the role check to resolve so we know whether to include the
@@ -167,11 +157,10 @@ export default function SettingsPage() {
 
     const load = async () => {
       try {
-        const [bRes, aiRes, notifRes, integRes] = await Promise.all([
+        const [bRes, aiRes, notifRes] = await Promise.all([
           fetch('/api/business'),
           isSuperAdmin ? fetch('/api/inbox/config') : Promise.resolve(null),
           fetch('/api/user/notifications'),
-          fetch('/api/integrations/status'),
         ]);
 
         if (bRes.ok) {
@@ -208,11 +197,6 @@ export default function SettingsPage() {
         if (notifRes.ok) {
           const { preferences } = await notifRes.json();
           setNotifPrefs(preferences);
-        }
-
-        if (integRes.ok) {
-          const data = await integRes.json();
-          setIntegStatus(data);
         }
       } catch (err) {
         console.error('Settings load error:', err);
@@ -491,6 +475,35 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          {/* Google Business Profile connection — moved here from the old
+              Integrations tab; this is where users manage their profile. */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+            <h2 className="text-base font-bold text-slate-900">Google Business Profile</h2>
+            <IntegCard
+              title="Connection Status"
+              connected={!!bpForm.placeId}
+              connectedLabel="GBP Place ID configured"
+              notConnectedLabel="Place ID not set"
+              detail={bpForm.googleMapsUrl ? truncate(bpForm.googleMapsUrl, 48) : undefined}
+              action={
+                bpForm.googleMapsUrl ? (
+                  <a
+                    href={bpForm.googleMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-primary font-semibold hover:underline"
+                  >
+                    View on Google Maps →
+                  </a>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    Add your Google Maps URL and Place ID above to connect your profile.
+                  </p>
+                )
+              }
+            />
+          </div>
+
           {bpError && (
             <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -615,147 +628,62 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ─── Tab 3: Notifications ─────────────────────────────────────── */}
+      {/* ─── Tab 3: Notifications (in-app only) ───────────────────────── */}
       {activeTab === 'notifications' && (
-        <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100">
-          <NotifSection
-            title="New Lead Alerts"
-            rows={[
-              {
-                key: 'newLeadWhatsApp',
-                icon: '📱',
-                label: 'WhatsApp',
-                desc: 'Send a WhatsApp to my number when a new lead comes in',
-              },
-              {
-                key: 'newLeadEmail',
-                icon: '📧',
-                label: 'Email',
-                desc: 'Send an email when a new lead comes in',
-              },
-            ]}
-            prefs={notifPrefs}
-            savedRows={savedRows}
-            onToggle={handleNotifToggle}
-          />
-          <NotifSection
-            title="Review Alerts"
-            rows={[
-              {
-                key: 'newReviewEmail',
-                icon: '📧',
-                label: 'New Review Email',
-                desc: 'Notify me when a new review is posted',
-              },
-              {
-                key: 'criticalReviewWhatsApp',
-                icon: '📱',
-                label: 'Critical Review WhatsApp',
-                desc: 'Immediate WhatsApp alert for 1–2 star reviews',
-              },
-            ]}
-            prefs={notifPrefs}
-            savedRows={savedRows}
-            onToggle={handleNotifToggle}
-          />
-          <NotifSection
-            title="Reports & Summaries"
-            rows={[
-              {
-                key: 'weeklyDigestEmail',
-                icon: '📧',
-                label: 'Weekly Digest',
-                desc: 'Weekly email summary of leads, reviews, and content stats',
-              },
-              {
-                key: 'campaignCompletedEmail',
-                icon: '📧',
-                label: 'Campaign Completed',
-                desc: 'Notify when a review campaign finishes its drip sequence',
-              },
-              {
-                key: 'schedulerLowBufferEmail',
-                icon: '📧',
-                label: 'Low Content Buffer',
-                desc: 'Warn me when scheduled posts drop below 7 days',
-              },
-            ]}
-            prefs={notifPrefs}
-            savedRows={savedRows}
-            onToggle={handleNotifToggle}
-          />
-        </div>
-      )}
-
-      {/* ─── Tab 4: Integrations ──────────────────────────────────────── */}
-      {activeTab === 'integrations' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <IntegCard
-            title="Google Business Profile"
-            connected={!!bpForm.placeId}
-            connectedLabel="GBP Place ID configured"
-            notConnectedLabel="Place ID not set"
-            detail={bpForm.googleMapsUrl ? truncate(bpForm.googleMapsUrl, 48) : undefined}
-            action={
-              bpForm.googleMapsUrl ? (
-                <a
-                  href={bpForm.googleMapsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary font-semibold hover:underline"
-                >
-                  View on Google Maps →
-                </a>
-              ) : (
-                <button
-                  onClick={() => setActiveTab('business')}
-                  className="text-xs text-primary font-semibold hover:underline text-left"
-                >
-                  Add your GBP URL in Business Profile tab →
-                </button>
-              )
-            }
-          />
-
-          <IntegCard
-            title="WhatsApp (Twilio)"
-            connected={!!(integStatus?.twilio && bpForm.whatsappNumber)}
-            connectedLabel="Twilio connected"
-            notConnectedLabel="Incomplete setup"
-            detail={bpForm.whatsappNumber ? maskWhatsApp(bpForm.whatsappNumber) : undefined}
-            action={
-              <button
-                onClick={() => setActiveTab('business')}
-                className="text-xs text-primary font-semibold hover:underline text-left"
-              >
-                Update WhatsApp number in Business Profile tab →
-              </button>
-            }
-          />
-
-          <IntegCard
-            title="SerpApi (Keyword Ranking)"
-            connected={!!integStatus?.serpapi}
-            connectedLabel="Connected"
-            notConnectedLabel="Not configured"
-            detail="Used for GMB audit and keyword ranking analysis"
-          />
-
-          <IntegCard
-            title="Groq AI"
-            connected={!!integStatus?.groq}
-            connectedLabel="Connected"
-            notConnectedLabel="Not configured"
-            detail="Powers content generation, review replies, and WhatsApp AI"
-          />
-
-          <IntegCard
-            title="Google Places API"
-            connected={!!integStatus?.googlePlaces}
-            connectedLabel="Connected"
-            notConnectedLabel="Not configured"
-            detail="Used for business search and onboarding"
-          />
+        <div className="space-y-4">
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 flex gap-3 text-sm text-slate-600">
+            <Info className="w-5 h-5 shrink-0 mt-0.5 text-slate-400" />
+            <span>
+              Choose which events show up in your <strong>in-app notifications</strong>. These appear in the
+              notification bell inside the dashboard.
+            </span>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100">
+            <NotifSection
+              title="In-App Notifications"
+              rows={[
+                {
+                  key: 'newLeadWhatsApp',
+                  icon: '🔔',
+                  label: 'New leads',
+                  desc: 'Notify me in-app when a new lead comes in',
+                },
+                {
+                  key: 'newReviewEmail',
+                  icon: '⭐',
+                  label: 'New reviews',
+                  desc: 'Notify me when a new review is posted',
+                },
+                {
+                  key: 'criticalReviewWhatsApp',
+                  icon: '⚠️',
+                  label: 'Critical reviews (1–2★)',
+                  desc: 'Alert me immediately about low-star reviews',
+                },
+                {
+                  key: 'weeklyDigestEmail',
+                  icon: '📊',
+                  label: 'Weekly summary',
+                  desc: 'A weekly recap of leads, reviews, and content stats',
+                },
+                {
+                  key: 'campaignCompletedEmail',
+                  icon: '✅',
+                  label: 'Campaign completed',
+                  desc: 'Notify when a review campaign finishes its sequence',
+                },
+                {
+                  key: 'schedulerLowBufferEmail',
+                  icon: '🗓️',
+                  label: 'Low content buffer',
+                  desc: 'Warn me when scheduled posts run low for the week',
+                },
+              ]}
+              prefs={notifPrefs}
+              savedRows={savedRows}
+              onToggle={handleNotifToggle}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -855,9 +783,4 @@ function IntegCard({
 
 function truncate(str: string, max: number) {
   return str.length > max ? str.slice(0, max) + '…' : str;
-}
-
-function maskWhatsApp(num: string) {
-  if (!num || num.length < 5) return num;
-  return `${num.slice(0, 3)}-XXXXX-XX${num.slice(-3)}`;
 }

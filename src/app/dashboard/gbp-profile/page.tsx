@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, MapPin, ShieldCheck, ExternalLink, Info } from 'lucide-react';
+import { Loader2, MapPin, ShieldCheck, ExternalLink, Info, Unplug } from 'lucide-react';
 import { useBusiness } from '@/context/BusinessContext';
+import GbpMediaManager from '@/components/gbp/GbpMediaManager';
 
 interface Profile {
   locationName: string;
@@ -26,6 +27,7 @@ export default function GbpProfilePage() {
   const [form, setForm] = useState({ title: '', description: '', primaryPhone: '', website: '' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -59,6 +61,24 @@ export default function GbpProfilePage() {
   // Reload when the active workspace changes.
   useEffect(() => { load(); }, [activeBusiness?._id]);
 
+  const disconnect = async () => {
+    if (!confirm('Disconnect this workspace from Google Business Profile? You can reconnect anytime.')) return;
+    setDisconnecting(true);
+    setError(null);
+    setSaved(null);
+    try {
+      const res = await fetch('/api/gbp/disconnect', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Could not disconnect.');
+      setConnected(false);
+      setProfile(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not disconnect.');
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
   const save = async () => {
     setSaving(true);
     setError(null);
@@ -89,11 +109,23 @@ export default function GbpProfilePage() {
 
   return (
     <div className="max-w-3xl mx-auto py-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-          <MapPin className="w-6 h-6 text-indigo-600" /> Google Business Profile
-        </h1>
-        <p className="text-slate-500 mt-1">View and edit the live details on your Google profile.</p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <MapPin className="w-6 h-6 text-indigo-600" /> Google Business Profile
+          </h1>
+          <p className="text-slate-500 mt-1">View and edit the live details on your Google profile.</p>
+        </div>
+        {connected && (
+          <button
+            onClick={disconnect}
+            disabled={disconnecting}
+            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors disabled:opacity-60"
+          >
+            {disconnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unplug className="w-4 h-4" />}
+            {disconnecting ? 'Disconnecting…' : 'Disconnect'}
+          </button>
+        )}
       </div>
 
       {/* Not connected */}
@@ -178,6 +210,9 @@ export default function GbpProfilePage() {
               Reset
             </button>
           </div>
+
+          {/* Media management — display existing GBP photos + upload logo/cover/photos. */}
+          <GbpMediaManager businessId={activeBusiness?._id} />
         </div>
       )}
 

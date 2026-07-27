@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight, Sparkles, Calendar } from "lucide-react";
+import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 
 export function Hero() {
   return (
@@ -54,13 +55,14 @@ export function Hero() {
             Start Free Audit
             <ArrowRight className="w-5 h-5" />
           </Link>
-          <Link
-            href="/book-demo"
+          <a
+            href={bookDemoLink()}
+            {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
             className="w-full sm:w-auto px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
           >
             <Calendar className="w-5 h-5" />
             Book a Demo
-          </Link>
+          </a>
         </motion.div>
 
         {/* Hero Visual - Dashboard Mockup */}

@@ -5,7 +5,7 @@ import Business from '@/models/Business';
 import User from '@/models/User';
 import { requireBusinessContext } from '@/lib/tenant';
 import { getRazorpay, getRazorpayKeyId } from '@/lib/billing/razorpay';
-import { ensureRazorpayPlanId } from '@/lib/billing/planCatalog';
+import { ensureRazorpayPlanIdForCycle, getActivePlan, isBillingCycle, CYCLES, type BillingCycle } from '@/lib/billing/planCatalog';
 
 /**
  * Creates a Razorpay Subscription for THE plan (there is only one), scoped to
@@ -15,7 +15,7 @@ import { ensureRazorpayPlanId } from '@/lib/billing/planCatalog';
  * (subscription.activated/charged) flips them, so a closed checkout window
  * can't leave a half-activated state.
  */
-export async function POST() {
+export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
@@ -28,10 +28,18 @@ export async function POST() {
       );
     }
 
-    // Resolves the super-admin-configured price, creating a matching
-    // Razorpay Plan on the fly if the price changed since the last one.
-    const plan = await ensureRazorpayPlanId();
-    if (!plan.razorpayPlanId) {
+    // The customer picks a billing duration (monthly/quarterly/6-month/yearly);
+    // default to monthly for older clients that send no body.
+    const body = await req.json().catch(() => ({}));
+    const cycle: BillingCycle = isBillingCycle(body?.cycle) ? body.cycle : 'monthly';
+
+    const activePlan = await getActivePlan();
+
+    // Resolves the super-admin-configured price for the chosen cycle, creating a
+    // matching Razorpay Plan on the fly if needed. Throws (caught below) if the
+    // cycle isn't enabled.
+    const duration = await ensureRazorpayPlanIdForCycle(cycle);
+    if (!duration.razorpayPlanId) {
       return NextResponse.json(
         { error: 'Billing is not configured on this server' },
         { status: 503 }
@@ -39,14 +47,15 @@ export async function POST() {
     }
 
     const rpSubscription = await razorpay.subscriptions.create({
-      plan_id: plan.razorpayPlanId,
+      plan_id: duration.razorpayPlanId,
       customer_notify: 1,
-      total_count: 12, // 12 monthly charges; Razorpay auto-renews the cycle
+      total_count: CYCLES[cycle].totalCount,
       notes: {
         // The webhook resolves the user AND the workspace from these notes.
         userId: ctx.userId,
         businessId: ctx.businessId,
-        planType: plan.planType,
+        planType: activePlan.planType,
+        billingCycle: cycle,
       },
     });
 
@@ -71,9 +80,9 @@ export async function POST() {
       checkout: {
         key: getRazorpayKeyId(),
         subscriptionId: rpSubscription.id,
-        planType: plan.planType,
+        planType: activePlan.planType,
         name: 'GrowwMatics AI',
-        description: `${plan.displayName} — ₹${plan.priceInr}/${plan.billingCycle}`,
+        description: `${activePlan.displayName} — ₹${duration.priceInr} / ${CYCLES[cycle].label}`,
         prefill: {
           email: user?.email ?? undefined,
           contact: user?.phone ?? undefined,

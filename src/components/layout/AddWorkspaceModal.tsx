@@ -120,6 +120,11 @@ export function AddWorkspaceModal({ onClose }: Props) {
         setForm((prev) => ({
           ...prev,
           businessName: d.name || mainText,
+          // Auto-fill the category from Google (place-details derives a
+          // human-readable primaryCategory) so a picked business isn't blocked
+          // by the required "Category" field — the friction that made it look
+          // like the same business couldn't be added again.
+          category: d.primaryCategory || d.category || "",
           address: d.formattedAddress || "",
           phone: d.phoneNumber || "",
           website: d.website || "",

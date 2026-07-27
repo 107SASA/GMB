@@ -44,7 +44,7 @@ const features = [
   },
   {
     title: "Review Request Campaigns",
-    description: "Automated SMS and Email triggers to get more 5-star reviews from happy customers.",
+    description: "Automated WhatsApp reminders to get more 5-star reviews from happy customers.",
     icon: Mail,
     color: "bg-indigo-500/20 text-indigo-500",
   },

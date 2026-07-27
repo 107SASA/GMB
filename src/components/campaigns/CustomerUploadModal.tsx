@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import Papa from 'papaparse';
 import { UploadCloud, CheckCircle2, AlertCircle, Loader2, X, AlertTriangle } from 'lucide-react';
+import { makeColumnGetter, COLUMN_ALIASES } from '@/lib/csvColumns';
 
 interface CustomerUploadModalProps {
   onClose: () => void;
@@ -33,37 +34,57 @@ export default function CustomerUploadModal({ onClose, onSuccess }: CustomerUplo
   const [parsedData, setParsedData] = useState<ParsedRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Parse a chosen file. Column matching is delegated to the shared, tolerant
+  // resolver the CRM importer uses (case-insensitive, trimmed, BOM-safe, alias
+  // aware) so "Full Name" / "Phone Number" / "Email Address" headers — which
+  // silently produced 0 rows here before — now map correctly.
+  const parseFile = (selected: File) => {
+    setError('');
+    setFile(selected);
+    Papa.parse(selected, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (h) => h.replace(/^﻿/, '').trim(),
+      complete: (results) => {
+        const mapped: ParsedRow[] = (results.data as Record<string, unknown>[])
+          .map((row) => {
+            const get = makeColumnGetter(row);
+            const phone = get(...COLUMN_ALIASES.phone);
+            return {
+              name: get(...COLUMN_ALIASES.name),
+              phone,
+              email: get(...COLUMN_ALIASES.email),
+              service: get(...COLUMN_ALIASES.service),
+              serviceDate: get(...COLUMN_ALIASES.date),
+              tags: (() => { const t = get(...COLUMN_ALIASES.tags); return t ? t.split(/[,;|]/).map(s => s.trim()).filter(Boolean) : []; })(),
+              notes: get(...COLUMN_ALIASES.notes),
+              phoneValid: validatePhone(phone),
+            };
+          })
+          .filter(r => r.name && (r.phone || r.email));
+
+        setParsedData(mapped);
+        if (mapped.length === 0) {
+          setError('No valid rows found. Make sure the file has a Name column and a Phone or Email column.');
+        }
+      },
+      error: () => setError('Failed to parse CSV file.'),
+    });
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
-    if (selected) {
-      setFile(selected);
-      Papa.parse(selected, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          const mapped: ParsedRow[] = (results.data as any[])
-            .map((row) => {
-              const phone = row['Phone'] || row['phone'] || '';
-              return {
-                name: row['Name'] || row['name'] || row['Customer Name'] || '',
-                phone,
-                email: row['Email'] || row['email'] || '',
-                service: row['Service'] || row['service'] || row['Product'] || '',
-                serviceDate: row['Date'] || row['date'] || row['Service Date'] || '',
-                tags: row['Tags'] ? row['Tags'].split(',') : [],
-                notes: row['Notes'] || row['notes'] || '',
-                phoneValid: validatePhone(phone)
-              };
-            })
-            .filter(r => r.name && (r.phone || r.email));
+    if (selected) parseFile(selected);
+  };
 
-          setParsedData(mapped);
-        },
-        error: () => setError('Failed to parse CSV file.')
-      });
-    }
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragActive(false);
+    const dropped = e.dataTransfer.files?.[0];
+    if (dropped) parseFile(dropped);
   };
 
   const handleImport = async () => {
@@ -120,7 +141,10 @@ export default function CustomerUploadModal({ onClose, onSuccess }: CustomerUplo
           {!file ? (
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-200 rounded-2xl p-12 flex flex-col items-center justify-center text-center hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors cursor-pointer"
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setDragActive(false); }}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-2xl p-12 flex flex-col items-center justify-center text-center transition-colors cursor-pointer ${dragActive ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50'}`}
             >
               <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-4">
                 <UploadCloud className="w-8 h-8" />

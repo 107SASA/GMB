@@ -30,13 +30,20 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     // the reply in our own DB — nothing is pushed to the customer's live profile.
     // Do NOT add a real Google API call here without wrapping it in this guard.
     if (gbpWritesEnabled()) {
-      // TODO: real Google Business Profile "reviews.updateReply" call goes here,
-      // once verified on a test account. It MUST run only inside this branch.
-      throw new Error('Live GBP review-reply posting is not implemented yet.');
+      // Real Google Business Profile reviews.updateReply (gated ON).
+      // NOTE: this needs the GBP review resource id. `providerReviewId` is the
+      // GBP review id ONLY when reviews are sourced from the GBP reviews API; the
+      // current SerpApi sync stores a SerpApi id, so going live also requires GBP
+      // review sync (see the #2 audit note). Guard so we fail clearly, not silently.
+      if (!review.providerReviewId) {
+        throw new Error('Cannot post reply: this review has no Google review id (needs GBP review sync).');
+      }
+      const { replyToReview } = await import('@/lib/gbpClient');
+      await replyToReview(ctx.businessId, review.providerReviewId, review.aiSuggestedReply);
     } else {
       console.log(`[MOCK] GBP live writes disabled — recording reply locally only for review ${review._id}: "${review.aiSuggestedReply}"`);
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
-    await new Promise(resolve => setTimeout(resolve, 500));
 
     review.response = review.aiSuggestedReply;
     review.replyStatus = 'POSTED';

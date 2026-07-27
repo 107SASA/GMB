@@ -2,7 +2,9 @@ import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import Review from '@/models/Review';
 import ReviewAnalytics from '@/models/ReviewAnalytics';
+import GBPToken from '@/models/GBPToken';
 import { getReviewProvider } from './providers/index';
+import { GbpApiReviewProvider } from './providers/GbpApiReviewProvider';
 import { analyzeSentiment } from './sentimentEngine';
 import { computeReviewMetrics, ReviewMetrics } from './reviewMetrics';
 
@@ -18,7 +20,8 @@ export interface SyncResult {
  */
 export async function syncReviewsForBusiness(
   businessId: string,
-  tenantId: string
+  tenantId: string,
+  options?: { requireGbp?: boolean }
 ): Promise<SyncResult> {
   await dbConnect();
 
@@ -35,7 +38,18 @@ export async function syncReviewsForBusiness(
     existing.map((r) => r.providerReviewId).filter((id): id is string => !!id)
   );
 
-  const provider = getReviewProvider();
+  // Prefer the OFFICIAL Google Business Profile API when this business is
+  // connected: it returns real Google review IDs (so owner replies can be posted
+  // back), the complete review set (nothing missing), and each review's existing
+  // owner reply. Businesses without a GBP connection fall back to the configured
+  // provider (SerpApi/mock).
+  const gbpToken = await GBPToken.findOne({ businessId: bid }).select('_id').lean();
+  if (options?.requireGbp && !gbpToken) {
+    // Caller (the Review Management tab) demands the official API — don't fall
+    // back to SerpApi, which can't support posting replies.
+    throw new Error('Google Business Profile is not connected — connect it to sync reviews.');
+  }
+  const provider = gbpToken ? new GbpApiReviewProvider() : getReviewProvider();
   const fetchedReviews = await provider.fetchReviews(businessId, { knownReviewIds });
 
   let criticalFound = false;
@@ -47,23 +61,31 @@ export async function syncReviewsForBusiness(
     const sentimentResult = analyzeSentiment(raw.text, raw.rating);
     if (sentimentResult.label === 'critical') criticalFound = true;
 
+    const update: Record<string, unknown> = {
+      tenantId,
+      businessId: bid,
+      providerReviewId: raw.providerReviewId,
+      reviewer: raw.reviewerName,
+      rating: raw.rating,
+      reviewText: raw.text,
+      sentiment: sentimentResult.label,
+      sentimentScore: sentimentResult.score,
+      // Google's real posted date. NOTE: setting createdAt here does NOT
+      // work — Mongoose timestamps strip it from upserts — which is why
+      // the dedicated postedAt field exists. Existing docs pick it up on
+      // their next sync (upsert matches providerReviewId).
+      postedAt: new Date(raw.postedAt),
+    };
+    // If the profile already carries an owner reply (from the GBP API), mirror
+    // it so the UI shows the review as answered and we never re-reply to it.
+    if (raw.ownerReply) {
+      update.response = raw.ownerReply;
+      update.replyStatus = 'POSTED';
+    }
+
     const saved = await Review.findOneAndUpdate(
       { providerReviewId: raw.providerReviewId },
-      {
-        tenantId,
-        businessId: bid,
-        providerReviewId: raw.providerReviewId,
-        reviewer: raw.reviewerName,
-        rating: raw.rating,
-        reviewText: raw.text,
-        sentiment: sentimentResult.label,
-        sentimentScore: sentimentResult.score,
-        // Google's real posted date. NOTE: setting createdAt here does NOT
-        // work — Mongoose timestamps strip it from upserts — which is why
-        // the dedicated postedAt field exists. Existing docs pick it up on
-        // their next sync (upsert matches providerReviewId).
-        postedAt: new Date(raw.postedAt),
-      },
+      update,
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 

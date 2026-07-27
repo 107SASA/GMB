@@ -26,6 +26,9 @@ export async function activateBusinessPlan(
     {
       $set: {
         subscriptionStatus: 'active',
+        // A successful (re)activation clears any pending cancel + reminder state.
+        subscriptionCancelAtPeriodEnd: false,
+        subscriptionRemindersSent: [],
         ...(opts.currentPeriodEnd && { subscriptionCurrentPeriodEnd: opts.currentPeriodEnd }),
       },
     }
@@ -39,7 +42,11 @@ export async function markBusinessPastDue(businessId: string): Promise<void> {
 
 export async function cancelBusinessPlan(businessId: string): Promise<void> {
   await dbConnect();
-  await Business.updateOne({ _id: businessId }, { $set: { subscriptionStatus: 'canceled' } });
+  // Fully canceled now — clear the "pending cancel" flag so the gate locks it.
+  await Business.updateOne(
+    { _id: businessId },
+    { $set: { subscriptionStatus: 'canceled', subscriptionCancelAtPeriodEnd: false } }
+  );
 }
 
 /**

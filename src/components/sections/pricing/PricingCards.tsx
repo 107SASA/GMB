@@ -6,10 +6,10 @@ import { Check } from "lucide-react";
 import Link from "next/link";
 
 /**
- * The ONE plan, priced live from /api/billing/plans (super-admin editable).
- * Marketing bullets stay hardcoded here; the price never should be.
+ * The ONE plan, priced live from /api/billing/plans (super-admin editable —
+ * price, features AND billing durations all come from the API).
  */
-const FEATURES = [
+const FALLBACK_FEATURES = [
   "Google Ranking Agent — GBP optimization & audits",
   "Reputation Agent — reviews & AI replies",
   "Content Studio — AI posts & SEO content",
@@ -17,8 +17,17 @@ const FEATURES = [
   "Full access on web and mobile app",
 ];
 
+interface PlanDuration { cycle: string; label: string; months: number; priceInr: number; }
+interface PublicPlanData {
+  displayName: string;
+  description: string;
+  priceInr: number;
+  features?: string[];
+  durations?: PlanDuration[];
+}
+
 export function PricingCards() {
-  const [plan, setPlan] = useState<{ displayName: string; description: string; priceInr: number } | null>(null);
+  const [plan, setPlan] = useState<PublicPlanData | null>(null);
 
   useEffect(() => {
     fetch("/api/billing/plans")
@@ -26,6 +35,11 @@ export function PricingCards() {
       .then((json) => setPlan(json.plan ?? json.plans?.[0] ?? null))
       .catch(() => setPlan(null));
   }, []);
+
+  const features = plan?.features?.length ? plan.features : FALLBACK_FEATURES;
+  const monthly = plan?.durations?.find((d) => d.cycle === "monthly");
+  const otherDurations = (plan?.durations ?? []).filter((d) => d.cycle !== "monthly");
+  const headlinePrice = monthly?.priceInr ?? plan?.priceInr;
 
   return (
     <div className="max-w-lg mx-auto px-4 md:px-6 z-10 relative">
@@ -45,15 +59,26 @@ export function PricingCards() {
           <h3 className="text-[10px] font-bold text-indigo-600 mb-2 uppercase tracking-widest">One Simple Plan</h3>
           <h4 className="text-xl font-bold text-slate-900 mb-2">{plan?.displayName ?? "GrowwMatics AI"}</h4>
           <div className="flex items-baseline gap-1 mb-2 text-slate-900">
-            {plan ? (
+            {plan && headlinePrice != null ? (
               <span className="text-4xl font-extrabold tracking-tight">
-                ₹{plan.priceInr.toLocaleString("en-IN")}
+                ₹{headlinePrice.toLocaleString("en-IN")}
               </span>
             ) : (
               <span className="inline-block w-28 h-10 bg-slate-100 rounded-lg animate-pulse" />
             )}
             <span className="text-slate-500 text-sm font-medium">/month</span>
           </div>
+          {otherDurations.length > 0 && (
+            <p className="text-xs text-slate-400 mb-2">
+              Also available:{" "}
+              {otherDurations.map((d, i) => (
+                <span key={d.cycle}>
+                  {i > 0 ? " · " : ""}
+                  {d.label} ₹{d.priceInr.toLocaleString("en-IN")}
+                </span>
+              ))}
+            </p>
+          )}
           <p className="text-slate-500 text-sm">
             {plan?.description ?? "Every feature unlocked — website and mobile app."}
           </p>
@@ -61,7 +86,7 @@ export function PricingCards() {
 
         <div className="flex-grow">
           <ul className="space-y-4 mb-8">
-            {FEATURES.map((feature, i) => (
+            {features.map((feature, i) => (
               <li key={i} className="flex items-start gap-3 text-sm text-slate-700 font-medium">
                 <div className="mt-0.5 rounded-full bg-indigo-50 p-1">
                   <Check className="w-3 h-3 text-indigo-600 shrink-0 stroke-[3]" />
@@ -73,7 +98,7 @@ export function PricingCards() {
         </div>
 
         <div className="mt-auto pt-6 border-t border-slate-100 flex-grow-0">
-          <Link href="/signup" className="block w-full">
+          <Link href="/onboarding" className="block w-full">
             <button className="w-full py-4 rounded-xl font-bold transition-all bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:opacity-90 shadow-lg shadow-indigo-500/30">
               Start With a Free Audit
             </button>

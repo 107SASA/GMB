@@ -32,7 +32,9 @@ export default function ContentGeneratorForm({
     topic: '',
   });
 
-  const [contentTypes, setContentTypes] = useState<string[]>(['GMB Posts', 'SEO Description', 'FAQs']);
+  // Default to Google Business Post only — the primary use case. Users can still
+  // toggle SEO Description / FAQs / etc. manually below.
+  const [contentTypes, setContentTypes] = useState<string[]>(['GMB Posts']);
   const [showOverrideFields, setShowOverrideFields] = useState(false);
 
   useEffect(() => {
@@ -273,7 +275,9 @@ export default function ContentGeneratorForm({
                     : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
                 }`}
               >
-                {type}
+                {/* Display label only — the stored value stays 'GMB Posts' so the
+                    generation API contract is unchanged. */}
+                {type === 'GMB Posts' ? 'Google Business Post' : type}
               </button>
             ))}
           </div>

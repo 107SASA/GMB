@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, Loader2, Sparkles, XCircle } from 'lucide-react';
 import {
@@ -7,16 +8,22 @@ import {
   usePublicPlan,
   useRazorpayCheckout,
 } from '@/components/billing/useRazorpayCheckout';
+import { DurationPicker, pickDuration } from '@/components/billing/DurationPicker';
 
 /** One plan, one card — price and copy come from the super-admin config. */
 export default function PricingPage() {
   const router = useRouter();
   const { plan, loading } = usePublicPlan();
+  const [cycle, setCycle] = useState('monthly');
   const { checkout, subscribe } = useRazorpayCheckout({
     onUnauthenticated: () => router.push('/login'),
   });
 
   const busy = checkout.phase === 'starting' || checkout.phase === 'confirming';
+  const selected = pickDuration(plan?.durations, cycle);
+  const price = selected?.priceInr ?? plan?.priceInr;
+  const cycleLabel = selected?.label ?? plan?.billingCycle ?? 'month';
+  const features = plan?.features?.length ? plan.features : (plan?.modules ?? []).map((m) => MODULE_LABELS[m] ?? m);
 
   return (
     <div className="min-h-screen bg-slate-50 py-16 px-4">
@@ -67,22 +74,25 @@ export default function PricingPage() {
               </span>
             </div>
             <p className="text-sm text-slate-500 mb-6">{plan.description}</p>
+            {plan.durations?.length > 1 && (
+              <DurationPicker durations={plan.durations} value={cycle} onChange={setCycle} />
+            )}
             <div className="mb-6">
               <span className="text-4xl font-bold text-slate-900">
-                ₹{plan.priceInr.toLocaleString('en-IN')}
+                ₹{(price ?? plan.priceInr).toLocaleString('en-IN')}
               </span>
-              <span className="text-slate-400 text-sm"> / {plan.billingCycle}</span>
+              <span className="text-slate-400 text-sm"> / {cycleLabel}</span>
             </div>
             <ul className="space-y-2.5 mb-8 flex-1">
-              {plan.modules.map((m) => (
-                <li key={m} className="flex items-center gap-2 text-sm text-slate-700">
+              {(features.length ? features : plan.modules.map((m) => MODULE_LABELS[m] ?? m)).map((f, i) => (
+                <li key={i} className="flex items-center gap-2 text-sm text-slate-700">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  {MODULE_LABELS[m] ?? m}
+                  {f}
                 </li>
               ))}
             </ul>
             <button
-              onClick={subscribe}
+              onClick={() => subscribe(cycle)}
               disabled={!plan.available || busy}
               className="w-full py-3 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed"
             >

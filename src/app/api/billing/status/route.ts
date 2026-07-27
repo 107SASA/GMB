@@ -20,7 +20,7 @@ async function getWorkspaceStatus(userSubscriptionPlan?: string) {
   const businessId = cookieStore.get('activeBusinessId')?.value;
   if (!businessId) return null;
   const business = await Business.findById(businessId)
-    .select('name subscriptionStatus freeAuditUsed subscriptionCurrentPeriodEnd')
+    .select('name subscriptionStatus freeAuditUsed subscriptionCurrentPeriodEnd subscriptionCancelAtPeriodEnd')
     .lean() as any;
   if (!business) return null;
   return {
@@ -33,6 +33,8 @@ async function getWorkspaceStatus(userSubscriptionPlan?: string) {
       userSubscriptionPlan,
     }),
     currentPeriodEnd: business.subscriptionCurrentPeriodEnd ?? null,
+    // True while access continues but the subscription won't renew.
+    cancelAtPeriodEnd: Boolean(business.subscriptionCancelAtPeriodEnd),
   };
 }
 

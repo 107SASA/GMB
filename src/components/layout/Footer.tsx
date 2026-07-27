@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Rocket } from "lucide-react";
+import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 
 export function Footer() {
   return (
@@ -24,7 +25,15 @@ export function Footer() {
           <ul className="space-y-4 text-sm text-slate-500">
             <li><Link href="/#features" className="hover:text-primary transition-colors">Features</Link></li>
             <li><Link href="/pricing" className="hover:text-primary transition-colors">Pricing</Link></li>
-            <li><Link href="/book-demo" className="hover:text-primary transition-colors">Book a Demo</Link></li>
+            <li>
+              <a
+                href={bookDemoLink()}
+                {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                className="hover:text-primary transition-colors"
+              >
+                Book a Demo
+              </a>
+            </li>
           </ul>
         </div>
 

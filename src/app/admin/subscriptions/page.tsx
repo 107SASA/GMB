@@ -78,19 +78,36 @@ const PLAN_OPTIONS   = ['all', 'Free', 'Pro'];
 const STATUS_OPTIONS = ['all', 'Active', 'Trialing', 'PastDue', 'Canceled'];
 
 // ── The single sellable plan (super-admin editable) ──────────────────────────
+interface PlanDurationData {
+  cycle: string;
+  label: string;
+  months: number;
+  priceInr: number;
+  enabled: boolean;
+  razorpayPlanId: string | null;
+}
 interface BillingPlanData {
   displayName: string;
   description: string;
   priceInr: number;
   billingCycle: string;
+  features: string[];
+  durations: PlanDurationData[];
   razorpayConfigured: boolean;
   razorpayPlanReady: boolean;
+}
+
+interface PlanDraft {
+  displayName: string;
+  description: string;
+  features: string[];
+  durations: { cycle: string; label: string; priceInr: number; enabled: boolean }[];
 }
 
 function PlanPricingCard() {
   const [plan, setPlan]       = useState<BillingPlanData | null>(null);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft]     = useState({ displayName: '', description: '', priceInr: 0 });
+  const [draft, setDraft]     = useState<PlanDraft>({ displayName: '', description: '', features: [], durations: [] });
   const [saving, setSaving]   = useState(false);
   const [notice, setNotice]   = useState<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null);
 
@@ -103,10 +120,18 @@ function PlanPricingCard() {
 
   const startEdit = () => {
     if (!plan) return;
-    setDraft({ displayName: plan.displayName, description: plan.description, priceInr: plan.priceInr });
+    setDraft({
+      displayName: plan.displayName,
+      description: plan.description,
+      features: plan.features.length ? [...plan.features] : [''],
+      durations: plan.durations.map(d => ({ cycle: d.cycle, label: d.label, priceInr: d.priceInr, enabled: d.enabled })),
+    });
     setNotice(null);
     setEditing(true);
   };
+
+  const setDuration = (cycle: string, patch: Partial<{ priceInr: number; enabled: boolean }>) =>
+    setDraft(d => ({ ...d, durations: d.durations.map(x => x.cycle === cycle ? { ...x, ...patch } : x) }));
 
   const save = async () => {
     setSaving(true);
@@ -115,7 +140,12 @@ function PlanPricingCard() {
       const res  = await fetch('/api/admin/billing-plan', {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(draft),
+        body:    JSON.stringify({
+          displayName: draft.displayName,
+          description: draft.description,
+          features: draft.features.map(f => f.trim()).filter(Boolean),
+          durations: draft.durations.map(d => ({ cycle: d.cycle, priceInr: d.priceInr, enabled: d.enabled })),
+        }),
       });
       const json = await res.json();
       if (!json.success) {
@@ -126,7 +156,7 @@ function PlanPricingCard() {
       setEditing(false);
       setNotice(json.warning
         ? { kind: 'warn', text: json.warning }
-        : { kind: 'ok', text: 'Plan updated. New checkouts use the new price; existing subscribers keep their current price.' });
+        : { kind: 'ok', text: 'Plan updated. New checkouts use the new prices; existing subscribers keep their current price.' });
     } catch {
       setNotice({ kind: 'err', text: 'Network error' });
     } finally {
@@ -135,6 +165,10 @@ function PlanPricingCard() {
   };
 
   if (!plan) return null;
+
+  const enabledDurations = plan.durations.filter(d => d.enabled);
+  const canSave = draft.displayName.trim() && draft.durations.some(d => d.enabled) &&
+    draft.durations.every(d => !d.enabled || d.priceInr >= 1);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-6">
@@ -145,7 +179,7 @@ function PlanPricingCard() {
           </div>
           <div>
             <h2 className="font-bold text-slate-900">Subscription Plan</h2>
-            <p className="text-xs text-slate-400">The single plan every customer subscribes to — full access on web and mobile</p>
+            <p className="text-xs text-slate-400">Design the plan customers subscribe to — durations, prices &amp; features</p>
           </div>
         </div>
         {!editing && (
@@ -159,41 +193,86 @@ function PlanPricingCard() {
       </div>
 
       {editing ? (
-        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="mt-5 space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Plan name</label>
+              <input
+                type="text" value={draft.displayName} maxLength={60}
+                onChange={e => setDraft(d => ({ ...d, displayName: e.target.value }))}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Description</label>
+              <input
+                type="text" value={draft.description} maxLength={300}
+                onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300"
+              />
+            </div>
+          </div>
+
+          {/* Durations */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Plan name</label>
-            <input
-              type="text"
-              value={draft.displayName}
-              maxLength={60}
-              onChange={e => setDraft(d => ({ ...d, displayName: e.target.value }))}
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300"
-            />
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Billing durations &amp; prices</label>
+            <div className="space-y-2">
+              {draft.durations.map(d => (
+                <div key={d.cycle} className={cn(
+                  'flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors',
+                  d.enabled ? 'border-violet-200 bg-violet-50/40' : 'border-slate-200 bg-slate-50'
+                )}>
+                  <label className="flex items-center gap-2 cursor-pointer select-none w-32 shrink-0">
+                    <input type="checkbox" checked={d.enabled} onChange={e => setDuration(d.cycle, { enabled: e.target.checked })} />
+                    <span className="text-sm font-semibold text-slate-700">{d.label}</span>
+                  </label>
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <span className="text-slate-400 text-sm">₹</span>
+                    <input
+                      type="number" min={1} value={d.priceInr} disabled={!d.enabled}
+                      onChange={e => setDuration(d.cycle, { priceInr: Math.max(0, Number(e.target.value) || 0) })}
+                      className="w-32 px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300 disabled:opacity-50 disabled:bg-slate-100"
+                    />
+                    <span className="text-xs text-slate-400">/ {d.label.toLowerCase()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* Features */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Price (₹ / month)</label>
-            <input
-              type="number"
-              min={1}
-              value={draft.priceInr}
-              onChange={e => setDraft(d => ({ ...d, priceInr: Math.max(0, Number(e.target.value) || 0) }))}
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300"
-            />
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Features (shown on the pricing card)</label>
+            <div className="space-y-2">
+              {draft.features.map((f, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="text" value={f} maxLength={120} placeholder="e.g. Unlimited AI posts"
+                    onChange={e => setDraft(d => ({ ...d, features: d.features.map((x, idx) => idx === i ? e.target.value : x) }))}
+                    className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300"
+                  />
+                  <button
+                    onClick={() => setDraft(d => ({ ...d, features: d.features.filter((_, idx) => idx !== i) }))}
+                    className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              {draft.features.length < 12 && (
+                <button
+                  onClick={() => setDraft(d => ({ ...d, features: [...d.features, ''] }))}
+                  className="text-sm font-semibold text-violet-600 hover:text-violet-700"
+                >
+                  + Add feature
+                </button>
+              )}
+            </div>
           </div>
-          <div className="sm:col-span-2">
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Description</label>
-            <textarea
-              value={draft.description}
-              maxLength={300}
-              rows={2}
-              onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300 resize-none"
-            />
-          </div>
-          <div className="sm:col-span-2 flex items-center gap-3">
+
+          <div className="flex items-center gap-3 pt-1">
             <button
-              onClick={save}
-              disabled={saving || draft.priceInr < 1 || !draft.displayName.trim()}
+              onClick={save} disabled={saving || !canSave}
               className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-bold rounded-xl hover:bg-violet-700 transition-colors disabled:opacity-60 shadow-sm"
             >
               {saving ? (
@@ -202,44 +281,49 @@ function PlanPricingCard() {
                 <><CheckCircle2 className="w-4 h-4" /> Save plan</>
               )}
             </button>
-            <button
-              onClick={() => setEditing(false)}
-              className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors"
-            >
+            <button onClick={() => setEditing(false)} className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors">
               <X className="w-4 h-4" /> Cancel
             </button>
           </div>
         </div>
       ) : (
-        <div className="mt-5 flex flex-wrap items-center gap-x-8 gap-y-3">
-          <div>
-            <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
-              ₹{plan.priceInr.toLocaleString('en-IN')}
-              <span className="text-sm font-medium text-slate-400"> / {plan.billingCycle}</span>
+        <div className="mt-5 space-y-4">
+          <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-600">{plan.displayName}</div>
+              <p className="text-sm text-slate-500 max-w-md mt-0.5">{plan.description}</p>
             </div>
-            <div className="text-sm font-semibold text-slate-600 mt-0.5">{plan.displayName}</div>
+            <div className="flex flex-col gap-1.5">
+              <span className={cn(
+                'inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border w-fit',
+                plan.razorpayConfigured ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'
+              )}>
+                {plan.razorpayConfigured ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                {plan.razorpayConfigured ? 'Razorpay connected' : 'Razorpay keys missing'}
+              </span>
+            </div>
           </div>
-          <p className="text-sm text-slate-500 max-w-md flex-1 min-w-50">{plan.description}</p>
-          <div className="flex flex-col gap-1.5">
-            <span className={cn(
-              'inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border w-fit',
-              plan.razorpayConfigured
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                : 'bg-amber-50 text-amber-700 border-amber-100'
-            )}>
-              {plan.razorpayConfigured ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-              {plan.razorpayConfigured ? 'Razorpay connected' : 'Razorpay keys missing'}
-            </span>
-            <span className={cn(
-              'inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border w-fit',
-              plan.razorpayPlanReady
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                : 'bg-slate-50 text-slate-500 border-slate-200'
-            )}>
-              {plan.razorpayPlanReady ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-              {plan.razorpayPlanReady ? 'Checkout ready' : 'Plan created at first checkout'}
-            </span>
+
+          {/* Duration chips */}
+          <div className="flex flex-wrap gap-2">
+            {enabledDurations.map(d => (
+              <span key={d.cycle} className="inline-flex items-baseline gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-lg font-extrabold text-slate-900">₹{d.priceInr.toLocaleString('en-IN')}</span>
+                <span className="text-xs font-medium text-slate-400">/ {d.label}</span>
+              </span>
+            ))}
           </div>
+
+          {/* Features preview */}
+          {plan.features.length > 0 && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {plan.features.map((f, i) => (
+                <span key={i} className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-500" /> {f}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

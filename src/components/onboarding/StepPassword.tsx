@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { OnboardingData } from './types';
-import { ArrowRight, Lock, AlertCircle } from 'lucide-react';
+import { ArrowRight, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 interface Props {
   data: OnboardingData;
@@ -22,6 +22,8 @@ function validatePasswordStrength(password: string): string | null {
 
 export default function StepPassword({ data, updateData, onNext, onBack }: Props) {
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const handleContinue = () => {
     if (!data.password || !data.confirmPassword) {
@@ -54,24 +56,44 @@ export default function StepPassword({ data, updateData, onNext, onBack }: Props
         <div className="space-y-5">
           <div>
             <label className="block text-sm font-bold text-slate-900 mb-2">Password</label>
-            <input
-              type="password"
-              value={data.password || ''}
-              onChange={e => updateData({ password: e.target.value })}
-              className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
-              placeholder="••••••••"
-              autoFocus
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={data.password || ''}
+                onChange={e => updateData({ password: e.target.value })}
+                className="w-full px-4 py-4 pr-12 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                placeholder="••••••••"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(v => !v)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 hover:text-slate-700 transition-colors"
+              >
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
           <div>
             <label className="block text-sm font-bold text-slate-900 mb-2">Confirm Password</label>
-            <input
-              type="password"
-              value={data.confirmPassword || ''}
-              onChange={e => updateData({ confirmPassword: e.target.value })}
-              className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
-              placeholder="••••••••"
-            />
+            <div className="relative">
+              <input
+                type={showConfirm ? 'text' : 'password'}
+                value={data.confirmPassword || ''}
+                onChange={e => updateData({ confirmPassword: e.target.value })}
+                className="w-full px-4 py-4 pr-12 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirm(v => !v)}
+                aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 hover:text-slate-700 transition-colors"
+              >
+                {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
         </div>
       </div>

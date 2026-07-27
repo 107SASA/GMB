@@ -4,9 +4,10 @@ import dbConnect from '@/lib/mongodb';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import BillingPlan from '@/models/BillingPlan';
 import {
-  ensureRazorpayPlanId,
   getActivePlan,
   PLAN_FALLBACK,
+  CYCLE_ORDER,
+  isBillingCycle,
 } from '@/lib/billing/planCatalog';
 import { getRazorpay } from '@/lib/billing/razorpay';
 
@@ -86,6 +87,67 @@ export async function PATCH(req: NextRequest) {
       update.description = description;
     }
 
+    // Editable feature bullets (shown on the pricing card / paywall).
+    if ('features' in body) {
+      if (!Array.isArray(body.features)) {
+        return NextResponse.json({ error: 'features must be an array of strings' }, { status: 400 });
+      }
+      const features = body.features
+        .map((f: unknown) => String(f ?? '').trim())
+        .filter(Boolean)
+        .slice(0, 12);
+      if (features.some((f: string) => f.length > 120)) {
+        return NextResponse.json({ error: 'each feature must be at most 120 characters' }, { status: 400 });
+      }
+      update.features = features;
+    }
+
+    // Per-duration pricing. The whole set is replaced; Razorpay ids for
+    // unchanged prices are preserved (getActivePlan invalidates mismatches).
+    if ('durations' in body) {
+      if (!Array.isArray(body.durations)) {
+        return NextResponse.json({ error: 'durations must be an array' }, { status: 400 });
+      }
+      const current = await getActivePlan();
+      const existing = new Map(current.durations.map((d) => [d.cycle, d]));
+      const seen = new Set<string>();
+      const out: any[] = [];
+      for (const d of body.durations) {
+        if (!isBillingCycle(d?.cycle) || seen.has(d.cycle)) {
+          return NextResponse.json({ error: `Invalid or duplicate cycle: ${d?.cycle}` }, { status: 400 });
+        }
+        seen.add(d.cycle);
+        const price = Math.round(Number(d.priceInr));
+        if (!Number.isFinite(price) || price < 1 || price > MAX_PRICE_INR) {
+          return NextResponse.json({ error: `Price for ${d.cycle} must be 1–${MAX_PRICE_INR}` }, { status: 400 });
+        }
+        const prev = existing.get(d.cycle);
+        // Preserve the Razorpay id only when the price is unchanged.
+        const keepRp = prev?.razorpayPlanId && prev.priceInr === price;
+        out.push({
+          cycle: d.cycle,
+          priceInr: price,
+          enabled: Boolean(d.enabled),
+          ...(keepRp ? { razorpayPlanId: prev!.razorpayPlanId, razorpayPlanPriceInr: price } : {}),
+        });
+      }
+      // Ensure all four cycles exist (disabled if omitted) so the array is complete.
+      for (const cycle of CYCLE_ORDER) {
+        if (!seen.has(cycle)) {
+          const prev = existing.get(cycle)!;
+          out.push({ cycle, priceInr: prev.priceInr, enabled: false });
+        }
+      }
+      // At least monthly must be enabled so there's always something to sell.
+      if (!out.some((d) => d.enabled)) {
+        return NextResponse.json({ error: 'Enable at least one billing duration.' }, { status: 400 });
+      }
+      update.durations = out;
+      // Keep the legacy monthly price in sync for back-compat readers.
+      const monthly = out.find((d) => d.cycle === 'monthly');
+      if (monthly) update.priceInr = monthly.priceInr;
+    }
+
     if (Object.keys(update).length === 1) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
@@ -105,22 +167,12 @@ export async function PATCH(req: NextRequest) {
       { upsert: true, setDefaultsOnInsert: true, runValidators: true }
     );
 
-    // A new price needs a new Razorpay Plan; create it now so problems
-    // surface to the admin instead of to a paying customer at checkout.
+    // Razorpay plans for changed prices are created lazily at first checkout
+    // (per duration), so a save never fails on a Razorpay error. Surface only a
+    // config hint when keys are missing.
     let warning: string | undefined;
-    if ('priceInr' in update) {
-      if (getRazorpay()) {
-        try {
-          await ensureRazorpayPlanId();
-        } catch (err: any) {
-          console.error('[billing-plan] Razorpay plan creation failed:', err);
-          warning =
-            'Price saved, but creating the Razorpay plan failed — checkout will retry automatically. ' +
-            (err?.error?.description || err?.message || '');
-        }
-      } else {
-        warning = 'Price saved. Razorpay keys are not configured, so checkout is disabled until they are.';
-      }
+    if (('priceInr' in update || 'durations' in update) && !getRazorpay()) {
+      warning = 'Saved. Razorpay keys are not configured, so checkout is disabled until they are.';
     }
 
     return NextResponse.json({ success: true, data: await planPayload(), warning });

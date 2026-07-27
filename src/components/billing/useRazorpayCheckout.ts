@@ -18,6 +18,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * 'success'). Entitlements are only ever granted by the webhook.
  */
 
+export interface PlanDuration {
+  cycle: string;
+  label: string;
+  months: number;
+  priceInr: number;
+}
+
 export interface PublicPlan {
   planType: string;
   displayName: string;
@@ -25,6 +32,9 @@ export interface PublicPlan {
   priceInr: number;
   billingCycle: string;
   modules: string[];
+  features: string[];
+  /** Enabled billing durations the customer can choose from. */
+  durations: PlanDuration[];
   available: boolean;
 }
 
@@ -117,10 +127,14 @@ export function useRazorpayCheckout(opts?: {
     }, 1500);
   }, []);
 
-  const subscribe = useCallback(async () => {
+  const subscribe = useCallback(async (cycle?: string) => {
     setCheckout({ phase: 'starting' });
     try {
-      const res = await fetch('/api/billing/checkout', { method: 'POST' });
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cycle: cycle || 'monthly' }),
+      });
       if (res.status === 401) {
         setCheckout({ phase: 'idle' });
         optsRef.current?.onUnauthenticated?.();

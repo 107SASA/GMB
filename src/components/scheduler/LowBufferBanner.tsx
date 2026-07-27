@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface LowBufferBannerProps {
-  missingDays: number;
+  postsNeeded: number;
   onGenerate: () => void;
 }
 
-export default function LowBufferBanner({ missingDays, onGenerate }: LowBufferBannerProps) {
+export default function LowBufferBanner({ postsNeeded, onGenerate }: LowBufferBannerProps) {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const handleGenerate = async () => {
@@ -15,7 +15,7 @@ export default function LowBufferBanner({ missingDays, onGenerate }: LowBufferBa
     setIsGenerating(false);
   };
 
-  if (missingDays === 0) return null;
+  if (postsNeeded === 0) return null;
 
   return (
     <AnimatePresence>
@@ -33,7 +33,7 @@ export default function LowBufferBanner({ missingDays, onGenerate }: LowBufferBa
           </div>
           <div>
             <h4 className="text-rose-900 font-bold text-lg">Action Required: Low Content Buffer</h4>
-            <p className="text-rose-700 text-sm">You are missing content for {missingDays} days this week. Generate AI posts now to keep your audience engaged.</p>
+            <p className="text-rose-700 text-sm">You need {postsNeeded} more {postsNeeded === 1 ? 'post' : 'posts'} scheduled for the upcoming week. Generate AI posts now to keep your audience engaged.</p>
           </div>
         </div>
         

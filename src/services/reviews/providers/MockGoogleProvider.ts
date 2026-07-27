@@ -4,6 +4,8 @@ export interface ProviderReview {
   rating: number;
   text: string;
   postedAt: string;
+  /** Existing owner reply on the review, if any (GBP API provides this). */
+  ownerReply?: string;
 }
 
 export interface FetchReviewsOptions {

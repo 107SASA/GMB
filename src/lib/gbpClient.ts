@@ -6,6 +6,10 @@ import { encrypt, decrypt } from '@/lib/crypto';
 import { gbpWritesEnabled } from '@/lib/gbpSafety';
 
 const BIZINFO_BASE = 'https://mybusinessbusinessinformation.googleapis.com/v1';
+// Local posts, media and review replies still live only on the legacy My
+// Business API v4 (there is no v1 replacement yet). v4 resource names need the
+// FULL "accounts/{a}/locations/{l}" path — v1 APIs above use just "locations/{l}".
+const MYBUSINESS_V4_BASE = 'https://mybusiness.googleapis.com/v4';
 
 export class GBPAuthError extends Error {
   constructor(message: string) {
@@ -336,4 +340,170 @@ export async function updateLocationProfile(
     throw new Error(`GBP updateLocationProfile failed: ${res.status} ${err}`);
   }
   return { liveWriteApplied: true };
+}
+
+// ─── Local posts / media / review replies (My Business API v4) ─────────────────
+//
+// These are the "push to the live profile" writes. Every one is gated behind
+// GBP_LIVE_WRITES_ENABLED: while OFF they no-op (returning liveWriteApplied:false)
+// so callers keep their existing mock/DB-only behaviour; flipping the env var to
+// true — after verification on a test account — makes the real Google call fire
+// with no other code change. They all require the v4 "Google My Business API" to
+// be enabled + allow-listed on the Cloud project, and the business.manage scope.
+
+/** Builds the v4 resource name "accounts/{a}/locations/{l}" from a token doc. */
+async function v4LocationName(businessId: string): Promise<{ name: string; accessToken: string }> {
+  const accessToken = await getValidToken(businessId);
+  const tokenDoc = await GBPToken.findOne({ businessId });
+  if (!tokenDoc?.accountId || !tokenDoc?.locationId) {
+    throw new Error('No GBP account/location linked to this business — reconnect Google.');
+  }
+  // locationId is stored as "locations/{l}" (v1 format); v4 needs it under the account.
+  const loc = tokenDoc.locationId.includes('/locations/')
+    ? tokenDoc.locationId
+    : `${tokenDoc.accountId}/${tokenDoc.locationId}`;
+  return { name: loc, accessToken };
+}
+
+export interface LocalPostInput {
+  summary: string;
+  /** Optional call-to-action button. */
+  cta?: { actionType: 'LEARN_MORE' | 'BOOK' | 'ORDER' | 'SHOP' | 'SIGN_UP' | 'CALL'; url?: string };
+  /** Optional photo — MUST be a public http(s) URL (Google fetches it). Data-URLs are skipped. */
+  mediaUrl?: string;
+}
+
+/**
+ * Publishes a local post to the live GBP. Gated — no-ops (returns
+ * liveWriteApplied:false) while live writes are disabled.
+ */
+export async function createLocalPost(
+  businessId: string,
+  input: LocalPostInput
+): Promise<{ liveWriteApplied: boolean; postName?: string }> {
+  if (!gbpWritesEnabled()) return { liveWriteApplied: false };
+  await dbConnect();
+
+  const { name, accessToken } = await v4LocationName(businessId);
+
+  const body: Record<string, unknown> = {
+    languageCode: 'en-US',
+    summary: input.summary,
+    topicType: 'STANDARD',
+  };
+  if (input.cta?.actionType) {
+    body.callToAction =
+      input.cta.actionType === 'CALL'
+        ? { actionType: 'CALL' }
+        : { actionType: input.cta.actionType, url: input.cta.url };
+  }
+  // Google fetches media by URL; a base64 data-URL can't be used here.
+  if (input.mediaUrl && /^https?:\/\//i.test(input.mediaUrl)) {
+    body.media = [{ mediaFormat: 'PHOTO', sourceUrl: input.mediaUrl }];
+  }
+
+  const res = await fetch(`${MYBUSINESS_V4_BASE}/${name}/localPosts`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`GBP createLocalPost failed: ${res.status} ${err}`);
+  }
+  const data = await res.json();
+  return { liveWriteApplied: true, postName: data.name };
+}
+
+/**
+ * Posts (or updates) the owner's reply to a review on the live GBP. Gated.
+ * `reviewName` must be the GBP review resource id — i.e. reviews sourced from the
+ * GBP reviews API, NOT a SerpApi id (see the note in the review-reply route).
+ */
+export async function replyToReview(
+  businessId: string,
+  reviewName: string,
+  comment: string
+): Promise<{ liveWriteApplied: boolean }> {
+  if (!gbpWritesEnabled()) return { liveWriteApplied: false };
+  await dbConnect();
+
+  const { name, accessToken } = await v4LocationName(businessId);
+  // reviewName may be a full path or a bare id; normalise to the location's review.
+  const reviewPath = reviewName.startsWith('accounts/')
+    ? reviewName
+    : `${name}/reviews/${reviewName}`;
+
+  const res = await fetch(`${MYBUSINESS_V4_BASE}/${reviewPath}/reply`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comment }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`GBP replyToReview failed: ${res.status} ${err}`);
+  }
+  return { liveWriteApplied: true };
+}
+
+export type GbpMediaCategory = 'PROFILE' | 'COVER' | 'ADDITIONAL' | 'LOGO';
+
+/**
+ * Uploads a photo to the live GBP (logo / cover / additional). Gated. `sourceUrl`
+ * MUST be a public http(s) URL that Google can fetch (see hosting note in the
+ * media route — user-uploaded files need a public URL before this can be used).
+ */
+export async function uploadLocationPhoto(
+  businessId: string,
+  category: GbpMediaCategory,
+  sourceUrl: string
+): Promise<{ liveWriteApplied: boolean; mediaName?: string }> {
+  if (!gbpWritesEnabled()) return { liveWriteApplied: false };
+  if (!/^https?:\/\//i.test(sourceUrl)) {
+    throw new Error('uploadLocationPhoto requires a public http(s) sourceUrl.');
+  }
+  await dbConnect();
+
+  const { name, accessToken } = await v4LocationName(businessId);
+  const res = await fetch(`${MYBUSINESS_V4_BASE}/${name}/media`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mediaFormat: 'PHOTO',
+      locationAssociation: { category },
+      sourceUrl,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`GBP uploadLocationPhoto failed: ${res.status} ${err}`);
+  }
+  const data = await res.json();
+  return { liveWriteApplied: true, mediaName: data.name };
+}
+
+export interface GbpMediaItem {
+  name: string;
+  category: string;
+  url: string;
+  thumbnailUrl: string;
+}
+
+/** Reads the location's existing media (photos/logo/cover) for display. Read-only. */
+export async function listLocationMedia(businessId: string): Promise<GbpMediaItem[]> {
+  const { name, accessToken } = await v4LocationName(businessId);
+  const res = await fetch(`${MYBUSINESS_V4_BASE}/${name}/media`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`GBP listLocationMedia failed: ${res.status} ${err}`);
+  }
+  const data = await res.json();
+  return (data.mediaItems ?? []).map((m: any) => ({
+    name: m.name ?? '',
+    category: m.locationAssociation?.category ?? 'ADDITIONAL',
+    url: m.googleUrl ?? m.sourceUrl ?? '',
+    thumbnailUrl: m.thumbnailUrl ?? m.googleUrl ?? '',
+  }));
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Loader2, Lock, ShieldCheck, Sparkles } from 'lucide-react';
 import {
@@ -7,6 +8,7 @@ import {
   useRazorpayCheckout,
   MODULE_LABELS,
 } from '@/components/billing/useRazorpayCheckout';
+import { DurationPicker, pickDuration } from '@/components/billing/DurationPicker';
 
 /**
  * The pricing card shown BESIDE a free audit report.
@@ -26,6 +28,7 @@ export default function AuditPaywallSidebar({
 }) {
   const router = useRouter();
   const { plan, loading } = usePublicPlan();
+  const [cycle, setCycle] = useState('monthly');
   const { checkout, subscribe } = useRazorpayCheckout({
     onUnauthenticated: () => router.push('/login'),
     // Gate is lifted by the webhook; refresh so the proxy stops redirecting.
@@ -36,6 +39,10 @@ export default function AuditPaywallSidebar({
   });
 
   const busy = checkout.phase === 'starting' || checkout.phase === 'confirming';
+  const selected = pickDuration(plan?.durations, cycle);
+  const price = selected?.priceInr ?? plan?.priceInr;
+  const cycleLabel = selected?.label ?? 'month';
+  const features = plan?.features?.length ? plan.features : (plan?.modules ?? []).map((m) => MODULE_LABELS[m] ?? m);
 
   return (
     <aside className="lg:sticky lg:top-6 w-full lg:w-[340px] shrink-0">
@@ -54,14 +61,18 @@ export default function AuditPaywallSidebar({
               : 'Your report is free to keep. Upgrade to act on it — and unlock the full platform.'}
           </p>
 
+          {plan && plan.durations?.length > 1 && (
+            <DurationPicker durations={plan.durations} value={cycle} onChange={setCycle} />
+          )}
+
           <div className="mb-5">
             {loading ? (
               <span className="inline-block h-9 w-32 animate-pulse rounded bg-slate-200" />
-            ) : plan ? (
+            ) : plan && price != null ? (
               <>
                 <div className="text-3xl font-extrabold tracking-tight text-slate-900">
-                  ₹{plan.priceInr.toLocaleString('en-IN')}
-                  <span className="text-base font-medium text-slate-500"> /month</span>
+                  ₹{price.toLocaleString('en-IN')}
+                  <span className="text-base font-medium text-slate-500"> / {cycleLabel}</span>
                 </div>
                 <div className="mt-1 text-sm font-bold text-slate-900">{plan.displayName}</div>
               </>
@@ -71,12 +82,12 @@ export default function AuditPaywallSidebar({
           </div>
 
           <ul className="space-y-2.5 mb-6">
-            {(plan?.modules?.length ? plan.modules : Object.keys(MODULE_LABELS)).map((m) => (
-              <li key={m} className="flex items-start gap-2.5 text-sm text-slate-700">
+            {(features.length ? features : Object.values(MODULE_LABELS)).map((f, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-sm text-slate-700">
                 <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-indigo-600">
                   <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
                 </span>
-                {MODULE_LABELS[m] ?? m}
+                {f}
               </li>
             ))}
           </ul>
@@ -91,7 +102,7 @@ export default function AuditPaywallSidebar({
           )}
 
           <button
-            onClick={subscribe}
+            onClick={() => subscribe(cycle)}
             disabled={busy || !plan?.available}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3.5 font-bold text-white transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
           >

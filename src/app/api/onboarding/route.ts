@@ -28,12 +28,21 @@ export async function POST(req: Request) {
     await dbConnect();
     const body = await req.json();
 
-    let newUser = await User.findOne({ email: body.email });
+    // Normalize the email the SAME way the schema stores it (lowercase + trim)
+    // and the same way login/verify look it up. Previously the lookup used the
+    // raw `body.email`, so a user who typed a different case than they signed up
+    // with (e.g. "Test@x.com" vs the stored "test@x.com") was not recognised as
+    // existing — onboarding fell into the "new account" branch and then died on
+    // the unique-email index with "these details already exist", even though the
+    // account was right there and just couldn't be matched.
+    const email = String(body.email || '').trim().toLowerCase();
+
+    let newUser = await User.findOne({ email });
 
     // Only validate email/password/phone when actually creating a new account —
     // an existing user resuming onboarding keeps their existing credentials.
     if (!newUser) {
-      if (!body.email || !EMAIL_REGEX.test(body.email)) {
+      if (!email || !EMAIL_REGEX.test(email)) {
         return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
       }
 
@@ -56,7 +65,7 @@ export async function POST(req: Request) {
       const otp = generateOTP();
       newUser = await User.create({
         fullName: body.fullName || 'Test User',
-        email: body.email,
+        email,
         phone: normalizedPhone,
         passwordHash,
         role: 'CLIENT',
@@ -164,12 +173,17 @@ export async function POST(req: Request) {
       onboardingCompleted: true,
     });
 
-    // 4. Update User context
+    // 4. Update User context. `businessIds` is the canonical list of workspaces
+    //    a user owns — it's read by automation.ts, push/notification targeting
+    //    and the user's business-list routes, so every workspace a user creates
+    //    must be recorded here (this was previously never populated, which is
+    //    why a second business per user didn't behave as a first-class workspace).
     await User.findByIdAndUpdate(newUser._id, {
       $set: {
         organizationId: newOrg._id,
         activeBusinessId: newBusiness._id,
       },
+      $addToSet: { businessIds: newBusiness._id },
     });
 
     // 5. Unverified accounts don't get a session until they confirm their email —

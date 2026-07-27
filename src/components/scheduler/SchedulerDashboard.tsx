@@ -85,9 +85,13 @@ export default function SchedulerDashboard() {
         </p>
       </div>
 
-      <BufferHealthBar daysCovered={bufferData.daysCovered} healthStatus={bufferData.healthStatus} />
+      <BufferHealthBar
+        scheduled={bufferData.scheduledThisWeek}
+        target={bufferData.weeklyTarget}
+        healthStatus={bufferData.healthStatus}
+      />
 
-      <LowBufferBanner missingDays={bufferData.missingDays} onGenerate={handleManualGenerate} />
+      <LowBufferBanner postsNeeded={bufferData.postsNeeded} onGenerate={handleManualGenerate} />
 
       <WeeklyCalendar
         posts={bufferData.allPosts}

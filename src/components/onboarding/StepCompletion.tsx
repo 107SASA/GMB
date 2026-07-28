@@ -37,8 +37,10 @@ export default function StepCompletion({ data }: Props) {
         return;
       }
 
-      router.push('/dashboard');
-      router.refresh();
+      // Hard navigation so the freshly-set session cookie is sent and the
+      // dashboard renders authenticated (a soft nav can bounce back to /login).
+      window.location.href = '/dashboard';
+      return;
     } catch (err: any) {
       setError('Network error — could not reach the server.');
       setLoading(false);

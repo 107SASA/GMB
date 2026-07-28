@@ -26,8 +26,13 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (data.success) {
-        router.push('/dashboard');
-        router.refresh();
+        // Hard navigation (full reload) — NOT router.push — so the just-set
+        // session cookie is guaranteed to be sent and the dashboard renders
+        // authenticated. A soft client navigation can race the cookie or serve
+        // a cached/prefetched (logged-out) dashboard RSC, which bounces the user
+        // straight back to /login in production.
+        window.location.href = '/dashboard';
+        return;
       } else if (data.requiresVerification) {
         router.push(`/verify?email=${encodeURIComponent(data.email)}`);
       } else {

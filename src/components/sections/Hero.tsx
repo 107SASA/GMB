@@ -16,25 +16,36 @@ export function Hero() {
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 text-center">
-        <motion.div
+        <motion.p
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-50 border border-indigo-100 text-sm font-medium text-indigo-600 mb-8 shadow-sm"
+          className="text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 mb-5"
         >
-          <Sparkles className="w-4 h-4" />
-          <span>AI-Powered Google Business Growth Platform</span>
-        </motion.div>
+          GrowwMatics AI
+        </motion.p>
 
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="text-5xl md:text-7xl lg:text-8xl font-extrabold tracking-tight text-slate-900 mb-8 leading-[1.1]"
+          className="text-2xl md:text-4xl lg:text-5xl font-bold tracking-tight text-slate-800 mb-6 leading-[1.15]"
         >
-          Scale Your Local Business <br />
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">With AI Intelligence</span>
+          Scale Your Local Business{" "}
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
+            With AI Intelligence
+          </span>
         </motion.h1>
+
+        <motion.p
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.15 }}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-50 border border-indigo-100 text-sm font-medium text-indigo-600 mb-8 shadow-sm"
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>AI-Powered Google Business Growth Platform</span>
+        </motion.p>
 
         <motion.p
           initial={{ opacity: 0, y: 20 }}

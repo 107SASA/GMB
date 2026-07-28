@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import {
   fetchBusinessDetail,
-  fetchIntegrationsStatus,
   fetchNotificationPrefs,
   NOTIFICATION_PREFS,
   updateBusinessDetail,
@@ -14,6 +14,7 @@ import {
   type BusinessDetail,
   type NotificationPrefs,
 } from '@/api/endpoints/account';
+import { disconnectGoogle } from '@/api/endpoints/gbp';
 import { useBusiness } from '@/business/BusinessContext';
 import {
   Chip,
@@ -26,6 +27,7 @@ import {
   SectionLabel,
   Skeleton,
 } from '@/components/ui';
+import { promptConnectGoogle } from '@/lib/connectGoogle';
 import { useTheme } from '@/lib/theme';
 
 // --- Business profile form ------------------------------------------------------
@@ -196,21 +198,58 @@ function NotificationsSection({ initial }: { initial: NotificationPrefs }) {
   );
 }
 
-// --- Integrations ----------------------------------------------------------------
+/**
+ * Google's row is interactive (unlike the other read-only integration rows):
+ * tapping it connects when not linked, or confirms + disconnects when linked.
+ */
+function GoogleConnectionRow({ connected }: { connected: boolean }) {
+  const queryClient = useQueryClient();
+  const { activeBusinessId } = useBusiness();
 
-function IntegrationRow({ label, connected }: { label: string; connected: boolean }) {
+  const disconnect = useMutation({
+    mutationFn: disconnectGoogle,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['business-detail', activeBusinessId] });
+    },
+    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not disconnect Google.')),
+  });
+
+  const handlePress = () => {
+    if (disconnect.isPending) return;
+    if (!connected) {
+      promptConnectGoogle('Connect your Google Business Profile to sync reviews, posts, and photos.');
+      return;
+    }
+    Alert.alert(
+      'Disconnect Google Business Profile?',
+      'Reviews, posts, and photos will stop syncing until you reconnect.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: () => {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            disconnect.mutate();
+          },
+        },
+      ]
+    );
+  };
+
   return (
-    <View className="flex-row items-center justify-between px-4 py-3">
-      <Text className="text-sm text-white">{label}</Text>
+    <Pressable
+      onPress={handlePress}
+      className="flex-row items-center justify-between px-4 py-3 active:bg-surface-overlay"
+    >
+      <Text className="text-sm text-white">Google Business Profile</Text>
       <View className="flex-row items-center gap-1.5">
-        <View
-          className={`h-2 w-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-zinc-600'}`}
-        />
+        <View className={`h-2 w-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
         <Text className={`text-xs ${connected ? 'text-emerald-400' : 'text-zinc-500'}`}>
-          {connected ? 'Connected' : 'Not configured'}
+          {disconnect.isPending ? 'Disconnecting…' : connected ? 'Connected — tap to disconnect' : 'Tap to connect'}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -225,10 +264,6 @@ export default function SettingsScreen() {
     enabled: !!activeBusinessId,
   });
   const prefs = useQuery({ queryKey: ['notification-prefs'], queryFn: fetchNotificationPrefs });
-  const integrations = useQuery({
-    queryKey: ['integrations-status'],
-    queryFn: fetchIntegrationsStatus,
-  });
 
   return (
     <Screen>
@@ -255,29 +290,12 @@ export default function SettingsScreen() {
           <NotificationsSection key={prefs.dataUpdatedAt} initial={prefs.data} />
         )}
 
-        <SectionLabel>Integrations</SectionLabel>
-        {integrations.isLoading ? (
-          <Skeleton className="h-40" />
-        ) : integrations.isError || !integrations.data ? (
-          <Text className="px-1 text-sm text-zinc-500">Couldn't load integration status.</Text>
+        <SectionLabel>Google Business Profile</SectionLabel>
+        {business.isLoading ? (
+          <Skeleton className="h-14" />
         ) : (
           <View className="overflow-hidden rounded-xl border border-surface-border bg-surface-raised">
-            <IntegrationRow
-              label="Google Business Profile"
-              connected={business.data?.googleConnected ?? false}
-            />
-            <View className="border-t border-surface-border">
-              <IntegrationRow label="Google Places" connected={integrations.data.googlePlaces} />
-            </View>
-            <View className="border-t border-surface-border">
-              <IntegrationRow label="WhatsApp (Twilio)" connected={integrations.data.twilio} />
-            </View>
-            <View className="border-t border-surface-border">
-              <IntegrationRow label="AI engine (Groq)" connected={integrations.data.groq} />
-            </View>
-            <View className="border-t border-surface-border">
-              <IntegrationRow label="Rank tracking (SerpAPI)" connected={integrations.data.serpapi} />
-            </View>
+            <GoogleConnectionRow connected={business.data?.googleConnected ?? false} />
           </View>
         )}
       </ScrollView>

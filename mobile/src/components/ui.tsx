@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
@@ -68,7 +69,10 @@ export function PrimaryButton({
   const inactive = disabled || loading;
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress();
+      }}
       disabled={inactive}
       className={`overflow-hidden rounded-2xl ${inactive ? 'opacity-50' : 'active:opacity-85'}`}
     >

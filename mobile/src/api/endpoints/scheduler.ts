@@ -14,16 +14,21 @@ const postList = z
   .transform((posts) => posts.filter((p): p is ContentPost => p !== null));
 
 export const bufferSchema = z.object({
-  totalScheduledPosts: z.number().catch(0),
-  daysCovered: z.number().catch(0),
+  // Posts-per-week model (matches the web /api/scheduler/buffer response). The
+  // old `daysCovered` / `missingDays` fields were removed server-side; a plan
+  // generates POSTS_PER_WEEK (4) posts on alternate days, so "days covered" is
+  // no longer meaningful.
+  weeklyTarget: z.number().catch(4),
+  scheduledThisWeek: z.number().catch(0),
+  postsNeeded: z.number().catch(0),
+  unscheduledDrafts: z.number().catch(0),
   healthStatus: z.enum(['Healthy', 'Warning', 'Critical']).catch('Critical'),
-  missingDays: z.number().catch(0),
   upcomingPosts: postList,
   allPosts: postList,
 });
 export type Buffer = z.infer<typeof bufferSchema>;
 
-/** GET /api/scheduler/buffer — 7-day health window + calendar posts. */
+/** GET /api/scheduler/buffer — weekly post-buffer health + calendar posts. */
 export async function fetchBuffer(): Promise<Buffer> {
   const { data } = await api.get('/api/scheduler/buffer');
   return z.object({ data: bufferSchema }).parse(data).data;

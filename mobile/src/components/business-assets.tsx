@@ -1,12 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useState } from 'react';
 import { Alert, Linking, Pressable, Text, View } from 'react-native';
 
-import { fetchBuffer } from '@/api/endpoints/scheduler';
+import { getApiErrorMessage } from '@/api/client';
+import {
+  fetchGbpMedia,
+  GbpNotConnectedError,
+  uploadGbpMedia,
+  type GbpMediaCategory,
+} from '@/api/endpoints/gbp';
 import { useBusiness } from '@/business/BusinessContext';
-import { Chip } from '@/components/ui';
+import { EmptyState, Skeleton } from '@/components/ui';
+import { promptConnectGoogle } from '@/lib/connectGoogle';
 import { BRAND_GRADIENT, useTheme } from '@/lib/theme';
 
 const GUIDELINES_URL = 'https://support.google.com/business/answer/6103862';
@@ -17,59 +25,156 @@ const SMART_TIPS: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = [
   { icon: 'heart-outline', text: 'Encourage your customers to upload photos of their experiences.' },
 ];
 
+const CATEGORY_LABEL: Record<GbpMediaCategory, string> = {
+  LOGO: 'Logo',
+  COVER: 'Cover photo',
+  PROFILE: 'Profile',
+  ADDITIONAL: 'Photo',
+};
+
+/** Prompts for which slot a picked photo goes into, matching Google's categories. */
+function pickCategory(onPick: (category: GbpMediaCategory) => void) {
+  Alert.alert('Add to your profile', 'What kind of photo is this?', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Logo', onPress: () => onPick('LOGO') },
+    { text: 'Cover photo', onPress: () => onPick('COVER') },
+    { text: 'Additional photo', onPress: () => onPick('ADDITIONAL') },
+  ]);
+}
+
 /**
- * "Business Assets — GBP Photos" body, shared by the Photos tab and the
- * Photos sub-tab inside GBP. Counts come from the scheduler buffer (posts
- * that carry media are what actually lands on the profile); direct media
- * upload from mobile is not wired yet, so Add explains the web path.
+ * "Business Assets — GBP Photos": the live Google Business Profile media
+ * library (logo/cover/additional photos), shared by the Photos tab and the
+ * Photos sub-tab inside GBP. Reads and writes the real profile via
+ * /api/gbp/media{,/upload} — uploads always land in storage; whether they
+ * also push live to Google depends on the server's GBP_LIVE_WRITES_ENABLED
+ * gate (liveWritesEnabled below).
  */
 export function BusinessAssets() {
   const { activeBusinessId } = useBusiness();
   const t = useTheme();
-  const [bucket, setBucket] = useState<'soon' | 'published'>('soon');
+  const queryClient = useQueryClient();
 
-  const buffer = useQuery({
-    queryKey: ['scheduler-buffer', activeBusinessId],
-    queryFn: fetchBuffer,
+  const media = useQuery({
+    queryKey: ['gbp-media', activeBusinessId],
+    queryFn: fetchGbpMedia,
     enabled: !!activeBusinessId,
+    retry: false,
   });
 
-  const publishedCount = (buffer.data?.allPosts ?? []).filter(
-    (p) => p.status === 'published'
-  ).length;
-  const soonCount = buffer.data?.totalScheduledPosts ?? 0;
+  const upload = useMutation({
+    mutationFn: uploadGbpMedia,
+    onSuccess: ({ liveWriteApplied, note }) => {
+      void queryClient.invalidateQueries({ queryKey: ['gbp-media', activeBusinessId] });
+      if (!liveWriteApplied && note) Alert.alert('Photo saved', note);
+    },
+    onError: (error) => {
+      Alert.alert('Upload failed', getApiErrorMessage(error, 'Please try again.'));
+    },
+  });
+
+  const notConnected = media.error instanceof GbpNotConnectedError;
+
+  const startUpload = async (category: GbpMediaCategory) => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Allow photo library access to add business media.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      quality: 0.85,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    const asset = result.assets[0];
+    upload.mutate({
+      uri: asset.uri,
+      mimeType: asset.mimeType ?? 'image/jpeg',
+      fileName: asset.fileName ?? `photo-${Date.now()}.jpg`,
+      category,
+    });
+  };
 
   const handleAddMedia = () => {
-    Alert.alert(
-      'Add Business Media',
-      'Direct photo upload from the app is coming soon. For now, add photos from the web dashboard — they are published to your Google Business Profile automatically.'
-    );
+    if (notConnected) {
+      promptConnectGoogle(media.error?.message ?? 'Connect your Google Business Profile to add photos.');
+      return;
+    }
+    pickCategory((category) => void startUpload(category));
   };
 
   return (
     <View className="px-4">
-      {/* Bucket chips */}
-      <View className="mb-4 flex-row gap-2">
-        <Chip
-          label={`Publishing Soon  ${soonCount}`}
-          selected={bucket === 'soon'}
-          onPress={() => setBucket('soon')}
-        />
-        <Chip
-          label={`Published  ${publishedCount}`}
-          selected={bucket === 'published'}
-          onPress={() => setBucket('published')}
-        />
-      </View>
-
-      {/* Assets area — media upload not wired on mobile yet, so this is the
-          empty state + CTA regardless of bucket. */}
-      <View className="items-center rounded-3xl border border-surface-border bg-surface-raised px-6 py-10">
-        <View className="mb-3 h-16 w-16 items-center justify-center rounded-2xl bg-surface-overlay">
-          <Ionicons name="image-outline" size={30} color={t.violet} />
+      {media.isLoading ? (
+        <View className="mb-4 flex-row flex-wrap gap-2.5">
+          <Skeleton className="h-28 w-28" />
+          <Skeleton className="h-28 w-28" />
+          <Skeleton className="h-28 w-28" />
         </View>
-        <Text className="mb-5 text-base font-semibold text-zinc-300">No Assets Added</Text>
-        <Pressable onPress={handleAddMedia} className="overflow-hidden rounded-2xl active:opacity-85">
+      ) : notConnected ? (
+        <EmptyState
+          title="Google Business Profile not connected"
+          hint={media.error?.message}
+          action={
+            <Pressable
+              onPress={() =>
+                promptConnectGoogle(media.error?.message ?? 'Connect your Google Business Profile to add photos.')
+              }
+              className="mt-3 rounded-xl bg-brand px-5 py-2.5 active:opacity-80"
+            >
+              <Text className="text-sm font-semibold text-on-brand">Connect Google</Text>
+            </Pressable>
+          }
+        />
+      ) : media.isError ? (
+        <EmptyState
+          title="Couldn't load your photos"
+          hint={getApiErrorMessage(media.error, 'Pull down to retry.')}
+        />
+      ) : media.data && media.data.media.length > 0 ? (
+        <View className="mb-4">
+          {!media.data.liveWritesEnabled && (
+            <View className="mb-3 rounded-xl border border-amber-400/25 bg-amber-400/10 px-3.5 py-2.5">
+              <Text className="text-xs leading-4 text-amber-300">
+                New uploads are saved but won't appear on Google yet — live publishing is temporarily paused.
+              </Text>
+            </View>
+          )}
+          <View className="flex-row flex-wrap gap-2.5">
+            {media.data.media.map((item) => (
+              <View
+                key={item.name || item.url}
+                className="overflow-hidden rounded-2xl border border-surface-border bg-surface-raised"
+              >
+                <Image
+                  source={{ uri: item.thumbnailUrl || item.url }}
+                  style={{ width: 108, height: 108 }}
+                  contentFit="cover"
+                />
+                <View className="absolute bottom-0 left-0 right-0 bg-black/50 px-1.5 py-1">
+                  <Text className="text-[10px] font-semibold text-white" numberOfLines={1}>
+                    {CATEGORY_LABEL[item.category]}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : (
+        <View className="mb-4 items-center rounded-3xl border border-surface-border bg-surface-raised px-6 py-10">
+          <View className="mb-3 h-16 w-16 items-center justify-center rounded-2xl bg-surface-overlay">
+            <Ionicons name="image-outline" size={30} color={t.violet} />
+          </View>
+          <Text className="mb-5 text-base font-semibold text-zinc-300">No Assets Added</Text>
+        </View>
+      )}
+
+      {!notConnected && (
+        <Pressable
+          onPress={handleAddMedia}
+          disabled={upload.isPending}
+          className="mb-2 self-start overflow-hidden rounded-2xl active:opacity-85"
+        >
           <LinearGradient
             colors={[...BRAND_GRADIENT]}
             start={{ x: 0, y: 0 }}
@@ -77,10 +182,12 @@ export function BusinessAssets() {
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 22, paddingVertical: 13 }}
           >
             <Ionicons name="add" size={18} color="#ffffff" />
-            <Text className="text-base font-bold text-on-brand">Add your Business Media</Text>
+            <Text className="text-base font-bold text-on-brand">
+              {upload.isPending ? 'Uploading…' : 'Add your Business Media'}
+            </Text>
           </LinearGradient>
         </Pressable>
-      </View>
+      )}
 
       {/* Smart tips */}
       <View className="mb-2 mt-6 flex-row items-center justify-between">

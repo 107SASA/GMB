@@ -1,13 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
+import { Ionicons } from '@expo/vector-icons';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
-import { fetchReviews, type Review } from '@/api/endpoints/reviews';
+import { fetchReviews, ReviewsNotConnectedError, syncReviews, type Review } from '@/api/endpoints/reviews';
 import { useBusiness } from '@/business/BusinessContext';
 import { replyStatusBadge, sentimentTone, Stars } from '@/components/review-bits';
-import { Badge, Chip, EmptyState, Screen, ScreenTitle, Skeleton } from '@/components/ui';
+import { Badge, Chip, EmptyState, Screen, Skeleton } from '@/components/ui';
+import { promptConnectGoogle } from '@/lib/connectGoogle';
+import { useTheme } from '@/lib/theme';
 import { timeAgo } from '@/lib/format';
 
 type Filter = 'all' | 'needs-reply' | 'replied';
@@ -52,12 +55,28 @@ function ReviewCard({ review }: { review: Review }) {
 
 export default function ReviewsScreen() {
   const { activeBusinessId } = useBusiness();
+  const queryClient = useQueryClient();
+  const t = useTheme();
   const [filter, setFilter] = useState<Filter>('all');
 
   const reviews = useQuery({
     queryKey: ['reviews', activeBusinessId],
     queryFn: fetchReviews,
     enabled: !!activeBusinessId,
+  });
+
+  const sync = useMutation({
+    mutationFn: syncReviews,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['reviews', activeBusinessId] });
+    },
+    onError: (error) => {
+      if (error instanceof ReviewsNotConnectedError) {
+        promptConnectGoogle(error.message);
+        return;
+      }
+      Alert.alert('Sync failed', getApiErrorMessage(error, 'Please try again.'));
+    },
   });
 
   // Same semantics as the web dashboard: replied = POSTED, everything else
@@ -72,7 +91,21 @@ export default function ReviewsScreen() {
 
   return (
     <Screen>
-      <ScreenTitle>Reviews</ScreenTitle>
+      <View className="flex-row items-center justify-between px-5 pb-2 pt-4">
+        <Text className="text-[28px] font-extrabold tracking-tight text-white">Reviews</Text>
+        <Pressable
+          onPress={() => sync.mutate()}
+          disabled={sync.isPending || !activeBusinessId}
+          hitSlop={10}
+          className="h-10 w-10 items-center justify-center rounded-full bg-surface-raised active:bg-surface-overlay"
+        >
+          {sync.isPending ? (
+            <ActivityIndicator size="small" color={t.brandBright} />
+          ) : (
+            <Ionicons name="sync-outline" size={19} color={t.brandBright} />
+          )}
+        </Pressable>
+      </View>
 
       <View className="pb-3">
         <ScrollView
@@ -110,8 +143,8 @@ export default function ReviewsScreen() {
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24, flexGrow: 1 }}
           refreshControl={
             <RefreshControl
-              refreshing={reviews.isRefetching}
-              onRefresh={() => void reviews.refetch()}
+              refreshing={reviews.isRefetching || sync.isPending}
+              onRefresh={() => sync.mutate()}
               tintColor="#6366F1"
             />
           }
@@ -120,7 +153,7 @@ export default function ReviewsScreen() {
               title={filter === 'all' ? 'No reviews yet' : 'Nothing here'}
               hint={
                 filter === 'all'
-                  ? 'Reviews synced from your Google Business Profile will appear here.'
+                  ? 'Pull down or tap the sync icon to pull reviews from your Google Business Profile.'
                   : 'Try a different filter.'
               }
             />

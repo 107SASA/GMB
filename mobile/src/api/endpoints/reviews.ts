@@ -40,6 +40,34 @@ export async function fetchReviews(): Promise<Review[]> {
     .filter((r): r is Review => r !== null);
 }
 
+/**
+ * Thrown by syncReviews when the workspace has no Google Business Profile
+ * connected — the UI turns this into a "connect Google" prompt rather than a
+ * generic error.
+ */
+export class ReviewsNotConnectedError extends Error {}
+
+/**
+ * POST /api/reviews/fetch — pulls the latest reviews from Google for the
+ * active workspace (x-business-id header) and upserts them, then returns how
+ * many were synced. The web route answers 200 with `{ needsConnection: true }`
+ * (not an HTTP error) when GBP isn't connected, so inspect the body.
+ */
+export async function syncReviews(): Promise<{ synced: number }> {
+  const { data } = await api.post('/api/reviews/fetch', {});
+  if (data?.needsConnection) {
+    throw new ReviewsNotConnectedError(
+      typeof data?.error === 'string'
+        ? data.error
+        : 'Connect your Google Business Profile to sync reviews.'
+    );
+  }
+  if (data?.success === false) {
+    throw new Error(typeof data?.error === 'string' ? data.error : 'Could not sync reviews.');
+  }
+  return { synced: Number(data?.synced ?? 0) };
+}
+
 /** Thrown when generate-reply hits the plan's AI generation limit. */
 export class PlanLimitError extends Error {}
 

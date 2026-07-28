@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { Image } from 'expo-image';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +17,7 @@ import { getApiErrorMessage } from '@/api/client';
 import {
   autoSchedulePosts,
   fetchContentPosts,
+  fetchPostImages,
   generateContent,
   type ContentPost,
   type GeneratedPost,
@@ -47,15 +49,33 @@ const CONTENT_TYPES = ['GMB Posts', 'SEO Description', 'FAQs', 'Promotional Post
 
 // --- Generate segment ---------------------------------------------------------
 
-function GeneratedPostCard({ post }: { post: GeneratedPost }) {
+function GeneratedPostCard({ post, imageUrl }: { post: GeneratedPost; imageUrl: string | null }) {
+  // A thumbnail is on the way when the generator returned a prompt but no URL
+  // has landed yet (they arrive via background polling).
+  const pending = !imageUrl && !!post.thumbnailPrompt;
   return (
-    <View className="mb-3 rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5">
-      {!!post.title && <Text className="text-base font-semibold text-white">{post.title}</Text>}
-      <Text className="mt-1.5 text-sm leading-5 text-zinc-300">{post.body}</Text>
-      {post.hashtags.length > 0 && (
-        <Text className="mt-2 text-xs text-indigo-300">{post.hashtags.join(' ')}</Text>
-      )}
-      {!!post.cta && <Text className="mt-1 text-xs text-zinc-500">CTA: {post.cta}</Text>}
+    <View className="mb-3 overflow-hidden rounded-xl border border-surface-border bg-surface-raised">
+      {imageUrl ? (
+        <Image
+          source={{ uri: imageUrl }}
+          style={{ width: '100%', height: 150 }}
+          contentFit="cover"
+          transition={200}
+        />
+      ) : pending ? (
+        <View className="h-[110px] items-center justify-center bg-indigo-500/10">
+          <ActivityIndicator color="#818CF8" />
+          <Text className="mt-2 text-xs font-medium text-indigo-300">Generating thumbnail…</Text>
+        </View>
+      ) : null}
+      <View className="px-4 py-3.5">
+        {!!post.title && <Text className="text-base font-semibold text-white">{post.title}</Text>}
+        <Text className="mt-1.5 text-sm leading-5 text-zinc-300">{post.body}</Text>
+        {post.hashtags.length > 0 && (
+          <Text className="mt-2 text-xs text-indigo-300">{post.hashtags.join(' ')}</Text>
+        )}
+        {!!post.cta && <Text className="mt-1 text-xs text-zinc-500">CTA: {post.cta}</Text>}
+      </View>
     </View>
   );
 }
@@ -72,6 +92,9 @@ function GenerateSegment() {
   const [types, setTypes] = useState<string[]>(['GMB Posts', 'SEO Description', 'FAQs']);
   const [error, setError] = useState('');
   const [result, setResult] = useState<GenerateResult | null>(null);
+  // Background-generated thumbnails, filled in by polling (postId -> url).
+  const [imageMap, setImageMap] = useState<Record<string, string>>({});
+  const pollAttempts = useRef(0);
 
   const generate = useMutation({
     mutationFn: () =>
@@ -83,6 +106,8 @@ function GenerateSegment() {
       }),
     onSuccess: (data) => {
       setResult(data);
+      setImageMap({});
+      pollAttempts.current = 0;
       // Drafts were saved server-side — history is now stale.
       void queryClient.invalidateQueries({ queryKey: ['content-posts', activeBusinessId] });
     },
@@ -111,6 +136,44 @@ function GenerateSegment() {
     setKeywords([...keywords, value]);
     setKeywordInput('');
   }
+
+  // Poll for background-generated thumbnails until every expecting post has one
+  // (or a safety cap), then merge the URLs into the cards.
+  useEffect(() => {
+    const posts = (result?.posts ?? []).filter((p): p is GeneratedPost => p !== null);
+    const pendingIds = () =>
+      posts
+        .filter((p) => p._id && p.thumbnailPrompt && !p.imageUrl && !imageMap[p._id])
+        .map((p) => p._id as string);
+    if (pendingIds().length === 0) return;
+
+    let stopped = false;
+    const MAX = 30; // ~30 × 4s = 2 min ceiling
+    const tick = async () => {
+      const ids = pendingIds();
+      if (ids.length === 0 || pollAttempts.current >= MAX) {
+        stopped = true;
+        return;
+      }
+      pollAttempts.current += 1;
+      try {
+        const images = await fetchPostImages(ids);
+        const resolved = Object.entries(images).filter(([, url]) => !!url) as [string, string][];
+        if (resolved.length) setImageMap((prev) => ({ ...prev, ...Object.fromEntries(resolved) }));
+      } catch {
+        /* transient — retry next tick */
+      }
+    };
+    void tick();
+    const interval = setInterval(() => {
+      if (stopped) {
+        clearInterval(interval);
+        return;
+      }
+      void tick();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [result, imageMap]);
 
   const schedulableIds = (result?.posts ?? [])
     .filter((p): p is GeneratedPost => p !== null && !!p._id)
@@ -223,7 +286,11 @@ function GenerateSegment() {
               {result.posts
                 .filter((p): p is GeneratedPost => p !== null)
                 .map((post, i) => (
-                  <GeneratedPostCard key={post._id ?? i} post={post} />
+                  <GeneratedPostCard
+                    key={post._id ?? i}
+                    post={post}
+                    imageUrl={post.imageUrl || (post._id ? imageMap[post._id] : null) || null}
+                  />
                 ))}
             </View>
           )}

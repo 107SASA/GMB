@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import dbConnect from '@/lib/mongodb';
 import Subscription from '@/models/Subscription';
 import Business from '@/models/Business';
@@ -9,15 +9,16 @@ import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
 export const dynamic = 'force-dynamic';
 
 /**
- * Resolves the per-workspace subscription gate state for the active workspace
- * (the `activeBusinessId` cookie), so the UI can show whether THIS workspace is
- * locked. `isActive` mirrors src/proxy.ts: unlocked when the workspace is
- * subscribed OR the user has a paid user-level plan. Additive — null when no
- * workspace is selected.
+ * Resolves the per-workspace subscription gate state for the active workspace,
+ * so the UI can show whether THIS workspace is locked. Mobile clients have no
+ * activeBusinessId cookie, so fall back to the x-business-id header — same
+ * precedence as requireBusinessContext in src/lib/tenant.ts. `isActive`
+ * mirrors src/proxy.ts: unlocked when the workspace is subscribed OR the user
+ * has a paid user-level plan. Additive — null when no workspace is selected.
  */
 async function getWorkspaceStatus(userSubscriptionPlan?: string) {
-  const cookieStore = await cookies();
-  const businessId = cookieStore.get('activeBusinessId')?.value;
+  const businessId =
+    (await headers()).get('x-business-id') ?? (await cookies()).get('activeBusinessId')?.value;
   if (!businessId) return null;
   const business = await Business.findById(businessId)
     .select('name subscriptionStatus freeAuditUsed subscriptionCurrentPeriodEnd subscriptionCancelAtPeriodEnd')

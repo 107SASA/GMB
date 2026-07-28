@@ -25,3 +25,15 @@ export async function fetchBusinesses(): Promise<Business[]> {
     .parse(data)
     .filter((b): b is Business => b !== null);
 }
+
+/**
+ * POST /api/business/delete-workspace — soft-deletes a workspace. The server
+ * moves the active-workspace pointer and returns the next one to select (null
+ * when none remain).
+ */
+export async function deleteWorkspace(businessId: string): Promise<{ nextActiveBusinessId: string | null }> {
+  const { data } = await api.post('/api/business/delete-workspace', { businessId });
+  return z
+    .object({ nextActiveBusinessId: z.string().nullable().catch(null) })
+    .parse(data);
+}

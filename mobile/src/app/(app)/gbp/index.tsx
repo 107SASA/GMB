@@ -8,13 +8,14 @@ import { BusinessAssets } from '@/components/business-assets';
 import { OverviewTab } from '@/components/gbp/overview-tab';
 import { PerformanceTab } from '@/components/gbp/performance-tab';
 import { PostsTab } from '@/components/gbp/posts-tab';
+import { GbpProfileTab } from '@/components/gbp/profile-tab';
 import { ReviewsTab } from '@/components/gbp/reviews-tab';
 import { LockedScreen } from '@/components/locked';
 import { Screen } from '@/components/ui';
 import { useSurfaceLocked } from '@/entitlements/entitlements';
 import { useTheme } from '@/lib/theme';
 
-type GbpTab = 'overview' | 'performance' | 'posts' | 'reviews' | 'photos';
+type GbpTab = 'overview' | 'performance' | 'posts' | 'reviews' | 'photos' | 'profile';
 
 const TABS: { id: GbpTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -22,6 +23,7 @@ const TABS: { id: GbpTab; label: string }[] = [
   { id: 'posts', label: 'Posts' },
   { id: 'reviews', label: 'Reviews' },
   { id: 'photos', label: 'Photos' },
+  { id: 'profile', label: 'Profile' },
 ];
 
 /**
@@ -95,6 +97,7 @@ export default function GbpScreen() {
         {tab === 'posts' && <PostsTab />}
         {tab === 'reviews' && <ReviewsTab />}
         {tab === 'photos' && <BusinessAssets />}
+        {tab === 'profile' && <GbpProfileTab />}
       </ScrollView>
     </Screen>
   );

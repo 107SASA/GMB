@@ -6,7 +6,6 @@ import {
   IAuditData,
   IChecklistItem,
   IGeoGridKeyword,
-  ILocalPackCompetitor,
   IGeoGridPoint,
 } from '@/models/Audit';
 import { Download, RefreshCw, Share2, Copy, Check } from 'lucide-react';
@@ -105,7 +104,16 @@ function ChecklistRow({ field, status }: { field: string; status: string }) {
 }
 
 /* ─── Rank colour helpers ───────────────────────────────────────────────────── */
-function rankTextClass(rank: number) {
+/** Rank 21 is the backend sentinel for "not in local pack" — never show as a real #21. */
+function formatRank(rank: number | null | undefined): string {
+  if (rank == null || Number.isNaN(Number(rank)) || Number(rank) <= 0) return '—';
+  const n = Number(rank);
+  if (n > 20) return '20+';
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function rankTextClass(rank: number | null | undefined) {
+  if (rank == null || rank <= 0) return 'text-slate-400';
   if (rank <= 5)  return 'text-emerald-600';
   if (rank <= 10) return 'text-amber-500';
   return 'text-red-500';
@@ -136,7 +144,7 @@ function GeoGridMap({
           Keyword: <span className="font-bold text-white">{keyword}</span>
         </p>
         <p className="text-sm text-slate-300">
-          Avg Rank: <span className={`font-black text-base ${rankCls}`}>{avgRank.toFixed(1)}</span>
+          Avg Rank: <span className={`font-black text-base ${rankCls}`}>{formatRank(avgRank)}</span>
         </p>
       </div>
 
@@ -201,11 +209,21 @@ export default function AuditReportGrexa({
 
   /* ── Data extraction ──────────────────────────────────────────────── */
   const geoGrid      = data.geoGridRank;
-  const keywords     = geoGrid?.keywords ?? [];
-  // Only show top 2 keywords in the map section
-  const mapKeywords  = keywords.slice(0, 2);
+  const keywords     = geoGrid?.keywords?.length
+    ? geoGrid.keywords
+    : (data.googleSearchRank?.topKeywords ?? []).map((k) => ({
+        keyword: k.keyword,
+        avgRank: k.rank,
+        points: [] as IGeoGridPoint[],
+      }));
+  // Only show top 2 keywords in the map section (needs real geo points)
+  const mapKeywords  = (geoGrid?.keywords ?? []).filter((k) => (k.points?.length ?? 0) > 0).slice(0, 2);
 
-  const overallRank  = geoGrid?.overallAvgRank ?? data.googleSearchRank?.averageRank ?? 0;
+  const overallRank  = geoGrid?.overallAvgRank
+    ?? (data.googleSearchRank?.averageRank && data.googleSearchRank.averageRank > 0
+      ? data.googleSearchRank.averageRank
+      : 0);
+  const visibilityPct = geoGrid?.visibilityPct;
   const profilePct   = data.profileScore?.overallScore ?? 0;
   const seoPct       = data.seoScore?.score ?? 0;
   const optOps       = data.seoScore?.optimizationOpportunities ?? [];
@@ -223,11 +241,18 @@ export default function AuditReportGrexa({
   const completionPct = completion?.completionPercentage ?? 0;
   const checklist     = (completion?.checklist ?? []) as IChecklistItem[];
 
-  const localComps: ILocalPackCompetitor[] = data.localPackCompetitors ?? [];
-  const fallbackComps = (data.competitors ?? [])
-    .filter((c: any) => c.estimatedRank != null)
-    .sort((a: any, b: any) => a.estimatedRank - b.estimatedRank)
-    .slice(0, 5);
+  // Prefer SerpApi local-pack competitors (have real avgRank). Fall back to
+  // Places competitors — including ones without a rank (show "—").
+  const localComps: Array<{ name: string; avgRank?: number; rating?: number; reviewCount?: number }> =
+    (data.localPackCompetitors?.length
+      ? data.localPackCompetitors
+      : (data.competitors ?? []).map((c: any) => ({
+          name: c.name,
+          avgRank: c.avgRank ?? c.estimatedRank,
+          rating: c.rating,
+          reviewCount: c.reviewCount,
+        }))
+    ).slice(0, 5);
 
   /* ── Action Plan (Feature 2B) ─────────────────────────────────────── */
   const thirtyDayPlan = (data as any).thirtyDayPlan ?? [];
@@ -248,8 +273,10 @@ export default function AuditReportGrexa({
   if (opLower.includes('categor')     || missingKw.length > 0) missingFields.push('Additional Category');
   if (opLower.includes('service')     || missingKw.length > 0) missingFields.push('Services');
   if (opLower.includes('description') || missingKw.length > 0) missingFields.push('Description');
-  if (missingFields.length === 0 && seoPct < 80)
-    missingFields.push('Title', 'Additional Category', 'Services', 'Description');
+  // Prefer explicit optimization opportunities labels when the heuristic list is empty
+  if (missingFields.length === 0 && optOps.length > 0) {
+    missingFields.push(...optOps.slice(0, 4));
+  }
 
   /* ── Services / Categories ────────────────────────────────────────── */
   const servicesItem   = checklist.find((c) => c.field.toLowerCase().includes('service'));
@@ -265,34 +292,18 @@ export default function AuditReportGrexa({
   const suspPct   = suspLevel === 'High' ? 85 : suspLevel === 'Medium' ? 45 : 0;
   const suspColor = suspLevel === 'Low' ? '#22c55e' : suspLevel === 'Medium' ? '#f59e0b' : '#ef4444';
 
-  /* ── Checklist display ────────────────────────────────────────────── */
-  const defaultChecklist: IChecklistItem[] = [
-    { field: 'Title',                              status: 'Complete' },
-    { field: 'Primary Category',                   status: 'Complete' },
-    { field: 'Additional Categories',              status: 'Missing'  },
-    { field: 'Business Services',                  status: 'Complete' },
-    { field: 'Description',                        status: 'Partial'  },
-    { field: 'Address',                            status: 'Complete' },
-    { field: 'Phone',                              status: 'Complete' },
-    { field: 'Listing Attributes/Service Options', status: 'Complete' },
-    { field: 'Photos',                             status: 'Complete' },
-    { field: 'Logo',                               status: 'Complete' },
-    { field: 'Website',                            status: 'Complete' },
-    { field: 'Service Area',                       status: 'Complete' },
-    { field: 'Business Hours',                     status: 'Complete' },
-    { field: 'Appointment/Ordering Links',         status: 'Complete' },
-  ];
-  const displayChecklist = checklist.length >= 4 ? checklist : defaultChecklist;
-  const half   = Math.ceil(displayChecklist.length / 2);
+  /* ── Checklist display — never invent fake Complete/Missing rows ─── */
+  const displayChecklist = checklist;
+  const half   = Math.ceil(Math.max(displayChecklist.length, 1) / 2);
   const leftCL = displayChecklist.slice(0, half);
   const rightCL = displayChecklist.slice(half);
 
   /* ── Colors ───────────────────────────────────────────────────────── */
   const profileColor = profilePct >= 80 ? '#22c55e' : profilePct >= 60 ? '#f59e0b' : '#ef4444';
   const seoColor     = seoPct    >= 80 ? '#22c55e' : seoPct    >= 50 ? '#f59e0b' : '#ef4444';
-  // Show actual number for overall rank (not capped at "20+")
-  const rankDisplay  = overallRank > 0 ? overallRank.toFixed(1) : '—';
-  const rankClass    = overallRank <= 5 ? 'text-emerald-500' : overallRank <= 10 ? 'text-amber-500' : 'text-red-500';
+  const hasRankData  = overallRank > 0 || keywords.length > 0;
+  const rankDisplay  = hasRankData ? formatRank(overallRank) : '—';
+  const rankClass    = rankTextClass(overallRank);
 
   /* ─── RENDER ──────────────────────────────────────────────────────── */
   return (
@@ -370,7 +381,7 @@ export default function AuditReportGrexa({
             <GoogleLogo size={18} />
             <span className="text-sm font-bold text-slate-700">Google Search Rank</span>
           </div>
-          {overallRank > 0 ? (
+          {hasRankData ? (
             <>
               <div className="mb-2">
                 <span className={`text-7xl font-black leading-none tracking-tight ${rankClass}`}>
@@ -378,9 +389,23 @@ export default function AuditReportGrexa({
                 </span>
               </div>
               <p className="text-xs text-slate-500 mb-5 leading-relaxed">
-                Overall average rank for the{' '}
-                <strong className="text-slate-700">{keywords.length} most searched keywords</strong>{' '}
-                on Google for your business
+                {overallRank > 20 ? (
+                  <>
+                    Not appearing in Google&apos;s local pack for most tracked keywords
+                    {typeof visibilityPct === 'number' && (
+                      <> · visible in <strong className="text-slate-700">{visibilityPct}%</strong> of nearby searches</>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    Overall average rank for the{' '}
+                    <strong className="text-slate-700">{keywords.length} most searched keywords</strong>{' '}
+                    on Google for your business
+                    {typeof visibilityPct === 'number' && (
+                      <> · visible in <strong className="text-slate-700">{visibilityPct}%</strong> of nearby searches</>
+                    )}
+                  </>
+                )}
               </p>
               <div className="flex gap-4 mt-auto text-xs text-slate-600">
                 <div className="flex items-center gap-1.5">
@@ -393,13 +418,13 @@ export default function AuditReportGrexa({
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded-full bg-red-500 flex-shrink-0" />
-                  <span>Beyond 10</span>
+                  <span>20+</span>
                 </div>
               </div>
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-sm text-slate-400">
-              Geo-grid data unavailable
+              Ranking data unavailable — re-run audit with SerpApi configured
             </div>
           )}
         </div>
@@ -436,7 +461,7 @@ export default function AuditReportGrexa({
       </div>
 
       {/* ══ 3. RANK ANALYTICS ════════════════════════════════════════════ */}
-      {keywords.length > 0 && (
+      {(keywords.length > 0 || localComps.length > 0) && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
           <h2 className="text-base font-bold text-slate-900 mb-5">Your Google Rank Analytics</h2>
           <div className="grid grid-cols-2 gap-8">
@@ -444,30 +469,36 @@ export default function AuditReportGrexa({
             {/* Keywords table */}
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
-                Your rank for top {keywords.length} keywords
+                Your rank for top {Math.max(keywords.length, 1)} keywords
               </p>
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b-2 border-slate-100">
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase pb-2 tracking-widest">KEYWORD</th>
-                    <th className="text-right text-[10px] font-bold text-slate-400 uppercase pb-2 tracking-widest">AVG RANK</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {keywords.slice(0, 5).map((kw: IGeoGridKeyword, i: number) => (
-                    <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3 pr-4">
-                        <span className="text-sm text-blue-600 font-medium leading-snug">{kw.keyword}</span>
-                      </td>
-                      <td className="py-3 text-right">
-                        <span className={`text-sm font-black ${rankTextClass(kw.avgRank)}`}>
-                          {kw.avgRank.toFixed(1)}
-                        </span>
-                      </td>
+              {keywords.length > 0 ? (
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b-2 border-slate-100">
+                      <th className="text-left text-[10px] font-bold text-slate-400 uppercase pb-2 tracking-widest">KEYWORD</th>
+                      <th className="text-right text-[10px] font-bold text-slate-400 uppercase pb-2 tracking-widest">AVG RANK</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {keywords.slice(0, 5).map((kw: IGeoGridKeyword, i: number) => (
+                      <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                        <td className="py-3 pr-4">
+                          <span className="text-sm text-blue-600 font-medium leading-snug">{kw.keyword}</span>
+                        </td>
+                        <td className="py-3 text-right">
+                          <span className={`text-sm font-black ${rankTextClass(kw.avgRank)}`}>
+                            {formatRank(kw.avgRank)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="py-6 text-center text-sm text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
+                  No keyword ranking data
+                </div>
+              )}
             </div>
 
             {/* Competitors table */}
@@ -475,7 +506,7 @@ export default function AuditReportGrexa({
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
                 Competitors ranking higher at your locations
               </p>
-              {(localComps.length > 0 || fallbackComps.length > 0) ? (
+              {localComps.length > 0 ? (
                 <table className="w-full">
                   <thead>
                     <tr className="border-b-2 border-slate-100">
@@ -484,8 +515,8 @@ export default function AuditReportGrexa({
                     </tr>
                   </thead>
                   <tbody>
-                    {(localComps.length > 0 ? localComps : fallbackComps).slice(0, 5).map((c: any, i: number) => {
-                      const rank = localComps.length > 0 ? c.avgRank : c.estimatedRank;
+                    {localComps.map((c, i) => {
+                      const rank = c.avgRank;
                       return (
                         <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
                           <td className="py-3 pr-4">
@@ -497,8 +528,8 @@ export default function AuditReportGrexa({
                             </div>
                           </td>
                           <td className="py-3 text-right">
-                            <span className={`text-sm font-black ${rankTextClass(rank ?? 15)}`}>
-                              {rank != null ? Number(rank).toFixed(1) : '—'}
+                            <span className={`text-sm font-black ${rankTextClass(rank)}`}>
+                              {formatRank(rank)}
                             </span>
                           </td>
                         </tr>
@@ -565,12 +596,14 @@ export default function AuditReportGrexa({
                   Top searched keywords are missing in
                 </p>
                 <ul className="space-y-2">
-                  {(missingFields.length > 0 ? missingFields : ['Title', 'Additional Category', 'Services', 'Description']).map((f) => (
+                  {missingFields.length > 0 ? missingFields.map((f) => (
                     <li key={f} className="flex items-center gap-2">
                       <div className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
                       <span className="text-sm text-red-600 font-medium">{f}</span>
                     </li>
-                  ))}
+                  )) : (
+                    <li className="text-sm text-emerald-600 font-medium">No major SEO gaps detected</li>
+                  )}
                 </ul>
               </div>
             </div>

@@ -41,11 +41,14 @@ function svgRing(value: number, color: string, size = 96): string {
 </div>`;
 }
 
-function rankMeta(rank: number | undefined): { color: string; display: string } {
-  if (rank === undefined) return { color: '#ef4444', display: '—' };
-  if (rank <= 5)  return { color: '#22c55e', display: rank.toFixed(1) };
-  if (rank <= 10) return { color: '#eab308', display: rank.toFixed(1) };
-  return { color: '#ef4444', display: rank.toFixed(1) };
+function rankMeta(rank: number | undefined | null): { color: string; display: string } {
+  if (rank == null || Number(rank) <= 0) return { color: '#94a3b8', display: '—' };
+  const n = Number(rank);
+  if (n <= 5)  return { color: '#22c55e', display: n.toFixed(1) };
+  if (n <= 10) return { color: '#eab308', display: n.toFixed(1) };
+  // 21 is the backend "not in local pack" sentinel — never show as a real #21
+  if (n > 20)  return { color: '#ef4444', display: '20+' };
+  return { color: '#ef4444', display: n.toFixed(1) };
 }
 
 function starRow(rating: number): string {
@@ -227,14 +230,35 @@ export function buildReportHtml(ctx: ReportContext): string {
   const industryAvg: number = data.reviewAnalysis?.industryAverage ?? 2;
   const responseRateStr: string = data.reviewAnalysis?.responseRate ?? '0%';
   const responseRatePct: number = parseInt(responseRateStr, 10) || 0;
-  const geoGridKeywords: IGeoGridKeyword[] = data.geoGridRank?.keywords ?? [];
-  const overallAvgRank: number | undefined = data.geoGridRank?.overallAvgRank;
+  const geoGridKeywords: IGeoGridKeyword[] = data.geoGridRank?.keywords?.length
+    ? data.geoGridRank.keywords
+    : ((data.googleSearchRank?.topKeywords ?? []).map((k) => ({
+        keyword: k.keyword,
+        avgRank: k.rank,
+        points: [],
+      })) as IGeoGridKeyword[]);
+  const overallAvgRank: number | undefined =
+    data.geoGridRank?.overallAvgRank
+    ?? (data.googleSearchRank?.averageRank && data.googleSearchRank.averageRank > 0
+      ? data.googleSearchRank.averageRank
+      : undefined);
   const areaSqKm: number = data.geoGridRank?.areaSqKm ?? 9;
   const gridSpacingKm: number = data.geoGridRank?.gridSpacingKm ?? 1.5;
-  const localPackComps = (data.localPackCompetitors ?? []) as any[];
+  const localPackComps = (
+    (data.localPackCompetitors?.length
+      ? data.localPackCompetitors
+      : (data.competitors ?? []).map((c: any) => ({
+          name: c.name,
+          avgRank: c.avgRank ?? c.estimatedRank,
+          rating: c.rating,
+          reviewCount: c.reviewCount,
+        }))
+    ) ?? []
+  ) as any[];
   const missingOpps: string[] = data.seoScore?.optimizationOpportunities ?? [];
   const missingKeywords: string[] = data.seoScore?.missingKeywords ?? [];
   const hasGeoGrid = geoGridKeywords.length > 0;
+  const hasMapGrid = (data.geoGridRank?.keywords ?? []).some((k) => (k.points?.length ?? 0) > 0);
 
   // Missing SEO fields
   const missingFields: string[] = [];
@@ -243,8 +267,9 @@ export function buildReportHtml(ctx: ReportContext): string {
   if (opLower.includes('categor')     || missingKeywords.length > 0) missingFields.push('Additional Category');
   if (opLower.includes('service')     || missingKeywords.length > 0) missingFields.push('Services');
   if (opLower.includes('description') || missingKeywords.length > 0) missingFields.push('Description');
-  if (missingFields.length === 0 && seoScore < 80)
-    missingFields.push('Title', 'Additional Category', 'Services', 'Description');
+  if (missingFields.length === 0 && missingOpps.length > 0) {
+    missingFields.push(...missingOpps.slice(0, 4));
+  }
 
   // Services / categories
   const servicesItem   = checklist.find((c) => c.field.toLowerCase().includes('service'));
@@ -271,25 +296,9 @@ export function buildReportHtml(ctx: ReportContext): string {
   const seoColor     = seoScore    >= 80 ? '#22c55e' : seoScore    >= 50 ? '#eab308' : '#ef4444';
   const genDate      = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
 
-  // Checklist columns
-  const defaultChecklist: IChecklistItem[] = [
-    { field: 'Title',                          status: 'Complete' },
-    { field: 'Primary Category',               status: 'Complete' },
-    { field: 'Additional Categories',          status: 'Missing'  },
-    { field: 'Business Services',              status: 'Complete' },
-    { field: 'Description',                    status: 'Partial'  },
-    { field: 'Address',                        status: 'Complete' },
-    { field: 'Phone',                          status: 'Complete' },
-    { field: 'Listing Attributes/Service Options', status: 'Complete' },
-    { field: 'Photos',                         status: 'Complete' },
-    { field: 'Logo',                           status: 'Complete' },
-    { field: 'Website',                        status: 'Complete' },
-    { field: 'Service Area',                   status: 'Complete' },
-    { field: 'Business Hours',                 status: 'Complete' },
-    { field: 'Appointment/Ordering Links',     status: 'Complete' },
-  ];
-  const displayChecklist = checklist.length >= 4 ? checklist : defaultChecklist;
-  const half   = Math.ceil(displayChecklist.length / 2);
+  // Checklist columns — never invent fake Complete/Missing rows
+  const displayChecklist = checklist;
+  const half   = Math.ceil(Math.max(displayChecklist.length, 1) / 2);
   const leftCL = displayChecklist.slice(0, half);
   const rightCL = displayChecklist.slice(half);
 
@@ -346,14 +355,14 @@ export function buildReportHtml(ctx: ReportContext): string {
       ${googleSvg(18)}
       <span style="font-size:13px;font-weight:700;color:#374151;">Google Search Rank</span>
     </div>
-    ${hasGeoGrid ? `
+    ${hasGeoGrid || (overallAvgRank != null && overallAvgRank > 0) ? `
     <div style="margin-bottom:5px;">
       <span style="font-size:68px;font-weight:900;line-height:1;letter-spacing:-2px;color:${rankM.color};">${rankM.display}</span>
     </div>
     <p style="font-size:11px;color:#64748b;line-height:1.6;margin-bottom:16px;">
-      Overall average rank for the
-      <strong style="color:#374151;">${geoGridKeywords.length} most searched keywords</strong>
-      on Google for your business
+      ${(overallAvgRank ?? 0) > 20
+        ? 'Not appearing in Google&#39;s local pack for most tracked keywords'
+        : `Overall average rank for the <strong style="color:#374151;">${geoGridKeywords.length} most searched keywords</strong> on Google for your business`}
     </p>
     <div style="display:flex;gap:14px;">
       <div style="display:flex;align-items:center;gap:5px;">
@@ -366,10 +375,10 @@ export function buildReportHtml(ctx: ReportContext): string {
       </div>
       <div style="display:flex;align-items:center;gap:5px;">
         <div style="width:11px;height:11px;border-radius:50%;background:#ef4444;flex-shrink:0;"></div>
-        <span style="font-size:11px;color:#374151;">Beyond 10</span>
+        <span style="font-size:11px;color:#374151;">20+</span>
       </div>
     </div>` : `
-    <div style="font-size:13px;color:#94a3b8;padding:20px 0;text-align:center;">Geo-grid data unavailable</div>`}
+    <div style="font-size:13px;color:#94a3b8;padding:20px 0;text-align:center;">Ranking data unavailable</div>`}
   </div>
 
   <!-- Profile Score -->
@@ -394,7 +403,7 @@ export function buildReportHtml(ctx: ReportContext): string {
 </div>`;
 
   // ── 3. RANK ANALYTICS ────────────────────────────────────────────────────────
-  const rankAnalyticsHtml = hasGeoGrid ? `
+  const rankAnalyticsHtml = (hasGeoGrid || localPackComps.length > 0) ? `
 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:14px;break-inside:avoid;">
   <h2 style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:16px;">Your Google Rank Analytics</h2>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">
@@ -402,8 +411,9 @@ export function buildReportHtml(ctx: ReportContext): string {
     <!-- Keywords table -->
     <div style="padding-right:20px;border-right:1px solid #e2e8f0;">
       <p style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;">
-        Your rank for top ${geoGridKeywords.length} keywords
+        Your rank for top ${Math.max(geoGridKeywords.length, 1)} keywords
       </p>
+      ${geoGridKeywords.length > 0 ? `
       <table>
         <thead>
           <tr style="border-bottom:2px solid #e2e8f0;">
@@ -422,7 +432,10 @@ export function buildReportHtml(ctx: ReportContext): string {
           </tr>`;
           }).join('')}
         </tbody>
-      </table>
+      </table>` : `
+      <div style="padding:16px;text-align:center;color:#94a3b8;font-size:12px;background:#f8fafc;border-radius:8px;">
+        No keyword ranking data
+      </div>`}
     </div>
 
     <!-- Competitors table -->
@@ -440,7 +453,7 @@ export function buildReportHtml(ctx: ReportContext): string {
         </thead>
         <tbody>
           ${localPackComps.slice(0, 5).map((c: any) => {
-            const rank = Number(c.avgRank ?? 21);
+            const rank = c.avgRank != null ? Number(c.avgRank) : undefined;
             const m = rankMeta(rank);
             return `<tr style="border-bottom:1px solid #f1f5f9;">
             <td style="padding:10px 12px 10px 0;">
@@ -469,8 +482,8 @@ export function buildReportHtml(ctx: ReportContext): string {
 
   // ── 4. GEO-GRID MAPS (top 2 keywords only) ───────────────────────────────────
   let geoGridHtml = '';
-  if (hasGeoGrid) {
-    const mapKws = geoGridKeywords.slice(0, 2);
+  if (hasMapGrid) {
+    const mapKws = (data.geoGridRank?.keywords ?? []).filter((k) => (k.points?.length ?? 0) > 0).slice(0, 2);
     const gridCards = mapKws.map((kw) => renderGeoGridMap(kw, ctx.mapsApiKey, gridSpacingKm));
     const rowContent = gridCards.length === 1
       ? `<div style="max-width:480px;">${gridCards[0]}</div>`
@@ -505,12 +518,14 @@ export function buildReportHtml(ctx: ReportContext): string {
         <div style="flex:1;padding-top:4px;">
           <p style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px;">Top searched keywords are missing in</p>
           <ul style="list-style:none;margin:0;padding:0;">
-            ${(missingFields.length > 0 ? missingFields : ['Title', 'Additional Category', 'Services', 'Description']).map((f) =>
-              `<li style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            ${missingFields.length > 0
+              ? missingFields.map((f) =>
+                  `<li style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
                 <span style="width:6px;height:6px;border-radius:50%;background:#ef4444;flex-shrink:0;display:inline-block;"></span>
                 <span style="font-size:12px;color:#dc2626;font-weight:500;">${h(f)}</span>
               </li>`
-            ).join('')}
+                ).join('')
+              : `<li style="font-size:12px;color:#16a34a;font-weight:500;">No major SEO gaps detected</li>`}
           </ul>
         </div>
       </div>

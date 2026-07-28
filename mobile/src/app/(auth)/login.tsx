@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
@@ -9,6 +10,7 @@ import { ErrorText, Field, PrimaryButton, Screen } from '@/components/ui';
 import { BRAND_GRADIENT } from '@/lib/theme';
 
 export default function LoginScreen() {
+  const router = useRouter();
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -92,6 +94,13 @@ export default function LoginScreen() {
               loading={submitting}
               disabled={!canSubmit}
             />
+            <Pressable
+              onPress={() => router.push('/forgot-password')}
+              disabled={submitting}
+              className="items-center py-1"
+            >
+              <Text className="text-sm font-semibold text-brand-bright">Forgot password?</Text>
+            </Pressable>
           </View>
 
           <Text className="mt-10 text-center text-xs text-zinc-500">

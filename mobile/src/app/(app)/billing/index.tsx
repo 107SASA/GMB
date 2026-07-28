@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
@@ -54,15 +55,13 @@ export default function BillingScreen() {
 
   const cancel = useMutation({
     mutationFn: cancelSubscription,
-    onSuccess: () => {
-      Alert.alert(
-        'Cancellation requested',
-        'Your subscription will be cancelled shortly. This can take a minute to reflect.'
-      );
-      // The webhook applies the downgrade — give it a moment before refetching.
+    onSuccess: ({ message }) => {
+      Alert.alert('Subscription cancelled', message);
+      // The webhook applies the downgrade at cycle end — give the server a
+      // moment before refetching so cancelAtPeriodEnd is already flipped.
       setTimeout(() => {
         void queryClient.invalidateQueries({ queryKey: ['billing-status'] });
-      }, 3000);
+      }, 1500);
     },
     onError: (err) =>
       Alert.alert('Error', getApiErrorMessage(err, 'Could not cancel the subscription.')),
@@ -71,15 +70,23 @@ export default function BillingScreen() {
   function confirmCancel() {
     Alert.alert(
       'Cancel subscription?',
-      'You will lose access to paid modules at the end of the current period.',
+      'You will keep full access until the end of your current billing period. It just won\'t renew after that.',
       [
         { text: 'Keep plan', style: 'cancel' },
-        { text: 'Cancel subscription', style: 'destructive', onPress: () => cancel.mutate() },
+        {
+          text: 'Cancel subscription',
+          style: 'destructive',
+          onPress: () => {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            cancel.mutate();
+          },
+        },
       ]
     );
   }
 
-  const sub = subscription.data;
+  const sub = subscription.data?.subscription;
+  const workspace = subscription.data?.workspace;
   const enabledModules = ALL_MODULE_KEYS.filter((k) => sub?.modules[k]?.enabled);
 
   return (
@@ -118,11 +125,20 @@ export default function BillingScreen() {
                 Trial ends {formatDateTime(sub.trialStatus.endsAt)}
               </Text>
             )}
-            {!!sub.currentPeriodEnd && sub.billingStatus === 'Active' && (
-              <Text className="mt-1.5 text-sm text-zinc-400">
-                Renews {formatDateTime(sub.currentPeriodEnd)}
-              </Text>
-            )}
+            {(() => {
+              const periodEnd = workspace?.currentPeriodEnd ?? sub.currentPeriodEnd;
+              if (!periodEnd || sub.billingStatus !== 'Active') return null;
+              if (workspace?.cancelAtPeriodEnd) {
+                return (
+                  <Text className="mt-1.5 text-sm font-medium text-amber-400">
+                    Ends {formatDateTime(periodEnd)} — won&apos;t renew
+                  </Text>
+                );
+              }
+              return (
+                <Text className="mt-1.5 text-sm text-zinc-400">Renews {formatDateTime(periodEnd)}</Text>
+              );
+            })()}
 
             {enabledModules.length > 0 && (
               <View className="mt-3 flex-row flex-wrap gap-2">
@@ -142,17 +158,23 @@ export default function BillingScreen() {
                 <Ionicons name="open-outline" size={15} color="#ffffff" />
                 <Text className="text-sm font-semibold text-on-brand">View plans on the web</Text>
               </Pressable>
-              {sub.hasPaymentMethod && sub.billingStatus !== 'Canceled' && (
-                <Pressable
-                  onPress={confirmCancel}
-                  disabled={cancel.isPending}
-                  className="items-center justify-center rounded-xl border border-rose-400/25 px-4 py-3 active:opacity-80"
-                >
-                  <Text className="text-sm font-semibold text-rose-300">
-                    {cancel.isPending ? 'Cancelling…' : 'Cancel'}
-                  </Text>
-                </Pressable>
-              )}
+              {sub.hasPaymentMethod &&
+                sub.billingStatus !== 'Canceled' &&
+                (workspace?.cancelAtPeriodEnd ? (
+                  <View className="items-center justify-center rounded-xl border border-surface-border px-4 py-3">
+                    <Text className="text-sm font-semibold text-zinc-400">Cancellation scheduled</Text>
+                  </View>
+                ) : (
+                  <Pressable
+                    onPress={confirmCancel}
+                    disabled={cancel.isPending}
+                    className="items-center justify-center rounded-xl border border-rose-400/25 px-4 py-3 active:opacity-80"
+                  >
+                    <Text className="text-sm font-semibold text-rose-300">
+                      {cancel.isPending ? 'Cancelling…' : 'Cancel'}
+                    </Text>
+                  </Pressable>
+                ))}
             </View>
           </View>
         )}

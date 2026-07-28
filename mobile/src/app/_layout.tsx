@@ -1,23 +1,41 @@
 import '../global.css';
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Sentry from '@sentry/react-native';
+import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
+import { QueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import Constants from 'expo-constants';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, View } from 'react-native';
 
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { BusinessProvider } from '@/business/BusinessContext';
+import { OfflineBanner } from '@/components/offline-banner';
+import { initSentry } from '@/lib/sentry';
 import { palettes, useTheme } from '@/lib/theme';
 import { useLastNotificationResponse } from '@/notifications/push';
 
 SplashScreen.preventAutoHideAsync();
+initSentry();
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 60_000 },
   },
+});
+
+// Persists successful query results to on-device storage so the last-known
+// data (dashboard stats, reviews, content, …) still renders when the app
+// opens offline, instead of a blank/error screen. Rehydration is capped at
+// 24h and namespaced by app version so a schema change never loads stale,
+// incompatible cache from an old build.
+const persister = createAsyncStoragePersister({
+  storage: AsyncStorage,
+  key: 'growwmatics-query-cache',
 });
 
 // react-navigation themes matched to the app palettes so transition fills
@@ -81,19 +99,34 @@ function RootNavigator() {
   if (isHydrating) return null;
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: t.bg },
-      }}
-    />
+    <View style={{ flex: 1 }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: t.bg },
+        }}
+      />
+      <OfflineBanner />
+    </View>
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const scheme = useColorScheme();
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister,
+        maxAge: 24 * 60 * 60 * 1000,
+        buster: Constants.expoConfig?.version,
+        // Only persist queries that actually resolved — an errored or
+        // still-pending query has nothing useful to show from a cold start.
+        dehydrateOptions: {
+          shouldDehydrateQuery: (query) => query.state.status === 'success',
+        },
+      }}
+    >
       <AuthProvider>
         <BusinessProvider>
           <ThemeProvider value={scheme === 'light' ? navThemes.light : navThemes.dark}>
@@ -102,6 +135,8 @@ export default function RootLayout() {
           </ThemeProvider>
         </BusinessProvider>
       </AuthProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }
+
+export default Sentry.wrap(RootLayout);

@@ -84,21 +84,6 @@ export async function updateNotificationPrefs(preferences: NotificationPrefs): P
   await api.patch('/api/user/notifications', { preferences });
 }
 
-// --- Integrations status -------------------------------------------------------
-
-export const integrationsSchema = z.object({
-  serpapi: z.boolean().catch(false),
-  twilio: z.boolean().catch(false),
-  groq: z.boolean().catch(false),
-  googlePlaces: z.boolean().catch(false),
-});
-export type IntegrationsStatus = z.infer<typeof integrationsSchema>;
-
-export async function fetchIntegrationsStatus(): Promise<IntegrationsStatus> {
-  const { data } = await api.get('/api/integrations/status');
-  return integrationsSchema.parse(data);
-}
-
 // --- Billing -------------------------------------------------------------------
 
 export const billingStatusSchema = z.object({
@@ -119,14 +104,49 @@ export const billingStatusSchema = z.object({
 });
 export type BillingStatus = z.infer<typeof billingStatusSchema>;
 
-export async function fetchBillingStatus(): Promise<BillingStatus> {
+/**
+ * Per-workspace gate state for the active workspace (x-business-id header).
+ * `cancelAtPeriodEnd` is true while access continues but the subscription is
+ * scheduled to stop renewing — the workspace stays unlocked until
+ * `currentPeriodEnd`.
+ */
+export const workspaceBillingSchema = z
+  .object({
+    subscriptionStatus: z.string().catch('trialing'),
+    isActive: z.boolean().catch(false),
+    currentPeriodEnd: z.string().nullable().catch(null),
+    cancelAtPeriodEnd: z.boolean().catch(false),
+  })
+  .nullable()
+  .catch(null);
+export type WorkspaceBilling = z.infer<typeof workspaceBillingSchema>;
+
+const billingStatusResponseSchema = z.object({
+  subscription: billingStatusSchema,
+  workspace: workspaceBillingSchema,
+});
+
+export async function fetchBillingStatus(): Promise<{
+  subscription: BillingStatus;
+  workspace: WorkspaceBilling;
+}> {
   const { data } = await api.get('/api/billing/status');
-  return z.object({ subscription: billingStatusSchema }).parse(data).subscription;
+  return billingStatusResponseSchema.parse(data);
 }
 
-/** POST /api/billing/cancel — the webhook applies the actual downgrade. */
-export async function cancelSubscription(): Promise<void> {
-  await api.post('/api/billing/cancel');
+/**
+ * POST /api/billing/cancel — cancels at the end of the current billing cycle
+ * (access continues until then). Returns the server's paid-through message so
+ * the UI can show the exact date rather than a generic confirmation.
+ */
+export async function cancelSubscription(): Promise<{ message: string; currentPeriodEnd: string | null }> {
+  const { data } = await api.post('/api/billing/cancel');
+  return z
+    .object({
+      message: z.string().catch('Subscription cancelled. Access continues until the current period ends.'),
+      currentPeriodEnd: z.string().nullable().catch(null),
+    })
+    .parse(data);
 }
 
 export const usageSchema = z.object({

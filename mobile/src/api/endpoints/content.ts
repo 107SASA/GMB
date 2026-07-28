@@ -17,7 +17,11 @@ export const generatedPostSchema = z.object({
   postType: z.string().nullable().catch(null),
   hashtags: z.array(z.string().catch('')).catch([]),
   cta: z.string().nullable().catch(null),
+  // Thumbnails are generated in the background AFTER this response returns, so
+  // imageUrl starts null and is filled in by polling fetchPostImages(). A
+  // present thumbnailPrompt means an image IS on the way (show a loader).
   imageUrl: z.string().nullable().catch(null),
+  thumbnailPrompt: z.string().nullable().catch(null),
 });
 export type GeneratedPost = z.infer<typeof generatedPostSchema>;
 
@@ -91,8 +95,20 @@ export async function fetchContentPosts(page: number): Promise<ContentPostsPage>
 }
 
 /**
- * POST /api/content/auto-schedule — schedules the given drafts one per day
- * at 9AM after the last scheduled post.
+ * GET /api/content/posts/images — polls for background-generated thumbnails.
+ * Returns { postId -> imageUrl | null } for the caller's own business.
+ */
+export async function fetchPostImages(ids: string[]): Promise<Record<string, string | null>> {
+  if (ids.length === 0) return {};
+  const { data } = await api.get('/api/content/posts/images', { params: { ids: ids.join(',') } });
+  return z
+    .object({ images: z.record(z.string(), z.string().nullable()).catch({}) })
+    .parse(data).images;
+}
+
+/**
+ * POST /api/content/auto-schedule — schedules the given drafts on alternate
+ * days at 9AM after the last scheduled post (keeps the profile active all week).
  */
 export async function autoSchedulePosts(postIds: string[]): Promise<{ count: number }> {
   const { data } = await api.post('/api/content/auto-schedule', { postIds });

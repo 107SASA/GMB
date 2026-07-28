@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
+import { fetchNotifications } from '@/api/endpoints/notifications';
 import { useBusiness } from '@/business/BusinessContext';
 import { BusinessSwitcher } from '@/components/business-switcher';
 import { InitialsAvatar } from '@/components/ui';
@@ -27,6 +29,15 @@ export function AppHeader({
   const t = useTheme();
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
+  // Light polling — this badge just needs to be roughly fresh, not live.
+  const notifications = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => fetchNotifications(),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const unread = notifications.data?.unreadCount ?? 0;
+
   // "Bidhannagar, Kolkata" line — best-effort from the address.
   const location = activeBusiness?.address
     ? activeBusiness.address.split(',').slice(-2).join(',').trim()
@@ -50,6 +61,20 @@ export function AppHeader({
           <Ionicons name="chevron-down" size={14} color={t.brandBright} />
         </Pressable>
       </View>
+
+      <Pressable
+        onPress={() => router.push('/notifications')}
+        className="h-10 w-10 items-center justify-center rounded-full active:bg-surface-overlay"
+      >
+        <View>
+          <Ionicons name="notifications-outline" size={22} color={t.textDim} />
+          {unread > 0 && (
+            <View className="absolute -right-0.5 -top-0.5 h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1">
+              <Text className="text-[9px] font-bold text-white">{unread > 9 ? '9+' : unread}</Text>
+            </View>
+          )}
+        </View>
+      </Pressable>
 
       {showSettings && (
         <Pressable

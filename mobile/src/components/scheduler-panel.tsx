@@ -24,29 +24,29 @@ const HEALTH_STYLES = {
 
 function BufferCard({
   healthStatus,
-  daysCovered,
-  missingDays,
-  totalScheduledPosts,
+  scheduledThisWeek,
+  weeklyTarget,
+  postsNeeded,
 }: {
   healthStatus: keyof typeof HEALTH_STYLES;
-  daysCovered: number;
-  missingDays: number;
-  totalScheduledPosts: number;
+  scheduledThisWeek: number;
+  weeklyTarget: number;
+  postsNeeded: number;
 }) {
   const style = HEALTH_STYLES[healthStatus];
-  const pct = Math.min(100, Math.round((daysCovered / 7) * 100));
+  const pct = weeklyTarget > 0 ? Math.min(100, Math.round((scheduledThisWeek / weeklyTarget) * 100)) : 0;
   return (
     <View className="rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5">
       <View className="flex-row items-center justify-between">
-        <Text className="text-sm font-semibold text-white">Post buffer</Text>
+        <Text className="text-sm font-semibold text-white">This week&apos;s buffer</Text>
         <Badge label={healthStatus} tone={style.tone} />
       </View>
       <View className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-zinc-800">
         <View className={`h-full rounded-full ${style.bar}`} style={{ width: `${pct}%` }} />
       </View>
       <Text className="mt-2 text-xs text-zinc-400">
-        {daysCovered} of the next 7 days covered · {totalScheduledPosts} scheduled
-        {missingDays > 0 ? ` · ${missingDays} day${missingDays === 1 ? '' : 's'} missing` : ''}
+        {scheduledThisWeek} of {weeklyTarget} posts scheduled this week
+        {postsNeeded > 0 ? ` · ${postsNeeded} more to stay active` : ''}
       </Text>
     </View>
   );
@@ -191,9 +191,9 @@ export function SchedulerPanel({ scrollable = true }: { scrollable?: boolean }) 
       <View className="px-5">
         <BufferCard
           healthStatus={data!.healthStatus}
-          daysCovered={data!.daysCovered}
-          missingDays={data!.missingDays}
-          totalScheduledPosts={data!.totalScheduledPosts}
+          scheduledThisWeek={data!.scheduledThisWeek}
+          weeklyTarget={data!.weeklyTarget}
+          postsNeeded={data!.postsNeeded}
         />
       </View>
 

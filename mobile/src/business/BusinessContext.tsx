@@ -8,10 +8,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { setActiveBusinessIdHeader } from '@/api/client';
-import { fetchBusinesses, type Business } from '@/api/endpoints/businesses';
+import { deleteWorkspace, fetchBusinesses, type Business } from '@/api/endpoints/businesses';
 import { useAuth } from '@/auth/AuthContext';
 
 const BUSINESS_KEY = 'active_business_id';
@@ -28,12 +28,19 @@ interface BusinessContextValue {
    */
   needsSelection: boolean;
   selectBusiness: (businessId: string) => Promise<void>;
+  /**
+   * Soft-deletes a workspace. If the deleted one was active, switches to the
+   * server-chosen next workspace (or clears selection when none remain), then
+   * refreshes the list.
+   */
+  deleteBusiness: (businessId: string) => Promise<void>;
 }
 
 const BusinessContext = createContext<BusinessContextValue | null>(null);
 
 export function BusinessProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isHydrating, user } = useAuth();
+  const queryClient = useQueryClient();
   const [activeBusinessId, setActiveBusinessId] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
 
@@ -100,6 +107,24 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     await SecureStore.setItemAsync(BUSINESS_KEY, businessId).catch(() => {});
   }, []);
 
+  const deleteBusiness = useCallback(
+    async (businessId: string) => {
+      const { nextActiveBusinessId } = await deleteWorkspace(businessId);
+      if (businessId === activeBusinessId) {
+        setActiveBusinessId(nextActiveBusinessId);
+        setActiveBusinessIdHeader(nextActiveBusinessId);
+        if (nextActiveBusinessId) {
+          await SecureStore.setItemAsync(BUSINESS_KEY, nextActiveBusinessId).catch(() => {});
+        } else {
+          await SecureStore.deleteItemAsync(BUSINESS_KEY).catch(() => {});
+        }
+      }
+      // Refresh the list and any workspace-scoped data for the new active id.
+      await queryClient.invalidateQueries({ queryKey: ['businesses'] });
+    },
+    [activeBusinessId, queryClient]
+  );
+
   const value = useMemo<BusinessContextValue>(() => {
     const activeBusiness = businesses.find((b) => b._id === activeBusinessId) ?? null;
     const isLoading = isFetching || (isAuthenticated && !restored);
@@ -110,8 +135,9 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       activeBusiness,
       needsSelection: !isLoading && businesses.length > 1 && activeBusiness === null,
       selectBusiness,
+      deleteBusiness,
     };
-  }, [businesses, isFetching, isAuthenticated, restored, activeBusinessId, selectBusiness]);
+  }, [businesses, isFetching, isAuthenticated, restored, activeBusinessId, selectBusiness, deleteBusiness]);
 
   return <BusinessContext.Provider value={value}>{children}</BusinessContext.Provider>;
 }

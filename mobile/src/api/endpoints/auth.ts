@@ -71,3 +71,31 @@ export async function fetchCurrentUser(): Promise<CurrentUser> {
   const { data } = await api.get('/api/auth/me');
   return meResponseSchema.parse(data).user;
 }
+
+// --- Forgot password (public, no auth header needed) ------------------------------
+
+/**
+ * POST /api/auth/forgot-password — always resolves with a generic message,
+ * whether or not the email is registered (the server never leaks that).
+ */
+export async function requestPasswordResetOtp(email: string): Promise<void> {
+  await api.post('/api/auth/forgot-password', { email });
+}
+
+/**
+ * POST /api/auth/verify-reset-otp — exchanges the emailed OTP for a
+ * short-lived (10 min) reset token used by resetPassword below.
+ */
+export async function verifyResetOtp(email: string, otp: string): Promise<string> {
+  const { data } = await api.post('/api/auth/verify-reset-otp', { email, otp });
+  return z.object({ success: z.literal(true), resetToken: z.string() }).parse(data).resetToken;
+}
+
+/** POST /api/auth/reset-password — sets the new password using the reset token. */
+export async function resetPassword(params: {
+  resetToken: string;
+  newPassword: string;
+  confirmPassword: string;
+}): Promise<void> {
+  await api.post('/api/auth/reset-password', params);
+}

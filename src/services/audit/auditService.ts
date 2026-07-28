@@ -122,32 +122,37 @@ export async function processAuditJob(auditId: string) {
 
     // Geo-grid keyword rankings via SerpApi (45 calls: 5 keywords × 9 grid points)
     let keywordRankings: any[] = [];
-    let rankingsEvidence = 'Fallback (no SERPAPI_KEY)';
+    let rankingsEvidence = 'Unavailable (SERPAPI_KEY not configured)';
     let geoGridRank: any = null;
     let localPackCompetitors: any[] = [];
 
     if (process.env.SERPAPI_KEY) {
       // Augment business with the resolved category + city so geo-grid keywords
       // are correct even when the stored business profile has no category set.
+      const businessObj = typeof business.toObject === 'function' ? business.toObject() : business;
       const businessForRankings = {
-        ...(typeof business.toObject === 'function' ? business.toObject() : business),
+        ...businessObj,
+        name: businessObj.name || businessData.businessName,
         category: businessData.category,
         city:     businessData.city,
+        placeId: businessObj.placeId || businessObj.googlePlaceId,
+        googlePlaceId: businessObj.googlePlaceId || businessObj.placeId,
+        serpApiDataId: businessObj.serpApiDataId || businessObj.dataId,
       };
       const rankData       = await fetchGeoGridRankings(businessForRankings);
       keywordRankings      = rankData.legacyRankings;
       rankingsEvidence     = rankData.evidenceSource;
       geoGridRank          = rankData.geoGridRank;
-      localPackCompetitors = rankData.localPackCompetitors;
+      localPackCompetitors = rankData.localPackCompetitors || [];
     } else {
-      keywordRankings = [
-        { keyword: `${businessData.category} ${business.city}`, rank: 21 },
-        { keyword: `best ${businessData.category}`,             rank: 21 },
-      ];
+      // Do NOT invent fake rank-21 keywords — surface unavailable honestly.
+      keywordRankings = [];
+      console.warn('[auditService] SERPAPI_KEY missing — skipping live ranking & competitor harvest');
     }
 
-    const avgRank = keywordRankings.reduce((acc: number, k: any) => acc + k.rank, 0) /
-      (keywordRankings.length || 1);
+    const avgRank = keywordRankings.length > 0
+      ? keywordRankings.reduce((acc: number, k: any) => acc + k.rank, 0) / keywordRankings.length
+      : 0;
     const googleSearchRank = {
       averageRank: parseFloat(avgRank.toFixed(1)),
       topKeywords: keywordRankings,
@@ -158,11 +163,24 @@ export async function processAuditJob(auditId: string) {
     const { accepted, rejected, targetTier, evidenceSource: compEvidence } =
       await findCompetitors(businessData);
 
-    // When tier-matched competitor discovery returns nothing, fall back to
-    // the local pack competitors already harvested from the geo-grid queries.
-    // This ensures the web UI always shows competitor data when geo-grid worked.
+    // Attach real local-pack ranks onto Places competitors when names match.
+    const enrichWithLocalPackRank = (list: any[]) =>
+      list.map((c: any) => {
+        const match = localPackCompetitors.find(
+          (lp: any) => (lp.name || '').toLowerCase().trim() === (c.name || '').toLowerCase().trim(),
+        );
+        const avgRank = match?.avgRank ?? c.avgRank ?? c.estimatedRank;
+        return {
+          ...c,
+          avgRank,
+          estimatedRank: avgRank,
+        };
+      });
+
+    // Prefer Places-tier matches when available, else SerpApi local-pack harvest.
+    // Always carry avgRank/estimatedRank so the report table can render.
     const effectiveCompetitors = accepted.length > 0
-      ? accepted
+      ? enrichWithLocalPackRank(accepted)
       : localPackCompetitors.map((c: any) => ({
           name: c.name,
           rating: c.rating || 0,
@@ -170,6 +188,9 @@ export async function processAuditJob(auditId: string) {
           category: businessData.category,
           similarityScore: 60,
           tier: targetTier,
+          avgRank: c.avgRank,
+          estimatedRank: c.avgRank,
+          placeId: c.placeId,
         }));
 
     // ── Review quality + keyword coverage ─────────────────────
@@ -285,8 +306,22 @@ export async function processAuditJob(auditId: string) {
 
       aiResult.businessTier = targetTier;
       aiResult.competitors  = effectiveCompetitors;
-      if (geoGridRank)                  aiResult.geoGridRank          = geoGridRank;
-      if (localPackCompetitors.length)  aiResult.localPackCompetitors = localPackCompetitors;
+      // Always persist local-pack competitors (even empty) so the report can
+      // distinguish "not harvested" vs "none found". Prefer non-empty SerpApi
+      // harvest; otherwise project Places competitors that have a rank.
+      aiResult.localPackCompetitors = localPackCompetitors.length > 0
+        ? localPackCompetitors
+        : effectiveCompetitors
+            .filter((c: any) => c.avgRank != null || c.estimatedRank != null)
+            .map((c: any) => ({
+              name: c.name,
+              avgRank: c.avgRank ?? c.estimatedRank,
+              rating: c.rating,
+              reviewCount: c.reviewCount,
+              placeId: c.placeId,
+            }))
+            .slice(0, 5);
+      if (geoGridRank) aiResult.geoGridRank = geoGridRank;
       aiResult.evidence = {
         competitors:       compEvidence,
         searchRankings:    rankingsEvidence,

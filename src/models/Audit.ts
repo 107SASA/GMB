@@ -172,6 +172,8 @@ export interface IAuditData {
     overallAvgRank: number;
     gridSpacingKm: number;
     areaSqKm: number;
+    /** % of geo-grid keyword×point checks where the business appeared in the local pack */
+    visibilityPct?: number;
   };
   localPackCompetitors?: ILocalPackCompetitor[];
 }

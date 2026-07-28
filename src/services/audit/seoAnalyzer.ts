@@ -48,8 +48,6 @@ export function calculateProfileCompletion(business: any) {
   );
   add('Social Links', hasSocial);
 
-  add('WhatsApp Connected',  !!(business.whatsappConfig?.isConnected));
-
   // These two are populated from the SerpApi place-details response during data_id
   // resolution. If they've never been resolved, status is Unknown (benefit of the doubt).
   addUnknown('Business Photos',  business.photoCount, (business.photoCount ?? 0) > 0);
@@ -254,8 +252,12 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 3): Promis
 // ── Geo-grid keyword ranking via SerpApi ───────────────────────────────────────
 // Checks rank from 9 points in a 3×3 grid (1.5 km spacing) around the business.
 // Harvests local-pack competitors from the same 45 responses at no extra cost.
+//
+// NOT_FOUND_RANK (21) is a sentinel meaning "not in the Google local pack
+// (typically top ~20)". It is NOT a real Maps position — UI/PDF must render it
+// as "20+".
 
-const NOT_FOUND_RANK = 21;
+export const NOT_FOUND_RANK = 21;
 
 function buildKeywords(business: any): string[] {
   const categoryLower = (business.category || 'business').toLowerCase();
@@ -263,37 +265,116 @@ function buildKeywords(business: any): string[] {
 
   let seedWords: string[] = [];
   if (business.keywords && business.keywords.length > 0) {
-    seedWords = business.keywords;
+    seedWords = business.keywords.map((k: string) => String(k).trim()).filter(Boolean);
   } else if (business.services && business.services.length > 0) {
-    seedWords = String(business.services).split(/[,;]+/).map((s: string) => s.trim());
+    seedWords = String(business.services).split(/[,;]+/).map((s: string) => s.trim()).filter(Boolean);
   } else {
     seedWords = [categoryLower];
   }
 
+  const primary = seedWords[0] || categoryLower;
+  const secondary = seedWords[1];
+
   return [
-    `${seedWords[0]} ${cityLower}`,
-    `best ${seedWords[0]} ${cityLower}`,
-    `top ${seedWords[0]} ${cityLower}`,
-    `${seedWords[0]} near me`,
-    seedWords[1] ? `${seedWords[1]} ${cityLower}` : `${cityLower} ${categoryLower}`,
-  ].map(k => k.trim());
+    cityLower ? `${primary} ${cityLower}` : primary,
+    cityLower ? `best ${primary} ${cityLower}` : `best ${primary}`,
+    cityLower ? `top ${primary} ${cityLower}` : `top ${primary}`,
+    `${primary} near me`,
+    secondary
+      ? (cityLower ? `${secondary} ${cityLower}` : secondary)
+      : (cityLower ? `${cityLower} ${categoryLower}` : categoryLower),
+  ].map(k => k.trim()).filter(Boolean);
+}
+
+/** Normalize names for fuzzy matching (strip legal suffixes / punctuation). */
+function normalizeBusinessName(name: string): string {
+  return (name || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\b(pvt|private|ltd|limited|llp|inc|llc|co|company|plc|corp|corporation)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function collectPlaceIds(business: any): string[] {
+  const ids = [
+    business.placeId,
+    business.googlePlaceId,
+    business.serpApiDataId,
+    business.dataId,
+  ]
+    .filter(Boolean)
+    .map((id: string) => String(id).trim())
+    .filter(Boolean);
+  // Also accept "places/ChIJ..." style ids
+  return Array.from(new Set(ids.flatMap((id) => {
+    const bare = id.replace(/^places\//, '');
+    return bare === id ? [id] : [id, bare];
+  })));
+}
+
+function namesLikelyMatch(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+  // Token overlap (handles "Joe's Pizza Downtown" vs "Joes Pizza")
+  const ta = new Set(a.split(' ').filter((t) => t.length > 2));
+  const tb = new Set(b.split(' ').filter((t) => t.length > 2));
+  if (ta.size === 0 || tb.size === 0) return false;
+  let overlap = 0;
+  for (const t of ta) if (tb.has(t)) overlap++;
+  const minSize = Math.min(ta.size, tb.size);
+  return overlap >= Math.max(1, Math.ceil(minSize * 0.7));
 }
 
 function findTargetRank(localResults: any[], business: any): number {
+  if (!localResults?.length) return NOT_FOUND_RANK;
+
+  const placeIds = collectPlaceIds(business);
   let idx = -1;
-  if (business.placeId || business.serpApiDataId) {
-    idx = localResults.findIndex((r: any) =>
-      (business.placeId && r.place_id === business.placeId) ||
-      (business.serpApiDataId && r.data_id === business.serpApiDataId),
-    );
+
+  if (placeIds.length) {
+    idx = localResults.findIndex((r: any) => {
+      const candidates = [r.place_id, r.data_id, r.placeId]
+        .filter(Boolean)
+        .map((id: string) => String(id).replace(/^places\//, ''));
+      return candidates.some((id) => placeIds.includes(id) || placeIds.includes(`places/${id}`));
+    });
   }
+
   if (idx === -1) {
-    idx = localResults.findIndex((r: any) =>
-      r.title?.toLowerCase().includes(business.name.toLowerCase()) ||
-      business.name.toLowerCase().includes(r.title?.toLowerCase()),
-    );
+    const target = normalizeBusinessName(business.name || business.businessName || '');
+    if (target) {
+      idx = localResults.findIndex((r: any) =>
+        namesLikelyMatch(normalizeBusinessName(r.title || r.name || ''), target),
+      );
+    }
   }
+
+  // Last resort: GPS proximity (< ~80m) when coordinates are available on both sides
+  if (idx === -1 && business.coordinates?.lat != null && business.coordinates?.lng != null) {
+    const tLat = Number(business.coordinates.lat);
+    const tLng = Number(business.coordinates.lng);
+    idx = localResults.findIndex((r: any) => {
+      const g = r.gps_coordinates || r.gpsCoordinates;
+      if (g?.latitude == null || g?.longitude == null) return false;
+      const dLat = Math.abs(Number(g.latitude) - tLat);
+      const dLng = Math.abs(Number(g.longitude) - tLng);
+      return dLat < 0.0008 && dLng < 0.0008; // ~80–90m
+    });
+  }
+
   return idx === -1 ? NOT_FOUND_RANK : idx + 1;
+}
+
+function isOwnBusiness(resultName: string, business: any): boolean {
+  const target = normalizeBusinessName(business.name || business.businessName || '');
+  const other = normalizeBusinessName(resultName);
+  if (!target || !other) return false;
+  return namesLikelyMatch(target, other);
 }
 
 export async function fetchGeoGridRankings(business: any): Promise<{
@@ -302,6 +383,7 @@ export async function fetchGeoGridRankings(business: any): Promise<{
     overallAvgRank: number;
     gridSpacingKm: number;
     areaSqKm: number;
+    visibilityPct?: number;
   } | null;
   localPackCompetitors: Array<{
     name: string;
@@ -337,22 +419,58 @@ export async function fetchGeoGridRankings(business: any): Promise<{
       }),
     );
 
-    // Harvest competitors from the same SerpApi responses so the fallback is useful
-    const competitorMap = new Map<string, { name: string; avgRank: number; rating?: number; reviewCount?: number }>();
+    // Harvest competitors with their REAL local-pack positions (not the 21 sentinel)
+    const competitorMap = new Map<string, {
+      name: string; ranks: number[]; rating?: number; reviewCount?: number; placeId?: string;
+    }>();
     for (const localResults of rawResults) {
-      for (const r of localResults.slice(0, 8)) {
-        if (!r.title) continue;
-        const key = r.title.toLowerCase().trim();
-        if (key === (business.name || '').toLowerCase().trim()) continue;
-        if (!competitorMap.has(key)) {
-          competitorMap.set(key, { name: r.title, avgRank: NOT_FOUND_RANK, rating: r.rating, reviewCount: r.reviews });
+      localResults.slice(0, 10).forEach((r: any, i: number) => {
+        if (!r.title) return;
+        if (isOwnBusiness(r.title, business)) return;
+        const key = (r.place_id || r.data_id || r.title).toString().toLowerCase().trim();
+        const existing = competitorMap.get(key);
+        if (existing) {
+          existing.ranks.push(i + 1);
+        } else {
+          competitorMap.set(key, {
+            name: r.title,
+            ranks: [i + 1],
+            rating: r.rating,
+            reviewCount: r.reviews,
+            placeId: r.place_id || r.data_id,
+          });
         }
-      }
+      });
     }
-    const localPackCompetitors = Array.from(competitorMap.values()).slice(0, 5);
+    const localPackCompetitors = Array.from(competitorMap.values())
+      .map(c => ({
+        name: c.name,
+        avgRank: parseFloat((c.ranks.reduce((a, b) => a + b, 0) / c.ranks.length).toFixed(1)),
+        rating: c.rating,
+        reviewCount: c.reviewCount,
+        placeId: c.placeId,
+      }))
+      .sort((a, b) => a.avgRank - b.avgRank)
+      .slice(0, 5);
+
+    const overallAvgRank = parseFloat(
+      (legacyRankings.reduce((sum, k) => sum + k.rank, 0) / Math.max(1, legacyRankings.length)).toFixed(1),
+    );
+    const foundCount = legacyRankings.filter(k => k.rank < NOT_FOUND_RANK).length;
 
     return {
-      geoGridRank: null,
+      // Synthetic keyword grid so the report can always render keyword + competitor tables
+      geoGridRank: {
+        keywords: legacyRankings.map(k => ({
+          keyword: k.keyword,
+          avgRank: k.rank,
+          points: [] as Array<{ lat: number; lng: number; rank: number }>,
+        })),
+        overallAvgRank,
+        gridSpacingKm: 0,
+        areaSqKm: 0,
+        visibilityPct: Math.round((foundCount / Math.max(1, legacyRankings.length)) * 100),
+      },
       localPackCompetitors,
       legacyRankings,
       evidenceSource: `Single-point SERP data (no coordinates): ${keywords.slice(0, 3).join(', ')}`,
@@ -405,7 +523,7 @@ export async function fetchGeoGridRankings(business: any): Promise<{
             reviewCount: r.reviews as number | undefined,
             placeId: (r.place_id || r.data_id) as string | undefined,
           }))
-          .filter(c => c.name);
+          .filter(c => c.name && !isOwnBusiness(c.name, business));
 
         return { keyword, point, rank, competitors };
       } catch {
@@ -459,6 +577,11 @@ export async function fetchGeoGridRankings(business: any): Promise<{
     (geoGridKeywords.reduce((sum, k) => sum + k.avgRank, 0) / Math.max(1, geoGridKeywords.length)).toFixed(1),
   );
 
+  const allPointRanks = geoGridKeywords.flatMap(k => k.points.map(p => p.rank));
+  const visibilityPct = Math.round(
+    (allPointRanks.filter(r => r < NOT_FOUND_RANK).length / Math.max(1, allPointRanks.length)) * 100,
+  );
+
   // Legacy shape — keeps googleSearchRank working in the existing scoring / UI
   const legacyRankings: IKeywordRank[] = geoGridKeywords.map(k => ({
     keyword: k.keyword,
@@ -473,13 +596,14 @@ export async function fetchGeoGridRankings(business: any): Promise<{
       overallAvgRank,
       gridSpacingKm: GRID_SPACING_KM,
       areaSqKm: GRID_AREA_SQ_KM,
+      visibilityPct,
     },
     localPackCompetitors,
     legacyRankings,
     evidenceSource:
       `Geo-grid SERP: 3×3, ${GRID_SPACING_KM} km spacing, ${GRID_AREA_SQ_KM} sq km ` +
       `around [${business.coordinates.lat}, ${business.coordinates.lng}] | ` +
-      `keywords: ${keywords.slice(0, 3).join(', ')}`,
+      `keywords: ${keywords.slice(0, 3).join(', ')} | visibility ${visibilityPct}%`,
   };
 }
 

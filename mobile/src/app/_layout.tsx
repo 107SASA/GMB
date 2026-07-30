@@ -1,7 +1,6 @@
 import '../global.css';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Sentry from '@sentry/react-native';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -15,12 +14,10 @@ import { useColorScheme, View } from 'react-native';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { BusinessProvider } from '@/business/BusinessContext';
 import { OfflineBanner } from '@/components/offline-banner';
-import { initSentry } from '@/lib/sentry';
 import { palettes, useTheme } from '@/lib/theme';
 import { useLastNotificationResponse } from '@/notifications/push';
 
 SplashScreen.preventAutoHideAsync();
-initSentry();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -139,4 +136,4 @@ function RootLayout() {
   );
 }
 
-export default Sentry.wrap(RootLayout);
+export default RootLayout;

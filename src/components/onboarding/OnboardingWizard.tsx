@@ -10,7 +10,6 @@ import StepAccount from './StepAccount';
 import StepPassword from './StepPassword';
 import StepBusiness from './StepBusiness';
 import StepGoogle from './StepGoogle';
-import StepWhatsApp from './StepWhatsApp';
 import StepCompletion from './StepCompletion';
 
 export function OnboardingWizard() {
@@ -31,6 +30,11 @@ export function OnboardingWizard() {
    * offered alongside that finished report (AuditPaywallSidebar). Showing a
    * price before the user has seen any value gives them a reason to abandon
    * before they ever reach the thing that sells the product.
+   *
+   * No Meta Business/Facebook/Instagram step either, for the same reason —
+   * every field on it was optional and most users skipped it anyway. Those
+   * URLs (and the WhatsApp number, already covered by Settings' own field)
+   * are collected later from Settings → Business Profile instead.
    */
   const steps = [
     { component: StepWelcome, id: 'welcome' },
@@ -38,7 +42,6 @@ export function OnboardingWizard() {
     { component: StepPassword, id: 'password' },
     { component: StepBusiness, id: 'business' },
     { component: StepGoogle, id: 'google' },
-    { component: StepWhatsApp, id: 'whatsapp' },
     { component: StepCompletion, id: 'complete' }
   ];
 

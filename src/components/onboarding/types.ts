@@ -1,6 +1,11 @@
 export interface OnboardingData {
   // Step 1
   fullName: string;
+  // Personal contact number — deliberately separate from the business `phone`
+  // below (Step 4). Both used to share the same field, so autofilling the
+  // business's phone from a Google Places search silently became the user's
+  // own account/profile phone too.
+  personalPhone: string;
   // Step 2
   email: string;
   password: string;
@@ -40,6 +45,7 @@ export interface OnboardingData {
 
 export const initialOnboardingData: OnboardingData = {
   fullName: '',
+  personalPhone: '',
   email: '',
   password: '',
   confirmPassword: '',

@@ -33,6 +33,10 @@ export async function GET() {
     success: true,
     intakeCompleted: Boolean(b.intakeCompleted),
     data: {
+      // 'Local Business' is the generic placeholder Business.create() falls
+      // back to when onboarding couldn't auto-fill a real one (see
+      // /api/onboarding) — never prefill that as if it were a real answer.
+      category: [b.userDefinedCategory, b.category].find((c) => c && c !== 'Local Business') ?? '',
       description: b.description ?? '',
       services: b.services ?? '',
       offers: b.offers ?? '',
@@ -49,6 +53,7 @@ export async function GET() {
 }
 
 const intakeSchema = z.object({
+  category: z.string().trim().min(1, 'Please enter your business category.'),
   description: z.string().trim().min(10, 'Please describe your business (at least 10 characters).'),
   services: z.string().trim().min(3, 'List the services you offer.'),
   offers: z.string().trim().optional().default(''),
@@ -86,6 +91,8 @@ export async function POST(req: Request) {
     { _id: ctx.businessId },
     {
       $set: {
+        category: d.category,
+        userDefinedCategory: d.category,
         description: d.description,
         services: d.services,
         offers: d.offers,

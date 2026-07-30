@@ -216,11 +216,24 @@ export async function processAuditJob(auditId: string) {
     // ── Scoring formula ────────────────────────────────────────
     // Weights: profile 35 | SEO 25 | review quality 25 | keyword coverage 15
     // All inputs are 0-100; result is clamped to 0-100.
+    //
+    // Both review-quality and keyword-coverage are entirely derived from
+    // synced reviews, and calculateReviewQualityScore/analyzeReviewKeywords
+    // both return 0 for an empty review list — so a business with no synced
+    // reviews yet (e.g. Google was just connected, before any sync has run)
+    // was unfairly dragged down by a hardcoded 0 across 40% of the score, for
+    // reasons that have nothing to do with the business itself. When there's
+    // no real review data, drop those two inputs and re-weight the remaining,
+    // genuinely-available signals (profile completion + SEO) to 100%.
+    const hasReviewData = formattedReviews.length > 0;
     const finalScore = Math.round(Math.min(100,
-      profileCompletion.completionPercentage * 0.35 +
-      nativeSeoScore.score                  * 0.25 +
-      reviewQualityScore                    * 0.25 +
-      keywordCoverageScore                  * 0.15,
+      hasReviewData
+        ? profileCompletion.completionPercentage * 0.35 +
+          nativeSeoScore.score                  * 0.25 +
+          reviewQualityScore                    * 0.25 +
+          keywordCoverageScore                  * 0.15
+        : profileCompletion.completionPercentage * 0.60 +
+          nativeSeoScore.score                  * 0.40,
     ));
 
     // ── Persist debug + sync metadata ────────────────────────
@@ -292,17 +305,25 @@ export async function processAuditJob(auditId: string) {
       aiResult.auditConfidence     = auditConfidence;
       aiResult.businessIntelligence = businessIntelligence;
 
-      aiResult.reviewAnalysis = {
-        ...aiResult.reviewAnalysis,
-        reviewCount:    reviewMetrics.reviewCount,
-        averageRating:  reviewMetrics.averageRating,
-        reviewsPerWeek: reviewMetrics.reviewsPerWeek,
-        industryAverage: reviewMetrics.industryAverage,
-        responseRate:   reviewMetrics.responseRate,
-        positivePercent: reviewMetrics.positivePercent,
-        neutralPercent:  reviewMetrics.neutralPercent,
-        negativePercent: reviewMetrics.negativePercent,
-      };
+      // No real reviews synced yet (e.g. Google was just connected) — omit
+      // the section entirely rather than merging in a hollow "0 reviews,
+      // 0 rating" block that would misleadingly read as a real finding.
+      // AuditReportGrexa checks for this and skips rendering the section.
+      if (hasReviewData) {
+        aiResult.reviewAnalysis = {
+          ...aiResult.reviewAnalysis,
+          reviewCount:    reviewMetrics.reviewCount,
+          averageRating:  reviewMetrics.averageRating,
+          reviewsPerWeek: reviewMetrics.reviewsPerWeek,
+          industryAverage: reviewMetrics.industryAverage,
+          responseRate:   reviewMetrics.responseRate,
+          positivePercent: reviewMetrics.positivePercent,
+          neutralPercent:  reviewMetrics.neutralPercent,
+          negativePercent: reviewMetrics.negativePercent,
+        };
+      } else {
+        delete aiResult.reviewAnalysis;
+      }
 
       aiResult.businessTier = targetTier;
       aiResult.competitors  = effectiveCompetitors;
@@ -351,6 +372,14 @@ export async function processAuditJob(auditId: string) {
         await Business.updateOne(
           { _id: audit.businessId, subscriptionStatus: { $ne: 'active' } },
           { $set: { freeAuditUsed: true } }
+        );
+        // Admin sales pipeline: this workspace just experienced the product
+        // for the first time — enter it as a 'Lead'. Only on businesses with
+        // no stage yet, so this never overwrites one the admin already moved
+        // forward (or the 'Customer' stage set on payment).
+        await Business.updateOne(
+          { _id: audit.businessId, pipelineStage: { $exists: false } },
+          { $set: { pipelineStage: 'Lead' } }
         );
       } catch (gateErr) {
         console.error(`[auditService] Failed to update freeAuditUsed for business ${audit.businessId}:`, gateErr);

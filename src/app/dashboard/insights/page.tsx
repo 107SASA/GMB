@@ -108,6 +108,27 @@ function GoogleGLogo() {
   );
 }
 
+// Maps every error code /api/auth/google/callback can redirect back with to a
+// clear, actionable message — previously this rendered the raw code (e.g.
+// "access denied"), which explains nothing about what actually went wrong or
+// what to do about it.
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  access_denied:
+    "You cancelled or denied Google's permission request. Click Connect and approve access to continue.",
+  state_mismatch: 'The connection request expired or was invalid. Please try connecting again.',
+  no_code: "Google didn't return an authorization code. Please try connecting again.",
+  token_exchange_failed: 'Could not complete the connection with Google. Please try again in a moment.',
+  gbp_api_access:
+    "Google denied access to your Business Profile data. Make sure the Google account you're connecting has Manager or Owner access to this business on Google Business Profile, then try again.",
+  gbp_api_error: "Google's Business Profile service returned an error. Please try again shortly.",
+  no_gbp_account:
+    "That Google account doesn't manage any Business Profiles. Sign in with the Google account that manages this business's listing instead.",
+};
+
+function oauthErrorMessage(code: string): string {
+  return OAUTH_ERROR_MESSAGES[code] ?? `Connection failed (${code.replace(/_/g, ' ')}). Please try again.`;
+}
+
 export default function InsightsPage() {
   const { activeBusiness } = useBusiness();
   const [data, setData] = useState<InsightsData | null>(null);
@@ -171,8 +192,8 @@ export default function InsightsPage() {
           </p>
 
           {oauthError && (
-            <div className="mb-4 text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-4 py-2">
-              Connection failed: {oauthError.replace(/_/g, ' ')}. Please try again.
+            <div className="mb-4 text-sm text-left text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
+              {oauthErrorMessage(oauthError)}
             </div>
           )}
 

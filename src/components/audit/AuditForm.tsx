@@ -61,6 +61,10 @@ export default function AuditForm() {
       router.push(`/dashboard/audit/${data.auditId}`);
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      // Always clear the loading state, regardless of which path above was
+      // taken — previously the UPGRADE_REQUIRED branch returned early without
+      // resetting it, leaving "Running Audit Engines…" spinning forever.
       setLoading(false);
     }
   };
@@ -135,7 +139,7 @@ export default function AuditForm() {
                 type="text"
                 value={categoryOverride}
                 onChange={e => setCategoryOverride(e.target.value)}
-                placeholder="e.g. IT Company, Restaurant, Hospital"
+                placeholder="e.g. IT Company, Restaurant, Retail Store"
                 className={`w-full p-3 border rounded-lg text-slate-800 font-medium focus:outline-none focus:ring-2 transition-colors ${
                   missingCategory
                     ? 'border-amber-300 bg-amber-50 focus:ring-amber-300 placeholder:text-amber-400'

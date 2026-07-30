@@ -179,6 +179,18 @@ export default function ContentWorkspace() {
         </button>
       </div>
 
+      <div className="flex items-start gap-2.5 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
+        <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>
+          Nothing here is posted anywhere yet — this is a draft. Click <strong>Schedule</strong> on a
+          post (or use Auto/Manual Schedule below) to queue it in your Content Scheduler; it publishes
+          to your Google Business Profile automatically on its scheduled date. Every generated post —
+          scheduled or not — stays available under <strong>Content History</strong>.
+        </span>
+      </div>
+
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         {/* Tab Navigation — horizontally scrollable on narrow screens */}
         <div className="overflow-x-auto border-b border-slate-200 bg-slate-50/50">

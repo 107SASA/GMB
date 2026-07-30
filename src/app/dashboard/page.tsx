@@ -105,8 +105,22 @@ export default function CommandCenter() {
           onRangeChange={handleRangeChange}
         />
 
-        <SectionLabel>Performance Overview</SectionLabel>
-        <MetricsGrid metrics={data.metrics} />
+        {/*
+          A brand-new customer lands here right after paying, when every
+          metric/chart below is genuinely zero — nothing has happened yet.
+          CRM & AI Activity goes first because it renders actionable empty
+          states ("add your first lead", etc.) rather than a wall of 0s, so
+          the first thing they see isn't a dashboard that looks broken.
+          Performance Overview / Leads Growth / Lead Sources / GBP Performance
+          fill in for real once they start using the product.
+        */}
+        <SectionLabel>CRM & AI Activity</SectionLabel>
+        <QuickPanels panels={data.panels} />
+
+        <div className="pt-6">
+          <SectionLabel>Performance Overview</SectionLabel>
+          <MetricsGrid metrics={data.metrics} />
+        </div>
 
         <ChartsSection charts={data.charts} rangeDays={data.range?.days ?? 30} />
 
@@ -114,11 +128,6 @@ export default function CommandCenter() {
         <div className="border-t border-slate-100 pt-8 mt-2 mb-2">
           <SectionLabel>Google Business Profile</SectionLabel>
           <GBPSection />
-        </div>
-
-        <div className="pt-6">
-          <SectionLabel>CRM & AI Activity</SectionLabel>
-          <QuickPanels panels={data.panels} />
         </div>
 
       </div>

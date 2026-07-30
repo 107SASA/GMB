@@ -9,6 +9,13 @@ export interface IPlatformSettings extends Document {
   maintenanceMode: boolean;
   defaultTrialDays: number;
   reviewRequestCooldownDays: number;
+  /**
+   * Admin's own sales-pipeline Kanban columns (Business.pipelineStage values)
+   * — the platform-wide equivalent of a business owner's per-workspace
+   * `Business.kanbanColumns`. Single shared list since this is one pipeline
+   * across every prospect/customer, not per-tenant.
+   */
+  salesKanbanColumns: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,6 +30,10 @@ const PlatformSettingsSchema: Schema = new Schema(
     maintenanceMode:            { type: Boolean, default: false },
     defaultTrialDays:           { type: Number, default: 14 },
     reviewRequestCooldownDays:  { type: Number, default: 30 },
+    salesKanbanColumns: {
+      type: [String],
+      default: ['Lead', 'Contacted', 'Demo Scheduled', 'Negotiating', 'Customer', 'Lost'],
+    },
   },
   { timestamps: true }
 );

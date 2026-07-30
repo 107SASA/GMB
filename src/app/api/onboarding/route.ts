@@ -51,10 +51,15 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: passwordCheck.error }, { status: 400 });
       }
 
-      const normalizedPhone = normalizePhone(body.phone || '');
+      // The user's OWN contact number (StepAccount) — deliberately separate
+      // from `body.phone`, which is the BUSINESS's phone from StepBusiness
+      // (used below for Business.create only). These used to be the same
+      // field, so autofilling a business's Google-listed phone number
+      // silently became the user's personal account phone too.
+      const normalizedPhone = normalizePhone(body.personalPhone || '');
       if (!PHONE_REGEX.test(normalizedPhone)) {
         return NextResponse.json(
-          { error: 'Please enter a valid phone number in international format, e.g. +14155550100.' },
+          { error: 'Please enter your phone number in international format, e.g. +14155550100.' },
           { status: 400 }
         );
       }
@@ -67,6 +72,7 @@ export async function POST(req: Request) {
         fullName: body.fullName || 'Test User',
         email,
         phone: normalizedPhone,
+        companyName: body.companyName || undefined,
         passwordHash,
         role: 'CLIENT',
         isEmailVerified: false,
@@ -101,6 +107,12 @@ export async function POST(req: Request) {
       if (!otpResult.success) {
         console.error('Failed to send onboarding OTP email:', otpResult.error);
       }
+    } else if (body.companyName && !newUser.companyName) {
+      // Existing account resuming onboarding (e.g. after an earlier step failed) —
+      // backfill the company name they just typed in StepOrganization. Never
+      // overwrites one already saved (e.g. edited later from the Profile page).
+      newUser.companyName = body.companyName;
+      await newUser.save();
     }
 
     // 2. Create Organization

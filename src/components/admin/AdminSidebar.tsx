@@ -31,6 +31,7 @@ const adminGroups = [
     label: null,
     links: [
       { name: 'Dashboard',     icon: LayoutDashboard, href: '/admin' },
+      { name: 'Sales Leads',   icon: KanbanSquare,    href: '/admin/leads' },
       { name: 'Customers',     icon: Users,           href: '/admin/customers' },
       { name: 'Businesses',    icon: Building2,       href: '/admin/businesses' },
       { name: 'Subscriptions', icon: CreditCard,      href: '/admin/subscriptions' },

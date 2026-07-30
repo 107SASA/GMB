@@ -23,9 +23,20 @@ interface KanbanBoardProps {
   onLeadClick: (lead: any) => void;
   columns: string[];
   setColumns: React.Dispatch<React.SetStateAction<string[]>>;
+  /** Base path for per-lead PATCH calls (`${updateEndpoint}/${leadId}`) — lets
+   * the admin sales-pipeline board reuse this component against its own API
+   * instead of the business-owner CRM's `/api/crm/leads`. */
+  updateEndpoint?: string;
 }
 
-export default function KanbanBoard({ leads, setLeads, onLeadClick, columns, setColumns }: KanbanBoardProps) {
+export default function KanbanBoard({
+  leads,
+  setLeads,
+  onLeadClick,
+  columns,
+  setColumns,
+  updateEndpoint = '/api/crm/leads',
+}: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [newColumnName, setNewColumnName] = useState('');
   const [showInput, setShowInput] = useState(false);
@@ -51,7 +62,7 @@ export default function KanbanBoard({ leads, setLeads, onLeadClick, columns, set
     const leadsInColumn = leads.filter(lead => lead.pipelineStage === colName);
     await Promise.all(
       leadsInColumn.map(lead =>
-        fetch(`/api/crm/leads/${lead._id}`, {
+        fetch(`${updateEndpoint}/${lead._id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pipelineStage: null })
@@ -107,7 +118,7 @@ export default function KanbanBoard({ leads, setLeads, onLeadClick, columns, set
 
     // Save to DB
     try {
-      await fetch(`/api/crm/leads/${activeLeadId}`, {
+      await fetch(`${updateEndpoint}/${activeLeadId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pipelineStage: targetColumn })

@@ -230,6 +230,11 @@ export default function AuditReportGrexa({
   const missingKw    = data.seoScore?.missingKeywords ?? [];
 
   const reviews      = data.reviewAnalysis;
+  // No reviews synced yet (e.g. Google was just connected) — every metric
+  // below this point derives from reviewCount, so instead of showing hollow
+  // zeros/"High risk" that have nothing to do with the business, the report
+  // shows a single "not enough data yet" placeholder in their place.
+  const hasReviews   = !!reviews;
   const rating       = reviews?.averageRating ?? 0;
   const reviewCount  = reviews?.reviewCount ?? 0;
   const rpw          = reviews?.reviewsPerWeek ?? 0;
@@ -632,61 +637,74 @@ export default function AuditReportGrexa({
           </div>
         </div>
 
-        {/* Row 2: Reviews/Week | Response % | Suspension Risk */}
-        <div className="grid grid-cols-3 gap-4">
+        {/* Row 2: Reviews/Week | Response % | Suspension Risk — every one of
+            these derives from reviewCount, so with no reviews synced yet
+            they'd all read as hollow zeros / false "High risk" rather than
+            real findings. Show one honest placeholder instead. */}
+        {hasReviews ? (
+          <div className="grid grid-cols-3 gap-4">
 
-          {/* Reviews Per Week */}
-          <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/40">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-semibold text-slate-700">Reviews Per Week</span>
-              <StatusBadge status={rpw >= industryAvg ? 'Good' : 'Poor'} />
+            {/* Reviews Per Week */}
+            <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/40">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-slate-700">Reviews Per Week</span>
+                <StatusBadge status={rpw >= industryAvg ? 'Good' : 'Poor'} />
+              </div>
+              <div className="mb-1.5">
+                <span className="text-4xl font-black text-slate-900">{rpw.toFixed(2)}</span>
+                <span className="text-sm font-semibold text-slate-400 ml-1">/Week</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden mb-2">
+                <div
+                  className="h-full rounded-full"
+                  style={{ width: `${Math.min(100, (rpw / (industryAvg * 1.5)) * 100)}%`, background: rpw >= industryAvg ? '#22c55e' : '#ef4444' }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Industry avg <strong className="text-slate-600">{industryAvg}</strong>/week · based on last {reviewPeriodDays} days
+              </p>
             </div>
-            <div className="mb-1.5">
-              <span className="text-4xl font-black text-slate-900">{rpw.toFixed(2)}</span>
-              <span className="text-sm font-semibold text-slate-400 ml-1">/Week</span>
+
+            {/* Response Percentage */}
+            <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/40">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-slate-700">Response Rate</span>
+                <StatusBadge status={responsePct >= 80 ? 'Good' : 'Poor'} />
+              </div>
+              <div className="flex justify-center my-1">
+                <CircularGauge
+                  value={responsePct}
+                  size={80}
+                  color={responsePct >= 80 ? '#22c55e' : '#ef4444'}
+                />
+              </div>
+              <p className="text-[10px] text-slate-400 text-center mt-1">
+                Should reply to <strong className="text-slate-600">80%</strong> of reviews
+              </p>
             </div>
-            <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden mb-2">
-              <div
-                className="h-full rounded-full"
-                style={{ width: `${Math.min(100, (rpw / (industryAvg * 1.5)) * 100)}%`, background: rpw >= industryAvg ? '#22c55e' : '#ef4444' }}
-              />
+
+            {/* Suspension Risk */}
+            <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/40">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-slate-700">Suspension Risk</span>
+                <StatusBadge status={suspLevel} />
+              </div>
+              <div className="flex justify-center my-1">
+                <CircularGauge value={suspPct} size={80} color={suspColor} />
+              </div>
+              <p className="text-[10px] text-slate-400 text-center mt-1">0 Policy Violation</p>
             </div>
-            <p className="text-[10px] text-slate-400">
-              Industry avg <strong className="text-slate-600">{industryAvg}</strong>/week · based on last {reviewPeriodDays} days
+
+          </div>
+        ) : (
+          <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/40 flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+            <p className="text-sm text-slate-500">
+              Review-based metrics (reviews/week, response rate, suspension risk) will appear once
+              reviews have synced from your newly-connected Google Business Profile.
             </p>
           </div>
-
-          {/* Response Percentage */}
-          <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/40">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-semibold text-slate-700">Response Rate</span>
-              <StatusBadge status={responsePct >= 80 ? 'Good' : 'Poor'} />
-            </div>
-            <div className="flex justify-center my-1">
-              <CircularGauge
-                value={responsePct}
-                size={80}
-                color={responsePct >= 80 ? '#22c55e' : '#ef4444'}
-              />
-            </div>
-            <p className="text-[10px] text-slate-400 text-center mt-1">
-              Should reply to <strong className="text-slate-600">80%</strong> of reviews
-            </p>
-          </div>
-
-          {/* Suspension Risk */}
-          <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/40">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-semibold text-slate-700">Suspension Risk</span>
-              <StatusBadge status={suspLevel} />
-            </div>
-            <div className="flex justify-center my-1">
-              <CircularGauge value={suspPct} size={80} color={suspColor} />
-            </div>
-            <p className="text-[10px] text-slate-400 text-center mt-1">0 Policy Violation</p>
-          </div>
-
-        </div>
+        )}
       </div>
 
       {/* ══ 6. PROFILE COMPLETION ══════════════════════════════════════ */}

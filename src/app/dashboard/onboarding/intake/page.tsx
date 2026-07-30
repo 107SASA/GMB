@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2, Sparkles, Target, Rocket } from 'lucide-react';
 
 interface IntakeData {
+  category: string;
   description: string;
   services: string;
   offers: string;
@@ -19,7 +20,7 @@ interface IntakeData {
 }
 
 const EMPTY: IntakeData = {
-  description: '', services: '', offers: '', keywords: [], city: '', area: '',
+  category: '', description: '', services: '', offers: '', keywords: [], city: '', area: '',
   tone: 'professional', uniqueSellingPoints: '', targetAudience: '',
   competitorNames: [], primaryGoal: '',
 };
@@ -82,8 +83,12 @@ const inputCls = 'w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring
 
 export default function IntakePage() {
   const router = useRouter();
+  // Renders the empty form immediately instead of blocking behind a full-page
+  // spinner — for a brand-new customer (the common case) there's nothing to
+  // prefill anyway, so making everyone wait on this round-trip before they
+  // can even start typing was unnecessary. Any previously-saved answers
+  // (resuming a partial fill) backfill a moment later once the GET resolves.
   const [data, setData] = useState<IntakeData>(EMPTY);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,8 +100,6 @@ export default function IntakePage() {
         if (json.success) setData({ ...EMPTY, ...json.data });
       } catch {
         /* keep defaults */
-      } finally {
-        setLoading(false);
       }
     })();
   }, []);
@@ -106,6 +109,7 @@ export default function IntakePage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (!data.category.trim()) return setError('Please enter your business category.');
     if (data.description.trim().length < 10) return setError('Please describe your business (at least 10 characters).');
     if (data.services.trim().length < 3) return setError('List the services you offer.');
     if (data.keywords.length === 0) return setError('Add at least one target keyword — these drive your audits and content.');
@@ -127,14 +131,6 @@ export default function IntakePage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
       <div className="text-center mb-8">
@@ -155,14 +151,17 @@ export default function IntakePage() {
         {/* What you do */}
         <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
           <div className="flex items-center gap-2 text-slate-900 font-bold"><Target className="w-4 h-4 text-indigo-600" /> What you do</div>
-          <Field label="Business description *" hint="What does your business do, in a sentence or two?">
-            <textarea rows={3} className={inputCls} value={data.description} onChange={(e) => set('description', e.target.value)} placeholder="e.g. A multi-specialty hospital in Kolkata offering 24/7 emergency care, cardiology, and orthopedics." />
+          <Field label="Business category *" hint="Your exact category — this drives your audit and content.">
+            <input className={inputCls} value={data.category} onChange={(e) => set('category', e.target.value)} placeholder="e.g. Restaurant" />
           </Field>
-          <Field label="Services / treatments you offer *" hint="Comma-separated is fine.">
-            <textarea rows={2} className={inputCls} value={data.services} onChange={(e) => set('services', e.target.value)} placeholder="e.g. Emergency care, Cardiology, Orthopedics, Diagnostics, Health checkups" />
+          <Field label="Business description *" hint="What does your business do, in a sentence or two?">
+            <textarea rows={3} className={inputCls} value={data.description} onChange={(e) => set('description', e.target.value)} placeholder="e.g. A family-run bakery in Kolkata offering fresh breads, custom cakes, and daily pastries." />
+          </Field>
+          <Field label="Services you offer *" hint="Comma-separated is fine.">
+            <textarea rows={2} className={inputCls} value={data.services} onChange={(e) => set('services', e.target.value)} placeholder="e.g. Custom cakes, Wedding orders, Daily bread, Catering, Gift hampers" />
           </Field>
           <Field label="Current offers / promotions" hint="Optional — used in promotional posts.">
-            <input className={inputCls} value={data.offers} onChange={(e) => set('offers', e.target.value)} placeholder="e.g. 20% off full-body checkup this month" />
+            <input className={inputCls} value={data.offers} onChange={(e) => set('offers', e.target.value)} placeholder="e.g. 20% off your first order this month" />
           </Field>
         </section>
 
@@ -175,7 +174,7 @@ export default function IntakePage() {
             tags={data.keywords}
             onChange={(t) => set('keywords', t)}
             validate={isValidKeyword}
-            placeholder="e.g. best hospital in Kolkata"
+            placeholder="e.g. best bakery in Kolkata"
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <Field label="City"><input className={inputCls} value={data.city} onChange={(e) => set('city', e.target.value)} placeholder="e.g. Kolkata" /></Field>
@@ -190,14 +189,14 @@ export default function IntakePage() {
         <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
           <div className="flex items-center gap-2 text-slate-900 font-bold"><Rocket className="w-4 h-4 text-indigo-600" /> Standing out</div>
           <Field label="What makes you better than competitors?" hint="Your unique selling points.">
-            <textarea rows={2} className={inputCls} value={data.uniqueSellingPoints} onChange={(e) => set('uniqueSellingPoints', e.target.value)} placeholder="e.g. Only 24/7 NABH-accredited cardiac unit in the area, 15-min ambulance guarantee" />
+            <textarea rows={2} className={inputCls} value={data.uniqueSellingPoints} onChange={(e) => set('uniqueSellingPoints', e.target.value)} placeholder="e.g. Only bakery in the area using organic flour, same-day delivery guarantee" />
           </Field>
           <TagInput
             label="Main competitors"
             hint="Names of businesses you compete with locally. Press Enter to add."
             tags={data.competitorNames}
             onChange={(t) => set('competitorNames', t)}
-            placeholder="e.g. Apollo Gleneagles"
+            placeholder="e.g. Corner Bakery Co."
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <Field label="Primary goal">

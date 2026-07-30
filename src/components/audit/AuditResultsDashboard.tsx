@@ -23,13 +23,31 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
+    let attempts = 0;
+    // Generation normally finishes in 15–30s. The backend marks the audit
+    // FAILED on a caught error, which stops this poll immediately — but if the
+    // job never runs at all (e.g. the worker crashed or a queue never picked
+    // it up), status stays PENDING forever and this would otherwise spin
+    // indefinitely with no way out. Cap it at 4 minutes (80 x 3s) and surface
+    // a clear message instead.
+    const MAX_ATTEMPTS = 80;
     const fetchAudit = async () => {
       try {
         const res = await fetch(`/api/audit/${auditId}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         setAudit(data.audit);
-        if (data.audit.status !== 'PENDING') clearInterval(interval);
+        if (data.audit.status !== 'PENDING') {
+          clearInterval(interval);
+          return;
+        }
+        attempts += 1;
+        if (attempts >= MAX_ATTEMPTS) {
+          clearInterval(interval);
+          setError(
+            'This audit is taking much longer than usual. Refresh the page in a few minutes to check on it, or run a new one.'
+          );
+        }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to load');
         clearInterval(interval);

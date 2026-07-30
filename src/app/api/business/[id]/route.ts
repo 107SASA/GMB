@@ -47,6 +47,11 @@ export async function PATCH(
     if (body.address !== undefined) business.address = String(body.address).trim();
     if (body.googleMapsUrl !== undefined) business.googleMapsUrl = String(body.googleMapsUrl).trim();
     if (body.placeId !== undefined) business.placeId = String(body.placeId).trim() || undefined;
+    // Social profile links — collected here instead of at onboarding now
+    // (that step was removed; every field on it was optional anyway).
+    if (body.metaBusinessProfileUrl !== undefined) business.metaBusinessProfileUrl = String(body.metaBusinessProfileUrl).trim() || undefined;
+    if (body.facebookPageUrl !== undefined) business.facebookPageUrl = String(body.facebookPageUrl).trim() || undefined;
+    if (body.instagramUrl !== undefined) business.instagramUrl = String(body.instagramUrl).trim() || undefined;
 
     // --- Keywords (array of strings, max 20) ---
     if (body.keywords !== undefined) {

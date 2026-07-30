@@ -1098,7 +1098,7 @@ export default function CampaignsDashboard() {
                 type="text"
                 value={tagsInput}
                 onChange={e => setTagsInput(e.target.value)}
-                placeholder="e.g. VIP, Dental, July-Customers"
+                placeholder="e.g. VIP, Repeat, July-Customers"
                 className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               {availableTags.length > 0 && (

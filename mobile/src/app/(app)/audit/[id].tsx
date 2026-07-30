@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -305,7 +305,25 @@ function ChecklistSection({
   );
 }
 
-function PendingBody() {
+function PendingBody({ timedOut, onRetry }: { timedOut: boolean; onRetry: () => void }) {
+  if (timedOut) {
+    return (
+      <View className="flex-1 items-center justify-center gap-3 px-10">
+        <Ionicons name="time-outline" size={40} color="#818CF8" />
+        <Text className="text-lg font-semibold text-white">Taking longer than usual</Text>
+        <Text className="text-center text-sm text-zinc-400">
+          This audit is taking much longer than expected.
+        </Text>
+        <Pressable
+          onPress={onRetry}
+          className="mt-2 flex-row items-center gap-2 rounded-full bg-brand px-5 py-2.5 active:opacity-80"
+        >
+          <Ionicons name="refresh" size={15} color="#ffffff" />
+          <Text className="text-sm font-semibold text-on-brand">Check again</Text>
+        </Pressable>
+      </View>
+    );
+  }
   return (
     <View className="flex-1 items-center justify-center gap-3 px-10">
       <ActivityIndicator size="large" color="#6366F1" />
@@ -537,13 +555,26 @@ export default function AuditDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { activeBusinessId } = useBusiness();
 
+  // Job-status poll: keep asking every 3s until the background worker
+  // finishes, then stop (mirrors the web results page). Capped at 4 minutes —
+  // the backend marks the audit FAILED on a caught error, which stops this
+  // immediately, but if the job never ran at all (worker crash, queue never
+  // picked it up) status would stay PENDING forever with no way out.
+  const firstPendingAt = useRef<number | null>(null);
+  const [timedOut, setTimedOut] = useState(false);
   const audit = useQuery({
     queryKey: ['audit', activeBusinessId, id],
     queryFn: () => fetchAudit(id),
     enabled: !!id,
-    // Job-status poll: keep asking every 3s until the background worker
-    // finishes, then stop (mirrors the web results page).
-    refetchInterval: (query) => (query.state.data?.status === 'PENDING' ? 3000 : false),
+    refetchInterval: (query) => {
+      if (query.state.data?.status !== 'PENDING') return false;
+      if (firstPendingAt.current == null) firstPendingAt.current = Date.now();
+      if (Date.now() - firstPendingAt.current > 4 * 60 * 1000) {
+        setTimedOut(true);
+        return false;
+      }
+      return 3000;
+    },
   });
 
   const share = useMutation({
@@ -590,7 +621,14 @@ export default function AuditDetailScreen() {
           hint={getApiErrorMessage(audit.error, 'Go back and try again.')}
         />
       ) : status === 'PENDING' ? (
-        <PendingBody />
+        <PendingBody
+          timedOut={timedOut}
+          onRetry={() => {
+            firstPendingAt.current = null;
+            setTimedOut(false);
+            void audit.refetch();
+          }}
+        />
       ) : status === 'FAILED' ? (
         <EmptyState
           title="Audit failed"

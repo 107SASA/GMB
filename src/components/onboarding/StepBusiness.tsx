@@ -42,7 +42,12 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
 
   // UI States
   const [showDropdown, setShowDropdown] = useState(false);
-  const [manualMode, setManualMode] = useState(false);
+  // Defaults to the review/manual form when a business is already selected —
+  // this step remounts fresh every time the wizard navigates back to it, so
+  // without this, a returning user would see a blank search box (and could
+  // search again and silently overwrite their earlier selection) even though
+  // `data` still holds their chosen business.
+  const [manualMode, setManualMode] = useState(!!data.businessName);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -159,8 +164,13 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
   };
 
   const handleContinue = () => {
-    if (!data.businessName || !data.phone || !data.category || !data.city || !data.area || !data.description) {
-      setError('Please fill in all required fields: Business Name, Category, Description, Phone, City, and Area.');
+    // Category/description are NOT required here — Google's Places data only
+    // has them for a minority of listings (see the autofill notes below), so
+    // forcing every user to type them in manually during signup was pure
+    // friction. They're collected properly in the post-payment intake form
+    // instead, where there's time to get them right.
+    if (!data.businessName || !data.phone || !data.city || !data.area) {
+      setError('Please fill in all required fields: Business Name, Phone, City, and Area.');
       return;
     }
     if (!PHONE_REGEX.test(normalizePhone(data.phone))) {
@@ -186,15 +196,15 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
             <div className="flex gap-1 p-1 bg-slate-100 rounded-xl mb-4">
               <button
                 onClick={() => setInputMode('search')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${inputMode === 'search' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all truncate ${inputMode === 'search' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                <Search className="w-4 h-4" /> Search by Name
+                <Search className="w-4 h-4 shrink-0" /> <span className="truncate">Search by Name</span>
               </button>
               <button
                 onClick={() => setInputMode('url')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${inputMode === 'url' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all truncate ${inputMode === 'url' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                <Link className="w-4 h-4" /> Paste GBP URL
+                <Link className="w-4 h-4 shrink-0" /> <span className="truncate">Paste GBP URL</span>
               </button>
             </div>
 
@@ -315,32 +325,12 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-slate-900 mb-2">Business Category *</label>
-                <p className="text-xs text-slate-500 mb-2">Please enter your exact business category manually (e.g. University, Dental Clinic, Restaurant).</p>
-                <input
-                  type="text"
-                  value={data.category}
-                  onChange={e => updateData({ category: e.target.value })}
-                  /* No `capitalize` class here: CSS text-transform also applies
-                     to the placeholder, which rendered it as "E.G. Dental Clinic".
-                     deriveCategory() in services/google/places.ts already returns
-                     Title Case. */
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
-                  placeholder="e.g. Dental Clinic"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-slate-900 mb-2">Business Description *</label>
-                <textarea
-                  value={data.description}
-                  onChange={e => updateData({ description: e.target.value })}
-                  rows={3}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none resize-none"
-                  placeholder="Tell us what your business does..."
-                />
-              </div>
+              {/* Category and description are collected in the post-payment
+                  intake form instead (Google's data only covers a minority
+                  of listings for either, so this was pure friction here
+                  with no reliable payoff). Google-sourced values (when
+                  available) still flow through via handleSelectBusiness —
+                  they just aren't required or edited on this screen. */}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>

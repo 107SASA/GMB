@@ -10,17 +10,22 @@ interface Props {
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
 
 export default function StepAccount({ data, updateData, onNext, onBack }: Props) {
   const [error, setError] = useState('');
 
   const handleContinue = () => {
-    if (!data.fullName || !data.email) {
+    if (!data.fullName || !data.email || !data.personalPhone) {
       setError('Please fill out all fields.');
       return;
     }
     if (!EMAIL_REGEX.test(data.email)) {
       setError('Please enter a valid email address.');
+      return;
+    }
+    if (!PHONE_REGEX.test(data.personalPhone.replace(/[^\d+]/g, ''))) {
+      setError('Please enter your phone number in international format, e.g. +14155550100.');
       return;
     }
     setError('');
@@ -53,6 +58,19 @@ export default function StepAccount({ data, updateData, onNext, onBack }: Props)
               className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
               placeholder="john@example.com"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-slate-900 mb-2">Your Phone Number</label>
+            <input
+              type="tel"
+              value={data.personalPhone}
+              onChange={e => updateData({ personalPhone: e.target.value })}
+              className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+              placeholder="+14155550100"
+            />
+            <p className="text-xs text-slate-400 mt-1.5">
+              Your own contact number — this stays separate from your business's phone number, which you'll add next.
+            </p>
           </div>
         </div>
       </div>

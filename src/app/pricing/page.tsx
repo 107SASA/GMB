@@ -17,6 +17,14 @@ export default function PricingPage() {
   const [cycle, setCycle] = useState('monthly');
   const { checkout, subscribe } = useRazorpayCheckout({
     onUnauthenticated: () => router.push('/login'),
+    // Matches AuditPaywallSidebar/WorkspaceLockGate: redirect the instant the
+    // webhook confirms activation instead of waiting on a manual click, and
+    // force a fresh server render so a dashboard RSC payload cached from
+    // before the subscription activated is never served stale.
+    onActivated: () => {
+      router.push('/dashboard');
+      router.refresh();
+    },
   });
 
   const busy = checkout.phase === 'starting' || checkout.phase === 'confirming';
@@ -49,7 +57,7 @@ export default function PricingPage() {
               You're subscribed! All features are now unlocked.
             </div>
             <button
-              onClick={() => router.push('/dashboard')}
+              onClick={() => { router.push('/dashboard'); router.refresh(); }}
               className="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700 shrink-0"
             >
               Go to dashboard

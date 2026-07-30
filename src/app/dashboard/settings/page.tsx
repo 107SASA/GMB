@@ -116,6 +116,9 @@ export default function SettingsPage() {
     googleMapsUrl: '',
     placeId: '',
     whatsappNumber: '',
+    metaBusinessProfileUrl: '',
+    facebookPageUrl: '',
+    instagramUrl: '',
   });
   const [bpKeywords, setBpKeywords] = useState<string[]>([]);
   const [bpKeywordInput, setBpKeywordInput] = useState('');
@@ -175,6 +178,9 @@ export default function SettingsPage() {
             googleMapsUrl: b.googleMapsUrl ?? '',
             placeId: b.placeId ?? '',
             whatsappNumber: b.integrations?.whatsappNumber ?? '',
+            metaBusinessProfileUrl: b.metaBusinessProfileUrl ?? '',
+            facebookPageUrl: b.facebookPageUrl ?? '',
+            instagramUrl: b.instagramUrl ?? '',
           });
           setBpKeywords(b.keywords ?? []);
           setBpDescLen((b.description ?? '').length);
@@ -225,6 +231,9 @@ export default function SettingsPage() {
           placeId: bpForm.placeId,
           keywords: bpKeywords,
           'integrations.whatsappNumber': bpForm.whatsappNumber,
+          metaBusinessProfileUrl: bpForm.metaBusinessProfileUrl,
+          facebookPageUrl: bpForm.facebookPageUrl,
+          instagramUrl: bpForm.instagramUrl,
         }),
       });
       const data = await res.json();
@@ -434,6 +443,33 @@ export default function SettingsPage() {
                   value={bpForm.whatsappNumber}
                   onChange={e => setBpForm(p => ({ ...p, whatsappNumber: e.target.value }))}
                   placeholder="+91XXXXXXXXXX (E.164 format)"
+                />
+              </div>
+              <div>
+                <LabelRow label="Meta Business Profile URL" hint="Optional." />
+                <input
+                  className={inputCls('mt-1')}
+                  value={bpForm.metaBusinessProfileUrl}
+                  onChange={e => setBpForm(p => ({ ...p, metaBusinessProfileUrl: e.target.value }))}
+                  placeholder="https://business.facebook.com/…"
+                />
+              </div>
+              <div>
+                <LabelRow label="Facebook Page" hint="Optional." />
+                <input
+                  className={inputCls('mt-1')}
+                  value={bpForm.facebookPageUrl}
+                  onChange={e => setBpForm(p => ({ ...p, facebookPageUrl: e.target.value }))}
+                  placeholder="https://facebook.com/…"
+                />
+              </div>
+              <div>
+                <LabelRow label="Instagram URL" hint="Optional." />
+                <input
+                  className={inputCls('mt-1')}
+                  value={bpForm.instagramUrl}
+                  onChange={e => setBpForm(p => ({ ...p, instagramUrl: e.target.value }))}
+                  placeholder="https://instagram.com/…"
                 />
               </div>
             </div>

@@ -83,6 +83,15 @@ export interface IBusiness extends Document {
   // Enforced centrally in src/proxy.ts. Owner (SUPER_ADMIN) accounts bypass it.
   subscriptionStatus?: 'trialing' | 'active' | 'past_due' | 'canceled';
   freeAuditUsed?: boolean;
+  /**
+   * GrowwMatics' OWN sales pipeline stage for this workspace (admin CRM) —
+   * distinct from `kanbanColumns`/`Lead.pipelineStage`, which are the
+   * business owner's stages for THEIR OWN customers. Unset until the free
+   * audit completes (→ 'Lead'); set to 'Customer' the moment the workspace's
+   * subscription activates. Free-form string so it stays in sync with
+   * whatever columns the admin has configured in PlatformSettings.
+   */
+  pipelineStage?: string;
   razorpaySubscriptionId?: string;
   subscriptionCurrentPeriodEnd?: Date;
   /** True after the owner cancels: stays 'active' until the period ends (no
@@ -224,6 +233,8 @@ const BusinessSchema: Schema = new Schema(
       default: 'trialing',
     },
     freeAuditUsed: { type: Boolean, default: false },
+    // ADDITIVE — GrowwMatics' own sales pipeline stage (see IBusiness above).
+    pipelineStage: { type: String, index: true },
     razorpaySubscriptionId: { type: String, index: true, sparse: true },
     subscriptionCurrentPeriodEnd: { type: Date },
     subscriptionCancelAtPeriodEnd: { type: Boolean, default: false },

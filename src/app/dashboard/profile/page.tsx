@@ -360,7 +360,12 @@ export default function ProfilePage() {
 
           {/* Change Password card */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5">
-            <h2 className="text-base font-bold text-slate-900">Change Password</h2>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Change Password</h2>
+              <p className="text-sm text-slate-500 mt-0.5">
+                Changing password for <span className="font-medium text-slate-700">{user?.email ?? '—'}</span>
+              </p>
+            </div>
 
             {pwdSuccess && (
               <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">

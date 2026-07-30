@@ -76,6 +76,10 @@ export async function POST(req: Request) {
 
     await createSession(user._id.toString(), user.role);
 
+    // Powers "Last Login" on the Profile page — was never written anywhere,
+    // so it always showed as missing/"Never" regardless of actual login history.
+    await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
+
     // Sync activeBusinessId cookie so client-side context loads the right business
     let activeBusinessId = user.activeBusinessId?.toString();
     if (!activeBusinessId) {

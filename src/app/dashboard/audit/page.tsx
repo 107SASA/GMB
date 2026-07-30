@@ -103,13 +103,32 @@ export default function AuditDashboardPage() {
   if (showNewAudit) {
     return (
       <div className="space-y-6">
-        <button 
+        <button
           onClick={() => setShowNewAudit(false)}
           className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors flex items-center gap-1"
         >
           &larr; Back to Audits
         </button>
-        <AuditForm />
+        {activeBusiness && !activeBusiness.googleConnected ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-8 text-center">
+            <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 mb-2">Connect Google Business Profile first</h3>
+            <p className="text-slate-600 mb-6 max-w-md mx-auto">
+              Running a new audit needs a live Google Business Profile connection for {activeBusiness.name} —
+              without it, the report can&apos;t pull real ranking, review, or profile data.
+            </p>
+            <Link
+              href="/dashboard/gbp-profile"
+              className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold transition-all"
+            >
+              Connect Google Business Profile
+            </Link>
+          </div>
+        ) : (
+          <AuditForm />
+        )}
       </div>
     );
   }

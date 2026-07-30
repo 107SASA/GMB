@@ -29,6 +29,9 @@ export async function activateBusinessPlan(
         // A successful (re)activation clears any pending cancel + reminder state.
         subscriptionCancelAtPeriodEnd: false,
         subscriptionRemindersSent: [],
+        // Admin sales pipeline: a real payment is an unambiguous conversion
+        // event, so this always wins over whatever stage the admin had it in.
+        pipelineStage: 'Customer',
         ...(opts.currentPeriodEnd && { subscriptionCurrentPeriodEnd: opts.currentPeriodEnd }),
       },
     }

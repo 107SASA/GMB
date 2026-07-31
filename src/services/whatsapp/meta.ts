@@ -91,6 +91,27 @@ export async function sendMetaText(phone: string, body: string): Promise<MetaSen
 }
 
 /**
+ * Sends an image by public URL — Meta fetches it server-side, no separate
+ * media-upload step needed for a URL that's already publicly reachable
+ * (e.g. from src/lib/storage.ts's uploadPublicObject). Subject to the same
+ * 24h customer-service-window rule as text, but the template-fallback in
+ * ./send.ts is text-only (an image fallback needs a header-media approved
+ * template, which isn't configured here) — an image send outside the window
+ * simply fails with a reengagement error rather than retrying.
+ */
+export async function sendMetaImage(phone: string, imageUrl: string, caption?: string): Promise<MetaSendResult> {
+  const config = getMetaConfig();
+  if (!config) return { success: false, error: 'Meta WhatsApp is not configured (missing META_WHATSAPP_ACCESS_TOKEN / META_WHATSAPP_PHONE_NUMBER_ID)' };
+  return postToMeta(config, {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: normalizePhoneForMeta(phone),
+    type: 'image',
+    image: { link: imageUrl, ...(caption ? { caption } : {}) },
+  });
+}
+
+/**
  * Send an approved template. `bodyParams` fill {{1}}, {{2}}, ... in order.
  * Meta rejects params containing newlines/tabs/4+ consecutive spaces, so
  * params are flattened to single-spaced text.

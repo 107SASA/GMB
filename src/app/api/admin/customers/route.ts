@@ -21,7 +21,12 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status') || 'all';
     const skip   = (page - 1) * limit;
 
+    // Unclaimed shadow accounts (see src/lib/shadowAccount.ts — created
+    // automatically by lead-gen flows like /free-report) are hidden from the
+    // customer list by default so they don't inflate real-signup counts.
+    const includeShadow = searchParams.get('includeShadow') === 'true';
     const query: any = { role: { $ne: 'SUPER_ADMIN' } };
+    if (!includeShadow) query.isShadowAccount = { $ne: true };
 
     if (search.trim()) {
       query.$or = [
@@ -103,10 +108,11 @@ export async function GET(req: NextRequest) {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
+    const shadowFilter = includeShadow ? {} : { isShadowAccount: { $ne: true } };
     const [newThisWeek, proCount, enterpriseCount] = await Promise.all([
-      User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, createdAt: { $gte: sevenDaysAgo } }),
-      User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, subscriptionPlan: 'Pro' }),
-      User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, subscriptionPlan: 'Enterprise' }),
+      User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, ...shadowFilter, createdAt: { $gte: sevenDaysAgo } }),
+      User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, ...shadowFilter, subscriptionPlan: 'Pro' }),
+      User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, ...shadowFilter, subscriptionPlan: 'Enterprise' }),
     ]);
 
     return NextResponse.json({

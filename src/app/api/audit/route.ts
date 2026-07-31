@@ -47,6 +47,7 @@ export async function POST(req: Request) {
     const workspaceUnlocked = isWorkspaceUnlocked({
       subscriptionStatus: business.subscriptionStatus,
       userSubscriptionPlan: (authResult.user as any).subscriptionPlan,
+      businessCreatedAt: business.createdAt,
     });
     if (
       authResult.user.role !== 'SUPER_ADMIN' &&

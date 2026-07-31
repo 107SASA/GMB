@@ -10,6 +10,7 @@ import MessageQueue from '@/models/MessageQueue';
 import { inngest } from '@/services/inngest/client';
 import Customer from '@/models/Customer';
 import { validateTwilioSignature } from '@/lib/twilioSignature';
+import { sendOutboundMessage } from '@/services/whatsapp/send';
 
 export const dynamic = 'force-dynamic';
 
@@ -174,6 +175,23 @@ interface PlatformInbound {
   messageSid: string;
 }
 
+/**
+ * First-touch intent for a phone with no active conversation of any kind.
+ * Matches the distinct CTA strings first (bookDemoLink / boostProfileLink in
+ * src/lib/whatsappCta.ts), then falls back to loose keyword matching so a
+ * reply to the menu (e.g. "1", "report") still routes correctly.
+ */
+function classifyIntent(body: string): 'report' | 'booking' | 'unknown' {
+  const text = (body || '').trim().toLowerCase();
+  if (!text) return 'unknown';
+  if (text === '1' || /\b(report|profile|boost|rank)\b/.test(text)) return 'report';
+  if (text === '2' || /\b(demo|book)\b/.test(text)) return 'booking';
+  return 'unknown';
+}
+
+const INTENT_MENU_MESSAGE =
+  'Hi! 👋 Want to:\n1️⃣ Get a *free Google Business report*\n2️⃣ *Book a demo*\n\nJust reply 1 or 2.';
+
 async function processPlatformInbound({ phone, profileName, body }: PlatformInbound) {
   const { phoneDedupeKey, normalizePhoneE164 } = await import('@/lib/phone');
   const key = phoneDedupeKey(phone);
@@ -195,31 +213,71 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     return;
   }
 
-  // 2. Otherwise it's a demo prospect → BOOKING agent.
+  // 2. An active demo-booking thread wins next.
   const { default: BookingConversation } = await import('@/models/BookingConversation');
-  let convo = await BookingConversation.findOne({ phoneKey: key, status: 'active' });
-
-  if (isOptOut) {
-    if (convo) {
-      convo.status = 'stopped';
-      await convo.save();
+  const activeBooking = await BookingConversation.findOne({ phoneKey: key, status: 'active' });
+  if (activeBooking) {
+    if (isOptOut) {
+      activeBooking.status = 'stopped';
+      await activeBooking.save();
+      return;
     }
+    if (!activeBooking.leadName && profileName) activeBooking.leadName = profileName;
+    activeBooking.messages.push({ role: 'lead', text: body, at: new Date() });
+    await activeBooking.save();
+    await inngest.send({ name: 'booking/agent.reply', data: { conversationId: activeBooking._id.toString(), body } });
     return;
   }
 
-  if (!convo) {
-    convo = await BookingConversation.create({
+  // 3. An active (not yet claimed/stopped) report thread wins next.
+  const { default: ReportConversation } = await import('@/models/ReportConversation');
+  const activeReport = await ReportConversation.findOne({ phoneKey: key, status: { $ne: 'stopped' } });
+  if (activeReport) {
+    if (isOptOut) {
+      activeReport.status = 'stopped';
+      await activeReport.save();
+      return;
+    }
+    if (!activeReport.leadName && profileName) activeReport.leadName = profileName;
+    activeReport.messages.push({ role: 'lead', text: body, at: new Date() });
+    await activeReport.save();
+    await inngest.send({ name: 'report/agent.reply', data: { conversationId: activeReport._id.toString(), body } });
+    return;
+  }
+
+  if (isOptOut) return; // Nothing active to stop.
+
+  // 4. Brand-new thread — classify by the CTA's prefilled text (or a reply to
+  // the menu below), rather than defaulting to one agent over the other.
+  const intent = classifyIntent(body);
+
+  if (intent === 'report') {
+    const convo = await ReportConversation.create({
+      leadPhone: normalizePhoneE164(phone) || phone,
+      phoneKey: key,
+      leadName: profileName || '',
+      status: 'awaiting_connection',
+      messages: [{ role: 'lead', text: body, at: new Date() }],
+    });
+    await inngest.send({ name: 'report/agent.reply', data: { conversationId: convo._id.toString(), body } });
+    return;
+  }
+
+  if (intent === 'booking') {
+    const convo = await BookingConversation.create({
       leadPhone: normalizePhoneE164(phone) || phone,
       phoneKey: key,
       leadName: profileName || '',
       status: 'active',
+      messages: [{ role: 'lead', text: body, at: new Date() }],
     });
+    await inngest.send({ name: 'booking/agent.reply', data: { conversationId: convo._id.toString(), body } });
+    return;
   }
-  if (!convo.leadName && profileName) convo.leadName = profileName;
-  convo.messages.push({ role: 'lead', text: body, at: new Date() });
-  await convo.save();
 
-  await inngest.send({ name: 'booking/agent.reply', data: { conversationId: convo._id.toString(), body } });
+  // Unmatched free text with nothing active — ask rather than guess. No
+  // conversation is created yet, so their next reply re-enters this branch.
+  await sendOutboundMessage(phone, INTENT_MENU_MESSAGE);
 }
 
 /**

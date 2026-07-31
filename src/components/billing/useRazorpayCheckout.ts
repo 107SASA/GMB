@@ -53,6 +53,16 @@ export type CheckoutState =
   | { phase: 'success' }
   | { phase: 'error'; message: string };
 
+/**
+ * Fired the instant the webhook has activated the plan, before any
+ * navigation happens. WorkspaceLockGate listens for this to drop its lock
+ * overlay immediately — it can't rely on a route/pathname change alone,
+ * since checkout is often opened from a page the user stays on (e.g. the
+ * dashboard home itself), where a `router.push`/`refresh` to that same path
+ * doesn't re-trigger a pathname-keyed effect.
+ */
+export const WORKSPACE_UNLOCKED_EVENT = 'workspace:unlocked';
+
 declare global {
   interface Window {
     Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
@@ -117,6 +127,7 @@ export function useRazorpayCheckout(opts?: {
         const json = await res.json();
         if (json?.subscription?.billingStatus === 'Active') {
           setCheckout({ phase: 'success' });
+          window.dispatchEvent(new Event(WORKSPACE_UNLOCKED_EVENT));
           optsRef.current?.onActivated?.();
           return;
         }

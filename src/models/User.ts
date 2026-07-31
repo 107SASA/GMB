@@ -51,6 +51,15 @@ export interface IUser extends Document {
   isDeleted?: boolean;
   deletedAt?: Date;
 
+  // ADDITIVE — shadow accounts (see src/lib/shadowAccount.ts). Created
+  // automatically, passwordless and unverified, the instant a phone-only
+  // visitor gets a free report (e.g. /free-report) so the existing
+  // audit/billing/dashboard stack (which all assume a real logged-in User)
+  // works unmodified. Missing/false on every pre-existing account.
+  isShadowAccount?: boolean;
+  shadowSource?: string;
+  claimedAt?: Date;
+
   // Freemium onboarding gate — ONLY ever set for brand-new signups (see
   // /api/onboarding). Existing accounts never get this field, and the
   // Subscription/module gating and page-level restriction treat a missing
@@ -138,6 +147,11 @@ const UserSchema: Schema = new Schema(
     // Soft delete
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date },
+
+    // ADDITIVE — see isShadowAccount in IUser above.
+    isShadowAccount: { type: Boolean, default: false },
+    shadowSource: { type: String },
+    claimedAt: { type: Date },
 
     // Freemium onboarding gate — see IUser.freemiumAuditGate above.
     // No top-level default on purpose: only /api/onboarding sets this,

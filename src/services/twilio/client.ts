@@ -13,7 +13,8 @@ export async function sendOutboundMessage(
   phone: string,
   body: string,
   leadId?: string,
-  businessId?: string
+  businessId?: string,
+  mediaUrl?: string
 ): Promise<SendResult> {
   await dbConnect();
 
@@ -52,7 +53,8 @@ export async function sendOutboundMessage(
     const message = await client.messages.create({
       body,
       from: `whatsapp:${fromNumber}`,
-      to: `whatsapp:${phone}`
+      to: `whatsapp:${phone}`,
+      ...(mediaUrl ? { mediaUrl: [mediaUrl] } : {}),
     });
     msgLog.status = 'SENT';
     msgLog.sentAt = new Date();

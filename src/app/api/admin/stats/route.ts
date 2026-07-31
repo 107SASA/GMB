@@ -19,6 +19,11 @@ export async function GET() {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     // Run all queries in parallel
+    // Unclaimed shadow accounts (see src/lib/shadowAccount.ts) are excluded
+    // from these platform-wide counts by default so lead-gen traffic
+    // (/free-report) doesn't inflate real-signup numbers.
+    const notShadow = { isShadowAccount: { $ne: true } };
+
     const [
       totalUsers,
       totalBusinesses,
@@ -27,17 +32,18 @@ export async function GET() {
       newUsersLast7Days,
       newBusinessesLast7Days,
     ] = await Promise.all([
-      User.countDocuments({ role: { $ne: 'super_admin' } }),
+      User.countDocuments({ role: { $ne: 'super_admin' }, ...notShadow }),
       Business.countDocuments(),
       ContentGenerationLog.countDocuments(),
       // Recent signups (last 10 users, non-super_admin)
-      User.find({ role: { $ne: 'super_admin' } })
+      User.find({ role: { $ne: 'super_admin' }, ...notShadow })
         .sort({ createdAt: -1 })
         .limit(10)
         .select('fullName email role createdAt subscriptionPlan')
         .lean(),
       User.countDocuments({
         role: { $ne: 'super_admin' },
+        ...notShadow,
         createdAt: { $gte: sevenDaysAgo },
       }),
       Business.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),

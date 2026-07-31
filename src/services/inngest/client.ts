@@ -32,6 +32,12 @@ type Events = {
   "booking/agent.reply": {
     data: { conversationId: string; body: string };
   };
+  "report/agent.reply": {
+    data: { conversationId: string; body: string };
+  };
+  "report/deliver.requested": {
+    data: { conversationId: string };
+  };
   "campaign/send-review-request": {
     data: { campaignId: string; customerId: string };
   };

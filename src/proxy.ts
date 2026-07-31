@@ -98,6 +98,7 @@ export default async function proxy(request: NextRequest) {
       isWorkspaceUnlocked({
         subscriptionStatus: business.subscriptionStatus,
         userSubscriptionPlan: user.subscriptionPlan,
+        businessCreatedAt: business.createdAt,
       })
     ) {
       const isNewWorkspace = !!business.createdAt && new Date(business.createdAt) >= INTAKE_ENFORCED_SINCE;

@@ -25,6 +25,8 @@ import {
   salesNurtureRequested,
   salesAgentReply,
   bookingAgentReply,
+  reportAgentReply,
+  reportCardDeliver,
   gbpNightlySyncScheduler,
   gbpSyncWorker,
   cleanupAbandonedSignups
@@ -57,6 +59,8 @@ export const { GET, POST, PUT } = serve({
     salesNurtureRequested,
     salesAgentReply,
     bookingAgentReply,
+    reportAgentReply,
+    reportCardDeliver,
     gbpNightlySyncScheduler,
     gbpSyncWorker,
     cleanupAbandonedSignups,

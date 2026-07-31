@@ -20,6 +20,16 @@ const DEFAULT_DEMO_MESSAGE =
   "Hi GrowwMatics! I'd like to book a demo and see how you can grow my Google Business Profile.";
 
 /**
+ * Prefilled text for the "boost my profile" CTA (the WhatsApp-first free
+ * report flow — see the report agent / D3). Exported as a constant, not just
+ * a default param, because the webhook's first-touch routing keyword-matches
+ * on this exact string to tell a fresh "report" thread apart from a fresh
+ * "demo" thread (see processPlatformInbound in api/whatsapp/webhook/route.ts).
+ */
+export const BOOST_PROFILE_MESSAGE =
+  "Hi, help me boost my Google Business Profile";
+
+/**
  * Builds the "Book a Demo" link. Returns a wa.me click-to-chat URL when a
  * number is configured, otherwise /contact as a fallback (demos are
  * WhatsApp-only — there is no web form).
@@ -29,5 +39,16 @@ export function bookDemoLink(message: string = DEFAULT_DEMO_MESSAGE): string {
   return `https://wa.me/${SALES_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
 }
 
-/** True when the CTA opens WhatsApp (vs. the internal fallback form). */
+/**
+ * Builds the "get my free report" link — same platform WhatsApp number as
+ * Book a Demo, distinct prefilled text so first-touch routing can tell the
+ * two apart. Falls back to /free-report (the form-first flow) so the CTA is
+ * never a dead end if the number isn't configured yet.
+ */
+export function boostProfileLink(message: string = BOOST_PROFILE_MESSAGE): string {
+  if (!SALES_WHATSAPP_NUMBER) return "/free-report";
+  return `https://wa.me/${SALES_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+}
+
+/** True when the CTA opens WhatsApp (vs. the internal fallback form/page). */
 export const bookDemoOpensWhatsApp = SALES_WHATSAPP_NUMBER.length > 0;

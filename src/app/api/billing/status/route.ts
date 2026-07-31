@@ -21,7 +21,7 @@ async function getWorkspaceStatus(userSubscriptionPlan?: string) {
     (await headers()).get('x-business-id') ?? (await cookies()).get('activeBusinessId')?.value;
   if (!businessId) return null;
   const business = await Business.findById(businessId)
-    .select('name subscriptionStatus freeAuditUsed subscriptionCurrentPeriodEnd subscriptionCancelAtPeriodEnd')
+    .select('name subscriptionStatus freeAuditUsed subscriptionCurrentPeriodEnd subscriptionCancelAtPeriodEnd createdAt')
     .lean() as any;
   if (!business) return null;
   return {
@@ -32,6 +32,7 @@ async function getWorkspaceStatus(userSubscriptionPlan?: string) {
     isActive: isWorkspaceUnlocked({
       subscriptionStatus: business.subscriptionStatus,
       userSubscriptionPlan,
+      businessCreatedAt: business.createdAt,
     }),
     currentPeriodEnd: business.subscriptionCurrentPeriodEnd ?? null,
     // True while access continues but the subscription won't renew.

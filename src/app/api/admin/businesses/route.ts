@@ -18,11 +18,16 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(50, parseInt(searchParams.get('limit') || '20'));
     const search = searchParams.get('search') || '';
     const filter = searchParams.get('filter') || 'all'; // all | google | whatsapp
+    // Businesses auto-provisioned by a shadow-account lead-gen flow (see
+    // src/lib/shadowAccount.ts) are hidden by default so unclaimed leads
+    // don't inflate the real workspace count.
+    const includeShadow = searchParams.get('includeShadow') === 'true';
 
     const skip = (page - 1) * limit;
 
     // Build query
     const query: any = {};
+    if (!includeShadow) query.provisionedVia = { $exists: false };
 
     if (search.trim()) {
       query.$or = [

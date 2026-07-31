@@ -1172,7 +1172,7 @@ export const salesNurtureRequested = inngest.createFunction(
       const owner: any = business.userId
         ? await User.findById(business.userId).select('fullName phone subscriptionPlan').lean()
         : null;
-      if (isWorkspaceUnlocked({ subscriptionStatus: business.subscriptionStatus, userSubscriptionPlan: owner?.subscriptionPlan })) {
+      if (isWorkspaceUnlocked({ subscriptionStatus: business.subscriptionStatus, userSubscriptionPlan: owner?.subscriptionPlan, businessCreatedAt: business.createdAt })) {
         return { skip: 'already subscribed' as const };
       }
       const phone = owner?.phone || business.phone;
@@ -1396,6 +1396,181 @@ export const bookingAgentReply = inngest.createFunction(
       if (res.success) {
         convo.messages.push({ role: 'agent', text: outboundText, at: new Date() });
       }
+      await convo.save();
+    });
+
+    return { success: true };
+  }
+);
+
+// 7e. Live inbound from a WhatsApp report prospect → AI REPORT-agent response
+// ("D3"). GrowwMatics-owned, owner-only line. Sends the Google-connect link
+// deterministically on the first message; after that, answers questions with
+// the AI persona (no structured fields to collect, unlike booking). Once
+// connected, replies are simple deterministic status messages — the actual
+// report delivery is a separate function (reportCardDeliver) triggered by
+// report/deliver.requested from src/lib/reportConnect.ts's finalize step.
+export const reportAgentReply = inngest.createFunction(
+  { id: 'report-agent-reply', retries: 2, triggers: [{ event: 'report/agent.reply' }] },
+  async ({ event, step }) => {
+    const { conversationId } = event.data;
+
+    await step.run('reply', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: ReportConversation } = await import('@/models/ReportConversation');
+      const { getReportAgentConfig, composeIntroMessage, composeAgentReply } = await import('@/services/report/reportAgent');
+      const { mintReportConnectToken } = await import('@/lib/reportConnect');
+      const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+
+      const convo: any = await ReportConversation.findById(conversationId);
+      if (!convo || convo.status === 'stopped') return;
+
+      const config = await getReportAgentConfig();
+      if (!config.enabled) return;
+
+      // Post-connection chat is intentionally simple/deterministic — the
+      // interesting conversational work happens before they connect.
+      if (convo.status !== 'awaiting_connection') {
+        const reply =
+          convo.status === 'connected'
+            ? "Your report is generating — I'll send it here as soon as it's ready! 🚀"
+            : 'You already have your report above! Let me know if you have questions. 🙂';
+        const res = await sendOutboundMessage(convo.leadPhone, reply);
+        if (res.success) convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+        await convo.save();
+        return;
+      }
+
+      const connectToken = await mintReportConnectToken({
+        reportConversationId: convo._id.toString(),
+        phone: convo.leadPhone,
+      });
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const connectLink = `${baseUrl}/api/report-connect/${connectToken}`;
+
+      // Just the inbound message pushed by the webhook route means this is
+      // the very first turn — send the deterministic intro, no LLM call.
+      const isFirstMessage = convo.messages.length === 1;
+      const reply = isFirstMessage
+        ? composeIntroMessage(config, connectLink)
+        : await composeAgentReply(config, convo, connectLink);
+
+      const res = await sendOutboundMessage(convo.leadPhone, reply);
+      if (res.success) {
+        convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+      }
+      await convo.save();
+    });
+
+    return { success: true };
+  }
+);
+
+// 7f. Delivers the report-card image + personalized summary once a report
+// conversation is connected (see finalizeReportConnection in
+// src/lib/reportConnect.ts). Polls the audit rather than hooking into
+// processAuditJob, so src/services/audit/auditService.ts stays untouched.
+export const reportCardDeliver = inngest.createFunction(
+  { id: 'report-card-deliver', retries: 1, triggers: [{ event: 'report/deliver.requested' }] },
+  async ({ event, step }) => {
+    const { conversationId } = event.data;
+
+    await step.run('deliver', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: ReportConversation } = await import('@/models/ReportConversation');
+      const { default: Audit } = await import('@/models/Audit');
+      const { default: Business } = await import('@/models/Business');
+      const { default: User } = await import('@/models/User');
+      const { default: ReportShare } = await import('@/models/ReportShare');
+      const { getReportAgentConfig, composeSummaryMessage, extractReportScores } = await import('@/services/report/reportAgent');
+      const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+      const { launchBrowser } = await import('@/lib/pdf/browser');
+      const { uploadPublicObject } = await import('@/lib/storage');
+      const { signSessionToken } = await import('@/lib/session');
+      const crypto = await import('crypto');
+
+      const convo: any = await ReportConversation.findById(conversationId);
+      if (!convo || convo.status !== 'connected' || !convo.auditId) return;
+
+      const config = await getReportAgentConfig();
+      if (!config.enabled) return;
+
+      // Bounded polling (not durable step.sleep) — audits typically complete
+      // in well under this window in practice; if not, apologize and stop
+      // rather than tying up the function indefinitely.
+      let audit: any = null;
+      for (let attempt = 0; attempt < 24; attempt++) {
+        audit = await Audit.findById(convo.auditId).lean();
+        if (audit?.status === 'COMPLETED' || audit?.status === 'FAILED') break;
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+      if (!audit || audit.status !== 'COMPLETED') {
+        await sendOutboundMessage(
+          convo.leadPhone,
+          "Your report is taking a bit longer than usual — I'll send it here as soon as it's ready. Thanks for your patience! 🙏"
+        );
+        return;
+      }
+
+      const business: any = await Business.findById(convo.businessId).lean();
+      const user: any = business?.userId ? await User.findById(business.userId).lean() : null;
+
+      // Same share-token shape as /api/audit/[id]/share/route.ts, reused
+      // unmodified by the public /print/report-card/[token] route.
+      const shareToken = crypto.randomBytes(24).toString('hex');
+      await ReportShare.create({
+        auditId: audit._id,
+        token: shareToken,
+        createdBy: 'report-agent',
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      });
+
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const cardUrl = `${baseUrl}/print/report-card/${shareToken}`;
+
+      let imageUrl: string | null = null;
+      let browser: any = null;
+      try {
+        browser = await launchBrowser();
+        const page = await browser.newPage();
+        await page.setViewport({ width: 600, height: 800 });
+        const response = await page.goto(cardUrl, { waitUntil: 'networkidle2', timeout: 30_000 });
+        if (!response?.ok()) throw new Error(`Report card page returned ${response?.status()}`);
+        await new Promise((resolve) => setTimeout(resolve, 400)); // web-font settle
+        const buffer = await page.screenshot({ type: 'png', fullPage: true });
+        imageUrl = await uploadPublicObject(buffer as Buffer, 'image/png', 'report-cards');
+      } catch (err: any) {
+        console.error('[reportCardDeliver] image render failed:', err?.message);
+      } finally {
+        await browser?.close().catch(() => {});
+      }
+
+      const scores = extractReportScores(audit, business);
+
+      if (imageUrl) {
+        await sendOutboundMessage(
+          convo.leadPhone,
+          `Your free report for ${scores.businessName} 📊`,
+          undefined,
+          convo.businessId?.toString(),
+          { url: imageUrl, type: 'image' }
+        );
+      }
+
+      let dashboardLink = baseUrl;
+      if (user) {
+        const loginToken = await signSessionToken(user._id.toString(), user.role);
+        dashboardLink = `${baseUrl}/api/auth/session-link/${loginToken}`;
+      }
+
+      const summary = composeSummaryMessage(config, scores, convo.leadName, dashboardLink);
+      const res = await sendOutboundMessage(convo.leadPhone, summary, undefined, convo.businessId?.toString());
+
+      convo.status = 'report_sent';
+      convo.reportSentAt = new Date();
+      if (res.success) convo.messages.push({ role: 'agent', text: summary, at: new Date() });
       await convo.save();
     });
 

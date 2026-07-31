@@ -123,8 +123,11 @@ export default function IntakePage() {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) throw new Error(json?.error || 'Could not save. Please try again.');
+      // No router.refresh() here — it forces a second, blocking server
+      // round-trip (re-running middleware + this layout) right on top of the
+      // navigation below, which already fetches the destination fresh. That
+      // redundant round-trip was what made "Save" feel slow.
       router.push('/dashboard');
-      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save.');
       setSaving(false);

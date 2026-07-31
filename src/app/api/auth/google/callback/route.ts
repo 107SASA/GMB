@@ -12,6 +12,21 @@ function getSigningKey(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
+/**
+ * Builds an absolute redirect URL rooted at NEXT_PUBLIC_APP_URL rather than
+ * `request.url`. Behind a reverse proxy that doesn't forward the original
+ * Host header (e.g. nginx without `proxy_set_header Host $host;`), Next sees
+ * an internal Host like `localhost:3000`, so `new URL(path, request.url)`
+ * silently produces a `localhost` redirect even in production — this is what
+ * sent users to `http://localhost:3000/dashboard...` after connecting GBP on
+ * the live site. NEXT_PUBLIC_APP_URL is already required to be the real HTTPS
+ * domain in production (validated at boot in src/lib/env.ts).
+ */
+function appRedirect(path: string, request: NextRequest): NextResponse {
+  const base = process.env.NEXT_PUBLIC_APP_URL || request.url;
+  return NextResponse.redirect(new URL(path, base));
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
@@ -19,9 +34,7 @@ export async function GET(request: NextRequest) {
   const errorParam = searchParams.get('error');
 
   if (errorParam) {
-    return NextResponse.redirect(
-      new URL(`/dashboard/insights?error=${encodeURIComponent(errorParam)}`, request.url)
-    );
+    return appRedirect(`/dashboard/insights?error=${encodeURIComponent(errorParam)}`, request);
   }
 
   // --- Verify state cookie ---
@@ -29,9 +42,7 @@ export async function GET(request: NextRequest) {
   const stateToken = cookieStore.get('gbp_oauth_state')?.value;
 
   if (!stateToken || !stateFromGoogle) {
-    return NextResponse.redirect(
-      new URL('/dashboard/insights?error=state_mismatch', request.url)
-    );
+    return appRedirect('/dashboard/insights?error=state_mismatch', request);
   }
 
   let businessId: string;
@@ -42,15 +53,11 @@ export async function GET(request: NextRequest) {
     }
     businessId = (payload as any).businessId;
   } catch {
-    return NextResponse.redirect(
-      new URL('/dashboard/insights?error=state_mismatch', request.url)
-    );
+    return appRedirect('/dashboard/insights?error=state_mismatch', request);
   }
 
   if (!code) {
-    return NextResponse.redirect(
-      new URL('/dashboard/insights?error=no_code', request.url)
-    );
+    return appRedirect('/dashboard/insights?error=no_code', request);
   }
 
   // --- Exchange code for tokens ---
@@ -69,9 +76,7 @@ export async function GET(request: NextRequest) {
   });
 
   if (!tokenRes.ok) {
-    return NextResponse.redirect(
-      new URL('/dashboard/insights?error=token_exchange_failed', request.url)
-    );
+    return appRedirect('/dashboard/insights?error=token_exchange_failed', request);
   }
 
   const tokenData = await tokenRes.json();
@@ -79,9 +84,7 @@ export async function GET(request: NextRequest) {
 
   // If no refresh_token, user already consented before — force re-consent
   if (!refresh_token) {
-    return NextResponse.redirect(
-      new URL('/api/auth/google?prompt=consent&access_type=offline', request.url)
-    );
+    return appRedirect('/api/auth/google?prompt=consent&access_type=offline', request);
   }
 
   // --- Fetch Google user info for email/sub ---
@@ -110,9 +113,7 @@ export async function GET(request: NextRequest) {
         `${accountsRes.status} ${accountsRes.statusText} — ${errBody}`
     );
     const reason = accountsRes.status === 403 ? 'gbp_api_access' : 'gbp_api_error';
-    return NextResponse.redirect(
-      new URL(`/dashboard/insights?error=${reason}&status=${accountsRes.status}`, request.url)
-    );
+    return appRedirect(`/dashboard/insights?error=${reason}&status=${accountsRes.status}`, request);
   }
 
   const accountsData = await accountsRes.json();
@@ -122,9 +123,7 @@ export async function GET(request: NextRequest) {
       `[gbp/callback] accounts.list returned an EMPTY list for ${googleEmail} ` +
         `(API is reachable but this Google account manages no Business Profile accounts).`
     );
-    return NextResponse.redirect(
-      new URL('/dashboard/insights?error=no_gbp_account', request.url)
-    );
+    return appRedirect('/dashboard/insights?error=no_gbp_account', request);
   }
 
   const account = accounts[0];
@@ -200,9 +199,7 @@ export async function GET(request: NextRequest) {
   }
 
   // --- Clear state cookie and redirect to Dashboard (GBP section is now inline) ---
-  const response = NextResponse.redirect(
-    new URL('/dashboard?connected=true', request.url)
-  );
+  const response = appRedirect('/dashboard?connected=true', request);
   response.cookies.set('gbp_oauth_state', '', { maxAge: 0, path: '/' });
   return response;
 }

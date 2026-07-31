@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { OnboardingData } from './types';
 import { ArrowRight, ArrowLeft, AlertCircle } from 'lucide-react';
+import { COUNTRY_CODES, splitPhone } from '@/lib/countryCodes';
 
 interface Props {
   data: OnboardingData;
@@ -14,6 +15,20 @@ const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
 
 export default function StepAccount({ data, updateData, onNext, onBack }: Props) {
   const [error, setError] = useState('');
+
+  // `personalPhone` stays a single E.164-style string in shared state (same
+  // shape everything downstream — validation, DB — already expects). The
+  // dial code and local digits are just how we split it for this UI.
+  const { dialCode, localNumber } = splitPhone(data.personalPhone);
+
+  const handleDialCodeChange = (newDialCode: string) => {
+    updateData({ personalPhone: `${newDialCode}${localNumber}` });
+  };
+
+  const handleLocalNumberChange = (raw: string) => {
+    const digitsOnly = raw.replace(/[^\d]/g, '');
+    updateData({ personalPhone: digitsOnly ? `${dialCode}${digitsOnly}` : '' });
+  };
 
   const handleContinue = () => {
     if (!data.fullName || !data.email || !data.personalPhone) {
@@ -61,13 +76,27 @@ export default function StepAccount({ data, updateData, onNext, onBack }: Props)
           </div>
           <div>
             <label className="block text-sm font-bold text-slate-900 mb-2">Your Phone Number</label>
-            <input
-              type="tel"
-              value={data.personalPhone}
-              onChange={e => updateData({ personalPhone: e.target.value })}
-              className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
-              placeholder="+14155550100"
-            />
+            <div className="flex gap-2">
+              <select
+                value={dialCode}
+                onChange={e => handleDialCodeChange(e.target.value)}
+                aria-label="Country code"
+                className="w-27.5 shrink-0 px-2 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none text-sm"
+              >
+                {COUNTRY_CODES.map(c => (
+                  <option key={`${c.iso2}-${c.dialCode}`} value={c.dialCode}>
+                    {c.flag} {c.dialCode}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="tel"
+                value={localNumber}
+                onChange={e => handleLocalNumberChange(e.target.value)}
+                className="flex-1 min-w-0 px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                placeholder="4155550100"
+              />
+            </div>
             <p className="text-xs text-slate-400 mt-1.5">
               Your own contact number — this stays separate from your business's phone number, which you'll add next.
             </p>

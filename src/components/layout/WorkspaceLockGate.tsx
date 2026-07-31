@@ -7,6 +7,7 @@ import {
   usePublicPlan,
   useRazorpayCheckout,
   MODULE_LABELS,
+  WORKSPACE_UNLOCKED_EVENT,
 } from '@/components/billing/useRazorpayCheckout';
 import { DurationPicker, pickDuration } from '@/components/billing/DurationPicker';
 
@@ -46,6 +47,16 @@ export default function WorkspaceLockGate({ children }: { children: React.ReactN
       .catch(() => { if (!cancelled) setLocked(false); });
     return () => { cancelled = true; };
   }, [pathname]);
+
+  // Checkout can be started from the very page the user stays on after
+  // paying (e.g. the dashboard home itself) — the pathname never changes, so
+  // the effect above never re-fires. Drop the lock the instant the webhook
+  // confirms activation, regardless of route.
+  useEffect(() => {
+    const onUnlocked = () => setLocked(false);
+    window.addEventListener(WORKSPACE_UNLOCKED_EVENT, onUnlocked);
+    return () => window.removeEventListener(WORKSPACE_UNLOCKED_EVENT, onUnlocked);
+  }, []);
 
   // Still checking, unlocked, or on a free page → render normally (never flash a
   // blur at a paying customer).

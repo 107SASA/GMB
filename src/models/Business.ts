@@ -76,6 +76,10 @@ export interface IBusiness extends Document {
   onboardingCompleted: boolean;
   faqs?: Array<{ question: string; answer: string }>;
   isDeleted?: boolean;
+  // ADDITIVE — set only on businesses created via a shadow-account lead-gen
+  // flow (see src/lib/shadowAccount.ts), e.g. 'free-report-form'. Undefined
+  // for every business created through the normal onboarding wizard.
+  provisionedVia?: string;
   // ADDITIVE — per-workspace subscription gate. Each workspace (Business) must
   // have its own active subscription before its dashboard is accessible. New
   // workspaces default to 'trialing' + freeAuditUsed:false, so they get exactly
@@ -226,6 +230,8 @@ const BusinessSchema: Schema = new Schema(
     onboardingCompleted: { type: Boolean, default: false },
     faqs: [{ question: { type: String }, answer: { type: String } }],
     isDeleted: { type: Boolean, default: false },
+    // ADDITIVE — see provisionedVia in IBusiness above.
+    provisionedVia: { type: String },
     // ADDITIVE — per-workspace subscription gate (see IBusiness above).
     subscriptionStatus: {
       type: String,

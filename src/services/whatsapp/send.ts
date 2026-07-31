@@ -22,9 +22,15 @@ import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import MessageQueue from '@/models/MessageQueue';
 import { sendOutboundMessage as sendViaTwilio, SendResult } from '@/services/twilio/client';
-import { getMetaConfig, isReengagementError, sendMetaTemplate, sendMetaText } from './meta';
+import { getMetaConfig, isReengagementError, sendMetaTemplate, sendMetaText, sendMetaImage } from './meta';
 
 export type { SendResult };
+
+export interface OutboundMedia {
+  url: string;
+  type?: 'image' | 'document';
+  caption?: string;
+}
 
 async function resolveProvider(businessId?: string): Promise<'meta' | 'twilio'> {
   const envProvider = (process.env.WHATSAPP_PROVIDER || 'meta').toLowerCase();
@@ -48,27 +54,34 @@ export async function sendOutboundMessage(
   phone: string,
   body: string,
   leadId?: string,
-  businessId?: string
+  businessId?: string,
+  media?: OutboundMedia
 ): Promise<SendResult> {
   await dbConnect();
 
   const provider = await resolveProvider(businessId);
   if (provider === 'twilio') {
-    return sendViaTwilio(phone, body, leadId, businessId);
+    return sendViaTwilio(phone, body, leadId, businessId, media?.url);
   }
 
   const msgLog = await MessageQueue.create({
     leadId,
     direction: 'OUTBOUND',
     status: 'PENDING',
-    payload: { phone, body, provider: 'meta' },
+    payload: { phone, body, provider: 'meta', ...(media ? { mediaUrl: media.url } : {}) },
   });
 
-  let result = await sendMetaText(phone, body);
+  let result = media
+    ? await sendMetaImage(phone, media.url, media.caption ?? body)
+    : await sendMetaText(phone, body);
 
+  // Template fallback is text-only (no header-media template configured),
+  // so a media send outside the 24h window just fails with a clear reason.
   if (!result.success && isReengagementError(result.errorCode, result.error)) {
     const templateName = process.env.META_UTILITY_TEMPLATE_NAME;
-    if (templateName) {
+    if (media) {
+      result.error = `${result.error} (image sends have no template fallback outside the 24h window)`;
+    } else if (templateName) {
       const language = process.env.META_TEMPLATE_LANGUAGE || 'en';
       result = await sendMetaTemplate(phone, templateName, language, [body]);
       msgLog.payload = { ...msgLog.payload, sentAsTemplate: templateName };

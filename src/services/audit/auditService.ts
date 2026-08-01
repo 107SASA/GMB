@@ -36,24 +36,112 @@ export async function processAuditJob(auditId: string) {
 
     // Fetch real reviews — cap at MAX_REVIEWS_PER_AUDIT (default 50)
     const maxReviews = parseInt(process.env.MAX_REVIEWS_PER_AUDIT || '50', 10);
-    let reviewsData = await Review.find({ businessId: business._id, ...reviewDateFilter })
-      .sort({ postedAt: -1, createdAt: -1 })
-      .limit(maxReviews);
+    const fetchStoredReviews = () =>
+      Review.find({ businessId: business._id, ...reviewDateFilter })
+        .sort({ postedAt: -1, createdAt: -1 })
+        .limit(maxReviews);
 
-    // Auto-sync from SerpApi if no reviews in DB yet (for the selected period)
-    if (reviewsData.length === 0 && process.env.SERPAPI_KEY) {
-      console.log(`[auditService] No reviews in DB for businessId=${audit.businessId} in the last ${reviewPeriodDays}d — attempting live fetch`);
-      try {
-        const { syncReviewsForBusiness } = require('../reviews/syncReviews');
-        const tenantId = business.organizationId?.toString() || audit.tenantId;
-        await syncReviewsForBusiness(business._id.toString(), tenantId);
-        reviewsData = await Review.find({ businessId: business._id, ...reviewDateFilter })
-          .sort({ postedAt: -1, createdAt: -1 })
-          .limit(maxReviews);
-        console.log(`[auditService] Auto-synced ${reviewsData.length} reviews for ${business.name} within the last ${reviewPeriodDays}d`);
-      } catch (syncErr: any) {
-        console.warn(`[auditService] Review auto-sync failed: ${syncErr.message}`);
-      }
+    let reviewsData = await fetchStoredReviews();
+
+    // ── Business data payload for analyzers ───────────────────
+    // Extract city from address if the city field was not explicitly set.
+    // Indian address format: "..., Area, City, State PostalCode, Country"
+    // → city is typically the 3rd segment from the end.
+    // audit.userDefinedCategory / audit.city are set from the form overrides at job creation time
+    // Resolved up front (before reviews) — neither depends on review data,
+    // and both are needed to kick off geo-grid rankings without waiting.
+    const resolvedCity = audit.city || business.city || (() => {
+      if (!business.address) return '';
+      const parts = business.address.split(',').map((p: string) => p.trim()).filter(Boolean);
+      return parts.length >= 3 ? (parts[parts.length - 3] || '') : (parts[parts.length - 1] || '');
+    })();
+    const resolvedCategory = audit.userDefinedCategory || business.userDefinedCategory || business.category || 'Local Business';
+
+    // ── Native analytics ──────────────────────────────────────
+    const {
+      calculateProfileCompletion,
+      calculateReviewMetrics,
+      calculateReviewQualityScore,
+      analyzeReviewKeywords,
+      fetchGeoGridRankings,
+      calculateNativeSeoScore,
+      calculateAuditConfidence,
+      generateNativePriorityFixes,
+      calculateBusinessIntelligence,
+    } = require('./seoAnalyzer');
+
+    // Review sync (only runs on a business's first-ever audit, when nothing
+    // is cached yet) and geo-grid rankings (45 SerpApi calls: 5 keywords × 9
+    // grid points) are entirely independent SerpApi calls — the sync doesn't
+    // touch rank data, and geo-grid only needs category/city, not reviews.
+    // Running them concurrently instead of sequentially is what keeps a
+    // brand-new business's first report from taking 60+ seconds: previously
+    // a first-time sync (data-ID resolve + paginated review fetch, ~15-25s)
+    // finished completely before geo-grid (~15-40s) even started.
+    // fastMode (lead-gen entry points only, see src/lib/startAudit.ts) skips
+    // both the first-time review sync and geo-grid ranking below — the two
+    // biggest, slowest steps — trading rank/review precision for a report
+    // that generates in seconds instead of up to a minute. Paying customers'
+    // audits (POST /api/audit, fastMode always false) are unaffected; both
+    // steps already have honest "unavailable" fallbacks for when
+    // SERPAPI_KEY is missing, reused here rather than adding new branches.
+    const needsReviewSync = reviewsData.length === 0 && !!process.env.SERPAPI_KEY && !audit.fastMode;
+    const reviewSyncTask: Promise<typeof reviewsData> = needsReviewSync
+      ? (async () => {
+          console.log(`[auditService] No reviews in DB for businessId=${audit.businessId} in the last ${reviewPeriodDays}d — attempting live fetch`);
+          try {
+            const { syncReviewsForBusiness } = require('../reviews/syncReviews');
+            const tenantId = business.organizationId?.toString() || audit.tenantId;
+            await syncReviewsForBusiness(business._id.toString(), tenantId);
+            const synced = await fetchStoredReviews();
+            console.log(`[auditService] Auto-synced ${synced.length} reviews for ${business.name} within the last ${reviewPeriodDays}d`);
+            return synced;
+          } catch (syncErr: any) {
+            console.warn(`[auditService] Review auto-sync failed: ${syncErr.message}`);
+            return reviewsData;
+          }
+        })()
+      : Promise.resolve(reviewsData);
+
+    // Augment business with the resolved category + city so geo-grid keywords
+    // are correct even when the stored business profile has no category set.
+    const businessObj = typeof business.toObject === 'function' ? business.toObject() : business;
+    const businessForRankings = {
+      ...businessObj,
+      name: businessObj.name || business.name,
+      category: resolvedCategory,
+      city:     resolvedCity,
+      placeId: businessObj.placeId || businessObj.googlePlaceId,
+      googlePlaceId: businessObj.googlePlaceId || businessObj.placeId,
+      serpApiDataId: businessObj.serpApiDataId || businessObj.dataId,
+    };
+    const geoGridTask = process.env.SERPAPI_KEY && !audit.fastMode
+      ? fetchGeoGridRankings(businessForRankings)
+      : Promise.resolve(null);
+
+    const [syncedReviewsData, rankData] = await Promise.all([reviewSyncTask, geoGridTask]);
+    reviewsData = syncedReviewsData;
+
+    // Geo-grid keyword rankings via SerpApi (45 calls: 5 keywords × 9 grid points)
+    let keywordRankings: any[] = [];
+    let rankingsEvidence = audit.fastMode
+      ? 'Skipped for fast report generation'
+      : 'Unavailable (SERPAPI_KEY not configured)';
+    let geoGridRank: any = null;
+    let localPackCompetitors: any[] = [];
+
+    if (rankData) {
+      keywordRankings      = rankData.legacyRankings;
+      rankingsEvidence     = rankData.evidenceSource;
+      geoGridRank          = rankData.geoGridRank;
+      localPackCompetitors = rankData.localPackCompetitors || [];
+    } else if (audit.fastMode) {
+      keywordRankings = [];
+      console.log(`[auditService] fastMode audit ${audit._id} — skipping geo-grid ranking & review sync`);
+    } else {
+      // Do NOT invent fake rank-21 keywords — surface unavailable honestly.
+      keywordRankings = [];
+      console.warn('[auditService] SERPAPI_KEY missing — skipping live ranking & competitor harvest');
     }
 
     // Include sentiment so scoring functions can use real sentiment data
@@ -69,20 +157,9 @@ export async function processAuditJob(auditId: string) {
       sentimentScore: r.sentimentScore || 0,
     }));
 
-    // ── Business data payload for analyzers ───────────────────
-    // Extract city from address if the city field was not explicitly set.
-    // Indian address format: "..., Area, City, State PostalCode, Country"
-    // → city is typically the 3rd segment from the end.
-    // audit.userDefinedCategory / audit.city are set from the form overrides at job creation time
-    const resolvedCity = audit.city || business.city || (() => {
-      if (!business.address) return '';
-      const parts = business.address.split(',').map((p: string) => p.trim()).filter(Boolean);
-      return parts.length >= 3 ? (parts[parts.length - 3] || '') : (parts[parts.length - 1] || '');
-    })();
-
     const businessData = {
       businessName:   business.name,
-      category:       audit.userDefinedCategory || business.userDefinedCategory || business.category || 'Local Business',
+      category:       resolvedCategory,
       city:           resolvedCity,
       area:           business.area    || '',
       state:          business.state   || '',
@@ -101,54 +178,11 @@ export async function processAuditJob(auditId: string) {
       businessData.rating = parseFloat((sum / formattedReviews.length).toFixed(1));
     }
 
-    // ── Native analytics ──────────────────────────────────────
-    const {
-      calculateProfileCompletion,
-      calculateReviewMetrics,
-      calculateReviewQualityScore,
-      analyzeReviewKeywords,
-      fetchGeoGridRankings,
-      calculateNativeSeoScore,
-      calculateAuditConfidence,
-      generateNativePriorityFixes,
-      calculateBusinessIntelligence,
-    } = require('./seoAnalyzer');
-
     const profileCompletionPayload = calculateProfileCompletion(business);
     const reviewMetricsPayload     = calculateReviewMetrics(formattedReviews);
 
     const profileCompletion = profileCompletionPayload.data;
     const reviewMetrics     = reviewMetricsPayload.data;
-
-    // Geo-grid keyword rankings via SerpApi (45 calls: 5 keywords × 9 grid points)
-    let keywordRankings: any[] = [];
-    let rankingsEvidence = 'Unavailable (SERPAPI_KEY not configured)';
-    let geoGridRank: any = null;
-    let localPackCompetitors: any[] = [];
-
-    if (process.env.SERPAPI_KEY) {
-      // Augment business with the resolved category + city so geo-grid keywords
-      // are correct even when the stored business profile has no category set.
-      const businessObj = typeof business.toObject === 'function' ? business.toObject() : business;
-      const businessForRankings = {
-        ...businessObj,
-        name: businessObj.name || businessData.businessName,
-        category: businessData.category,
-        city:     businessData.city,
-        placeId: businessObj.placeId || businessObj.googlePlaceId,
-        googlePlaceId: businessObj.googlePlaceId || businessObj.placeId,
-        serpApiDataId: businessObj.serpApiDataId || businessObj.dataId,
-      };
-      const rankData       = await fetchGeoGridRankings(businessForRankings);
-      keywordRankings      = rankData.legacyRankings;
-      rankingsEvidence     = rankData.evidenceSource;
-      geoGridRank          = rankData.geoGridRank;
-      localPackCompetitors = rankData.localPackCompetitors || [];
-    } else {
-      // Do NOT invent fake rank-21 keywords — surface unavailable honestly.
-      keywordRankings = [];
-      console.warn('[auditService] SERPAPI_KEY missing — skipping live ranking & competitor harvest');
-    }
 
     const avgRank = keywordRankings.length > 0
       ? keywordRankings.reduce((acc: number, k: any) => acc + k.rank, 0) / keywordRankings.length

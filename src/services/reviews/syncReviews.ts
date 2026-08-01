@@ -52,43 +52,56 @@ export async function syncReviewsForBusiness(
   const provider = gbpToken ? new GbpApiReviewProvider() : getReviewProvider();
   const fetchedReviews = await provider.fetchReviews(businessId, { knownReviewIds });
 
-  let criticalFound = false;
   // Rating + id of the last critical review seen — carried on the alert
   // event so push notifications can say "New {rating}★ review".
   let criticalDetails: { rating: number; reviewId: string } | null = null;
 
-  for (const raw of fetchedReviews) {
-    const sentimentResult = analyzeSentiment(raw.text, raw.rating);
-    if (sentimentResult.label === 'critical') criticalFound = true;
+  // Sentiment is a fast local computation (no I/O — see sentimentEngine.ts),
+  // so it's done synchronously up front to keep "last critical review in
+  // array order wins" deterministic even though the DB upserts below run
+  // concurrently instead of one at a time.
+  const sentiments = fetchedReviews.map((raw) => analyzeSentiment(raw.text, raw.rating));
+  const criticalFound = sentiments.some((s) => s.label === 'critical');
 
-    const update: Record<string, unknown> = {
-      tenantId,
-      businessId: bid,
-      providerReviewId: raw.providerReviewId,
-      reviewer: raw.reviewerName,
-      rating: raw.rating,
-      reviewText: raw.text,
-      sentiment: sentimentResult.label,
-      sentimentScore: sentimentResult.score,
-      // Google's real posted date. NOTE: setting createdAt here does NOT
-      // work — Mongoose timestamps strip it from upserts — which is why
-      // the dedicated postedAt field exists. Existing docs pick it up on
-      // their next sync (upsert matches providerReviewId).
-      postedAt: new Date(raw.postedAt),
-    };
-    // If the profile already carries an owner reply (from the GBP API), mirror
-    // it so the UI shows the review as answered and we never re-reply to it.
-    if (raw.ownerReply) {
-      update.response = raw.ownerReply;
-      update.replyStatus = 'POSTED';
-    }
+  const upsertResults = await Promise.all(
+    fetchedReviews.map(async (raw, i) => {
+      const sentimentResult = sentiments[i];
+      const update: Record<string, unknown> = {
+        tenantId,
+        businessId: bid,
+        providerReviewId: raw.providerReviewId,
+        reviewer: raw.reviewerName,
+        rating: raw.rating,
+        reviewText: raw.text,
+        sentiment: sentimentResult.label,
+        sentimentScore: sentimentResult.score,
+        // Google's real posted date. NOTE: setting createdAt here does NOT
+        // work — Mongoose timestamps strip it from upserts — which is why
+        // the dedicated postedAt field exists. Existing docs pick it up on
+        // their next sync (upsert matches providerReviewId).
+        postedAt: new Date(raw.postedAt),
+      };
+      // If the profile already carries an owner reply (from the GBP API), mirror
+      // it so the UI shows the review as answered and we never re-reply to it.
+      if (raw.ownerReply) {
+        update.response = raw.ownerReply;
+        update.replyStatus = 'POSTED';
+      }
 
-    const saved = await Review.findOneAndUpdate(
-      { providerReviewId: raw.providerReviewId },
-      update,
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+      const saved = await Review.findOneAndUpdate(
+        { providerReviewId: raw.providerReviewId },
+        update,
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
 
+      return { raw, sentimentResult, saved };
+    }),
+  );
+
+  // Same "last critical review in fetchedReviews order wins" semantics as
+  // the previous sequential loop — resolved from the array, not from
+  // whichever upsert happened to finish last.
+  for (const { raw, sentimentResult, saved } of upsertResults) {
     if (sentimentResult.label === 'critical' && saved) {
       criticalDetails = { rating: raw.rating, reviewId: saved._id.toString() };
     }

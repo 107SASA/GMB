@@ -102,57 +102,68 @@ export async function findCompetitors(businessData: BusinessData): Promise<{
   queries.push(`${businessData.category} in ${location}`);
   queries.push(`best ${businessData.category} ${location}`);
 
+  // The 2-3 queries are independent — fire them concurrently instead of
+  // sequentially (each has its own 15s timeout, so waiting on them one at a
+  // time could add up to several seconds of pure network latency for no
+  // reason). Results are still processed in the original specific→broad
+  // order below, so priority/dedup behavior is unchanged.
+  const queryResults: any[][] = await Promise.all(
+    queries.map(async (query) => {
+      try {
+        const response = await axios.get(PLACES_BASE, {
+          params: {
+            query,
+            key: GOOGLE_MAPS_KEY,
+            type: 'establishment',
+          },
+          timeout: 15000,
+        });
+
+        const results: any[] = response.data.results || [];
+        console.log(`[findCompetitors] Google Places query "${query}" → ${results.length} results`);
+
+        if (response.data.status && response.data.status !== 'OK' && response.data.status !== 'ZERO_RESULTS') {
+          console.error(`[findCompetitors] Google Places API error: ${response.data.status} — ${response.data.error_message || ''}`);
+        }
+        return results;
+      } catch (error: any) {
+        console.error(`[findCompetitors] Error for query "${query}":`, error.message);
+        return [];
+      }
+    }),
+  );
+
   const accepted: any[] = [];
   const seenNames = new Set<string>();
 
-  for (const query of queries) {
+  for (const results of queryResults) {
     if (accepted.length >= 10) break;
 
-    try {
-      const response = await axios.get(PLACES_BASE, {
-        params: {
-          query,
-          key: GOOGLE_MAPS_KEY,
-          type: 'establishment',
-        },
-        timeout: 15000,
-      });
+    for (const place of results) {
+      if (accepted.length >= 10) break;
+      if (!place.name) continue;
 
-      const results: any[] = response.data.results || [];
-      console.log(`[findCompetitors] Google Places query "${query}" → ${results.length} results`);
+      const nameKey = place.name.toLowerCase().trim();
+      if (nameKey === businessData.businessName.toLowerCase().trim()) continue;
+      if (seenNames.has(nameKey)) continue;
+      seenNames.add(nameKey);
 
-      if (response.data.status && response.data.status !== 'OK' && response.data.status !== 'ZERO_RESULTS') {
-        console.error(`[findCompetitors] Google Places API error: ${response.data.status} — ${response.data.error_message || ''}`);
-      }
+      const compReviewCount = place.user_ratings_total || 0;
+      const compIsEnterprise = isEnterpriseBrand(place.name, compReviewCount);
+      const compTier = classifyBusinessTier(compReviewCount, false, compIsEnterprise);
 
-      for (const place of results) {
-        if (accepted.length >= 10) break;
-        if (!place.name) continue;
+      const competitor: Competitor = {
+        name: place.name,
+        rating: place.rating || 0,
+        reviewCount: compReviewCount,
+        category: businessData.category,
+        address: place.formatted_address,
+        similarityScore: 80,
+        strengthScore: Math.round((place.rating || 0) * 20),
+      };
 
-        const nameKey = place.name.toLowerCase().trim();
-        if (nameKey === businessData.businessName.toLowerCase().trim()) continue;
-        if (seenNames.has(nameKey)) continue;
-        seenNames.add(nameKey);
-
-        const compReviewCount = place.user_ratings_total || 0;
-        const compIsEnterprise = isEnterpriseBrand(place.name, compReviewCount);
-        const compTier = classifyBusinessTier(compReviewCount, false, compIsEnterprise);
-
-        const competitor: Competitor = {
-          name: place.name,
-          rating: place.rating || 0,
-          reviewCount: compReviewCount,
-          category: businessData.category,
-          address: place.formatted_address,
-          similarityScore: 80,
-          strengthScore: Math.round((place.rating || 0) * 20),
-        };
-
-        competitor.gapAnalysis = calculateGapAnalysis(businessData, competitor);
-        accepted.push({ ...competitor, tier: compTier });
-      }
-    } catch (error: any) {
-      console.error(`[findCompetitors] Error for query "${query}":`, error.message);
+      competitor.gapAnalysis = calculateGapAnalysis(businessData, competitor);
+      accepted.push({ ...competitor, tier: compTier });
     }
   }
 

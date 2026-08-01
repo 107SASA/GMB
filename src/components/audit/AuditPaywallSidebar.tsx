@@ -10,6 +10,13 @@ import {
 } from '@/components/billing/useRazorpayCheckout';
 import { DurationPicker, pickDuration } from '@/components/billing/DurationPicker';
 
+/** Generic, non-numeric comparisons — deliberately no invented rupee figures. */
+const COMPARISON_ROWS = [
+  { label: 'Hiring a marketing person', note: 'Full-time salary' },
+  { label: 'A local digital agency', note: 'Monthly retainer' },
+  { label: 'DIY — doing it yourself', note: 'Hours of your time, every week' },
+];
+
 /**
  * The pricing card shown BESIDE a free audit report.
  *
@@ -23,8 +30,16 @@ import { DurationPicker, pickDuration } from '@/components/billing/DurationPicke
 export default function AuditPaywallSidebar({
   /** Rendered while the report is still generating, to fill the wait. */
   generating = false,
+  /** Overrides the default intro copy above the price. */
+  unlockHeadline,
+  /** Adds a "how this compares" block below the feature list — generic
+   *  labels only, no invented competitor pricing. Off by default so the
+   *  existing (dashboard) callers of this component are unaffected. */
+  showComparison = false,
 }: {
   generating?: boolean;
+  unlockHeadline?: string;
+  showComparison?: boolean;
 }) {
   const router = useRouter();
   const { plan, loading } = usePublicPlan();
@@ -56,9 +71,10 @@ export default function AuditPaywallSidebar({
 
         <div className="p-5">
           <p className="text-sm text-slate-600 mb-4">
-            {generating
-              ? 'Your free report is generating. Here is what you get when you upgrade:'
-              : 'Your report is free to keep. Upgrade to act on it — and unlock the full platform.'}
+            {unlockHeadline ??
+              (generating
+                ? 'Your free report is generating. Here is what you get when you upgrade:'
+                : 'Your report is free to keep. Upgrade to act on it — and unlock the full platform.')}
           </p>
 
           {plan && plan.durations?.length > 1 && (
@@ -91,6 +107,28 @@ export default function AuditPaywallSidebar({
               </li>
             ))}
           </ul>
+
+          {showComparison && (
+            <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                How this compares
+              </div>
+              <ul className="space-y-2.5">
+                {COMPARISON_ROWS.map((row) => (
+                  <li key={row.label} className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-slate-700">{row.label}</span>
+                    <span className="text-slate-400">{row.note}</span>
+                  </li>
+                ))}
+                <li className="flex items-center justify-between border-t border-slate-200 pt-2.5 text-xs">
+                  <span className="font-bold text-indigo-700">GrowwMatics AI</span>
+                  <span className="font-bold text-indigo-700">
+                    {price != null ? `₹${price.toLocaleString('en-IN')} / ${cycleLabel}` : 'See price above'}
+                  </span>
+                </li>
+              </ul>
+            </div>
+          )}
 
           {checkout.phase === 'error' && (
             <div

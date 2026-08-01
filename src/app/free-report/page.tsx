@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Search, Store, AlertCircle, MapPin } from 'lucide-react';
 
@@ -59,7 +59,23 @@ export default function FreeReportPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // handleSelect sets `query` to the picked business's name, which re-arms
+  // the debounced search below. If the place-details fetch it also kicks off
+  // hasn't resolved into `selected` by the time that 300ms debounce fires,
+  // the effect would see a non-empty query with `selected` still null and
+  // re-run the autocomplete search — reopening the dropdown right after the
+  // user closed it. This ref is set synchronously at selection time so the
+  // very next debounce firing is skipped unconditionally, no matter how long
+  // the place-details fetch takes.
+  const skipNextSearchRef = useRef(false);
+
   useEffect(() => {
+    if (skipNextSearchRef.current) {
+      skipNextSearchRef.current = false;
+      setSuggestions([]);
+      setShowDropdown(false);
+      return;
+    }
     if (debouncedQuery.length < 3 || selected) {
       setSuggestions([]);
       setShowDropdown(false);
@@ -88,6 +104,7 @@ export default function FreeReportPage() {
 
   const handleSelect = async (placeId: string, mainText: string) => {
     setShowDropdown(false);
+    skipNextSearchRef.current = true;
     setQuery(mainText);
     setIsFetchingDetails(true);
     setError('');
@@ -224,9 +241,6 @@ export default function FreeReportPage() {
                   </button>
                 ))}
               </div>
-            )}
-            {selected && (
-              <p className="mt-2 text-xs text-green-700 font-medium">Selected: {selected.name}</p>
             )}
           </div>
 

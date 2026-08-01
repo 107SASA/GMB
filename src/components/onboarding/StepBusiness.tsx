@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { OnboardingData } from './types';
 import { ArrowRight, MapPin, Search, Loader2, Store, CheckCircle2, Link, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -50,7 +50,22 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
   const [manualMode, setManualMode] = useState(!!data.businessName);
   const [error, setError] = useState('');
 
+  // handleSelectBusiness sets `searchQuery` to the picked business's name,
+  // which re-arms this debounced search. `manualMode` (which unmounts the
+  // search UI) only flips to true after the place-details fetch resolves —
+  // if the 300ms debounce fires first, this effect would re-run the
+  // autocomplete search and reopen the dropdown right after the user closed
+  // it. Set synchronously at selection time so the very next debounce firing
+  // is skipped unconditionally, no matter how long that fetch takes.
+  const skipNextSearchRef = useRef(false);
+
   useEffect(() => {
+    if (skipNextSearchRef.current) {
+      skipNextSearchRef.current = false;
+      setSuggestions([]);
+      setShowDropdown(false);
+      return;
+    }
     if (debouncedQuery.length < 3) {
       setSuggestions([]);
       setShowDropdown(false);
@@ -84,6 +99,7 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
 
   const handleSelectBusiness = async (placeId: string, mainText: string) => {
     setShowDropdown(false);
+    skipNextSearchRef.current = true;
     setSearchQuery(mainText);
     setIsFetchingDetails(true);
     setError('');

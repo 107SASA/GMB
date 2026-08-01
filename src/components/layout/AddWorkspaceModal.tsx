@@ -72,8 +72,23 @@ export function AddWorkspaceModal({ onClose }: Props) {
   // Next avatar color based on how many businesses already exist
   const nextColor = AVATAR_COLORS[businesses.length % AVATAR_COLORS.length];
 
+  // handleSelectPlace sets `searchQuery` to the picked business's name,
+  // which re-arms this debounced search. If the place-details fetch it also
+  // kicks off hasn't resolved into `placeSelected` by the time the 300ms
+  // debounce fires, this effect would re-run the autocomplete search and
+  // reopen the dropdown right after the user closed it. Set synchronously at
+  // selection time so the very next debounce firing is skipped unconditionally,
+  // no matter how long the place-details fetch takes.
+  const skipNextSearchRef = useRef(false);
+
   // Fetch autocomplete suggestions
   useEffect(() => {
+    if (skipNextSearchRef.current) {
+      skipNextSearchRef.current = false;
+      setSuggestions([]);
+      setShowDropdown(false);
+      return;
+    }
     if (debouncedQuery.length < 3) {
       setSuggestions([]);
       setShowDropdown(false);
@@ -110,6 +125,7 @@ export function AddWorkspaceModal({ onClose }: Props) {
 
   const handleSelectPlace = async (placeId: string, mainText: string) => {
     setShowDropdown(false);
+    skipNextSearchRef.current = true;
     setSearchQuery(mainText);
     setIsFetchingDetails(true);
     try {

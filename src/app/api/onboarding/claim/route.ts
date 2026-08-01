@@ -5,6 +5,8 @@ import { requireClient } from '@/lib/auth';
 import { validatePasswordStrength } from '@/services/auth/security';
 import { generateOTP, hashOTP } from '@/services/auth/otp';
 import { sendEmailOtp } from '@/services/email';
+import { checkRateLimit } from '@/lib/rateLimit';
+import { isQaTestingMode } from '@/lib/testingMode';
 import bcrypt from 'bcryptjs';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -20,6 +22,14 @@ export async function POST(req: Request) {
   try {
     const authResult = await requireClient();
     if (!authResult.ok) return authResult.response;
+
+    // Keyed by userId, not IP — this also stops the route being used as an
+    // unlimited email-existence oracle (the 409 below is distinguishable)
+    // by one authenticated shadow session trying many emails.
+    const rate = checkRateLimit(`onboarding-claim:${authResult.userId}`, 8, 15 * 60 * 1000);
+    if (!rate.allowed && !isQaTestingMode()) {
+      return NextResponse.json({ error: 'Too many attempts. Please try again in a few minutes.' }, { status: 429 });
+    }
 
     await dbConnect();
 

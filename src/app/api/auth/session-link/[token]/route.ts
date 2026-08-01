@@ -1,31 +1,40 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import crypto from 'crypto';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
-import { verifySessionToken, createSession } from '@/lib/session';
+import LoginLink from '@/models/LoginLink';
+import { createSession } from '@/lib/session';
 
 /**
- * "Save to dashboard" link sent after the WhatsApp report — a session token
- * (the same JWT shape signSessionToken/createSession use everywhere else)
- * carried in the URL rather than a cookie, since the visitor is tapping this
- * from WhatsApp with no browser session yet. Consumes it, sets the real
- * session + activeBusinessId cookies, and redirects into the app. Same
- * acceptable-risk tradeoff already made for the rest of this flow (phone
- * number is effectively the identity layer pre-claim — there's nothing
- * sensitive on the account yet).
+ * "Save to dashboard" link sent after the WhatsApp report — a single-use,
+ * short-lived token (see src/models/LoginLink.ts) carried in the URL, since
+ * the visitor is tapping this from WhatsApp with no browser session yet.
+ *
+ * SECURITY: this is deliberately NOT a reusable session JWT. WhatsApp links
+ * get forwarded, screenshotted, shown in lock-screen previews, and cached by
+ * link-preview crawlers — a multi-use, long-lived bearer token embedded in a
+ * URL sent over that channel is a real account-takeover risk. This route
+ * atomically consumes the link (findOneAndUpdate matches only if unused and
+ * unexpired) so it works exactly once.
  */
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params;
-  const session = await verifySessionToken(token).catch(() => null);
-  if (!session) {
+  await dbConnect();
+
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const link = await LoginLink.findOneAndUpdate(
+    { tokenHash, usedAt: null, expiresAt: { $gt: new Date() } },
+    { $set: { usedAt: new Date() } }
+  );
+  if (!link) {
     return NextResponse.redirect(new URL('/login?error=expired_link', req.url));
   }
 
-  await dbConnect();
-  const user = await User.findById(session.userId).lean() as any;
+  const user = await User.findById(link.userId).lean() as any;
   if (!user) {
     return NextResponse.redirect(new URL('/login', req.url));
   }

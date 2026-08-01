@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Lead from '@/models/Lead';
 import Audit from '@/models/Audit';
-import { provisionShadowAccount } from '@/lib/shadowAccount';
+import { provisionShadowAccount, CLAIMED_OR_PAID_REUSE_ERROR } from '@/lib/shadowAccount';
 import { createPendingAuditAndDispatch } from '@/lib/startAudit';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { isQaTestingMode } from '@/lib/testingMode';
 
 /**
  * Entry point for the "Free Business Report" lead-gen form (/free-report).
@@ -16,9 +17,12 @@ import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
  */
 export async function POST(req: Request) {
   try {
+    // Tightened from 5/10min: each successful call provisions a real
+    // User+Organization+Business+Subscription+Lead and dispatches an audit
+    // job, so this is rate-limited more like a signup than a read endpoint.
     const ip = getClientIp(req);
-    const rate = checkRateLimit(`free-report:${ip}`, 5, 10 * 60 * 1000);
-    if (!rate.allowed) {
+    const ipRate = checkRateLimit(`free-report-ip:${ip}`, 3, 15 * 60 * 1000);
+    if (!ipRate.allowed && !isQaTestingMode()) {
       return NextResponse.json(
         { error: 'Too many requests. Please try again in a few minutes.' },
         { status: 429 }
@@ -34,6 +38,16 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: 'Please enter a valid phone number in international format, e.g. +14155550100.' },
         { status: 400 }
+      );
+    }
+
+    // Also cap by phone number so rotating IPs (proxies/VPNs) can't be used
+    // to spam reports for the same target number.
+    const phoneRate = checkRateLimit(`free-report-phone:${normalizedPhone}`, 5, 24 * 60 * 60 * 1000);
+    if (!phoneRate.allowed && !isQaTestingMode()) {
+      return NextResponse.json(
+        { error: 'Too many requests for this phone number. Please try again later.' },
+        { status: 429 }
       );
     }
 
@@ -90,10 +104,20 @@ export async function POST(req: Request) {
         .sort({ createdAt: -1 })
         .lean();
       if (pendingAudit) {
-        return NextResponse.json(
-          { success: true, businessId: business._id, auditId: (pendingAudit as any)._id, reused: true },
-          { status: 200 }
-        );
+        // A PENDING audit older than this is treated as abandoned (e.g. the
+        // Inngest job never ran — a dev-server restart mid-job, a dropped
+        // event). Fast-mode audits normally complete in ~15-20s; without this
+        // check, resubmitting the form just handed the visitor back the SAME
+        // stuck audit forever, with no way to actually get a report.
+        const STALE_PENDING_MS = 2 * 60 * 1000;
+        const isStale = Date.now() - new Date((pendingAudit as any).createdAt).getTime() > STALE_PENDING_MS;
+        if (!isStale) {
+          return NextResponse.json(
+            { success: true, businessId: business._id, auditId: (pendingAudit as any)._id, reused: true },
+            { status: 200 }
+          );
+        }
+        await Audit.updateOne({ _id: (pendingAudit as any)._id }, { $set: { status: 'FAILED' } });
       }
     }
 
@@ -105,8 +129,23 @@ export async function POST(req: Request) {
     );
   } catch (error: any) {
     console.error('Free Report Start Error:', error);
+
+    if (error?.message === CLAIMED_OR_PAID_REUSE_ERROR) {
+      return NextResponse.json({ error: CLAIMED_OR_PAID_REUSE_ERROR }, { status: 409 });
+    }
+
+    // Never leak raw driver/validation errors (collection/index names, dup
+    // key values) to an unauthenticated client — matches the sanitizing
+    // pattern /api/onboarding already uses for the same class of errors.
+    if (error?.code === 11000) {
+      return NextResponse.json(
+        { error: 'Something about these details is already registered. Please try again or log in.' },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json(
-      { error: error?.message || "We couldn't generate your report. Please try again." },
+      { error: "We couldn't generate your report. Please try again." },
       { status: 500 }
     );
   }

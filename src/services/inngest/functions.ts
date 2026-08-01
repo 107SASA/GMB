@@ -1484,11 +1484,11 @@ export const reportCardDeliver = inngest.createFunction(
       const { default: Business } = await import('@/models/Business');
       const { default: User } = await import('@/models/User');
       const { default: ReportShare } = await import('@/models/ReportShare');
+      const { default: LoginLink } = await import('@/models/LoginLink');
       const { getReportAgentConfig, composeSummaryMessage, extractReportScores } = await import('@/services/report/reportAgent');
       const { sendOutboundMessage } = await import('@/services/whatsapp/send');
       const { launchBrowser } = await import('@/lib/pdf/browser');
       const { uploadPublicObject } = await import('@/lib/storage');
-      const { signSessionToken } = await import('@/lib/session');
       const crypto = await import('crypto');
 
       const convo: any = await ReportConversation.findById(conversationId);
@@ -1559,10 +1559,20 @@ export const reportCardDeliver = inngest.createFunction(
         );
       }
 
+      // Single-use, short-lived login link (NOT a reusable session JWT — see
+      // src/models/LoginLink.ts for why: WhatsApp links get forwarded,
+      // screenshotted, and cached, so a multi-use 30-day bearer token
+      // embedded in a URL sent over that channel is a real takeover risk).
       let dashboardLink = baseUrl;
       if (user) {
-        const loginToken = await signSessionToken(user._id.toString(), user.role);
-        dashboardLink = `${baseUrl}/api/auth/session-link/${loginToken}`;
+        const rawToken = crypto.randomBytes(32).toString('hex');
+        const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+        await LoginLink.create({
+          tokenHash,
+          userId: user._id,
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
+        });
+        dashboardLink = `${baseUrl}/api/auth/session-link/${rawToken}`;
       }
 
       const summary = composeSummaryMessage(config, scores, convo.leadName, dashboardLink);

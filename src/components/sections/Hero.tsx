@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Sparkles, Calendar } from "lucide-react";
-import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
+import { ArrowRight, Sparkles, MessageCircle } from "lucide-react";
+import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 
 export function Hero() {
   return (
@@ -62,17 +62,17 @@ export function Hero() {
           transition={{ duration: 0.6, delay: 0.3 }}
           className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-20"
         >
-          <Link href="/onboarding" className="w-full sm:w-auto px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/20">
-            Start Free Audit
+          <Link href="/free-report" className="w-full sm:w-auto px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/20">
+            Get My Free Report
             <ArrowRight className="w-5 h-5" />
           </Link>
           <a
-            href={bookDemoLink()}
+            href={boostProfileLink()}
             {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
             className="w-full sm:w-auto px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
           >
-            <Calendar className="w-5 h-5" />
-            Book a Demo
+            <MessageCircle className="w-5 h-5" />
+            Get Report on WhatsApp
           </a>
         </motion.div>
 

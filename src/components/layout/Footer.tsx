@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Rocket } from "lucide-react";
-import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
+import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 
 export function Footer() {
   return (
@@ -27,11 +27,11 @@ export function Footer() {
             <li><Link href="/pricing" className="hover:text-primary transition-colors">Pricing</Link></li>
             <li>
               <a
-                href={bookDemoLink()}
+                href={boostProfileLink()}
                 {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                 className="hover:text-primary transition-colors"
               >
-                Book a Demo
+                Get Report on WhatsApp
               </a>
             </li>
           </ul>
@@ -40,7 +40,7 @@ export function Footer() {
         <div>
           <h4 className="font-bold text-slate-900 mb-6">Get Started</h4>
           <ul className="space-y-4 text-sm text-slate-500">
-            <li><Link href="/onboarding" className="hover:text-primary transition-colors">Create Account</Link></li>
+            <li><Link href="/free-report" className="hover:text-primary transition-colors">Get Free Report</Link></li>
             <li><Link href="/login" className="hover:text-primary transition-colors">Sign In</Link></li>
             <li><Link href="/contact" className="hover:text-primary transition-colors">Contact Us</Link></li>
           </ul>

@@ -125,7 +125,15 @@ export function useRazorpayCheckout(opts?: {
       try {
         const res = await fetch('/api/billing/status');
         const json = await res.json();
-        if (json?.subscription?.billingStatus === 'Active') {
+        // json.workspace.isActive (computed via isWorkspaceUnlocked, same
+        // function the dashboard middleware/WorkspaceLockGate check) is the
+        // real "is THIS workspace unlocked" signal. subscription.billingStatus
+        // is the account-level Free-plan Subscription, which is already
+        // 'Active' the instant any account is created — checking it alone
+        // reports false success on the very first poll, before the webhook
+        // has run, which then permanently stops polling while the dashboard
+        // is still actually locked.
+        if (json?.workspace?.isActive === true) {
           setCheckout({ phase: 'success' });
           window.dispatchEvent(new Event(WORKSPACE_UNLOCKED_EVENT));
           optsRef.current?.onActivated?.();

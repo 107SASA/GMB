@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { requireBusinessContext } from '@/lib/tenant';
 import { fetchLocationProfile, updateLocationProfile, GBPAuthError } from '@/lib/gbpClient';
 import { gbpWritesEnabled } from '@/lib/gbpSafety';
+import dbConnect from '@/lib/mongodb';
+import GBPToken from '@/models/GBPToken';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +20,13 @@ export async function GET() {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
 
-  if (!ctx.business.googleConnected) {
+  // "Connected" must mean a real OAuth grant exists (a GBPToken), NOT just
+  // that onboarding set Business.googleConnected from a picked Places result
+  // — same check /api/gbp/insights already uses. Without this, a business
+  // could show "connected" here while insights correctly shows it isn't.
+  await dbConnect();
+  const tokenDoc = await GBPToken.findOne({ businessId: ctx.businessId }).lean();
+  if (!tokenDoc) {
     return NextResponse.json({ success: false, connected: false, error: 'Google Business Profile is not connected.' });
   }
 
@@ -44,7 +52,9 @@ export async function PATCH(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
 
-  if (!ctx.business.googleConnected) {
+  await dbConnect();
+  const tokenDoc = await GBPToken.findOne({ businessId: ctx.businessId }).lean();
+  if (!tokenDoc) {
     return NextResponse.json({ success: false, error: 'Google Business Profile is not connected.' }, { status: 400 });
   }
 

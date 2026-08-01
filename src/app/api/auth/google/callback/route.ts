@@ -133,9 +133,15 @@ export async function GET(request: NextRequest) {
   await dbConnect();
   const business = await Business.findById(businessId).lean() as any;
 
+  // `metadata` MUST be in the readMask — the matching logic below reads
+  // `l.metadata?.placeId`, and Google's Business Information API only
+  // returns fields you explicitly ask for. Without it, metadata is
+  // undefined on every location, the placeId match below can never
+  // succeed, and every business silently falls back to locations[0] —
+  // the same first listing for every business connecting this account.
   const locUrl =
     `https://mybusinessbusinessinformation.googleapis.com/v1/${accountId}/locations` +
-    `?readMask=name,title,storefrontAddress`;
+    `?readMask=name,title,storefrontAddress,metadata`;
 
   const locRes = await fetch(locUrl, {
     headers: { Authorization: `Bearer ${access_token}` },

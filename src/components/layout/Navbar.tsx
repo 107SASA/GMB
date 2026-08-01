@@ -58,8 +58,8 @@ export function Navbar() {
           <Link href="/login" className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
             Login
           </Link>
-          <Link href="/onboarding" className="px-5 py-2.5 bg-slate-900 text-white rounded-full text-sm font-semibold hover:bg-slate-800 transition-all active:scale-95 shadow-md">
-            Get Started
+          <Link href="/free-report" className="px-5 py-2.5 bg-slate-900 text-white rounded-full text-sm font-semibold hover:bg-slate-800 transition-all active:scale-95 shadow-md">
+            Get Free Report
           </Link>
         </div>
 
@@ -100,11 +100,11 @@ export function Navbar() {
                 Login
               </Link>
               <Link
-                href="/onboarding"
+                href="/free-report"
                 onClick={() => setMobileMenuOpen(false)}
                 className="px-6 py-3 bg-slate-900 text-white rounded-xl text-center font-bold"
               >
-                Get Started
+                Get Free Report
               </Link>
             </div>
           </motion.div>

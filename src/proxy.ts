@@ -44,6 +44,18 @@ const ACTIVE_BUSINESS_COOKIE = 'activeBusinessId';
 const INTAKE_PATH = '/dashboard/onboarding/intake';
 const INTAKE_ALLOWED_PREFIXES = [INTAKE_PATH, '/dashboard/profile', '/dashboard/billing'];
 
+// ADDITIVE — shadow accounts (see src/lib/shadowAccount.ts: passwordless
+// accounts auto-created by /free-report and the WhatsApp report flow) get
+// exactly one real credential-setting gate, checked BEFORE intake, the
+// moment their workspace unlocks (i.e. right after paying). Without this a
+// paying customer would have no durable way to log back into their account
+// on another device/session — see POST /api/onboarding/claim.
+const CLAIM_PATH = '/dashboard/onboarding/claim';
+
+function isAllowedBeforeClaim(pathname: string): boolean {
+  return pathname === CLAIM_PATH || pathname.startsWith(`${CLAIM_PATH}/`);
+}
+
 // Only NEW workspaces (created on/after this date) are HARD-gated into the
 // intake. Workspaces that existed before are nudged with a notification instead
 // (see scripts backfill), so we don't suddenly wall existing paying customers.
@@ -75,8 +87,15 @@ export default async function proxy(request: NextRequest) {
     await dbConnect();
 
     const user = await User.findById(session.userId)
-      .select('role subscriptionPlan')
-      .lean<{ role?: string; subscriptionPlan?: string }>();
+      .select('role subscriptionPlan isShadowAccount isEmailVerified shadowSource email')
+      .lean<{
+        role?: string;
+        subscriptionPlan?: string;
+        isShadowAccount?: boolean;
+        isEmailVerified?: boolean;
+        shadowSource?: string;
+        email?: string;
+      }>();
     if (!user) return NextResponse.next();
     // Owner keeps full access to every workspace (incl. their WhatsApp AI).
     if (user.role === 'SUPER_ADMIN') return NextResponse.next();
@@ -101,6 +120,27 @@ export default async function proxy(request: NextRequest) {
         businessCreatedAt: business.createdAt,
       })
     ) {
+      // Paid + still a shadow account -> must set a real email/password
+      // before anything else, including intake.
+      if (user.isShadowAccount && !isAllowedBeforeClaim(pathname)) {
+        return NextResponse.redirect(new URL(CLAIM_PATH, request.url));
+      }
+
+      // Claimed (isShadowAccount just flipped false above) but the OTP step
+      // was never completed -> the pre-existing session would otherwise let
+      // this straight through, silently defeating the whole point of the
+      // claim step (POST /api/auth/login refuses unverified accounts, so
+      // this person would have no way back in once this session expires).
+      // Scoped to former shadow accounts only via shadowSource, so normal
+      // /onboarding signups (which never get a session before verifying)
+      // are untouched.
+      if (user.shadowSource && !user.isShadowAccount && !user.isEmailVerified && !isAllowedBeforeClaim(pathname)) {
+        const url = new URL(CLAIM_PATH, request.url);
+        url.searchParams.set('step', 'verify');
+        if (user.email) url.searchParams.set('email', user.email);
+        return NextResponse.redirect(url);
+      }
+
       const isNewWorkspace = !!business.createdAt && new Date(business.createdAt) >= INTAKE_ENFORCED_SINCE;
       if (isNewWorkspace && !business.intakeCompleted && !isAllowedBeforeIntake(pathname)) {
         return NextResponse.redirect(new URL(INTAKE_PATH, request.url));

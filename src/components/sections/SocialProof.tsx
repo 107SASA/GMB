@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
+import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 
 export function FinalCTA() {
   return (
@@ -23,15 +23,15 @@ export function FinalCTA() {
             Run a free audit of your Google Business Profile in minutes. No credit card required.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/onboarding" className="w-full sm:w-auto px-10 py-5 bg-white text-slate-900 rounded-2xl font-bold hover:bg-slate-50 hover:scale-105 transition-all shadow-xl">
-              Start Free Audit
+            <Link href="/free-report" className="w-full sm:w-auto px-10 py-5 bg-white text-slate-900 rounded-2xl font-bold hover:bg-slate-50 hover:scale-105 transition-all shadow-xl">
+              Get My Free Report
             </Link>
             <a
-              href={bookDemoLink()}
+              href={boostProfileLink()}
               {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
               className="w-full sm:w-auto px-10 py-5 bg-slate-900/50 border border-white/20 text-white rounded-2xl font-bold hover:bg-slate-900/70 hover:scale-105 transition-all backdrop-blur-sm shadow-xl"
             >
-              Book a Demo
+              Get Report on WhatsApp
             </a>
           </div>
         </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useBusiness } from '@/context/BusinessContext';
 
 interface HistoryPost {
   _id: string;
@@ -52,6 +53,7 @@ function getTomorrowParts(): { date: string; time: string } {
 }
 
 export default function ContentHistoryTab() {
+  const { activeBusiness } = useBusiness();
   const [posts, setPosts] = useState<HistoryPost[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -102,9 +104,14 @@ export default function ContentHistoryTab() {
     }
   };
 
+  // /api/content/posts is scoped to the active business server-side, but this
+  // fetch previously ran once on mount only — switching workspaces (this
+  // component is rendered from ContentWorkspace without remounting) left it
+  // showing the PREVIOUS workspace's content history.
   useEffect(() => {
+    if (!activeBusiness?._id) return;
     fetchPosts(1, false);
-  }, []);
+  }, [activeBusiness?._id]);
 
   const closeAllRowActions = () => {
     setEditingId(null);

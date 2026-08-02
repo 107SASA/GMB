@@ -209,7 +209,11 @@ export default function SettingsPage() {
       }
     };
     load();
-  }, [roleLoading, isSuperAdmin]);
+    // activeBusiness?._id: /api/business returns the ACTIVE business's own
+    // profile — this previously only refired on role checks, so switching
+    // workspaces left the Business Profile tab showing the PREVIOUS
+    // workspace's settings until a full reload.
+  }, [roleLoading, isSuperAdmin, activeBusiness?._id]);
 
   // ── Business Profile save ───────────────────────────────────────────────
   const handleBpSave = async () => {

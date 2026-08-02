@@ -9,12 +9,21 @@ import { createSession, signSessionToken, SESSION_MAX_AGE_SECONDS } from '@/lib/
 import { validatePasswordStrength } from '@/services/auth/security';
 import { generateOTP, hashOTP } from '@/services/auth/otp';
 import { sendEmailOtp } from '@/services/email';
-import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { checkRateLimit, resetRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
+// Existing-account branch below is functionally a login (see the block that
+// uses these) — same thresholds as /api/auth/login/route.ts, kept in sync
+// deliberately rather than imported, since these two routes should be free
+// to diverge later without one silently changing the other's behavior.
+const ONBOARDING_AUTH_MAX_ATTEMPTS = 8;
+const ONBOARDING_AUTH_WINDOW_MS = 15 * 60 * 1000;
+const ONBOARDING_ACCOUNT_LOCK_THRESHOLD = 10;
+const ONBOARDING_ACCOUNT_LOCK_DURATION_MS = 15 * 60 * 1000;
 // Reserved for shadow accounts (see src/lib/shadowAccount.ts) — must never be
 // registerable through normal signup. Without this block, an attacker could
 // pre-register a specific phone number's future shadow email, permanently
@@ -129,11 +138,78 @@ export async function POST(req: Request) {
       if (!otpResult.success) {
         console.error('Failed to send onboarding OTP email:', otpResult.error);
       }
-    } else if (body.companyName && !newUser.companyName) {
-      // Existing account resuming onboarding (e.g. after an earlier step failed) —
-      // backfill the company name they just typed in StepOrganization. Never
-      // overwrites one already saved (e.g. edited later from the Profile page).
-      newUser.companyName = body.companyName;
+    } else {
+      // Existing account (verified or not) resuming onboarding. This branch
+      // used to skip password validation entirely — the only remaining gate
+      // was `isEmailVerified` below, which is true for every real customer —
+      // so submitting nothing but a known email here silently returned a
+      // valid session for that account. Treat it exactly like a login
+      // attempt: same rate limit + DB-backed lockout + bcrypt/legacy-plaintext
+      // compare as /api/auth/login/route.ts, because that's what this is.
+      const authRlKey = `onboarding-auth:${ip}:${email}`;
+      const authRl = checkRateLimit(authRlKey, ONBOARDING_AUTH_MAX_ATTEMPTS, ONBOARDING_AUTH_WINDOW_MS);
+      if (!authRl.allowed && !isQaTestingMode()) {
+        return NextResponse.json(
+          { success: false, error: `Too many attempts. Try again in ${Math.ceil(authRl.retryAfterSeconds / 60)} minute(s).` },
+          { status: 429, headers: { 'Retry-After': String(authRl.retryAfterSeconds) } }
+        );
+      }
+
+      if (
+        newUser.accountLockedUntil &&
+        newUser.accountLockedUntil.getTime() > Date.now() &&
+        !isQaTestingMode()
+      ) {
+        const retryAfterSeconds = Math.ceil((newUser.accountLockedUntil.getTime() - Date.now()) / 1000);
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Account temporarily locked due to repeated failed attempts. Try again in ${Math.ceil(retryAfterSeconds / 60)} minute(s).`,
+          },
+          { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
+        );
+      }
+
+      const submittedPassword = String(body.password || '');
+      let isValid = false;
+      const isBcrypt = newUser.passwordHash?.startsWith('$2b$') || newUser.passwordHash?.startsWith('$2a$');
+      if (isBcrypt) {
+        isValid = await bcrypt.compare(submittedPassword, newUser.passwordHash!);
+      } else if (newUser.passwordHash) {
+        // Legacy plain-text password — constant-time compare, and upgrade to
+        // bcrypt on success, matching /api/auth/login/route.ts exactly.
+        const a = Buffer.from(newUser.passwordHash);
+        const b = Buffer.from(submittedPassword);
+        isValid = a.length === b.length && crypto.timingSafeEqual(a, b);
+        if (isValid) {
+          newUser.passwordHash = await bcrypt.hash(submittedPassword, 12);
+        }
+      }
+
+      if (!isValid) {
+        if (!isQaTestingMode()) {
+          const attempts = (newUser.failedLoginAttempts || 0) + 1;
+          const update: Record<string, unknown> = { failedLoginAttempts: attempts };
+          if (attempts >= ONBOARDING_ACCOUNT_LOCK_THRESHOLD) {
+            update.accountLockedUntil = new Date(Date.now() + ONBOARDING_ACCOUNT_LOCK_DURATION_MS);
+          }
+          await User.updateOne({ _id: newUser._id }, { $set: update });
+        }
+        // Same generic message /login uses — never reveal whether the email
+        // exists, whether it's verified, or which check failed.
+        return NextResponse.json({ success: false, error: 'Invalid credentials' }, { status: 401 });
+      }
+
+      // Correct password — this really is the account owner. Clear the
+      // throttle and any accumulated lockout state, and backfill the company
+      // name they just typed in StepOrganization (never overwrites one
+      // already saved, e.g. edited later from the Profile page).
+      resetRateLimit(authRlKey);
+      newUser.failedLoginAttempts = 0;
+      newUser.accountLockedUntil = undefined;
+      if (body.companyName && !newUser.companyName) {
+        newUser.companyName = body.companyName;
+      }
       await newUser.save();
     }
 

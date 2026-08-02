@@ -17,6 +17,16 @@ export interface IReview extends Document {
   replyTone?: string;
   sourcePlatform?: string;
   /**
+   * Which review provider fetched this review (see src/services/reviews/).
+   * 'gbp_api' reviews carry a REAL Google review id and can have a reply
+   * posted back to the live profile; 'serpapi'/'mock' reviews are read-only
+   * previews (SerpApi's synthetic ids aren't valid Google review ids — see
+   * the reply-gating in src/app/api/reviews/[id]/post-reply/route.ts).
+   * Missing on reviews synced before this field existed — treated the same
+   * as a non-Google source (never reply-eligible) everywhere it's checked.
+   */
+  source?: 'gbp_api' | 'serpapi' | 'mock';
+  /**
    * When the customer posted the review on Google. createdAt is only the
    * sync time (Mongoose timestamps strip createdAt from upserts), so any
    * date math (trends, "days since last review") must use postedAt.
@@ -43,6 +53,7 @@ const ReviewSchema: Schema = new Schema(
     replyStatus: { type: String, enum: ['PENDING', 'APPROVED', 'REJECTED', 'POSTED', 'FAILED'], default: 'PENDING' },
     replyTone: { type: String },
     sourcePlatform: { type: String, default: 'Google' },
+    source: { type: String, enum: ['gbp_api', 'serpapi', 'mock'] },
     postedAt: { type: Date, index: true },
   },
   { timestamps: true }

@@ -141,7 +141,10 @@ export async function POST(request: Request) {
         // Per-workspace: unlock THIS workspace's dashboard.
         const businessId = await resolveBusinessId(subEntity);
         if (businessId) {
-          await activateBusinessPlan(businessId, { currentPeriodEnd });
+          await activateBusinessPlan(businessId, {
+            currentPeriodEnd,
+            eventType: eventType as 'subscription.activated' | 'subscription.charged',
+          });
         } else {
           console.warn(`[billing] ${eventType}: cannot resolve workspace for ${subEntity?.id}`);
         }

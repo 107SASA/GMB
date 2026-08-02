@@ -31,12 +31,14 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     // Do NOT add a real Google API call here without wrapping it in this guard.
     if (gbpWritesEnabled()) {
       // Real Google Business Profile reviews.updateReply (gated ON).
-      // NOTE: this needs the GBP review resource id. `providerReviewId` is the
-      // GBP review id ONLY when reviews are sourced from the GBP reviews API; the
-      // current SerpApi sync stores a SerpApi id, so going live also requires GBP
-      // review sync (see the #2 audit note). Guard so we fail clearly, not silently.
-      if (!review.providerReviewId) {
-        throw new Error('Cannot post reply: this review has no Google review id (needs GBP review sync).');
+      // NOTE: this needs a REAL GBP review resource id. `providerReviewId` is
+      // always present (SerpApi/mock reviews have one too, just a synthetic
+      // one — see src/services/reviews/providers/SerpApiGoogleProvider.ts),
+      // so checking for its mere presence isn't enough. Only `source ===
+      // 'gbp_api'` means this review actually came from the official API and
+      // can receive a reply — see src/services/reviews/syncReviews.ts.
+      if (review.source !== 'gbp_api' || !review.providerReviewId) {
+        throw new Error('Cannot post reply: this review is not from a connected Google Business Profile (connect Google to reply to it).');
       }
       const { replyToReview } = await import('@/lib/gbpClient');
       await replyToReview(ctx.businessId, review.providerReviewId, review.aiSuggestedReply);

@@ -60,7 +60,7 @@ export async function POST(req: Request) {
       email: invite.email,
       passwordHash: hashedPassword,
       phone: phone || '+910000000000',
-      role: 'super_admin',
+      role: 'SUPER_ADMIN',
       isEmailVerified: true,
     });
 

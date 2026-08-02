@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { Eye, Phone, Globe, MapPin, MessageCircle, Search, Map, RefreshCw } from 'lucide-react';
+import { useBusiness } from '@/context/BusinessContext';
 
 type GBPRange = 7 | 14 | 28 | 90;
 
@@ -114,6 +115,7 @@ const METRIC_CONFIG = [
 ] as const;
 
 export default function GBPSection() {
+  const { activeBusiness } = useBusiness();
   const [data, setData]       = useState<InsightsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -132,7 +134,14 @@ export default function GBPSection() {
     }
   }, [range]);
 
-  useEffect(() => { fetchInsights(); }, [fetchInsights]);
+  // Reload when the active workspace changes — this widget previously fetched
+  // once on mount and never again, so switching workspaces (without a full
+  // page reload) left it silently showing the PREVIOUSLY active workspace's
+  // GBP data. See src/app/dashboard/insights/page.tsx for the same pattern.
+  useEffect(() => {
+    if (!activeBusiness?._id) return;
+    fetchInsights();
+  }, [fetchInsights, activeBusiness?._id]);
 
   const handleRangeChange = (r: GBPRange) => {
     setRange(r);

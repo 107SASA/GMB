@@ -65,6 +65,10 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
   const replyStatus: string = review.replyStatus || 'PENDING';
   const canApprove = editableReply.trim().length > 0 && replyStatus === 'PENDING';
   const canPost = replyStatus === 'APPROVED';
+  // Only reviews sourced from the official GBP API carry a real Google review
+  // id — a reply can only ever be posted back for those. Reviews shown before
+  // Google is connected (from the SerpApi preview) are read-only.
+  const canReply = review.source === 'gbp_api';
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4 transition-all hover:shadow-md">
@@ -109,7 +113,7 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
               </h5>
               <p className="text-slate-800 text-sm">{review.response}</p>
             </div>
-          ) : (
+          ) : canReply ? (
             <div className="mt-4 border-t border-slate-100 pt-4 flex gap-2">
               <button
                 onClick={() => setExpanded(!expanded)}
@@ -117,6 +121,12 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
               >
                 {expanded ? 'Close Reply Workspace' : 'Reply to Review'}
               </button>
+            </div>
+          ) : (
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <p className="text-xs text-slate-400 font-medium">
+                Preview only — connect your Google Business Profile to reply to this review.
+              </p>
             </div>
           )}
         </div>

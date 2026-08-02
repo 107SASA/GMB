@@ -5,6 +5,7 @@ import ReviewAnalytics from '@/models/ReviewAnalytics';
 import GBPToken from '@/models/GBPToken';
 import { getReviewProvider } from './providers/index';
 import { GbpApiReviewProvider } from './providers/GbpApiReviewProvider';
+import { SerpApiGoogleProvider } from './providers/SerpApiGoogleProvider';
 import { analyzeSentiment } from './sentimentEngine';
 import { computeReviewMetrics, ReviewMetrics } from './reviewMetrics';
 
@@ -52,6 +53,15 @@ export async function syncReviewsForBusiness(
   const provider = gbpToken ? new GbpApiReviewProvider() : getReviewProvider();
   const fetchedReviews = await provider.fetchReviews(businessId, { knownReviewIds });
 
+  // Tags every review upserted below with where it actually came from — the
+  // reply-posting flow (post-reply/route.ts) refuses to post anything that
+  // isn't 'gbp_api', since only real Google review ids can receive a reply.
+  const source: 'gbp_api' | 'serpapi' | 'mock' = gbpToken
+    ? 'gbp_api'
+    : provider instanceof SerpApiGoogleProvider
+      ? 'serpapi'
+      : 'mock';
+
   // Rating + id of the last critical review seen — carried on the alert
   // event so push notifications can say "New {rating}★ review".
   let criticalDetails: { rating: number; reviewId: string } | null = null;
@@ -75,6 +85,7 @@ export async function syncReviewsForBusiness(
         reviewText: raw.text,
         sentiment: sentimentResult.label,
         sentimentScore: sentimentResult.score,
+        source,
         // Google's real posted date. NOTE: setting createdAt here does NOT
         // work — Mongoose timestamps strip it from upserts — which is why
         // the dedicated postedAt field exists. Existing docs pick it up on

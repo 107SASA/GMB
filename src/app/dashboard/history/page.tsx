@@ -1,8 +1,10 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Search, Filter, Clock, FileText, Trash2, X, ChevronLeft, ChevronRight, Copy, Check } from "lucide-react";
+import { useBusiness } from '@/context/BusinessContext';
 
 export default function HistoryPage() {
+  const { activeBusiness } = useBusiness();
   const [items, setItems] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selected, setSelected] = useState<any>(null);
@@ -13,9 +15,14 @@ export default function HistoryPage() {
   const LIMIT = 10;
   const totalPages = Math.ceil(total / LIMIT);
 
+  // Refetch on workspace switch too — /api/posts is scoped to the active
+  // business server-side, but this component previously only refired on
+  // filter changes, so switching workspaces left it showing the PREVIOUS
+  // workspace's content history until a full reload.
   useEffect(() => {
+    if (!activeBusiness?._id) return;
     fetchHistory();
-  }, [filters]);
+  }, [filters, activeBusiness?._id]);
 
   const fetchHistory = async () => {
     setIsLoading(true);

@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import BufferHealthBar from './BufferHealthBar';
 import LowBufferBanner from './LowBufferBanner';
 import WeeklyCalendar from './WeeklyCalendar';
+import { useBusiness } from '@/context/BusinessContext';
 
 export default function SchedulerDashboard() {
+  const { activeBusiness } = useBusiness();
   const [bufferData, setBufferData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -21,9 +23,14 @@ export default function SchedulerDashboard() {
     }
   }, []);
 
+  // /api/scheduler/buffer is scoped to the active business server-side, but
+  // this previously fetched once on mount only — switching workspaces left
+  // the buffer health bar and calendar (which is fully driven by this data,
+  // see the WeeklyCalendar posts prop below) showing the PREVIOUS workspace.
   useEffect(() => {
+    if (!activeBusiness?._id) return;
     fetchBuffer();
-  }, [fetchBuffer]);
+  }, [fetchBuffer, activeBusiness?._id]);
 
   const handleManualGenerate = async () => {
     try {

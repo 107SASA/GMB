@@ -54,19 +54,11 @@ export async function POST(req: Request) {
   }
 }
 
-export async function PUT(req: Request) {
-  try {
-    const ctx = await requireBusinessContext();
-    if (!ctx.ok) return ctx.response;
-
-    const body = await req.json();
-    // Exclude _id to prevent modification errors
-    delete body._id;
-
-    const business = await Business.findByIdAndUpdate(ctx.businessId, body, { new: true });
-    return NextResponse.json({ message: "Business updated", business });
-  } catch (error) {
-    console.error(error);
-    return NextResponse.json({ message: "Server error" }, { status: 500 });
-  }
-}
+// PUT intentionally removed — it used to do
+// `Business.findByIdAndUpdate(ctx.businessId, body, { new: true })` with only
+// `_id` stripped from the body, so any authenticated caller could set
+// `subscriptionStatus: "active"` (the sole signal isWorkspaceUnlocked() in
+// workspaceAccess.ts checks to unlock the paid product), reset
+// `freeAuditUsed: false`, or reassign `organizationId`. Confirmed via repo-wide
+// grep that no frontend (web or mobile) ever called PUT on this route — use
+// the field-whitelisted PATCH /api/business/[id] instead.

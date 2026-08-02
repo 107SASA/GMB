@@ -2,6 +2,8 @@ import dbConnect from '@/lib/mongodb';
 import Subscription from '@/models/Subscription';
 import User from '@/models/User';
 import Business from '@/models/Business';
+import { notifyBusinessUsers } from '@/services/notifications';
+import { sendPaymentFailedEmail, sendCancellationEmail } from './billingEmails';
 import {
   ALL_MODULES,
   buildModulesMap,
@@ -10,18 +12,45 @@ import {
 } from './planCatalog';
 
 /**
+ * Fetches the workspace owner's email/name for a billing email. Best-effort —
+ * returns null on any failure so a lookup problem can never block the
+ * entitlement flip these functions exist for.
+ */
+async function resolveBillingContact(businessId: string): Promise<{ email: string; fullName?: string } | null> {
+  try {
+    const business = await Business.findById(businessId).select('userId').lean() as any;
+    if (!business?.userId) return null;
+    const owner = await User.findById(business.userId).select('email fullName').lean() as any;
+    if (!owner?.email) return null;
+    return { email: owner.email, fullName: owner.fullName };
+  } catch (e: any) {
+    console.error('[billing] resolveBillingContact failed:', e.message);
+    return null;
+  }
+}
+
+/**
  * Per-workspace access gate (src/proxy.ts reads Business.subscriptionStatus).
  * These mirror the user-level entitlement helpers below but flip a single
  * workspace's access. The webhook calls both: the workspace functions unlock
  * THIS business's dashboard, while the user-level activatePlan keeps
  * User.subscriptionPlan in sync for usage limits.
+ *
+ * Each one fires the customer-facing signal (in-app notification, and email
+ * for the two that need one) right here, at the same point the DB field
+ * actually flips — not from the webhook route — so nothing can call these
+ * and skip the notification, and the two can never drift out of sync.
  */
 export async function activateBusinessPlan(
   businessId: string,
-  opts: { currentPeriodEnd?: Date } = {}
+  opts: {
+    currentPeriodEnd?: Date;
+    /** Distinguishes first activation from a recurring renewal charge, for notification copy only — both flip the same fields. */
+    eventType?: 'subscription.activated' | 'subscription.charged';
+  } = {}
 ): Promise<void> {
   await dbConnect();
-  await Business.updateOne(
+  const business = await Business.findOneAndUpdate(
     { _id: businessId },
     {
       $set: {
@@ -34,22 +63,87 @@ export async function activateBusinessPlan(
         pipelineStage: 'Customer',
         ...(opts.currentPeriodEnd && { subscriptionCurrentPeriodEnd: opts.currentPeriodEnd }),
       },
-    }
-  );
+    },
+    { new: true }
+  ).select('name').lean() as any;
+
+  const isRenewal = opts.eventType === 'subscription.charged';
+  const workspaceName = business?.name || 'your workspace';
+  try {
+    await notifyBusinessUsers(businessId, {
+      type: isRenewal ? 'billing_renewed' : 'billing_activated',
+      title: isRenewal ? 'Payment received' : 'Subscription activated',
+      body: isRenewal
+        ? `Your GrowwMatics AI subscription for ${workspaceName} was renewed successfully.`
+        : `Your GrowwMatics AI subscription for ${workspaceName} is now active — every feature is unlocked.`,
+      link: '/dashboard/billing',
+    });
+  } catch (e: any) {
+    console.error('[billing] activateBusinessPlan notification failed:', e.message);
+  }
 }
 
 export async function markBusinessPastDue(businessId: string): Promise<void> {
   await dbConnect();
-  await Business.updateOne({ _id: businessId }, { $set: { subscriptionStatus: 'past_due' } });
+  const business = await Business.findOneAndUpdate(
+    { _id: businessId },
+    { $set: { subscriptionStatus: 'past_due' } },
+    { new: true }
+  ).select('name').lean() as any;
+  const workspaceName = business?.name || 'your workspace';
+
+  try {
+    await notifyBusinessUsers(businessId, {
+      type: 'billing_past_due',
+      title: 'Payment failed',
+      body: `We couldn't process your payment for ${workspaceName}. Update your payment method to avoid losing access.`,
+      link: '/dashboard/billing',
+    });
+  } catch (e: any) {
+    console.error('[billing] markBusinessPastDue notification failed:', e.message);
+  }
+
+  const contact = await resolveBillingContact(businessId);
+  if (contact) {
+    const result = await sendPaymentFailedEmail(contact.email, { fullName: contact.fullName, businessName: business?.name });
+    if (!result.success) {
+      console.error(`[billing] payment-failed email to ${contact.email} did not send:`, (result as any).error);
+    }
+  } else {
+    console.warn(`[billing] markBusinessPastDue: no contact email resolved for business ${businessId} — email skipped.`);
+  }
 }
 
 export async function cancelBusinessPlan(businessId: string): Promise<void> {
   await dbConnect();
   // Fully canceled now — clear the "pending cancel" flag so the gate locks it.
-  await Business.updateOne(
+  const business = await Business.findOneAndUpdate(
     { _id: businessId },
-    { $set: { subscriptionStatus: 'canceled', subscriptionCancelAtPeriodEnd: false } }
-  );
+    { $set: { subscriptionStatus: 'canceled', subscriptionCancelAtPeriodEnd: false } },
+    { new: true }
+  ).select('name').lean() as any;
+  const workspaceName = business?.name || 'your workspace';
+
+  try {
+    await notifyBusinessUsers(businessId, {
+      type: 'billing_canceled',
+      title: 'Subscription canceled',
+      body: `The subscription for ${workspaceName} has been canceled. Reactivate any time from Billing.`,
+      link: '/dashboard/billing',
+    });
+  } catch (e: any) {
+    console.error('[billing] cancelBusinessPlan notification failed:', e.message);
+  }
+
+  const contact = await resolveBillingContact(businessId);
+  if (contact) {
+    const result = await sendCancellationEmail(contact.email, { fullName: contact.fullName, businessName: business?.name });
+    if (!result.success) {
+      console.error(`[billing] cancellation email to ${contact.email} did not send:`, (result as any).error);
+    }
+  } else {
+    console.warn(`[billing] cancelBusinessPlan: no contact email resolved for business ${businessId} — email skipped.`);
+  }
 }
 
 /**

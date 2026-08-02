@@ -10,6 +10,7 @@ import {
 import { cn } from '@/lib/utils';
 import { planDisplayLabel, isPaidPlanLabel } from '@/lib/billing/planLabel';
 import Link from 'next/link';
+import { useBusiness } from '@/context/BusinessContext';
 
 interface BillingStatus {
   planType: string;
@@ -124,6 +125,7 @@ interface WorkspaceBilling {
 }
 
 function SubscriptionCard() {
+  const { activeBusiness } = useBusiness();
   const [status, setStatus] = useState<BillingStatus | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceBilling | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -138,7 +140,15 @@ function SubscriptionCard() {
     } catch { /* card just doesn't render */ }
   };
 
-  useEffect(() => { loadStatus(); }, []);
+  // /api/billing/status reads the ACTIVE workspace's subscription — this
+  // previously fetched once on mount only, so switching workspaces left the
+  // billing card showing the PREVIOUS workspace's plan/status, which could
+  // seriously mislead a user about whether the workspace they're looking at
+  // is actually paid.
+  useEffect(() => {
+    if (!activeBusiness?._id) return;
+    loadStatus();
+  }, [activeBusiness?._id]);
 
   if (!status) return null;
 
@@ -272,6 +282,7 @@ function SubscriptionCard() {
 
 export default function BillingPage() {
   const router = useRouter();
+  const { activeBusiness } = useBusiness();
   const [data, setData] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -290,7 +301,14 @@ export default function BillingPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  // Despite the URL, /api/user/usage reads SubscriptionUsage scoped by the
+  // ACTIVE business (see src/app/api/user/usage/route.ts) — this previously
+  // fetched once on mount only, so switching workspaces left the usage
+  // panel showing the PREVIOUS workspace's numbers.
+  useEffect(() => {
+    if (!activeBusiness?._id) return;
+    load();
+  }, [activeBusiness?._id]);
 
   const monthLabel = data
     ? new Date(`${data.month}-01`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })

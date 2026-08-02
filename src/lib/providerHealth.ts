@@ -130,7 +130,24 @@ export async function getProviderHealth(): Promise<ProviderHealth[]> {
           ? 'Using TEST keys (rzp_test_…) — real payments will not be captured on the live site.'
           : 'Live keys configured.',
     }),
-    configured('email', 'Email (Resend)', 'OTP, verification & transactional email', Boolean(process.env.RESEND_API_KEY), 'https://resend.com/api-keys'),
+    configured('email', 'Email (Resend)', 'OTP, verification & transactional email (billing, demo bookings)', Boolean(process.env.RESEND_API_KEY), 'https://resend.com/api-keys', {
+      status: process.env.RESEND_API_KEY ? (process.env.RESEND_FROM_EMAIL ? 'ok' : 'warning') : 'critical',
+      detail: !process.env.RESEND_API_KEY
+        ? 'RESEND_API_KEY not set — falls back to SendGrid if configured, otherwise every email is mocked (logged, never actually sent).'
+        : process.env.RESEND_FROM_EMAIL
+          ? 'Configured with a verified sender domain.'
+          : 'RESEND_API_KEY is set but RESEND_FROM_EMAIL is not — falls back to the Resend sandbox sender, which can only deliver to the address you signed up to Resend with. Every other recipient silently fails.',
+    }),
+    // Distinct from the row above on purpose: Resend being fully healthy does
+    // NOT mean anyone gets told about a new demo booking — that also needs
+    // ADMIN_EMAIL set. This is exactly the gap that let this dashboard report
+    // "Email: OK" while every admin alert silently went nowhere.
+    configured('admin_alerts', 'Admin alerts (demo bookings)', 'New-demo-booking email to your team', Boolean(process.env.ADMIN_EMAIL), undefined, {
+      status: process.env.ADMIN_EMAIL ? 'ok' : 'warning',
+      detail: process.env.ADMIN_EMAIL
+        ? `Sent to ${process.env.ADMIN_EMAIL} when a demo is booked.`
+        : 'ADMIN_EMAIL is not set — new demo bookings are never announced to anyone. Check /admin/demo-bookings manually, or set ADMIN_EMAIL.',
+    }),
     configured('whatsapp', 'WhatsApp (Meta Cloud API)', 'Owner WhatsApp AI agent & notifications', metaConfigured, 'https://developers.facebook.com/apps', {
       status: metaConfigured ? 'ok' : 'warning',
       detail: metaConfigured ? 'Meta Cloud API configured.' : 'Meta keys empty — WhatsApp falls back to Twilio (or is inactive).',

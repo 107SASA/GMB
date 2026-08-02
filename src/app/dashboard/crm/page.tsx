@@ -9,6 +9,7 @@ import CRMAnalytics from '@/components/crm/CRMAnalytics';
 import LeadDrawer from '@/components/crm/LeadDrawer';
 import LeadStagesConfig from '@/components/crm/LeadStagesConfig';
 import { LayoutList, Columns, Layers, Upload, X, FileUp, CheckCircle, AlertCircle, Download } from 'lucide-react';
+import { useBusiness } from '@/context/BusinessContext';
 
 type ViewMode = 'list' | 'kanban' | 'analytics' | 'stages';
 
@@ -354,6 +355,7 @@ function Toast({ message, onDone }: { message: string; onDone: () => void }) {
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function CRMDashboard() {
+  const { activeBusiness } = useBusiness();
   const [leads, setLeads] = useState<any[]>([]);
   const [stats, setStats] = useState({ total: 0, converted: 0, conversionRate: 0, avgScore: 0 });
   const [selectedLead, setSelectedLead] = useState<any>(null);
@@ -449,10 +451,15 @@ export default function CRMDashboard() {
     });
   };
 
+  // /api/crm/leads and /api/business/kanban-columns are both scoped to the
+  // active business server-side, but this previously fetched once on mount
+  // only — switching workspaces left the CRM showing the PREVIOUS
+  // workspace's leads until a full reload.
   useEffect(() => {
+    if (!activeBusiness?._id) return;
     fetchLeads();
     fetchKanbanColumns();
-  }, []);
+  }, [activeBusiness?._id]);
 
   const handleLeadCreated = (newLead: any) => {
     setLeads(prev => [newLead, ...prev]);

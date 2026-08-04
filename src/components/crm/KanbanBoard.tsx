@@ -163,8 +163,8 @@ export default function KanbanBoard({
 
           <div className="flex-shrink-0 w-[280px]">
             {showInput ? (
-              <div className="bg-white border-2 border-indigo-300 rounded-2xl p-4 shadow-sm">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">New Column Name</p>
+              <div className="bg-surface-container-lowest border-2 border-primary-fixed-dim rounded-2xl p-4 shadow-sm">
+                <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3">New Column Name</p>
                 <input
                   autoFocus
                   type="text"
@@ -175,18 +175,18 @@ export default function KanbanBoard({
                     if (e.key === 'Escape') { setShowInput(false); setNewColumnName(''); }
                   }}
                   placeholder="e.g. Hot Leads, Demo Done..."
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3"
+                  className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-xl text-sm font-medium text-on-surface placeholder:text-outline focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary mb-3"
                 />
                 <div className="flex gap-2">
                   <button
                     onClick={handleAddColumn}
-                    className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-colors"
+                    className="flex-1 py-2 bg-primary hover:bg-primary-container text-white text-sm font-bold rounded-lg transition-colors"
                   >
                     Add
                   </button>
                   <button
                     onClick={() => { setShowInput(false); setNewColumnName(''); }}
-                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-bold rounded-xl transition-colors"
+                    className="flex-1 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface-variant text-sm font-bold rounded-xl transition-colors"
                   >
                     Cancel
                   </button>
@@ -195,7 +195,7 @@ export default function KanbanBoard({
             ) : (
               <button
                 onClick={() => setShowInput(true)}
-                className="w-full h-16 flex items-center justify-center gap-2 border-2 border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/50 rounded-2xl text-slate-400 hover:text-indigo-600 font-bold text-sm transition-all group"
+                className="w-full h-16 flex items-center justify-center gap-2 border-2 border-dashed border-outline-variant hover:border-primary-fixed-dim hover:bg-primary-fixed/50 rounded-2xl text-outline hover:text-primary font-bold text-sm transition-all group"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

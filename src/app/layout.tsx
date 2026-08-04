@@ -1,11 +1,18 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Public_Sans } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
 
 const inter = Inter({
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
   variable: "--font-inter",
+});
+
+const publicSans = Public_Sans({
+  subsets: ["latin"],
+  weight: ["400", "600", "700", "800"],
+  variable: "--font-public-sans",
 });
 
 export const metadata: Metadata = {
@@ -53,8 +60,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="scroll-smooth" data-scroll-behavior="smooth">
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0..1,0&display=swap"
+        />
+      </head>
       <body
-        className={`${inter.variable} ${inter.className} antialiased bg-slate-50 text-slate-900`}
+        className={`${inter.variable} ${publicSans.variable} ${inter.className} antialiased bg-background text-on-surface`}
       >
         {children}
         <Toaster />

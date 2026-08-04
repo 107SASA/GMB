@@ -8,7 +8,7 @@ import { useBusiness } from '@/context/BusinessContext';
 import UpgradeLimitModal from '@/components/ui/UpgradeLimitModal';
 
 function SkeletonPulse({ className }: { className: string }) {
-  return <div className={`bg-slate-200 rounded animate-pulse ${className}`} />;
+  return <div className={`bg-surface-container-high rounded animate-pulse ${className}`} />;
 }
 
 function LoadingSkeleton() {
@@ -20,16 +20,16 @@ function LoadingSkeleton() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div key={i} className="bg-surface-container-lowest rounded-xl p-5 border border-outline-variant card-shadow flex flex-col justify-between">
             <SkeletonPulse className="h-3 w-20 mb-3" />
             <SkeletonPulse className="h-7 w-14" />
           </div>
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="p-5 border-b border-slate-100 last:border-0 space-y-3">
+          <div key={i} className="p-5 border-b border-outline-variant last:border-0 space-y-3">
             <div className="flex items-start gap-3">
               <SkeletonPulse className="w-10 h-10 rounded-full shrink-0" />
               <div className="flex-1 space-y-2">
@@ -234,7 +234,7 @@ export default function ReviewsDashboard() {
 
   if (!activeBusiness) {
     return (
-      <div className="p-8 text-center text-slate-500">
+      <div className="p-8 text-center text-on-surface-variant">
         No business selected. Please select a business to view reviews.
       </div>
     );
@@ -246,7 +246,7 @@ export default function ReviewsDashboard() {
         <button
           onClick={handleSync}
           disabled={syncing}
-          className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-sm transition-colors disabled:opacity-70"
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary text-white font-bold rounded-lg card-shadow transition-colors disabled:opacity-70"
         >
           {syncing ? (
             <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
@@ -263,13 +263,13 @@ export default function ReviewsDashboard() {
       </div>
 
       {syncError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 flex items-start gap-2">
+        <div className="bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container flex items-start gap-2">
           <span className="font-bold shrink-0">Sync failed:</span>
           <span>{syncError}</span>
         </div>
       )}
       {syncNote && !syncError && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
+        <div className="bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container">
           {syncNote}
         </div>
       )}
@@ -277,18 +277,18 @@ export default function ReviewsDashboard() {
       {analytics ? (
         <ReviewAnalyticsCards analytics={analytics} />
       ) : (
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm text-center">
-          <p className="text-slate-500 font-medium">Click "Sync Reviews" to initialize your reputation dashboard.</p>
+        <div className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant shadow-sm text-center">
+          <p className="text-on-surface-variant font-medium">Click "Sync Reviews" to initialize your reputation dashboard.</p>
         </div>
       )}
 
       {reviews.length > 0 && (
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm min-h-[500px]">
+        <div className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant shadow-sm min-h-[500px]">
           <ReviewFilterBar activeFilter={activeFilter} onFilterChange={setActiveFilter} counts={counts} />
 
           <div className="mt-4">
             {filteredReviews.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 font-medium">
+              <div className="text-center py-12 text-outline font-medium">
                 No reviews match the selected filter.
               </div>
             ) : (

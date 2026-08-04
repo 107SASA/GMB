@@ -65,8 +65,37 @@ function isAllowedBeforeIntake(pathname: string): boolean {
   return INTAKE_ALLOWED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+// DIAGNOSTIC ONLY — dev-only CORS so the Expo web preview (localhost:808x,
+// a different origin than this server) can call /api/* during local mobile
+// testing. Strictly gated on NODE_ENV !== 'production'; never runs deployed.
+// Native (Expo Go / built apps) is never subject to browser CORS and does
+// not need this — safe to delete once web-preview testing is no longer needed.
+function applyDevCors(request: NextRequest, response: NextResponse): NextResponse {
+  if (process.env.NODE_ENV === 'production') return response;
+  const origin = request.headers.get('origin');
+  const isLocalOrigin =
+    !!origin && /^http:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+):\d+$/.test(origin);
+  if (isLocalOrigin) {
+    response.headers.set('Access-Control-Allow-Origin', origin);
+    response.headers.set('Access-Control-Allow-Credentials', 'true');
+    response.headers.set('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    response.headers.set(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, x-business-id, x-client'
+    );
+  }
+  return response;
+}
+
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (pathname.startsWith('/api/')) {
+    if (request.method === 'OPTIONS') {
+      return applyDevCors(request, new NextResponse(null, { status: 204 }));
+    }
+    return applyDevCors(request, NextResponse.next());
+  }
 
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   if (!token) {
@@ -164,5 +193,5 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*'],
+  matcher: ['/dashboard/:path*', '/api/:path*'],
 };

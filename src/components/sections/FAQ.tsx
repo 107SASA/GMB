@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Minus } from "lucide-react";
+import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
 const faqs = [
   {
@@ -29,23 +29,32 @@ export function FAQ() {
   return (
     <section id="faq" className="py-24 px-6 max-w-3xl mx-auto">
       <div className="text-center mb-16">
-        <h2 className="text-3xl md:text-5xl font-bold text-slate-900 mb-6">Frequently Asked <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">Questions</span></h2>
+        <h2 className="font-heading text-3xl md:text-5xl font-bold text-on-surface mb-6">
+          Frequently Asked{" "}
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
+            Questions
+          </span>
+        </h2>
       </div>
 
       <div className="space-y-4">
         {faqs.map((faq, idx) => (
-          <div 
-            key={idx} 
-            className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm"
+          <div
+            key={idx}
+            className="border border-outline-variant rounded-xl overflow-hidden bg-surface-container-lowest card-shadow"
           >
             <button
               onClick={() => setOpenIndex(openIndex === idx ? null : idx)}
-              className="w-full p-6 flex items-center justify-between text-left hover:bg-slate-50 transition-colors text-slate-900"
+              className="w-full p-6 flex items-center justify-between text-left hover:bg-surface-container-low transition-colors text-on-surface"
             >
-              <span className="font-bold">{faq.question}</span>
-              {openIndex === idx ? <Minus className="text-primary" /> : <Plus className="text-slate-400" />}
+              <span className="font-heading font-bold pr-4">{faq.question}</span>
+              {openIndex === idx ? (
+                <MaterialIcon name="remove" size={24} className="text-primary shrink-0" />
+              ) : (
+                <MaterialIcon name="add" size={24} className="text-outline shrink-0" />
+              )}
             </button>
-            
+
             <AnimatePresence>
               {openIndex === idx && (
                 <motion.div
@@ -54,7 +63,7 @@ export function FAQ() {
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.3 }}
                 >
-                  <div className="p-6 pt-0 text-slate-500 text-sm leading-relaxed border-t border-slate-100">
+                  <div className="p-6 pt-0 text-on-surface-variant text-sm leading-relaxed border-t border-outline-variant">
                     {faq.answer}
                   </div>
                 </motion.div>

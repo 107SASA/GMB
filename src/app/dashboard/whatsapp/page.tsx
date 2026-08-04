@@ -55,16 +55,16 @@ export default function InboxDashboard() {
   };
 
   return (
-    <div className="h-[calc(100vh-4rem)] bg-white flex flex-col">
+    <div className="h-[calc(100vh-4rem)] bg-surface-container-lowest flex flex-col">
       {/* Top Bar */}
-      <div className="h-14 border-b border-slate-200 flex items-center px-6 bg-white shrink-0 justify-between gap-4 overflow-x-auto">
-        <h1 className="text-xl font-bold text-slate-800 shrink-0">WhatsApp AI Agent</h1>
-        <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
+      <div className="h-14 border-b border-outline-variant flex items-center px-6 bg-surface-container-lowest shrink-0 justify-between gap-4 overflow-x-auto">
+        <h1 className="font-heading text-xl font-bold text-on-surface shrink-0">WhatsApp AI Agent</h1>
+        <div className="flex bg-surface-container p-1 rounded-lg shrink-0">
           {TABS.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-1 text-sm font-bold rounded-md transition-all whitespace-nowrap ${activeTab === tab.key ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-4 py-1 text-sm font-bold rounded-md transition-all whitespace-nowrap ${activeTab === tab.key ? 'bg-surface-container-lowest shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
             >
               {tab.label}
             </button>
@@ -76,7 +76,7 @@ export default function InboxDashboard() {
         {activeTab === 'inbox' && (
           <div className="flex h-full">
             <div className={`
-              flex flex-col w-full md:w-80 md:flex-none md:border-r md:border-slate-100
+              flex flex-col w-full md:w-80 md:flex-none md:border-r md:border-outline-variant
               ${activeThread ? 'hidden md:flex' : 'flex'}
             `}>
               <ConversationThreadList
@@ -101,19 +101,19 @@ export default function InboxDashboard() {
         )}
 
         {activeTab === 'config' && (
-          <div className="p-4 sm:p-8 h-full overflow-y-auto bg-slate-50">
+          <div className="p-4 sm:p-8 h-full overflow-y-auto bg-surface">
             <PromptEditor />
           </div>
         )}
 
         {activeTab === 'booking' && (
-          <div className="p-4 sm:p-8 h-full overflow-y-auto bg-slate-50">
+          <div className="p-4 sm:p-8 h-full overflow-y-auto bg-surface">
             <BookingSettingsPanel />
           </div>
         )}
 
         {activeTab === 'appointments' && (
-          <div className="p-4 sm:p-8 h-full overflow-y-auto bg-slate-50">
+          <div className="p-4 sm:p-8 h-full overflow-y-auto bg-surface">
             <AppointmentsPanel />
           </div>
         )}

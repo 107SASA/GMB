@@ -19,6 +19,7 @@ import {
 } from '@/components/ui';
 import { ALL_MODULE_KEYS, MODULE_NAMES } from '@/entitlements/entitlements';
 import { formatDateTime } from '@/lib/format';
+import { useTheme } from '@/lib/theme';
 
 function billingTone(status: string): 'positive' | 'info' | 'warning' | 'negative' | 'neutral' {
   if (status === 'Active') return 'positive';
@@ -32,8 +33,8 @@ function UsageRow({ label, used, limit }: { label: string; used: number; limit: 
   return (
     <View className="mb-3">
       <View className="mb-1.5 flex-row items-center justify-between">
-        <Text className="text-sm text-zinc-300">{label}</Text>
-        <Text className="text-xs font-semibold text-zinc-400">
+        <Text className="font-sans text-sm text-zinc-300">{label}</Text>
+        <Text className="font-sans-semibold text-xs text-zinc-400">
           {used}/{limit}
         </Text>
       </View>
@@ -45,6 +46,7 @@ function UsageRow({ label, used, limit }: { label: string; used: number; limit: 
 export default function BillingScreen() {
   const { activeBusinessId } = useBusiness();
   const queryClient = useQueryClient();
+  const t = useTheme();
 
   const subscription = useQuery({ queryKey: ['billing-status'], queryFn: fetchBillingStatus });
   const usage = useQuery({
@@ -102,7 +104,7 @@ export default function BillingScreen() {
               void subscription.refetch();
               void usage.refetch();
             }}
-            tintColor="#6366F1"
+            tintColor={t.brandBright}
           />
         }
       >
@@ -114,14 +116,14 @@ export default function BillingScreen() {
             hint={getApiErrorMessage(subscription.error, 'Pull down to retry.')}
           />
         ) : (
-          <View className="rounded-xl border border-surface-border bg-surface-raised px-4 py-4">
+          <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-4">
             <View className="flex-row items-center justify-between">
-              <Text className="text-xl font-bold text-white">{sub.planType} plan</Text>
+              <Text className="font-display text-xl text-white">{sub.planType} plan</Text>
               <Badge label={sub.billingStatus} tone={billingTone(sub.billingStatus)} />
             </View>
 
             {sub.billingStatus === 'Trialing' && sub.trialStatus?.endsAt && (
-              <Text className="mt-1.5 text-sm text-zinc-400">
+              <Text className="mt-1.5 font-sans text-sm text-zinc-400">
                 Trial ends {formatDateTime(sub.trialStatus.endsAt)}
               </Text>
             )}
@@ -130,13 +132,13 @@ export default function BillingScreen() {
               if (!periodEnd || sub.billingStatus !== 'Active') return null;
               if (workspace?.cancelAtPeriodEnd) {
                 return (
-                  <Text className="mt-1.5 text-sm font-medium text-amber-400">
+                  <Text className="mt-1.5 font-sans-semibold text-sm text-amber-400">
                     Ends {formatDateTime(periodEnd)} — won&apos;t renew
                   </Text>
                 );
               }
               return (
-                <Text className="mt-1.5 text-sm text-zinc-400">Renews {formatDateTime(periodEnd)}</Text>
+                <Text className="mt-1.5 font-sans text-sm text-zinc-400">Renews {formatDateTime(periodEnd)}</Text>
               );
             })()}
 
@@ -153,24 +155,24 @@ export default function BillingScreen() {
                 onPress={() =>
                   void WebBrowser.openBrowserAsync(`${process.env.EXPO_PUBLIC_API_URL}/pricing`)
                 }
-                className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-brand py-3 active:opacity-80"
+                className="flex-1 flex-row items-center justify-center gap-1.5 rounded-full bg-brand py-3 active:scale-95"
               >
                 <Ionicons name="open-outline" size={15} color="#ffffff" />
-                <Text className="text-sm font-semibold text-on-brand">View plans on the web</Text>
+                <Text className="font-sans-bold text-sm text-on-brand">View plans on the web</Text>
               </Pressable>
               {sub.hasPaymentMethod &&
                 sub.billingStatus !== 'Canceled' &&
                 (workspace?.cancelAtPeriodEnd ? (
-                  <View className="items-center justify-center rounded-xl border border-surface-border px-4 py-3">
-                    <Text className="text-sm font-semibold text-zinc-400">Cancellation scheduled</Text>
+                  <View className="items-center justify-center rounded-full border border-surface-border px-4 py-3">
+                    <Text className="font-sans-bold text-sm text-zinc-400">Cancellation scheduled</Text>
                   </View>
                 ) : (
                   <Pressable
                     onPress={confirmCancel}
                     disabled={cancel.isPending}
-                    className="items-center justify-center rounded-xl border border-rose-400/25 px-4 py-3 active:opacity-80"
+                    className="items-center justify-center rounded-full border border-rose-400/25 px-4 py-3 active:scale-95"
                   >
-                    <Text className="text-sm font-semibold text-rose-300">
+                    <Text className="font-sans-bold text-sm text-rose-300">
                       {cancel.isPending ? 'Cancelling…' : 'Cancel'}
                     </Text>
                   </Pressable>
@@ -183,9 +185,9 @@ export default function BillingScreen() {
         {usage.isLoading ? (
           <Skeleton className="h-48" />
         ) : usage.isError || !usage.data ? (
-          <Text className="px-1 text-sm text-zinc-500">Couldn't load usage.</Text>
+          <Text className="px-1 font-sans text-sm text-zinc-500">Couldn't load usage.</Text>
         ) : (
-          <View className="rounded-xl border border-surface-border bg-surface-raised px-4 pb-1 pt-4">
+          <View className="rounded-card border border-surface-border bg-surface-raised px-4 pb-1 pt-4">
             <UsageRow
               label="AI generations"
               used={usage.data.usage.aiGenerationsUsed}

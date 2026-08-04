@@ -38,7 +38,7 @@ export default function RecentCallsScreen() {
         <Pressable onPress={() => router.back()} hitSlop={8} className="active:opacity-60">
           <BackChevron />
         </Pressable>
-        <Text className="text-lg font-bold text-white">Recent calls</Text>
+        <Text className="font-display-bold text-lg text-white">Recent calls</Text>
       </View>
       <EmptyState
         title={available ? 'Coming soon' : 'Not available'}

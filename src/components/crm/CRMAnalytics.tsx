@@ -31,69 +31,69 @@ export default function CRMAnalytics({ leads }: { leads: any[] }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow flex items-center gap-4">
+          <div className="p-3 bg-primary-fixed text-primary rounded-xl">
             <Users className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500">Total Leads</p>
-            <p className="text-2xl font-bold text-slate-900">{analytics.total}</p>
+            <p className="text-sm font-medium text-on-surface-variant">Total Leads</p>
+            <p className="text-2xl font-bold text-on-surface">{analytics.total}</p>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow flex items-center gap-4">
+          <div className="p-3 bg-primary-fixed text-primary rounded-xl">
             <Target className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500">Qualified Leads</p>
-            <p className="text-2xl font-bold text-slate-900">{analytics.qualified}</p>
+            <p className="text-sm font-medium text-on-surface-variant">Qualified Leads</p>
+            <p className="text-2xl font-bold text-on-surface">{analytics.qualified}</p>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow flex items-center gap-4">
+          <div className="p-3 bg-secondary-container/40 text-secondary rounded-xl">
             <CheckCircle2 className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500">Converted Leads</p>
-            <p className="text-2xl font-bold text-slate-900">{analytics.converted} <span className="text-sm font-medium text-emerald-500 ml-2">({analytics.conversionRate}%)</span></p>
+            <p className="text-sm font-medium text-on-surface-variant">Converted Leads</p>
+            <p className="text-2xl font-bold text-on-surface">{analytics.converted} <span className="text-sm font-medium text-secondary ml-2">({analytics.conversionRate}%)</span></p>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow flex items-center gap-4">
+          <div className="p-3 bg-error-container text-error rounded-xl">
             <TrendingUp className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500">Avg Lead Score</p>
-            <p className="text-2xl font-bold text-slate-900">{analytics.avgScore}</p>
+            <p className="text-sm font-medium text-on-surface-variant">Avg Lead Score</p>
+            <p className="text-2xl font-bold text-on-surface">{analytics.avgScore}</p>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
+        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow flex items-center gap-4">
+          <div className="p-3 bg-primary-fixed text-primary rounded-xl">
             <BarChart3 className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500">Top Source</p>
-            <p className="text-2xl font-bold text-slate-900">{analytics.topSource}</p>
+            <p className="text-sm font-medium text-on-surface-variant">Top Source</p>
+            <p className="text-2xl font-bold text-on-surface">{analytics.topSource}</p>
           </div>
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <h3 className="text-lg font-bold text-slate-900 mb-6">Pipeline Distribution</h3>
+      <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow">
+        <h3 className="text-lg font-bold text-on-surface mb-6">Pipeline Distribution</h3>
         <div className="space-y-4">
           {Object.entries(analytics.stages).map(([stage, count]) => (
             <div key={stage}>
               <div className="flex justify-between text-sm mb-1">
-                <span className="font-medium text-slate-700">{stage}</span>
-                <span className="text-slate-500">{count} leads</span>
+                <span className="font-medium text-on-surface">{stage}</span>
+                <span className="text-on-surface-variant">{count} leads</span>
               </div>
-              <div className="w-full bg-slate-100 rounded-full h-2.5">
+              <div className="w-full bg-surface-container rounded-full h-2.5">
                 <div 
-                  className="bg-indigo-600 h-2.5 rounded-full" 
+                  className="bg-primary h-2.5 rounded-full" 
                   style={{ width: `${(count / Math.max(analytics.total, 1)) * 100}%` }}
                 ></div>
               </div>

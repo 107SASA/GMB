@@ -54,7 +54,7 @@ function NotificationRow({
   return (
     <Pressable
       onPress={() => onPress(item)}
-      className={`mb-2.5 flex-row gap-3 rounded-xl border px-4 py-3.5 active:opacity-80 ${
+      className={`mb-2.5 flex-row gap-3 rounded-card border px-4 py-3.5 active:opacity-80 ${
         item.read
           ? 'border-surface-border bg-surface-raised'
           : 'border-brand/40 bg-brand/10'
@@ -65,17 +65,17 @@ function NotificationRow({
       </View>
       <View className="flex-1">
         <View className="flex-row items-center justify-between gap-2">
-          <Text className="flex-1 text-sm font-semibold text-white" numberOfLines={1}>
+          <Text className="flex-1 font-sans-semibold text-sm text-white" numberOfLines={1}>
             {item.title}
           </Text>
           {!item.read && <View className="h-2 w-2 rounded-full bg-brand" />}
         </View>
         {!!item.body && (
-          <Text className="mt-0.5 text-xs leading-4 text-zinc-400" numberOfLines={2}>
+          <Text className="mt-0.5 font-sans text-xs leading-4 text-zinc-400" numberOfLines={2}>
             {item.body}
           </Text>
         )}
-        <Text className="mt-1 text-[11px] text-zinc-500">{timeAgo(item.createdAt)}</Text>
+        <Text className="mt-1 font-sans text-[11px] text-zinc-500">{timeAgo(item.createdAt)}</Text>
       </View>
     </Pressable>
   );
@@ -116,7 +116,7 @@ export default function NotificationsScreen() {
         <ScreenTitle>Notifications</ScreenTitle>
         {unread > 0 && (
           <Pressable onPress={() => markAll.mutate()} disabled={markAll.isPending} className="pb-2">
-            <Text className="text-sm font-semibold" style={{ color: t.brandBright }}>
+            <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
               {markAll.isPending ? 'Marking…' : 'Mark all read'}
             </Text>
           </Pressable>
@@ -144,7 +144,7 @@ export default function NotificationsScreen() {
             <RefreshControl
               refreshing={notifications.isRefetching}
               onRefresh={() => void notifications.refetch()}
-              tintColor="#6366F1"
+              tintColor={t.brandBright}
             />
           }
           ListEmptyComponent={

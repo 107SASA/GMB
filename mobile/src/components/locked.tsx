@@ -21,11 +21,13 @@ export function LockedScreen({ surface }: { surface: SurfaceKey }) {
         <View className="h-16 w-16 items-center justify-center rounded-full bg-surface-raised">
           <Ionicons name="lock-closed-outline" size={28} color={t.textFaint} />
         </View>
-        <Text className="text-lg font-semibold text-white">{moduleName}</Text>
-        <Text className="text-center text-sm text-zinc-400">
+        <Text className="font-display-bold text-lg text-white">{moduleName}</Text>
+        <Text className="text-center font-sans text-sm text-zinc-400">
           This feature isn't included in your current plan.
         </Text>
-        <Text className="text-center text-xs text-zinc-500">Contact support for details.</Text>
+        <Text className="text-center font-sans text-xs text-zinc-500">
+          Contact support for details.
+        </Text>
       </View>
     </Screen>
   );
@@ -43,7 +45,7 @@ export function BillingBanner() {
     return (
       <View className="mx-5 mb-2 flex-row items-center gap-2 rounded-xl border border-amber-400/20 bg-amber-400/10 px-3.5 py-2.5">
         <Ionicons name="alert-circle-outline" size={16} color={t.amber} />
-        <Text className="flex-1 text-xs text-amber-400">
+        <Text className="flex-1 font-sans-semibold text-xs text-amber-400">
           There's a billing issue on your account.
         </Text>
       </View>
@@ -54,7 +56,7 @@ export function BillingBanner() {
     return (
       <View className="mx-5 mb-2 flex-row items-center gap-2 rounded-xl border border-indigo-400/20 bg-indigo-400/10 px-3.5 py-2.5">
         <Ionicons name="time-outline" size={16} color={t.brand} />
-        <Text className="flex-1 text-xs text-indigo-300">
+        <Text className="flex-1 font-sans-semibold text-xs text-indigo-300">
           Trial ends in {trialDaysLeft} {trialDaysLeft === 1 ? 'day' : 'days'}
         </Text>
       </View>

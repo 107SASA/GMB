@@ -88,11 +88,11 @@ export default function AuditDashboardPage() {
   if (autoStarting) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
-        <Loader2 className="mb-6 h-10 w-10 animate-spin text-blue-600" />
-        <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+        <Loader2 className="mb-6 h-10 w-10 animate-spin text-primary" />
+        <h2 className="text-2xl font-bold tracking-tight text-on-surface">
           Building your free audit report
         </h2>
-        <p className="mt-2 max-w-md text-slate-500">
+        <p className="mt-2 max-w-md text-on-surface-variant">
           We&apos;re analysing {activeBusiness?.name}&apos;s Google Business Profile. This
           usually takes a minute or two — you&apos;ll be taken to the report automatically.
         </p>
@@ -105,23 +105,23 @@ export default function AuditDashboardPage() {
       <div className="space-y-6">
         <button
           onClick={() => setShowNewAudit(false)}
-          className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors flex items-center gap-1"
+          className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1"
         >
           &larr; Back to Audits
         </button>
         {activeBusiness && !activeBusiness.googleConnected ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-8 text-center">
-            <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="rounded-2xl border border-error-container bg-error-container p-8 text-center">
+            <div className="w-14 h-14 bg-error-container text-error rounded-full flex items-center justify-center mx-auto mb-4">
               <AlertTriangle className="w-7 h-7" />
             </div>
-            <h3 className="text-lg font-bold text-slate-900 mb-2">Connect Google Business Profile first</h3>
-            <p className="text-slate-600 mb-6 max-w-md mx-auto">
+            <h3 className="text-lg font-bold text-on-surface mb-2">Connect Google Business Profile first</h3>
+            <p className="text-on-surface-variant mb-6 max-w-md mx-auto">
               Running a new audit needs a live Google Business Profile connection for {activeBusiness.name} —
               without it, the report can&apos;t pull real ranking, review, or profile data.
             </p>
             <Link
               href="/dashboard/gbp-profile"
-              className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold transition-all"
+              className="inline-flex items-center gap-2 bg-primary hover:bg-primary text-white px-6 py-3 rounded-xl font-bold transition-all"
             >
               Connect Google Business Profile
             </Link>
@@ -137,12 +137,12 @@ export default function AuditDashboardPage() {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">AI Audits</h1>
-          <p className="text-slate-500 mt-1">Review AI-generated health reports for your Google Business Profile.</p>
+          <h1 className="font-heading text-2xl sm:text-3xl font-bold text-on-surface tracking-tight">AI Audits</h1>
+          <p className="text-on-surface-variant mt-1">Review AI-generated health reports for your Google Business Profile.</p>
         </div>
         <button
           onClick={() => setShowNewAudit(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-sm flex items-center gap-2 self-start sm:self-auto"
+          className="bg-primary hover:bg-primary-container text-white px-5 py-2.5 rounded-lg font-bold transition-all card-shadow flex items-center gap-2 self-start sm:self-auto"
         >
           <Zap className="w-5 h-5" />
           Run New Audit
@@ -152,73 +152,73 @@ export default function AuditDashboardPage() {
       {autoError && (
         <div
           role="alert"
-          className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700"
+          className="flex items-start gap-3 rounded-xl border border-error-container bg-error-container p-4 text-sm font-medium text-on-error-container"
         >
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
           <span>{autoError} You can start it manually with “Run New Audit”.</span>
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-slate-500">Loading audits...</div>
+          <div className="p-12 text-center text-on-surface-variant">Loading audits...</div>
         ) : audits.length === 0 ? (
           <div className="p-16 text-center">
-            <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-primary-fixed text-primary rounded-full flex items-center justify-center mx-auto mb-4">
               <FileText className="w-8 h-8" />
             </div>
-            <h3 className="text-lg font-bold text-slate-900 mb-2">No Audits Found</h3>
-            <p className="text-slate-500 mb-6 max-w-md mx-auto">You haven't generated any AI audits for {activeBusiness?.name} yet.</p>
+            <h3 className="text-lg font-bold text-on-surface mb-2">No Audits Found</h3>
+            <p className="text-on-surface-variant mb-6 max-w-md mx-auto">You haven't generated any AI audits for {activeBusiness?.name} yet.</p>
             <button
               onClick={() => setShowNewAudit(true)}
-              className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold transition-all"
+              className="bg-primary hover:bg-primary text-white px-6 py-3 rounded-xl font-bold transition-all"
             >
               Generate First Audit
             </button>
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-outline-variant">
             {audits.map((audit) => (
               <Link 
                 href={`/dashboard/audit/${audit._id}`} 
                 key={audit._id}
-                className="block hover:bg-slate-50/50 transition-colors"
+                className="block hover:bg-surface/50 transition-colors"
               >
                 <div className="p-4 sm:p-6 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                     <div className={`w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-xl flex items-center justify-center border ${
-                      audit.status === 'COMPLETED' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
-                      audit.status === 'FAILED' ? 'bg-red-50 border-red-100 text-red-600' :
-                      'bg-blue-50 border-blue-100 text-blue-600'
+                      audit.status === 'COMPLETED' ? 'bg-secondary-container/40 border-secondary-fixed text-secondary' :
+                      audit.status === 'FAILED' ? 'bg-error-container border-error-container text-error' :
+                      'bg-primary-fixed border-primary-fixed-dim text-primary'
                     }`}>
                       {audit.status === 'COMPLETED' ? <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" /> :
                        audit.status === 'FAILED' ? <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6" /> :
                        <Clock className="w-5 h-5 sm:w-6 sm:h-6 animate-pulse" />}
                     </div>
                     <div className="min-w-0">
-                      <h4 className="font-bold text-slate-900 text-base sm:text-lg flex flex-wrap items-center gap-2">
+                      <h4 className="font-bold text-on-surface text-base sm:text-lg flex flex-wrap items-center gap-2">
                         <span className="truncate">
                           {new Date(audit.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                         </span>
                         {audit.status === 'PENDING' && (
-                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 shrink-0">Processing...</span>
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-primary-fixed text-primary shrink-0">Processing...</span>
                         )}
                         {audit.status === 'FAILED' && (
-                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 shrink-0">Failed</span>
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-error-container text-on-error-container shrink-0">Failed</span>
                         )}
                       </h4>
-                      <p className="text-sm text-slate-500 mt-0.5 truncate">{audit.businessName}</p>
+                      <p className="text-sm text-on-surface-variant mt-0.5 truncate">{audit.businessName}</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3 sm:gap-6 shrink-0">
                     {audit.status === 'COMPLETED' && audit.overallScore && (
                       <div className="text-right">
-                        <div className="text-[10px] sm:text-sm font-semibold text-slate-500 uppercase tracking-wider">Score</div>
-                        <div className="text-xl sm:text-2xl font-black text-slate-900">{audit.overallScore}/100</div>
+                        <div className="text-[10px] sm:text-sm font-semibold text-on-surface-variant uppercase tracking-wider">Score</div>
+                        <div className="text-xl sm:text-2xl font-black text-on-surface">{audit.overallScore}/100</div>
                       </div>
                     )}
-                    <ChevronRight className="text-slate-400 w-5 h-5" />
+                    <ChevronRight className="text-outline w-5 h-5" />
                   </div>
                 </div>
               </Link>

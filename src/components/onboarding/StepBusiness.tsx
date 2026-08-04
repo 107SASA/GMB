@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { OnboardingData } from './types';
-import { ArrowRight, MapPin, Search, Loader2, Store, CheckCircle2, Link, AlertCircle } from 'lucide-react';
+import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { motion, AnimatePresence } from 'framer-motion';
+
+const inputCls =
+  'w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all';
 
 interface Props {
   data: OnboardingData;
@@ -198,41 +201,41 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
   };
 
   return (
-    <div className="h-full bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-10 flex flex-col border border-slate-100 relative">
+    <div className="h-full bg-surface-container-lowest rounded-xl card-shadow p-10 flex flex-col border border-outline-variant relative">
       <div className={`flex-1 custom-scrollbar pr-2 pb-4 ${manualMode ? 'overflow-y-auto' : 'overflow-visible'}`}>
-        <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center mb-6">
-          <MapPin className="text-slate-900 w-6 h-6" />
+        <div className="w-12 h-12 bg-primary-fixed rounded-lg flex items-center justify-center mb-6">
+          <MaterialIcon name="location_on" size={24} className="text-primary" />
         </div>
-        <h2 className="text-3xl font-bold text-slate-900 mb-2">Find your business</h2>
-        <p className="text-slate-500 mb-8">Search for your business on Google Maps to autofill your details instantly.</p>
+        <h2 className="text-headline-md font-heading text-on-surface mb-2">Find your business</h2>
+        <p className="text-on-surface-variant mb-8">Search for your business on Google Maps to autofill your details instantly.</p>
 
         {!manualMode && (
           <div className="relative z-50">
             {/* Tab toggle */}
-            <div className="flex gap-1 p-1 bg-slate-100 rounded-xl mb-4">
+            <div className="flex gap-1 p-1 bg-surface-container rounded-lg mb-4">
               <button
                 onClick={() => setInputMode('search')}
-                className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all truncate ${inputMode === 'search' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all truncate ${inputMode === 'search' ? 'bg-surface-container-lowest text-on-surface card-shadow' : 'text-on-surface-variant hover:text-on-surface'}`}
               >
-                <Search className="w-4 h-4 shrink-0" /> <span className="truncate">Search by Name</span>
+                <MaterialIcon name="search" size={16} className="shrink-0" /> <span className="truncate">Search by Name</span>
               </button>
               <button
                 onClick={() => setInputMode('url')}
-                className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all truncate ${inputMode === 'url' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all truncate ${inputMode === 'url' ? 'bg-surface-container-lowest text-on-surface card-shadow' : 'text-on-surface-variant hover:text-on-surface'}`}
               >
-                <Link className="w-4 h-4 shrink-0" /> <span className="truncate">Paste GBP URL</span>
+                <MaterialIcon name="link" size={16} className="shrink-0" /> <span className="truncate">Paste GBP URL</span>
               </button>
             </div>
 
             {inputMode === 'search' ? (
               <>
-                <label className="block text-sm font-bold text-slate-900 mb-2">Search Business Name</label>
+                <label className="block text-label-md text-on-surface mb-2">Search Business Name</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     {isSearching || isFetchingDetails ? (
-                      <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
+                      <MaterialIcon name="progress_activity" size={20} className="text-primary animate-spin" />
                     ) : (
-                      <Search className="w-5 h-5 text-slate-400" />
+                      <MaterialIcon name="search" size={20} className="text-outline" />
                     )}
                   </div>
                   <input
@@ -242,7 +245,7 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
                       setSearchQuery(e.target.value);
                       if (e.target.value.length < 3) setShowDropdown(false);
                     }}
-                    className="w-full pl-12 pr-4 py-4 text-lg bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+                    className="w-full pl-12 pr-4 py-3 text-lg bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
                     placeholder="Start typing your business name..."
                     autoFocus
                   />
@@ -254,20 +257,20 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 10 }}
-                      className="absolute w-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[100] max-h-[300px] overflow-y-auto left-0"
+                      className="absolute w-full mt-2 bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow z-[100] max-h-[300px] overflow-y-auto left-0"
                     >
                       {suggestions.map((item, idx) => (
                         <button
                           key={idx}
                           onClick={() => handleSelectBusiness(item.placeId, item.mainText)}
-                          className="w-full text-left px-5 py-4 hover:bg-slate-50 border-b border-slate-50 flex items-start gap-4 transition-colors group"
+                          className="w-full text-left px-5 py-4 hover:bg-surface-container-low border-b border-outline-variant flex items-start gap-4 transition-colors group"
                         >
-                          <div className="bg-slate-100 p-2 rounded-lg group-hover:bg-white transition-colors">
-                            <Store className="w-5 h-5 text-slate-500" />
+                          <div className="bg-surface-container p-2 rounded-lg group-hover:bg-surface-container-lowest transition-colors">
+                            <MaterialIcon name="store" size={20} className="text-on-surface-variant" />
                           </div>
                           <div>
-                            <div className="font-bold text-slate-900">{item.mainText}</div>
-                            <div className="text-sm text-slate-500 mt-0.5">{item.secondaryText}</div>
+                            <div className="font-bold text-on-surface">{item.mainText}</div>
+                            <div className="text-sm text-on-surface-variant mt-0.5">{item.secondaryText}</div>
                           </div>
                         </button>
                       ))}
@@ -277,35 +280,35 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
               </>
             ) : (
               <>
-                <label className="block text-sm font-bold text-slate-900 mb-2">Paste Google Maps / GBP URL</label>
-                <p className="text-xs text-slate-500 mb-3">Works with short links (maps.app.goo.gl), full Google Maps URLs, and Business Profile links.</p>
+                <label className="block text-label-md text-on-surface mb-2">Paste Google Maps / GBP URL</label>
+                <p className="text-xs text-on-surface-variant mb-3">Works with short links (maps.app.goo.gl), full Google Maps URLs, and Business Profile links.</p>
                 <textarea
                   value={gbpUrlInput}
                   onChange={e => setGbpUrlInput(e.target.value)}
                   rows={3}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none resize-none text-sm"
+                  className={`${inputCls} resize-none text-sm`}
                   placeholder="https://maps.app.goo.gl/... or https://www.google.com/maps/place/..."
                   autoFocus
                 />
                 <button
                   onClick={handleResolveGbpUrl}
                   disabled={!gbpUrlInput.trim() || isResolvingUrl || isFetchingDetails}
-                  className="mt-3 w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="mt-3 w-full flex items-center justify-center gap-2 py-3 bg-primary text-on-primary rounded-lg font-bold hover:bg-primary-container transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isResolvingUrl || isFetchingDetails ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Resolving...</>
+                    <><MaterialIcon name="progress_activity" size={16} className="animate-spin" /> Resolving...</>
                   ) : (
-                    <><Link className="w-4 h-4" /> Resolve & Autofill</>
+                    <><MaterialIcon name="link" size={16} /> Resolve & Autofill</>
                   )}
                 </button>
               </>
             )}
 
             <div className="mt-6 text-center">
-              <span className="text-slate-400 text-sm">Can't find your business? </span>
+              <span className="text-outline text-sm">Can't find your business? </span>
               <button
                 onClick={() => setManualMode(true)}
-                className="text-indigo-600 font-bold hover:underline text-sm"
+                className="text-primary font-bold hover:underline text-sm"
               >
                 Enter details manually
               </button>
@@ -320,23 +323,23 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
             className="space-y-6"
           >
             {data.googlePlaceId && (
-              <div className="p-4 bg-green-50 border border-green-100 rounded-xl flex items-start gap-3 mb-6">
-                <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
+              <div className="p-4 bg-secondary-container/40 border border-secondary-fixed rounded-lg flex items-start gap-3 mb-6">
+                <MaterialIcon name="check_circle" size={20} className="text-secondary mt-0.5 shrink-0" />
                 <div>
-                  <div className="text-sm font-bold text-green-800">Connected to Google Maps</div>
-                  <div className="text-xs text-green-600 mt-0.5">We've auto-filled your details. Please provide the remaining information below.</div>
+                  <div className="text-sm font-bold text-on-secondary-container">Connected to Google Maps</div>
+                  <div className="text-xs text-secondary mt-0.5">We&apos;ve auto-filled your details. Please provide the remaining information below.</div>
                 </div>
               </div>
             )}
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-bold text-slate-900 mb-2">Business Name *</label>
+                <label className="block text-label-md text-on-surface mb-2">Business Name *</label>
                 <input
                   type="text"
                   value={data.businessName}
                   onChange={e => updateData({ businessName: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                  className={inputCls}
                   placeholder="e.g. Acme Downtown"
                 />
               </div>
@@ -350,22 +353,22 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-slate-900 mb-2">City *</label>
+                  <label className="block text-label-md text-on-surface mb-2">City *</label>
                   <input
                     type="text"
                     value={data.city}
                     onChange={e => updateData({ city: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                    className={inputCls}
                     placeholder="e.g. Pune"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-slate-900 mb-2">Area / Locality *</label>
+                  <label className="block text-label-md text-on-surface mb-2">Area / Locality *</label>
                   <input
                     type="text"
                     value={data.area}
                     onChange={e => updateData({ area: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                    className={inputCls}
                     placeholder="e.g. PCMC"
                   />
                 </div>
@@ -373,22 +376,22 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-slate-900 mb-2">State</label>
+                  <label className="block text-label-md text-on-surface mb-2">State</label>
                   <input
                     type="text"
                     value={data.state}
                     onChange={e => updateData({ state: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                    className={inputCls}
                     placeholder="e.g. Maharashtra"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-slate-900 mb-2">Country</label>
+                  <label className="block text-label-md text-on-surface mb-2">Country</label>
                   <input
                     type="text"
                     value={data.country}
                     onChange={e => updateData({ country: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                    className={inputCls}
                     placeholder="e.g. India"
                   />
                 </div>
@@ -396,34 +399,34 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-slate-900 mb-2">Phone Number *</label>
+                  <label className="block text-label-md text-on-surface mb-2">Phone Number *</label>
                   <input
                     type="tel"
                     value={data.phone}
                     onChange={e => updateData({ phone: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                    className={inputCls}
                     placeholder="+1 (555) 000-0000"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-slate-900 mb-2">Website</label>
+                  <label className="block text-label-md text-on-surface mb-2">Website</label>
                   <input
                     type="text"
                     value={data.website}
                     onChange={e => updateData({ website: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                    className={inputCls}
                     placeholder="https://acme.com"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-900 mb-2">Full Address</label>
+                <label className="block text-label-md text-on-surface mb-2">Full Address</label>
                 <input
                   type="text"
                   value={data.address}
                   onChange={e => updateData({ address: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                  className={inputCls}
                   placeholder="123 Main St, City, State"
                 />
               </div>
@@ -431,21 +434,21 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
               {!data.googlePlaceId && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-bold text-slate-900 mb-2">Google Place ID</label>
+                    <label className="block text-label-md text-on-surface mb-2">Google Place ID</label>
                     <input
                       type="text"
                       value={data.googlePlaceId}
                       onChange={e => updateData({ googlePlaceId: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                      className={inputCls}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-slate-900 mb-2">Google Maps URL</label>
+                    <label className="block text-label-md text-on-surface mb-2">Google Maps URL</label>
                     <input
                       type="text"
                       value={data.googleMapsUrl}
                       onChange={e => updateData({ googleMapsUrl: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                      className={inputCls}
                     />
                   </div>
                 </div>
@@ -457,7 +460,7 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
               <div className="mt-4 text-center">
                 <button 
                   onClick={() => setManualMode(false)}
-                  className="text-slate-500 font-medium hover:text-slate-900 text-sm transition-colors mt-4"
+                  className="text-on-surface-variant font-medium hover:text-on-surface text-sm transition-colors mt-4"
                 >
                   ← Back to search
                 </button>
@@ -476,23 +479,23 @@ export default function StepBusiness({ data, updateData, onNext, onBack }: Props
         <div
           role="alert"
           aria-live="assertive"
-          className="mt-4 p-4 bg-red-50 text-red-700 rounded-xl text-sm font-medium border border-red-200 flex items-start gap-3"
+          className="mt-4 p-4 bg-error-container text-on-error-container rounded-lg text-sm font-medium border border-outline-variant flex items-start gap-3"
         >
-          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          <MaterialIcon name="error" size={20} className="shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
       )}
 
-      <div className="flex justify-between items-center pt-6 border-t border-slate-100 mt-auto">
-        <button onClick={onBack} className="text-slate-500 font-bold hover:text-slate-900 transition-colors px-4 py-2">
+      <div className="flex justify-between items-center pt-6 border-t border-outline-variant mt-auto">
+        <button onClick={onBack} className="text-on-surface-variant font-bold hover:text-on-surface transition-colors px-4 py-2">
           Back
         </button>
         <button 
           onClick={handleContinue}
           disabled={!manualMode && !data.googlePlaceId}
-          className="flex items-center gap-2 px-8 py-3.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-8 py-3 bg-primary hover:bg-primary-container text-on-primary rounded-lg font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Continue <ArrowRight className="w-4 h-4" />
+          Continue <MaterialIcon name="arrow_forward" size={16} />
         </button>
       </div>
     </div>

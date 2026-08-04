@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Sparkles, Target, Rocket } from 'lucide-react';
+import { MaterialIcon } from '@/components/ui/MaterialIcon';
 
 interface IntakeData {
   category: string;
@@ -27,6 +27,9 @@ const EMPTY: IntakeData = {
 
 const isValidKeyword = (v: string) => /[a-zA-Z]/.test(v);
 
+const inputCls =
+  'w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all';
+
 /** Simple tag input — Enter to add, × to remove. */
 function TagInput({
   label, hint, tags, onChange, placeholder, validate,
@@ -44,8 +47,8 @@ function TagInput({
   };
   return (
     <div className="space-y-2">
-      <label className="text-sm font-semibold text-slate-700">{label}</label>
-      {hint && <p className="text-xs text-slate-400 -mt-1">{hint}</p>}
+      <label className="text-label-md text-on-surface">{label}</label>
+      {hint && <p className="text-xs text-outline -mt-1">{hint}</p>}
       <input
         type="text"
         value={input}
@@ -53,14 +56,14 @@ function TagInput({
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
         onBlur={add}
         placeholder={placeholder}
-        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+        className={inputCls}
       />
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
           {tags.map((t) => (
-            <span key={t} className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-50 text-indigo-700">
+            <span key={t} className="inline-flex items-center px-3 py-1 rounded-lg text-sm font-medium bg-primary-fixed text-primary">
               {t}
-              <button type="button" onClick={() => onChange(tags.filter((x) => x !== t))} className="ml-2 text-indigo-400 hover:text-indigo-700">&times;</button>
+              <button type="button" onClick={() => onChange(tags.filter((x) => x !== t))} className="ml-2 text-primary-fixed-dim hover:text-primary">&times;</button>
             </span>
           ))}
         </div>
@@ -72,14 +75,12 @@ function TagInput({
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
-      <label className="text-sm font-semibold text-slate-700">{label}</label>
-      {hint && <p className="text-xs text-slate-400 -mt-1">{hint}</p>}
+      <label className="text-label-md text-on-surface">{label}</label>
+      {hint && <p className="text-xs text-outline -mt-1">{hint}</p>}
       {children}
     </div>
   );
 }
-
-const inputCls = 'w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors';
 
 export default function IntakePage() {
   const router = useRouter();
@@ -137,23 +138,25 @@ export default function IntakePage() {
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
       <div className="text-center mb-8">
-        <div className="w-16 h-16 bg-indigo-50 border border-indigo-100 rounded-2xl mx-auto flex items-center justify-center mb-4">
-          <Sparkles className="w-8 h-8 text-indigo-600" />
+        <div className="w-16 h-16 bg-primary-fixed border border-primary-fixed-dim rounded-xl mx-auto flex items-center justify-center mb-4">
+          <MaterialIcon name="auto_awesome" size={32} className="text-primary" />
         </div>
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Tell us about your business</h1>
-        <p className="text-slate-500 mt-2 max-w-xl mx-auto">
+        <h1 className="text-headline-lg font-heading text-on-surface tracking-tight">Tell us about your business</h1>
+        <p className="text-on-surface-variant mt-2 max-w-xl mx-auto">
           This powers your audits, AI content, and competitor comparison. The more accurate this is, the better every result. Takes ~2 minutes.
         </p>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>
+        <div className="mb-6 p-4 bg-error-container border border-outline-variant rounded-lg text-sm text-on-error-container">{error}</div>
       )}
 
       <form onSubmit={submit} className="space-y-8">
         {/* What you do */}
-        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-          <div className="flex items-center gap-2 text-slate-900 font-bold"><Target className="w-4 h-4 text-indigo-600" /> What you do</div>
+        <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 card-shadow space-y-5">
+          <div className="flex items-center gap-2 text-on-surface font-bold">
+            <MaterialIcon name="track_changes" size={16} className="text-primary" /> What you do
+          </div>
           <Field label="Business category *" hint="Your exact category — this drives your audit and content.">
             <input className={inputCls} value={data.category} onChange={(e) => set('category', e.target.value)} placeholder="e.g. Restaurant" />
           </Field>
@@ -169,8 +172,10 @@ export default function IntakePage() {
         </section>
 
         {/* How you get found */}
-        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-          <div className="flex items-center gap-2 text-slate-900 font-bold"><Sparkles className="w-4 h-4 text-indigo-600" /> How customers find you</div>
+        <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 card-shadow space-y-5">
+          <div className="flex items-center gap-2 text-on-surface font-bold">
+            <MaterialIcon name="auto_awesome" size={16} className="text-primary" /> How customers find you
+          </div>
           <TagInput
             label="Target keywords *"
             hint="What people search on Google to find a business like yours. Press Enter to add."
@@ -189,8 +194,10 @@ export default function IntakePage() {
         </section>
 
         {/* Positioning */}
-        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-          <div className="flex items-center gap-2 text-slate-900 font-bold"><Rocket className="w-4 h-4 text-indigo-600" /> Standing out</div>
+        <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 card-shadow space-y-5">
+          <div className="flex items-center gap-2 text-on-surface font-bold">
+            <MaterialIcon name="rocket_launch" size={16} className="text-primary" /> Standing out
+          </div>
           <Field label="What makes you better than competitors?" hint="Your unique selling points.">
             <textarea rows={2} className={inputCls} value={data.uniqueSellingPoints} onChange={(e) => set('uniqueSellingPoints', e.target.value)} placeholder="e.g. Only bakery in the area using organic flour, same-day delivery guarantee" />
           </Field>
@@ -227,9 +234,9 @@ export default function IntakePage() {
         <button
           type="submit"
           disabled={saving}
-          className="w-full py-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-lg transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-60"
+          className="w-full py-3.5 rounded-lg bg-secondary hover:opacity-95 text-on-secondary font-bold text-lg transition-all flex items-center justify-center gap-2 disabled:opacity-60"
         >
-          {saving ? <><Loader2 className="w-5 h-5 animate-spin" /> Saving…</> : 'Save & Enter Dashboard'}
+          {saving ? <><MaterialIcon name="progress_activity" size={20} className="animate-spin" /> Saving…</> : 'Save & Enter Dashboard'}
         </button>
       </form>
     </div>

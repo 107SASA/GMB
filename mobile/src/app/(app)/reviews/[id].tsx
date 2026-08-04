@@ -43,12 +43,12 @@ function SecondaryButton({
     <Pressable
       onPress={onPress}
       disabled={loading}
-      className={`flex-1 items-center rounded-xl border py-3 active:opacity-70 ${
-        destructive ? 'border-rose-400/25 bg-rose-400/10' : 'border-surface-border bg-surface-raised'
+      className={`flex-1 items-center rounded-full border py-3 active:scale-95 ${
+        destructive ? 'border-error/25 bg-error-container' : 'border-surface-border bg-surface-raised'
       } ${loading ? 'opacity-60' : ''}`}
     >
       <Text
-        className={`text-sm font-semibold ${destructive ? 'text-rose-300' : 'text-zinc-200'}`}
+        className={`font-sans-semibold text-sm ${destructive ? 'text-on-error-container' : 'text-zinc-200'}`}
       >
         {loading ? '…' : title}
       </Text>
@@ -139,10 +139,10 @@ export default function ReviewDetailScreen() {
           <BackChevron />
         </Pressable>
         <View className="flex-1">
-          <Text className="text-lg font-bold text-white" numberOfLines={1}>
+          <Text className="font-display-bold text-lg text-white" numberOfLines={1}>
             {review.reviewer}
           </Text>
-          <Text className="text-xs text-zinc-500">
+          <Text className="font-sans text-xs text-zinc-500">
             {review.sourcePlatform} · {formatDateTime(review.postedAt ?? review.createdAt)}
           </Text>
         </View>
@@ -151,14 +151,14 @@ export default function ReviewDetailScreen() {
 
       <ScrollView contentContainerClassName="px-5 pb-10" keyboardShouldPersistTaps="handled">
         {/* Review */}
-        <View className="mt-4 rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5">
+        <View className="mt-4 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
           <View className="flex-row items-center gap-2">
             <Stars rating={review.rating} size={16} />
             {!!review.sentiment && (
               <Badge label={review.sentiment} tone={sentimentTone(review.sentiment)} />
             )}
           </View>
-          <Text className="mt-2 text-base text-zinc-200">
+          <Text className="mt-2 font-sans text-base text-zinc-200">
             {review.reviewText || 'No review text — rating only.'}
           </Text>
         </View>
@@ -171,16 +171,16 @@ export default function ReviewDetailScreen() {
 
         {review.replyStatus === 'POSTED' ? (
           <>
-            <Text className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            <Text className="mb-2 mt-6 font-sans-bold text-xs uppercase tracking-wider text-zinc-500">
               Your reply
             </Text>
-            <View className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3.5">
-              <Text className="text-base text-zinc-200">{review.response}</Text>
+            <View className="rounded-card border border-secondary/20 bg-secondary-container/40 px-4 py-3.5">
+              <Text className="font-sans text-base text-zinc-200">{review.response}</Text>
             </View>
           </>
         ) : (
           <>
-            <Text className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            <Text className="mb-2 mt-6 font-sans-bold text-xs uppercase tracking-wider text-zinc-500">
               AI-suggested reply
             </Text>
 
@@ -194,8 +194,8 @@ export default function ReviewDetailScreen() {
                 editable={!busy}
               />
             ) : (
-              <View className="rounded-xl border border-surface-border bg-surface-raised px-4 py-6">
-                <Text className="text-center text-sm text-zinc-400">
+              <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-6">
+                <Text className="text-center font-sans text-sm text-zinc-400">
                   No suggestion yet. Generate one to get started.
                 </Text>
               </View>

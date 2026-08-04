@@ -34,11 +34,11 @@ export function DurationPicker({
             type="button"
             onClick={() => onChange(d.cycle)}
             className={`rounded-xl border px-3 py-2 text-left transition-all ${
-              active ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500' : 'border-slate-200 hover:border-slate-300'
+              active ? 'border-primary bg-primary-fixed ring-1 ring-primary' : 'border-outline-variant hover:border-outline-variant'
             }`}
           >
-            <div className="text-xs font-bold text-slate-900">{d.label}</div>
-            <div className="text-[11px] text-slate-500">
+            <div className="text-xs font-bold text-on-surface">{d.label}</div>
+            <div className="text-[11px] text-on-surface-variant">
               ₹{d.priceInr.toLocaleString('en-IN')}
               {d.months > 1 ? ` · ₹${perMonth.toLocaleString('en-IN')}/mo` : ''}
             </div>

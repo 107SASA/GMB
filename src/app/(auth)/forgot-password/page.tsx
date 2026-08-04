@@ -3,12 +3,17 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { Loader2, Mail, ShieldCheck, KeyRound, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { MaterialIcon } from '@/components/ui/MaterialIcon';
 
 type Step = 'email' | 'otp' | 'choose' | 'newPassword' | 'done';
 
 const RESEND_COOLDOWN_SECONDS = 60;
 const GENERIC_MESSAGE = 'If an account exists with this email, an OTP has been sent.';
+
+const inputCls =
+  'w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all';
+const primaryBtn =
+  'w-full flex items-center justify-center py-3 bg-primary hover:bg-primary-container text-on-primary font-bold rounded-lg transition-all disabled:opacity-70';
 
 // Mirrors validatePasswordStrength in src/services/auth/security.ts — kept in sync
 // manually since that file pulls in bcryptjs/jsonwebtoken and can't be imported
@@ -173,55 +178,51 @@ function ForgotPasswordForm() {
   };
 
   return (
-    <div className="bg-white border border-slate-200 shadow-xl rounded-2xl p-8 max-w-md w-full mx-auto">
+    <div className="bg-surface-container-lowest border border-outline-variant card-shadow rounded-xl p-8 max-w-md w-full mx-auto">
       {step === 'email' && (
         <>
-          <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center mb-6">
-            <Mail className="text-slate-900 w-6 h-6" />
+          <div className="w-12 h-12 bg-primary-fixed rounded-lg flex items-center justify-center mb-6">
+            <MaterialIcon name="mail" size={24} className="text-primary" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Forgot your password?</h2>
-          <p className="text-slate-500 mb-6 text-sm">
-            Enter the email address associated with your account and we'll send you a one-time code to reset your password.
+          <h2 className="text-headline-md font-heading text-on-surface mb-2">Forgot your password?</h2>
+          <p className="text-on-surface-variant mb-6 text-sm">
+            Enter the email address associated with your account and we&apos;ll send you a one-time code to reset your password.
           </p>
           <form onSubmit={handleSendOtp} className="space-y-5">
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Email Address</label>
+              <label className="block text-label-md text-on-surface mb-2">Email Address</label>
               <input
                 type="email"
                 required
                 autoFocus
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all font-medium text-slate-900 placeholder-slate-400"
+                className={inputCls}
                 placeholder="you@company.com"
               />
             </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md shadow-indigo-600/20 transition-all disabled:opacity-70"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Send Code'}
+            <button type="submit" disabled={loading} className={primaryBtn}>
+              {loading ? <MaterialIcon name="progress_activity" size={20} className="animate-spin" /> : 'Send Code'}
             </button>
           </form>
-          <a href={loginHref} className="mt-6 flex items-center justify-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
-            <ArrowLeft className="w-4 h-4" /> Back to login
+          <a href={loginHref} className="mt-6 flex items-center justify-center gap-1.5 text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors">
+            <MaterialIcon name="arrow_back" size={16} /> Back to login
           </a>
         </>
       )}
 
       {step === 'otp' && (
         <>
-          <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center mb-6">
-            <ShieldCheck className="text-slate-900 w-6 h-6" />
+          <div className="w-12 h-12 bg-primary-fixed rounded-lg flex items-center justify-center mb-6">
+            <MaterialIcon name="verified_user" size={24} className="text-primary" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Enter verification code</h2>
-          <p className="text-slate-500 mb-6 text-sm">
-            We sent a 6-digit code to <span className="font-semibold text-slate-700">{email}</span>. It expires in 10 minutes.
+          <h2 className="text-headline-md font-heading text-on-surface mb-2">Enter verification code</h2>
+          <p className="text-on-surface-variant mb-6 text-sm">
+            We sent a 6-digit code to <span className="font-semibold text-on-surface">{email}</span>. It expires in 10 minutes.
           </p>
           <form onSubmit={handleVerifyOtp} className="space-y-5">
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">One-Time Code</label>
+              <label className="block text-label-md text-on-surface mb-2">One-Time Code</label>
               <input
                 type="text"
                 inputMode="numeric"
@@ -229,16 +230,12 @@ function ForgotPasswordForm() {
                 maxLength={6}
                 value={otp}
                 onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all font-bold text-slate-900 placeholder-slate-400 text-center tracking-[0.5em] text-lg"
+                className={`${inputCls} font-bold text-center tracking-[0.5em] text-lg`}
                 placeholder="------"
               />
             </div>
-            <button
-              type="submit"
-              disabled={loading || otp.length !== 6}
-              className="w-full flex items-center justify-center py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md shadow-indigo-600/20 transition-all disabled:opacity-70"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify Code'}
+            <button type="submit" disabled={loading || otp.length !== 6} className={primaryBtn}>
+              {loading ? <MaterialIcon name="progress_activity" size={20} className="animate-spin" /> : 'Verify Code'}
             </button>
           </form>
 
@@ -246,7 +243,7 @@ function ForgotPasswordForm() {
             <button
               onClick={handleResend}
               disabled={cooldown > 0}
-              className="font-medium text-indigo-600 hover:text-indigo-700 disabled:text-slate-400 transition-colors"
+              className="font-medium text-primary hover:text-primary-container disabled:text-outline transition-colors"
             >
               {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
             </button>
@@ -254,32 +251,32 @@ function ForgotPasswordForm() {
 
           <button
             onClick={() => setStep('email')}
-            className="mt-4 flex items-center justify-center gap-1.5 w-full text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
+            className="mt-4 flex items-center justify-center gap-1.5 w-full text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors"
           >
-            <ArrowLeft className="w-4 h-4" /> Use a different email
+            <MaterialIcon name="arrow_back" size={16} /> Use a different email
           </button>
         </>
       )}
 
       {step === 'choose' && (
         <>
-          <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-6">
-            <CheckCircle2 className="text-emerald-600 w-6 h-6" />
+          <div className="w-12 h-12 bg-secondary-container rounded-lg flex items-center justify-center mb-6">
+            <MaterialIcon name="check_circle" size={24} className="text-on-secondary-container" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Code verified</h2>
-          <p className="text-slate-500 mb-8 text-sm">
+          <h2 className="text-headline-md font-heading text-on-surface mb-2">Code verified</h2>
+          <p className="text-on-surface-variant mb-8 text-sm">
             You can create a new password now, or skip this and continue signing in with your existing password.
           </p>
           <div className="space-y-3">
             <button
               onClick={() => setStep('newPassword')}
-              className="w-full flex items-center justify-center gap-2 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md shadow-indigo-600/20 transition-all"
+              className="w-full flex items-center justify-center gap-2 py-3 bg-primary hover:bg-primary-container text-on-primary font-bold rounded-lg transition-all"
             >
-              <KeyRound className="w-4 h-4" /> Create New Password
+              <MaterialIcon name="key" size={18} /> Create New Password
             </button>
             <button
               onClick={handleContinueToLogin}
-              className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all"
+              className="w-full py-3 bg-surface-container hover:bg-surface-container-high text-on-surface font-bold rounded-lg transition-all"
             >
               Continue to Login Without Changing Password
             </button>
@@ -289,62 +286,58 @@ function ForgotPasswordForm() {
 
       {step === 'newPassword' && (
         <>
-          <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center mb-6">
-            <KeyRound className="text-slate-900 w-6 h-6" />
+          <div className="w-12 h-12 bg-primary-fixed rounded-lg flex items-center justify-center mb-6">
+            <MaterialIcon name="key" size={24} className="text-primary" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Create a new password</h2>
-          <p className="text-slate-500 mb-6 text-sm">Choose a strong password you haven't used before.</p>
+          <h2 className="text-headline-md font-heading text-on-surface mb-2">Create a new password</h2>
+          <p className="text-on-surface-variant mb-6 text-sm">Choose a strong password you haven&apos;t used before.</p>
           <form onSubmit={handleResetPassword} className="space-y-5">
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">New Password</label>
+              <label className="block text-label-md text-on-surface mb-2">New Password</label>
               <input
                 type="password"
                 required
                 autoFocus
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all font-medium text-slate-900 placeholder-slate-400"
+                className={inputCls}
                 placeholder="••••••••"
               />
             </div>
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Confirm Password</label>
+              <label className="block text-label-md text-on-surface mb-2">Confirm Password</label>
               <input
                 type="password"
                 required
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all font-medium text-slate-900 placeholder-slate-400"
+                className={inputCls}
                 placeholder="••••••••"
               />
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-outline">
               Must be at least 8 characters, with an uppercase letter, a lowercase letter, a number, and a special character.
             </p>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md shadow-indigo-600/20 transition-all disabled:opacity-70"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Reset Password'}
+            <button type="submit" disabled={loading} className={primaryBtn}>
+              {loading ? <MaterialIcon name="progress_activity" size={20} className="animate-spin" /> : 'Reset Password'}
             </button>
           </form>
           <button
             onClick={() => setStep('choose')}
-            className="mt-4 flex items-center justify-center gap-1.5 w-full text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
+            className="mt-4 flex items-center justify-center gap-1.5 w-full text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors"
           >
-            <ArrowLeft className="w-4 h-4" /> Back
+            <MaterialIcon name="arrow_back" size={16} /> Back
           </button>
         </>
       )}
 
       {step === 'done' && (
         <div className="text-center py-4">
-          <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle2 className="text-emerald-600 w-7 h-7" />
+          <div className="w-14 h-14 bg-secondary rounded-full flex items-center justify-center mx-auto mb-6">
+            <MaterialIcon name="check_circle" size={28} className="text-on-secondary" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Password updated</h2>
-          <p className="text-slate-500 text-sm">Redirecting you to login...</p>
+          <h2 className="text-headline-md font-heading text-on-surface mb-2">Password updated</h2>
+          <p className="text-on-surface-variant text-sm">Redirecting you to login...</p>
         </div>
       )}
     </div>

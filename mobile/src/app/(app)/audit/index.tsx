@@ -8,40 +8,43 @@ import { fetchAudits, type AuditListItem } from '@/api/endpoints/audit';
 import { useBusiness } from '@/business/BusinessContext';
 import { Badge, EmptyState, Screen, ScreenTitle, Skeleton } from '@/components/ui';
 import { timeAgo } from '@/lib/format';
+import { useTheme } from '@/lib/theme';
 
+/** Score ring — semantic score-color rule: ≥70 green, 40-69 amber, <40 rose. */
 function ScoreRing({ score }: { score: number | null }) {
   const color =
     score === null
       ? 'border-zinc-700'
       : score >= 70
-        ? 'border-emerald-500'
+        ? 'border-secondary'
         : score >= 40
-          ? 'border-amber-500'
-          : 'border-rose-400';
+          ? 'border-warning'
+          : 'border-error';
   return (
     <View className={`h-12 w-12 items-center justify-center rounded-full border-2 ${color}`}>
-      <Text className="text-sm font-bold text-white">{score ?? '—'}</Text>
+      <Text className="font-sans-bold text-sm text-white">{score ?? '—'}</Text>
     </View>
   );
 }
 
 function AuditCard({ audit }: { audit: AuditListItem }) {
   const router = useRouter();
+  const t = useTheme();
   return (
     <Pressable
       onPress={() => router.push(`/audit/${audit._id}`)}
-      className="mb-3 flex-row items-center gap-3 rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5 active:opacity-80"
+      className="mb-3 flex-row items-center gap-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5 active:opacity-80"
     >
       <ScoreRing score={audit.status === 'COMPLETED' ? audit.overallScore : null} />
       <View className="flex-1">
-        <Text className="text-base font-semibold text-white" numberOfLines={1}>
+        <Text className="font-sans-semibold text-base text-white" numberOfLines={1}>
           {audit.businessName}
         </Text>
-        <Text className="mt-0.5 text-xs text-zinc-500">{timeAgo(audit.createdAt)}</Text>
+        <Text className="mt-0.5 font-sans text-xs text-zinc-500">{timeAgo(audit.createdAt)}</Text>
       </View>
       {audit.status === 'PENDING' && <Badge label="Running" tone="info" />}
       {audit.status === 'FAILED' && <Badge label="Failed" tone="negative" />}
-      <Ionicons name="chevron-forward" size={16} color="#4A5175" />
+      <Ionicons name="chevron-forward" size={16} color={t.textFaint} />
     </Pressable>
   );
 }
@@ -49,6 +52,7 @@ function AuditCard({ audit }: { audit: AuditListItem }) {
 export default function AuditListScreen() {
   const { activeBusinessId } = useBusiness();
   const router = useRouter();
+  const t = useTheme();
 
   // The list is tenant-scoped server-side (same as web) — the key still
   // includes the business id so a workspace switch refreshes it.
@@ -64,10 +68,10 @@ export default function AuditListScreen() {
         <ScreenTitle>Audit Engine</ScreenTitle>
         <Pressable
           onPress={() => router.push('/audit/run')}
-          className="flex-row items-center gap-1.5 rounded-full bg-brand px-4 py-2 active:opacity-80"
+          className="flex-row items-center gap-1.5 rounded-full bg-brand px-4 py-2 active:scale-95"
         >
           <Ionicons name="flash" size={14} color="#ffffff" />
-          <Text className="text-sm font-semibold text-on-brand">Run audit</Text>
+          <Text className="font-sans-bold text-sm text-on-brand">Run audit</Text>
         </Pressable>
       </View>
 
@@ -92,7 +96,7 @@ export default function AuditListScreen() {
             <RefreshControl
               refreshing={audits.isRefetching}
               onRefresh={() => void audits.refetch()}
-              tintColor="#6366F1"
+              tintColor={t.brandBright}
             />
           }
           ListEmptyComponent={

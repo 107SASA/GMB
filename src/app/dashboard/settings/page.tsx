@@ -46,17 +46,17 @@ function SaveButton({ state, onSave }: { state: SaveState; onSave: () => void })
 }
 
 function inputCls(extra = '') {
-  return `w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white ${extra}`;
+  return `w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-surface-container-lowest ${extra}`;
 }
 
 function LabelRow({ label, hint }: { label: string; hint?: string }) {
   return (
     <div className="flex items-center gap-1.5">
-      <label className="block text-xs font-semibold text-slate-500">{label}</label>
+      <label className="block text-xs font-semibold text-on-surface-variant">{label}</label>
       {hint && (
         <div className="relative group cursor-pointer">
-          <Info className="w-3.5 h-3.5 text-slate-400" />
-          <div className="absolute z-10 bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-800 text-white text-xs rounded-lg px-3 py-2 w-64 leading-relaxed shadow-xl">
+          <Info className="w-3.5 h-3.5 text-outline" />
+          <div className="absolute z-10 bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-primary text-white text-xs rounded-lg px-3 py-2 w-64 leading-relaxed card-shadow">
             {hint}
           </div>
         </div>
@@ -316,11 +316,11 @@ export default function SettingsPage() {
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold text-slate-900 mb-1">Settings</h1>
-      <p className="text-sm text-slate-500 mb-6">Manage your business profile, AI agent, notifications, and integrations.</p>
+      <h1 className="font-heading text-2xl font-bold text-on-surface mb-1">Settings</h1>
+      <p className="text-sm text-on-surface-variant mb-6">Manage your business profile, AI agent, notifications, and integrations.</p>
 
       {/* Tab bar — horizontally scrollable on narrow screens */}
-      <div className="overflow-x-auto mb-6 border-b border-slate-200 pb-1 -mx-4 sm:mx-0 px-4 sm:px-0">
+      <div className="overflow-x-auto mb-6 border-b border-outline-variant pb-1 -mx-4 sm:mx-0 px-4 sm:px-0">
         <div className="flex gap-2 min-w-max sm:min-w-0 sm:flex-wrap">
           {visibleTabs.map(tab => {
             const Icon = tab.icon;
@@ -331,8 +331,8 @@ export default function SettingsPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl text-sm font-semibold transition-all border whitespace-nowrap ${
                   active
-                    ? 'bg-indigo-50 text-primary border-indigo-100 shadow-sm'
-                    : 'text-slate-500 border-transparent hover:text-slate-900 hover:bg-slate-50'
+                    ? 'bg-primary-fixed text-primary border-primary-fixed-dim shadow-sm'
+                    : 'text-on-surface-variant border-transparent hover:text-on-surface hover:bg-surface'
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -346,16 +346,16 @@ export default function SettingsPage() {
       {/* ─── Tab 1: Business Profile ──────────────────────────────────── */}
       {activeTab === 'business' && (
         <div className="space-y-6">
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 flex gap-3 text-sm text-amber-800">
-            <Info className="w-5 h-5 shrink-0 mt-0.5 text-amber-500" />
+          <div className="bg-error-container border border-error-container rounded-2xl px-5 py-4 flex gap-3 text-sm text-on-error-container">
+            <Info className="w-5 h-5 shrink-0 mt-0.5 text-error" />
             <span>
               Changes here update your <strong>GrowwMatics AI profile</strong>. To update your live Google Business Profile, use the{' '}
               <strong>Google Business Profile dashboard</strong> directly.
             </span>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5">
-            <h2 className="text-base font-bold text-slate-900">Business Details</h2>
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 space-y-5">
+            <h2 className="text-base font-bold text-on-surface">Business Details</h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
@@ -379,7 +379,7 @@ export default function SettingsPage() {
               <div className="col-span-1 sm:col-span-2">
                 <div className="flex items-center justify-between mb-1">
                   <LabelRow label="Business Description" />
-                  <span className={`text-xs ${bpDescLen > 750 ? 'text-red-500 font-semibold' : 'text-slate-400'}`}>
+                  <span className={`text-xs ${bpDescLen > 750 ? 'text-error font-semibold' : 'text-outline'}`}>
                     {bpDescLen}/750
                   </span>
                 </div>
@@ -482,20 +482,20 @@ export default function SettingsPage() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <LabelRow label="Keywords" />
-                <span className="text-xs text-slate-400">{bpKeywords.length}/20</span>
+                <span className="text-xs text-outline">{bpKeywords.length}/20</span>
               </div>
-              <div className="border border-slate-200 rounded-xl p-3 min-h-[52px] flex flex-wrap gap-2 bg-white focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500">
+              <div className="border border-outline-variant rounded-xl p-3 min-h-[52px] flex flex-wrap gap-2 bg-surface-container-lowest focus-within:ring-2 focus-within:ring-primary focus-within:border-primary">
                 {bpKeywords.map(kw => (
                   <span
                     key={kw}
-                    className="flex items-center gap-1 bg-indigo-50 text-primary text-xs font-semibold px-3 py-1.5 rounded-lg"
+                    className="flex items-center gap-1 bg-primary-fixed text-primary text-xs font-semibold px-3 py-1.5 rounded-lg"
                   >
                     <Tag className="w-3 h-3" />
                     {kw}
                     <button
                       type="button"
                       onClick={() => handleKeywordRemove(kw)}
-                      className="ml-1 hover:text-red-500 transition-colors"
+                      className="ml-1 hover:text-error transition-colors"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -503,7 +503,7 @@ export default function SettingsPage() {
                 ))}
                 {bpKeywords.length < 20 && (
                   <input
-                    className="flex-1 min-w-[140px] text-sm outline-none bg-transparent placeholder:text-slate-400"
+                    className="flex-1 min-w-[140px] text-sm outline-none bg-transparent placeholder:text-outline"
                     value={bpKeywordInput}
                     onChange={e => setBpKeywordInput(e.target.value)}
                     onKeyDown={handleKeywordAdd}
@@ -511,14 +511,14 @@ export default function SettingsPage() {
                   />
                 )}
               </div>
-              <p className="text-xs text-slate-400 mt-1">These power keyword analysis in the audit engine.</p>
+              <p className="text-xs text-outline mt-1">These power keyword analysis in the audit engine.</p>
             </div>
           </div>
 
           {/* Google Business Profile connection — moved here from the old
               Integrations tab; this is where users manage their profile. */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-            <h2 className="text-base font-bold text-slate-900">Google Business Profile</h2>
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 space-y-4">
+            <h2 className="text-base font-bold text-on-surface">Google Business Profile</h2>
             <IntegCard
               title="Connection Status"
               connected={!!bpForm.placeId}
@@ -536,7 +536,7 @@ export default function SettingsPage() {
                     View on Google Maps →
                   </a>
                 ) : (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-on-surface-variant">
                     Add your Google Maps URL and Place ID above to connect your profile.
                   </p>
                 )
@@ -545,7 +545,7 @@ export default function SettingsPage() {
           </div>
 
           {bpError && (
-            <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+            <div className="flex items-center gap-2 text-sm text-error bg-error-container border border-error-container rounded-xl px-4 py-3">
               <AlertCircle className="w-4 h-4 shrink-0" />
               {bpError}
             </div>
@@ -559,22 +559,22 @@ export default function SettingsPage() {
       {/* ─── Tab 2: AI Agent ──────────────────────────────────────────── */}
       {activeTab === 'ai-agent' && isSuperAdmin && (
         <div className="space-y-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 space-y-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-slate-900">WhatsApp AI Agent Configuration</h2>
+              <h2 className="text-base font-bold text-on-surface">WhatsApp AI Agent Configuration</h2>
               <label className="flex items-center gap-2 cursor-pointer select-none">
-                <span className="text-sm text-slate-600 font-medium">AI Enabled</span>
+                <span className="text-sm text-on-surface-variant font-medium">AI Enabled</span>
                 <button
                   type="button"
                   role="switch"
                   aria-checked={aiForm.aiEnabled}
                   onClick={() => setAiForm(p => ({ ...p, aiEnabled: !p.aiEnabled }))}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    aiForm.aiEnabled ? 'bg-primary' : 'bg-slate-200'
+                    aiForm.aiEnabled ? 'bg-primary' : 'bg-surface-container-high'
                   }`}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    className={`inline-block h-4 w-4 transform rounded-full bg-surface-container-lowest shadow transition-transform ${
                       aiForm.aiEnabled ? 'translate-x-6' : 'translate-x-1'
                     }`}
                   />
@@ -584,7 +584,7 @@ export default function SettingsPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">AI Personality</label>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">AI Personality</label>
                 <select
                   className={inputCls()}
                   value={aiForm.aiPersonality}
@@ -596,7 +596,7 @@ export default function SettingsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Response Tone</label>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Response Tone</label>
                 <select
                   className={inputCls()}
                   value={aiForm.tone}
@@ -608,7 +608,7 @@ export default function SettingsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Max Response Length</label>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Max Response Length</label>
                 <select
                   className={inputCls()}
                   value={aiForm.maxResponseLength}
@@ -623,8 +623,8 @@ export default function SettingsPage() {
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-semibold text-slate-500">System Prompt</label>
-                <span className="text-xs text-slate-400">{aiForm.systemPrompt.length} chars</span>
+                <label className="block text-xs font-semibold text-on-surface-variant">System Prompt</label>
+                <span className="text-xs text-outline">{aiForm.systemPrompt.length} chars</span>
               </div>
               <textarea
                 rows={6}
@@ -636,7 +636,7 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Sales Rules</label>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Sales Rules</label>
               <textarea
                 rows={3}
                 className={inputCls('resize-none')}
@@ -648,16 +648,16 @@ export default function SettingsPage() {
           </div>
 
           {/* Preview panel */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">How your AI will introduce itself</p>
-            <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 shadow-sm">
+          <div className="bg-surface border border-outline-variant rounded-2xl p-5">
+            <p className="text-xs font-semibold text-outline uppercase tracking-wider mb-3">How your AI will introduce itself</p>
+            <div className="bg-surface-container-lowest border border-outline-variant rounded-xl px-4 py-3 text-sm text-on-surface shadow-sm">
               {getAIPreview(aiForm.aiPersonality, aiForm.tone, activeBusiness?.name ?? '')}
             </div>
-            <p className="text-xs text-slate-400 mt-2">Updates live as you change personality and tone settings above.</p>
+            <p className="text-xs text-outline mt-2">Updates live as you change personality and tone settings above.</p>
           </div>
 
           {aiError && (
-            <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+            <div className="flex items-center gap-2 text-sm text-error bg-error-container border border-error-container rounded-xl px-4 py-3">
               <AlertCircle className="w-4 h-4 shrink-0" />
               {aiError}
             </div>
@@ -671,14 +671,14 @@ export default function SettingsPage() {
       {/* ─── Tab 3: Notifications (in-app only) ───────────────────────── */}
       {activeTab === 'notifications' && (
         <div className="space-y-4">
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 flex gap-3 text-sm text-slate-600">
-            <Info className="w-5 h-5 shrink-0 mt-0.5 text-slate-400" />
+          <div className="bg-surface border border-outline-variant rounded-2xl px-5 py-4 flex gap-3 text-sm text-on-surface-variant">
+            <Info className="w-5 h-5 shrink-0 mt-0.5 text-outline" />
             <span>
               Choose which events show up in your <strong>in-app notifications</strong>. These appear in the
               notification bell inside the dashboard.
             </span>
           </div>
-          <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl divide-y divide-outline-variant">
             <NotifSection
               title="In-App Notifications"
               rows={[
@@ -749,20 +749,20 @@ function NotifSection({
 }) {
   return (
     <div className="p-5">
-      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">{title}</p>
+      <p className="text-xs font-bold text-outline uppercase tracking-wider mb-3">{title}</p>
       <div className="space-y-3">
         {rows.map(row => (
           <div key={row.key} className="flex items-center justify-between gap-4">
             <div className="flex items-start gap-3">
               <span className="text-lg leading-none mt-0.5">{row.icon}</span>
               <div>
-                <p className="text-sm font-semibold text-slate-900">{row.label}</p>
-                <p className="text-xs text-slate-500">{row.desc}</p>
+                <p className="text-sm font-semibold text-on-surface">{row.label}</p>
+                <p className="text-xs text-on-surface-variant">{row.desc}</p>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {savedRows.has(row.key) && (
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 animate-in fade-in" />
+                <CheckCircle2 className="w-4 h-4 text-secondary animate-in fade-in" />
               )}
               <button
                 type="button"
@@ -770,11 +770,11 @@ function NotifSection({
                 aria-checked={!!prefs[row.key]}
                 onClick={() => onToggle(row.key)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  prefs[row.key] ? 'bg-primary' : 'bg-slate-200'
+                  prefs[row.key] ? 'bg-primary' : 'bg-surface-container-high'
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                  className={`inline-block h-4 w-4 transform rounded-full bg-surface-container-lowest shadow transition-transform ${
                     prefs[row.key] ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
@@ -803,19 +803,19 @@ function IntegCard({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col gap-3">
+    <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-5 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+        <h3 className="text-sm font-bold text-on-surface">{title}</h3>
         <span
           className={`shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${
-            connected ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+            connected ? 'bg-secondary-container/40 text-on-secondary-container' : 'bg-error-container text-on-error-container'
           }`}
         >
           {connected ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
           {connected ? connectedLabel : notConnectedLabel}
         </span>
       </div>
-      {detail && <p className="text-xs text-slate-500 break-all">{detail}</p>}
+      {detail && <p className="text-xs text-on-surface-variant break-all">{detail}</p>}
       {action && <div>{action}</div>}
     </div>
   );

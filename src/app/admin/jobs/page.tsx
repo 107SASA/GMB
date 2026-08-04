@@ -124,7 +124,7 @@ function timeAgo(iso: string): string {
 function StatusBadge({ status }: { status?: string }) {
   if (status === 'success') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-secondary-container/40 text-on-secondary-container border border-secondary-fixed">
         <CheckCircle2 className="w-3 h-3" />
         success
       </span>
@@ -132,14 +132,14 @@ function StatusBadge({ status }: { status?: string }) {
   }
   if (status === 'failed') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-error-container text-on-error-container border border-error-container">
         <XCircle className="w-3 h-3" />
         failed
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-container text-on-surface-variant border border-outline-variant">
       {status ?? 'unknown'}
     </span>
   );
@@ -258,17 +258,17 @@ export default function JobsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-violet-600 rounded-xl flex items-center justify-center shadow-sm">
+          <div className="w-11 h-11 bg-primary rounded-xl flex items-center justify-center shadow-sm">
             <Zap className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Automation Dashboard</h1>
-            <p className="text-sm text-slate-500">Inngest background jobs · auto-refreshes every 30 s</p>
+            <h1 className="font-heading text-2xl font-bold text-on-surface">Automation Dashboard</h1>
+            <p className="text-sm text-on-surface-variant">Inngest background jobs · auto-refreshes every 30 s</p>
           </div>
         </div>
         <button
           onClick={() => fetchData(statusFilter, typeFilter)}
-          className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          className="flex items-center gap-2 px-3 py-2 text-sm text-on-surface-variant bg-surface-container-lowest border border-outline-variant rounded-lg hover:bg-surface transition-colors"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
@@ -276,7 +276,7 @@ export default function JobsPage() {
       </div>
 
       {fetchError && (
-        <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+        <div className="flex items-center gap-2 p-4 bg-error-container border border-error-container rounded-xl text-on-error-container text-sm">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           {fetchError}
         </div>
@@ -289,37 +289,37 @@ export default function JobsPage() {
             label: 'Total Runs',
             value: loading ? '—' : (stats?.totalRuns ?? 0).toLocaleString(),
             icon: BarChart3,
-            color: 'text-violet-600 bg-violet-50',
+            color: 'text-primary bg-primary-fixed',
           },
           {
             label: 'Success Rate',
             value: loading ? '—' : `${stats?.successRate ?? 0}%`,
             icon: CheckCircle2,
-            color: 'text-emerald-600 bg-emerald-50',
+            color: 'text-secondary bg-secondary-container/40',
           },
           {
             label: 'Failed Today',
             value: loading ? '—' : (stats?.failedToday ?? 0).toString(),
             icon: XCircle,
-            color: stats?.failedToday ? 'text-red-600 bg-red-50' : 'text-slate-500 bg-slate-50',
+            color: stats?.failedToday ? 'text-error bg-error-container' : 'text-on-surface-variant bg-surface',
           },
           {
             label: 'Active Workflows',
             value: '6',
             icon: Activity,
-            color: 'text-blue-600 bg-blue-50',
+            color: 'text-primary bg-primary-fixed',
           },
         ].map((card) => (
           <div
             key={card.label}
-            className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex items-start gap-4"
+            className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5 flex items-start gap-4"
           >
             <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${card.color}`}>
               <card.icon className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{card.label}</p>
-              <p className="text-2xl font-bold text-slate-900 mt-0.5">{card.value}</p>
+              <p className="text-xs text-on-surface-variant font-medium uppercase tracking-wide">{card.label}</p>
+              <p className="text-2xl font-bold text-on-surface mt-0.5">{card.value}</p>
             </div>
           </div>
         ))}
@@ -327,7 +327,7 @@ export default function JobsPage() {
 
       {/* Automation Health — one card per workflow */}
       <div>
-        <h2 className="text-lg font-semibold text-slate-900 mb-4">Automation Health</h2>
+        <h2 className="text-lg font-semibold text-on-surface mb-4">Automation Health</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {WORKFLOWS.map((wf) => {
             const lastRun = getLastRun(wf);
@@ -337,32 +337,32 @@ export default function JobsPage() {
             return (
               <div
                 key={wf.id}
-                className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex flex-col gap-3"
+                className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5 flex flex-col gap-3"
               >
                 {/* Title row */}
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <h3 className="font-semibold text-slate-900 text-sm">{wf.label}</h3>
-                    <p className="text-xs text-slate-500 mt-0.5">{wf.description}</p>
+                    <h3 className="font-semibold text-on-surface text-sm">{wf.label}</h3>
+                    <p className="text-xs text-on-surface-variant mt-0.5">{wf.description}</p>
                   </div>
                   {lastRun && <StatusBadge status={lastRun.status} />}
                 </div>
 
                 {/* Metadata */}
-                <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                <div className="grid grid-cols-2 gap-2 text-xs text-on-surface-variant">
                   <div>
-                    <span className="text-slate-400 block">Last run</span>
-                    {lastRun ? timeAgo(lastRun.createdAt) : <span className="text-slate-300">No data</span>}
+                    <span className="text-outline block">Last run</span>
+                    {lastRun ? timeAgo(lastRun.createdAt) : <span className="text-outline">No data</span>}
                   </div>
                   <div>
-                    <span className="text-slate-400 block">Total runs</span>
+                    <span className="text-outline block">Total runs</span>
                     {totalRuns.toLocaleString()}
                   </div>
                 </div>
 
                 {/* Trigger section */}
                 {wf.trigger && (
-                  <div className="mt-auto pt-2 border-t border-slate-100 space-y-2">
+                  <div className="mt-auto pt-2 border-t border-outline-variant space-y-2">
                     {wf.needsBusinessId && showInput[wf.id] && (
                       <input
                         type="text"
@@ -371,16 +371,16 @@ export default function JobsPage() {
                         onChange={(e) =>
                           setBusinessIdInput((prev) => ({ ...prev, [wf.id]: e.target.value }))
                         }
-                        className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-300 font-mono"
+                        className="w-full px-2.5 py-1.5 text-xs border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-primary font-mono"
                       />
                     )}
                     {triggerError[wf.id] && (
-                      <p className="text-xs text-red-600">{triggerError[wf.id]}</p>
+                      <p className="text-xs text-error">{triggerError[wf.id]}</p>
                     )}
                     <button
                       onClick={() => handleTrigger(wf.id, wf.trigger!, wf.needsBusinessId)}
                       disabled={isBusy}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-on-primary rounded-lg hover:bg-primary-container disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {isBusy ? (
                         <RefreshCw className="w-3 h-3 animate-spin" />
@@ -400,13 +400,13 @@ export default function JobsPage() {
       {/* Recent Automation Logs */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-slate-900">Recent Automation Logs</h2>
+          <h2 className="text-lg font-semibold text-on-surface">Recent Automation Logs</h2>
           <div className="flex items-center gap-2">
             {/* Status filter */}
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              className="text-xs border border-outline-variant rounded-lg px-2.5 py-1.5 bg-surface-container-lowest text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="all">All statuses</option>
               <option value="success">Success</option>
@@ -416,7 +416,7 @@ export default function JobsPage() {
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              className="text-xs border border-outline-variant rounded-lg px-2.5 py-1.5 bg-surface-container-lowest text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="all">All workflows</option>
               <option value="content-scheduler">content-scheduler</option>
@@ -428,64 +428,64 @@ export default function JobsPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden">
           {loading ? (
-            <div className="p-12 text-center text-slate-400 text-sm">
-              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 text-slate-300" />
+            <div className="p-12 text-center text-outline text-sm">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 text-outline" />
               Loading logs…
             </div>
           ) : logs.length === 0 ? (
             <div className="p-12 text-center">
-              <Clock className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-              <p className="text-slate-500 text-sm font-medium">No automation logs yet</p>
-              <p className="text-slate-400 text-xs mt-1">Logs appear here once workflows start running.</p>
+              <Clock className="w-10 h-10 text-outline-variant mx-auto mb-3" />
+              <p className="text-on-surface-variant text-sm font-medium">No automation logs yet</p>
+              <p className="text-outline text-xs mt-1">Logs appear here once workflows start running.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Workflow</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Action</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Business</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Duration</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Time</th>
+                  <tr className="bg-surface-container-low border-b border-outline-variant">
+                    <th className="text-left px-4 py-3 text-label-sm text-on-surface-variant">Workflow</th>
+                    <th className="text-left px-4 py-3 text-label-sm text-on-surface-variant">Action</th>
+                    <th className="text-left px-4 py-3 text-label-sm text-on-surface-variant">Status</th>
+                    <th className="text-left px-4 py-3 text-label-sm text-on-surface-variant">Business</th>
+                    <th className="text-left px-4 py-3 text-label-sm text-on-surface-variant">Duration</th>
+                    <th className="text-left px-4 py-3 text-label-sm text-on-surface-variant">Time</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-outline-variant">
                   {logs.map((log) => (
-                    <tr key={log._id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs text-slate-700">
-                        {log.workflow ?? <span className="text-slate-300">—</span>}
+                    <tr key={log._id} className="hover:bg-surface/50 transition-colors">
+                      <td className="px-4 py-3 font-mono text-xs text-on-surface">
+                        {log.workflow ?? <span className="text-outline">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-600">
-                        {log.action ?? <span className="text-slate-300">—</span>}
+                      <td className="px-4 py-3 text-xs text-on-surface-variant">
+                        {log.action ?? <span className="text-outline">—</span>}
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={log.status} />
                         {log.error && (
-                          <p className="text-xs text-red-500 mt-1 truncate max-w-[200px]" title={log.error}>
+                          <p className="text-xs text-error mt-1 truncate max-w-[200px]" title={log.error}>
                             {log.error}
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs font-mono text-slate-500">
+                      <td className="px-4 py-3 text-xs font-mono text-on-surface-variant">
                         {log.businessId ? (
                           <a
                             href={`/admin/businesses/${log.businessId}`}
-                            className="text-violet-600 hover:underline"
+                            className="text-primary hover:underline"
                           >
                             {log.businessId.slice(-8)}…
                           </a>
                         ) : (
-                          <span className="text-slate-300">—</span>
+                          <span className="text-outline">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-500">
-                        {log.duration != null ? `${log.duration}ms` : <span className="text-slate-300">—</span>}
+                      <td className="px-4 py-3 text-xs text-on-surface-variant">
+                        {log.duration != null ? `${log.duration}ms` : <span className="text-outline">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-400">
+                      <td className="px-4 py-3 text-xs text-outline">
                         {timeAgo(log.createdAt)}
                       </td>
                     </tr>

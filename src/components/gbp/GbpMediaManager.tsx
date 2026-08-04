@@ -71,21 +71,21 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
+    <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 shadow-sm space-y-5">
       <div className="flex items-center gap-2">
-        <ImagePlus className="w-5 h-5 text-indigo-600" />
-        <h2 className="text-base font-bold text-slate-900">Photos &amp; Media</h2>
+        <ImagePlus className="w-5 h-5 text-primary" />
+        <h2 className="text-base font-bold text-on-surface">Photos &amp; Media</h2>
       </div>
 
       {!liveWrites && (
-        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+        <div className="flex items-start gap-2 bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container">
           <Info className="w-4 h-4 mt-0.5 shrink-0" />
           <span>Preview mode — uploads are saved now and publish to Google automatically once live publishing is enabled.</span>
         </div>
       )}
 
       {msg && (
-        <div className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm ${msg.ok ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+        <div className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm ${msg.ok ? 'bg-secondary-container/40 border border-secondary-fixed text-on-secondary-container' : 'bg-error-container border border-error-container text-on-error-container'}`}>
           {msg.ok ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
           {msg.text}
         </div>
@@ -94,9 +94,9 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
       {/* Upload slots */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {UPLOAD_SLOTS.map((slot) => (
-          <div key={slot.category} className="border border-dashed border-slate-300 rounded-xl p-4 text-center">
-            <p className="text-sm font-semibold text-slate-800">{slot.label}</p>
-            <p className="text-xs text-slate-400 mt-0.5 mb-3">{slot.hint}</p>
+          <div key={slot.category} className="border border-dashed border-outline-variant rounded-xl p-4 text-center">
+            <p className="text-sm font-semibold text-on-surface">{slot.label}</p>
+            <p className="text-xs text-outline mt-0.5 mb-3">{slot.hint}</p>
             <input
               ref={(el) => { inputs.current[slot.category] = el; }}
               type="file"
@@ -108,7 +108,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
               type="button"
               onClick={() => inputs.current[slot.category]?.click()}
               disabled={uploading !== null}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-primary text-white text-sm font-semibold transition-colors disabled:opacity-60"
             >
               {uploading === slot.category ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
               {uploading === slot.category ? 'Uploading…' : 'Upload'}
@@ -118,20 +118,24 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
       </div>
 
       {/* Existing media */}
-      <div className="pt-2 border-t border-slate-100">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">On your Google profile</p>
+      <div className="pt-2 border-t border-outline-variant">
+        <p className="text-xs font-semibold text-outline uppercase tracking-wide mb-3">On your Google profile</p>
         {loading ? (
-          <div className="flex items-center gap-2 text-sm text-slate-400 py-6 justify-center"><Loader2 className="w-4 h-4 animate-spin" /> Loading media…</div>
+          <div className="flex items-center gap-2 text-sm text-outline py-6 justify-center"><Loader2 className="w-4 h-4 animate-spin" /> Loading media…</div>
         ) : error ? (
-          <p className="text-sm text-amber-600">{error}</p>
+          <p className="text-sm text-error">{error}</p>
         ) : media.length === 0 ? (
-          <p className="text-sm text-slate-400">No photos on your Google profile yet. Upload your logo, cover and a few photos above.</p>
+          <p className="text-sm text-outline">No photos on your Google profile yet. Upload your logo, cover and a few photos above.</p>
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
             {media.map((m, i) => (
-              <div key={m.name || i} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50 group">
+              <div key={m.name || i} className="relative aspect-square rounded-lg overflow-hidden border border-outline-variant bg-surface group">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={m.thumbnailUrl || m.url} alt={m.category} className="w-full h-full object-cover" />
+                <img
+                  src={`/api/gbp/media/proxy?url=${encodeURIComponent(m.thumbnailUrl || m.url)}`}
+                  alt={m.category}
+                  className="w-full h-full object-cover"
+                />
                 <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-[10px] font-medium">
                   {m.category}
                 </span>

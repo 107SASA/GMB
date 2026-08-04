@@ -30,18 +30,18 @@ import {
 // ─── Color tokens → tailwind classes ─────────────────────────────────────────
 
 const COLOR_CLASSES: Record<string, { row: string; swatch: string }> = {
-  slate:   { row: 'bg-slate-200/70',   swatch: 'bg-slate-300' },
-  stone:   { row: 'bg-stone-200/80',   swatch: 'bg-stone-300' },
-  rose:    { row: 'bg-rose-100',       swatch: 'bg-rose-300' },
-  orange:  { row: 'bg-orange-100',     swatch: 'bg-orange-300' },
-  amber:   { row: 'bg-amber-100',      swatch: 'bg-amber-300' },
-  lime:    { row: 'bg-lime-100',       swatch: 'bg-lime-300' },
-  emerald: { row: 'bg-emerald-100',    swatch: 'bg-emerald-300' },
-  teal:    { row: 'bg-teal-100',       swatch: 'bg-teal-300' },
-  sky:     { row: 'bg-sky-100',        swatch: 'bg-sky-300' },
-  indigo:  { row: 'bg-indigo-100',     swatch: 'bg-indigo-300' },
-  violet:  { row: 'bg-violet-100',     swatch: 'bg-violet-300' },
-  pink:    { row: 'bg-pink-100',       swatch: 'bg-pink-300' },
+  slate:   { row: 'bg-surface-container-high/70',   swatch: 'bg-surface-container-highest' },
+  stone:   { row: 'bg-surface-container-high/80',   swatch: 'bg-surface-container-highest' },
+  rose:    { row: 'bg-error-container',       swatch: 'bg-error' },
+  orange:  { row: 'bg-error',     swatch: 'bg-error' },
+  amber:   { row: 'bg-error-container',      swatch: 'bg-error' },
+  lime:    { row: 'bg-secondary-container',       swatch: 'bg-secondary-container' },
+  emerald: { row: 'bg-secondary-container',    swatch: 'bg-secondary-fixed' },
+  teal:    { row: 'bg-secondary-container',       swatch: 'bg-secondary-container' },
+  sky:     { row: 'bg-primary-fixed',        swatch: 'bg-primary-fixed' },
+  indigo:  { row: 'bg-primary-fixed',     swatch: 'bg-primary' },
+  violet:  { row: 'bg-primary-fixed',     swatch: 'bg-primary-fixed' },
+  pink:    { row: 'bg-primary-fixed',       swatch: 'bg-primary-fixed' },
 };
 
 const rowColor = (token: string) => (COLOR_CLASSES[token] ?? COLOR_CLASSES.slate).row;
@@ -76,7 +76,7 @@ function SubStageEditor({
   };
 
   return (
-    <div className="bg-white border-2 border-indigo-300 rounded-xl p-3 shadow-sm space-y-2">
+    <div className="bg-surface-container-lowest border-2 border-primary-fixed-dim rounded-xl p-3 shadow-sm space-y-2">
       <div className="flex items-center gap-2">
         <input
           ref={inputRef}
@@ -89,12 +89,12 @@ function SubStageEditor({
             if (e.key === 'Escape') onCancel();
           }}
           placeholder="Sub-stage name…"
-          className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="flex-1 min-w-0 px-3 py-1.5 bg-surface border border-outline-variant rounded-lg text-sm font-medium text-on-surface placeholder:text-outline focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
         />
-        <button onClick={handleSave} title="Save" className="p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors">
+        <button onClick={handleSave} title="Save" className="p-1.5 bg-primary hover:bg-primary-container text-white rounded-lg transition-colors">
           <Check className="w-3.5 h-3.5" />
         </button>
-        <button onClick={onCancel} title="Cancel" className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-colors">
+        <button onClick={onCancel} title="Cancel" className="p-1.5 bg-surface-container hover:bg-surface-container-high text-on-surface-variant rounded-lg transition-colors">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -105,12 +105,12 @@ function SubStageEditor({
             onClick={() => setColor(token)}
             title={token}
             className={`w-5 h-5 rounded-full ${COLOR_CLASSES[token].swatch} transition-transform ${
-              color === token ? 'ring-2 ring-offset-1 ring-indigo-500 scale-110' : 'hover:scale-110'
+              color === token ? 'ring-2 ring-offset-1 ring-primary scale-110' : 'hover:scale-110'
             }`}
           />
         ))}
       </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-error">{error}</p>}
     </div>
   );
 }
@@ -134,21 +134,21 @@ function SortableSubStageRow({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`flex items-center gap-2 px-3 py-2.5 rounded-xl ${rowColor(sub.color)} ${isDragging ? 'opacity-60 shadow-lg z-10 relative' : ''}`}
+      className={`flex items-center gap-2 px-3 py-2.5 rounded-xl ${rowColor(sub.color)} ${isDragging ? 'opacity-60 card-shadow z-10 relative' : ''}`}
     >
       <button
         {...attributes}
         {...listeners}
         title="Drag to reorder"
-        className="cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-700 touch-none"
+        className="cursor-grab active:cursor-grabbing text-on-surface-variant hover:text-on-surface touch-none"
       >
         <GripVertical className="w-4 h-4" />
       </button>
-      <span className="flex-1 text-sm font-medium text-slate-800 truncate">{sub.name}</span>
-      <button onClick={onEdit} title="Edit" className="p-1 text-slate-500 hover:text-slate-800 transition-colors">
+      <span className="flex-1 text-sm font-medium text-on-surface truncate">{sub.name}</span>
+      <button onClick={onEdit} title="Edit" className="p-1 text-on-surface-variant hover:text-on-surface transition-colors">
         <Pencil className="w-3.5 h-3.5" />
       </button>
-      <button onClick={onDelete} title="Delete" className="p-1 text-slate-500 hover:text-red-600 transition-colors">
+      <button onClick={onDelete} title="Delete" className="p-1 text-on-surface-variant hover:text-error transition-colors">
         <Trash2 className="w-3.5 h-3.5" />
       </button>
     </div>
@@ -158,9 +158,9 @@ function SortableSubStageRow({
 // ─── One main-stage panel with editable sub-stages ───────────────────────────
 
 const PANEL_THEME: Record<SubStageGroup, { header: string; border: string; accent: string }> = {
-  active:    { header: 'bg-sky-50 text-sky-800',         border: 'border-sky-200',     accent: 'text-sky-700' },
-  converted: { header: 'bg-emerald-50 text-emerald-800', border: 'border-emerald-300', accent: 'text-emerald-700' },
-  closed:    { header: 'bg-rose-50 text-rose-800',       border: 'border-rose-300',    accent: 'text-rose-700' },
+  active:    { header: 'bg-primary-fixed text-primary',         border: 'border-primary-fixed-dim',     accent: 'text-primary' },
+  converted: { header: 'bg-secondary-container/40 text-on-secondary-container', border: 'border-secondary-fixed', accent: 'text-on-secondary-container' },
+  closed:    { header: 'bg-error-container text-error',       border: 'border-error',    accent: 'text-on-error-container' },
 };
 
 const PANEL_TITLES: Record<SubStageGroup, { title: string; hint: string }> = {
@@ -210,7 +210,7 @@ function StagePanel({
   const nextColor = SUB_STAGE_COLORS[subStages.length % SUB_STAGE_COLORS.length];
 
   return (
-    <div className={`bg-white border-2 ${theme.border} rounded-2xl shadow-sm flex flex-col overflow-hidden`}>
+    <div className={`bg-surface-container-lowest border-2 ${theme.border} rounded-2xl shadow-sm flex flex-col overflow-hidden`}>
       <div className={`px-4 py-3 ${theme.header} flex items-center justify-between`}>
         <div>
           <h3 className="text-sm font-bold">{title}</h3>
@@ -237,7 +237,7 @@ function StagePanel({
           <button
             onClick={() => setAdding(true)}
             disabled={subStages.length >= MAX_SUB_STAGES}
-            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 rounded-xl text-slate-500 hover:text-indigo-600 text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 border border-outline-variant hover:border-primary-fixed-dim hover:bg-primary-fixed/50 rounded-xl text-on-surface-variant hover:text-primary text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Plus className="w-4 h-4" />
             Add sub-stage
@@ -277,7 +277,7 @@ function StagePanel({
         </DndContext>
 
         {subStages.length === 0 && !adding && (
-          <p className="text-xs text-slate-400 text-center py-4">No sub-stages yet — add one above.</p>
+          <p className="text-xs text-outline text-center py-4">No sub-stages yet — add one above.</p>
         )}
       </div>
     </div>
@@ -303,8 +303,8 @@ function InitialStagePanel({
   };
 
   return (
-    <div className="bg-white border-2 border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden">
-      <div className="px-4 py-3 bg-slate-50 text-slate-700 flex items-center justify-between">
+    <div className="bg-surface-container-lowest border-2 border-outline-variant rounded-2xl shadow-sm flex flex-col overflow-hidden">
+      <div className="px-4 py-3 bg-surface text-on-surface flex items-center justify-between">
         <div>
           <h3 className="text-sm font-bold">Initial stage</h3>
           <p className="text-[11px] opacity-70">Where every new lead starts</p>
@@ -323,25 +323,25 @@ function InitialStagePanel({
                 if (e.key === 'Enter') save();
                 if (e.key === 'Escape') { setDraft(label); setEditing(false); }
               }}
-              className="flex-1 min-w-0 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="flex-1 min-w-0 px-3 py-1.5 bg-surface border border-outline-variant rounded-lg text-sm font-medium text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
             />
-            <button onClick={save} title="Save" className="p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors">
+            <button onClick={save} title="Save" className="p-1.5 bg-primary hover:bg-primary-container text-white rounded-lg transition-colors">
               <Check className="w-3.5 h-3.5" />
             </button>
-            <button onClick={() => { setDraft(label); setEditing(false); }} title="Cancel" className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-colors">
+            <button onClick={() => { setDraft(label); setEditing(false); }} title="Cancel" className="p-1.5 bg-surface-container hover:bg-surface-container-high text-on-surface-variant rounded-lg transition-colors">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
         ) : (
-          <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-200/70">
-            <span className="flex-1 text-sm font-medium text-slate-800 truncate">{label}</span>
-            <span className="text-[10px] font-bold px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full italic">Default</span>
-            <button onClick={() => { setDraft(label); setEditing(true); }} title="Rename" className="p-1 text-slate-500 hover:text-slate-800 transition-colors">
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-surface-container-high/70">
+            <span className="flex-1 text-sm font-medium text-on-surface truncate">{label}</span>
+            <span className="text-[10px] font-bold px-2 py-0.5 bg-primary-fixed text-primary rounded-full italic">Default</span>
+            <button onClick={() => { setDraft(label); setEditing(true); }} title="Rename" className="p-1 text-on-surface-variant hover:text-on-surface transition-colors">
               <Pencil className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
-        <p className="text-xs text-slate-400 mt-3 leading-relaxed">
+        <p className="text-xs text-outline mt-3 leading-relaxed">
           This stage is fixed — new leads land here automatically. Sub-stages are not available for the initial stage.
         </p>
       </div>
@@ -389,7 +389,7 @@ export default function LeadStagesConfig() {
   };
 
   if (!config) {
-    return <div className="p-12 text-center text-slate-500">Loading lead stages…</div>;
+    return <div className="p-12 text-center text-on-surface-variant">Loading lead stages…</div>;
   }
 
   return (
@@ -397,21 +397,21 @@ export default function LeadStagesConfig() {
       {/* Section header */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
-            <Layers className="w-5 h-5 text-indigo-600" />
+          <div className="w-10 h-10 bg-primary-fixed rounded-xl flex items-center justify-center">
+            <Layers className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-slate-900">Lead stages</h2>
-            <p className="text-xs text-slate-500">
+            <h2 className="text-lg font-bold text-on-surface">Lead stages</h2>
+            <p className="text-xs text-on-surface-variant">
               Configure your sales pipeline — add sub-tags inside the Active, Converted and Closed stages.
             </p>
           </div>
         </div>
         <span
           className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-opacity ${
-            saveState === 'saving' ? 'bg-amber-50 text-amber-700'
-            : saveState === 'saved' ? 'bg-emerald-50 text-emerald-700'
-            : saveState === 'error' ? 'bg-red-50 text-red-700'
+            saveState === 'saving' ? 'bg-error-container text-on-error-container'
+            : saveState === 'saved' ? 'bg-secondary-container/40 text-on-secondary-container'
+            : saveState === 'error' ? 'bg-error-container text-on-error-container'
             : 'opacity-0'
           }`}
         >

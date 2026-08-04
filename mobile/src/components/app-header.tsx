@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
@@ -8,11 +9,12 @@ import { fetchNotifications } from '@/api/endpoints/notifications';
 import { useBusiness } from '@/business/BusinessContext';
 import { BusinessSwitcher } from '@/components/business-switcher';
 import { InitialsAvatar } from '@/components/ui';
-import { useTheme } from '@/lib/theme';
+import { BRAND_GRADIENT, useTheme } from '@/lib/theme';
 
 /**
- * Grexa-style screen header used by every top-level tab:
- *   [business logo]  Title            [gear]  [Help]
+ * Global screen header used by every top-level tab, on the signature
+ * diagonal gradient with white text/icons:
+ *   [business logo]  Title            [bell]  [gear]  [Help]
  *                    Location ⌄
  * Tapping the location line opens the business switcher; the gear goes to
  * Settings and Help opens the More screen (support & account entry points).
@@ -44,33 +46,40 @@ export function AppHeader({
     : (activeBusiness?.category ?? '');
 
   return (
-    <View className="flex-row items-center gap-3 px-4 pb-3 pt-2">
-      <InitialsAvatar name={activeBusiness?.name} size={44} />
+    <LinearGradient
+      colors={[...BRAND_GRADIENT]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      className="flex-row items-center gap-3 px-4 pb-3 pt-2"
+    >
+      <InitialsAvatar name={activeBusiness?.name} size={44} colors={['#ffffff33', '#ffffff1a']} />
 
       <View className="flex-1">
-        <Text className="text-xl font-extrabold tracking-tight text-white" numberOfLines={1}>
+        <Text className="font-display text-xl tracking-tight text-on-brand" numberOfLines={1}>
           {title}
         </Text>
         <Pressable
           onPress={() => setSwitcherOpen(true)}
           className="mt-0.5 flex-row items-center gap-1 self-start active:opacity-70"
         >
-          <Text className="text-sm font-semibold" style={{ color: t.brandBright }} numberOfLines={1}>
+          <Text className="font-sans-semibold text-sm text-on-brand/80" numberOfLines={1}>
             {location || activeBusiness?.name || 'Select business'}
           </Text>
-          <Ionicons name="chevron-down" size={14} color={t.brandBright} />
+          <Ionicons name="chevron-down" size={14} color="#ffffffcc" />
         </Pressable>
       </View>
 
       <Pressable
         onPress={() => router.push('/notifications')}
-        className="h-10 w-10 items-center justify-center rounded-full active:bg-surface-overlay"
+        className="h-10 w-10 items-center justify-center rounded-full active:scale-95 active:bg-white/10"
       >
         <View>
-          <Ionicons name="notifications-outline" size={22} color={t.textDim} />
+          <Ionicons name="notifications-outline" size={22} color="#ffffff" />
           {unread > 0 && (
-            <View className="absolute -right-0.5 -top-0.5 h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1">
-              <Text className="text-[9px] font-bold text-white">{unread > 9 ? '9+' : unread}</Text>
+            <View className="absolute -right-0.5 -top-0.5 h-4 min-w-4 items-center justify-center rounded-full bg-error px-1">
+              <Text className="font-sans-bold text-[9px] text-on-brand">
+                {unread > 9 ? '9+' : unread}
+              </Text>
             </View>
           )}
         </View>
@@ -79,20 +88,17 @@ export function AppHeader({
       {showSettings && (
         <Pressable
           onPress={() => router.push('/settings')}
-          className="h-10 w-10 items-center justify-center rounded-full active:bg-surface-overlay"
+          className="h-10 w-10 items-center justify-center rounded-full active:scale-95 active:bg-white/10"
         >
-          <Ionicons name="settings-outline" size={22} color={t.textDim} />
+          <Ionicons name="settings-outline" size={22} color="#ffffff" />
         </Pressable>
       )}
 
       <Pressable
         onPress={() => router.push('/more')}
-        className="rounded-xl border px-4 py-2 active:opacity-70"
-        style={{ borderColor: t.brandBright }}
+        className="rounded-full border border-white/40 px-4 py-2 active:scale-95 active:bg-white/10"
       >
-        <Text className="text-base font-bold" style={{ color: t.brandBright }}>
-          Help
-        </Text>
+        <Text className="font-sans-bold text-base text-on-brand">Help</Text>
       </Pressable>
 
       {/* Business / location switcher */}
@@ -105,7 +111,7 @@ export function AppHeader({
         <Pressable className="flex-1 bg-black/60" onPress={() => setSwitcherOpen(false)} />
         <View className="max-h-[70%] rounded-t-3xl border-t border-surface-border bg-surface p-5 pb-8">
           <View className="mb-4 flex-row items-center justify-between">
-            <Text className="text-lg font-bold text-white">Your businesses</Text>
+            <Text className="font-display-bold text-lg text-white">Your businesses</Text>
             <Pressable
               onPress={() => setSwitcherOpen(false)}
               className="h-9 w-9 items-center justify-center rounded-full bg-surface-overlay"
@@ -118,6 +124,6 @@ export function AppHeader({
           </ScrollView>
         </View>
       </Modal>
-    </View>
+    </LinearGradient>
   );
 }

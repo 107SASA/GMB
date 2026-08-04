@@ -149,30 +149,30 @@ export default function ProfileScreen() {
           />
         ) : (
           <>
-            <View className="rounded-xl border border-surface-border bg-surface-raised px-4 py-4">
+            <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-4">
               <View className="flex-row items-center gap-3">
                 <View className="h-12 w-12 items-center justify-center rounded-full bg-brand">
-                  <Text className="text-lg font-bold text-on-brand">
+                  <Text className="font-sans-bold text-lg text-on-brand">
                     {(data.fullName || data.email).charAt(0).toUpperCase()}
                   </Text>
                 </View>
                 <View className="flex-1">
-                  <Text className="text-base font-semibold text-white">{data.fullName}</Text>
-                  <Text className="text-sm text-zinc-400">{data.email}</Text>
+                  <Text className="font-sans-semibold text-base text-white">{data.fullName}</Text>
+                  <Text className="font-sans text-sm text-zinc-400">{data.email}</Text>
                 </View>
                 {data.isEmailVerified && (
-                  <Ionicons name="checkmark-circle" size={18} color="#34d399" />
+                  <Ionicons name="checkmark-circle" size={18} color="#1db877" />
                 )}
               </View>
               <View className="mt-3 flex-row flex-wrap items-center gap-x-4 gap-y-1">
                 {!!data.subscriptionPlan && <Badge label={data.subscriptionPlan} tone="info" />}
                 {!!data.createdAt && (
-                  <Text className="text-xs text-zinc-500">
+                  <Text className="font-sans text-xs text-zinc-500">
                     Member since {formatDateTime(data.createdAt)}
                   </Text>
                 )}
                 {!!data.lastLoginAt && (
-                  <Text className="text-xs text-zinc-500">
+                  <Text className="font-sans text-xs text-zinc-500">
                     Last login {formatDateTime(data.lastLoginAt)}
                   </Text>
                 )}

@@ -79,10 +79,12 @@ export default function RunAuditScreen() {
           </View>
         ) : (
           <ScrollView contentContainerClassName="px-5 pb-10" keyboardShouldPersistTaps="handled">
-            <View className="mb-4 rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5">
-              <Text className="text-base font-semibold text-white">{activeBusiness?.name}</Text>
+            <View className="mb-4 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
+              <Text className="font-sans-semibold text-base text-white">{activeBusiness?.name}</Text>
               {!!activeBusiness?.address && (
-                <Text className="mt-0.5 text-sm text-zinc-400">{activeBusiness.address}</Text>
+                <Text className="mt-0.5 font-sans text-sm text-zinc-400">
+                  {activeBusiness.address}
+                </Text>
               )}
             </View>
 
@@ -99,7 +101,7 @@ export default function RunAuditScreen() {
               placeholder="Detected from the business profile if left blank"
             />
 
-            <Text className="mb-4 px-1 text-xs text-zinc-500">
+            <Text className="mb-4 px-1 font-sans text-xs text-zinc-500">
               The audit checks your Google ranking, profile completeness, SEO and reviews against
               nearby competitors. It runs in the background and usually takes a couple of minutes.
             </Text>

@@ -13,6 +13,7 @@ import {
   BackChevron, EmptyState, ErrorText, Field, LoadingScreen, PrimaryButton, Screen
 } from '@/components/ui';
 import { parsePhoneCandidate } from '@/lib/phone';
+import { useTheme } from '@/lib/theme';
 
 const MAX_SELECTION = 200; // matches the bulk-import API cap
 
@@ -32,6 +33,7 @@ export default function ImportContactsScreen() {
   const queryClient = useQueryClient();
   const { activeBusinessId } = useBusiness();
   const { ensureConsent, consentSheet } = useCrmCaptureConsent();
+  const t = useTheme();
 
   const [permission, setPermission] = useState<PermissionState>('pending');
   const [contacts, setContacts] = useState<PickerContact[]>([]);
@@ -129,9 +131,11 @@ export default function ImportContactsScreen() {
         <Pressable onPress={() => router.back()} hitSlop={8} className="active:opacity-60">
           <BackChevron />
         </Pressable>
-        <Text className="flex-1 text-lg font-bold text-white">Add from contacts</Text>
+        <Text className="flex-1 font-display-bold text-lg text-white">Add from contacts</Text>
         {selected.size > 0 && (
-          <Text className="text-sm font-medium text-indigo-300">{selected.size} selected</Text>
+          <Text className="font-sans-semibold text-sm text-indigo-300">
+            {selected.size} selected
+          </Text>
         )}
       </View>
 
@@ -147,9 +151,9 @@ export default function ImportContactsScreen() {
           action={
             <Pressable
               onPress={() => void Linking.openSettings()}
-              className="mt-2 rounded-xl bg-brand px-5 py-3 active:opacity-80"
+              className="mt-2 rounded-full bg-brand px-5 py-3 active:scale-95"
             >
-              <Text className="text-sm font-semibold text-on-brand">Open settings</Text>
+              <Text className="font-sans-bold text-sm text-on-brand">Open settings</Text>
             </Pressable>
           }
         />
@@ -166,8 +170,8 @@ export default function ImportContactsScreen() {
           </View>
 
           {!!result && (
-            <View className="mx-5 mb-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3">
-              <Text className="text-sm text-emerald-400">
+            <View className="mx-5 mb-2 rounded-xl border border-secondary/20 bg-secondary-container/40 px-4 py-3">
+              <Text className="font-sans-semibold text-sm text-secondary">
                 {result.created} added, {result.skipped} already in CRM.
               </Text>
             </View>
@@ -192,13 +196,13 @@ export default function ImportContactsScreen() {
                   <Ionicons
                     name={isSelected ? 'checkbox' : 'square-outline'}
                     size={22}
-                    color={isSelected ? '#6366F1' : '#4A5175'}
+                    color={isSelected ? t.brandBright : t.textFaint}
                   />
                   <View className="flex-1">
-                    <Text className="text-base text-white" numberOfLines={1}>
+                    <Text className="font-sans text-base text-white" numberOfLines={1}>
                       {item.name}
                     </Text>
-                    <Text className="text-xs text-zinc-500">{item.phone}</Text>
+                    <Text className="font-sans text-xs text-zinc-500">{item.phone}</Text>
                   </View>
                 </Pressable>
               );

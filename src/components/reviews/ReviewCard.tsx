@@ -42,19 +42,19 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
 
   const getSentimentColor = (sentiment: string) => {
     switch (sentiment) {
-      case 'positive': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'neutral': return 'bg-slate-100 text-slate-800 border-slate-200';
-      case 'negative': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'critical': return 'bg-rose-100 text-rose-800 border-rose-200';
-      default: return 'bg-slate-100 text-slate-800 border-slate-200';
+      case 'positive': return 'bg-secondary-container text-on-secondary-container border-secondary-fixed';
+      case 'neutral': return 'bg-surface-container text-on-surface border-outline-variant';
+      case 'negative': return 'bg-error-container text-on-error-container border-error-container';
+      case 'critical': return 'bg-error-container text-error border-error-container';
+      default: return 'bg-surface-container text-on-surface border-outline-variant';
     }
   };
 
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
-      case 'APPROVED': return 'bg-blue-100 text-blue-800';
-      case 'POSTED': return 'bg-emerald-100 text-emerald-800';
-      default: return 'bg-amber-100 text-amber-800'; // PENDING
+      case 'APPROVED': return 'bg-primary-fixed text-primary';
+      case 'POSTED': return 'bg-secondary-container text-on-secondary-container';
+      default: return 'bg-error-container text-on-error-container'; // PENDING
     }
   };
 
@@ -71,24 +71,24 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
   const canReply = review.source === 'gbp_api';
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4 transition-all hover:shadow-md">
+    <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden mb-4 transition-all hover:card-shadow">
       <div className="p-5 flex flex-col md:flex-row gap-5">
         {/* Left side: Avatar, Rating & Sentiment */}
         <div className="flex-shrink-0 flex md:flex-col items-center md:items-start gap-4 md:w-48">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-sm">
+            <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant font-bold text-sm">
               {getAvatarInitials(review.reviewer)}
             </div>
             <div>
-              <h4 className="font-bold text-slate-900 text-sm">{review.reviewer}</h4>
-              <p className="text-xs text-slate-500">{new Date(review.postedAt ?? review.createdAt).toLocaleDateString()}</p>
+              <h4 className="font-bold text-on-surface text-sm">{review.reviewer}</h4>
+              <p className="text-xs text-on-surface-variant">{new Date(review.postedAt ?? review.createdAt).toLocaleDateString()}</p>
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5 ml-auto md:ml-0">
-            <div className="flex text-amber-400 text-sm">
+            <div className="flex text-primary text-sm">
               {[...Array(5)].map((_, i) => (
-                <svg key={i} className={`w-4 h-4 ${i < review.rating ? 'fill-current' : 'text-slate-200 fill-current'}`} viewBox="0 0 20 20">
+                <svg key={i} className={`w-4 h-4 ${i < review.rating ? 'fill-current' : 'text-outline-variant fill-current'}`} viewBox="0 0 20 20">
                   <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                 </svg>
               ))}
@@ -104,27 +104,27 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
 
         {/* Right side: Review Text & Actions */}
         <div className="flex-grow">
-          <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{review.reviewText}</p>
+          <p className="text-on-surface text-sm leading-relaxed whitespace-pre-wrap">{review.reviewText}</p>
 
           {replyStatus === 'POSTED' ? (
-            <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
-              <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+            <div className="mt-4 p-4 bg-surface border border-outline-variant rounded-xl">
+              <h5 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">
                 Replied on {new Date(review.updatedAt).toLocaleDateString()}
               </h5>
-              <p className="text-slate-800 text-sm">{review.response}</p>
+              <p className="text-on-surface text-sm">{review.response}</p>
             </div>
           ) : canReply ? (
-            <div className="mt-4 border-t border-slate-100 pt-4 flex gap-2">
+            <div className="mt-4 border-t border-outline-variant pt-4 flex gap-2">
               <button
                 onClick={() => setExpanded(!expanded)}
-                className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-lg transition-colors"
+                className="px-4 py-2 bg-primary-fixed hover:bg-primary-fixed text-primary text-xs font-bold rounded-lg transition-colors"
               >
                 {expanded ? 'Close Reply Workspace' : 'Reply to Review'}
               </button>
             </div>
           ) : (
-            <div className="mt-4 border-t border-slate-100 pt-4">
-              <p className="text-xs text-slate-400 font-medium">
+            <div className="mt-4 border-t border-outline-variant pt-4">
+              <p className="text-xs text-outline font-medium">
                 Preview only — connect your Google Business Profile to reply to this review.
               </p>
             </div>
@@ -139,7 +139,7 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="border-t border-slate-200 bg-slate-50 p-5 overflow-hidden"
+            className="border-t border-outline-variant bg-surface p-5 overflow-hidden"
           >
             <div className="flex flex-col gap-4 max-w-3xl">
               <div className="flex gap-2">
@@ -148,7 +148,7 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
                     key={t}
                     onClick={() => setTone(t)}
                     className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
-                      tone === t ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'
+                      tone === t ? 'bg-primary-fixed text-primary border-primary-fixed-dim' : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:bg-surface-container'
                     }`}
                   >
                     {t}
@@ -160,14 +160,14 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
                 value={editableReply}
                 onChange={(e) => setEditableReply(e.target.value)}
                 placeholder="Click 'Generate AI Reply' or type your own response..."
-                className="w-full min-h-[120px] p-4 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-y"
+                className="w-full min-h-[120px] p-4 text-sm bg-surface-container-lowest border border-outline-variant rounded-xl focus:ring-2 focus:ring-primary focus:border-primary outline-none resize-y"
               />
 
               <div className="flex justify-between items-center">
                 <button
                   onClick={handleGenerate}
                   disabled={generating}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-70"
+                  className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-container text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-70"
                 >
                   {generating ? 'Generating...' : '✨ Generate AI Reply'}
                 </button>
@@ -177,7 +177,7 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
                     <button
                       onClick={handleApprove}
                       disabled={approving}
-                      className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-70"
+                      className="flex items-center gap-2 px-5 py-2 bg-primary hover:bg-primary-container text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-70"
                     >
                       {approving ? 'Approving...' : '✓ Approve Reply'}
                     </button>
@@ -187,7 +187,7 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
                     <button
                       onClick={handlePost}
                       disabled={posting}
-                      className="flex items-center gap-2 px-6 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-50"
+                      className="flex items-center gap-2 px-6 py-2 bg-primary hover:bg-primary text-white text-sm font-bold rounded-lg transition-colors disabled:opacity-50"
                     >
                       {posting ? 'Publishing...' : 'Post Reply'}
                     </button>
@@ -196,7 +196,7 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
               </div>
 
               {replyStatus === 'APPROVED' && (
-                <p className="text-xs text-blue-600 font-medium">
+                <p className="text-xs text-primary font-medium">
                   Reply approved — click "Post Reply" to publish it.
                 </p>
               )}

@@ -16,7 +16,7 @@ export default function PhotosScreen() {
       <AppHeader title="Business Assets" />
       <View className="border-b border-surface-border px-4 pb-3">
         <Text
-          className="self-start pb-1 text-base font-semibold"
+          className="self-start pb-1 font-sans-bold text-base"
           style={{ color: t.brandBright, borderBottomWidth: 2, borderBottomColor: t.brandBright }}
         >
           GBP Photos

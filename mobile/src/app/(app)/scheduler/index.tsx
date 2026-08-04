@@ -38,7 +38,9 @@ export default function SchedulerScreen() {
           onPress={() => generate.mutate()}
           disabled={generate.isPending || generating}
           className={`flex-row items-center gap-1.5 rounded-full px-4 py-2 ${
-            generate.isPending || generating ? 'bg-brand-muted opacity-60' : 'bg-brand active:opacity-80'
+            generate.isPending || generating
+              ? 'bg-brand-muted opacity-60'
+              : 'bg-brand active:scale-95'
           }`}
         >
           {generate.isPending || generating ? (
@@ -46,7 +48,7 @@ export default function SchedulerScreen() {
           ) : (
             <Ionicons name="sparkles" size={14} color="#ffffff" />
           )}
-          <Text className="text-sm font-semibold text-on-brand">
+          <Text className="font-sans-bold text-sm text-on-brand">
             {generating ? 'Generating…' : 'Generate'}
           </Text>
         </Pressable>

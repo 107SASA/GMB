@@ -53,15 +53,16 @@ export default function LoginScreen() {
                 borderRadius: 22,
                 alignItems: 'center',
                 justifyContent: 'center',
+                transform: [{ rotate: '-8deg' }],
               }}
             >
-              <Ionicons name="rocket" size={34} color="#ffffff" />
+              <Ionicons name="rocket" size={34} color="#ffffff" style={{ transform: [{ rotate: '8deg' }] }} />
             </LinearGradient>
             <View className="items-center gap-1">
-              <Text className="text-[32px] font-extrabold tracking-tight text-white">
+              <Text className="font-display text-[32px] tracking-tight text-white">
                 GrowwMatics AI
               </Text>
-              <Text className="text-base text-zinc-400">
+              <Text className="font-sans text-base text-zinc-400">
                 Grow your business, from your pocket
               </Text>
             </View>
@@ -99,11 +100,11 @@ export default function LoginScreen() {
               disabled={submitting}
               className="items-center py-1"
             >
-              <Text className="text-sm font-semibold text-brand-bright">Forgot password?</Text>
+              <Text className="font-sans-semibold text-sm text-brand-bright">Forgot password?</Text>
             </Pressable>
           </View>
 
-          <Text className="mt-10 text-center text-xs text-zinc-500">
+          <Text className="mt-10 text-center font-sans text-xs text-zinc-500">
             Accounts are managed on the GrowwMatics AI website.
           </Text>
         </ScrollView>

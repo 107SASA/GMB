@@ -32,7 +32,7 @@ export function WeeklyBars({
   return (
     <View>
       {industryAvg != null && (
-        <Text className="mb-1 text-xs font-bold" style={{ color: t.amber }}>
+        <Text className="mb-1 font-sans-bold text-xs" style={{ color: t.amber }}>
           Industry Avg : {industryAvg}
         </Text>
       )}
@@ -73,7 +73,7 @@ export function WeeklyBars({
       </View>
       <View className="mt-1.5 flex-row gap-2">
         {data.map((d) => (
-          <Text key={d.label} className="flex-1 text-center text-[10px] text-zinc-500">
+          <Text key={d.label} className="flex-1 text-center font-sans text-[10px] text-zinc-500">
             {d.label}
           </Text>
         ))}
@@ -98,7 +98,7 @@ export function ImpactBars({
       <View className="h-28 flex-row items-end justify-around gap-4">
         {items.map((item) => (
           <View key={item.label} className="flex-1 items-center justify-end">
-            <Text className="mb-1 text-sm font-bold" style={{ color: t.amber }}>
+            <Text className="mb-1 font-sans-semibold text-[13px]" style={{ color: t.amber }}>
               {item.value}
             </Text>
             <View
@@ -114,7 +114,7 @@ export function ImpactBars({
       </View>
       <View className="mt-1.5 flex-row justify-around gap-4 border-t border-surface-border pt-1.5">
         {items.map((item) => (
-          <Text key={item.label} className="flex-1 text-center text-xs text-zinc-400">
+          <Text key={item.label} className="flex-1 text-center font-sans text-xs text-zinc-400">
             {item.label}
           </Text>
         ))}

@@ -90,10 +90,10 @@ interface CrmLead {
 }
 
 const LEAD_STAGE_BADGE: Record<string, string> = {
-  initial: 'bg-slate-100 text-slate-600',
-  active: 'bg-blue-50 text-blue-600',
-  closed: 'bg-rose-50 text-rose-600',
-  converted: 'bg-emerald-50 text-emerald-600',
+  initial: 'bg-surface-container text-on-surface-variant',
+  active: 'bg-primary-fixed text-primary',
+  closed: 'bg-error-container text-on-error-container',
+  converted: 'bg-secondary-container/40 text-secondary',
 };
 
 interface Suggestion { rating: number; text: string; }
@@ -111,17 +111,17 @@ function maskPhone(phone: string): string {
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  Pending: 'bg-slate-100 text-slate-600',
-  Requested: 'bg-blue-50 text-blue-600',
-  Completed: 'bg-emerald-50 text-emerald-600',
-  Failed: 'bg-rose-50 text-rose-600',
+  Pending: 'bg-surface-container text-on-surface-variant',
+  Requested: 'bg-primary-fixed text-primary',
+  Completed: 'bg-secondary-container/40 text-secondary',
+  Failed: 'bg-error-container text-on-error-container',
 };
 const CAMPAIGN_STATUS_BADGE: Record<string, string> = {
-  DRAFT: 'bg-slate-100 text-slate-600',
-  ACTIVE: 'bg-emerald-50 text-emerald-600',
-  PAUSED: 'bg-amber-50 text-amber-600',
-  COMPLETED: 'bg-blue-50 text-blue-600',
-  CANCELLED: 'bg-rose-50 text-rose-600',
+  DRAFT: 'bg-surface-container text-on-surface-variant',
+  ACTIVE: 'bg-secondary-container/40 text-secondary',
+  PAUSED: 'bg-error-container text-error',
+  COMPLETED: 'bg-primary-fixed text-primary',
+  CANCELLED: 'bg-error-container text-on-error-container',
 };
 
 const PLACEHOLDER_HELP = 'Placeholders: {{name}} = customer, {{service}} = their service, {{business}} = your business, {{link}} = review link (added automatically if missing)';
@@ -537,12 +537,12 @@ export default function CampaignsDashboard() {
     <div className="space-y-6">
       {/* Sub-tab header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+        <div className="flex gap-1 bg-surface-container p-1 rounded-xl w-fit">
           {(['customers', 'campaigns'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-5 py-2 text-sm font-bold rounded-lg transition-all capitalize ${activeTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-5 py-2 text-sm font-bold rounded-lg transition-all capitalize ${activeTab === tab ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
             >
               {tab}
             </button>
@@ -552,19 +552,19 @@ export default function CampaignsDashboard() {
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={openCrmPicker}
-              className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-xl px-4 py-2.5 shadow-sm transition-all border border-slate-200"
+              className="flex items-center gap-2 bg-surface-container-lowest hover:bg-surface text-on-surface text-sm font-bold rounded-xl px-4 py-2.5 shadow-sm transition-all border border-outline-variant"
             >
               <Import className="w-4 h-4" /> From CRM
             </button>
             <button
               onClick={() => { setShowAddCustomer(true); setAddError(null); }}
-              className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-xl px-4 py-2.5 shadow-sm transition-all border border-slate-200"
+              className="flex items-center gap-2 bg-surface-container-lowest hover:bg-surface text-on-surface text-sm font-bold rounded-xl px-4 py-2.5 shadow-sm transition-all border border-outline-variant"
             >
               <UserPlus className="w-4 h-4" /> Add Customer
             </button>
             <button
               onClick={() => setShowUpload(true)}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl px-5 py-2.5 shadow-sm transition-all"
+              className="flex items-center gap-2 bg-primary hover:bg-primary-container text-white text-sm font-bold rounded-xl px-5 py-2.5 shadow-sm transition-all"
             >
               <UploadCloud className="w-4 h-4" /> Import CSV
             </button>
@@ -572,7 +572,7 @@ export default function CampaignsDashboard() {
         ) : (
           <button
             onClick={openCreate}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl px-5 py-2.5 shadow-sm transition-all"
+            className="flex items-center gap-2 bg-primary hover:bg-primary-container text-white text-sm font-bold rounded-xl px-5 py-2.5 shadow-sm transition-all"
           >
             <Plus className="w-4 h-4" /> New Campaign
           </button>
@@ -583,45 +583,45 @@ export default function CampaignsDashboard() {
       {activeTab === 'customers' && (
         <>
           {importMsg && (
-            <div className="flex items-center justify-between bg-indigo-50 border border-indigo-100 text-indigo-700 text-sm font-medium rounded-xl px-4 py-3">
+            <div className="flex items-center justify-between bg-primary-fixed border border-primary-fixed-dim text-primary text-sm font-medium rounded-xl px-4 py-3">
               <span>{importMsg}</span>
-              <button onClick={() => setImportMsg(null)} className="text-indigo-400 hover:text-indigo-600 ml-3">
+              <button onClick={() => setImportMsg(null)} className="text-primary-fixed-dim hover:text-primary ml-3">
                 <X className="w-4 h-4" />
               </button>
             </div>
           )}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { label: 'Total Customers', value: stats.total, icon: Users, color: 'text-indigo-600' },
-              { label: 'Pending Reviews', value: stats.pending, icon: MessageSquare, color: 'text-amber-500' },
-              { label: 'Requests Sent', value: stats.requested, icon: Send, color: 'text-blue-500' },
-              { label: 'Opted Out', value: stats.optedOut, icon: TrendingUp, color: 'text-rose-500' },
+              { label: 'Total Customers', value: stats.total, icon: Users, color: 'text-primary' },
+              { label: 'Pending Reviews', value: stats.pending, icon: MessageSquare, color: 'text-error' },
+              { label: 'Requests Sent', value: stats.requested, icon: Send, color: 'text-primary' },
+              { label: 'Opted Out', value: stats.optedOut, icon: TrendingUp, color: 'text-error' },
             ].map(({ label, value, icon: Icon, color }) => (
-              <div key={label} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+              <div key={label} className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant card-shadow">
                 <div className={`flex items-center gap-2 mb-1 ${color}`}>
                   <Icon className="w-4 h-4" />
                   <span className="text-xs font-bold">{label}</span>
                 </div>
-                <p className="text-2xl font-bold text-slate-900">{value.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-on-surface">{value.toLocaleString()}</p>
               </div>
             ))}
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
               <input
                 type="text"
                 placeholder="Search by name, phone, or email…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                className="w-full pl-9 pr-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-surface-container-lowest"
               />
             </div>
             <select
               value={tagFilter}
               onChange={e => setTagFilter(e.target.value)}
-              className="px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              className="px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-surface-container-lowest"
             >
               <option value="all">All Groups</option>
               {availableTags.map(t => <option key={t} value={t}>{t}</option>)}
@@ -629,7 +629,7 @@ export default function CampaignsDashboard() {
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              className="px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              className="px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-surface-container-lowest"
             >
               <option value="all">All Statuses</option>
               <option value="Pending">Pending</option>
@@ -638,10 +638,10 @@ export default function CampaignsDashboard() {
             </select>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-600">
-                <thead className="bg-slate-50 border-b border-slate-100 text-xs uppercase font-bold text-slate-400">
+              <table className="w-full text-left text-sm text-on-surface-variant">
+                <thead className="bg-surface-container-low border-b border-outline-variant text-xs uppercase font-bold text-outline">
                   <tr>
                     <th className="px-6 py-4">Customer</th>
                     <th className="px-6 py-4">Service</th>
@@ -650,50 +650,50 @@ export default function CampaignsDashboard() {
                     <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-outline-variant">
                   {custLoading ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-10 text-center">
-                        <Loader2 className="w-5 h-5 animate-spin text-slate-400 mx-auto" />
+                        <Loader2 className="w-5 h-5 animate-spin text-outline mx-auto" />
                       </td>
                     </tr>
                   ) : customers.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-12 text-center">
                         <div className="flex flex-col items-center">
-                          <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mb-3">
+                          <div className="w-12 h-12 bg-primary-fixed text-primary rounded-full flex items-center justify-center mb-3">
                             <Users className="w-6 h-6" />
                           </div>
-                          <p className="font-bold text-slate-900 mb-1">No customers yet</p>
-                          <p className="text-sm text-slate-500">Import your past customers via CSV to start requesting reviews.</p>
+                          <p className="font-bold text-on-surface mb-1">No customers yet</p>
+                          <p className="text-sm text-on-surface-variant">Import your past customers via CSV to start requesting reviews.</p>
                         </div>
                       </td>
                     </tr>
                   ) : (
                     customers.map(c => (
                       <Fragment key={c._id}>
-                        <tr className="hover:bg-slate-50/50 transition-colors">
+                        <tr className="hover:bg-surface/50 transition-colors">
                           <td className="px-6 py-4">
-                            <p className="font-bold text-slate-900">{c.name}</p>
-                            <p className="text-xs text-slate-400 mt-0.5">{c.phone ? maskPhone(c.phone) : c.email || '—'}</p>
+                            <p className="font-bold text-on-surface">{c.name}</p>
+                            <p className="text-xs text-outline mt-0.5">{c.phone ? maskPhone(c.phone) : c.email || '—'}</p>
                           </td>
                           <td className="px-6 py-4 font-medium">
                             {c.service || '—'}
                             {c.serviceDate && (
-                              <p className="text-xs text-slate-400 mt-0.5">{new Date(c.serviceDate).toLocaleDateString()}</p>
+                              <p className="text-xs text-outline mt-0.5">{new Date(c.serviceDate).toLocaleDateString()}</p>
                             )}
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex flex-wrap items-center gap-1.5">
                               {(c.tags ?? []).map(t => (
-                                <span key={t} className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600">
+                                <span key={t} className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary-fixed text-primary">
                                   {t}
                                 </span>
                               ))}
                               <button
                                 onClick={() => openTagsEditor(c)}
                                 title="Edit groups"
-                                className="p-1 text-slate-300 hover:text-indigo-500 transition-colors"
+                                className="p-1 text-outline hover:text-primary transition-colors"
                               >
                                 <Tag className="w-3.5 h-3.5" />
                               </button>
@@ -705,7 +705,7 @@ export default function CampaignsDashboard() {
                                 {c.reviewStatus}
                               </span>
                               {c.optedOut && (
-                                <span className="inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600">
+                                <span className="inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold bg-error-container text-on-error-container">
                                   Opted Out
                                 </span>
                               )}
@@ -718,7 +718,7 @@ export default function CampaignsDashboard() {
                                   onClick={() => handleSendRequest(c._id)}
                                   disabled={sendingId === c._id}
                                   title={c.reviewStatus === 'Failed' ? 'Retry WhatsApp review request' : 'Send WhatsApp review request'}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-fixed hover:bg-primary-fixed text-primary text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
                                 >
                                   {sendingId === c._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
                                   {sendingId === c._id ? 'Sending…' : c.reviewStatus === 'Failed' ? 'Retry' : 'Request'}
@@ -728,7 +728,7 @@ export default function CampaignsDashboard() {
                                 onClick={() => handleAISuggest(c)}
                                 disabled={suggestingId === c._id}
                                 title="AI Suggest review text"
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-600 text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-fixed hover:bg-primary-fixed text-primary text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
                               >
                                 {suggestingId === c._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                                 AI Suggest
@@ -739,28 +739,28 @@ export default function CampaignsDashboard() {
                         {suggestions?.customerId === c._id && (
                           <tr>
                             <td colSpan={5} className="px-6 pb-4">
-                              <div className="bg-violet-50 border border-violet-100 rounded-xl p-4">
+                              <div className="bg-primary-fixed border border-primary-fixed-dim rounded-xl p-4">
                                 <div className="flex items-center justify-between mb-3">
-                                  <p className="text-sm font-bold text-violet-800 flex items-center gap-1.5">
+                                  <p className="text-sm font-bold text-primary flex items-center gap-1.5">
                                     <Sparkles className="w-4 h-4" />
                                     Review suggestions for {suggestions.customerName} — share these to inspire their review
                                   </p>
-                                  <button onClick={() => setSuggestions(null)} className="text-violet-400 hover:text-violet-600">
+                                  <button onClick={() => setSuggestions(null)} className="text-primary-fixed-dim hover:text-primary">
                                     <X className="w-4 h-4" />
                                   </button>
                                 </div>
                                 <div className="grid sm:grid-cols-3 gap-3">
                                   {suggestions.items.map((s, i) => (
-                                    <div key={i} className="bg-white rounded-lg p-3 border border-violet-100">
+                                    <div key={i} className="bg-surface-container-lowest rounded-lg p-3 border border-primary-fixed-dim">
                                       <div className="flex items-center gap-0.5 mb-2">
                                         {Array.from({ length: s.rating }).map((_, j) => (
-                                          <Star key={j} className="w-3 h-3 fill-amber-400 text-amber-400" />
+                                          <Star key={j} className="w-3 h-3 fill-error text-error" />
                                         ))}
                                       </div>
-                                      <p className="text-xs text-slate-700 leading-relaxed mb-2">{s.text}</p>
+                                      <p className="text-xs text-on-surface leading-relaxed mb-2">{s.text}</p>
                                       <button
                                         onClick={() => handleCopy(s.text, i)}
-                                        className="text-xs font-bold text-violet-600 hover:text-violet-800"
+                                        className="text-xs font-bold text-primary hover:text-primary-container"
                                       >
                                         {copiedIdx === i ? '✓ Copied' : 'Copy'}
                                       </button>
@@ -784,15 +784,15 @@ export default function CampaignsDashboard() {
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-40"
+                className="p-2 rounded-lg border border-outline-variant hover:bg-surface-container disabled:opacity-40"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-sm text-slate-600">Page {page} of {totalPages}</span>
+              <span className="text-sm text-on-surface-variant">Page {page} of {totalPages}</span>
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-40"
+                className="p-2 rounded-lg border border-outline-variant hover:bg-surface-container disabled:opacity-40"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -806,18 +806,18 @@ export default function CampaignsDashboard() {
         <>
           {campLoading ? (
             <div className="flex justify-center py-20">
-              <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+              <Loader2 className="w-6 h-6 animate-spin text-outline" />
             </div>
           ) : campaigns.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center">
-              <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mx-auto mb-3">
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-12 text-center">
+              <div className="w-12 h-12 bg-primary-fixed text-primary rounded-full flex items-center justify-center mx-auto mb-3">
                 <MessageSquare className="w-6 h-6" />
               </div>
-              <p className="font-bold text-slate-900 mb-1">No campaigns yet</p>
-              <p className="text-sm text-slate-500 mb-4">Create a campaign to start sending automated WhatsApp review requests to your customers.</p>
+              <p className="font-bold text-on-surface mb-1">No campaigns yet</p>
+              <p className="text-sm text-on-surface-variant mb-4">Create a campaign to start sending automated WhatsApp review requests to your customers.</p>
               <button
                 onClick={openCreate}
-                className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl px-5 py-2.5 shadow-sm transition-all"
+                className="inline-flex items-center gap-2 bg-primary hover:bg-primary-container text-white text-sm font-bold rounded-xl px-5 py-2.5 shadow-sm transition-all"
               >
                 <Plus className="w-4 h-4" /> New Campaign
               </button>
@@ -825,41 +825,41 @@ export default function CampaignsDashboard() {
           ) : (
             <div className="grid gap-4">
               {campaigns.map(camp => (
-                <div key={camp.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                <div key={camp.id} className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="font-bold text-slate-900">{camp.name}</h3>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 uppercase">WhatsApp</span>
+                        <h3 className="font-bold text-on-surface">{camp.name}</h3>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container uppercase">WhatsApp</span>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${CAMPAIGN_STATUS_BADGE[camp.status]}`}>{camp.status}</span>
                         {camp.targetTags?.length > 0 ? (
                           camp.targetTags.map(t => (
-                            <span key={t} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
+                            <span key={t} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary-fixed text-primary">
                               {t}
                             </span>
                           ))
                         ) : (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">All customers</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant">All customers</span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-400 mb-2 flex items-center gap-1.5">
+                      <p className="text-xs text-outline mb-2 flex items-center gap-1.5">
                         <Clock className="w-3 h-3" />
                         {scheduleSummary(camp)}
                         {camp.sendOnlyBizHours && ` · sends ${camp.bizHoursStart}:00–${camp.bizHoursEnd}:00 only`}
                         {camp.stopOnReview && ' · stops on review'}
                       </p>
-                      <div className="flex gap-4 text-xs text-slate-500">
-                        <span>Total: <strong className="text-slate-700">{camp.stats.total}</strong></span>
-                        <span>Sent: <strong className="text-slate-700">{camp.stats.sent}</strong></span>
-                        <span>Clicked: <strong className="text-slate-700">{camp.stats.clicked}</strong></span>
-                        <span>Reviewed: <strong className="text-slate-700">{camp.stats.reviewed}</strong></span>
+                      <div className="flex gap-4 text-xs text-on-surface-variant">
+                        <span>Total: <strong className="text-on-surface">{camp.stats.total}</strong></span>
+                        <span>Sent: <strong className="text-on-surface">{camp.stats.sent}</strong></span>
+                        <span>Clicked: <strong className="text-on-surface">{camp.stats.clicked}</strong></span>
+                        <span>Reviewed: <strong className="text-on-surface">{camp.stats.reviewed}</strong></span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {camp.status !== 'CANCELLED' && (
                         <button
                           onClick={() => openEdit(camp)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition-colors border border-slate-200"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface hover:bg-surface-container text-on-surface text-xs font-bold rounded-xl transition-colors border border-outline-variant"
                         >
                           <Pencil className="w-3.5 h-3.5" /> Edit
                         </button>
@@ -867,7 +867,7 @@ export default function CampaignsDashboard() {
                       {camp.status === 'DRAFT' && (
                         <button
                           onClick={() => { setLaunchConfirm({ id: camp.id, name: camp.name, targetTags: camp.targetTags }); setLaunchResult(null); }}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-secondary hover:bg-secondary text-white text-xs font-bold rounded-lg transition-colors"
                         >
                           <Play className="w-3.5 h-3.5" /> Launch
                         </button>
@@ -875,7 +875,7 @@ export default function CampaignsDashboard() {
                       {camp.status === 'ACTIVE' && (
                         <button
                           onClick={() => handlePause(camp.id)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-xl transition-colors border border-amber-200"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-error-container hover:bg-error-container text-on-error-container text-xs font-bold rounded-xl transition-colors border border-error-container"
                         >
                           <Pause className="w-3.5 h-3.5" /> Pause
                         </button>
@@ -883,7 +883,7 @@ export default function CampaignsDashboard() {
                       {camp.status === 'PAUSED' && (
                         <button
                           onClick={() => { setLaunchConfirm({ id: camp.id, name: camp.name, targetTags: camp.targetTags }); setLaunchResult(null); }}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition-colors border border-indigo-200"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-fixed hover:bg-primary-fixed text-primary text-xs font-bold rounded-xl transition-colors border border-primary-fixed-dim"
                         >
                           <Play className="w-3.5 h-3.5" /> Resume
                         </button>
@@ -891,7 +891,7 @@ export default function CampaignsDashboard() {
                       {(camp.status === 'ACTIVE' || camp.status === 'PAUSED') && (
                         <button
                           onClick={() => handleCancel(camp.id)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl transition-colors border border-rose-200"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-error-container hover:bg-error-container text-on-error-container text-xs font-bold rounded-xl transition-colors border border-error-container"
                           title="Cancel campaign — stops all pending reminders, cannot be resumed"
                         >
                           <Ban className="w-3.5 h-3.5" /> Cancel
@@ -900,7 +900,7 @@ export default function CampaignsDashboard() {
                       {camp.status === 'DRAFT' && (
                         <button
                           onClick={() => handleDelete(camp.id)}
-                          className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-colors border border-slate-200"
+                          className="p-2 text-outline hover:text-error hover:bg-error-container rounded-xl transition-colors border border-outline-variant"
                           title="Delete draft campaign"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -925,36 +925,36 @@ export default function CampaignsDashboard() {
 
       {/* CRM Lead Picker Modal */}
       {showCrmPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 shrink-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/50 backdrop-blur-sm p-4">
+          <div className="bg-surface-container-lowest rounded-2xl card-shadow w-full max-w-lg max-h-[85vh] flex flex-col">
+            <div className="flex justify-between items-center p-6 border-b border-outline-variant shrink-0">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">Import from CRM</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Converted leads are pre-selected — tick any other lead you want to add.</p>
+                <h2 className="text-lg font-bold text-on-surface">Import from CRM</h2>
+                <p className="text-xs text-outline mt-0.5">Converted leads are pre-selected — tick any other lead you want to add.</p>
               </div>
-              <button onClick={() => setShowCrmPicker(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowCrmPicker(false)} className="text-outline hover:text-on-surface-variant">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="px-6 pt-4 shrink-0">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
                 <input
                   type="text"
                   placeholder="Search leads…"
                   value={crmSearch}
                   onChange={e => setCrmSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full pl-9 pr-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
             </div>
             <div className="p-6 overflow-y-auto flex-1">
               {crmLoading ? (
                 <div className="py-10 flex justify-center">
-                  <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                  <Loader2 className="w-5 h-5 animate-spin text-outline" />
                 </div>
               ) : crmLeads.length === 0 ? (
-                <p className="text-sm text-slate-500 text-center py-8">No CRM leads with a phone number found.</p>
+                <p className="text-sm text-on-surface-variant text-center py-8">No CRM leads with a phone number found.</p>
               ) : (
                 <div className="space-y-1.5">
                   {crmLeads
@@ -962,17 +962,17 @@ export default function CampaignsDashboard() {
                     .map(lead => (
                       <label
                         key={lead._id}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${selectedLeadIds.has(lead._id) ? 'border-indigo-200 bg-indigo-50/50' : 'border-slate-100 hover:bg-slate-50'}`}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${selectedLeadIds.has(lead._id) ? 'border-primary-fixed-dim bg-primary-fixed/50' : 'border-outline-variant hover:bg-surface'}`}
                       >
                         <input
                           type="checkbox"
                           checked={selectedLeadIds.has(lead._id)}
                           onChange={() => toggleLead(lead._id)}
-                          className="w-4 h-4 rounded accent-indigo-600"
+                          className="w-4 h-4 rounded accent-primary"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-bold text-slate-900 truncate">{lead.name}</p>
-                          <p className="text-xs text-slate-400">{lead.phone ? maskPhone(lead.phone) : '—'}</p>
+                          <p className="text-sm font-bold text-on-surface truncate">{lead.name}</p>
+                          <p className="text-xs text-outline">{lead.phone ? maskPhone(lead.phone) : '—'}</p>
                         </div>
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${LEAD_STAGE_BADGE[lead.lifeCycleStage] || LEAD_STAGE_BADGE.initial}`}>
                           {lead.lifeCycleStage}
@@ -982,14 +982,14 @@ export default function CampaignsDashboard() {
                 </div>
               )}
             </div>
-            <div className="p-6 border-t border-slate-100 flex justify-end gap-3 shrink-0">
-              <button onClick={() => setShowCrmPicker(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">
+            <div className="p-6 border-t border-outline-variant flex justify-end gap-3 shrink-0">
+              <button onClick={() => setShowCrmPicker(false)} className="px-5 py-2.5 text-sm font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high rounded-xl">
                 Cancel
               </button>
               <button
                 onClick={handleImportLeads}
                 disabled={importingLeads || selectedLeadIds.size === 0}
-                className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-primary hover:bg-primary-container rounded-xl disabled:opacity-50"
               >
                 {importingLeads ? <Loader2 className="w-4 h-4 animate-spin" /> : <Import className="w-4 h-4" />}
                 Import Selected ({selectedLeadIds.size})
@@ -1001,78 +1001,78 @@ export default function CampaignsDashboard() {
 
       {/* Add Customer Modal */}
       {showAddCustomer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
-              <h2 className="text-lg font-bold text-slate-900">Add Customer</h2>
-              <button onClick={() => setShowAddCustomer(false)} className="text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/50 backdrop-blur-sm p-4">
+          <div className="bg-surface-container-lowest rounded-2xl card-shadow w-full max-w-md">
+            <div className="flex justify-between items-center p-6 border-b border-outline-variant">
+              <h2 className="text-lg font-bold text-on-surface">Add Customer</h2>
+              <button onClick={() => setShowAddCustomer(false)} className="text-outline hover:text-on-surface-variant">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Name *</label>
+                <label className="block text-sm font-bold text-on-surface mb-1.5">Name *</label>
                 <input
                   type="text"
                   value={addForm.name}
                   onChange={e => setAddForm(p => ({ ...p, name: e.target.value }))}
                   placeholder="e.g. Priya Sharma"
-                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">WhatsApp Number *</label>
+                <label className="block text-sm font-bold text-on-surface mb-1.5">WhatsApp Number *</label>
                 <input
                   type="tel"
                   value={addForm.phone}
                   onChange={e => setAddForm(p => ({ ...p, phone: e.target.value }))}
                   placeholder="+91 98765 43210 or 9876543210"
-                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1.5">Service</label>
+                  <label className="block text-sm font-bold text-on-surface mb-1.5">Service</label>
                   <input
                     type="text"
                     value={addForm.service}
                     onChange={e => setAddForm(p => ({ ...p, service: e.target.value }))}
                     placeholder="e.g. Haircut"
-                    className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1.5">Service Date</label>
+                  <label className="block text-sm font-bold text-on-surface mb-1.5">Service Date</label>
                   <input
                     type="date"
                     value={addForm.serviceDate}
                     onChange={e => setAddForm(p => ({ ...p, serviceDate: e.target.value }))}
-                    className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Groups (comma separated)</label>
+                <label className="block text-sm font-bold text-on-surface mb-1.5">Groups (comma separated)</label>
                 <input
                   type="text"
                   value={addForm.tags}
                   onChange={e => setAddForm(p => ({ ...p, tags: e.target.value }))}
                   placeholder="e.g. VIP, July-Customers"
-                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
               {addError && (
-                <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-2.5">{addError}</p>
+                <p className="text-sm text-on-error-container bg-error-container border border-error rounded-xl px-4 py-2.5">{addError}</p>
               )}
             </div>
-            <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
-              <button onClick={() => setShowAddCustomer(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">
+            <div className="p-6 border-t border-outline-variant flex justify-end gap-3">
+              <button onClick={() => setShowAddCustomer(false)} className="px-5 py-2.5 text-sm font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high rounded-xl">
                 Cancel
               </button>
               <button
                 onClick={handleAddCustomer}
                 disabled={addSaving || !addForm.name.trim() || !addForm.phone.trim()}
-                className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-primary hover:bg-primary-container rounded-xl disabled:opacity-50"
               >
                 {addSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
                 Add Customer
@@ -1084,22 +1084,22 @@ export default function CampaignsDashboard() {
 
       {/* Edit Groups Modal */}
       {editTagsFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
-              <h2 className="text-lg font-bold text-slate-900">Groups for {editTagsFor.name}</h2>
-              <button onClick={() => setEditTagsFor(null)} className="text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/50 backdrop-blur-sm p-4">
+          <div className="bg-surface-container-lowest rounded-2xl card-shadow w-full max-w-md">
+            <div className="flex justify-between items-center p-6 border-b border-outline-variant">
+              <h2 className="text-lg font-bold text-on-surface">Groups for {editTagsFor.name}</h2>
+              <button onClick={() => setEditTagsFor(null)} className="text-outline hover:text-on-surface-variant">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="p-6 space-y-3">
-              <label className="block text-sm font-bold text-slate-700">Groups (comma separated)</label>
+              <label className="block text-sm font-bold text-on-surface">Groups (comma separated)</label>
               <input
                 type="text"
                 value={tagsInput}
                 onChange={e => setTagsInput(e.target.value)}
                 placeholder="e.g. VIP, Repeat, July-Customers"
-                className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               />
               {availableTags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
@@ -1110,23 +1110,23 @@ export default function CampaignsDashboard() {
                         const current = tagsInput.split(',').map(s => s.trim()).filter(Boolean);
                         if (!current.includes(t)) setTagsInput([...current, t].join(', '));
                       }}
-                      className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
+                      className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-primary-fixed text-primary hover:bg-primary-fixed"
                     >
                       + {t}
                     </button>
                   ))}
                 </div>
               )}
-              <p className="text-xs text-slate-400">Campaigns can target one or more groups. A customer can be in several groups.</p>
+              <p className="text-xs text-outline">Campaigns can target one or more groups. A customer can be in several groups.</p>
             </div>
-            <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
-              <button onClick={() => setEditTagsFor(null)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">
+            <div className="p-6 border-t border-outline-variant flex justify-end gap-3">
+              <button onClick={() => setEditTagsFor(null)} className="px-5 py-2.5 text-sm font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high rounded-xl">
                 Cancel
               </button>
               <button
                 onClick={handleSaveTags}
                 disabled={savingTags}
-                className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-primary hover:bg-primary-container rounded-xl disabled:opacity-50"
               >
                 {savingTags && <Loader2 className="w-4 h-4 animate-spin" />}
                 Save Groups
@@ -1138,32 +1138,32 @@ export default function CampaignsDashboard() {
 
       {/* Campaign Editor Modal (create + edit) */}
       {showEditor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 shrink-0">
-              <h2 className="text-lg font-bold text-slate-900">{editingId ? 'Edit Campaign' : 'New Campaign'}</h2>
-              <button onClick={() => setShowEditor(false)} className="text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/50 backdrop-blur-sm p-4">
+          <div className="bg-surface-container-lowest rounded-2xl card-shadow w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center p-6 border-b border-outline-variant shrink-0">
+              <h2 className="text-lg font-bold text-on-surface">{editingId ? 'Edit Campaign' : 'New Campaign'}</h2>
+              <button onClick={() => setShowEditor(false)} className="text-outline hover:text-on-surface-variant">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="p-6 space-y-6 overflow-y-auto">
               {/* Name */}
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Campaign Name</label>
+                <label className="block text-sm font-bold text-on-surface mb-1.5">Campaign Name</label>
                 <input
                   type="text"
                   value={form.name}
                   onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
                   placeholder="e.g. Q3 Review Drive"
-                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
 
               {/* Target groups */}
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Send To</label>
+                <label className="block text-sm font-bold text-on-surface mb-1.5">Send To</label>
                 {availableTags.length === 0 ? (
-                  <p className="text-xs text-slate-400 bg-slate-50 rounded-xl p-3">
+                  <p className="text-xs text-outline bg-surface rounded-xl p-3">
                     No groups yet — all customers will be targeted. Assign groups to customers from the Customers tab (tag icon).
                   </p>
                 ) : (
@@ -1171,7 +1171,7 @@ export default function CampaignsDashboard() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => setForm(p => ({ ...p, targetTags: [] }))}
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${form.targetTags.length === 0 ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${form.targetTags.length === 0 ? 'bg-primary text-white border-primary' : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:border-primary-fixed-dim'}`}
                       >
                         All customers
                       </button>
@@ -1179,13 +1179,13 @@ export default function CampaignsDashboard() {
                         <button
                           key={t}
                           onClick={() => toggleTargetTag(t)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${form.targetTags.includes(t) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${form.targetTags.includes(t) ? 'bg-primary text-white border-primary' : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:border-primary-fixed-dim'}`}
                         >
                           {t}
                         </button>
                       ))}
                     </div>
-                    <p className="text-xs text-slate-400 mt-1.5">Pick one or more groups, or "All customers".</p>
+                    <p className="text-xs text-outline mt-1.5">Pick one or more groups, or "All customers".</p>
                   </>
                 )}
               </div>
@@ -1193,11 +1193,11 @@ export default function CampaignsDashboard() {
               {/* Initial message */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-sm font-bold text-slate-700">First WhatsApp Message</label>
+                  <label className="text-sm font-bold text-on-surface">First WhatsApp Message</label>
                   <button
                     onClick={() => handleAIDraft('initial')}
                     disabled={aiDrafting !== null}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-violet-50 hover:bg-violet-100 text-violet-600 text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary-fixed hover:bg-primary-fixed text-primary text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
                   >
                     {aiDrafting === 'initial' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
                     Generate with AI
@@ -1208,24 +1208,24 @@ export default function CampaignsDashboard() {
                   onChange={e => setForm(p => ({ ...p, initialMessage: e.target.value }))}
                   rows={4}
                   placeholder={'Leave empty to let AI write a fresh message for each customer, or write your own, e.g.:\nHi {{name}}, thanks for choosing {{business}} for your {{service}}! We\'d love your feedback: {{link}}\nReply STOP to opt-out.'}
-                  className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                  className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-mono"
                 />
-                <p className="text-xs text-slate-400 mt-1">{PLACEHOLDER_HELP}</p>
+                <p className="text-xs text-outline mt-1">{PLACEHOLDER_HELP}</p>
               </div>
 
               {/* Reminder 1 */}
-              <div className={`rounded-xl border p-4 space-y-3 ${form.reminder1Enabled ? 'border-indigo-100 bg-indigo-50/30' : 'border-slate-200 bg-slate-50/50'}`}>
+              <div className={`rounded-xl border p-4 space-y-3 ${form.reminder1Enabled ? 'border-primary-fixed-dim bg-primary-fixed/30' : 'border-outline-variant bg-surface/50'}`}>
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <label className="flex items-center gap-3 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={form.reminder1Enabled}
                       onChange={e => setForm(p => ({ ...p, reminder1Enabled: e.target.checked }))}
-                      className="w-4 h-4 rounded accent-indigo-600"
+                      className="w-4 h-4 rounded accent-primary"
                     />
-                    <span className="text-sm font-bold text-slate-700">Reminder 1</span>
+                    <span className="text-sm font-bold text-on-surface">Reminder 1</span>
                   </label>
-                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <div className="flex items-center gap-2 text-sm text-on-surface-variant">
                     <span>after</span>
                     <input
                       type="number"
@@ -1234,7 +1234,7 @@ export default function CampaignsDashboard() {
                       value={form.reminder1AfterDays}
                       onChange={e => setForm(p => ({ ...p, reminder1AfterDays: Math.max(1, Math.min(60, Number(e.target.value) || 1)) }))}
                       disabled={!form.reminder1Enabled}
-                      className="w-16 px-2 py-1.5 text-sm text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                      className="w-16 px-2 py-1.5 text-sm text-center border border-outline-variant rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
                     />
                     <span>day(s)</span>
                   </div>
@@ -1245,7 +1245,7 @@ export default function CampaignsDashboard() {
                       <button
                         onClick={() => handleAIDraft('reminder1')}
                         disabled={aiDrafting !== null}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-violet-50 hover:bg-violet-100 text-violet-600 text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary-fixed hover:bg-primary-fixed text-primary text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
                       >
                         {aiDrafting === 'reminder1' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
                         Generate with AI
@@ -1256,25 +1256,25 @@ export default function CampaignsDashboard() {
                       onChange={e => setForm(p => ({ ...p, reminder1Message: e.target.value }))}
                       rows={3}
                       placeholder={'Leave empty for the default:\nHi {{name}}, just a quick reminder! We\'d really appreciate a review of your recent {{service}}: {{link}}'}
-                      className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono bg-white"
+                      className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-mono bg-surface-container-lowest"
                     />
                   </>
                 )}
               </div>
 
               {/* Reminder 2 */}
-              <div className={`rounded-xl border p-4 space-y-3 ${form.reminder2Enabled ? 'border-indigo-100 bg-indigo-50/30' : 'border-slate-200 bg-slate-50/50'}`}>
+              <div className={`rounded-xl border p-4 space-y-3 ${form.reminder2Enabled ? 'border-primary-fixed-dim bg-primary-fixed/30' : 'border-outline-variant bg-surface/50'}`}>
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <label className="flex items-center gap-3 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={form.reminder2Enabled}
                       onChange={e => setForm(p => ({ ...p, reminder2Enabled: e.target.checked }))}
-                      className="w-4 h-4 rounded accent-indigo-600"
+                      className="w-4 h-4 rounded accent-primary"
                     />
-                    <span className="text-sm font-bold text-slate-700">Final Reminder</span>
+                    <span className="text-sm font-bold text-on-surface">Final Reminder</span>
                   </label>
-                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <div className="flex items-center gap-2 text-sm text-on-surface-variant">
                     <span>after another</span>
                     <input
                       type="number"
@@ -1283,7 +1283,7 @@ export default function CampaignsDashboard() {
                       value={form.reminder2AfterDays}
                       onChange={e => setForm(p => ({ ...p, reminder2AfterDays: Math.max(1, Math.min(60, Number(e.target.value) || 1)) }))}
                       disabled={!form.reminder2Enabled}
-                      className="w-16 px-2 py-1.5 text-sm text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                      className="w-16 px-2 py-1.5 text-sm text-center border border-outline-variant rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
                     />
                     <span>day(s)</span>
                   </div>
@@ -1294,7 +1294,7 @@ export default function CampaignsDashboard() {
                       <button
                         onClick={() => handleAIDraft('reminder2')}
                         disabled={aiDrafting !== null}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-violet-50 hover:bg-violet-100 text-violet-600 text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary-fixed hover:bg-primary-fixed text-primary text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
                       >
                         {aiDrafting === 'reminder2' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
                         Generate with AI
@@ -1305,7 +1305,7 @@ export default function CampaignsDashboard() {
                       onChange={e => setForm(p => ({ ...p, reminder2Message: e.target.value }))}
                       rows={3}
                       placeholder={'Leave empty for the default:\nHi {{name}}, last bother from us! A review would mean the world to our team at {{business}}: {{link}}'}
-                      className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono bg-white"
+                      className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-mono bg-surface-container-lowest"
                     />
                   </>
                 )}
@@ -1318,9 +1318,9 @@ export default function CampaignsDashboard() {
                     type="checkbox"
                     checked={form.stopOnReview}
                     onChange={e => setForm(p => ({ ...p, stopOnReview: e.target.checked }))}
-                    className="w-4 h-4 rounded accent-indigo-600"
+                    className="w-4 h-4 rounded accent-primary"
                   />
-                  <span className="text-sm text-slate-700">Stop reminders once the customer leaves a review</span>
+                  <span className="text-sm text-on-surface">Stop reminders once the customer leaves a review</span>
                 </label>
                 <div className="flex items-center gap-3 flex-wrap">
                   <label className="flex items-center gap-3 cursor-pointer">
@@ -1328,19 +1328,19 @@ export default function CampaignsDashboard() {
                       type="checkbox"
                       checked={form.sendOnlyBizHours}
                       onChange={e => setForm(p => ({ ...p, sendOnlyBizHours: e.target.checked }))}
-                      className="w-4 h-4 rounded accent-indigo-600"
+                      className="w-4 h-4 rounded accent-primary"
                     />
-                    <span className="text-sm text-slate-700">Send only during business hours</span>
+                    <span className="text-sm text-on-surface">Send only during business hours</span>
                   </label>
                   {form.sendOnlyBizHours && (
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <div className="flex items-center gap-2 text-sm text-on-surface-variant">
                       <input
                         type="number"
                         min={0}
                         max={23}
                         value={form.bizHoursStart}
                         onChange={e => setForm(p => ({ ...p, bizHoursStart: Math.max(0, Math.min(23, Number(e.target.value) || 0)) }))}
-                        className="w-16 px-2 py-1.5 text-sm text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-16 px-2 py-1.5 text-sm text-center border border-outline-variant rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       />
                       <span>:00 to</span>
                       <input
@@ -1349,7 +1349,7 @@ export default function CampaignsDashboard() {
                         max={24}
                         value={form.bizHoursEnd}
                         onChange={e => setForm(p => ({ ...p, bizHoursEnd: Math.max(1, Math.min(24, Number(e.target.value) || 24)) }))}
-                        className="w-16 px-2 py-1.5 text-sm text-center border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-16 px-2 py-1.5 text-sm text-center border border-outline-variant rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       />
                       <span>:00</span>
                     </div>
@@ -1357,14 +1357,14 @@ export default function CampaignsDashboard() {
                 </div>
               </div>
             </div>
-            <div className="p-6 border-t border-slate-100 flex justify-end gap-3 shrink-0">
-              <button onClick={() => setShowEditor(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">
+            <div className="p-6 border-t border-outline-variant flex justify-end gap-3 shrink-0">
+              <button onClick={() => setShowEditor(false)} className="px-5 py-2.5 text-sm font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high rounded-xl">
                 Cancel
               </button>
               <button
                 onClick={handleSaveCampaign}
                 disabled={saving || !form.name.trim()}
-                className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-primary hover:bg-primary-container rounded-xl disabled:opacity-50"
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : editingId ? <Pencil className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                 {editingId ? 'Save Changes' : 'Create Campaign'}
@@ -1376,31 +1376,31 @@ export default function CampaignsDashboard() {
 
       {/* Launch Confirmation Modal */}
       {launchConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/50 backdrop-blur-sm p-4">
+          <div className="bg-surface-container-lowest rounded-2xl card-shadow w-full max-w-sm p-6 text-center">
             {launchResult !== null ? (
               <>
-                <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                <div className="w-12 h-12 bg-secondary-container text-secondary rounded-full flex items-center justify-center mx-auto mb-3">
                   <Play className="w-6 h-6" />
                 </div>
-                <h3 className="text-lg font-bold text-slate-900 mb-1">Campaign Launched!</h3>
-                <p className="text-sm text-slate-500 mb-5">
+                <h3 className="text-lg font-bold text-on-surface mb-1">Campaign Launched!</h3>
+                <p className="text-sm text-on-surface-variant mb-5">
                   <strong>{launchResult}</strong> WhatsApp review request{launchResult !== 1 ? 's' : ''} queued for delivery.
                 </p>
                 <button
                   onClick={() => { setLaunchConfirm(null); setLaunchResult(null); }}
-                  className="w-full px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl"
+                  className="w-full px-5 py-2.5 text-sm font-bold text-white bg-primary hover:bg-primary-container rounded-xl"
                 >
                   Done
                 </button>
               </>
             ) : (
               <>
-                <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                <div className="w-12 h-12 bg-error-container text-error rounded-full flex items-center justify-center mx-auto mb-3">
                   <AlertTriangle className="w-6 h-6" />
                 </div>
-                <h3 className="text-lg font-bold text-slate-900 mb-1">Launch "{launchConfirm.name}"?</h3>
-                <p className="text-sm text-slate-500 mb-5">
+                <h3 className="text-lg font-bold text-on-surface mb-1">Launch "{launchConfirm.name}"?</h3>
+                <p className="text-sm text-on-surface-variant mb-5">
                   {launchConfirm.targetTags?.length > 0
                     ? <>WhatsApp review requests will go to customers in <strong>{launchConfirm.targetTags.join(', ')}</strong> who have a phone number and haven't opted out.</>
                     : <>WhatsApp review requests will go to all customers with a phone number who haven't opted out.</>}
@@ -1408,14 +1408,14 @@ export default function CampaignsDashboard() {
                 <div className="flex gap-3">
                   <button
                     onClick={() => setLaunchConfirm(null)}
-                    className="flex-1 px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
+                    className="flex-1 px-5 py-2.5 text-sm font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high rounded-xl"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleLaunch}
                     disabled={launching}
-                    className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl disabled:opacity-50"
+                    className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-secondary hover:bg-secondary rounded-xl disabled:opacity-50"
                   >
                     {launching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                     {launching ? 'Launching…' : 'Launch'}

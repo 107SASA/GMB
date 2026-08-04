@@ -27,24 +27,41 @@ import { useBusiness } from '@/business/BusinessContext';
 import { Badge, EmptyState, ProgressBar, Screen, ScreenTitle, SectionLabel, Skeleton } from '@/components/ui';
 import { useTheme } from '@/lib/theme';
 
+/** Semantic score-color tier — green ≥70/rank≤5, amber 40-69/rank≤10, rose below. */
+type ScoreTone = 'positive' | 'warning' | 'negative' | 'neutral';
+
+const TONE_TEXT: Record<ScoreTone, string> = {
+  positive: 'text-secondary',
+  warning: 'text-on-warning-container',
+  negative: 'text-error',
+  neutral: 'text-zinc-500',
+};
+/** Tinted container background matching the tone — score numbers never sit on plain gray alone. */
+const TONE_BG: Record<ScoreTone, string> = {
+  positive: 'bg-secondary-container/50',
+  warning: 'bg-warning-container/60',
+  negative: 'bg-error-container/50',
+  neutral: 'bg-surface-raised',
+};
+
 /* Rank (1 = best): ≤5 good, ≤10 okay, beyond that poor. */
-function rankColor(rank: number): string {
-  if (rank <= 5) return 'text-emerald-400';
-  if (rank <= 10) return 'text-amber-400';
-  return 'text-rose-300';
+function rankTone(rank: number): ScoreTone {
+  if (rank <= 5) return 'positive';
+  if (rank <= 10) return 'warning';
+  return 'negative';
 }
 
 /* Percentage score (0–100): ≥70 good, ≥40 okay. */
-function scoreColor(score: number | null): string {
-  if (score === null) return 'text-zinc-500';
-  if (score >= 70) return 'text-emerald-400';
-  if (score >= 40) return 'text-amber-400';
-  return 'text-rose-300';
+function scoreTone(score: number | null): ScoreTone {
+  if (score === null) return 'neutral';
+  if (score >= 70) return 'positive';
+  if (score >= 40) return 'warning';
+  return 'negative';
 }
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <View className={`rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5 ${className}`}>
+    <View className={`rounded-card border border-surface-border bg-surface-raised px-4 py-3.5 ${className}`}>
       {children}
     </View>
   );
@@ -52,9 +69,9 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
 
 function Bullet({ text, icon, color }: { text: string; icon: keyof typeof Ionicons.glyphMap; color: string }) {
   return (
-    <View className="flex-row gap-2.5 rounded-xl border border-surface-border bg-surface-raised px-4 py-3">
+    <View className="flex-row gap-2.5 rounded-card border border-surface-border bg-surface-raised px-4 py-3">
       <Ionicons name={icon} size={16} color={color} style={{ marginTop: 1 }} />
-      <Text className="flex-1 text-sm text-zinc-300">{text}</Text>
+      <Text className="flex-1 font-sans text-sm text-zinc-300">{text}</Text>
     </View>
   );
 }
@@ -105,9 +122,9 @@ function RichSection({
             <View className="flex-row items-start gap-2.5">
               <Ionicons name={icon} size={16} color={color} style={{ marginTop: 2 }} />
               <View className="flex-1">
-                <Text className="text-sm font-semibold text-white">{item.title}</Text>
+                <Text className="font-sans-semibold text-sm text-white">{item.title}</Text>
                 {!!item.detail && (
-                  <Text className="mt-1 text-sm leading-5 text-zinc-400">{item.detail}</Text>
+                  <Text className="mt-1 font-sans text-sm leading-5 text-zinc-400">{item.detail}</Text>
                 )}
                 {(item.impact || item.effort || item.gain) && (
                   <View className="mt-2 flex-row flex-wrap gap-2">
@@ -133,19 +150,32 @@ function PlanSection({ title, blocks }: { title: string; blocks: AuditPlanBlock[
       <View className="gap-2">
         {blocks.map((block, i) => (
           <Card key={i}>
-            <Text className="text-sm font-semibold text-white">{block.label || `Step ${i + 1}`}</Text>
+            <Text className="font-sans-semibold text-sm text-white">
+              {block.label || `Step ${i + 1}`}
+            </Text>
             {block.tasks.map((task, j) => (
               <View key={j} className="mt-1.5 flex-row gap-2">
-                <Text className="text-sm text-zinc-500">•</Text>
-                <Text className="flex-1 text-sm leading-5 text-zinc-300">{task}</Text>
+                <Text className="font-sans text-sm text-zinc-500">•</Text>
+                <Text className="flex-1 font-sans text-sm leading-5 text-zinc-300">{task}</Text>
               </View>
             ))}
             {!!block.outcome && (
-              <Text className="mt-2 text-xs text-emerald-400">Expected: {block.outcome}</Text>
+              <Text className="mt-2 font-sans-semibold text-xs text-secondary">
+                Expected: {block.outcome}
+              </Text>
             )}
           </Card>
         ))}
       </View>
+    </View>
+  );
+}
+
+/** Small solid rank/score pill — the score-color rule applied as a container, never bare text. */
+function ScorePill({ tone, children }: { tone: ScoreTone; children: React.ReactNode }) {
+  return (
+    <View className={`rounded-full px-2.5 py-1 ${TONE_BG[tone]}`}>
+      <Text className={`font-sans-bold text-sm ${TONE_TEXT[tone]}`}>{children}</Text>
     </View>
   );
 }
@@ -156,7 +186,7 @@ function KeywordTable({ keywords }: { keywords: AuditKeywordRank[] }) {
   return (
     <View>
       <SectionLabel>Your rank for top keywords</SectionLabel>
-      <View className="overflow-hidden rounded-xl border border-surface-border bg-surface-raised">
+      <View className="overflow-hidden rounded-card border border-surface-border bg-surface-raised">
         {rows.map((k, i) => {
           const rank = k.avgRank ?? k.rank;
           return (
@@ -166,12 +196,12 @@ function KeywordTable({ keywords }: { keywords: AuditKeywordRank[] }) {
                 i > 0 ? 'border-t border-surface-border' : ''
               }`}
             >
-              <Text className="flex-1 pr-3 text-sm text-indigo-300" numberOfLines={2}>
+              <Text className="flex-1 pr-3 font-sans text-sm text-indigo-300" numberOfLines={2}>
                 {k.keyword}
               </Text>
-              <Text className={`text-sm font-bold ${rank !== null ? rankColor(rank) : 'text-zinc-500'}`}>
+              <ScorePill tone={rank !== null ? rankTone(rank) : 'neutral'}>
                 {rank !== null ? rank.toFixed(1) : '—'}
-              </Text>
+              </ScorePill>
             </View>
           );
         })}
@@ -193,21 +223,21 @@ function CompetitorSection({ competitors, ranked }: { competitors: AuditCompetit
           return (
             <Card key={`${c.name}-${i}`}>
               <View className="flex-row items-center justify-between gap-2">
-                <Text className="flex-1 text-sm font-semibold text-white" numberOfLines={1}>
+                <Text className="flex-1 font-sans-semibold text-sm text-white" numberOfLines={1}>
                   {i + 1}. {c.name}
                 </Text>
-                {rank !== null && (
-                  <Text className={`text-sm font-bold ${rankColor(rank)}`}>#{rank.toFixed(1)}</Text>
-                )}
+                {rank !== null && <ScorePill tone={rankTone(rank)}>#{rank.toFixed(1)}</ScorePill>}
               </View>
               <View className="mt-1 flex-row flex-wrap gap-x-3">
-                {c.rating !== null && <Text className="text-xs text-zinc-400">★ {c.rating}</Text>}
-                {c.reviewCount !== null && (
-                  <Text className="text-xs text-zinc-400">{c.reviewCount} reviews</Text>
+                {c.rating !== null && (
+                  <Text className="font-sans text-xs text-zinc-400">★ {c.rating}</Text>
                 )}
-                {!!c.distance && <Text className="text-xs text-zinc-400">{c.distance}</Text>}
+                {c.reviewCount !== null && (
+                  <Text className="font-sans text-xs text-zinc-400">{c.reviewCount} reviews</Text>
+                )}
+                {!!c.distance && <Text className="font-sans text-xs text-zinc-400">{c.distance}</Text>}
               </View>
-              {!!c.reason && <Text className="mt-1.5 text-xs text-zinc-500">{c.reason}</Text>}
+              {!!c.reason && <Text className="mt-1.5 font-sans text-xs text-zinc-500">{c.reason}</Text>}
             </Card>
           );
         })}
@@ -232,14 +262,16 @@ function GeoMapCard({
   const token = getAuthToken();
   if (failed || !token) return null;
   return (
-    <View className="mb-3 overflow-hidden rounded-xl border border-surface-border bg-surface-raised">
+    <View className="mb-3 overflow-hidden rounded-card border border-surface-border bg-surface-raised">
       <View className="px-4 py-2.5">
-        <Text className="text-xs text-zinc-400">
-          Keyword: <Text className="font-semibold text-white">{keyword}</Text>
+        <Text className="font-sans text-xs text-zinc-400">
+          Keyword: <Text className="font-sans-semibold text-white">{keyword}</Text>
           {avgRank !== null && (
             <Text>
               {'  ·  '}Avg rank{' '}
-              <Text className={`font-bold ${rankColor(avgRank)}`}>{avgRank.toFixed(1)}</Text>
+              <Text className={`font-sans-bold ${TONE_TEXT[rankTone(avgRank)]}`}>
+                {avgRank.toFixed(1)}
+              </Text>
             </Text>
           )}
         </Text>
@@ -266,10 +298,10 @@ function ChecklistSection({
 }) {
   if (completionPercentage === null && checklist.length === 0) return null;
   const statusStyle: Record<AuditChecklistItem['status'], { color: string; icon: keyof typeof Ionicons.glyphMap }> = {
-    Complete: { color: '#34d399', icon: 'checkmark-circle' },
-    Partial: { color: '#fbbf24', icon: 'alert-circle' },
-    Missing: { color: '#FB7185', icon: 'close-circle' },
-    Unknown: { color: '#666E94', icon: 'help-circle' },
+    Complete: { color: '#1db877', icon: 'checkmark-circle' },
+    Partial: { color: '#ffb300', icon: 'alert-circle' },
+    Missing: { color: '#ef4444', icon: 'close-circle' },
+    Unknown: { color: '#8d9199', icon: 'help-circle' },
   };
   return (
     <View>
@@ -278,10 +310,8 @@ function ChecklistSection({
         {completionPercentage !== null && (
           <View className="mb-3">
             <View className="mb-1.5 flex-row items-center justify-between">
-              <Text className="text-sm text-zinc-300">Completed</Text>
-              <Text className={`text-sm font-bold ${scoreColor(completionPercentage)}`}>
-                {completionPercentage}%
-              </Text>
+              <Text className="font-sans text-sm text-zinc-300">Completed</Text>
+              <ScorePill tone={scoreTone(completionPercentage)}>{completionPercentage}%</ScorePill>
             </View>
             <ProgressBar used={completionPercentage} limit={100} />
           </View>
@@ -295,7 +325,7 @@ function ChecklistSection({
                 i > 0 ? 'border-t border-surface-border' : ''
               }`}
             >
-              <Text className="flex-1 pr-3 text-sm text-zinc-300">{item.field}</Text>
+              <Text className="flex-1 pr-3 font-sans text-sm text-zinc-300">{item.field}</Text>
               <Ionicons name={style.icon} size={18} color={style.color} />
             </View>
           );
@@ -309,26 +339,26 @@ function PendingBody({ timedOut, onRetry }: { timedOut: boolean; onRetry: () => 
   if (timedOut) {
     return (
       <View className="flex-1 items-center justify-center gap-3 px-10">
-        <Ionicons name="time-outline" size={40} color="#818CF8" />
-        <Text className="text-lg font-semibold text-white">Taking longer than usual</Text>
-        <Text className="text-center text-sm text-zinc-400">
+        <Ionicons name="time-outline" size={40} color="#a6c8ff" />
+        <Text className="font-display-bold text-lg text-white">Taking longer than usual</Text>
+        <Text className="text-center font-sans text-sm text-zinc-400">
           This audit is taking much longer than expected.
         </Text>
         <Pressable
           onPress={onRetry}
-          className="mt-2 flex-row items-center gap-2 rounded-full bg-brand px-5 py-2.5 active:opacity-80"
+          className="mt-2 flex-row items-center gap-2 rounded-full bg-brand px-5 py-2.5 active:scale-95"
         >
           <Ionicons name="refresh" size={15} color="#ffffff" />
-          <Text className="text-sm font-semibold text-on-brand">Check again</Text>
+          <Text className="font-sans-bold text-sm text-on-brand">Check again</Text>
         </Pressable>
       </View>
     );
   }
   return (
     <View className="flex-1 items-center justify-center gap-3 px-10">
-      <ActivityIndicator size="large" color="#6366F1" />
-      <Text className="text-lg font-semibold text-white">Running your audit…</Text>
-      <Text className="text-center text-sm text-zinc-400">
+      <ActivityIndicator size="large" color="#a6c8ff" />
+      <Text className="font-display-bold text-lg text-white">Running your audit…</Text>
+      <Text className="text-center font-sans text-sm text-zinc-400">
         We're analysing your Google ranking, profile, SEO and reviews. This usually takes a couple
         of minutes — you can leave this screen and come back.
       </Text>
@@ -364,58 +394,60 @@ function ResultsBody({ audit }: { audit: Audit }) {
     .sort((a, b) => (a.estimatedRank ?? 99) - (b.estimatedRank ?? 99));
   const competitors = localComps.length > 0 ? localComps : fallbackComps;
 
+  const t = useTheme();
+  const overallTone = scoreTone(overall);
+  const rankTierTone = overallRank !== null ? rankTone(overallRank) : 'neutral';
+  const profileTone = scoreTone(profilePct);
+  const seoTone = scoreTone(seo?.score ?? null);
+
   return (
     <ScrollView contentContainerClassName="px-5 pb-12">
-      {/* Overall score header */}
-      <View className="items-center rounded-2xl border border-surface-border bg-surface-raised py-6">
-        <Text className={`text-5xl font-bold ${scoreColor(overall)}`}>{overall ?? '—'}</Text>
-        <Text className="mt-1 text-sm text-zinc-400">Overall score</Text>
+      {/* Overall score header — tinted container matches the score's tier, never bare colored text alone */}
+      <View className={`items-center rounded-card border border-surface-border py-6 ${TONE_BG[overallTone]}`}>
+        <Text className={`font-display text-5xl ${TONE_TEXT[overallTone]}`}>{overall ?? '—'}</Text>
+        <Text className="mt-1 font-sans text-sm text-zinc-400">Overall score</Text>
         {(reviews?.averageRating ?? 0) > 0 && (
-          <Text className="mt-2 text-sm text-zinc-300">
+          <Text className="mt-2 font-sans text-sm text-zinc-300">
             ★ {reviews!.averageRating!.toFixed(1)}
             {reviews?.reviewCount !== null && (
-              <Text className="text-zinc-500"> ({reviews!.reviewCount} reviews)</Text>
+              <Text className="font-sans text-zinc-500"> ({reviews!.reviewCount} reviews)</Text>
             )}
           </Text>
         )}
         {!!(audit.address ?? audit.location) && (
-          <Text className="mt-1 px-6 text-center text-xs text-zinc-500">
+          <Text className="mt-1 px-6 text-center font-sans text-xs text-zinc-500">
             {audit.address ?? audit.location}
           </Text>
         )}
       </View>
 
-      {/* Hero tiles */}
+      {/* Hero tiles — each tinted to its own score tier */}
       <View className="mt-3 flex-row gap-3">
-        <View className="flex-1 rounded-xl border border-surface-border bg-surface-raised px-4 py-3">
-          <Text
-            className={`text-3xl font-bold ${overallRank !== null ? rankColor(overallRank) : 'text-zinc-500'}`}
-          >
+        <View className={`flex-1 rounded-card border border-surface-border px-4 py-3 ${TONE_BG[rankTierTone]}`}>
+          <Text className={`font-display text-3xl ${TONE_TEXT[rankTierTone]}`}>
             {overallRank !== null ? overallRank.toFixed(1) : '—'}
           </Text>
-          <Text className="mt-0.5 text-xs text-zinc-400">Google search rank</Text>
-          <Text className="text-[10px] text-zinc-600">avg across top keywords</Text>
+          <Text className="mt-0.5 font-sans text-xs text-zinc-400">Google search rank</Text>
+          <Text className="font-sans text-[10px] text-zinc-600">avg across top keywords</Text>
         </View>
-        <View className="flex-1 rounded-xl border border-surface-border bg-surface-raised px-4 py-3">
-          <Text className={`text-3xl font-bold ${scoreColor(profilePct)}`}>
+        <View className={`flex-1 rounded-card border border-surface-border px-4 py-3 ${TONE_BG[profileTone]}`}>
+          <Text className={`font-display text-3xl ${TONE_TEXT[profileTone]}`}>
             {profilePct !== null ? `${profilePct}%` : '—'}
           </Text>
-          <Text className="mt-0.5 text-xs text-zinc-400">Profile score</Text>
-          <Text className="text-[10px] text-zinc-600">good profiles score 90%+</Text>
+          <Text className="mt-0.5 font-sans text-xs text-zinc-400">Profile score</Text>
+          <Text className="font-sans text-[10px] text-zinc-600">good profiles score 90%+</Text>
         </View>
       </View>
       <View className="mt-3 flex-row gap-3">
-        <View className="flex-1 rounded-xl border border-surface-border bg-surface-raised px-4 py-3">
-          <Text className={`text-3xl font-bold ${scoreColor(seo?.score ?? null)}`}>
+        <View className={`flex-1 rounded-card border border-surface-border px-4 py-3 ${TONE_BG[seoTone]}`}>
+          <Text className={`font-display text-3xl ${TONE_TEXT[seoTone]}`}>
             {seo?.score != null ? `${seo.score}%` : '—'}
           </Text>
-          <Text className="mt-0.5 text-xs text-zinc-400">SEO score</Text>
+          <Text className="mt-0.5 font-sans text-xs text-zinc-400">SEO score</Text>
         </View>
-        <View className="flex-1 rounded-xl border border-surface-border bg-surface-raised px-4 py-3">
-          <Text className="text-3xl font-bold text-white">
-            {reviews?.responseRate ?? '—'}
-          </Text>
-          <Text className="mt-0.5 text-xs text-zinc-400">Review response rate</Text>
+        <View className="flex-1 rounded-card border border-surface-border bg-surface-raised px-4 py-3">
+          <Text className="font-display text-3xl text-white">{reviews?.responseRate ?? '—'}</Text>
+          <Text className="mt-0.5 font-sans text-xs text-zinc-400">Review response rate</Text>
         </View>
       </View>
 
@@ -423,7 +455,7 @@ function ResultsBody({ audit }: { audit: Audit }) {
         <View>
           <SectionLabel>Summary</SectionLabel>
           <Card>
-            <Text className="text-sm leading-5 text-zinc-300">{data.executiveSummary}</Text>
+            <Text className="font-sans text-sm leading-5 text-zinc-300">{data.executiveSummary}</Text>
           </Card>
         </View>
       )}
@@ -461,20 +493,20 @@ function ResultsBody({ audit }: { audit: Audit }) {
           <View className="gap-2">
             {(seo?.missingKeywords?.length ?? 0) > 0 && (
               <Card>
-                <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                <Text className="mb-2 font-sans-bold text-xs uppercase tracking-wider text-zinc-500">
                   Missing keywords
                 </Text>
                 <View className="flex-row flex-wrap gap-2">
                   {seo!.missingKeywords.map((k, i) => (
-                    <View key={i} className="rounded-full bg-rose-400/15 px-2.5 py-1">
-                      <Text className="text-xs text-rose-300">{k}</Text>
+                    <View key={i} className="rounded-full bg-error-container px-2.5 py-1">
+                      <Text className="font-sans-bold text-xs text-on-error-container">{k}</Text>
                     </View>
                   ))}
                 </View>
               </Card>
             )}
             {(seo?.optimizationOpportunities ?? []).map((op, i) => (
-              <Bullet key={i} text={op} icon="construct" color="#fbbf24" />
+              <Bullet key={i} text={op} icon="construct" color={t.amber} />
             ))}
           </View>
         </View>
@@ -488,40 +520,40 @@ function ResultsBody({ audit }: { audit: Audit }) {
             <View className="flex-row flex-wrap gap-x-5 gap-y-2">
               {reviews.reviewsPerWeek !== null && (
                 <View>
-                  <Text className="text-lg font-bold text-white">{reviews.reviewsPerWeek}</Text>
-                  <Text className="text-[10px] text-zinc-500">reviews/week</Text>
+                  <Text className="font-display text-lg text-white">{reviews.reviewsPerWeek}</Text>
+                  <Text className="font-sans text-[10px] text-zinc-500">reviews/week</Text>
                 </View>
               )}
               {reviews.industryAverage !== null && (
                 <View>
-                  <Text className="text-lg font-bold text-white">{reviews.industryAverage}</Text>
-                  <Text className="text-[10px] text-zinc-500">industry avg/week</Text>
+                  <Text className="font-display text-lg text-white">{reviews.industryAverage}</Text>
+                  <Text className="font-sans text-[10px] text-zinc-500">industry avg/week</Text>
                 </View>
               )}
               {reviews.positivePercent !== null && (
                 <View>
-                  <Text className="text-lg font-bold text-emerald-400">
+                  <Text className="font-display text-lg text-secondary">
                     {reviews.positivePercent}%
                   </Text>
-                  <Text className="text-[10px] text-zinc-500">positive</Text>
+                  <Text className="font-sans text-[10px] text-zinc-500">positive</Text>
                 </View>
               )}
               {reviews.negativePercent !== null && (
                 <View>
-                  <Text className="text-lg font-bold text-rose-300">{reviews.negativePercent}%</Text>
-                  <Text className="text-[10px] text-zinc-500">negative</Text>
+                  <Text className="font-display text-lg text-error">{reviews.negativePercent}%</Text>
+                  <Text className="font-sans text-[10px] text-zinc-500">negative</Text>
                 </View>
               )}
             </View>
             {reviews.mostCommonPraises.length > 0 && (
-              <Text className="mt-3 text-xs text-zinc-400">
-                <Text className="font-semibold text-emerald-400">Praised for: </Text>
+              <Text className="mt-3 font-sans text-xs text-zinc-400">
+                <Text className="font-sans-bold text-secondary">Praised for: </Text>
                 {reviews.mostCommonPraises.join(', ')}
               </Text>
             )}
             {reviews.mostCommonComplaints.length > 0 && (
-              <Text className="mt-1.5 text-xs text-zinc-400">
-                <Text className="font-semibold text-rose-300">Complaints: </Text>
+              <Text className="mt-1.5 font-sans text-xs text-zinc-400">
+                <Text className="font-sans-bold text-error">Complaints: </Text>
                 {reviews.mostCommonComplaints.join(', ')}
               </Text>
             )}
@@ -529,20 +561,20 @@ function ResultsBody({ audit }: { audit: Audit }) {
         </View>
       )}
 
-      <RichSection title="Strengths" items={data?.strengths ?? []} icon="checkmark-circle" color="#34d399" />
-      <RichSection title="Weaknesses" items={data?.weaknesses ?? []} icon="close-circle" color="#FB7185" />
-      <BulletSection title="Quick wins" items={data?.quickWins ?? []} icon="flash" color="#fbbf24" />
+      <RichSection title="Strengths" items={data?.strengths ?? []} icon="checkmark-circle" color={t.emerald} />
+      <RichSection title="Weaknesses" items={data?.weaknesses ?? []} icon="close-circle" color={t.rose} />
+      <BulletSection title="Quick wins" items={data?.quickWins ?? []} icon="flash" color={t.amber} />
       <BulletSection
         title="Growth opportunities"
         items={data?.growthOpportunities ?? []}
         icon="trending-up"
-        color="#6366F1"
+        color={t.brandBright}
       />
       <RichSection
         title="Priority fixes"
         items={data?.priorityFixes ?? []}
         icon="alert-circle"
-        color="#fb923c"
+        color="#ff8f00"
       />
       <PlanSection title="30-day plan" blocks={data?.thirtyDayPlan ?? []} />
       <PlanSection title="90-day plan" blocks={data?.ninetyDayPlan ?? []} />
@@ -600,11 +632,11 @@ export default function AuditDetailScreen() {
             className="flex-row items-center gap-1.5 rounded-full border border-surface-border bg-surface-raised px-4 py-2 active:opacity-80"
           >
             {share.isPending ? (
-              <ActivityIndicator size="small" color="#6366F1" />
+              <ActivityIndicator size="small" color={t.brandBright} />
             ) : (
               <Ionicons name="share-outline" size={14} color={t.text} />
             )}
-            <Text className="text-sm font-semibold text-white">Share</Text>
+            <Text className="font-sans-semibold text-sm text-white">Share</Text>
           </Pressable>
         )}
       </View>

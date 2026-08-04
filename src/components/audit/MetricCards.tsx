@@ -17,16 +17,16 @@ export function MetricCard({ title, value, suffix = '', trend, trendValue, delay
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4 }}
-      className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"
+      className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow"
     >
-      <h3 className="text-sm font-medium text-slate-500 mb-2">{title}</h3>
+      <h3 className="text-label-sm text-on-surface-variant mb-2">{title}</h3>
       <div className="flex items-baseline gap-2">
-        <span className="text-3xl font-bold text-slate-900 tracking-tight">{value}{suffix}</span>
+        <span className="text-3xl font-bold text-on-surface tracking-tight">{value}{suffix}</span>
         {trend && trendValue && (
           <span className={`text-sm font-medium px-2 py-0.5 rounded-full ${
-            trend === 'up' ? 'bg-green-100 text-green-700' :
-            trend === 'down' ? 'bg-red-100 text-red-700' :
-            'bg-slate-100 text-slate-700'
+            trend === 'up' ? 'bg-secondary-container text-on-secondary-container' :
+            trend === 'down' ? 'bg-error-container text-on-error-container' :
+            'bg-surface-container text-on-surface'
           }`}>
             {trend === 'up' ? '↑' : trend === 'down' ? '↓' : '-'} {trendValue}
           </span>

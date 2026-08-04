@@ -18,25 +18,25 @@ export default function ReviewFilterBar({ activeFilter, onFilterChange, counts }
   ];
 
   return (
-    <div className="flex gap-2 overflow-x-auto pb-4 hide-scrollbar border-b border-slate-200 mb-6">
+    <div className="flex gap-2 overflow-x-auto pb-4 hide-scrollbar border-b border-outline-variant mb-6">
       {filters.map(f => (
         <button
           key={f.id}
           onClick={() => onFilterChange(f.id)}
           className={`relative px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${
-            activeFilter === f.id ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100'
+            activeFilter === f.id ? 'text-on-surface' : 'text-on-surface-variant hover:text-on-surface bg-surface hover:bg-surface-container'
           }`}
         >
           {activeFilter === f.id && (
             <motion.div
               layoutId="activeFilterBg"
-              className="absolute inset-0 bg-white border border-slate-200 shadow-sm rounded-full -z-10"
+              className="absolute inset-0 bg-surface-container-lowest border border-outline-variant shadow-sm rounded-full -z-10"
               initial={false}
               transition={{ type: 'spring', stiffness: 500, damping: 30 }}
             />
           )}
           {f.label}
-          <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${activeFilter === f.id ? 'bg-slate-100 text-slate-600' : 'bg-slate-200 text-slate-500'}`}>
+          <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${activeFilter === f.id ? 'bg-surface-container text-on-surface-variant' : 'bg-surface-container-high text-on-surface-variant'}`}>
             {counts[f.id] || 0}
           </span>
         </button>

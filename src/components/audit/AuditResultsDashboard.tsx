@@ -125,20 +125,20 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
 
   /* Loading */
   if (error) return (
-    <div className="max-w-xl mx-auto mt-20 text-center bg-red-50 border border-red-200 rounded-2xl p-10">
-      <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-      <h2 className="text-xl font-bold text-red-700 mb-2">Audit Failed</h2>
-      <p className="text-red-600">{error}</p>
+    <div className="max-w-xl mx-auto mt-20 text-center bg-error-container border border-error-container rounded-2xl p-10">
+      <AlertCircle className="w-12 h-12 text-error mx-auto mb-4" />
+      <h2 className="text-xl font-bold text-on-error-container mb-2">Audit Failed</h2>
+      <p className="text-error">{error}</p>
     </div>
   );
   if (!audit || audit.status === 'PENDING') return (
     <div className="max-w-xl mx-auto mt-20 flex flex-col items-center gap-6 text-center">
-      <div className="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" />
+      <div className="w-16 h-16 border-4 border-primary-fixed-dim border-t-primary rounded-full animate-spin" />
       <div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Analyzing your Business Profile…</h2>
-        <p className="text-slate-500">
+        <h2 className="text-2xl font-bold text-on-surface mb-2">Analyzing your Business Profile…</h2>
+        <p className="text-on-surface-variant">
           Fetching local data and analyzing with AI.<br />
-          <small className="text-slate-400">This usually takes 15–30 seconds.</small>
+          <small className="text-outline">This usually takes 15–30 seconds.</small>
         </p>
       </div>
     </div>
@@ -168,30 +168,30 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
 
         {/* Share link modal */}
         {shareUrl && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-primary/60 backdrop-blur-sm">
+            <div className="bg-surface-container-lowest rounded-2xl card-shadow w-full max-w-md p-6">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center">
-                  <Share2 className="w-5 h-5 text-violet-600" />
+                <div className="w-10 h-10 bg-primary-fixed rounded-xl flex items-center justify-center">
+                  <Share2 className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h2 className="font-bold text-slate-900">Share Report</h2>
-                  <p className="text-xs text-slate-500">Anyone with this link can view the report for 30 days</p>
+                  <h2 className="font-bold text-on-surface">Share Report</h2>
+                  <p className="text-xs text-on-surface-variant">Anyone with this link can view the report for 30 days</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4">
-                <span className="flex-1 text-xs text-slate-600 truncate">{shareUrl}</span>
+              <div className="flex items-center gap-2 bg-surface border border-outline-variant rounded-xl p-3 mb-4">
+                <span className="flex-1 text-xs text-on-surface-variant truncate">{shareUrl}</span>
                 <button
                   onClick={handleCopy}
-                  className="shrink-0 flex items-center gap-1 text-xs font-bold text-violet-600 hover:text-violet-700 transition-colors"
+                  className="shrink-0 flex items-center gap-1 text-xs font-bold text-primary hover:text-primary transition-colors"
                 >
-                  {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                  {copied ? <Check className="w-4 h-4 text-secondary" /> : <Copy className="w-4 h-4" />}
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
               </div>
               <button
                 onClick={() => setShareUrl(null)}
-                className="w-full text-sm text-slate-500 hover:text-slate-700 transition-colors py-2"
+                className="w-full text-sm text-on-surface-variant hover:text-on-surface transition-colors py-2"
               >
                 Close
               </button>
@@ -200,10 +200,10 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
         )}
 
         {sharing && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
-            <div className="bg-white rounded-2xl shadow-xl px-8 py-6 flex items-center gap-3">
-              <Loader2 className="w-5 h-5 animate-spin text-violet-600" />
-              <span className="text-sm font-medium text-slate-700">Generating share link…</span>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40">
+            <div className="bg-surface-container-lowest rounded-2xl card-shadow px-8 py-6 flex items-center gap-3">
+              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+              <span className="text-sm font-medium text-on-surface">Generating share link…</span>
             </div>
           </div>
         )}
@@ -225,10 +225,10 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
       <div className="max-w-5xl mx-auto pb-20">
 
         {/* Action bar */}
-        <div className="bg-slate-900 text-white rounded-2xl p-5 mb-8 flex items-center justify-between flex-wrap gap-4 shadow-xl shadow-slate-900/10">
+        <div className="bg-primary text-white rounded-2xl p-5 mb-8 flex items-center justify-between flex-wrap gap-4 card-shadow">
           <div>
             <h1 className="font-bold text-xl mb-1">{audit.businessName} — Audit Report</h1>
-            <p className="text-slate-400 text-sm flex items-center gap-2">
+            <p className="text-outline text-sm flex items-center gap-2">
               <MapPin className="w-4 h-4" /> {audit.location}
             </p>
           </div>
@@ -236,7 +236,7 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
             data-pdf-hide="true"
             onClick={handleDownload}
             disabled={downloading}
-            className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-bold text-sm transition-colors flex items-center gap-2 disabled:opacity-80"
+            className="bg-primary hover:bg-primary-container text-white px-6 py-3 rounded-xl font-bold text-sm transition-colors flex items-center gap-2 disabled:opacity-80"
           >
             {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             {downloading ? 'Generating PDF…' : 'Download PDF Report'}
@@ -245,20 +245,20 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
 
         {/* Top Level Scores */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-          <ScoreCard title="Overall Score" score={overallScore} icon={<Award className="w-5 h-5 text-blue-500" />} />
-          <ScoreCard title="Search Rank" score={searchRankScore} icon={<Search className="w-5 h-5 text-green-500" />} />
-          <ScoreCard title="Profile Score" score={profileScore} icon={<Building2 className="w-5 h-5 text-purple-500" />} />
-          <ScoreCard title="SEO Score" score={seoScore} icon={<TrendingUp className="w-5 h-5 text-rose-500" />} />
-          <ScoreCard title="Review Score" score={reviewScore} icon={<MessageSquare className="w-5 h-5 text-amber-500" />} />
+          <ScoreCard title="Overall Score" score={overallScore} icon={<Award className="w-5 h-5 text-primary" />} />
+          <ScoreCard title="Search Rank" score={searchRankScore} icon={<Search className="w-5 h-5 text-secondary" />} />
+          <ScoreCard title="Profile Score" score={profileScore} icon={<Building2 className="w-5 h-5 text-primary" />} />
+          <ScoreCard title="SEO Score" score={seoScore} icon={<TrendingUp className="w-5 h-5 text-error" />} />
+          <ScoreCard title="Review Score" score={reviewScore} icon={<MessageSquare className="w-5 h-5 text-error" />} />
         </div>
 
         {/* Executive Summary */}
-        <div className="bg-white rounded-2xl p-6 md:p-8 border border-slate-200 shadow-sm mb-8">
-          <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-blue-600" /> Executive Summary
+        <div className="bg-surface-container-lowest rounded-2xl p-6 md:p-8 border border-outline-variant shadow-sm mb-8">
+          <h2 className="text-xl font-bold text-on-surface mb-4 flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-primary" /> Executive Summary
           </h2>
           {data.executiveSummary ? (
-            <div className="prose prose-slate max-w-none text-slate-600">
+            <div className="prose prose max-w-none text-on-surface-variant">
               {data.executiveSummary.split('\\n').map((p: string, i: number) => p.trim() ? <p key={i}>{p}</p> : null)}
             </div>
           ) : (
@@ -268,30 +268,30 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
 
         {/* Strengths & Weaknesses */}
         <div className="grid md:grid-cols-2 gap-8 mb-8">
-          <div className="bg-emerald-50 rounded-2xl p-6 border border-emerald-100">
-            <h3 className="font-bold text-emerald-900 mb-4 flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" /> Key Strengths
+          <div className="bg-secondary-container/40 rounded-2xl p-6 border border-secondary-fixed">
+            <h3 className="font-bold text-on-secondary-container mb-4 flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-secondary" /> Key Strengths
             </h3>
             {data.strengths && data.strengths.length > 0 ? (
               <ul className="space-y-3">
                 {data.strengths.map((s: string, i: number) => (
-                  <li key={i} className="text-emerald-800 text-sm flex items-start gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                  <li key={i} className="text-on-secondary-container text-sm flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-secondary mt-1.5 shrink-0" />
                     <span>{s}</span>
                   </li>
                 ))}
               </ul>
             ) : <DataUnavailable />}
           </div>
-          <div className="bg-rose-50 rounded-2xl p-6 border border-rose-100">
-            <h3 className="font-bold text-rose-900 mb-4 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-rose-600" /> Key Weaknesses
+          <div className="bg-error-container rounded-2xl p-6 border border-error">
+            <h3 className="font-bold text-on-error-container mb-4 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-on-error-container" /> Key Weaknesses
             </h3>
             {data.weaknesses && data.weaknesses.length > 0 ? (
               <ul className="space-y-3">
                 {data.weaknesses.map((s: string, i: number) => (
-                  <li key={i} className="text-rose-800 text-sm flex items-start gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 shrink-0" />
+                  <li key={i} className="text-error text-sm flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-error mt-1.5 shrink-0" />
                     <span>{s}</span>
                   </li>
                 ))}
@@ -301,36 +301,36 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
         </div>
 
         {/* Competitor Analysis */}
-        <div className="bg-white rounded-2xl p-6 md:p-8 border border-slate-200 shadow-sm mb-8">
-          <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
-            <Target className="w-5 h-5 text-slate-600" /> Competitor Analysis
+        <div className="bg-surface-container-lowest rounded-2xl p-6 md:p-8 border border-outline-variant shadow-sm mb-8">
+          <h2 className="text-xl font-bold text-on-surface mb-6 flex items-center gap-2">
+            <Target className="w-5 h-5 text-on-surface-variant" /> Competitor Analysis
           </h2>
 
-          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">AI Competitors Mapping</h3>
+          <h3 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-3">AI Competitors Mapping</h3>
           {competitors.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="py-3 px-4 text-xs font-semibold text-slate-500">Business Name</th>
-                    <th className="py-3 px-4 text-xs font-semibold text-slate-500">Category</th>
-                    <th className="py-3 px-4 text-xs font-semibold text-slate-500 text-center">Rating</th>
-                    <th className="py-3 px-4 text-xs font-semibold text-slate-500 text-center">Reviews</th>
-                    <th className="py-3 px-4 text-xs font-semibold text-slate-500 text-center">Distance</th>
-                    <th className="py-3 px-4 text-xs font-semibold text-slate-500">Reason</th>
-                    <th className="py-3 px-4 text-xs font-semibold text-slate-500 text-right">Strength</th>
+                  <tr className="border-b border-outline-variant">
+                    <th className="py-3 px-4 text-xs font-semibold text-on-surface-variant">Business Name</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-on-surface-variant">Category</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-on-surface-variant text-center">Rating</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-on-surface-variant text-center">Reviews</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-on-surface-variant text-center">Distance</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-on-surface-variant">Reason</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-on-surface-variant text-right">Strength</th>
                   </tr>
                 </thead>
                 <tbody>
                   {competitors.map((c: any, i: number) => (
-                    <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="py-3 px-4 text-sm font-medium text-slate-900">{c.name}</td>
-                      <td className="py-3 px-4 text-xs text-slate-500">{c.category || '—'}</td>
-                      <td className="py-3 px-4 text-sm font-bold text-slate-700 text-center">{c.rating || '—'}</td>
-                      <td className="py-3 px-4 text-sm text-slate-600 text-center">{c.reviewCount || '—'}</td>
-                      <td className="py-3 px-4 text-xs text-slate-500 text-center">{c.distance || '—'}</td>
-                      <td className="py-3 px-4 text-xs text-slate-500">{c.reason || '—'}</td>
-                      <td className="py-3 px-4 text-sm font-bold text-amber-500 text-right">{c.strengthLevel || c.estimatedStrength || '—'}</td>
+                    <tr key={i} className="border-b border-outline-variant hover:bg-surface">
+                      <td className="py-3 px-4 text-sm font-medium text-on-surface">{c.name}</td>
+                      <td className="py-3 px-4 text-xs text-on-surface-variant">{c.category || '—'}</td>
+                      <td className="py-3 px-4 text-sm font-bold text-on-surface text-center">{c.rating || '—'}</td>
+                      <td className="py-3 px-4 text-sm text-on-surface-variant text-center">{c.reviewCount || '—'}</td>
+                      <td className="py-3 px-4 text-xs text-on-surface-variant text-center">{c.distance || '—'}</td>
+                      <td className="py-3 px-4 text-xs text-on-surface-variant">{c.reason || '—'}</td>
+                      <td className="py-3 px-4 text-sm font-bold text-error text-right">{c.strengthLevel || c.estimatedStrength || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -340,25 +340,25 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
         </div>
         
         {/* Keywords Analysis */}
-        <div className="bg-white rounded-2xl p-6 md:p-8 border border-slate-200 shadow-sm mb-8">
-          <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
-            <Search className="w-5 h-5 text-slate-600" /> Top Keywords
+        <div className="bg-surface-container-lowest rounded-2xl p-6 md:p-8 border border-outline-variant shadow-sm mb-8">
+          <h2 className="text-xl font-bold text-on-surface mb-6 flex items-center gap-2">
+            <Search className="w-5 h-5 text-on-surface-variant" /> Top Keywords
           </h2>
 
           {topKeywords.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="py-3 px-4 text-xs font-semibold text-slate-500">Keyword</th>
-                    <th className="py-3 px-4 text-xs font-semibold text-slate-500">Estimated Rank</th>
+                  <tr className="border-b border-outline-variant">
+                    <th className="py-3 px-4 text-xs font-semibold text-on-surface-variant">Keyword</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-on-surface-variant">Estimated Rank</th>
                   </tr>
                 </thead>
                 <tbody>
                   {topKeywords.map((k: any, i: number) => (
-                    <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="py-3 px-4 text-sm font-medium text-slate-900">{k.keyword}</td>
-                      <td className="py-3 px-4 text-xs text-slate-500">{k.rank || '—'}</td>
+                    <tr key={i} className="border-b border-outline-variant hover:bg-surface">
+                      <td className="py-3 px-4 text-sm font-medium text-on-surface">{k.keyword}</td>
+                      <td className="py-3 px-4 text-xs text-on-surface-variant">{k.rank || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -369,27 +369,27 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
 
         {/* Opportunities Matrix */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
-          <OpportunityCard title="Quick Wins" items={data.quickWins} icon={<Zap className="w-5 h-5 text-amber-500" />} />
-          <OpportunityCard title="Growth Opportunities" items={data.growthOpportunities} icon={<TrendingUp className="w-5 h-5 text-purple-500" />} />
+          <OpportunityCard title="Quick Wins" items={data.quickWins} icon={<Zap className="w-5 h-5 text-error" />} />
+          <OpportunityCard title="Growth Opportunities" items={data.growthOpportunities} icon={<TrendingUp className="w-5 h-5 text-primary" />} />
         </div>
 
         {/* Action Plan */}
-        <div className="bg-slate-900 rounded-2xl p-6 md:p-8 text-white shadow-xl mb-8 relative overflow-hidden">
+        <div className="bg-primary rounded-2xl p-6 md:p-8 text-white card-shadow mb-8 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-8 opacity-10">
             <Zap className="w-32 h-32" />
           </div>
 
           <div className="relative z-10">
             <h2 className="text-2xl font-bold mb-8 flex items-center gap-3">
-              <ShieldAlert className="w-6 h-6 text-rose-400" /> Priority Fixes
+              <ShieldAlert className="w-6 h-6 text-error" /> Priority Fixes
             </h2>
 
             {data.priorityFixes && data.priorityFixes.length > 0 ? (
               <div className="grid gap-4 mb-10">
                 {data.priorityFixes.map((r: string, i: number) => (
-                  <div key={i} className="bg-white/10 border border-white/20 rounded-xl p-5 flex items-start gap-4">
-                    <div className="w-8 h-8 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold shrink-0">{i + 1}</div>
-                    <p className="text-slate-200 mt-1">{r}</p>
+                  <div key={i} className="bg-surface-container-lowest/10 border border-white/20 rounded-xl p-5 flex items-start gap-4">
+                    <div className="w-8 h-8 rounded-full bg-error-container text-error flex items-center justify-center font-bold shrink-0">{i + 1}</div>
+                    <p className="text-outline-variant mt-1">{r}</p>
                   </div>
                 ))}
               </div>
@@ -397,14 +397,14 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
 
             <div className="grid md:grid-cols-2 gap-8 pt-8 border-t border-white/10">
               <div>
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-400">
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-primary">
                   <Calendar className="w-5 h-5" /> 30-Day Action Plan
                 </h3>
                 {data.thirtyDayPlan && data.thirtyDayPlan.length > 0 ? (
                   <ul className="space-y-4">
                     {data.thirtyDayPlan.map((item: any, i: number) => (
-                      <li key={i} className="flex items-start gap-3 text-sm text-slate-300">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 shrink-0" />
+                      <li key={i} className="flex items-start gap-3 text-sm text-outline">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0" />
                         <span>{typeof item === 'string' ? item : `${item.week}: ${item.expectedOutcome}`}</span>
                       </li>
                     ))}
@@ -413,14 +413,14 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
               </div>
 
               <div>
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-purple-400">
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-primary">
                   <Globe className="w-5 h-5" /> 90-Day Roadmap
                 </h3>
                 {data.ninetyDayPlan && data.ninetyDayPlan.length > 0 ? (
                   <ul className="space-y-4">
                     {data.ninetyDayPlan.map((item: any, i: number) => (
-                      <li key={i} className="flex items-start gap-3 text-sm text-slate-300">
-                        <span className="w-1.5 h-1.5 rounded-full bg-purple-500 mt-2 shrink-0" />
+                      <li key={i} className="flex items-start gap-3 text-sm text-outline">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0" />
                         <span>{typeof item === 'string' ? item : `${item.month}: ${(item.tasks || []).join(', ')}`}</span>
                       </li>
                     ))}
@@ -443,27 +443,27 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
 
 function ScoreCard({ title, score, icon }: { title: string, score: number, icon: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center">
+    <div className="bg-surface-container-lowest rounded-xl p-5 border border-outline-variant card-shadow flex flex-col items-center justify-center text-center">
       <div className="mb-3">{icon}</div>
-      <div className="text-3xl font-black text-slate-900 mb-1">{score}</div>
-      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{title}</div>
+      <div className="text-3xl font-black text-on-surface mb-1">{score}</div>
+      <div className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide">{title}</div>
     </div>
   );
 }
 
 function OpportunityCard({ title, items, icon }: { title: string, items: string[], icon: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col">
+    <div className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant shadow-sm flex flex-col">
       <div className="flex items-center gap-2 mb-4">
         {icon}
-        <h3 className="font-bold text-slate-900">{title}</h3>
+        <h3 className="font-bold text-on-surface">{title}</h3>
       </div>
       <div className="flex-1">
         {items && items.length > 0 ? (
           <ul className="space-y-3">
             {items.map((item, i) => (
-              <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-300 mt-1.5 shrink-0" />
+              <li key={i} className="text-sm text-on-surface-variant flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-surface-container-highest mt-1.5 shrink-0" />
                 <span>{item}</span>
               </li>
             ))}
@@ -476,7 +476,7 @@ function OpportunityCard({ title, items, icon }: { title: string, items: string[
 
 function DataUnavailable({ light = false }: { light?: boolean }) {
   return (
-    <div className={`py-6 text-center rounded-xl border ${light ? 'bg-white/5 border-white/10 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+    <div className={`py-6 text-center rounded-xl border ${light ? 'bg-surface-container-lowest/5 border-white/10 text-outline' : 'bg-surface border-outline-variant text-on-surface-variant'}`}>
       <span className="text-sm font-medium">Data Unavailable</span>
     </div>
   );

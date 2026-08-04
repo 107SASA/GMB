@@ -59,8 +59,8 @@ function SwitchRow({
 }) {
   const t = useTheme();
   return (
-    <View className="flex-row items-center justify-between rounded-xl border border-surface-border bg-surface-raised px-4 py-3">
-      <Text className="flex-1 text-sm text-white">{label}</Text>
+    <View className="flex-row items-center justify-between rounded-card border border-surface-border bg-surface-raised px-4 py-3">
+      <Text className="flex-1 font-sans text-sm text-white">{label}</Text>
       <Switch
         value={value}
         onValueChange={onValueChange}
@@ -97,7 +97,7 @@ function AiSettingsForm({ initial }: { initial: InboxConfig }) {
         />
       </View>
 
-      <Text className="mb-1.5 px-1 text-xs font-medium text-zinc-400">Personality</Text>
+      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Personality</Text>
       <View className="mb-3 flex-row flex-wrap gap-2">
         {PERSONALITIES.map((p) => (
           <Chip
@@ -109,7 +109,7 @@ function AiSettingsForm({ initial }: { initial: InboxConfig }) {
         ))}
       </View>
 
-      <Text className="mb-1.5 px-1 text-xs font-medium text-zinc-400">Tone</Text>
+      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Tone</Text>
       <View className="mb-3 flex-row flex-wrap gap-2">
         {TONES.map((t) => (
           <Chip
@@ -130,7 +130,7 @@ function AiSettingsForm({ initial }: { initial: InboxConfig }) {
         keyboardType="number-pad"
       />
 
-      <Text className="mb-1.5 px-1 text-xs font-medium text-zinc-400">System prompt</Text>
+      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">System prompt</Text>
       <Field
         value={config.systemPrompt}
         onChangeText={(systemPrompt) => setConfig({ ...config, systemPrompt })}
@@ -140,7 +140,7 @@ function AiSettingsForm({ initial }: { initial: InboxConfig }) {
         placeholder="How should the AI introduce itself and behave?"
       />
 
-      <Text className="mb-1.5 px-1 text-xs font-medium text-zinc-400">Sales rules</Text>
+      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Sales rules</Text>
       <Field
         value={config.salesRules}
         onChangeText={(salesRules) => setConfig({ ...config, salesRules })}
@@ -206,7 +206,7 @@ function BookingForm({ initial }: { initial: BusinessHours }) {
         />
       </View>
 
-      <Text className="mb-1.5 px-1 text-xs font-medium text-zinc-400">Working days</Text>
+      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Working days</Text>
       <View className="mb-3 gap-2">
         {WEEKDAYS.map((day) => (
           <SwitchRow
@@ -315,9 +315,9 @@ function CancelModal({
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
       <View className="flex-1 items-center justify-center bg-black/60 px-6">
-        <View className="w-full rounded-2xl border border-surface-border bg-surface px-5 py-5">
-          <Text className="text-lg font-bold text-white">Cancel appointment</Text>
-          <Text className="mt-1 text-sm text-zinc-400">
+        <View className="w-full rounded-card border border-surface-border bg-surface px-5 py-5">
+          <Text className="font-display-bold text-lg text-white">Cancel appointment</Text>
+          <Text className="mt-1 font-sans text-sm text-zinc-400">
             {appointment.customerName} · {appointment.date} {appointment.time}
           </Text>
           <View className="mt-3">
@@ -326,16 +326,16 @@ function CancelModal({
           <View className="mt-4 flex-row gap-3">
             <Pressable
               onPress={onClose}
-              className="flex-1 items-center rounded-xl border border-surface-border py-3 active:opacity-70"
+              className="flex-1 items-center rounded-full border border-surface-border py-3 active:scale-95"
             >
-              <Text className="text-sm font-medium text-zinc-300">Keep it</Text>
+              <Text className="font-sans-semibold text-sm text-zinc-300">Keep it</Text>
             </Pressable>
             <Pressable
               onPress={() => cancel.mutate()}
               disabled={cancel.isPending}
-              className="flex-1 items-center rounded-xl bg-rose-400/15 py-3 active:opacity-80"
+              className="flex-1 items-center rounded-full bg-error-container py-3 active:scale-95"
             >
-              <Text className="text-sm font-semibold text-rose-300">
+              <Text className="font-sans-bold text-sm text-on-error-container">
                 {cancel.isPending ? 'Cancelling…' : 'Cancel it'}
               </Text>
             </Pressable>
@@ -349,6 +349,7 @@ function CancelModal({
 function AppointmentsSegment() {
   const { activeBusinessId } = useBusiness();
   const queryClient = useQueryClient();
+  const t = useTheme();
   const [status, setStatus] = useState<AppointmentStatus | 'All'>('All');
   const [cancelling, setCancelling] = useState<Appointment | null>(null);
 
@@ -388,31 +389,31 @@ function AppointmentsSegment() {
             <RefreshControl
               refreshing={appointments.isRefetching}
               onRefresh={() => void appointments.refetch()}
-              tintColor="#6366F1"
+              tintColor={t.brandBright}
             />
           }
           renderItem={({ item }) => (
             <View className="mb-3 rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5">
               <View className="flex-row items-center justify-between gap-2">
-                <Text className="flex-1 text-base font-semibold text-white" numberOfLines={1}>
+                <Text className="flex-1 font-sans-semibold text-base text-white" numberOfLines={1}>
                   {item.customerName}
                 </Text>
                 <Badge label={item.status} tone={STATUS_TONES[item.status]} />
               </View>
-              <Text className="mt-1 text-sm text-zinc-400">
+              <Text className="mt-1 font-sans text-sm text-zinc-400">
                 {item.date} at {item.time}
                 {item.serviceRequested ? ` · ${item.serviceRequested}` : ''}
               </Text>
-              {!!item.phone && <Text className="mt-0.5 text-xs text-zinc-500">{item.phone}</Text>}
+              {!!item.phone && <Text className="mt-0.5 font-sans text-xs text-zinc-500">{item.phone}</Text>}
               {item.status === 'Cancelled' && !!item.cancelReason && (
-                <Text className="mt-1 text-xs text-zinc-500">Reason: {item.cancelReason}</Text>
+                <Text className="mt-1 font-sans text-xs text-zinc-500">Reason: {item.cancelReason}</Text>
               )}
               {(item.status === 'Pending' || item.status === 'Confirmed') && (
                 <Pressable
                   onPress={() => setCancelling(item)}
-                  className="mt-3 self-start rounded-full border border-rose-400/25 px-3 py-1.5 active:opacity-70"
+                  className="mt-3 self-start rounded-full border border-rose-400/25 px-3 py-1.5 active:scale-95"
                 >
-                  <Text className="text-xs font-medium text-rose-300">Cancel appointment</Text>
+                  <Text className="font-sans-semibold text-xs text-rose-300">Cancel appointment</Text>
                 </Pressable>
               )}
             </View>
@@ -443,6 +444,7 @@ function AppointmentsSegment() {
 
 export default function WhatsappScreen() {
   const router = useRouter();
+  const t = useTheme();
   const [segment, setSegment] = useState<'ai' | 'booking' | 'appointments'>('ai');
 
   return (
@@ -451,13 +453,13 @@ export default function WhatsappScreen() {
 
       <Pressable
         onPress={() => router.push('/inbox')}
-        className="mx-5 mb-3 flex-row items-center gap-2 rounded-xl border border-surface-border bg-surface-raised px-3.5 py-2.5 active:opacity-70"
+        className="mx-5 mb-3 flex-row items-center gap-2 rounded-card border border-surface-border bg-surface-raised px-3.5 py-2.5 active:opacity-70"
       >
-        <Ionicons name="chatbubbles-outline" size={16} color="#6366F1" />
-        <Text className="flex-1 text-xs text-zinc-300">
+        <Ionicons name="chatbubbles-outline" size={16} color={t.brandBright} />
+        <Text className="flex-1 font-sans text-xs text-zinc-300">
           Customer conversations live in the Inbox tab.
         </Text>
-        <Ionicons name="chevron-forward" size={14} color="#4A5175" />
+        <Ionicons name="chevron-forward" size={14} color={t.textFaint} />
       </Pressable>
 
       <SegmentedControl

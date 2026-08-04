@@ -14,9 +14,9 @@ export default function ScoreRing({ score, size = 200, strokeWidth = 16 }: Score
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (score / 100) * circumference;
 
-  let color = '#ef4444'; // red for < 50
-  if (score >= 80) color = '#22c55e'; // green
-  else if (score >= 50) color = '#eab308'; // yellow
+  let color = '#ba1a1a'; // red for < 50
+  if (score >= 80) color = '#006c45'; // green
+  else if (score >= 50) color = '#004119'; // yellow
 
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
@@ -26,7 +26,7 @@ export default function ScoreRing({ score, size = 200, strokeWidth = 16 }: Score
           cx={center}
           cy={center}
           r={radius}
-          stroke="#f1f5f9"
+          stroke="#e0e3e5"
           strokeWidth={strokeWidth}
           fill="transparent"
         />
@@ -48,14 +48,14 @@ export default function ScoreRing({ score, size = 200, strokeWidth = 16 }: Score
       {/* Score Text */}
       <div className="absolute flex flex-col items-center justify-center">
         <motion.span
-          className="text-4xl font-bold text-slate-900 tracking-tighter"
+          className="text-4xl font-bold text-on-surface tracking-tighter"
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.5, duration: 0.5 }}
         >
           {score}
         </motion.span>
-        <span className="text-sm font-medium text-slate-500 uppercase tracking-wider mt-1">Score</span>
+        <span className="text-sm font-medium text-on-surface-variant uppercase tracking-wider mt-1">Score</span>
       </div>
     </div>
   );

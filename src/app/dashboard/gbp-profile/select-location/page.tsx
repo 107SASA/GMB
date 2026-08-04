@@ -69,7 +69,7 @@ export default function SelectGbpLocationPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -77,10 +77,10 @@ export default function SelectGbpLocationPage() {
   return (
     <div className="max-w-2xl mx-auto py-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-          <MapPin className="w-6 h-6 text-indigo-600" /> Choose your Google Business Profile
+        <h1 className="font-heading text-2xl font-bold text-on-surface tracking-tight flex items-center gap-2">
+          <MapPin className="w-6 h-6 text-primary" /> Choose your Google Business Profile
         </h1>
-        <p className="text-slate-500 mt-1">
+        <p className="text-on-surface-variant mt-1">
           {googleEmail
             ? `${googleEmail} manages more than one location. Pick the one for this workspace.`
             : 'This Google account manages more than one location. Pick the one for this workspace.'}
@@ -88,7 +88,7 @@ export default function SelectGbpLocationPage() {
       </div>
 
       {error && (
-        <div className="mb-4 flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+        <div className="mb-4 flex items-start gap-2 bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container">
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
           <span>{error}</span>
         </div>
@@ -102,19 +102,19 @@ export default function SelectGbpLocationPage() {
               type="button"
               onClick={() => choose(loc.locationId)}
               disabled={selecting !== null}
-              className="w-full text-left bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all flex items-start gap-4 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full text-left bg-surface-container-lowest border border-outline-variant rounded-2xl p-5 shadow-sm hover:border-primary-fixed-dim hover:card-shadow transition-all flex items-start gap-4 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <div className="bg-slate-100 p-2.5 rounded-xl shrink-0">
-                <Store className="w-5 h-5 text-slate-500" />
+              <div className="bg-surface-container p-2.5 rounded-xl shrink-0">
+                <Store className="w-5 h-5 text-on-surface-variant" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-bold text-slate-900">{loc.title || 'Untitled location'}</div>
-                {loc.address && <div className="text-sm text-slate-500 mt-0.5">{loc.address}</div>}
+                <div className="font-bold text-on-surface">{loc.title || 'Untitled location'}</div>
+                {loc.address && <div className="text-sm text-on-surface-variant mt-0.5">{loc.address}</div>}
               </div>
               {selecting === loc.locationId ? (
-                <Loader2 className="w-5 h-5 text-indigo-600 animate-spin shrink-0" />
+                <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />
               ) : (
-                <CheckCircle2 className="w-5 h-5 text-slate-200 shrink-0" />
+                <CheckCircle2 className="w-5 h-5 text-outline-variant shrink-0" />
               )}
             </button>
           ))}
@@ -122,7 +122,7 @@ export default function SelectGbpLocationPage() {
       )}
 
       <div className="mt-6 text-center">
-        <a href="/dashboard/gbp-profile" className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors">
+        <a href="/dashboard/gbp-profile" className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors">
           Cancel and go back
         </a>
       </div>

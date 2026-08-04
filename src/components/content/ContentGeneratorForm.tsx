@@ -112,29 +112,29 @@ export default function ContentGeneratorForm({
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8"
+      className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant p-8"
     >
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-slate-900">AI Content Studio</h2>
-        <p className="text-slate-500 mt-1">Generate high-converting GMB posts, SEO content, and FAQs instantly.</p>
+        <h2 className="text-2xl font-bold text-on-surface">AI Content Studio</h2>
+        <p className="text-on-surface-variant mt-1">Generate high-converting GMB posts, SEO content, and FAQs instantly.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
 
         {/* Business identity */}
         {isBusinessPrefilled && !showOverrideFields ? (
-          <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl">
-            <div className="text-sm text-slate-700">
-              <span className="text-slate-400 mr-1">Generating for:</span>
+          <div className="flex items-center justify-between px-4 py-3 bg-surface border border-outline-variant rounded-xl">
+            <div className="text-sm text-on-surface">
+              <span className="text-outline mr-1">Generating for:</span>
               <span className="font-semibold">{formData.businessName}</span>
               {formData.location && (
-                <span className="text-slate-500"> · {formData.location}</span>
+                <span className="text-on-surface-variant"> · {formData.location}</span>
               )}
             </div>
             <button
               type="button"
               onClick={() => setShowOverrideFields(true)}
-              className="text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors ml-4 whitespace-nowrap"
+              className="text-xs font-medium text-primary hover:text-primary-container transition-colors ml-4 whitespace-nowrap"
             >
               Change
             </button>
@@ -143,22 +143,22 @@ export default function ContentGeneratorForm({
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700">Business Name</label>
+                <label className="text-sm font-semibold text-on-surface">Business Name</label>
                 <input
                   type="text"
                   required
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-colors"
+                  className="w-full px-4 py-3 rounded-xl border border-outline-variant focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
                   placeholder="e.g. Sharma Enterprises"
                   value={formData.businessName}
                   onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700">Business Type / Category</label>
+                <label className="text-sm font-semibold text-on-surface">Business Type / Category</label>
                 <input
                   type="text"
                   required
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-colors"
+                  className="w-full px-4 py-3 rounded-xl border border-outline-variant focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
                   placeholder="e.g. IT Services"
                   value={formData.businessType}
                   onChange={(e) => setFormData({ ...formData, businessType: e.target.value })}
@@ -166,11 +166,11 @@ export default function ContentGeneratorForm({
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Target Location</label>
+              <label className="text-sm font-semibold text-on-surface">Target Location</label>
               <input
                 type="text"
                 required
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-colors"
+                className="w-full px-4 py-3 rounded-xl border border-outline-variant focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
                 placeholder="e.g. Delhi, India"
                 value={formData.location}
                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
@@ -180,7 +180,7 @@ export default function ContentGeneratorForm({
               <button
                 type="button"
                 onClick={() => setShowOverrideFields(false)}
-                className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors"
+                className="text-xs font-medium text-on-surface-variant hover:text-on-surface transition-colors"
               >
                 ← Use {activeBusiness!.name}
               </button>
@@ -191,22 +191,22 @@ export default function ContentGeneratorForm({
         {/* Topic + Tone row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-slate-700">
-              Campaign Topic <span className="text-slate-400 font-normal">(optional)</span>
+            <label className="text-sm font-semibold text-on-surface">
+              Campaign Topic <span className="text-outline font-normal">(optional)</span>
             </label>
             <input
               type="text"
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-colors"
+              className="w-full px-4 py-3 rounded-xl border border-outline-variant focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
               placeholder="e.g. Summer Sale, Product Launch, Diwali Offers…"
               value={formData.topic}
               onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
             />
-            <p className="text-xs text-slate-400">All {POSTS_PER_WEEK} posts will be built around this theme.</p>
+            <p className="text-xs text-outline">All {POSTS_PER_WEEK} posts will be built around this theme.</p>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-slate-700">Content Tone</label>
+            <label className="text-sm font-semibold text-on-surface">Content Tone</label>
             <select
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-colors bg-white"
+              className="w-full px-4 py-3 rounded-xl border border-outline-variant focus:ring-2 focus:ring-primary focus:border-primary transition-colors bg-surface-container-lowest"
               value={formData.tone}
               onChange={(e) => setFormData({ ...formData, tone: e.target.value })}
             >
@@ -221,14 +221,14 @@ export default function ContentGeneratorForm({
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-semibold text-slate-700">
-              Target Keywords <span className="text-slate-400 font-normal">(Press Enter to add)</span>
+            <label className="text-sm font-semibold text-on-surface">
+              Target Keywords <span className="text-outline font-normal">(Press Enter to add)</span>
             </label>
             {keywords.length > 0 && (
               <button
                 type="button"
                 onClick={() => setKeywords([])}
-                className="text-xs font-medium text-slate-400 hover:text-slate-600 transition-colors"
+                className="text-xs font-medium text-outline hover:text-on-surface-variant transition-colors"
               >
                 Clear all
               </button>
@@ -236,7 +236,7 @@ export default function ContentGeneratorForm({
           </div>
           <input
             type="text"
-            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-colors"
+            className="w-full px-4 py-3 rounded-xl border border-outline-variant focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
             placeholder="Type a keyword and press Enter..."
             value={keywordInput}
             onChange={(e) => setKeywordInput(e.target.value)}
@@ -246,13 +246,13 @@ export default function ContentGeneratorForm({
             {keywords.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-slate-100 text-slate-800"
+                className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-surface-container text-on-surface"
               >
                 {tag}
                 <button
                   type="button"
                   onClick={() => handleRemoveKeyword(tag)}
-                  className="ml-2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                  className="ml-2 text-outline hover:text-on-surface-variant focus:outline-none"
                 >
                   &times;
                 </button>
@@ -262,7 +262,7 @@ export default function ContentGeneratorForm({
         </div>
 
         <div className="space-y-3">
-          <label className="text-sm font-semibold text-slate-700">What do you want to generate?</label>
+          <label className="text-sm font-semibold text-on-surface">What do you want to generate?</label>
           <div className="flex flex-wrap gap-3">
             {['GMB Posts', 'SEO Description', 'FAQs', 'Promotional Posts', 'Festival Posts'].map((type) => (
               <button
@@ -271,8 +271,8 @@ export default function ContentGeneratorForm({
                 onClick={() => toggleContentType(type)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
                   contentTypes.includes(type)
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                    ? 'bg-primary text-white border-on-surface'
+                    : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:border-outline-variant'
                 }`}
               >
                 {/* Display label only — the stored value stays 'GMB Posts' so the
@@ -286,10 +286,10 @@ export default function ContentGeneratorForm({
         <button
           type="submit"
           disabled={isLoading}
-          className={`w-full py-4 px-6 rounded-xl text-white font-semibold text-lg transition-all shadow-md flex justify-center items-center gap-2 ${
+          className={`w-full py-4 px-6 rounded-xl text-white font-semibold text-lg transition-all card-shadow flex justify-center items-center gap-2 ${
             isLoading
-              ? 'bg-slate-800 opacity-90 cursor-wait'
-              : 'bg-slate-900 hover:bg-slate-800 hover:-translate-y-0.5 hover:shadow-lg'
+              ? 'bg-primary opacity-90 cursor-wait'
+              : 'bg-primary hover:bg-primary hover:-translate-y-0.5 hover:card-shadow'
           }`}
         >
           {isLoading ? (
@@ -315,7 +315,7 @@ export default function ContentGeneratorForm({
         </button>
 
         {isLoading && (
-          <p className="text-center text-xs text-slate-400">
+          <p className="text-center text-xs text-outline">
             Writing your {POSTS_PER_WEEK} posts — usually ~10–20 seconds. Images are added to each post automatically a little after.
           </p>
         )}

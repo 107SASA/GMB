@@ -24,9 +24,20 @@ export function Screen({ children, className = '' }: { children: ReactNode; clas
 
 export function ScreenTitle({ children }: { children: ReactNode }) {
   return (
-    <Text className="px-5 pb-2 pt-4 text-[28px] font-extrabold tracking-tight text-white">
+    <Text className="px-5 pb-2 pt-4 font-display text-[28px] leading-[34px] text-white">
       {children}
     </Text>
+  );
+}
+
+/** Hairline-bordered container — the app's single elevation tier below FAB/modal. */
+export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <View
+      className={`rounded-card border border-surface-border bg-surface-raised p-4 ${className}`}
+    >
+      {children}
+    </View>
   );
 }
 
@@ -47,8 +58,8 @@ export function Field(props: TextInputProps) {
         setFocused(false);
         props.onBlur?.(e);
       }}
-      className={`rounded-2xl border px-4 py-3.5 text-base text-white ${
-        focused ? 'border-brand bg-surface-overlay' : 'border-surface-border bg-surface-raised'
+      className={`rounded-xl border px-4 py-3.5 font-sans text-base text-white ${
+        focused ? 'border-brand bg-surface-raised' : 'border-surface-border bg-surface-raised'
       } ${props.className ?? ''}`}
     />
   );
@@ -74,7 +85,7 @@ export function PrimaryButton({
         onPress();
       }}
       disabled={inactive}
-      className={`overflow-hidden rounded-2xl ${inactive ? 'opacity-50' : 'active:opacity-85'}`}
+      className={`overflow-hidden rounded-full ${inactive ? 'opacity-50' : 'active:scale-95'}`}
     >
       <LinearGradient
         colors={[...BRAND_GRADIENT]}
@@ -85,7 +96,7 @@ export function PrimaryButton({
         {loading ? (
           <ActivityIndicator color="#ffffff" />
         ) : (
-          <Text className="text-base font-bold text-on-brand">{title}</Text>
+          <Text className="font-sans-bold text-base text-on-brand">{title}</Text>
         )}
       </LinearGradient>
     </Pressable>
@@ -106,11 +117,11 @@ export function SecondaryButton({
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      className={`items-center rounded-2xl border border-surface-border bg-surface-raised py-3.5 ${
-        disabled ? 'opacity-50' : 'active:bg-surface-overlay'
+      className={`items-center rounded-full border border-brand bg-surface-raised py-3.5 ${
+        disabled ? 'opacity-50' : 'active:scale-95 active:bg-surface-overlay'
       }`}
     >
-      <Text className="text-base font-semibold text-zinc-200">{title}</Text>
+      <Text className="font-sans-bold text-base text-brand">{title}</Text>
     </Pressable>
   );
 }
@@ -146,7 +157,7 @@ export function Skeleton({ className = '' }: { className?: string }) {
   }, [opacity]);
 
   return (
-    <Animated.View style={{ opacity }} className={`rounded-2xl bg-surface-overlay ${className}`} />
+    <Animated.View style={{ opacity }} className={`rounded-card bg-surface-overlay ${className}`} />
   );
 }
 
@@ -162,14 +173,19 @@ export function EmptyState({
 }) {
   return (
     <View className="flex-1 items-center justify-center gap-2 px-8 py-16">
-      <Text className="text-center text-lg font-semibold text-white">{title}</Text>
-      {!!hint && <Text className="text-center text-sm text-zinc-400">{hint}</Text>}
+      <Text className="text-center font-display-bold text-lg text-white">{title}</Text>
+      {!!hint && <Text className="text-center font-sans text-sm text-zinc-400">{hint}</Text>}
       {action}
     </View>
   );
 }
 
-/** Small tinted status pill (sentiment, reply status, source, …). */
+/**
+ * Small tinted status pill (sentiment, reply status, source, score tier, …).
+ * Tones follow the semantic score-color rule: green ≥70/rank≤5/positive,
+ * amber 40-69/rank≤10/pending, rose <40/rank>10/critical — always a solid
+ * container + on-container pair, never bare text color.
+ */
 export function Badge({
   label,
   tone = 'neutral',
@@ -178,16 +194,18 @@ export function Badge({
   tone?: 'neutral' | 'positive' | 'negative' | 'warning' | 'info';
 }) {
   const tones = {
-    neutral: 'bg-zinc-800 text-zinc-300',
-    positive: 'bg-emerald-400/15 text-emerald-300',
-    negative: 'bg-rose-400/15 text-rose-300',
-    warning: 'bg-amber-400/15 text-amber-300',
-    info: 'bg-indigo-400/15 text-indigo-300',
+    neutral: 'bg-surface-overlay text-zinc-300',
+    positive: 'bg-secondary-container text-on-secondary-container',
+    negative: 'bg-error-container text-on-error-container',
+    warning: 'bg-warning-container text-on-warning-container',
+    info: 'bg-indigo-500/15 text-indigo-300',
   } as const;
   const [bg, text] = tones[tone].split(' ');
   return (
     <View className={`self-start rounded-full px-2.5 py-1 ${bg}`}>
-      <Text className={`text-xs font-semibold ${text}`}>{label}</Text>
+      <Text className={`font-sans-bold text-[11px] uppercase tracking-[0.6px] ${text}`}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -205,29 +223,29 @@ export function Chip({
   return (
     <Pressable
       onPress={onPress}
-      className={`rounded-full border px-4 py-2 ${
+      className={`rounded-full border px-4 py-2 active:scale-95 ${
         selected
           ? 'border-brand bg-brand'
-          : 'border-surface-border bg-surface-raised active:bg-surface-overlay'
+          : 'border-surface-border bg-surface active:bg-surface-overlay'
       }`}
     >
-      <Text className={`text-sm font-semibold ${selected ? 'text-on-brand' : 'text-zinc-400'}`}>
+      <Text className={`font-sans-semibold text-sm ${selected ? 'text-on-brand' : 'text-zinc-400'}`}>
         {label}
       </Text>
     </Pressable>
   );
 }
 
-/** Uppercase group heading used in settings-style screens. */
+/** Uppercase group heading used above lists/card groups for structural signposting. */
 export function SectionLabel({ children }: { children: string }) {
   return (
-    <Text className="mb-2.5 mt-7 px-1 text-[11px] font-bold uppercase tracking-[2px] text-zinc-500">
+    <Text className="mb-2.5 mt-7 px-1 font-sans-bold text-[11px] uppercase tracking-[0.6px] text-zinc-500">
       {children}
     </Text>
   );
 }
 
-/** Equal-width segment switcher (screen-level sub-tabs). */
+/** Equal-width segment switcher (screen-level sub-tabs) — pill-shaped per the design system. */
 export function SegmentedControl<T extends string>({
   segments,
   value,
@@ -238,17 +256,17 @@ export function SegmentedControl<T extends string>({
   onChange: (id: T) => void;
 }) {
   return (
-    <View className="mx-5 mb-3 flex-row rounded-2xl border border-surface-border bg-surface-raised p-1">
+    <View className="mx-5 mb-3 flex-row rounded-full border border-surface-border bg-surface-raised p-1">
       {segments.map((segment) => (
         <Pressable
           key={segment.id}
           onPress={() => onChange(segment.id)}
-          className={`flex-1 items-center rounded-xl py-2 ${
+          className={`flex-1 items-center rounded-full py-2 ${
             value === segment.id ? 'bg-brand' : ''
           }`}
         >
           <Text
-            className={`text-sm font-semibold ${
+            className={`font-sans-semibold text-sm ${
               value === segment.id ? 'text-on-brand' : 'text-zinc-500'
             }`}
           >
@@ -278,7 +296,7 @@ export function LabeledField({
 }: TextInputProps & { label: string }) {
   return (
     <View className="mb-3">
-      <Text className="mb-1.5 px-1 text-xs font-semibold text-zinc-400">{label}</Text>
+      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">{label}</Text>
       <Field {...inputProps} />
     </View>
   );
@@ -316,7 +334,7 @@ export function InitialsAvatar({
         justifyContent: 'center',
       }}
     >
-      <Text style={{ fontSize: size * 0.38 }} className="font-bold text-on-brand">
+      <Text style={{ fontSize: size * 0.38 }} className="font-sans-bold text-on-brand">
         {initials || '?'}
       </Text>
     </LinearGradient>
@@ -333,8 +351,8 @@ export function BackChevron() {
 export function ComingSoon({ label }: { label: string }) {
   return (
     <View className="flex-1 items-center justify-center gap-2 px-8">
-      <Text className="text-lg font-semibold text-white">{label}</Text>
-      <Text className="text-center text-sm text-zinc-400">
+      <Text className="font-display-bold text-lg text-white">{label}</Text>
+      <Text className="text-center font-sans text-sm text-zinc-400">
         This screen is scaffolded and will be implemented in an upcoming phase.
       </Text>
     </View>

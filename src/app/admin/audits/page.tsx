@@ -22,32 +22,32 @@ export default async function AdminAuditsPage() {
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <div className="flex items-center gap-3 mb-8">
-        <div className="w-11 h-11 bg-violet-600 rounded-xl flex items-center justify-center shadow-sm">
+        <div className="w-11 h-11 bg-primary rounded-xl flex items-center justify-center shadow-sm">
           <Zap className="w-5 h-5 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Audit Monitor</h1>
-          <p className="text-sm text-slate-500">System-wide AI audit execution logs.</p>
+          <h1 className="font-heading text-2xl font-bold text-on-surface">Audit Monitor</h1>
+          <p className="text-sm text-on-surface-variant">System-wide AI audit execution logs.</p>
         </div>
       </div>
       
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-          <div className="text-sm font-semibold text-slate-500 mb-1">Total Audits</div>
-          <div className="text-3xl font-black text-slate-900">{totalAudits}</div>
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+          <div className="text-sm font-semibold text-on-surface-variant mb-1">Total Audits</div>
+          <div className="text-3xl font-black text-on-surface">{totalAudits}</div>
         </div>
-        <div className="bg-white rounded-2xl border border-emerald-200 p-6 shadow-sm">
-          <div className="text-sm font-semibold text-emerald-600 mb-1">Completed Successfully</div>
-          <div className="text-3xl font-black text-slate-900">{completedAudits}</div>
+        <div className="bg-surface-container-lowest rounded-xl border border-secondary-fixed p-6 card-shadow">
+          <div className="text-sm font-semibold text-secondary mb-1">Completed Successfully</div>
+          <div className="text-3xl font-black text-on-surface">{completedAudits}</div>
         </div>
-        <div className="bg-white rounded-2xl border border-red-200 p-6 shadow-sm">
-          <div className="text-sm font-semibold text-red-600 mb-1">Failed Runs</div>
-          <div className="text-3xl font-black text-slate-900">{failedAudits}</div>
+        <div className="bg-surface-container-lowest rounded-xl border border-error-container p-6 card-shadow">
+          <div className="text-sm font-semibold text-error mb-1">Failed Runs</div>
+          <div className="text-3xl font-black text-on-surface">{failedAudits}</div>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="grid grid-cols-12 gap-4 px-6 py-4 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden">
+        <div className="grid grid-cols-12 gap-4 px-6 py-4 bg-surface border-b border-outline-variant text-label-sm text-on-surface-variant">
           <div className="col-span-3">Business</div>
           <div className="col-span-2">Date</div>
           <div className="col-span-2">Status</div>
@@ -55,40 +55,40 @@ export default async function AdminAuditsPage() {
           <div className="col-span-3">Error (if any)</div>
         </div>
 
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-outline-variant">
           {recentAudits.map(audit => (
-            <div key={audit._id.toString()} className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-slate-50 transition-colors">
-              <div className="col-span-3 font-semibold text-sm text-slate-900">
+            <div key={audit._id.toString()} className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-surface transition-colors">
+              <div className="col-span-3 font-semibold text-sm text-on-surface">
                 {audit.businessName}
               </div>
-              <div className="col-span-2 text-sm text-slate-500">
+              <div className="col-span-2 text-sm text-on-surface-variant">
                 {new Date(audit.createdAt).toLocaleString()}
               </div>
               <div className="col-span-2">
                 {audit.status === 'COMPLETED' ? (
-                  <span className="inline-flex items-center gap-1 text-xs font-bold bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full border border-emerald-100">
+                  <span className="inline-flex items-center gap-1 text-xs font-bold bg-secondary-container/40 text-on-secondary-container px-2.5 py-1 rounded-full border border-secondary-fixed">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Completed
                   </span>
                 ) : audit.status === 'FAILED' ? (
-                  <span className="inline-flex items-center gap-1 text-xs font-bold bg-red-50 text-red-700 px-2.5 py-1 rounded-full border border-red-100">
+                  <span className="inline-flex items-center gap-1 text-xs font-bold bg-error-container text-on-error-container px-2.5 py-1 rounded-full border border-error-container">
                     <AlertTriangle className="w-3.5 h-3.5" /> Failed
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 text-xs font-bold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full border border-amber-100">
+                  <span className="inline-flex items-center gap-1 text-xs font-bold bg-primary-fixed text-primary px-2.5 py-1 rounded-full border border-primary-fixed-dim">
                     <Clock className="w-3.5 h-3.5 animate-pulse" /> Pending
                   </span>
                 )}
               </div>
-              <div className="col-span-2 text-sm font-bold text-slate-900">
+              <div className="col-span-2 text-sm font-bold text-on-surface">
                 {audit.overallScore ? `${audit.overallScore}/100` : '-'}
               </div>
-              <div className="col-span-3 text-xs text-red-500 font-mono truncate" title={audit.metadata?.error}>
+              <div className="col-span-3 text-xs text-error font-mono truncate" title={audit.metadata?.error}>
                 {audit.metadata?.error || '-'}
               </div>
             </div>
           ))}
           {recentAudits.length === 0 && (
-            <div className="p-12 text-center text-slate-500">
+            <div className="p-12 text-center text-on-surface-variant">
               No audits have been executed yet.
             </div>
           )}

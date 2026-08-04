@@ -47,9 +47,9 @@ interface AutomationsData {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  success: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-  failed:  'bg-rose-50    text-rose-700    border-rose-100',
-  pending: 'bg-amber-50   text-amber-700   border-amber-100',
+  success: 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed',
+  failed:  'bg-error-container    text-on-error-container    border-error-container',
+  pending: 'bg-primary-fixed   text-primary   border-primary-fixed-dim',
 };
 
 function StatCard({
@@ -66,21 +66,21 @@ function StatCard({
   warning?: boolean;
 }) {
   return (
-    <div className={cn('bg-white rounded-2xl border p-6 shadow-sm', warning && Number(value) > 0 ? 'border-red-200' : 'border-slate-200')}>
+    <div className={cn('bg-surface-container-lowest rounded-xl border p-6 card-shadow', warning && Number(value) > 0 ? 'border-error-container' : 'border-outline-variant')}>
       <div className="flex items-start justify-between mb-4">
         <div className={cn('w-11 h-11 rounded-xl flex items-center justify-center', color)}>
           <Icon className="w-5 h-5 text-white" />
         </div>
         {warning && Number(value) > 0 && (
-          <span className="flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg">
+          <span className="flex items-center gap-1 text-xs font-bold text-error bg-error-container px-2 py-1 rounded-lg">
             <AlertTriangle className="w-3 h-3" /> Alert
           </span>
         )}
       </div>
-      <div className="text-3xl font-bold text-slate-900 mb-1">
+      <div className="text-3xl font-bold text-on-surface mb-1">
         {typeof value === 'number' ? value.toLocaleString() : value}
       </div>
-      <div className="text-sm text-slate-500">{title}</div>
+      <div className="text-sm text-on-surface-variant">{title}</div>
     </div>
   );
 }
@@ -119,18 +119,18 @@ export default function AutomationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-violet-600 rounded-xl flex items-center justify-center">
+          <div className="w-11 h-11 bg-primary rounded-xl flex items-center justify-center">
             <Zap className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Automations Monitor</h1>
-            <p className="text-sm text-slate-500">Platform-wide automation workflow executions</p>
+            <h1 className="font-heading text-2xl font-bold text-on-surface">Automations Monitor</h1>
+            <p className="text-sm text-on-surface-variant">Platform-wide automation workflow executions</p>
           </div>
         </div>
         <button
           onClick={fetchData}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-violet-50 text-violet-700 rounded-xl hover:bg-violet-100 transition-all text-sm font-medium"
+          className="flex items-center gap-2 px-4 py-2 bg-primary-fixed text-primary rounded-xl hover:bg-primary-fixed transition-all text-sm font-medium"
         >
           <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
           Refresh
@@ -138,30 +138,30 @@ export default function AutomationsPage() {
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>
+        <div className="mb-6 p-4 bg-error-container border border-error-container rounded-xl text-on-error-container text-sm">{error}</div>
       )}
 
       {loading && !data ? (
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       ) : data ? (
         <>
           {/* Stat Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-            <StatCard title="Total Runs"     value={data.stats.totalRuns}    icon={Zap}          color="bg-violet-600" />
-            <StatCard title="Successful"     value={data.stats.successCount} icon={CheckCircle2} color="bg-emerald-500" />
-            <StatCard title="Failed"         value={data.stats.failedCount}  icon={XCircle}      color="bg-red-500"    warning />
-            <StatCard title="Failed Today"   value={data.stats.failedToday}  icon={AlertTriangle} color="bg-amber-500" warning />
-            <StatCard title="Success Rate"   value={`${data.stats.successRate}%`} icon={TrendingUp} color="bg-blue-500" />
+            <StatCard title="Total Runs"     value={data.stats.totalRuns}    icon={Zap}          color="bg-primary" />
+            <StatCard title="Successful"     value={data.stats.successCount} icon={CheckCircle2} color="bg-secondary" />
+            <StatCard title="Failed"         value={data.stats.failedCount}  icon={XCircle}      color="bg-error"    warning />
+            <StatCard title="Failed Today"   value={data.stats.failedToday}  icon={AlertTriangle} color="bg-primary-fixed-dim" warning />
+            <StatCard title="Success Rate"   value={`${data.stats.successRate}%`} icon={TrendingUp} color="bg-primary-fixed-dim" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
             {/* Workflow Breakdown */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-              <h2 className="font-semibold text-slate-900 mb-5">Top Workflows</h2>
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+              <h2 className="font-semibold text-on-surface mb-5">Top Workflows</h2>
               {data.byWorkflow.length === 0 ? (
-                <div className="text-sm text-slate-400 text-center py-8">No data</div>
+                <div className="text-sm text-outline text-center py-8">No data</div>
               ) : (
                 <div className="space-y-4">
                   {data.byWorkflow.map(w => {
@@ -169,11 +169,11 @@ export default function AutomationsPage() {
                     return (
                       <div key={w._id}>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-slate-700 truncate max-w-[140px]">{w._id || 'Unknown'}</span>
-                          <span className="text-xs font-bold text-slate-900">{w.count.toLocaleString()}</span>
+                          <span className="text-xs font-semibold text-on-surface truncate max-w-[140px]">{w._id || 'Unknown'}</span>
+                          <span className="text-xs font-bold text-on-surface">{w.count.toLocaleString()}</span>
                         </div>
-                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-violet-500 rounded-full" style={{ width: `${pct}%` }} />
+                        <div className="h-1.5 bg-surface-container rounded-full overflow-hidden">
+                          <div className="h-full bg-primary-fixed-dim rounded-full" style={{ width: `${pct}%` }} />
                         </div>
                       </div>
                     );
@@ -183,8 +183,8 @@ export default function AutomationsPage() {
             </div>
 
             {/* Success Rate Ring */}
-            <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col">
-              <h2 className="font-semibold text-slate-900 mb-5">Health Summary</h2>
+            <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6 flex flex-col">
+              <h2 className="font-semibold text-on-surface mb-5">Health Summary</h2>
               <div className="flex-1 flex items-center gap-8">
                 {/* SVG ring */}
                 <div className="relative w-28 h-28 flex-shrink-0">
@@ -199,17 +199,17 @@ export default function AutomationsPage() {
                     />
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-xl font-bold text-slate-900">{data.stats.successRate}%</span>
-                    <span className="text-[10px] text-slate-400">success</span>
+                    <span className="text-xl font-bold text-on-surface">{data.stats.successRate}%</span>
+                    <span className="text-[10px] text-outline">success</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 flex-1">
                   {[
-                    { label: 'Total Runs',   value: data.stats.totalRuns,    color: 'bg-violet-100 text-violet-700' },
-                    { label: 'Succeeded',    value: data.stats.successCount, color: 'bg-emerald-100 text-emerald-700' },
-                    { label: 'Failed (all)', value: data.stats.failedCount,  color: 'bg-red-100 text-red-700' },
-                    { label: 'Failed today', value: data.stats.failedToday,  color: 'bg-amber-100 text-amber-700' },
+                    { label: 'Total Runs',   value: data.stats.totalRuns,    color: 'bg-primary-fixed text-primary' },
+                    { label: 'Succeeded',    value: data.stats.successCount, color: 'bg-secondary-container text-on-secondary-container' },
+                    { label: 'Failed (all)', value: data.stats.failedCount,  color: 'bg-error-container text-on-error-container' },
+                    { label: 'Failed today', value: data.stats.failedToday,  color: 'bg-primary-fixed text-primary' },
                   ].map(item => (
                     <div key={item.label} className={cn('rounded-xl p-3', item.color)}>
                       <div className="text-xl font-bold">{item.value.toLocaleString()}</div>
@@ -222,18 +222,18 @@ export default function AutomationsPage() {
           </div>
 
           {/* Recent Logs Table */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
-            <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow">
+            <div className="p-6 border-b border-outline-variant flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
               <div>
-                <h2 className="font-semibold text-slate-900">Recent Executions</h2>
-                <p className="text-sm text-slate-500">Last 50 automation runs</p>
+                <h2 className="font-semibold text-on-surface">Recent Executions</h2>
+                <p className="text-sm text-on-surface-variant">Last 50 automation runs</p>
               </div>
               <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4 text-slate-400" />
+                <Filter className="w-4 h-4 text-outline" />
                 <select
                   value={statusFilter}
                   onChange={e => setStatus(e.target.value)}
-                  className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  className="text-xs border border-outline-variant rounded-lg px-2 py-1.5 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="all">All Statuses</option>
                   <option value="success">Success</option>
@@ -243,7 +243,7 @@ export default function AutomationsPage() {
                 <select
                   value={typeFilter}
                   onChange={e => setType(e.target.value)}
-                  className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  className="text-xs border border-outline-variant rounded-lg px-2 py-1.5 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="all">All Types</option>
                   <option value="whatsapp">WhatsApp</option>
@@ -255,31 +255,31 @@ export default function AutomationsPage() {
             </div>
 
             {data.recentLogs.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 text-sm">No automation logs found.</div>
+              <div className="p-8 text-center text-outline text-sm">No automation logs found.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-100">
-                      <th className="text-left p-4 text-slate-500 font-medium">Workflow</th>
-                      <th className="text-left p-4 text-slate-500 font-medium">Action</th>
-                      <th className="text-left p-4 text-slate-500 font-medium">Status</th>
-                      <th className="text-left p-4 text-slate-500 font-medium">Duration</th>
-                      <th className="text-left p-4 text-slate-500 font-medium">Message / Error</th>
-                      <th className="text-left p-4 text-slate-500 font-medium">Time</th>
+                    <tr className="border-b border-outline-variant bg-surface-container-low">
+                      <th className="text-left p-4 text-label-sm text-on-surface-variant">Workflow</th>
+                      <th className="text-left p-4 text-label-sm text-on-surface-variant">Action</th>
+                      <th className="text-left p-4 text-label-sm text-on-surface-variant">Status</th>
+                      <th className="text-left p-4 text-label-sm text-on-surface-variant">Duration</th>
+                      <th className="text-left p-4 text-label-sm text-on-surface-variant">Message / Error</th>
+                      <th className="text-left p-4 text-label-sm text-on-surface-variant">Time</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.recentLogs.map(log => (
-                      <tr key={log._id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                        <td className="p-4 font-medium text-slate-800">{log.workflow || '—'}</td>
-                        <td className="p-4 text-slate-600">{log.action || log.type || '—'}</td>
+                      <tr key={log._id} className="border-b border-outline-variant hover:bg-surface transition-colors">
+                        <td className="p-4 font-medium text-on-surface">{log.workflow || '—'}</td>
+                        <td className="p-4 text-on-surface-variant">{log.action || log.type || '—'}</td>
                         <td className="p-4">
                           <span className={cn('px-2 py-0.5 text-xs font-bold rounded-md border', STATUS_STYLES[log.status] ?? STATUS_STYLES.pending)}>
                             {log.status}
                           </span>
                         </td>
-                        <td className="p-4 text-slate-500">
+                        <td className="p-4 text-on-surface-variant">
                           {log.duration ? (
                             <span className="flex items-center gap-1">
                               <Clock className="w-3 h-3" />{log.duration}ms
@@ -288,12 +288,12 @@ export default function AutomationsPage() {
                         </td>
                         <td className="p-4 max-w-xs">
                           {log.status === 'failed' ? (
-                            <span className="text-red-600 truncate block">{log.error || log.message || '—'}</span>
+                            <span className="text-error truncate block">{log.error || log.message || '—'}</span>
                           ) : (
-                            <span className="text-slate-500 truncate block">{log.message || '—'}</span>
+                            <span className="text-on-surface-variant truncate block">{log.message || '—'}</span>
                           )}
                         </td>
-                        <td className="p-4 text-slate-400 whitespace-nowrap">
+                        <td className="p-4 text-outline whitespace-nowrap">
                           {new Date(log.createdAt).toLocaleString()}
                         </td>
                       </tr>

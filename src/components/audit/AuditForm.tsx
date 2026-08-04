@@ -71,7 +71,7 @@ export default function AuditForm() {
 
   if (!activeBusiness) {
     return (
-      <div className="p-8 text-center text-slate-500 bg-white rounded-2xl border border-slate-200">
+      <div className="p-8 text-center text-on-surface-variant bg-surface-container-lowest rounded-2xl border border-outline-variant">
         Please select or create a business to run an audit.
       </div>
     );
@@ -85,31 +85,31 @@ export default function AuditForm() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 md:p-10"
+        className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant p-8 md:p-10"
       >
         <div className="text-center mb-10">
-          <div className="w-16 h-16 bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm border border-blue-100">
-            <Zap size={32} className={isReady ? 'text-blue-600' : 'text-slate-400'} />
+          <div className="w-16 h-16 bg-gradient-to-br from-primary-fixed to-primary-container text-primary rounded-xl flex items-center justify-center mx-auto mb-6 card-shadow border border-primary-fixed-dim">
+            <Zap size={32} className={isReady ? 'text-primary' : 'text-outline'} />
           </div>
-          <h2 className="text-3xl font-bold text-slate-900 mb-3 tracking-tight">Generate AI Audit</h2>
-          <p className="text-slate-500 text-lg max-w-xl mx-auto">
+          <h2 className="font-heading text-headline-md text-on-surface mb-3 tracking-tight">Generate AI Audit</h2>
+          <p className="text-on-surface-variant text-lg max-w-xl mx-auto">
             Review your business details below, set the category and city, then run the audit.
           </p>
         </div>
 
-        <div className="bg-white rounded-xl mb-10 text-left border border-slate-200 overflow-hidden shadow-sm">
-          <div className="bg-slate-50 border-b border-slate-200 p-5 flex items-center justify-between">
-            <h3 className="font-semibold text-slate-900 flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-slate-500" />
+        <div className="bg-surface-container-lowest rounded-xl mb-10 text-left border border-outline-variant overflow-hidden shadow-sm">
+          <div className="bg-surface border-b border-outline-variant p-5 flex items-center justify-between">
+            <h3 className="font-semibold text-on-surface flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-on-surface-variant" />
               Audit Configuration
             </h3>
             {isReady ? (
-              <span className="inline-flex items-center gap-1.5 py-1 px-3 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full border border-emerald-200">
+              <span className="inline-flex items-center gap-1.5 py-1 px-3 bg-secondary-container/40 text-on-secondary-container text-xs font-semibold rounded-full border border-secondary-fixed">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 Ready for Audit
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 py-1 px-3 bg-amber-50 text-amber-700 text-xs font-semibold rounded-full border border-amber-200">
+              <span className="inline-flex items-center gap-1.5 py-1 px-3 bg-error-container text-on-error-container text-xs font-semibold rounded-full border border-error-container">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 Category Required
               </span>
@@ -119,19 +119,19 @@ export default function AuditForm() {
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Business Name — read-only */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5" /> Business Name
               </label>
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg text-slate-700 font-medium truncate">
+              <div className="p-3 bg-surface border border-outline-variant rounded-lg text-on-surface font-medium truncate">
                 {activeBusiness.name}
               </div>
             </div>
 
             {/* Category — EDITABLE */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
                 <Tag className="w-3.5 h-3.5" /> Category
-                <span className="ml-auto text-blue-500 flex items-center gap-0.5 font-normal normal-case tracking-normal text-xs">
+                <span className="ml-auto text-primary flex items-center gap-0.5 font-normal normal-case tracking-normal text-xs">
                   <Edit3 className="w-3 h-3" /> editable
                 </span>
               </label>
@@ -140,14 +140,14 @@ export default function AuditForm() {
                 value={categoryOverride}
                 onChange={e => setCategoryOverride(e.target.value)}
                 placeholder="e.g. IT Company, Restaurant, Retail Store"
-                className={`w-full p-3 border rounded-lg text-slate-800 font-medium focus:outline-none focus:ring-2 transition-colors ${
+                className={`w-full p-3 border rounded-lg text-on-surface font-medium focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors ${
                   missingCategory
-                    ? 'border-amber-300 bg-amber-50 focus:ring-amber-300 placeholder:text-amber-400'
-                    : 'border-blue-200 bg-blue-50 focus:ring-blue-300 placeholder:text-slate-400'
+                    ? 'border-error bg-error-container focus:ring-error placeholder:text-error'
+                    : 'border-primary-fixed-dim bg-primary-fixed placeholder:text-outline'
                 }`}
               />
               {missingCategory && (
-                <p className="text-xs text-amber-600 flex items-center gap-1">
+                <p className="text-xs text-error flex items-center gap-1">
                   <AlertTriangle className="w-3 h-3" /> Required for competitor discovery
                 </p>
               )}
@@ -155,9 +155,9 @@ export default function AuditForm() {
 
             {/* City — EDITABLE */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5" /> City
-                <span className="ml-auto text-blue-500 flex items-center gap-0.5 font-normal normal-case tracking-normal text-xs">
+                <span className="ml-auto text-primary flex items-center gap-0.5 font-normal normal-case tracking-normal text-xs">
                   <Edit3 className="w-3 h-3" /> editable
                 </span>
               </label>
@@ -166,42 +166,42 @@ export default function AuditForm() {
                 value={cityOverride}
                 onChange={e => setCityOverride(e.target.value)}
                 placeholder="e.g. Kolkata, Mumbai, Pune"
-                className="w-full p-3 border border-blue-200 bg-blue-50 rounded-lg text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-300 placeholder:text-slate-400 transition-colors"
+                className="w-full p-3 border border-primary-fixed-dim bg-primary-fixed rounded-lg text-on-surface font-medium focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-outline transition-colors"
               />
             </div>
 
             {/* Full Address — read-only */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
                 <MapIcon className="w-3.5 h-3.5" /> Full Address
               </label>
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg text-slate-700 font-medium truncate">
+              <div className="p-3 bg-surface border border-outline-variant rounded-lg text-on-surface font-medium truncate">
                 {activeBusiness.address || 'N/A'}
               </div>
             </div>
 
             {/* Website — read-only */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
                 <Globe className="w-3.5 h-3.5" /> Website
               </label>
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg text-slate-700 font-medium truncate">
+              <div className="p-3 bg-surface border border-outline-variant rounded-lg text-on-surface font-medium truncate">
                 {activeBusiness.website || 'N/A'}
               </div>
             </div>
 
             {/* Phone — read-only */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
                 <Phone className="w-3.5 h-3.5" /> Phone
               </label>
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg text-slate-700 font-medium truncate">
+              <div className="p-3 bg-surface border border-outline-variant rounded-lg text-on-surface font-medium truncate">
                 {activeBusiness.phone || 'N/A'}
               </div>
             </div>
           </div>
 
-          <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 text-xs text-slate-500 text-center">
+          <div className="px-6 py-4 bg-surface border-t border-outline-variant text-xs text-on-surface-variant text-center">
             Category and city can be adjusted for each audit run. Other fields come from your business profile.
           </div>
         </div>
@@ -209,7 +209,7 @@ export default function AuditForm() {
         {/* Feature 2 — Review Analysis Range + Improvement Plan Duration selectors */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
               Review Analysis Period
             </label>
             <div className="grid grid-cols-3 gap-2">
@@ -220,19 +220,19 @@ export default function AuditForm() {
                   onClick={() => setReviewPeriodDays(days)}
                   className={`py-2.5 px-3 rounded-lg text-sm font-semibold border transition-colors ${
                     reviewPeriodDays === days
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'
+                      ? 'bg-primary border-primary text-white'
+                      : 'bg-surface-container-lowest border-outline-variant text-on-surface-variant hover:border-primary-fixed-dim'
                   }`}
                 >
                   Last {days} Days
                 </button>
               ))}
             </div>
-            <p className="text-xs text-slate-400">Determines which reviews are fetched and analyzed for sentiment, trends and recommendations.</p>
+            <p className="text-xs text-outline">Determines which reviews are fetched and analyzed for sentiment, trends and recommendations.</p>
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <label className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
               Improvement Plan Duration
             </label>
             <div className="grid grid-cols-3 gap-2">
@@ -243,21 +243,21 @@ export default function AuditForm() {
                   onClick={() => setActionPlanDurationDays(days)}
                   className={`py-2.5 px-3 rounded-lg text-sm font-semibold border transition-colors ${
                     actionPlanDurationDays === days
-                      ? 'bg-indigo-600 border-indigo-600 text-white'
-                      : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'
+                      ? 'bg-primary border-primary text-white'
+                      : 'bg-surface-container-lowest border-outline-variant text-on-surface-variant hover:border-primary-fixed-dim'
                   }`}
                 >
                   {days} Days
                 </button>
               ))}
             </div>
-            <p className="text-xs text-slate-400">Shapes the generated action plan/roadmap in your report.</p>
+            <p className="text-xs text-outline">Shapes the generated action plan/roadmap in your report.</p>
           </div>
         </div>
 
         {error && (
-          <div className="mb-8 p-5 bg-red-50 text-red-700 rounded-xl border border-red-100 flex items-start gap-3 text-left shadow-sm">
-            <AlertTriangle className="w-6 h-6 shrink-0 text-red-500" />
+          <div className="mb-8 p-5 bg-error-container text-on-error-container rounded-xl border border-error-container flex items-start gap-3 text-left shadow-sm">
+            <AlertTriangle className="w-6 h-6 shrink-0 text-error" />
             <div>
               <h4 className="font-semibold mb-1">Audit Failed</h4>
               <p className="text-sm">{error}</p>
@@ -268,10 +268,10 @@ export default function AuditForm() {
         <button
           onClick={triggerAudit}
           disabled={loading || !isReady}
-          className={`w-full py-5 px-6 rounded-xl text-white font-bold text-lg transition-all flex items-center justify-center gap-3 ${
+          className={`w-full py-5 px-6 rounded-lg text-white font-bold text-lg transition-all flex items-center justify-center gap-3 ${
             loading || !isReady
-              ? 'bg-slate-300 cursor-not-allowed shadow-none'
-              : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md hover:shadow-xl hover:-translate-y-0.5'
+              ? 'bg-surface-container-highest cursor-not-allowed shadow-none'
+              : 'bg-primary hover:bg-primary-container card-shadow hover:-translate-y-0.5'
           }`}
         >
           {loading ? (

@@ -61,8 +61,8 @@ function StatusBadge({ connected, label }: { connected: boolean; label: string }
       className={cn(
         'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold border',
         connected
-          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-          : 'bg-slate-50 text-slate-400 border-slate-200'
+          ? 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed'
+          : 'bg-surface text-outline border-outline-variant'
       )}
     >
       {connected ? (
@@ -163,12 +163,12 @@ export default function AdminBusinessesPage() {
       {/* Page Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-violet-600 rounded-xl flex items-center justify-center shadow-md shadow-violet-600/20">
+          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center card-shadow">
             <Building2 className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Businesses</h1>
-            <p className="text-sm text-slate-500 font-medium">
+            <h1 className="font-heading text-2xl font-bold text-on-surface">Businesses</h1>
+            <p className="text-sm text-on-surface-variant font-medium">
               {pagination.total.toLocaleString()} total businesses on the platform
             </p>
           </div>
@@ -176,7 +176,7 @@ export default function AdminBusinessesPage() {
         <button
           onClick={() => fetchBusinesses({ isRefresh: true })}
           disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-60"
+          className="flex items-center gap-2 px-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm font-semibold text-on-surface-variant hover:bg-surface transition-all shadow-sm disabled:opacity-60"
         >
           <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
           Refresh
@@ -184,23 +184,23 @@ export default function AdminBusinessesPage() {
       </div>
 
       {/* Search & Filters */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-6">
+      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 mb-6">
         <div className="flex flex-col sm:flex-row gap-3">
           {/* Search */}
           <form onSubmit={handleSearch} className="flex-1 flex gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
               <input
                 type="text"
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
                 placeholder="Search by name, category, city…"
-                className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all"
+                className="w-full pl-9 pr-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm font-medium text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
               />
             </div>
             <button
               type="submit"
-              className="px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold rounded-xl transition-all"
+              className="px-4 py-2.5 bg-primary hover:bg-primary-container text-white text-sm font-bold rounded-xl transition-all"
             >
               Search
             </button>
@@ -208,7 +208,7 @@ export default function AdminBusinessesPage() {
 
           {/* Filter */}
           <div className="flex items-center gap-2 flex-wrap">
-            <Filter className="w-4 h-4 text-slate-400 flex-shrink-0" />
+            <Filter className="w-4 h-4 text-outline flex-shrink-0" />
             {FILTER_OPTIONS.map(opt => (
               <button
                 key={opt.value}
@@ -216,8 +216,8 @@ export default function AdminBusinessesPage() {
                 className={cn(
                   'px-3 py-2 rounded-xl text-xs font-bold transition-all border',
                   filter === opt.value
-                    ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
-                    : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                    ? 'bg-primary-container text-on-primary-container border-primary-container'
+                    : 'bg-surface text-on-surface-variant border-outline-variant hover:bg-surface-container'
                 )}
               >
                 {opt.label}
@@ -229,18 +229,18 @@ export default function AdminBusinessesPage() {
 
       {/* Content */}
       {loading ? (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-24 flex flex-col items-center justify-center gap-3">
-          <div className="w-8 h-8 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
-          <p className="text-sm font-medium text-slate-400">Loading businesses…</p>
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow py-24 flex flex-col items-center justify-center gap-3">
+          <div className="w-8 h-8 border-4 border-primary-fixed-dim border-t-primary rounded-full animate-spin" />
+          <p className="text-sm font-medium text-outline">Loading businesses…</p>
         </div>
       ) : error ? (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-24 text-center">
-          <p className="text-sm text-rose-500 font-medium">{error}</p>
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow py-24 text-center">
+          <p className="text-sm text-error font-medium">{error}</p>
         </div>
       ) : businesses.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-24 text-center">
-          <Building2 className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-          <p className="text-sm font-medium text-slate-400">No businesses found.</p>
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow py-24 text-center">
+          <Building2 className="w-10 h-10 text-outline-variant mx-auto mb-3" />
+          <p className="text-sm font-medium text-outline">No businesses found.</p>
           {search && (
             <button
               onClick={() => {
@@ -249,7 +249,7 @@ export default function AdminBusinessesPage() {
                 setPage(1);
                 fetchBusinesses({ search: '', filter, page: 1 });
               }}
-              className="mt-3 text-xs text-violet-600 hover:underline font-medium"
+              className="mt-3 text-xs text-primary hover:underline font-medium"
             >
               Clear search
             </button>
@@ -258,49 +258,49 @@ export default function AdminBusinessesPage() {
       ) : (
         <>
           {/* Table */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden mb-6">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/60">
-                    <th className="text-left px-6 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <tr className="border-b border-outline-variant bg-surface-container-low">
+                    <th className="text-left px-6 py-3 text-label-sm text-on-surface-variant">
                       Business
                     </th>
-                    <th className="text-left px-6 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="text-left px-6 py-3 text-label-sm text-on-surface-variant">
                       Owner
                     </th>
-                    <th className="text-left px-6 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="text-left px-6 py-3 text-label-sm text-on-surface-variant">
                       Contact
                     </th>
-                    <th className="text-left px-6 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="text-left px-6 py-3 text-label-sm text-on-surface-variant">
                       Integrations
                     </th>
-                    <th className="text-left px-6 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="text-left px-6 py-3 text-label-sm text-on-surface-variant">
                       Content
                     </th>
-                    <th className="text-left px-6 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="text-left px-6 py-3 text-label-sm text-on-surface-variant">
                       Joined
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-outline-variant">
                   {businesses.map(biz => (
-                    <tr key={biz._id} className="hover:bg-slate-50/50 transition-colors">
+                    <tr key={biz._id} className="hover:bg-surface/50 transition-colors">
                       {/* Business */}
                       <td className="px-6 py-4">
                         <div className="flex items-start gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <Building2 className="w-4 h-4 text-indigo-600" />
+                          <div className="w-9 h-9 rounded-xl bg-primary-fixed border border-primary-fixed-dim flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <Building2 className="w-4 h-4 text-primary" />
                           </div>
                           <div>
-                            <div className="font-semibold text-slate-900 leading-tight">
+                            <div className="font-semibold text-on-surface leading-tight">
                               {biz.name}
                             </div>
-                            <div className="text-xs text-slate-400 font-medium mt-0.5">
+                            <div className="text-xs text-outline font-medium mt-0.5">
                               {biz.category}
                             </div>
                             {(biz.address || biz.city) && (
-                              <div className="flex items-center gap-1 text-xs text-slate-400 mt-1">
+                              <div className="flex items-center gap-1 text-xs text-outline mt-1">
                                 <MapPin className="w-3 h-3" />
                                 {biz.city || biz.address?.split(',')[0]}
                               </div>
@@ -313,19 +313,19 @@ export default function AdminBusinessesPage() {
                       <td className="px-6 py-4">
                         {biz.userId ? (
                           <div>
-                            <div className="flex items-center gap-1.5 font-semibold text-slate-900">
-                              <User className="w-3.5 h-3.5 text-slate-400" />
+                            <div className="flex items-center gap-1.5 font-semibold text-on-surface">
+                              <User className="w-3.5 h-3.5 text-outline" />
                               {biz.userId.fullName}
                             </div>
-                            <div className="text-xs text-slate-400 mt-0.5">
+                            <div className="text-xs text-outline mt-0.5">
                               {biz.userId.email}
                             </div>
-                            <span className="mt-1 inline-block px-2 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-md border border-indigo-100">
+                            <span className="mt-1 inline-block px-2 py-0.5 bg-primary-fixed text-primary text-xs font-bold rounded-md border border-primary-fixed-dim">
                               {biz.userId.subscriptionPlan || 'Free'}
                             </span>
                           </div>
                         ) : (
-                          <span className="text-slate-300 text-xs italic">No owner</span>
+                          <span className="text-outline text-xs italic">No owner</span>
                         )}
                       </td>
 
@@ -333,26 +333,26 @@ export default function AdminBusinessesPage() {
                       <td className="px-6 py-4">
                         <div className="space-y-1">
                           {biz.phone && (
-                            <div className="flex items-center gap-1 text-xs text-slate-500">
+                            <div className="flex items-center gap-1 text-xs text-on-surface-variant">
                               <Phone className="w-3 h-3" />
                               {biz.phone}
                             </div>
                           )}
                           {biz.website && (
-                            <div className="flex items-center gap-1 text-xs text-slate-500">
+                            <div className="flex items-center gap-1 text-xs text-on-surface-variant">
                               <Globe className="w-3 h-3" />
                               <a
                                 href={biz.website}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="hover:text-indigo-600 truncate max-w-[120px]"
+                                className="hover:text-primary truncate max-w-[120px]"
                               >
                                 {biz.website.replace(/^https?:\/\//, '')}
                               </a>
                             </div>
                           )}
                           {!biz.phone && !biz.website && (
-                            <span className="text-slate-300 text-xs italic">—</span>
+                            <span className="text-outline text-xs italic">—</span>
                           )}
                         </div>
                       </td>
@@ -375,15 +375,15 @@ export default function AdminBusinessesPage() {
                       {/* Content Generated */}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-1.5">
-                          <Sparkles className="w-4 h-4 text-cyan-500" />
-                          <span className="font-bold text-slate-900">
+                          <Sparkles className="w-4 h-4 text-primary" />
+                          <span className="font-bold text-on-surface">
                             {biz.contentGeneratedCount.toLocaleString()}
                           </span>
                         </div>
                       </td>
 
                       {/* Joined */}
-                      <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">
+                      <td className="px-6 py-4 text-xs text-outline whitespace-nowrap">
                         {new Date(biz.createdAt).toLocaleDateString('en-GB', {
                           day: 'numeric',
                           month: 'short',
@@ -400,14 +400,14 @@ export default function AdminBusinessesPage() {
           {/* Pagination */}
           {pagination.totalPages > 1 && (
             <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-500 font-medium">
+              <p className="text-sm text-on-surface-variant font-medium">
                 Showing{' '}
-                <span className="font-bold text-slate-900">
+                <span className="font-bold text-on-surface">
                   {(pagination.page - 1) * pagination.limit + 1}–
                   {Math.min(pagination.page * pagination.limit, pagination.total)}
                 </span>{' '}
                 of{' '}
-                <span className="font-bold text-slate-900">
+                <span className="font-bold text-on-surface">
                   {pagination.total.toLocaleString()}
                 </span>{' '}
                 businesses
@@ -416,7 +416,7 @@ export default function AdminBusinessesPage() {
                 <button
                   onClick={() => handlePage(page - 1)}
                   disabled={page === 1}
-                  className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  className="w-9 h-9 rounded-xl border border-outline-variant bg-surface-container-lowest flex items-center justify-center text-on-surface-variant hover:bg-surface disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
@@ -437,7 +437,7 @@ export default function AdminBusinessesPage() {
                   }, [])
                   .map((p, idx) =>
                     p === '...' ? (
-                      <span key={`ellipsis-${idx}`} className="px-2 text-slate-400 text-sm">
+                      <span key={`ellipsis-${idx}`} className="px-2 text-outline text-sm">
                         …
                       </span>
                     ) : (
@@ -447,8 +447,8 @@ export default function AdminBusinessesPage() {
                         className={cn(
                           'w-9 h-9 rounded-xl text-sm font-bold transition-all border',
                           page === p
-                            ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
-                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                            ? 'bg-primary-container text-on-primary-container border-primary-container'
+                            : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:bg-surface'
                         )}
                       >
                         {p}
@@ -459,7 +459,7 @@ export default function AdminBusinessesPage() {
                 <button
                   onClick={() => handlePage(page + 1)}
                   disabled={page === pagination.totalPages}
-                  className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  className="w-9 h-9 rounded-xl border border-outline-variant bg-surface-container-lowest flex items-center justify-center text-on-surface-variant hover:bg-surface disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>

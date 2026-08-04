@@ -14,11 +14,11 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex overflow-hidden">
+    <div className="min-h-screen bg-background flex overflow-hidden">
       <AdminSidebar />
       <div className="flex-1 flex flex-col min-h-screen overflow-hidden lg:ml-64">
-        <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-          <div className="max-w-7xl mx-auto">{children}</div>
+        <main className="flex-1 overflow-y-auto p-gutter custom-scrollbar">
+          <div className="max-w-container-max mx-auto">{children}</div>
         </main>
       </div>
     </div>

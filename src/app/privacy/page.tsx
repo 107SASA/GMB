@@ -59,7 +59,7 @@ export default function PrivacyPolicyPage() {
         <ul className="list-disc pl-6 space-y-2">
           <li>
             With your explicit consent, we request the{" "}
-            <code className="text-sm bg-slate-100 px-1 rounded">business.manage</code> scope to
+            <code className="text-sm bg-surface-container px-1 rounded">business.manage</code> scope to
             read and manage your Google Business Profile on your behalf.
           </li>
           <li>

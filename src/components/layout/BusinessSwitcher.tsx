@@ -27,18 +27,18 @@ export function BusinessSwitcher() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors"
+        className="flex items-center gap-2 px-3 py-2 bg-surface border border-outline-variant rounded-xl hover:bg-surface-container transition-colors"
       >
-        <Store className="w-4 h-4 text-slate-500" />
-        <span className="text-sm font-medium text-slate-700 max-w-[150px] truncate">
+        <Store className="w-4 h-4 text-on-surface-variant" />
+        <span className="text-sm font-medium text-on-surface max-w-[150px] truncate">
           {activeBusiness?.name || "Select Business"}
         </span>
-        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-4 h-4 text-outline transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
-          <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-100">
+        <div className="absolute top-full left-0 mt-2 w-64 bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow z-50 overflow-hidden">
+          <div className="px-3 py-2 text-xs font-semibold text-on-surface-variant uppercase tracking-wider bg-surface border-b border-outline-variant">
             Switch Business
           </div>
           <div className="max-h-64 overflow-y-auto p-1">
@@ -51,8 +51,8 @@ export function BusinessSwitcher() {
                 }}
                 className={`w-full flex items-center justify-between px-3 py-2.5 text-left rounded-lg transition-colors text-sm ${
                   activeBusiness?._id === business._id
-                    ? "bg-indigo-50 text-indigo-700 font-medium"
-                    : "hover:bg-slate-50 text-slate-700"
+                    ? "bg-primary-fixed text-primary font-medium"
+                    : "hover:bg-surface text-on-surface"
                 }`}
               >
                 <span className="truncate pr-2">{business.name}</span>

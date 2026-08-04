@@ -101,18 +101,18 @@ export function GbpProfileTab() {
     <View className="px-4">
       {!liveWritesEnabled && (
         <View className="mb-4 rounded-xl border border-amber-400/25 bg-amber-400/10 px-3.5 py-2.5">
-          <Text className="text-xs leading-4 text-amber-300">
+          <Text className="font-sans-semibold text-xs leading-4 text-amber-300">
             Edits are saved but won't appear on Google yet — live publishing is temporarily paused.
           </Text>
         </View>
       )}
 
       {/* Read-only, Google-verified fields */}
-      <View className="mb-4 rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5">
-        <Text className="text-base font-semibold text-white">{p.locationName || 'Your business'}</Text>
-        {!!p.primaryCategory && <Text className="mt-0.5 text-xs text-zinc-500">{p.primaryCategory}</Text>}
-        {!!p.address && <Text className="mt-1 text-xs text-zinc-400">{p.address}</Text>}
-        <Text className="mt-2 text-[11px] text-zinc-500">
+      <View className="mb-4 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
+        <Text className="font-sans-semibold text-base text-white">{p.locationName || 'Your business'}</Text>
+        {!!p.primaryCategory && <Text className="mt-0.5 font-sans text-xs text-zinc-500">{p.primaryCategory}</Text>}
+        {!!p.address && <Text className="mt-1 font-sans text-xs text-zinc-400">{p.address}</Text>}
+        <Text className="mt-2 font-sans text-[11px] text-zinc-500">
           Category and address are managed on Google directly and can't be edited here.
         </Text>
       </View>

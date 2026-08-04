@@ -329,7 +329,7 @@ export function buildReportHtml(ctx: ReportContext): string {
       ${googleSvg(18)}
       <span style="font-size:13px;font-weight:600;color:#374151;">Google Search Rank Report for Your Business Profile</span>
     </div>
-    <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);border-radius:6px;padding:4px 10px;">
+    <div style="background:linear-gradient(135deg,#00386c,#00386c);border-radius:6px;padding:4px 10px;">
       <span style="font-size:11px;font-weight:700;color:#fff;letter-spacing:0.5px;">GrowwMatics AI</span>
     </div>
   </div>
@@ -640,7 +640,7 @@ export function buildReportHtml(ctx: ReportContext): string {
 
   // ── 7. CTA BANNER ─────────────────────────────────────────────────────────────
   const ctaHtml = `
-<div style="border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);break-inside:avoid;">
+<div style="border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#00386c 0%,#00386c 100%);break-inside:avoid;">
   <div style="padding:26px 30px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;">
     <div>
       <h3 style="font-size:20px;font-weight:900;color:#fff;margin-bottom:5px;line-height:1.3;">

@@ -17,10 +17,10 @@ interface HistoryPost {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  draft: 'bg-slate-100 text-slate-600',
-  scheduled: 'bg-blue-50 text-blue-700',
-  published: 'bg-green-50 text-green-700',
-  pending_approval: 'bg-amber-50 text-amber-700',
+  draft: 'bg-surface-container text-on-surface-variant',
+  scheduled: 'bg-primary-fixed text-primary',
+  published: 'bg-secondary-container/40 text-on-secondary-container',
+  pending_approval: 'bg-error-container text-on-error-container',
 };
 
 function formatDate(iso: string): string {
@@ -223,7 +223,7 @@ export default function ContentHistoryTab() {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-48">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-on-surface" />
       </div>
     );
   }
@@ -231,7 +231,7 @@ export default function ContentHistoryTab() {
   if (error) {
     return (
       <div className="text-center py-12">
-        <p className="text-red-500 text-sm">{error}</p>
+        <p className="text-error text-sm">{error}</p>
       </div>
     );
   }
@@ -240,7 +240,7 @@ export default function ContentHistoryTab() {
     return (
       <div className="text-center py-16">
         <svg
-          className="w-12 h-12 mx-auto mb-4 text-slate-300"
+          className="w-12 h-12 mx-auto mb-4 text-outline"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -252,8 +252,8 @@ export default function ContentHistoryTab() {
             d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
           />
         </svg>
-        <p className="font-medium text-slate-700">No content generated yet</p>
-        <p className="text-sm text-slate-400 mt-1">
+        <p className="font-medium text-on-surface">No content generated yet</p>
+        <p className="text-sm text-outline mt-1">
           Generate your first batch of posts to see them here.
         </p>
       </div>
@@ -264,8 +264,8 @@ export default function ContentHistoryTab() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h3 className="text-xl font-bold text-slate-900">Content History</h3>
-          <p className="text-slate-500 text-sm mt-1">
+          <h3 className="text-xl font-bold text-on-surface">Content History</h3>
+          <p className="text-on-surface-variant text-sm mt-1">
             {total} AI-generated {total === 1 ? 'post' : 'posts'} for this business.
           </p>
         </div>
@@ -280,28 +280,28 @@ export default function ContentHistoryTab() {
           return (
             <div
               key={post._id}
-              className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm"
+              className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm"
             >
               <div className="px-5 py-4 flex items-center gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span
                       className={`inline-block px-2 py-0.5 text-xs font-semibold rounded-md ${
-                        STATUS_STYLES[post.status] ?? 'bg-slate-100 text-slate-600'
+                        STATUS_STYLES[post.status] ?? 'bg-surface-container text-on-surface-variant'
                       }`}
                     >
                       {post.status.replace('_', ' ')}
                     </span>
                     {post.contentType && (
-                      <span className="text-xs text-slate-500 border border-slate-200 px-2 py-0.5 rounded-md">
+                      <span className="text-xs text-on-surface-variant border border-outline-variant px-2 py-0.5 rounded-md">
                         {post.contentType}
                       </span>
                     )}
                   </div>
-                  <p className="font-semibold text-slate-900 truncate">
+                  <p className="font-semibold text-on-surface truncate">
                     {post.title || '(Untitled)'}
                   </p>
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <p className="text-xs text-outline mt-0.5">
                     Created {formatDate(post.createdAt)}
                     {post.scheduledDate && (
                       <>
@@ -318,20 +318,20 @@ export default function ContentHistoryTab() {
                       closeAllRowActions();
                       setExpandedId((id) => (id === post._id ? null : post._id));
                     }}
-                    className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors whitespace-nowrap"
+                    className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap"
                   >
                     {expandedId === post._id ? 'Hide' : 'View'}
                   </button>
                   <button
                     onClick={() => startEdit(post)}
-                    className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors whitespace-nowrap"
+                    className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap"
                   >
                     Edit
                   </button>
                   {!isPublished && (
                     <button
                       onClick={() => startSchedule(post)}
-                      className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors whitespace-nowrap"
+                      className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap"
                     >
                       Schedule
                     </button>
@@ -339,7 +339,7 @@ export default function ContentHistoryTab() {
                   {!isPublished && (
                     <button
                       onClick={() => { closeAllRowActions(); setConfirmDeleteId(post._id); }}
-                      className="text-sm font-medium text-red-500 hover:text-red-700 transition-colors whitespace-nowrap"
+                      className="text-sm font-medium text-error hover:text-on-error-container transition-colors whitespace-nowrap"
                     >
                       Delete
                     </button>
@@ -348,25 +348,25 @@ export default function ContentHistoryTab() {
               </div>
 
               {expandedId === post._id && !isEditingRow && (
-                <div className="px-5 pb-5 border-t border-slate-100 bg-slate-50/50">
+                <div className="px-5 pb-5 border-t border-outline-variant bg-surface/50">
                   {post.imageUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={post.imageUrl}
                       alt={post.title || 'Post thumbnail'}
-                      className="mt-3 w-full max-w-sm rounded-lg border border-slate-200 object-cover"
+                      className="mt-3 w-full max-w-sm rounded-lg border border-outline-variant object-cover"
                     />
                   )}
-                  <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed pt-3">
+                  <p className="text-sm text-on-surface whitespace-pre-wrap leading-relaxed pt-3">
                     {post.content}
                   </p>
                   {!!post.cta && (
-                    <p className="text-sm text-slate-800 font-semibold mt-3">CTA: <span className="font-normal text-slate-600">{post.cta}</span></p>
+                    <p className="text-sm text-on-surface font-semibold mt-3">CTA: <span className="font-normal text-on-surface-variant">{post.cta}</span></p>
                   )}
                   {!!post.hashtags?.length && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {post.hashtags.map((tag, i) => (
-                        <span key={i} className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-sm">
+                        <span key={i} className="text-xs text-primary bg-primary-fixed px-2 py-0.5 rounded-sm">
                           {tag}
                         </span>
                       ))}
@@ -377,54 +377,54 @@ export default function ContentHistoryTab() {
 
               {/* Inline edit form */}
               {isEditingRow && (
-                <div className="px-5 pb-5 border-t border-slate-100 bg-slate-50/50 pt-3 space-y-3">
+                <div className="px-5 pb-5 border-t border-outline-variant bg-surface/50 pt-3 space-y-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Title</label>
+                    <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1">Title</label>
                     <input
                       value={editDraft.title}
                       onChange={(e) => setEditDraft({ ...editDraft, title: e.target.value })}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      className="w-full border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Content</label>
+                    <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1">Content</label>
                     <textarea
                       value={editDraft.content}
                       onChange={(e) => setEditDraft({ ...editDraft, content: e.target.value })}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 h-28 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      className="w-full border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface h-28 resize-none focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">CTA</label>
+                      <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1">CTA</label>
                       <input
                         value={editDraft.cta}
                         onChange={(e) => setEditDraft({ ...editDraft, cta: e.target.value })}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        className="w-full border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Hashtags</label>
+                      <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1">Hashtags</label>
                       <input
                         value={editDraft.hashtags}
                         onChange={(e) => setEditDraft({ ...editDraft, hashtags: e.target.value })}
                         placeholder="#seo #local"
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        className="w-full border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       />
                     </div>
                   </div>
-                  {editError && <p className="text-xs text-red-500">{editError}</p>}
+                  {editError && <p className="text-xs text-error">{editError}</p>}
                   <div className="flex gap-2 pt-1">
                     <button
                       onClick={() => { setEditingId(null); setEditError(''); }}
-                      className="px-4 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
+                      className="px-4 py-1.5 text-sm border border-outline-variant rounded-lg hover:bg-surface-container transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={() => saveEdit(post._id)}
                       disabled={savingEdit}
-                      className="px-4 py-1.5 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-60"
+                      className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary transition-colors disabled:opacity-60"
                     >
                       {savingEdit ? 'Saving…' : 'Save Changes'}
                     </button>
@@ -434,40 +434,40 @@ export default function ContentHistoryTab() {
 
               {/* Inline schedule form */}
               {isSchedulingRow && (
-                <div className="px-5 pb-5 border-t border-slate-100 bg-slate-50/50 pt-3 space-y-3">
+                <div className="px-5 pb-5 border-t border-outline-variant bg-surface/50 pt-3 space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Date</label>
+                      <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1">Date</label>
                       <input
                         type="date"
                         value={scheduleDate}
                         min={toLocalDateStr(new Date())}
                         onChange={(e) => setScheduleDate(e.target.value)}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        className="w-full border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Time</label>
+                      <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1">Time</label>
                       <input
                         type="time"
                         value={scheduleTime}
                         onChange={(e) => setScheduleTime(e.target.value)}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        className="w-full border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       />
                     </div>
                   </div>
-                  {scheduleError && <p className="text-xs text-red-500">{scheduleError}</p>}
+                  {scheduleError && <p className="text-xs text-error">{scheduleError}</p>}
                   <div className="flex gap-2 pt-1">
                     <button
                       onClick={() => { setSchedulingId(null); setScheduleError(''); }}
-                      className="px-4 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
+                      className="px-4 py-1.5 text-sm border border-outline-variant rounded-lg hover:bg-surface-container transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={() => confirmSchedule(post._id)}
                       disabled={savingSchedule}
-                      className="px-4 py-1.5 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-60"
+                      className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary transition-colors disabled:opacity-60"
                     >
                       {savingSchedule ? 'Saving…' : 'Confirm Schedule'}
                     </button>
@@ -477,15 +477,15 @@ export default function ContentHistoryTab() {
 
               {/* Delete confirmation */}
               {confirmDeleteId === post._id && (
-                <div className="px-5 pb-5 border-t border-slate-100 bg-red-50/50 pt-3 space-y-2">
-                  <p className="text-sm text-slate-700">Delete this generated content? This can't be undone.</p>
+                <div className="px-5 pb-5 border-t border-outline-variant bg-error-container/50 pt-3 space-y-2">
+                  <p className="text-sm text-on-surface">Delete this generated content? This can't be undone.</p>
                   {rowError?.id === post._id && (
-                    <p className="text-xs text-red-500">{rowError.message}</p>
+                    <p className="text-xs text-error">{rowError.message}</p>
                   )}
                   <div className="flex gap-2">
                     <button
                       onClick={() => setConfirmDeleteId(null)}
-                      className="px-4 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors bg-white"
+                      className="px-4 py-1.5 text-sm border border-outline-variant rounded-lg hover:bg-surface-container transition-colors bg-surface-container-lowest"
                     >
                       Cancel
                     </button>
@@ -509,7 +509,7 @@ export default function ContentHistoryTab() {
           <button
             onClick={() => fetchPosts(page + 1, true)}
             disabled={loadingMore}
-            className="px-6 py-2 text-sm font-medium text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60 transition-colors"
+            className="px-6 py-2 text-sm font-medium text-on-surface border border-outline-variant rounded-lg hover:bg-surface disabled:opacity-60 transition-colors"
           >
             {loadingMore ? 'Loading…' : 'Load More'}
           </button>

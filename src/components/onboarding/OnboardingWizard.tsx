@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { initialOnboardingData, OnboardingData } from './types';
-import { Rocket } from 'lucide-react';
+import { MaterialIcon } from '@/components/ui/MaterialIcon';
 
 import StepWelcome from './StepWelcome';
 import StepAccount from './StepAccount';
@@ -11,6 +11,13 @@ import StepPassword from './StepPassword';
 import StepBusiness from './StepBusiness';
 import StepGoogle from './StepGoogle';
 import StepCompletion from './StepCompletion';
+
+const STEPPER_STEPS = [
+  { id: 'account', label: 'Account' },
+  { id: 'password', label: 'Password' },
+  { id: 'business', label: 'Business' },
+  { id: 'google', label: 'Google' },
+];
 
 export function OnboardingWizard() {
   const [data, setData] = useState<OnboardingData>(initialOnboardingData);
@@ -46,33 +53,72 @@ export function OnboardingWizard() {
   ];
 
   const CurrentStepComponent = steps[currentStep].component;
+  const showStepper = currentStep > 0 && currentStep < steps.length - 1;
+  const activeStepperIndex = currentStep - 1;
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8 font-sans">
-      {/* Premium Header */}
-      <div className="absolute top-8 left-8 flex items-center gap-2">
-        <div className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center shadow-sm">
-          <Rocket className="text-slate-900 w-4 h-4" />
+    <div className="min-h-screen bg-background flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+      <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-primary/8 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-secondary/8 rounded-full blur-[120px] pointer-events-none" />
+
+      <div className="absolute top-8 left-8 flex items-center gap-2 z-10">
+        <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+          <MaterialIcon name="rocket_launch" size={16} className="text-on-primary" />
         </div>
-        <span className="text-lg font-bold tracking-tight text-slate-900">GrowwMatics AI</span>
+        <span className="text-lg font-heading font-bold tracking-tight text-on-surface">
+          Groww<span className="text-primary">Matics</span> AI
+        </span>
       </div>
 
-      <div className="w-full max-w-2xl">
-        {/* Progress Tracker (Only show in middle steps) */}
-        {currentStep > 0 && currentStep < steps.length - 1 && (
-          <div className="mb-8">
-            <div className="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-              <span>Step {currentStep} of {steps.length - 2}</span>
-            </div>
-            <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-              <motion.div 
-                initial={{ width: 0 }}
-                animate={{ width: `${(currentStep / (steps.length - 2)) * 100}%` }}
-                transition={{ duration: 0.5, ease: "easeInOut" }}
-                className="h-full bg-slate-900 rounded-full"
-              />
-            </div>
-          </div>
+      <div className="w-full max-w-2xl relative z-10">
+        {showStepper && (
+          <nav aria-label="Onboarding progress" className="mb-8">
+            <ol className="flex items-center w-full">
+              {STEPPER_STEPS.map((step, index) => {
+                const isComplete = index < activeStepperIndex;
+                const isCurrent = index === activeStepperIndex;
+                return (
+                  <li
+                    key={step.id}
+                    className={`flex items-center ${index < STEPPER_STEPS.length - 1 ? 'flex-1' : ''}`}
+                  >
+                    <div className="flex flex-col items-center gap-1.5">
+                      <span
+                        className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold transition-colors ${
+                          isComplete
+                            ? 'bg-secondary text-on-secondary'
+                            : isCurrent
+                              ? 'bg-primary text-on-primary'
+                              : 'bg-surface-container-lowest border border-outline-variant text-on-surface-variant'
+                        }`}
+                      >
+                        {isComplete ? (
+                          <MaterialIcon name="check" size={16} />
+                        ) : (
+                          index + 1
+                        )}
+                      </span>
+                      <span
+                        className={`text-[10px] font-medium uppercase tracking-wider hidden sm:block ${
+                          isCurrent ? 'text-primary' : isComplete ? 'text-secondary' : 'text-outline'
+                        }`}
+                      >
+                        {step.label}
+                      </span>
+                    </div>
+                    {index < STEPPER_STEPS.length - 1 && (
+                      <div
+                        className={`h-0.5 flex-1 mx-2 sm:mx-3 rounded-full ${
+                          index < activeStepperIndex ? 'bg-secondary' : 'bg-outline-variant'
+                        }`}
+                        aria-hidden
+                      />
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
         )}
 
         <div className="relative w-full h-[600px]">

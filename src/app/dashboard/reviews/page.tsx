@@ -16,17 +16,17 @@ export default function ReviewManagementPage() {
   const [activeTab, setActiveTab] = useState<Tab>('monitor');
 
   return (
-    <div className="min-h-screen bg-slate-50/50 p-4 pt-10">
+    <div className="min-h-screen bg-surface/50 p-4 pt-10">
       <div className="max-w-350 mx-auto space-y-6">
 
         {/* Page header */}
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Review Management</h1>
-          <p className="text-slate-500 mt-1">Monitor incoming reviews and run campaigns to acquire new ones.</p>
+          <h1 className="font-heading text-3xl font-bold text-on-surface tracking-tight">Review Management</h1>
+          <p className="text-on-surface-variant mt-1">Monitor incoming reviews and run campaigns to acquire new ones.</p>
         </div>
 
         {/* Top-level tabs */}
-        <div className="flex gap-2 border-b border-slate-200 pb-0">
+        <div className="flex gap-2 border-b border-outline-variant pb-0">
           {TABS.map(tab => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -36,8 +36,8 @@ export default function ReviewManagementPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all -mb-px ${
                   active
-                    ? 'border-indigo-600 text-indigo-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-on-surface-variant hover:text-on-surface hover:border-outline-variant'
                 }`}
               >
                 <Icon className="w-4 h-4" />

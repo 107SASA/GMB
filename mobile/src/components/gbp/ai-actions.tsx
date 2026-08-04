@@ -64,14 +64,14 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
       <View className="mb-3 flex-row items-center justify-between">
         <View className="flex-row items-center gap-2">
           <Text className="text-base">✨</Text>
-          <Text className="text-lg font-extrabold text-white">AI Actions</Text>
+          <Text className="font-display-bold text-lg text-white">AI Actions</Text>
         </View>
         {showViewAll && (
           <Pressable
             onPress={() => router.push('/audit')}
             className="flex-row items-center gap-1 active:opacity-70"
           >
-            <Text className="text-sm font-bold" style={{ color: t.brandBright }}>
+            <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
               View All
             </Text>
             <Ionicons name="chevron-forward" size={14} color={t.brandBright} />
@@ -80,8 +80,8 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
       </View>
 
       {actions.length === 0 ? (
-        <View className="rounded-2xl border border-surface-border bg-surface-raised px-4 py-6">
-          <Text className="text-sm leading-5 text-zinc-400">
+        <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-6">
+          <Text className="font-sans text-sm leading-5 text-zinc-400">
             No AI actions yet — run an audit or schedule posts and the work done for your profile
             shows up here.
           </Text>
@@ -91,26 +91,25 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
           {actions.map((action) => (
             <View
               key={action.badge + action.title}
-              className="rounded-3xl border border-surface-border bg-surface-raised p-4"
+              className="rounded-card border border-surface-border bg-surface-raised p-4"
             >
               <View className="mb-3 flex-row items-center justify-between">
-                <View
-                  className="flex-row items-center gap-1.5 rounded-full px-3 py-1.5"
-                  style={{ backgroundColor: `${t.amber}26` }}
-                >
+                <View className="flex-row items-center gap-1.5 rounded-full bg-warning-container px-3 py-1.5">
                   <Ionicons name="checkmark-circle-outline" size={14} color={t.amber} />
-                  <Text className="text-xs font-bold" style={{ color: t.amber }}>
+                  <Text className="font-sans-bold text-[11px] uppercase tracking-[0.6px] text-on-warning-container">
                     {action.badge}
                   </Text>
                 </View>
-                <Text className="text-xs text-zinc-500">{action.date}</Text>
+                <Text className="font-sans text-xs text-zinc-500">{action.date}</Text>
               </View>
-              <Text className="mb-2 text-lg font-bold leading-6 text-white">{action.title}</Text>
+              <Text className="mb-2 font-display-bold text-lg leading-6 text-white">
+                {action.title}
+              </Text>
               <View className="gap-1.5">
                 {action.bullets.map((b) => (
                   <View key={b} className="flex-row items-center gap-2">
                     <Ionicons name="checkmark" size={14} color={t.brandBright} />
-                    <Text className="flex-1 text-sm text-zinc-300">{b}</Text>
+                    <Text className="flex-1 font-sans text-sm text-zinc-300">{b}</Text>
                   </View>
                 ))}
               </View>

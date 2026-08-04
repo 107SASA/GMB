@@ -86,15 +86,15 @@ export default function BookingSettingsPanel() {
     }
   };
 
-  if (!activeBusiness) return <div className="p-4 text-sm text-slate-500">Loading workspace...</div>;
-  if (!settings) return <div className="p-4 text-sm text-slate-500">Loading booking settings...</div>;
+  if (!activeBusiness) return <div className="p-4 text-sm text-on-surface-variant">Loading workspace...</div>;
+  if (!settings) return <div className="p-4 text-sm text-on-surface-variant">Loading booking settings...</div>;
 
   return (
-    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm max-w-2xl">
+    <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow max-w-2xl">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h3 className="text-lg font-bold text-slate-900">Appointment Booking</h3>
-          <p className="text-xs text-slate-500 mt-1 max-w-md">
+          <h3 className="text-lg font-bold text-on-surface">Appointment Booking</h3>
+          <p className="text-xs text-on-surface-variant mt-1 max-w-md">
             Let the WhatsApp AI Agent book, cancel, and reschedule customer appointments automatically, inside the
             hours you set below. Turned off by default — nothing changes for customers until you enable it.
           </p>
@@ -102,12 +102,12 @@ export default function BookingSettingsPanel() {
         <button
           onClick={() => setSettings({ ...settings, bookingEnabled: !settings.bookingEnabled })}
           className={`w-12 h-6 rounded-full relative transition-colors shrink-0 ${
-            settings.bookingEnabled ? 'bg-emerald-500' : 'bg-slate-300'
+            settings.bookingEnabled ? 'bg-secondary' : 'bg-surface-container-highest'
           }`}
           aria-label="Toggle appointment booking"
         >
           <div
-            className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${
+            className={`w-4 h-4 bg-surface-container-lowest rounded-full absolute top-1 transition-all ${
               settings.bookingEnabled ? 'left-7' : 'left-1'
             }`}
           />
@@ -116,7 +116,7 @@ export default function BookingSettingsPanel() {
 
       <div className={`space-y-6 transition-opacity ${settings.bookingEnabled ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
         <div>
-          <label className="block text-sm font-bold text-slate-700 mb-2">Working Days</label>
+          <label className="block text-sm font-bold text-on-surface mb-2">Working Days</label>
           <div className="flex gap-2 flex-wrap">
             {DAY_ORDER.map(({ key, label }) => {
               const active = settings.workingDays[key];
@@ -132,8 +132,8 @@ export default function BookingSettingsPanel() {
                   }
                   className={`w-12 h-10 rounded-xl text-xs font-bold border transition-colors ${
                     active
-                      ? 'bg-indigo-600 border-indigo-600 text-white'
-                      : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                      ? 'bg-primary border-primary text-white'
+                      : 'bg-surface-container-lowest border-outline-variant text-outline hover:border-outline-variant'
                   }`}
                 >
                   {label}
@@ -145,32 +145,32 @@ export default function BookingSettingsPanel() {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">Opening Time</label>
+            <label className="block text-sm font-bold text-on-surface mb-2">Opening Time</label>
             <input
               type="time"
               value={settings.openingTime}
               onChange={(e) => setSettings({ ...settings, openingTime: e.target.value })}
-              className="w-full text-sm p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full text-sm p-3 border border-outline-variant rounded-xl focus:ring-2 focus:ring-primary outline-none"
             />
           </div>
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">Closing Time</label>
+            <label className="block text-sm font-bold text-on-surface mb-2">Closing Time</label>
             <input
               type="time"
               value={settings.closingTime}
               onChange={(e) => setSettings({ ...settings, closingTime: e.target.value })}
-              className="w-full text-sm p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full text-sm p-3 border border-outline-variant rounded-xl focus:ring-2 focus:ring-primary outline-none"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">Timezone</label>
+            <label className="block text-sm font-bold text-on-surface mb-2">Timezone</label>
             <select
               value={settings.timezone}
               onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
-              className="w-full text-sm p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+              className="w-full text-sm p-3 border border-outline-variant rounded-xl focus:ring-2 focus:ring-primary outline-none bg-surface-container-lowest"
             >
               {COMMON_TIMEZONES.map((tz) => (
                 <option key={tz} value={tz}>
@@ -180,7 +180,7 @@ export default function BookingSettingsPanel() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">Slot Length (minutes)</label>
+            <label className="block text-sm font-bold text-on-surface mb-2">Slot Length (minutes)</label>
             <input
               type="number"
               min={5}
@@ -188,25 +188,25 @@ export default function BookingSettingsPanel() {
               step={5}
               value={settings.slotDurationMinutes}
               onChange={(e) => setSettings({ ...settings, slotDurationMinutes: Number(e.target.value) })}
-              className="w-full text-sm p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full text-sm p-3 border border-outline-variant rounded-xl focus:ring-2 focus:ring-primary outline-none"
             />
           </div>
         </div>
       </div>
 
-      {error && <p className="text-xs text-red-600 mt-4">{error}</p>}
+      {error && <p className="text-xs text-error mt-4">{error}</p>}
 
       <div className="flex items-center gap-3 mt-6">
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-6 py-2.5 bg-slate-900 text-white font-bold rounded-xl text-sm hover:bg-slate-800 transition-colors disabled:opacity-50 flex items-center gap-2"
+          className="px-6 py-2.5 bg-primary text-white font-bold rounded-xl text-sm hover:bg-primary transition-colors disabled:opacity-50 flex items-center gap-2"
         >
           {saving && <Loader2 className="w-4 h-4 animate-spin" />}
           {saving ? 'Saving...' : 'Save Configuration'}
         </button>
         {savedAt && (
-          <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+          <span className="text-xs font-bold text-secondary flex items-center gap-1">
             <CheckCircle2 className="w-4 h-4" /> Saved
           </span>
         )}

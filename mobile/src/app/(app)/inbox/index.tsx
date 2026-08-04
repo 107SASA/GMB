@@ -8,9 +8,11 @@ import { getApiErrorMessage } from '@/api/client';
 import { useBusiness } from '@/business/BusinessContext';
 import { EmptyState, Screen, ScreenTitle, Skeleton } from '@/components/ui';
 import { timeAgo } from '@/lib/format';
+import { useTheme } from '@/lib/theme';
 
 function ThreadRow({ thread }: { thread: ConversationThread }) {
   const router = useRouter();
+  const t = useTheme();
   const lead = thread.leadId;
   if (!lead) return null;
 
@@ -23,7 +25,7 @@ function ThreadRow({ thread }: { thread: ConversationThread }) {
     >
       {/* Avatar: initials on a tinted disc */}
       <View className="h-11 w-11 items-center justify-center rounded-full bg-indigo-400/15">
-        <Text className="text-base font-semibold text-indigo-300">
+        <Text className="font-sans-bold text-base text-indigo-300">
           {lead.name.trim().charAt(0).toUpperCase() || '?'}
         </Text>
       </View>
@@ -31,26 +33,26 @@ function ThreadRow({ thread }: { thread: ConversationThread }) {
       <View className="flex-1">
         <View className="flex-row items-center justify-between">
           <Text
-            className={`flex-1 text-base ${unread ? 'font-bold text-white' : 'font-medium text-zinc-200'}`}
+            className={`flex-1 text-base ${unread ? 'font-sans-bold text-white' : 'font-sans-semibold text-zinc-200'}`}
             numberOfLines={1}
           >
             {lead.name}
           </Text>
-          <Text className="ml-2 text-xs text-zinc-500">{timeAgo(thread.lastActivityAt)}</Text>
+          <Text className="ml-2 font-sans text-xs text-zinc-500">
+            {timeAgo(thread.lastActivityAt)}
+          </Text>
         </View>
         <View className="mt-0.5 flex-row items-center gap-2">
-          {thread.aiEnabled && (
-            <Ionicons name="sparkles" size={12} color="#6366F1" />
-          )}
+          {thread.aiEnabled && <Ionicons name="sparkles" size={12} color={t.brandBright} />}
           <Text
-            className={`flex-1 text-sm ${unread ? 'text-zinc-200' : 'text-zinc-500'}`}
+            className={`flex-1 font-sans text-sm ${unread ? 'text-zinc-200' : 'text-zinc-500'}`}
             numberOfLines={1}
           >
             {thread.lastMessage || 'No messages yet'}
           </Text>
           {unread && (
             <View className="min-w-5 items-center rounded-full bg-brand px-1.5 py-0.5">
-              <Text className="text-xs font-bold text-on-brand">{thread.unreadCount}</Text>
+              <Text className="font-sans-bold text-xs text-on-brand">{thread.unreadCount}</Text>
             </View>
           )}
         </View>
@@ -61,6 +63,7 @@ function ThreadRow({ thread }: { thread: ConversationThread }) {
 
 export default function InboxScreen() {
   const { activeBusinessId } = useBusiness();
+  const t = useTheme();
 
   const threads = useQuery({
     queryKey: ['inbox-threads', activeBusinessId],
@@ -93,7 +96,7 @@ export default function InboxScreen() {
             <RefreshControl
               refreshing={threads.isRefetching}
               onRefresh={() => void threads.refetch()}
-              tintColor="#6366F1"
+              tintColor={t.brandBright}
             />
           }
           ListEmptyComponent={

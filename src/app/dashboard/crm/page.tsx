@@ -51,67 +51,67 @@ function AddLeadModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
-        <div className="flex items-center justify-between p-6 border-b border-slate-100">
-          <h2 className="text-lg font-bold text-slate-900">Add New Lead</h2>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-            <X className="w-4 h-4 text-slate-500" />
+      <div className="bg-surface-container-lowest rounded-2xl card-shadow w-full max-w-md border border-outline-variant">
+        <div className="flex items-center justify-between p-6 border-b border-outline-variant">
+          <h2 className="text-lg font-bold text-on-surface">Add New Lead</h2>
+          <button onClick={onClose} className="p-2 hover:bg-surface-container rounded-full transition-colors">
+            <X className="w-4 h-4 text-on-surface-variant" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
+          {error && <p className="text-sm text-error bg-error-container border border-error-container rounded-lg px-4 py-2">{error}</p>}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Name <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Name <span className="text-error">*</span></label>
               <input
                 ref={firstInputRef}
                 type="text"
                 value={form.name}
                 onChange={e => set('name', e.target.value)}
                 placeholder="Jane Smith"
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Phone <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Phone <span className="text-error">*</span></label>
               <input
                 type="tel"
                 value={form.phone}
                 onChange={e => set('phone', e.target.value)}
                 placeholder="+44 7700 000000"
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Email</label>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Email</label>
               <input
                 type="email"
                 value={form.email}
                 onChange={e => set('email', e.target.value)}
                 placeholder="jane@example.com"
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Source <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Source <span className="text-error">*</span></label>
               <select
                 value={form.source}
                 onChange={e => set('source', e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-surface-container-lowest"
               >
                 {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Stage</label>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Stage</label>
               <select
                 value={form.lifeCycleStage}
                 onChange={e => set('lifeCycleStage', e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-surface-container-lowest"
               >
                 <option value="initial">Initial</option>
                 <option value="active">Active</option>
@@ -120,35 +120,35 @@ function AddLeadModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
               </select>
             </div>
             <div className="col-span-2">
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Interest</label>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Interest</label>
               <input
                 type="text"
                 value={form.interest}
                 onChange={e => set('interest', e.target.value)}
                 placeholder="What is this lead interested in?"
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Notes</label>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Notes</label>
               <textarea
                 value={form.notes}
                 onChange={e => set('notes', e.target.value)}
                 placeholder="Any context about this lead…"
                 rows={3}
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none"
               />
             </div>
           </div>
 
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 font-semibold text-sm rounded-xl hover:bg-slate-50 transition-colors">
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 border border-outline-variant text-on-surface font-semibold text-sm rounded-xl hover:bg-surface transition-colors">
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-bold text-sm rounded-xl transition-colors"
+              className="flex-1 px-4 py-2.5 bg-primary hover:bg-primary-container disabled:opacity-60 text-white font-bold text-sm rounded-xl transition-colors"
             >
               {submitting ? 'Creating…' : 'Create Lead'}
             </button>
@@ -221,15 +221,15 @@ function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImpo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200">
+      <div className="bg-surface-container-lowest rounded-2xl card-shadow w-full max-w-lg border border-outline-variant">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-100">
+        <div className="flex items-center justify-between p-6 border-b border-outline-variant">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">Import Leads</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Upload a CSV or Excel file — up to 1,000 rows</p>
+            <h2 className="text-lg font-bold text-on-surface">Import Leads</h2>
+            <p className="text-xs text-on-surface-variant mt-0.5">Upload a CSV or Excel file — up to 1,000 rows</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-            <X className="w-4 h-4 text-slate-500" />
+          <button onClick={onClose} className="p-2 hover:bg-surface-container rounded-full transition-colors">
+            <X className="w-4 h-4 text-on-surface-variant" />
           </button>
         </div>
 
@@ -237,19 +237,19 @@ function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImpo
           {/* Template download */}
           <button
             onClick={downloadTemplate}
-            className="flex items-center gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+            className="flex items-center gap-2 text-xs font-semibold text-primary hover:text-primary-container transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
             Download CSV template
           </button>
 
           {/* Columns hint */}
-          <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 leading-relaxed">
-            <span className="font-semibold text-slate-700">Supported columns:</span>{' '}
-            name <span className="text-red-500">*</span>, phone, email, source, lifeCycleStage
-            <span className="text-slate-400"> (initial / active / closed / converted)</span>,
+          <div className="text-xs text-on-surface-variant bg-surface border border-outline-variant rounded-xl px-4 py-3 leading-relaxed">
+            <span className="font-semibold text-on-surface">Supported columns:</span>{' '}
+            name <span className="text-error">*</span>, phone, email, source, lifeCycleStage
+            <span className="text-outline"> (initial / active / closed / converted)</span>,
             interest, notes, tags
-            <span className="text-slate-400"> (semicolon-separated)</span>
+            <span className="text-outline"> (semicolon-separated)</span>
           </div>
 
           {/* Drop zone */}
@@ -258,20 +258,20 @@ function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImpo
               onDragOver={e => e.preventDefault()}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-2xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors group"
+              className="border-2 border-dashed border-outline-variant hover:border-primary-fixed-dim rounded-2xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors group"
             >
-              <div className="w-12 h-12 bg-indigo-50 group-hover:bg-indigo-100 rounded-2xl flex items-center justify-center transition-colors">
-                <FileUp className="w-6 h-6 text-indigo-500" />
+              <div className="w-12 h-12 bg-primary-fixed group-hover:bg-primary-fixed rounded-2xl flex items-center justify-center transition-colors">
+                <FileUp className="w-6 h-6 text-primary" />
               </div>
               {file ? (
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-slate-800">{file.name}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{(file.size / 1024).toFixed(1)} KB</p>
+                  <p className="text-sm font-semibold text-on-surface">{file.name}</p>
+                  <p className="text-xs text-outline mt-0.5">{(file.size / 1024).toFixed(1)} KB</p>
                 </div>
               ) : (
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-slate-700">Drop file here or click to browse</p>
-                  <p className="text-xs text-slate-400 mt-0.5">.csv, .xlsx, .xls accepted</p>
+                  <p className="text-sm font-semibold text-on-surface">Drop file here or click to browse</p>
+                  <p className="text-xs text-outline mt-0.5">.csv, .xlsx, .xls accepted</p>
                 </div>
               )}
               <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFileChange} className="hidden" />
@@ -280,7 +280,7 @@ function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImpo
 
           {/* Error */}
           {error && (
-            <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+            <div className="flex items-start gap-2 text-sm text-error bg-error-container border border-error-container rounded-xl px-4 py-3">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               {error}
             </div>
@@ -290,26 +290,26 @@ function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImpo
           {state === 'done' && result && (
             <div className="space-y-3">
               <div className="flex gap-3">
-                <div className="flex-1 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-center">
-                  <p className="text-2xl font-black text-emerald-700">{result.created}</p>
-                  <p className="text-xs text-emerald-600 font-semibold">Leads Created</p>
+                <div className="flex-1 bg-secondary-container/40 border border-secondary-fixed rounded-xl px-4 py-3 text-center">
+                  <p className="text-2xl font-black text-on-secondary-container">{result.created}</p>
+                  <p className="text-xs text-secondary font-semibold">Leads Created</p>
                 </div>
-                <div className="flex-1 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-center">
-                  <p className="text-2xl font-black text-amber-700">{result.skipped}</p>
-                  <p className="text-xs text-amber-600 font-semibold">Skipped / Dupes</p>
+                <div className="flex-1 bg-error-container border border-error-container rounded-xl px-4 py-3 text-center">
+                  <p className="text-2xl font-black text-on-error-container">{result.skipped}</p>
+                  <p className="text-xs text-error font-semibold">Skipped / Dupes</p>
                 </div>
               </div>
 
               {result.errors.length > 0 && (
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-36 overflow-y-auto">
-                  <p className="text-xs font-bold text-slate-600 mb-2">Row warnings:</p>
+                <div className="bg-surface border border-outline-variant rounded-xl p-3 max-h-36 overflow-y-auto">
+                  <p className="text-xs font-bold text-on-surface-variant mb-2">Row warnings:</p>
                   {result.errors.map((e, i) => (
-                    <p key={i} className="text-xs text-slate-500 leading-relaxed">{e}</p>
+                    <p key={i} className="text-xs text-on-surface-variant leading-relaxed">{e}</p>
                   ))}
                 </div>
               )}
 
-              <div className="flex items-center gap-2 text-sm text-emerald-700 font-semibold">
+              <div className="flex items-center gap-2 text-sm text-on-secondary-container font-semibold">
                 <CheckCircle className="w-4 h-4" />
                 Import complete!
               </div>
@@ -321,7 +321,7 @@ function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImpo
         <div className="flex gap-3 px-6 pb-6">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 font-semibold text-sm rounded-xl hover:bg-slate-50 transition-colors"
+            className="flex-1 px-4 py-2.5 border border-outline-variant text-on-surface font-semibold text-sm rounded-xl hover:bg-surface transition-colors"
           >
             {state === 'done' ? 'Close' : 'Cancel'}
           </button>
@@ -329,7 +329,7 @@ function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImpo
             <button
               onClick={handleImport}
               disabled={!file || state === 'uploading'}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-colors"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-container disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-colors"
             >
               <Upload className="w-4 h-4" />
               {state === 'uploading' ? 'Importing…' : 'Import Leads'}
@@ -346,7 +346,7 @@ function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImpo
 function Toast({ message, onDone }: { message: string; onDone: () => void }) {
   useEffect(() => { const t = setTimeout(onDone, 3000); return () => clearTimeout(t); }, [onDone]);
   return (
-    <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-xl">
+    <div className="fixed bottom-6 right-6 z-50 bg-primary text-white text-sm font-semibold px-5 py-3 rounded-2xl card-shadow">
       {message}
     </div>
   );
@@ -473,27 +473,27 @@ export default function CRMDashboard() {
   };
 
   if (loading) return (
-    <div className="p-8 text-center text-slate-500">Loading AI Lead Manager...</div>
+    <div className="p-8 text-center text-on-surface-variant">Loading AI Lead Manager...</div>
   );
 
   return (
-    <div className="min-h-screen bg-slate-50/50 p-4 pt-10">
+    <div className="min-h-screen bg-surface/50 p-4 pt-10">
       <div className="max-w-400 mx-auto relative">
 
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-8">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">AI Lead Manager</h1>
-            <p className="text-slate-500 mt-1">Intelligent CRM with automated follow-ups and LLaMA scoring.</p>
+            <h1 className="font-heading text-2xl sm:text-3xl font-bold text-on-surface tracking-tight">AI Lead Manager</h1>
+            <p className="text-on-surface-variant mt-1">Intelligent CRM with automated follow-ups and LLaMA scoring.</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             {/* View Toggle */}
-            <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+            <div className="flex items-center bg-surface-container-lowest border border-outline-variant rounded-xl p-1 shadow-sm">
               <button
                 onClick={() => setViewMode('list')}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                  viewMode === 'list' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                  viewMode === 'list' ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
                 }`}
               >
                 <LayoutList className="w-3.5 h-3.5" />
@@ -502,7 +502,7 @@ export default function CRMDashboard() {
               <button
                 onClick={() => setViewMode('kanban')}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                  viewMode === 'kanban' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                  viewMode === 'kanban' ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
                 }`}
               >
                 <Columns className="w-3.5 h-3.5" />
@@ -511,7 +511,7 @@ export default function CRMDashboard() {
               <button
                 onClick={() => setViewMode('stages')}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                  viewMode === 'stages' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                  viewMode === 'stages' ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" />
@@ -520,7 +520,7 @@ export default function CRMDashboard() {
               <button
                 onClick={() => setViewMode('analytics' as ViewMode)}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                  viewMode === ('analytics' as ViewMode) ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                  viewMode === ('analytics' as ViewMode) ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
                 }`}
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
@@ -531,7 +531,7 @@ export default function CRMDashboard() {
             {/* Import Leads */}
             <button
               onClick={() => setShowImport(true)}
-              className="flex items-center gap-1.5 px-3 py-2.5 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 font-semibold text-xs rounded-xl shadow-sm whitespace-nowrap transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2.5 bg-surface-container-lowest border border-outline-variant hover:border-primary-fixed-dim hover:bg-primary-fixed text-on-surface hover:text-primary font-semibold text-xs rounded-xl shadow-sm whitespace-nowrap transition-colors"
             >
               <Upload className="w-3.5 h-3.5" />
               Import
@@ -540,7 +540,7 @@ export default function CRMDashboard() {
             {/* Add Lead */}
             <button
               onClick={() => setShowAddLead(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm whitespace-nowrap transition-colors"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-primary hover:bg-primary-container text-white font-bold text-xs rounded-xl shadow-sm whitespace-nowrap transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

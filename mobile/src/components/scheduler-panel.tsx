@@ -9,6 +9,7 @@ import { useBusiness } from '@/business/BusinessContext';
 import { useDateTimePicker } from '@/components/datetime-picker';
 import { Badge, EmptyState, SectionLabel, Skeleton } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
+import { useTheme } from '@/lib/theme';
 
 /**
  * The Content Scheduler body — buffer health + scheduled/draft posts with
@@ -36,15 +37,15 @@ function BufferCard({
   const style = HEALTH_STYLES[healthStatus];
   const pct = weeklyTarget > 0 ? Math.min(100, Math.round((scheduledThisWeek / weeklyTarget) * 100)) : 0;
   return (
-    <View className="rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5">
+    <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
       <View className="flex-row items-center justify-between">
-        <Text className="text-sm font-semibold text-white">This week&apos;s buffer</Text>
+        <Text className="font-sans-semibold text-sm text-white">This week&apos;s buffer</Text>
         <Badge label={healthStatus} tone={style.tone} />
       </View>
       <View className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-zinc-800">
         <View className={`h-full rounded-full ${style.bar}`} style={{ width: `${pct}%` }} />
       </View>
-      <Text className="mt-2 text-xs text-zinc-400">
+      <Text className="mt-2 font-sans text-xs text-zinc-400">
         {scheduledThisWeek} of {weeklyTarget} posts scheduled this week
         {postsNeeded > 0 ? ` · ${postsNeeded} more to stay active` : ''}
       </Text>
@@ -63,11 +64,12 @@ function PostRow({
   onReschedule: () => void;
   onDelete: () => void;
 }) {
+  const t = useTheme();
   const isPublished = post.status === 'published';
   return (
-    <View className="mb-3 rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5">
+    <View className="mb-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
       <View className="flex-row items-center justify-between gap-2">
-        <Text className="flex-1 text-base font-semibold text-white" numberOfLines={1}>
+        <Text className="flex-1 font-sans-semibold text-base text-white" numberOfLines={1}>
           {post.title || 'Untitled post'}
         </Text>
         <Badge
@@ -75,10 +77,10 @@ function PostRow({
           tone={isPublished ? 'positive' : post.scheduledDate ? 'info' : 'neutral'}
         />
       </View>
-      <Text className="mt-1 text-sm text-zinc-400" numberOfLines={2}>
+      <Text className="mt-1 font-sans text-sm text-zinc-400" numberOfLines={2}>
         {post.content}
       </Text>
-      <Text className="mt-1.5 text-xs text-zinc-500">
+      <Text className="mt-1.5 font-sans text-xs text-zinc-500">
         {isPublished
           ? `Published ${formatDateTime(post.publishedAt)}`
           : post.scheduledDate
@@ -89,24 +91,24 @@ function PostRow({
         <View className="mt-3 flex-row gap-2">
           <Pressable
             onPress={onPublish}
-            className="flex-row items-center gap-1 rounded-full border border-surface-border px-3 py-1.5 active:opacity-70"
+            className="flex-row items-center gap-1 rounded-full border border-surface-border px-3 py-1.5 active:scale-95"
           >
-            <Ionicons name="send-outline" size={13} color="#8B93B8" />
-            <Text className="text-xs font-medium text-zinc-300">Publish now</Text>
+            <Ionicons name="send-outline" size={13} color={t.textFaint} />
+            <Text className="font-sans-semibold text-xs text-zinc-300">Publish now</Text>
           </Pressable>
           <Pressable
             onPress={onReschedule}
-            className="flex-row items-center gap-1 rounded-full border border-surface-border px-3 py-1.5 active:opacity-70"
+            className="flex-row items-center gap-1 rounded-full border border-surface-border px-3 py-1.5 active:scale-95"
           >
-            <Ionicons name="calendar-outline" size={13} color="#8B93B8" />
-            <Text className="text-xs font-medium text-zinc-300">Reschedule</Text>
+            <Ionicons name="calendar-outline" size={13} color={t.textFaint} />
+            <Text className="font-sans-semibold text-xs text-zinc-300">Reschedule</Text>
           </Pressable>
           <Pressable
             onPress={onDelete}
-            className="flex-row items-center gap-1 rounded-full border border-rose-400/25 px-3 py-1.5 active:opacity-70"
+            className="flex-row items-center gap-1 rounded-full border border-rose-400/25 px-3 py-1.5 active:scale-95"
           >
-            <Ionicons name="trash-outline" size={13} color="#FB7185" />
-            <Text className="text-xs font-medium text-rose-300">Delete</Text>
+            <Ionicons name="trash-outline" size={13} color={t.rose} />
+            <Text className="font-sans-semibold text-xs text-rose-300">Delete</Text>
           </Pressable>
         </View>
       )}
@@ -118,6 +120,7 @@ export function SchedulerPanel({ scrollable = true }: { scrollable?: boolean }) 
   const { activeBusinessId } = useBusiness();
   const queryClient = useQueryClient();
   const picker = useDateTimePicker();
+  const t = useTheme();
 
   const buffer = useQuery({
     queryKey: ['scheduler-buffer', activeBusinessId],
@@ -200,7 +203,7 @@ export function SchedulerPanel({ scrollable = true }: { scrollable?: boolean }) 
       <View className="px-5">
         <SectionLabel>Upcoming posts</SectionLabel>
         {upcoming.length === 0 ? (
-          <Text className="px-1 text-sm text-zinc-500">
+          <Text className="px-1 font-sans text-sm text-zinc-500">
             Nothing scheduled. Generate posts or schedule drafts from the Content tab.
           </Text>
         ) : (
@@ -252,7 +255,7 @@ export function SchedulerPanel({ scrollable = true }: { scrollable?: boolean }) 
         <RefreshControl
           refreshing={buffer.isRefetching}
           onRefresh={() => void buffer.refetch()}
-          tintColor="#6366F1"
+          tintColor={t.brandBright}
         />
       }
     >

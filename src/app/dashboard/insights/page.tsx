@@ -55,10 +55,10 @@ interface InsightsData {
 // ── Skeleton shimmer card ─────────────────────────────────────────────────────
 function SkeletonCard({ className = '' }: { className?: string }) {
   return (
-    <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-6 animate-pulse ${className}`}>
-      <div className="h-4 bg-slate-200 rounded w-1/3 mb-3" />
-      <div className="h-8 bg-slate-200 rounded w-1/2 mb-2" />
-      <div className="h-3 bg-slate-100 rounded w-1/4" />
+    <div className={`bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6 animate-pulse ${className}`}>
+      <div className="h-4 bg-surface-container-high rounded w-1/3 mb-3" />
+      <div className="h-8 bg-surface-container-high rounded w-1/2 mb-2" />
+      <div className="h-3 bg-surface-container rounded w-1/4" />
     </div>
   );
 }
@@ -66,15 +66,15 @@ function SkeletonCard({ className = '' }: { className?: string }) {
 // ── Change badge ──────────────────────────────────────────────────────────────
 function ChangeBadge({ value }: { value: number | null | undefined }) {
   if (value === null || value === undefined) {
-    return <span className="text-[11px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">N/A</span>;
+    return <span className="text-[11px] font-semibold text-outline bg-surface-container px-2 py-0.5 rounded-full">N/A</span>;
   }
   const isPositive = value > 0;
   const isZero = value === 0;
   const color = isZero
-    ? 'text-slate-500 bg-slate-100'
+    ? 'text-on-surface-variant bg-surface-container'
     : isPositive
-    ? 'text-emerald-700 bg-emerald-50'
-    : 'text-rose-600 bg-rose-50';
+    ? 'text-on-secondary-container bg-secondary-container/40'
+    : 'text-on-error-container bg-error-container';
   return (
     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${color}`}>
       {isPositive ? '+' : ''}{value}%
@@ -178,21 +178,21 @@ export default function InsightsPage() {
   // ── STATE A: Not connected ─────────────────────────────────────────────────
   if (!loading && data && !data.connected) {
     return (
-      <div className="min-h-screen bg-slate-50/50 p-4 sm:p-8 pt-10 flex items-center justify-center">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-10 max-w-md w-full text-center">
+      <div className="min-h-screen bg-surface/50 p-4 sm:p-8 pt-10 flex items-center justify-center">
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-10 max-w-md w-full text-center">
           <div className="flex justify-center mb-4">
             <GoogleGLogo />
           </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">
+          <h2 className="text-xl font-bold text-on-surface mb-2">
             Connect your Google Business Profile
           </h2>
-          <p className="text-sm text-slate-500 mb-6">
+          <p className="text-sm text-on-surface-variant mb-6">
             See how customers find you on Google — call clicks, website visits, directions,
             search impressions, and top keywords. All in one place.
           </p>
 
           {oauthError && (
-            <div className="mb-4 text-sm text-left text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
+            <div className="mb-4 text-sm text-left text-on-error-container bg-error-container border border-error-container rounded-xl px-4 py-3">
               {oauthErrorMessage(oauthError)}
             </div>
           )}
@@ -203,7 +203,7 @@ export default function InsightsPage() {
               { icon: '🌐', text: 'Track website visits driven by your Google profile' },
               { icon: '🔍', text: 'Discover which keywords bring customers to your business' },
             ].map((b) => (
-              <div key={b.icon} className="flex items-start gap-3 text-sm text-slate-600">
+              <div key={b.icon} className="flex items-start gap-3 text-sm text-on-surface-variant">
                 <span className="text-base">{b.icon}</span>
                 <span>{b.text}</span>
               </div>
@@ -212,11 +212,11 @@ export default function InsightsPage() {
 
           <a
             href="/api/auth/google"
-            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-3 rounded-xl transition-colors w-full justify-center text-sm"
+            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-container text-white font-semibold px-6 py-3 rounded-xl transition-colors w-full justify-center text-sm"
           >
             Connect Google Account →
           </a>
-          <p className="text-xs text-slate-400 mt-3">
+          <p className="text-xs text-outline mt-3">
             We'll never post or edit anything on your profile. Read-only access only.
           </p>
         </div>
@@ -227,9 +227,9 @@ export default function InsightsPage() {
   // ── STATE B: Loading skeleton ──────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50/50 p-4 sm:p-8 pt-10">
+      <div className="min-h-screen bg-surface/50 p-4 sm:p-8 pt-10">
         <div className="max-w-[1400px] mx-auto">
-          <div className="h-8 bg-slate-200 rounded w-48 mb-6 animate-pulse" />
+          <div className="h-8 bg-surface-container-high rounded w-48 mb-6 animate-pulse" />
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
             {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
           </div>
@@ -246,8 +246,8 @@ export default function InsightsPage() {
   // ── Reconnect required ─────────────────────────────────────────────────────
   if (!data) {
     return (
-      <div className="min-h-screen bg-slate-50/50 p-8 flex items-center justify-center">
-        <p className="text-slate-500">Failed to load insights. Please try again.</p>
+      <div className="min-h-screen bg-surface/50 p-8 flex items-center justify-center">
+        <p className="text-on-surface-variant">Failed to load insights. Please try again.</p>
       </div>
     );
   }
@@ -256,12 +256,12 @@ export default function InsightsPage() {
 
   // ── STATE C: Connected, data loaded ───────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-50/50 p-4 sm:p-8 pt-10">
+    <div className="min-h-screen bg-surface/50 p-4 sm:p-8 pt-10">
       <div className="max-w-[1400px] mx-auto">
 
         {/* Connected-just-now banner */}
         {connectedJustNow && (
-          <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-700 flex items-center gap-2">
+          <div className="mb-4 bg-secondary-container/40 border border-secondary-fixed rounded-xl px-4 py-3 text-sm text-on-secondary-container flex items-center gap-2">
             <span>✅</span>
             <span>Google Business Profile connected! Click <strong>Sync Now</strong> to fetch your first data.</span>
           </div>
@@ -269,7 +269,7 @@ export default function InsightsPage() {
 
         {/* Stale data warning */}
         {needsSync && (
-          <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700 flex items-center gap-2">
+          <div className="mb-4 bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container flex items-center gap-2">
             <span>⚠️</span>
             <span>Data may be up to 5 days old — GBP metrics have a natural delay from Google.</span>
           </div>
@@ -278,26 +278,26 @@ export default function InsightsPage() {
         {/* Header row */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">GBP Performance</h1>
+            <h1 className="font-heading text-2xl font-bold text-on-surface">GBP Performance</h1>
             {googleEmail && (
               <div className="flex items-center gap-1.5 mt-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span className="text-xs text-slate-500">Connected as {googleEmail}</span>
+                <span className="w-2 h-2 rounded-full bg-secondary" />
+                <span className="text-xs text-on-surface-variant">Connected as {googleEmail}</span>
               </div>
             )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             {/* Range tabs */}
-            <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+            <div className="flex bg-surface-container rounded-xl p-1 gap-1">
               {([7, 14, 28, 90] as Range[]).map((r) => (
                 <button
                   key={r}
                   onClick={() => setSelectedRange(r)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     selectedRange === r
-                      ? 'bg-white text-indigo-600 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800'
+                      ? 'bg-surface-container-lowest text-primary shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
                   {r}D
@@ -309,7 +309,7 @@ export default function InsightsPage() {
             <button
               onClick={handleSync}
               disabled={syncing}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors"
+              className="flex items-center gap-2 bg-primary hover:bg-primary-container disabled:opacity-60 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors"
             >
               {syncing ? (
                 <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -320,7 +320,7 @@ export default function InsightsPage() {
             </button>
 
             {/* Last sync time */}
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-outline">
               Last synced {relativeTime(lastSyncAt)}
             </span>
           </div>
@@ -339,14 +339,14 @@ export default function InsightsPage() {
           ].map((card) => (
             <div
               key={card.label}
-              className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 hover:shadow-md transition-all"
+              className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 hover:card-shadow transition-all"
             >
               <div className="flex items-center justify-between mb-3">
                 <span className="text-2xl">{card.icon}</span>
                 <ChangeBadge value={card.change} />
               </div>
-              <p className="text-xs font-medium text-slate-500 mb-1">{card.label}</p>
-              <p className="text-2xl font-bold text-slate-900">
+              <p className="text-xs font-medium text-on-surface-variant mb-1">{card.label}</p>
+              <p className="text-2xl font-bold text-on-surface">
                 {card.value.toLocaleString()}
               </p>
             </div>
@@ -356,21 +356,21 @@ export default function InsightsPage() {
         {/* Charts row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           {/* Performance over time — 2/3 width */}
-          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <h3 className="font-bold text-slate-900 mb-6">Performance Over Time</h3>
+          <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+            <h3 className="font-bold text-on-surface mb-6">Performance Over Time</h3>
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 400, height: 256 }}>
                 <LineChart data={timeSeries}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e0e3e5" />
                   <XAxis
                     dataKey="date"
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    tick={{ fontSize: 11, fill: '#737781' }}
                     dy={8}
                     tickFormatter={(v) => v.slice(5)} // "MM-DD"
                   />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} dx={-8} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#737781' }} dx={-8} />
                   <Tooltip
                     contentStyle={{
                       borderRadius: '12px',
@@ -379,22 +379,22 @@ export default function InsightsPage() {
                       fontSize: '12px',
                     }}
                   />
-                  <Line type="monotone" dataKey="views" name="Views" stroke="#4f46e5" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
-                  <Line type="monotone" dataKey="callClicks" name="Call Clicks" stroke="#10b981" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="websiteClicks" name="Website Clicks" stroke="#8b5cf6" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="directionRequests" name="Directions" stroke="#f59e0b" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="views" name="Views" stroke="#00386c" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+                  <Line type="monotone" dataKey="callClicks" name="Call Clicks" stroke="#006c45" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="websiteClicks" name="Website Clicks" stroke="#00386c" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="directionRequests" name="Directions" stroke="#004119" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
             {/* Legend */}
             <div className="flex flex-wrap gap-4 mt-4">
               {[
-                { color: '#4f46e5', label: 'Views' },
-                { color: '#10b981', label: 'Call Clicks' },
-                { color: '#8b5cf6', label: 'Website Clicks' },
-                { color: '#f59e0b', label: 'Directions' },
+                { color: '#00386c', label: 'Views' },
+                { color: '#006c45', label: 'Call Clicks' },
+                { color: '#00386c', label: 'Website Clicks' },
+                { color: '#004119', label: 'Directions' },
               ].map((l) => (
-                <div key={l.label} className="flex items-center gap-1.5 text-xs text-slate-500">
+                <div key={l.label} className="flex items-center gap-1.5 text-xs text-on-surface-variant">
                   <span className="w-3 h-0.5 inline-block rounded" style={{ backgroundColor: l.color }} />
                   {l.label}
                 </div>
@@ -403,27 +403,27 @@ export default function InsightsPage() {
           </div>
 
           {/* Search visibility — 1/3 width */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <h3 className="font-bold text-slate-900 mb-6">Search Visibility</h3>
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+            <h3 className="font-bold text-on-surface mb-6">Search Visibility</h3>
 
             <div className="space-y-4 mb-6">
               <div>
-                <p className="text-2xl font-bold text-slate-900">
+                <p className="text-2xl font-bold text-on-surface">
                   {(searchData?.totalSearchImpressions ?? 0).toLocaleString()}
                 </p>
-                <p className="text-xs font-semibold text-slate-500 mt-0.5">Search Impressions</p>
-                <p className="text-xs text-slate-400">Times you appeared for a search term</p>
+                <p className="text-xs font-semibold text-on-surface-variant mt-0.5">Search Impressions</p>
+                <p className="text-xs text-outline">Times you appeared for a search term</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-slate-900">
+                <p className="text-2xl font-bold text-on-surface">
                   {(searchData?.uniqueKeywords ?? 0).toLocaleString()}
                 </p>
-                <p className="text-xs font-semibold text-slate-500 mt-0.5">Unique Keywords</p>
-                <p className="text-xs text-slate-400">Distinct terms that surfaced your profile</p>
+                <p className="text-xs font-semibold text-on-surface-variant mt-0.5">Unique Keywords</p>
+                <p className="text-xs text-outline">Distinct terms that surfaced your profile</p>
               </div>
             </div>
 
-            <p className="text-[10px] text-slate-400 mt-4">
+            <p className="text-[10px] text-outline mt-4">
               {searchData?.keywordMonth ? `Search terms for ${searchData.keywordMonth} — ` : ''}
               Google provides keyword data monthly.
             </p>
@@ -431,14 +431,14 @@ export default function InsightsPage() {
         </div>
 
         {/* Keywords table */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-          <h3 className="font-bold text-slate-900 mb-1">
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+          <h3 className="font-bold text-on-surface mb-1">
             Top Keywords Bringing You Impressions
           </h3>
-          <p className="text-xs text-slate-400 mb-6">{searchData?.keywordMonth ?? 'This month'}</p>
+          <p className="text-xs text-outline mb-6">{searchData?.keywordMonth ?? 'This month'}</p>
 
           {!searchData?.topKeywords?.length ? (
-            <div className="text-center py-10 text-slate-400">
+            <div className="text-center py-10 text-outline">
               <p className="text-sm font-medium mb-1">Keyword data updates monthly.</p>
               <p className="text-xs">Check back after your first full month of data.</p>
             </div>
@@ -446,28 +446,28 @@ export default function InsightsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wider pb-3 pr-4 w-10">#</th>
-                    <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wider pb-3 pr-4">Keyword</th>
-                    <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider pb-3 pr-4 w-28">Impressions</th>
-                    <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wider pb-3 w-40">Share</th>
+                  <tr className="border-b border-outline-variant">
+                    <th className="text-left text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4 w-10">#</th>
+                    <th className="text-left text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4">Keyword</th>
+                    <th className="text-right text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4 w-28">Impressions</th>
+                    <th className="text-left text-xs font-semibold text-outline uppercase tracking-wider pb-3 w-40">Share</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-outline-variant">
                   {searchData.topKeywords.map((kw, i) => {
                     const maxImpressions = searchData.topKeywords[0]?.impressions ?? 1;
                     const pct = Math.round((kw.impressions / maxImpressions) * 100);
                     return (
-                      <tr key={kw.keyword} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-3 pr-4 text-slate-400 font-medium">{i + 1}</td>
-                        <td className="py-3 pr-4 font-medium text-slate-800">{kw.keyword}</td>
-                        <td className="py-3 pr-4 text-right font-semibold text-slate-900">
+                      <tr key={kw.keyword} className="hover:bg-surface/50 transition-colors">
+                        <td className="py-3 pr-4 text-outline font-medium">{i + 1}</td>
+                        <td className="py-3 pr-4 font-medium text-on-surface">{kw.keyword}</td>
+                        <td className="py-3 pr-4 text-right font-semibold text-on-surface">
                           {kw.impressions.toLocaleString()}
                         </td>
                         <td className="py-3">
-                          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-indigo-500 rounded-full"
+                              className="h-full bg-primary rounded-full"
                               style={{ width: `${pct}%` }}
                             />
                           </div>
@@ -483,19 +483,19 @@ export default function InsightsPage() {
 
         {/* Reconnect warning — only shown if token is known to be revoked */}
         {data.connected === false && (
-          <div className="mt-6 bg-amber-50 border border-amber-200 rounded-2xl p-6 flex items-start gap-4">
+          <div className="mt-6 bg-error-container border border-error-container rounded-2xl p-6 flex items-start gap-4">
             <span className="text-2xl">⚠️</span>
             <div>
-              <p className="font-semibold text-amber-800 mb-1">
+              <p className="font-semibold text-on-error-container mb-1">
                 Your Google connection needs to be refreshed.
               </p>
-              <p className="text-sm text-amber-700 mb-3">
+              <p className="text-sm text-on-error-container mb-3">
                 Google access tokens expire periodically for security. Your historical data
                 is safe — just reconnect to resume syncing.
               </p>
               <a
                 href="/api/auth/google"
-                className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors"
+                className="inline-flex items-center gap-2 bg-error hover:bg-error text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors"
               >
                 Reconnect Google Account →
               </a>

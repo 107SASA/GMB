@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useBusiness } from '@/context/BusinessContext';
 import { Zap, AlertTriangle, CheckCircle2, Building2, MapPin, Tag, Globe, Phone, Map as MapIcon, Edit3 } from 'lucide-react';
 import UpgradeLimitModal from '@/components/ui/UpgradeLimitModal';
+import ConnectGoogleModal from '@/components/audit/ConnectGoogleModal';
 
 export default function AuditForm() {
   const router = useRouter();
@@ -13,14 +14,37 @@ export default function AuditForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [upgradeMsg, setUpgradeMsg] = useState<string | null>(null);
+  const [connectGoogleMsg, setConnectGoogleMsg] = useState<string | null>(null);
 
-  // Editable overrides — pre-filled from profile, user can adjust before each audit run
+  // Editable overrides — pre-filled from profile, user can adjust before each audit run.
+  // Business.category is what the owner typed at profile creation (required
+  // field, see api/onboarding/route.ts) — the trustworthy source. userDefinedCategory
+  // is a later explicit correction, so it wins when present.
   const [categoryOverride, setCategoryOverride] = useState(
-    (activeBusiness as any)?.userDefinedCategory || ''
+    (activeBusiness as any)?.userDefinedCategory || (activeBusiness as any)?.category || ''
   );
   const [cityOverride, setCityOverride] = useState(
     (activeBusiness as any)?.city || ''
   );
+
+  // Last-resort fallback only: if the business profile genuinely has no
+  // category at all (neither of the two above), try the connected Google
+  // Business Profile's primaryCategory. NOT preferred over the owner's own
+  // input — Google's category can be flat-out wrong (e.g. a supermarket
+  // showing as "Agricultural service"), whereas what the owner typed at
+  // signup is ground truth about their own business.
+  useEffect(() => {
+    if (categoryOverride.trim() || !activeBusiness?._id) return;
+    fetch('/api/gbp/profile')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.connected && d?.profile?.primaryCategory) {
+          setCategoryOverride(d.profile.primaryCategory);
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBusiness?._id]);
 
   // Feature 2A — Review Analysis Range Selector
   const [reviewPeriodDays, setReviewPeriodDays] = useState<7 | 14 | 21>(14);
@@ -55,6 +79,10 @@ export default function AuditForm() {
           setUpgradeMsg(data.error);
           return;
         }
+        if (data.code === 'GOOGLE_CONNECTION_REQUIRED') {
+          setConnectGoogleMsg(data.error);
+          return;
+        }
         throw new Error(data.error || 'Failed to generate audit');
       }
 
@@ -81,6 +109,9 @@ export default function AuditForm() {
     <div className="max-w-3xl mx-auto">
       {upgradeMsg && (
         <UpgradeLimitModal message={upgradeMsg} onClose={() => setUpgradeMsg(null)} />
+      )}
+      {connectGoogleMsg && (
+        <ConnectGoogleModal message={connectGoogleMsg} onClose={() => setConnectGoogleMsg(null)} />
       )}
       <motion.div
         initial={{ opacity: 0, y: 20 }}

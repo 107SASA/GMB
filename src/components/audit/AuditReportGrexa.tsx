@@ -9,6 +9,7 @@ import {
   IGeoGridPoint,
 } from '@/models/Audit';
 import { Download, RefreshCw, Share2, Copy, Check } from 'lucide-react';
+import { formatRank, rankBucket, computeSuspensionRisk } from '@/services/audit/reportMath';
 
 /* ─── Google Logo ───────────────────────────────────────────────────────────── */
 function GoogleLogo({ size = 18 }: { size?: number }) {
@@ -104,18 +105,11 @@ function ChecklistRow({ field, status }: { field: string; status: string }) {
 }
 
 /* ─── Rank colour helpers ───────────────────────────────────────────────────── */
-/** Rank 21 is the backend sentinel for "not in local pack" — never show as a real #21. */
-function formatRank(rank: number | null | undefined): string {
-  if (rank == null || Number.isNaN(Number(rank)) || Number(rank) <= 0) return '—';
-  const n = Number(rank);
-  if (n > 20) return '20+';
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
-}
-
 function rankTextClass(rank: number | null | undefined) {
-  if (rank == null || rank <= 0) return 'text-outline';
-  if (rank <= 5)  return 'text-secondary';
-  if (rank <= 10) return 'text-primary';
+  const bucket = rankBucket(rank);
+  if (bucket === 'unranked') return 'text-outline';
+  if (bucket === 'good') return 'text-secondary';
+  if (bucket === 'ok') return 'text-primary';
   return 'text-error';
 }
 
@@ -293,8 +287,7 @@ export default function AuditReportGrexa({
   const categoriesCnt  = evidence.categoriesCount  ?? null;
 
   /* ── Suspension risk ──────────────────────────────────────────────── */
-  const suspLevel = completionPct >= 70 && reviewCount >= 10 ? 'Low' : completionPct >= 40 ? 'Medium' : 'High';
-  const suspPct   = suspLevel === 'High' ? 85 : suspLevel === 'Medium' ? 45 : 0;
+  const { level: suspLevel, pct: suspPct } = computeSuspensionRisk(completionPct, reviewCount);
   const suspColor = suspLevel === 'Low' ? '#006c45' : suspLevel === 'Medium' ? '#1a4f8b' : '#ba1a1a';
 
   /* ── Checklist display — never invent fake Complete/Missing rows ─── */

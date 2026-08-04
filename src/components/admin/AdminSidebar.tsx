@@ -21,7 +21,6 @@ const adminGroups = [
     label: 'OPERATIONS',
     links: [
       { name: 'System Health', icon: 'monitor_heart', href: '/admin/system' },
-      { name: 'Queues & Jobs', icon: 'schedule', href: '/admin/jobs' },
       { name: 'Automations', icon: 'bolt', href: '/admin/automations' },
       { name: 'AI & API Usage', icon: 'psychology', href: '/admin/ai-usage' },
     ],
@@ -34,15 +33,26 @@ const adminGroups = [
       { name: 'CRM Monitor', icon: 'view_kanban', href: '/admin/crm' },
       { name: 'Review Monitor', icon: 'star', href: '/admin/reviews' },
       { name: 'WhatsApp Monitor', icon: 'chat', href: '/admin/whatsapp' },
-      { name: 'WhatsApp AI Agent', icon: 'smart_toy', href: '/admin/whatsapp-agent' },
+      { name: 'WhatsApp Inbox', icon: 'forum', href: '/admin/whatsapp-agent' },
+      { name: 'Demo Bookings', icon: 'event_note', href: '/admin/demo-bookings' },
+    ],
+  },
+  // Separate from ACTIVITY MONITOR on purpose — these edit live WhatsApp
+  // message templates (config), the group above is read-only observation.
+  {
+    label: 'WHATSAPP AGENTS',
+    links: [
       { name: 'Sales Agent', icon: 'support_agent', href: '/admin/sales-agent' },
       { name: 'Booking Agent', icon: 'event_available', href: '/admin/booking-agent' },
+      { name: 'Report Agent', icon: 'summarize', href: '/admin/report-agent' },
     ],
   },
   {
     label: 'ADMIN',
     links: [
       { name: 'Settings', icon: 'tune', href: '/admin/settings' },
+      { name: 'Support', icon: 'headset_mic', href: '/admin/support' },
+      { name: 'Team Invites', icon: 'person_add', href: '/admin/invites' },
     ],
   },
 ];
@@ -112,13 +122,6 @@ export function AdminSidebar() {
       </div>
 
       <div className="mt-auto p-6 space-y-2">
-        <Link
-          href="/admin/settings"
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all"
-        >
-          <MaterialIcon name="support_agent" size={20} />
-          <span className="font-medium text-sm">Support / Settings</span>
-        </Link>
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-error hover:bg-error-container transition-all"

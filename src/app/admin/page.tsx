@@ -96,7 +96,7 @@ export default function AdminRootPage() {
     },
     {
       label: 'MRR',
-      value: loading ? null : `$${(data?.mrr ?? 0).toLocaleString()}`,
+      value: loading ? null : `₹${(data?.mrr ?? 0).toLocaleString()}`,
       icon: DollarSign,
       color: 'text-secondary bg-secondary-container/40',
     },

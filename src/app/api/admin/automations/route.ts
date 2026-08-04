@@ -12,15 +12,18 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
-    const type = searchParams.get('type');
+    const workflow = searchParams.get('workflow');
 
     const twentyFourHoursAgo = new Date();
     twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
 
-    // Build filter
+    // Build filter. Filters by `workflow` (e.g. "content-scheduler",
+    // "publish-cron") — the value an admin actually recognizes — not the raw
+    // `type` enum ('scheduler'/'ai_generation'/'inngest_job'/'other'), which
+    // is too coarse to be a useful admin-panel filter.
     const filter: any = {};
     if (status && status !== 'all') filter.status = status;
-    if (type && type !== 'all') filter.type = type;
+    if (workflow && workflow !== 'all') filter.workflow = workflow;
 
     const [
       totalRuns,

@@ -33,11 +33,15 @@ interface Business {
   contentGeneratedCount: number;
   createdAt: string;
   whatsappConfig?: { isConnected: boolean };
+  // This workspace's own billing state (src/lib/workspaceAccess.ts is the
+  // real per-workspace source of truth) — not userId.subscriptionPlan, which
+  // is a legacy per-user field that predates per-workspace billing and can
+  // be stale for a user who owns multiple workspaces on different plans.
+  subscriptionStatus?: 'trialing' | 'active' | 'past_due' | 'canceled';
   userId?: {
     _id: string;
     fullName: string;
     email: string;
-    subscriptionPlan?: string;
   };
 }
 
@@ -320,8 +324,17 @@ export default function AdminBusinessesPage() {
                             <div className="text-xs text-outline mt-0.5">
                               {biz.userId.email}
                             </div>
-                            <span className="mt-1 inline-block px-2 py-0.5 bg-primary-fixed text-primary text-xs font-bold rounded-md border border-primary-fixed-dim">
-                              {biz.userId.subscriptionPlan || 'Free'}
+                            <span className={cn(
+                              'mt-1 inline-block px-2 py-0.5 text-xs font-bold rounded-md border',
+                              biz.subscriptionStatus === 'active'
+                                ? 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed'
+                                : biz.subscriptionStatus === 'past_due'
+                                ? 'bg-error-container text-on-error-container border-error-container'
+                                : biz.subscriptionStatus === 'canceled'
+                                ? 'bg-surface text-on-surface-variant border-outline-variant'
+                                : 'bg-primary-fixed text-primary border-primary-fixed-dim', // trialing / unset
+                            )}>
+                              {biz.subscriptionStatus ?? 'trialing'}
                             </span>
                           </div>
                         ) : (

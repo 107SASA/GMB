@@ -71,20 +71,23 @@ export async function processAuditJob(auditId: string) {
     } = require('./seoAnalyzer');
 
     // Review sync (only runs on a business's first-ever audit, when nothing
-    // is cached yet) and geo-grid rankings (45 SerpApi calls: 5 keywords × 9
-    // grid points) are entirely independent SerpApi calls — the sync doesn't
-    // touch rank data, and geo-grid only needs category/city, not reviews.
-    // Running them concurrently instead of sequentially is what keeps a
-    // brand-new business's first report from taking 60+ seconds: previously
-    // a first-time sync (data-ID resolve + paginated review fetch, ~15-25s)
-    // finished completely before geo-grid (~15-40s) even started.
+    // is cached yet), geo-grid rankings (45 DataForSEO calls sent as a single
+    // batched request — see dataForSeoClient.ts), and competitor discovery
+    // (Google Places) are all independent of each other — sync doesn't touch
+    // rank data, geo-grid only needs category/city, and competitor search
+    // only needs category/city/name/website. Running all three concurrently
+    // instead of sequentially is what keeps a brand-new business's first
+    // report from taking a minute-plus: previously a first-time sync
+    // (data-ID resolve + paginated review fetch, ~15-25s) finished completely
+    // before geo-grid (~15-40s) even started, and competitor search ran only
+    // after both of those.
     // fastMode (lead-gen entry points only, see src/lib/startAudit.ts) skips
     // both the first-time review sync and geo-grid ranking below — the two
     // biggest, slowest steps — trading rank/review precision for a report
     // that generates in seconds instead of up to a minute. Paying customers'
     // audits (POST /api/audit, fastMode always false) are unaffected; both
-    // steps already have honest "unavailable" fallbacks for when
-    // SERPAPI_KEY is missing, reused here rather than adding new branches.
+    // steps already have honest "unavailable" fallbacks for when DataForSEO
+    // credentials are missing, reused here rather than adding new branches.
     const needsReviewSync = reviewsData.length === 0 && !!process.env.SERPAPI_KEY && !audit.fastMode;
     const reviewSyncTask: Promise<typeof reviewsData> = needsReviewSync
       ? (async () => {
@@ -115,18 +118,42 @@ export async function processAuditJob(auditId: string) {
       googlePlaceId: businessObj.googlePlaceId || businessObj.placeId,
       serpApiDataId: businessObj.serpApiDataId || businessObj.dataId,
     };
-    const geoGridTask = process.env.SERPAPI_KEY && !audit.fastMode
+    const { dataForSeoConfigured } = require('./dataForSeoClient');
+    const geoGridTask = dataForSeoConfigured && !audit.fastMode
       ? fetchGeoGridRankings(businessForRankings)
       : Promise.resolve(null);
 
-    const [syncedReviewsData, rankData] = await Promise.all([reviewSyncTask, geoGridTask]);
-    reviewsData = syncedReviewsData;
+    // Competitor discovery (Google Places) only needs category/city/name/
+    // website — none of which depend on the review sync above — so it runs
+    // alongside it instead of waiting for it to finish first. reviewCount is
+    // read from the reviews already in the DB (reviewsData, fetched before
+    // this block); that's the real count except on a business's very first
+    // audit, when it's 0 either way since nothing has synced yet.
+    const { findCompetitors } = require('./competitorService');
+    const competitorsTask = findCompetitors({
+      businessName: business.name,
+      category:     resolvedCategory,
+      city:         resolvedCity,
+      area:         business.area    || '',
+      state:        business.state   || '',
+      country:      business.country || '',
+      website:      business.website || '',
+      reviewCount:  reviewsData.length,
+    });
 
-    // Geo-grid keyword rankings via SerpApi (45 calls: 5 keywords × 9 grid points)
+    const [syncedReviewsData, rankData, competitorsResult] = await Promise.all([
+      reviewSyncTask,
+      geoGridTask,
+      competitorsTask,
+    ]);
+    reviewsData = syncedReviewsData;
+    const { accepted, rejected, targetTier, evidenceSource: compEvidence } = competitorsResult;
+
+    // Geo-grid keyword rankings via DataForSEO (45 calls: 5 keywords × 9 grid points)
     let keywordRankings: any[] = [];
     let rankingsEvidence = audit.fastMode
       ? 'Skipped for fast report generation'
-      : 'Unavailable (SERPAPI_KEY not configured)';
+      : 'Unavailable (DATAFORSEO_LOGIN/DATAFORSEO_PASSWORD not configured)';
     let geoGridRank: any = null;
     let localPackCompetitors: any[] = [];
 
@@ -141,7 +168,7 @@ export async function processAuditJob(auditId: string) {
     } else {
       // Do NOT invent fake rank-21 keywords — surface unavailable honestly.
       keywordRankings = [];
-      console.warn('[auditService] SERPAPI_KEY missing — skipping live ranking & competitor harvest');
+      console.warn('[auditService] DataForSEO credentials missing — skipping live ranking & competitor harvest');
     }
 
     // Include sentiment so scoring functions can use real sentiment data
@@ -191,11 +218,6 @@ export async function processAuditJob(auditId: string) {
       averageRank: parseFloat(avgRank.toFixed(1)),
       topKeywords: keywordRankings,
     };
-
-    // ── Competitor discovery ───────────────────────────────────
-    const { findCompetitors } = require('./competitorService');
-    const { accepted, rejected, targetTier, evidenceSource: compEvidence } =
-      await findCompetitors(businessData);
 
     // Attach real local-pack ranks onto Places competitors when names match.
     const enrichWithLocalPackRank = (list: any[]) =>

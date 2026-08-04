@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Zap,
   RefreshCw,
@@ -11,6 +11,7 @@ import {
   Clock,
   TrendingUp,
   Filter,
+  Play,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -46,11 +47,93 @@ interface AutomationsData {
   recentLogs: AutomationLogEntry[];
 }
 
+// Known workflows, their manual-trigger config, and how to match them against
+// AutomationLog rows (by `workflow` [+ `action`], not the coarse `type` enum).
+const WORKFLOWS = [
+  {
+    id: 'buffer-monitor',
+    label: 'Buffer Monitor',
+    description: 'Daily 8 AM · generates AI posts when buffer < 7 days',
+    trigger: 'buffer-check' as const,
+    needsBusinessId: true,
+    matchWorkflow: 'content-scheduler',
+    matchAction: 'generate_post_batch',
+  },
+  {
+    id: 'lead-followup',
+    label: 'Lead Follow-Up',
+    description: 'Hourly · WhatsApp follow-ups to stale leads',
+    trigger: null,
+    needsBusinessId: false,
+    matchWorkflow: 'lead-followup',
+    matchAction: undefined,
+  },
+  {
+    id: 'review-autopoll',
+    label: 'Review Autopoll',
+    description: 'Hourly · marks clicked review requests as reviewed',
+    trigger: 'review-autopoll' as const,
+    needsBusinessId: false,
+    matchWorkflow: 'review-autopoll',
+    matchAction: undefined,
+  },
+  {
+    id: 'content-scheduler',
+    label: 'Content Scheduler',
+    description: 'On-demand · AI generates GMB posts for a business',
+    trigger: 'generate-content' as const,
+    needsBusinessId: true,
+    matchWorkflow: 'content-scheduler',
+    matchAction: 'generate_post_batch',
+  },
+  {
+    id: 'publish-cron',
+    label: 'Publish Cron',
+    description: 'Every 15 min · publishes due scheduled posts to GMB',
+    trigger: 'publish-posts' as const,
+    needsBusinessId: false,
+    matchWorkflow: 'publish-cron',
+    matchAction: 'publish_post',
+  },
+  {
+    id: 'critical-alert',
+    label: 'Critical Alert',
+    description: 'Event-driven · WhatsApp alert on 1-star reviews',
+    trigger: null,
+    needsBusinessId: false,
+    matchWorkflow: 'critical-alert',
+    matchAction: undefined,
+  },
+] as const;
+
+type WorkflowTrigger = 'buffer-check' | 'publish-posts' | 'sync-reviews' | 'review-autopoll' | 'generate-content';
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 const STATUS_STYLES: Record<string, string> = {
   success: 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed',
   failed:  'bg-error-container    text-on-error-container    border-error-container',
   pending: 'bg-primary-fixed   text-primary   border-primary-fixed-dim',
 };
+
+function StatusBadge({ status }: { status?: string }) {
+  return (
+    <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border', STATUS_STYLES[status ?? ''] ?? STATUS_STYLES.pending)}>
+      {status === 'success' && <CheckCircle2 className="w-3 h-3" />}
+      {status === 'failed' && <XCircle className="w-3 h-3" />}
+      {status ?? 'unknown'}
+    </span>
+  );
+}
 
 function StatCard({
   title,
@@ -86,19 +169,26 @@ function StatCard({
 }
 
 export default function AutomationsPage() {
-  const [data, setData]           = useState<AutomationsData | null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
-  const [statusFilter, setStatus] = useState('all');
-  const [typeFilter, setType]     = useState('all');
+  const [data, setData]               = useState<AutomationsData | null>(null);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState<string | null>(null);
+  const [statusFilter, setStatus]     = useState('all');
+  const [workflowFilter, setWorkflow] = useState('all');
+
+  // Per-workflow manual-trigger state
+  const [triggering, setTriggering]         = useState<Record<string, boolean>>({});
+  const [triggerError, setTriggerError]     = useState<Record<string, string>>({});
+  const [businessIdInput, setBusinessIdInput] = useState<Record<string, string>>({});
+  const [showInput, setShowInput]           = useState<Record<string, boolean>>({});
+
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
-      setLoading(true);
       setError(null);
       const params = new URLSearchParams();
-      if (statusFilter !== 'all') params.set('status', statusFilter);
-      if (typeFilter   !== 'all') params.set('type',   typeFilter);
+      if (statusFilter   !== 'all') params.set('status',   statusFilter);
+      if (workflowFilter !== 'all') params.set('workflow', workflowFilter);
       const res  = await fetch(`/api/admin/automations?${params}`);
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
@@ -108,11 +198,65 @@ export default function AutomationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, typeFilter]);
+  }, [statusFilter, workflowFilter]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+    intervalRef.current = setInterval(fetchData, 30_000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [fetchData]);
 
-  const maxWorkflow = data ? Math.max(...data.byWorkflow.map(w => w.count), 1) : 1;
+  function getLastRun(wf: (typeof WORKFLOWS)[number]): AutomationLogEntry | undefined {
+    if (!data) return undefined;
+    return data.recentLogs.find((l) => {
+      if (l.workflow !== wf.matchWorkflow) return false;
+      if (wf.matchAction && l.action !== wf.matchAction) return false;
+      return true;
+    });
+  }
+
+  function getTotalRuns(wf: (typeof WORKFLOWS)[number]): number {
+    if (!data) return 0;
+    return data.byWorkflow.find((b) => b._id === wf.matchWorkflow)?.count ?? 0;
+  }
+
+  async function handleTrigger(wfId: string, trigger: WorkflowTrigger, needsBusinessId: boolean) {
+    if (needsBusinessId && !showInput[wfId]) {
+      setShowInput((prev) => ({ ...prev, [wfId]: true }));
+      return;
+    }
+
+    const businessId = needsBusinessId ? businessIdInput[wfId]?.trim() : undefined;
+    if (needsBusinessId && !businessId) {
+      setTriggerError((prev) => ({ ...prev, [wfId]: 'Enter a businessId first' }));
+      return;
+    }
+
+    setTriggering((prev) => ({ ...prev, [wfId]: true }));
+    setTriggerError((prev) => ({ ...prev, [wfId]: '' }));
+
+    try {
+      const res = await fetch('/api/admin/automations/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflow: trigger, businessId }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        setTriggerError((prev) => ({ ...prev, [wfId]: json.error ?? 'Trigger failed' }));
+      } else {
+        setShowInput((prev) => ({ ...prev, [wfId]: false }));
+        setBusinessIdInput((prev) => ({ ...prev, [wfId]: '' }));
+        setTimeout(fetchData, 2000); // give Inngest time to enqueue before refreshing
+      }
+    } catch (e: any) {
+      setTriggerError((prev) => ({ ...prev, [wfId]: e.message }));
+    } finally {
+      setTriggering((prev) => ({ ...prev, [wfId]: false }));
+    }
+  }
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -123,8 +267,8 @@ export default function AutomationsPage() {
             <Zap className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="font-heading text-2xl font-bold text-on-surface">Automations Monitor</h1>
-            <p className="text-sm text-on-surface-variant">Platform-wide automation workflow executions</p>
+            <h1 className="font-heading text-2xl font-bold text-on-surface">Automations</h1>
+            <p className="text-sm text-on-surface-variant">Inngest background jobs · auto-refreshes every 30s</p>
           </div>
         </div>
         <button
@@ -156,68 +300,68 @@ export default function AutomationsPage() {
             <StatCard title="Success Rate"   value={`${data.stats.successRate}%`} icon={TrendingUp} color="bg-primary-fixed-dim" />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            {/* Workflow Breakdown */}
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
-              <h2 className="font-semibold text-on-surface mb-5">Top Workflows</h2>
-              {data.byWorkflow.length === 0 ? (
-                <div className="text-sm text-outline text-center py-8">No data</div>
-              ) : (
-                <div className="space-y-4">
-                  {data.byWorkflow.map(w => {
-                    const pct = Math.round((w.count / maxWorkflow) * 100);
-                    return (
-                      <div key={w._id}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-on-surface truncate max-w-[140px]">{w._id || 'Unknown'}</span>
-                          <span className="text-xs font-bold text-on-surface">{w.count.toLocaleString()}</span>
-                        </div>
-                        <div className="h-1.5 bg-surface-container rounded-full overflow-hidden">
-                          <div className="h-full bg-primary-fixed-dim rounded-full" style={{ width: `${pct}%` }} />
-                        </div>
+          {/* Automation Health — one card per known workflow, with a manual trigger */}
+          <div className="mb-8">
+            <h2 className="font-semibold text-on-surface mb-4">Automation Health</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {WORKFLOWS.map((wf) => {
+                const lastRun = getLastRun(wf);
+                const totalRuns = getTotalRuns(wf);
+                const isBusy = triggering[wf.id];
+
+                return (
+                  <div
+                    key={wf.id}
+                    className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5 flex flex-col gap-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="font-semibold text-on-surface text-sm">{wf.label}</h3>
+                        <p className="text-xs text-on-surface-variant mt-0.5">{wf.description}</p>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Success Rate Ring */}
-            <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6 flex flex-col">
-              <h2 className="font-semibold text-on-surface mb-5">Health Summary</h2>
-              <div className="flex-1 flex items-center gap-8">
-                {/* SVG ring */}
-                <div className="relative w-28 h-28 flex-shrink-0">
-                  <svg viewBox="0 0 36 36" className="w-28 h-28 -rotate-90">
-                    <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f1f5f9" strokeWidth="3.5" />
-                    <circle
-                      cx="18" cy="18" r="15.9" fill="none"
-                      stroke={data.stats.successRate >= 90 ? '#10b981' : data.stats.successRate >= 70 ? '#f59e0b' : '#ef4444'}
-                      strokeWidth="3.5"
-                      strokeDasharray={`${data.stats.successRate} ${100 - data.stats.successRate}`}
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-xl font-bold text-on-surface">{data.stats.successRate}%</span>
-                    <span className="text-[10px] text-outline">success</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 flex-1">
-                  {[
-                    { label: 'Total Runs',   value: data.stats.totalRuns,    color: 'bg-primary-fixed text-primary' },
-                    { label: 'Succeeded',    value: data.stats.successCount, color: 'bg-secondary-container text-on-secondary-container' },
-                    { label: 'Failed (all)', value: data.stats.failedCount,  color: 'bg-error-container text-on-error-container' },
-                    { label: 'Failed today', value: data.stats.failedToday,  color: 'bg-primary-fixed text-primary' },
-                  ].map(item => (
-                    <div key={item.label} className={cn('rounded-xl p-3', item.color)}>
-                      <div className="text-xl font-bold">{item.value.toLocaleString()}</div>
-                      <div className="text-xs font-medium opacity-80">{item.label}</div>
+                      {lastRun && <StatusBadge status={lastRun.status} />}
                     </div>
-                  ))}
-                </div>
-              </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs text-on-surface-variant">
+                      <div>
+                        <span className="text-outline block">Last run</span>
+                        {lastRun ? timeAgo(lastRun.createdAt) : <span className="text-outline">No data</span>}
+                      </div>
+                      <div>
+                        <span className="text-outline block">Total runs</span>
+                        {totalRuns.toLocaleString()}
+                      </div>
+                    </div>
+
+                    {wf.trigger && (
+                      <div className="mt-auto pt-2 border-t border-outline-variant space-y-2">
+                        {wf.needsBusinessId && showInput[wf.id] && (
+                          <input
+                            type="text"
+                            placeholder="Paste businessId (MongoDB ObjectId)"
+                            value={businessIdInput[wf.id] ?? ''}
+                            onChange={(e) =>
+                              setBusinessIdInput((prev) => ({ ...prev, [wf.id]: e.target.value }))
+                            }
+                            className="w-full px-2.5 py-1.5 text-xs border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+                          />
+                        )}
+                        {triggerError[wf.id] && (
+                          <p className="text-xs text-error">{triggerError[wf.id]}</p>
+                        )}
+                        <button
+                          onClick={() => handleTrigger(wf.id, wf.trigger!, wf.needsBusinessId)}
+                          disabled={isBusy}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-on-primary rounded-lg hover:bg-primary-container disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {isBusy ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                          {wf.needsBusinessId && !showInput[wf.id] ? 'Run Now…' : 'Run Now'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -241,21 +385,24 @@ export default function AutomationsPage() {
                   <option value="pending">Pending</option>
                 </select>
                 <select
-                  value={typeFilter}
-                  onChange={e => setType(e.target.value)}
+                  value={workflowFilter}
+                  onChange={e => setWorkflow(e.target.value)}
                   className="text-xs border border-outline-variant rounded-lg px-2 py-1.5 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
                 >
-                  <option value="all">All Types</option>
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="review">Review</option>
-                  <option value="content">Content</option>
-                  <option value="audit">Audit</option>
+                  <option value="all">All Workflows</option>
+                  {WORKFLOWS.map(wf => (
+                    <option key={wf.matchWorkflow} value={wf.matchWorkflow}>{wf.label}</option>
+                  ))}
                 </select>
               </div>
             </div>
 
             {data.recentLogs.length === 0 ? (
-              <div className="p-8 text-center text-outline text-sm">No automation logs found.</div>
+              <div className="p-12 text-center">
+                <Clock className="w-10 h-10 text-outline-variant mx-auto mb-3" />
+                <p className="text-on-surface-variant text-sm font-medium">No automation logs yet</p>
+                <p className="text-outline text-xs mt-1">Logs appear here once workflows start running.</p>
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -264,6 +411,7 @@ export default function AutomationsPage() {
                       <th className="text-left p-4 text-label-sm text-on-surface-variant">Workflow</th>
                       <th className="text-left p-4 text-label-sm text-on-surface-variant">Action</th>
                       <th className="text-left p-4 text-label-sm text-on-surface-variant">Status</th>
+                      <th className="text-left p-4 text-label-sm text-on-surface-variant">Business</th>
                       <th className="text-left p-4 text-label-sm text-on-surface-variant">Duration</th>
                       <th className="text-left p-4 text-label-sm text-on-surface-variant">Message / Error</th>
                       <th className="text-left p-4 text-label-sm text-on-surface-variant">Time</th>
@@ -272,15 +420,18 @@ export default function AutomationsPage() {
                   <tbody>
                     {data.recentLogs.map(log => (
                       <tr key={log._id} className="border-b border-outline-variant hover:bg-surface transition-colors">
-                        <td className="p-4 font-medium text-on-surface">{log.workflow || '—'}</td>
-                        <td className="p-4 text-on-surface-variant">{log.action || log.type || '—'}</td>
-                        <td className="p-4">
-                          <span className={cn('px-2 py-0.5 text-xs font-bold rounded-md border', STATUS_STYLES[log.status] ?? STATUS_STYLES.pending)}>
-                            {log.status}
-                          </span>
+                        <td className="p-4 font-mono text-xs text-on-surface">{log.workflow || '—'}</td>
+                        <td className="p-4 text-xs text-on-surface-variant">{log.action || '—'}</td>
+                        <td className="p-4"><StatusBadge status={log.status} /></td>
+                        <td className="p-4 text-xs font-mono text-on-surface-variant">
+                          {log.businessId ? (
+                            <a href={`/admin/businesses/${log.businessId}`} className="text-primary hover:underline">
+                              {log.businessId.slice(-8)}…
+                            </a>
+                          ) : '—'}
                         </td>
                         <td className="p-4 text-on-surface-variant">
-                          {log.duration ? (
+                          {log.duration != null ? (
                             <span className="flex items-center gap-1">
                               <Clock className="w-3 h-3" />{log.duration}ms
                             </span>
@@ -293,8 +444,8 @@ export default function AutomationsPage() {
                             <span className="text-on-surface-variant truncate block">{log.message || '—'}</span>
                           )}
                         </td>
-                        <td className="p-4 text-outline whitespace-nowrap">
-                          {new Date(log.createdAt).toLocaleString()}
+                        <td className="p-4 text-outline whitespace-nowrap" title={new Date(log.createdAt).toLocaleString()}>
+                          {timeAgo(log.createdAt)}
                         </td>
                       </tr>
                     ))}

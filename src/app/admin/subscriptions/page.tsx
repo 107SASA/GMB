@@ -74,7 +74,10 @@ const MODULE_LABELS: Record<string, string> = {
   marketing_automation:   'Marketing',
 };
 
-const PLAN_OPTIONS   = ['all', 'Free', 'Pro'];
+// 'Enterprise' is a legacy tier — no longer sold (planDefaults.ts resolves it
+// to Pro limits), but real subscribers can still be on it, so it stays
+// filterable rather than becoming invisible to search.
+const PLAN_OPTIONS   = ['all', 'Free', 'Pro', 'Enterprise'];
 const STATUS_OPTIONS = ['all', 'Active', 'Trialing', 'PastDue', 'Canceled'];
 
 // ── The single sellable plan (super-admin editable) ──────────────────────────

@@ -1,13 +1,8 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
-import Subscription from '@/models/Subscription';
-
-const PLAN_PRICES: Record<string, number> = {
-  Free: 0,
-  Pro: 49,
-  Enterprise: 149,
-};
+import Business from '@/models/Business';
+import BillingPlan from '@/models/BillingPlan';
 
 export async function GET() {
   const auth = await requireSuperAdmin();
@@ -16,83 +11,53 @@ export async function GET() {
   try {
     await dbConnect();
 
-    const [
-      allSubscriptions,
-      planBreakdown,
-      monthlyTrend,
-      churnedThisMonth,
-    ] = await Promise.all([
-      Subscription.find({ billingStatus: 'Active' }).lean(),
+    // Real per-workspace billing state (src/lib/workspaceAccess.ts is the
+    // single source of truth for this — Business.subscriptionStatus, set by
+    // the Razorpay webhook). The old Subscription model (userId-scoped,
+    // Free/Pro/Enterprise) predates the per-workspace billing migration and
+    // no longer reflects who's actually paying.
+    const plan = await BillingPlan.findOne({ key: 'default' }).lean();
+    const monthlyPriceInr =
+      (plan as any)?.durations?.find((d: any) => d.cycle === 'monthly' && d.enabled)?.priceInr
+      ?? (plan as any)?.priceInr
+      ?? 0;
 
-      Subscription.aggregate([
-        { $group: { _id: '$planType', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
+    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+    const [statusCounts, canceledThisMonth] = await Promise.all([
+      Business.aggregate([
+        { $group: { _id: '$subscriptionStatus', count: { $sum: 1 } } },
       ]),
-
-      Subscription.aggregate([
-        {
-          $group: {
-            _id: {
-              year: { $year: '$createdAt' },
-              month: { $month: '$createdAt' },
-            },
-            count: { $sum: 1 },
-            plans: { $push: '$planType' },
-          },
-        },
-        { $sort: { '_id.year': 1, '_id.month': 1 } },
-        { $limit: 6 },
-      ]),
-
-      Subscription.countDocuments({
-        billingStatus: 'Canceled',
-        updatedAt: {
-          $gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-        },
+      Business.countDocuments({
+        subscriptionStatus: 'canceled',
+        updatedAt: { $gte: startOfMonth },
       }),
     ]);
 
-    // Calculate MRR from active subscriptions
-    const mrr = allSubscriptions.reduce((sum, sub) => {
-      return sum + (PLAN_PRICES[(sub as any).planType] || 0);
-    }, 0);
+    const countFor = (status: string) =>
+      statusCounts.find((s: any) => s._id === status)?.count ?? 0;
 
+    const activeCount = countFor('active');
+    // Monthly-equivalent MRR: billing cycle (monthly/quarterly/yearly) isn't
+    // tracked per-workspace, so this treats every active workspace as paying
+    // the plan's monthly rate. Understates true revenue for anyone on a
+    // longer, discounted cycle, but unlike the old hardcoded 3-tier USD price
+    // list, every number here is derived from real subscriptions and the
+    // actual editable plan price.
+    const mrr = activeCount * monthlyPriceInr;
     const arr = mrr * 12;
-    const activePayingUsers = allSubscriptions.filter(
-      (s) => (s as any).planType !== 'Free'
-    ).length;
-
-    // Format monthly trend
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-    const formattedTrend = monthlyTrend.map((item: any) => {
-      const revenue = item.plans.reduce((sum: number, plan: string) => {
-        return sum + (PLAN_PRICES[plan] || 0);
-      }, 0);
-      return {
-        month: `${monthNames[item._id.month - 1]} ${item._id.year}`,
-        revenue,
-        count: item.count,
-      };
-    });
-
-    // Plan breakdown with revenue
-    const formattedPlanBreakdown = planBreakdown.map((item: any) => ({
-      plan: item._id,
-      count: item.count,
-      revenue: (PLAN_PRICES[item._id] || 0) * item.count,
-    }));
 
     return NextResponse.json({
       success: true,
       data: {
         mrr,
         arr,
-        activePayingUsers,
-        churnedThisMonth,
-        planBreakdown: formattedPlanBreakdown,
-        monthlyTrend: formattedTrend,
+        activeCount,
+        trialingCount: countFor('trialing'),
+        pastDueCount: countFor('past_due'),
+        canceledThisMonth,
+        monthlyPriceInr,
+        planName: (plan as any)?.displayName ?? 'Pro',
       },
     });
   } catch (error: any) {

@@ -1028,6 +1028,10 @@ function CustomersTab() {
             <option value="all">All Plans</option>
             <option value="Free">Free</option>
             <option value="Pro">Pro</option>
+            {/* Legacy tier — no longer sold (planDefaults.ts resolves it to Pro
+                limits), but real customers can still be on it, so it needs to
+                stay filterable rather than becoming invisible to search. */}
+            <option value="Enterprise">Enterprise (legacy)</option>
           </select>
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline pointer-events-none" />
         </div>

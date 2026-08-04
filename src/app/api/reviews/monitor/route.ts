@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const ctx = await requireBusinessContext({ businessIdFromBody: businessIdFromQuery });
     if (!ctx.ok) return ctx.response;
 
-    const result = await syncReviewsForBusiness(ctx.businessId, ctx.organizationId);
+    const result = await syncReviewsForBusiness(ctx.businessId, ctx.organizationId, { requireGbp: true });
 
     return NextResponse.json({
       success: true,

@@ -2,22 +2,25 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import {
-  DollarSign,
+  IndianRupee,
   TrendingUp,
   Users,
   XCircle,
+  Clock,
+  AlertTriangle,
   RefreshCw,
   Loader2,
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 interface RevenueData {
   mrr: number;
   arr: number;
-  activePayingUsers: number;
-  churnedThisMonth: number;
-  planBreakdown: Array<{ plan: string; count: number; revenue: number }>;
-  monthlyTrend: Array<{ month: string; revenue: number; count: number }>;
+  activeCount: number;
+  trialingCount: number;
+  pastDueCount: number;
+  canceledThisMonth: number;
+  monthlyPriceInr: number;
+  planName: string;
 }
 
 function StatCard({
@@ -48,12 +51,6 @@ function StatCard({
   );
 }
 
-const PLAN_COLORS: Record<string, string> = {
-  Free: 'bg-surface-container text-on-surface-variant',
-  Pro: 'bg-primary-fixed text-primary',
-  Enterprise: 'bg-primary-fixed text-primary',
-};
-
 export default function RevenuePage() {
   const [data, setData] = useState<RevenueData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,13 +75,20 @@ export default function RevenuePage() {
     fetchData();
   }, [fetchData]);
 
+  const statusRows = data ? [
+    { label: 'Active',   count: data.activeCount,      color: 'bg-secondary-container/40 text-on-secondary-container', icon: Users },
+    { label: 'Trialing', count: data.trialingCount,     color: 'bg-primary-fixed text-primary',                        icon: Clock },
+    { label: 'Past Due', count: data.pastDueCount,      color: 'bg-error-container text-on-error-container',           icon: AlertTriangle },
+    { label: 'Canceled this month', count: data.canceledThisMonth, color: 'bg-surface-container text-on-surface-variant', icon: XCircle },
+  ] : [];
+
   return (
     <div className="p-8 max-w-6xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 bg-primary rounded-xl flex items-center justify-center">
-            <DollarSign className="w-5 h-5 text-white" />
+            <IndianRupee className="w-5 h-5 text-white" />
           </div>
           <div>
             <h1 className="font-heading text-2xl font-bold text-on-surface">Revenue Analytics</h1>
@@ -114,93 +118,46 @@ export default function RevenuePage() {
       ) : data ? (
         <>
           {/* Stat Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              title="Monthly Recurring Revenue"
-              value={data.mrr}
-              icon={DollarSign}
-              color="bg-secondary"
-              prefix="$"
-            />
-            <StatCard
-              title="Annual Recurring Revenue"
-              value={data.arr}
-              icon={TrendingUp}
-              color="bg-primary"
-              prefix="$"
-            />
-            <StatCard
-              title="Active Paying Users"
-              value={data.activePayingUsers}
-              icon={Users}
-              color="bg-primary-fixed-dim"
-            />
-            <StatCard
-              title="Churned This Month"
-              value={data.churnedThisMonth}
-              icon={XCircle}
-              color="bg-error"
-            />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-3">
+            <StatCard title="Monthly Recurring Revenue" value={data.mrr} icon={IndianRupee} color="bg-secondary" prefix="₹" />
+            <StatCard title="Annual Recurring Revenue"   value={data.arr} icon={TrendingUp} color="bg-primary" prefix="₹" />
+            <StatCard title="Active Subscriptions"       value={data.activeCount} icon={Users} color="bg-primary-fixed-dim" />
+            <StatCard title="Canceled This Month"        value={data.canceledThisMonth} icon={XCircle} color="bg-error" />
           </div>
+          <p className="text-xs text-on-surface-variant mb-8">
+            MRR = {data.activeCount} active workspace{data.activeCount === 1 ? '' : 's'} × ₹{data.monthlyPriceInr.toLocaleString()}/mo ({data.planName} plan's current monthly price).
+            Workspaces on a longer discounted cycle (quarterly/yearly) aren't tracked separately, so this is a monthly-equivalent estimate, not exact.
+          </p>
 
-          {/* Monthly Revenue Chart */}
-          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6 mb-6">
-            <h2 className="font-semibold text-on-surface mb-6">Monthly Revenue Trend</h2>
-            {data.monthlyTrend.length === 0 ? (
-              <div className="text-center text-outline text-sm py-8">
-                No revenue data yet.
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={data.monthlyTrend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip
-                    formatter={(value: any) => [`$${value}`, 'Revenue']}
-                  />
-                  <Bar dataKey="revenue" fill="#00386c" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-
-          {/* Plan Breakdown Table */}
+          {/* Subscription Status Breakdown */}
           <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow">
             <div className="p-6 border-b border-outline-variant">
-              <h2 className="font-semibold text-on-surface">Plan Breakdown</h2>
-              <p className="text-sm text-on-surface-variant">Subscribers and revenue per plan</p>
+              <h2 className="font-semibold text-on-surface">Subscription Status</h2>
+              <p className="text-sm text-on-surface-variant">Every workspace, by current billing state</p>
             </div>
-            {data.planBreakdown.length === 0 ? (
-              <div className="p-8 text-center text-outline text-sm">
-                No subscription data yet.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-outline-variant bg-surface-container-low">
-                      <th className="text-left p-4 text-label-sm text-on-surface-variant">Plan</th>
-                      <th className="text-left p-4 text-label-sm text-on-surface-variant">Subscribers</th>
-                      <th className="text-left p-4 text-label-sm text-on-surface-variant">MRR Contribution</th>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-outline-variant bg-surface-container-low">
+                    <th className="text-left p-4 text-label-sm text-on-surface-variant">Status</th>
+                    <th className="text-left p-4 text-label-sm text-on-surface-variant">Workspaces</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {statusRows.map((row) => (
+                    <tr key={row.label} className="border-b border-outline-variant hover:bg-surface last:border-0">
+                      <td className="p-4">
+                        <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg ${row.color}`}>
+                          <row.icon className="w-3.5 h-3.5" />
+                          {row.label}
+                        </span>
+                      </td>
+                      <td className="p-4 font-medium text-on-surface">{row.count.toLocaleString()}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {data.planBreakdown.map((item) => (
-                      <tr key={item.plan} className="border-b border-outline-variant hover:bg-surface">
-                        <td className="p-4">
-                          <span className={`text-xs font-bold px-2 py-1 rounded-lg ${PLAN_COLORS[item.plan] || 'bg-surface-container text-on-surface-variant'}`}>
-                            {item.plan}
-                          </span>
-                        </td>
-                        <td className="p-4 font-medium text-on-surface">{item.count}</td>
-                        <td className="p-4 font-bold text-secondary">${item.revenue.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       ) : null}

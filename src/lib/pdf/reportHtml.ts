@@ -1,6 +1,16 @@
 import type {
   IAudit, IAuditData, IChecklistItem, IGeoGridKeyword,
 } from '@/models/Audit';
+import { formatRank, rankBucket, computeSuspensionRisk } from '@/services/audit/reportMath';
+
+// Brand triad (src/app/globals.css: --color-secondary / --color-primary-container /
+// --color-error) — the same three colors the on-screen report uses for
+// rank/score/risk indicators, so a PDF and its matching screen report never
+// show different colors for the same number.
+const BRAND_GOOD = '#006c45';
+const BRAND_MID  = '#1a4f8b';
+const BRAND_BAD  = '#ba1a1a';
+const BRAND_RANK_OK = '#00386c'; // text-primary — used specifically for the 6-10 rank bucket, matching AuditReportGrexa's rankTextClass
 
 export interface ReportContext {
   audit: IAudit;
@@ -42,13 +52,12 @@ function svgRing(value: number, color: string, size = 96): string {
 }
 
 function rankMeta(rank: number | undefined | null): { color: string; display: string } {
-  if (rank == null || Number(rank) <= 0) return { color: '#94a3b8', display: '—' };
-  const n = Number(rank);
-  if (n <= 5)  return { color: '#22c55e', display: n.toFixed(1) };
-  if (n <= 10) return { color: '#eab308', display: n.toFixed(1) };
-  // 21 is the backend "not in local pack" sentinel — never show as a real #21
-  if (n > 20)  return { color: '#ef4444', display: '20+' };
-  return { color: '#ef4444', display: n.toFixed(1) };
+  const bucket = rankBucket(rank);
+  const color = bucket === 'good' ? BRAND_GOOD
+    : bucket === 'ok' ? BRAND_RANK_OK
+    : bucket === 'bad' ? BRAND_BAD
+    : '#737781'; // --color-outline
+  return { color, display: formatRank(rank) };
 }
 
 function starRow(rating: number): string {
@@ -62,30 +71,30 @@ function starRow(rating: number): string {
 
 function statusBadge(status: string): string {
   const map: Record<string, string> = {
-    Good:    'background:#22c55e;color:#fff;',
-    Poor:    'background:#ef4444;color:#fff;',
-    Average: 'background:#eab308;color:#fff;',
-    Low:     'background:#22c55e;color:#fff;',
-    High:    'background:#ef4444;color:#fff;',
-    Medium:  'background:#eab308;color:#fff;',
+    Good:    `background:${BRAND_GOOD};color:#fff;`,
+    Poor:    `background:${BRAND_BAD};color:#fff;`,
+    Average: `background:${BRAND_MID};color:#fff;`,
+    Low:     `background:${BRAND_GOOD};color:#fff;`,
+    High:    `background:${BRAND_BAD};color:#fff;`,
+    Medium:  `background:${BRAND_MID};color:#fff;`,
   };
-  const style = map[status] ?? 'background:#94a3b8;color:#fff;';
+  const style = map[status] ?? 'background:#737781;color:#fff;';
   return `<span style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;${style}">${h(status)}</span>`;
 }
 
 function checkIcon(status: IChecklistItem['status'] | string): string {
   if (status === 'Complete')
     return `<svg width="20" height="20" viewBox="0 0 24 24" style="flex-shrink:0;">
-      <circle cx="12" cy="12" r="10" fill="#22c55e"/>
+      <circle cx="12" cy="12" r="10" fill="${BRAND_GOOD}"/>
       <path d="M8 12l3 3 5-5" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
     </svg>`;
   if (status === 'Partial')
     return `<svg width="20" height="20" viewBox="0 0 24 24" style="flex-shrink:0;">
-      <circle cx="12" cy="12" r="10" fill="#f97316"/>
+      <circle cx="12" cy="12" r="10" fill="${BRAND_MID}"/>
       <path d="M12 7v5M12 16h.01" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/>
     </svg>`;
   return `<svg width="20" height="20" viewBox="0 0 24 24" style="flex-shrink:0;">
-    <circle cx="12" cy="12" r="10" fill="#ef4444"/>
+    <circle cx="12" cy="12" r="10" fill="${BRAND_BAD}"/>
     <path d="M15 9l-6 6M9 9l6 6" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/>
   </svg>`;
 }
@@ -224,12 +233,24 @@ export function buildReportHtml(ctx: ReportContext): string {
   const seoScore: number = data.seoScore?.score ?? 0;
   const completionPct: number = data.profileCompletion?.completionPercentage ?? 0;
   const checklist: IChecklistItem[] = data.profileCompletion?.checklist ?? [];
+  // Mirrors AuditReportGrexa: no reviews synced yet means auditService deleted
+  // reviewAnalysis entirely rather than leaving hollow zeros, so its presence
+  // (not just reviewCount) is the real "do we have review data" signal.
+  const hasReviews: boolean = !!data.reviewAnalysis;
   const reviewCount: number = (audit as any).metadata?.reviewsActualCount ?? data.reviewAnalysis?.reviewCount ?? 0;
   const avgRating: number = businessRating ?? data.reviewAnalysis?.averageRating ?? 0;
   const reviewsPerWeek: number = data.reviewAnalysis?.reviewsPerWeek ?? 0;
   const industryAvg: number = data.reviewAnalysis?.industryAverage ?? 2;
   const responseRateStr: string = data.reviewAnalysis?.responseRate ?? '0%';
   const responseRatePct: number = parseInt(responseRateStr, 10) || 0;
+  const reviewPeriodDays: number = (audit as any).reviewPeriodDays ?? (audit as any).metadata?.reviewPeriodDays ?? 14;
+  const visibilityPct: number | undefined = data.geoGridRank?.visibilityPct;
+  const thirtyDayPlan: any[] = (data as any).thirtyDayPlan ?? [];
+  const ninetyDayPlan: any[] = (data as any).ninetyDayPlan ?? [];
+  const actionPlanMeta: any = (data as any).actionPlan ?? {};
+  const planDurationDays: number = actionPlanMeta.durationDays ?? (audit as any).actionPlanDurationDays ?? 30;
+  const planLabel: string = actionPlanMeta.planLabel ?? `${planDurationDays}-Day Action Plan`;
+  const extendedLabel: string = actionPlanMeta.extendedLabel ?? `Beyond ${planDurationDays} Days — Ongoing Roadmap`;
   const geoGridKeywords: IGeoGridKeyword[] = data.geoGridRank?.keywords?.length
     ? data.geoGridRank.keywords
     : ((data.googleSearchRank?.topKeywords ?? []).map((k) => ({
@@ -280,20 +301,15 @@ export function buildReportHtml(ctx: ReportContext): string {
   const servicesCnt    = evidence.servicesCount    ?? null;
   const categoriesCnt  = evidence.categoriesCount  ?? null;
 
-  // Suspension risk
-  let suspLevel: string, suspColor: string, suspPct: number;
-  if (completionPct < 40 && reviewCount < 5) {
-    suspLevel = 'High';   suspColor = '#ef4444'; suspPct = 85;
-  } else if (completionPct < 70 || reviewCount < 10) {
-    suspLevel = 'Medium'; suspColor = '#eab308'; suspPct = 45;
-  } else {
-    suspLevel = 'Low';    suspColor = '#22c55e'; suspPct = 0;
-  }
+  // Suspension risk — shared with AuditReportGrexa via computeSuspensionRisk
+  // so the two never disagree on Low/Medium/High for the same business.
+  const { level: suspLevel, pct: suspPct } = computeSuspensionRisk(completionPct, reviewCount);
+  const suspColor = suspLevel === 'Low' ? BRAND_GOOD : suspLevel === 'Medium' ? BRAND_MID : BRAND_BAD;
 
   // Rank + colors
   const rankM        = rankMeta(overallAvgRank);
-  const profileColor = overallScore >= 80 ? '#22c55e' : overallScore >= 60 ? '#eab308' : '#ef4444';
-  const seoColor     = seoScore    >= 80 ? '#22c55e' : seoScore    >= 50 ? '#eab308' : '#ef4444';
+  const profileColor = overallScore >= 80 ? BRAND_GOOD : overallScore >= 60 ? BRAND_MID : BRAND_BAD;
+  const seoColor     = seoScore    >= 80 ? BRAND_GOOD : seoScore    >= 50 ? BRAND_MID : BRAND_BAD;
   const genDate      = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
 
   // Checklist columns — never invent fake Complete/Missing rows
@@ -363,18 +379,19 @@ export function buildReportHtml(ctx: ReportContext): string {
       ${(overallAvgRank ?? 0) > 20
         ? 'Not appearing in Google&#39;s local pack for most tracked keywords'
         : `Overall average rank for the <strong style="color:#374151;">${geoGridKeywords.length} most searched keywords</strong> on Google for your business`}
+      ${typeof visibilityPct === 'number' ? ` &middot; visible in <strong style="color:#374151;">${visibilityPct}%</strong> of nearby searches` : ''}
     </p>
     <div style="display:flex;gap:14px;">
       <div style="display:flex;align-items:center;gap:5px;">
-        <div style="width:11px;height:11px;border-radius:50%;background:#22c55e;flex-shrink:0;"></div>
+        <div style="width:11px;height:11px;border-radius:50%;background:${BRAND_GOOD};flex-shrink:0;"></div>
         <span style="font-size:11px;color:#374151;">Top 5</span>
       </div>
       <div style="display:flex;align-items:center;gap:5px;">
-        <div style="width:11px;height:11px;border-radius:50%;background:#eab308;flex-shrink:0;"></div>
+        <div style="width:11px;height:11px;border-radius:50%;background:${BRAND_MID};flex-shrink:0;"></div>
         <span style="font-size:11px;color:#374151;">Under 10</span>
       </div>
       <div style="display:flex;align-items:center;gap:5px;">
-        <div style="width:11px;height:11px;border-radius:50%;background:#ef4444;flex-shrink:0;"></div>
+        <div style="width:11px;height:11px;border-radius:50%;background:${BRAND_BAD};flex-shrink:0;"></div>
         <span style="font-size:11px;color:#374151;">20+</span>
       </div>
     </div>` : `
@@ -521,11 +538,11 @@ export function buildReportHtml(ctx: ReportContext): string {
             ${missingFields.length > 0
               ? missingFields.map((f) =>
                   `<li style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                <span style="width:6px;height:6px;border-radius:50%;background:#ef4444;flex-shrink:0;display:inline-block;"></span>
-                <span style="font-size:12px;color:#dc2626;font-weight:500;">${h(f)}</span>
+                <span style="width:6px;height:6px;border-radius:50%;background:${BRAND_BAD};flex-shrink:0;display:inline-block;"></span>
+                <span style="font-size:12px;color:${BRAND_BAD};font-weight:500;">${h(f)}</span>
               </li>`
                 ).join('')
-              : `<li style="font-size:12px;color:#16a34a;font-weight:500;">No major SEO gaps detected</li>`}
+              : `<li style="font-size:12px;color:${BRAND_GOOD};font-weight:500;">No major SEO gaps detected</li>`}
           </ul>
         </div>
       </div>
@@ -555,7 +572,11 @@ export function buildReportHtml(ctx: ReportContext): string {
 
   </div>
 
-  <!-- Row 2: Reviews/Week | Response % | Suspension Risk -->
+  <!-- Row 2: Reviews/Week | Response % | Suspension Risk — mirrors
+       AuditReportGrexa's hasReviews branch: with no reviews synced yet, every
+       metric here derives from reviewCount, so showing them would read as
+       hollow zeros / a false "High risk" instead of a real finding. -->
+  ${hasReviews ? `
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
 
     <!-- Reviews Per Week -->
@@ -568,19 +589,19 @@ export function buildReportHtml(ctx: ReportContext): string {
         <span style="font-size:38px;font-weight:900;color:#0f172a;">${reviewsPerWeek.toFixed(2)}</span>
         <span style="font-size:14px;font-weight:600;color:#94a3b8;margin-left:3px;">/Week</span>
       </div>
-      <p style="font-size:10px;color:#94a3b8;">Industry Average is <strong style="color:#64748b;">${industryAvg}</strong>/week</p>
+      <p style="font-size:10px;color:#94a3b8;">Industry avg <strong style="color:#64748b;">${industryAvg}</strong>/week &middot; based on last ${reviewPeriodDays} days</p>
     </div>
 
     <!-- Response Percentage -->
     <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;break-inside:avoid;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <span style="font-size:12px;font-weight:600;color:#374151;">Response Percentage</span>
+        <span style="font-size:12px;font-weight:600;color:#374151;">Response Rate</span>
         ${statusBadge(responseRatePct >= 80 ? 'Good' : 'Poor')}
       </div>
       <div style="display:flex;justify-content:center;margin-bottom:6px;">
-        ${svgRing(responseRatePct, responseRatePct >= 80 ? '#22c55e' : '#ef4444', 80)}
+        ${svgRing(responseRatePct, responseRatePct >= 80 ? BRAND_GOOD : BRAND_BAD, 80)}
       </div>
-      <p style="font-size:10px;color:#94a3b8;text-align:center;">Should reply to <strong style="color:#64748b;">80%</strong> of the reviews</p>
+      <p style="font-size:10px;color:#94a3b8;text-align:center;">Should reply to <strong style="color:#64748b;">80%</strong> of reviews</p>
     </div>
 
     <!-- Suspension Risk -->
@@ -594,6 +615,14 @@ export function buildReportHtml(ctx: ReportContext): string {
       </div>
       <p style="font-size:10px;color:#94a3b8;text-align:center;">0 Policy Violation</p>
     </div>
+  </div>` : `
+  <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:10px;break-inside:avoid;">
+    <div style="width:8px;height:8px;border-radius:50%;background:${BRAND_MID};flex-shrink:0;"></div>
+    <p style="font-size:12px;color:#64748b;margin:0;">
+      Review-based metrics (reviews/week, response rate, suspension risk) will appear once
+      reviews have synced from your newly-connected Google Business Profile.
+    </p>
+  </div>`}
 
   </div>
 </div>`;
@@ -606,15 +635,15 @@ export function buildReportHtml(ctx: ReportContext): string {
     <div style="display:flex;align-items:center;gap:14px;font-size:11px;color:#374151;flex-wrap:wrap;">
       <span style="color:#94a3b8;font-weight:500;">Should be 100%</span>
       <div style="display:flex;align-items:center;gap:5px;">
-        <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#22c55e"/><path d="M8 12l3 3 5-5" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="${BRAND_GOOD}"/><path d="M8 12l3 3 5-5" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
         <span>Complete</span>
       </div>
       <div style="display:flex;align-items:center;gap:5px;">
-        <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#f97316"/><path d="M12 7v5M12 16h.01" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="${BRAND_MID}"/><path d="M12 7v5M12 16h.01" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
         <span>Partially Complete</span>
       </div>
       <div style="display:flex;align-items:center;gap:5px;">
-        <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#ef4444"/><path d="M15 9l-6 6M9 9l6 6" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="${BRAND_BAD}"/><path d="M15 9l-6 6M9 9l6 6" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
         <span>Incomplete</span>
       </div>
     </div>
@@ -638,7 +667,56 @@ export function buildReportHtml(ctx: ReportContext): string {
   </div>
 </div>`;
 
-  // ── 7. CTA BANNER ─────────────────────────────────────────────────────────────
+  // ── 7. ACTION PLAN ────────────────────────────────────────────────────────────
+  let actionPlanHtml = '';
+  if (thirtyDayPlan.length > 0 || ninetyDayPlan.length > 0) {
+    const periodsHtml = thirtyDayPlan.map((period: any, i: number) => `
+    <div style="padding:14px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;margin-bottom:12px;break-inside:avoid;">
+      <h3 style="font-size:12px;font-weight:700;color:#00386c;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px;">
+        ${h(period.week || period.month || `Period ${i + 1}`)}
+      </h3>
+      <ul style="list-style:none;margin:0;padding:0;">
+        ${(period.tasks || []).map((t: string) => `
+        <li style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#374151;margin-bottom:5px;">
+          <span style="width:5px;height:5px;border-radius:50%;background:${BRAND_MID};margin-top:5px;flex-shrink:0;display:inline-block;"></span>
+          <span>${h(t)}</span>
+        </li>`).join('')}
+      </ul>
+      ${period.expectedOutcome ? `<p style="font-size:11px;color:#94a3b8;margin-top:8px;">Expected outcome: ${h(period.expectedOutcome)}</p>` : ''}
+    </div>`).join('');
+
+    const ninetyHtml = ninetyDayPlan.length > 0 ? `
+    <div style="padding-top:14px;border-top:1px solid #e2e8f0;">
+      <h3 style="font-size:12px;font-weight:700;color:#00386c;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;">${h(extendedLabel)}</h3>
+      ${ninetyDayPlan.map((phase: any) => `
+      <div style="margin-bottom:10px;break-inside:avoid;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+          ${(phase.focusAreas || []).map((fa: string) =>
+            `<span style="font-size:9px;font-weight:700;padding:2px 8px;background:${BRAND_MID};color:#fff;border-radius:4px;text-transform:uppercase;letter-spacing:0.5px;">${h(fa)}</span>`
+          ).join('')}
+        </div>
+        <ul style="list-style:none;margin:0;padding:0;">
+          ${(phase.tasks || []).map((t: string) => `
+          <li style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#374151;margin-bottom:5px;">
+            <span style="width:5px;height:5px;border-radius:50%;background:#00386c;margin-top:5px;flex-shrink:0;display:inline-block;"></span>
+            <span>${h(t)}</span>
+          </li>`).join('')}
+        </ul>
+      </div>`).join('')}
+    </div>` : '';
+
+    actionPlanHtml = `
+<div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:14px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <h2 style="font-size:15px;font-weight:700;color:#0f172a;">${h(planLabel)}</h2>
+    <span style="font-size:10px;font-weight:700;padding:4px 10px;background:${BRAND_MID};color:#fff;border-radius:20px;text-transform:uppercase;letter-spacing:0.6px;">${planDurationDays}-Day Plan</span>
+  </div>
+  ${periodsHtml}
+  ${ninetyHtml}
+</div>`;
+  }
+
+  // ── 8. CTA BANNER ─────────────────────────────────────────────────────────────
   const ctaHtml = `
 <div style="border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#00386c 0%,#00386c 100%);break-inside:avoid;">
   <div style="padding:26px 30px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;">
@@ -676,6 +754,7 @@ ${rankAnalyticsHtml}
 ${geoGridHtml}
 ${profileBreakdownHtml}
 ${checklistHtml}
+${actionPlanHtml}
 ${ctaHtml}
 </body>
 </html>`;

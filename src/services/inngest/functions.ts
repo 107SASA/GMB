@@ -1711,11 +1711,20 @@ export const reportCardDeliver = inngest.createFunction(
 export const reviewSyncWorker = inngest.createFunction(
   { id: "review-sync-worker", triggers: [{ cron: "0 2 * * *" }] }, // Nightly at 2 AM
   async ({ step }) => {
-    const businesses = await step.run("fetch-active-businesses", async () => {
+    // Only businesses with a connected GBP token get auto-synced here — for
+    // everyone else, syncReviewsForBusiness would silently fall back to
+    // SerpApi (a paid API), burning a credit every night for businesses that
+    // haven't connected Google yet. Unconnected businesses get reviews via
+    // the manual "Sync reviews" button instead (which requires GBP already —
+    // see reviews/fetch/route.ts), or as soon as they connect.
+    const businesses = await step.run("fetch-gbp-connected-businesses", async () => {
       const dbConnect = (await import("@/lib/mongodb")).default;
       await dbConnect();
       const { default: Business } = await import("@/models/Business");
-      return await Business.find({ isActive: true }).select('_id').lean();
+      const { default: GBPToken } = await import("@/models/GBPToken");
+      const tokens = await GBPToken.find({}).select('businessId').lean();
+      const connectedIds = tokens.map(t => (t as any).businessId);
+      return await Business.find({ isActive: true, _id: { $in: connectedIds } }).select('_id').lean();
     });
 
     const events = businesses.map(b => ({

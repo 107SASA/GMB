@@ -24,13 +24,13 @@ function ReviewRow({ review }: { review: Review }) {
   return (
     <Pressable
       onPress={() => router.push(`/reviews/${review._id}`)}
-      className="mb-3 rounded-2xl border border-surface-border bg-surface-raised px-4 py-3.5 active:opacity-80"
+      className="mb-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5 active:opacity-80"
     >
       <View className="flex-row items-center justify-between">
-        <Text className="flex-1 text-base font-semibold text-white" numberOfLines={1}>
+        <Text className="flex-1 font-sans-semibold text-base text-white" numberOfLines={1}>
           {review.reviewer}
         </Text>
-        <Text className="text-xs text-zinc-500">{timeAgo(review.postedAt ?? review.createdAt)}</Text>
+        <Text className="font-sans text-xs text-zinc-500">{timeAgo(review.postedAt ?? review.createdAt)}</Text>
       </View>
       <View className="mt-1.5 flex-row items-center gap-2">
         <Stars rating={review.rating} />
@@ -42,7 +42,7 @@ function ReviewRow({ review }: { review: Review }) {
         </View>
       </View>
       {!!review.reviewText && (
-        <Text className="mt-2 text-sm text-zinc-400" numberOfLines={2}>
+        <Text className="mt-2 font-sans text-sm text-zinc-400" numberOfLines={2}>
           {review.reviewText}
         </Text>
       )}
@@ -89,34 +89,34 @@ export function ReviewsTab() {
 
   return (
     <View className="px-4">
-      <Text className="pt-2 text-lg font-extrabold text-white">Review Trends — last 8 weeks</Text>
+      <Text className="pt-2 font-display-bold text-lg text-white">Review Trends — last 8 weeks</Text>
 
       {reviews.isLoading ? (
         <Skeleton className="mt-3 h-64" />
       ) : insights ? (
         <>
-          <View className="mt-3 flex-row items-center justify-between rounded-2xl border border-surface-border bg-surface-raised px-4 py-3.5">
-            <Text className="text-base text-zinc-300">Your Avg. Reviews</Text>
-            <Text className="text-xl font-extrabold text-white">
-              {avgPerWeek} <Text className="text-sm font-medium text-zinc-500">/ Week</Text>
+          <View className="mt-3 flex-row items-center justify-between rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
+            <Text className="font-sans text-base text-zinc-300">Your Avg. Reviews</Text>
+            <Text className="font-display text-xl text-white">
+              {avgPerWeek} <Text className="font-sans-semibold text-sm text-zinc-500">/ Week</Text>
             </Text>
           </View>
-          <View className="mt-3 rounded-2xl border border-surface-border bg-surface-raised px-4 py-4">
+          <View className="mt-3 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
             <WeeklyBars data={insights.weekly} industryAvg={industryAvg} />
           </View>
           <View className="mt-3 flex-row gap-3">
-            <View className="flex-1 rounded-2xl border border-surface-border bg-surface-raised px-4 py-4">
-              <Text className="text-sm text-zinc-400">Rating</Text>
+            <View className="flex-1 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
+              <Text className="font-sans text-sm text-zinc-400">Rating</Text>
               <View className="mt-1 flex-row items-center gap-1.5">
-                <Text className="text-2xl font-extrabold text-white">
+                <Text className="font-display text-2xl text-white">
                   {stats.data?.metrics.avgRating ?? insights.avgRating}
                 </Text>
                 <Ionicons name="star" size={18} color={t.amber} />
               </View>
             </View>
-            <View className="flex-1 rounded-2xl border border-surface-border bg-surface-raised px-4 py-4">
-              <Text className="text-sm text-zinc-400">Reviews</Text>
-              <Text className="mt-1 text-2xl font-extrabold text-white">
+            <View className="flex-1 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
+              <Text className="font-sans text-sm text-zinc-400">Reviews</Text>
+              <Text className="mt-1 font-display text-2xl text-white">
                 {stats.data?.metrics.totalReviews ?? insights.total}
               </Text>
             </View>
@@ -126,13 +126,13 @@ export function ReviewsTab() {
 
       {/* Google Reviews + rating filter */}
       <View className="mb-3 mt-7 flex-row items-center justify-between">
-        <Text className="text-lg font-extrabold text-white">Google Reviews</Text>
+        <Text className="font-display-bold text-lg text-white">Google Reviews</Text>
         <Pressable
           onPress={() => setFilterOpen((v) => !v)}
           className="flex-row items-center gap-1.5 rounded-full border px-4 py-2 active:opacity-70"
           style={{ borderColor: t.brandBright }}
         >
-          <Text className="text-sm font-bold" style={{ color: t.brandBright }}>
+          <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
             {rating === 'all' ? 'All Ratings' : `${rating} Stars`}
           </Text>
           <Ionicons name={filterOpen ? 'chevron-up' : 'chevron-down'} size={14} color={t.brandBright} />
@@ -153,7 +153,7 @@ export function ReviewsTab() {
               }`}
             >
               <Text
-                className={`text-sm font-semibold ${rating === f ? 'text-on-brand' : 'text-zinc-400'}`}
+                className={`font-sans-semibold text-sm ${rating === f ? 'text-on-brand' : 'text-zinc-400'}`}
               >
                 {f === 'all' ? 'All' : `${f} ★`}
               </Text>
@@ -166,8 +166,8 @@ export function ReviewsTab() {
         {reviews.isLoading ? (
           <Skeleton className="h-40" />
         ) : filtered.length === 0 ? (
-          <View className="items-center rounded-2xl border border-surface-border bg-surface-raised px-5 py-8">
-            <Text className="text-center text-sm text-zinc-400">
+          <View className="items-center rounded-card border border-surface-border bg-surface-raised px-5 py-8">
+            <Text className="text-center font-sans text-sm text-zinc-400">
               {rating === 'all'
                 ? 'Reviews synced from your Google Business Profile will appear here.'
                 : 'No reviews with this rating.'}

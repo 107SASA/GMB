@@ -1,49 +1,24 @@
-import { NextResponse } from 'next/server';
-import { inngest } from '@/services/inngest/client';
-import { validateTwilioSignature } from '@/lib/twilioSignature';
+import { handleTwilioWebhook } from '@/app/api/whatsapp/webhook/route';
 
 export const maxDuration = 60; // Webhook handler should be fast, but we'll leave it at 60s
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: Request) {
-  try {
-    const formData = await request.formData();
-
-    const verification = await validateTwilioSignature(request, formData);
-    if (!verification.ok) return verification.response;
-
-    const body = formData.get('Body')?.toString() || '';
-    const from = formData.get('From')?.toString() || '';
-    const profileName = formData.get('ProfileName')?.toString() || '';
-    const messageSid = formData.get('MessageSid')?.toString() || '';
-    const numMedia = parseInt(formData.get('NumMedia')?.toString() || '0', 10);
-
-    // 1. Immediately acknowledge Twilio with an empty TwiML response
-    // This prevents Twilio's 15s timeout
-    const twiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response></Response>`;
-
-    // 2. Dispatch to Inngest for background processing
-    await inngest.send({
-      name: 'whatsapp/incoming',
-      data: {
-        messageSid,
-        from,
-        body,
-        profileName,
-        numMedia,
-      },
-    });
-
-    return new NextResponse(twiml, {
-      status: 200,
-      headers: { 'Content-Type': 'text/xml' },
-    });
-  } catch (error) {
-    console.error('Webhook error:', error);
-    const fallbackTwiml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response></Response>`;
-    return new NextResponse(fallbackTwiml, {
-      status: 200,
-      headers: { 'Content-Type': 'text/xml' },
-    });
-  }
+/**
+ * Legacy URL, kept working rather than deleted: this used to dispatch an
+ * incomplete `whatsapp/incoming` event (no leadId/threadId/tenantId/businessId),
+ * which failed Mongoose validation downstream, retried 3x, then died silently —
+ * after this route had already ACK'd Twilio with an empty 200, so Twilio never
+ * retried either. Every message sent here was lost with no trace.
+ *
+ * The unified handler at /api/whatsapp/webhook already implements Twilio
+ * correctly (per-business signature validation, lead/thread resolution, full
+ * event payload) because it has to for the JSON/Meta side anyway — so this
+ * route now delegates to that same function instead of maintaining a second,
+ * divergent copy of the same logic. Twilio's console webhook config is
+ * external to this repo; if it's still pointed at this URL, it now works.
+ * documentation/modules/module-6-whatsapp-ai.md has been corrected to point
+ * at the canonical /api/whatsapp/webhook URL for any new setup.
+ */
+export async function POST(req: Request) {
+  return handleTwilioWebhook(req);
 }

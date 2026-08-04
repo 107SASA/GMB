@@ -9,6 +9,7 @@ import {
   IGeoGridPoint,
 } from '@/models/Audit';
 import { Download, RefreshCw, Share2, Copy, Check } from 'lucide-react';
+import { formatRank, rankBucket, computeSuspensionRisk } from '@/services/audit/reportMath';
 
 /* ─── Google Logo ───────────────────────────────────────────────────────────── */
 function GoogleLogo({ size = 18 }: { size?: number }) {
@@ -28,7 +29,7 @@ function StarRating({ rating }: { rating: number }) {
   return (
     <span className="flex items-center gap-0.5">
       {[1, 2, 3, 4, 5].map((i) => (
-        <svg key={i} className={`w-4 h-4 ${i <= full ? 'text-yellow-400' : 'text-slate-200'}`} fill="currentColor" viewBox="0 0 24 24">
+        <svg key={i} className={`w-4 h-4 ${i <= full ? 'text-secondary-fixed' : 'text-outline-variant'}`} fill="currentColor" viewBox="0 0 24 24">
           <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
         </svg>
       ))}
@@ -37,7 +38,7 @@ function StarRating({ rating }: { rating: number }) {
 }
 
 /* ─── Circular Gauge ────────────────────────────────────────────────────────── */
-function CircularGauge({ value, size = 96, color = '#3b82f6' }: { value: number; size?: number; color?: string }) {
+function CircularGauge({ value, size = 96, color = '#00386c' }: { value: number; size?: number; color?: string }) {
   const strokeWidth = Math.round(size * 0.1);
   const r = (size - strokeWidth) / 2;
   const circ = 2 * Math.PI * r;
@@ -46,7 +47,7 @@ function CircularGauge({ value, size = 96, color = '#3b82f6' }: { value: number;
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f1f5f9" strokeWidth={strokeWidth} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e0e3e5" strokeWidth={strokeWidth} />
         <circle
           cx={size / 2} cy={size / 2} r={r}
           fill="none" stroke={color} strokeWidth={strokeWidth}
@@ -56,7 +57,7 @@ function CircularGauge({ value, size = 96, color = '#3b82f6' }: { value: number;
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="font-black text-slate-900" style={{ fontSize: Math.round(size * 0.22) }}>{v}%</span>
+        <span className="font-black text-on-surface" style={{ fontSize: Math.round(size * 0.22) }}>{v}%</span>
       </div>
     </div>
   );
@@ -65,15 +66,15 @@ function CircularGauge({ value, size = 96, color = '#3b82f6' }: { value: number;
 /* ─── Status Badge ──────────────────────────────────────────────────────────── */
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    Good:    'bg-emerald-500 text-white',
-    Poor:    'bg-red-500 text-white',
-    Average: 'bg-amber-400 text-white',
-    Low:     'bg-emerald-500 text-white',
-    High:    'bg-red-500 text-white',
-    Medium:  'bg-amber-400 text-white',
+    Good:    'bg-secondary text-on-secondary',
+    Poor:    'bg-error text-on-error',
+    Average: 'bg-primary-container text-on-primary',
+    Low:     'bg-secondary text-on-secondary',
+    High:    'bg-error text-on-error',
+    Medium:  'bg-primary-container text-on-primary',
   };
   return (
-    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${styles[status] ?? 'bg-slate-400 text-white'}`}>
+    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${styles[status] ?? 'bg-outline text-on-primary'}`}>
       {status}
     </span>
   );
@@ -83,40 +84,33 @@ function StatusBadge({ status }: { status: string }) {
 function ChecklistRow({ field, status }: { field: string; status: string }) {
   if (status === 'Complete')
     return (
-      <div className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
-        <span className="text-sm text-slate-700">{field}</span>
-        <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#22c55e" /><path d="M8 12l3 3 5-5" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>
+      <div className="flex items-center justify-between py-2 border-b border-outline-variant last:border-0">
+        <span className="text-sm text-on-surface">{field}</span>
+        <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#006c45" /><path d="M8 12l3 3 5-5" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>
       </div>
     );
   if (status === 'Partial')
     return (
-      <div className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
-        <span className="text-sm text-slate-700">{field}</span>
-        <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#f97316" /><path d="M12 7v5M12 16h.01" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>
+      <div className="flex items-center justify-between py-2 border-b border-outline-variant last:border-0">
+        <span className="text-sm text-on-surface">{field}</span>
+        <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1a4f8b" /><path d="M12 7v5M12 16h.01" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>
       </div>
     );
   return (
-    <div className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
-      <span className="text-sm text-slate-700">{field}</span>
-      <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#ef4444" /><path d="M15 9l-6 6M9 9l6 6" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>
+    <div className="flex items-center justify-between py-2 border-b border-outline-variant last:border-0">
+      <span className="text-sm text-on-surface">{field}</span>
+      <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#ba1a1a" /><path d="M15 9l-6 6M9 9l6 6" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>
     </div>
   );
 }
 
 /* ─── Rank colour helpers ───────────────────────────────────────────────────── */
-/** Rank 21 is the backend sentinel for "not in local pack" — never show as a real #21. */
-function formatRank(rank: number | null | undefined): string {
-  if (rank == null || Number.isNaN(Number(rank)) || Number(rank) <= 0) return '—';
-  const n = Number(rank);
-  if (n > 20) return '20+';
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
-}
-
 function rankTextClass(rank: number | null | undefined) {
-  if (rank == null || rank <= 0) return 'text-slate-400';
-  if (rank <= 5)  return 'text-emerald-600';
-  if (rank <= 10) return 'text-amber-500';
-  return 'text-red-500';
+  const bucket = rankBucket(rank);
+  if (bucket === 'unranked') return 'text-outline';
+  if (bucket === 'good') return 'text-secondary';
+  if (bucket === 'ok') return 'text-primary';
+  return 'text-error';
 }
 
 
@@ -137,13 +131,13 @@ function GeoGridMap({
   const rankCls = rankTextClass(avgRank);
 
   return (
-    <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-md flex flex-col">
+    <div className="rounded-2xl overflow-hidden border border-outline-variant bg-surface-container-lowest card-shadow flex flex-col">
       {/* Header */}
-      <div className="px-5 py-3 bg-slate-900">
-        <p className="text-xs text-slate-300 mb-0.5">
+      <div className="px-5 py-3 bg-primary">
+        <p className="text-xs text-outline mb-0.5">
           Keyword: <span className="font-bold text-white">{keyword}</span>
         </p>
-        <p className="text-sm text-slate-300">
+        <p className="text-sm text-outline">
           Avg Rank: <span className={`font-black text-base ${rankCls}`}>{formatRank(avgRank)}</span>
         </p>
       </div>
@@ -158,27 +152,27 @@ function GeoGridMap({
           onError={() => setMapOk(false)}
         />
       ) : (
-        <div className="flex flex-col items-center justify-center gap-2 bg-slate-100" style={{ minHeight: 320 }}>
-          <svg className="w-10 h-10 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="flex flex-col items-center justify-center gap-2 bg-surface-container" style={{ minHeight: 320 }}>
+          <svg className="w-10 h-10 text-outline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
           </svg>
-          <p className="text-xs text-slate-400 font-medium">Map preview unavailable</p>
-          <p className="text-[10px] text-slate-400">Ensure GOOGLE_MAPS_API_KEY is configured</p>
+          <p className="text-xs text-outline font-medium">Map preview unavailable</p>
+          <p className="text-[10px] text-outline">Ensure GOOGLE_MAPS_API_KEY is configured</p>
         </div>
       )}
 
       {/* Legend */}
-      <div className="px-4 py-2.5 bg-white border-t border-slate-100 flex items-center gap-4 flex-wrap">
+      <div className="px-4 py-2.5 bg-surface-container-lowest border-t border-outline-variant flex items-center gap-4 flex-wrap">
         {[
           { bg: '#1d4ed8', label: 'You' },
-          { bg: '#22c55e', label: '1–5' },
-          { bg: '#f59e0b', label: '6–10' },
-          { bg: '#ef4444', label: '20+' },
+          { bg: '#006c45', label: '1–5' },
+          { bg: '#1a4f8b', label: '6–10' },
+          { bg: '#ba1a1a', label: '20+' },
         ].map(({ bg, label }) => (
           <div key={label} className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: bg }} />
-            <span className="text-[10px] font-semibold text-slate-500">{label}</span>
+            <span className="text-[10px] font-semibold text-on-surface-variant">{label}</span>
           </div>
         ))}
       </div>
@@ -203,7 +197,7 @@ export default function AuditReportGrexa({
   isSyncing?: boolean;
 }) {
   const data = audit.auditData as IAuditData;
-  if (!data) return <div className="p-8 text-center text-slate-500">No audit data available.</div>;
+  if (!data) return <div className="p-8 text-center text-on-surface-variant">No audit data available.</div>;
 
   const auditId = String((audit as any)._id ?? '');
 
@@ -293,9 +287,8 @@ export default function AuditReportGrexa({
   const categoriesCnt  = evidence.categoriesCount  ?? null;
 
   /* ── Suspension risk ──────────────────────────────────────────────── */
-  const suspLevel = completionPct >= 70 && reviewCount >= 10 ? 'Low' : completionPct >= 40 ? 'Medium' : 'High';
-  const suspPct   = suspLevel === 'High' ? 85 : suspLevel === 'Medium' ? 45 : 0;
-  const suspColor = suspLevel === 'Low' ? '#22c55e' : suspLevel === 'Medium' ? '#f59e0b' : '#ef4444';
+  const { level: suspLevel, pct: suspPct } = computeSuspensionRisk(completionPct, reviewCount);
+  const suspColor = suspLevel === 'Low' ? '#006c45' : suspLevel === 'Medium' ? '#1a4f8b' : '#ba1a1a';
 
   /* ── Checklist display — never invent fake Complete/Missing rows ─── */
   const displayChecklist = checklist;
@@ -304,8 +297,8 @@ export default function AuditReportGrexa({
   const rightCL = displayChecklist.slice(half);
 
   /* ── Colors ───────────────────────────────────────────────────────── */
-  const profileColor = profilePct >= 80 ? '#22c55e' : profilePct >= 60 ? '#f59e0b' : '#ef4444';
-  const seoColor     = seoPct    >= 80 ? '#22c55e' : seoPct    >= 50 ? '#f59e0b' : '#ef4444';
+  const profileColor = profilePct >= 80 ? '#006c45' : profilePct >= 60 ? '#1a4f8b' : '#ba1a1a';
+  const seoColor     = seoPct    >= 80 ? '#006c45' : seoPct    >= 50 ? '#1a4f8b' : '#ba1a1a';
   const hasRankData  = overallRank > 0 || keywords.length > 0;
   const rankDisplay  = hasRankData ? formatRank(overallRank) : '—';
   const rankClass    = rankTextClass(overallRank);
@@ -315,11 +308,11 @@ export default function AuditReportGrexa({
     <div className="max-w-5xl mx-auto pb-16 space-y-5 font-sans">
 
       {/* ══ 1. REPORT HEADER ═══════════════════════════════════════════ */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+      <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-3.5 border-b border-outline-variant bg-gradient-to-r from-surface to-white">
           <div className="flex items-center gap-2">
             <GoogleLogo size={18} />
-            <span className="text-sm font-semibold text-slate-700">
+            <span className="text-sm font-semibold text-on-surface">
               Google Search Rank Report for Your Business Profile
             </span>
           </div>
@@ -329,7 +322,7 @@ export default function AuditReportGrexa({
                 data-pdf-hide="true"
                 onClick={onResync}
                 disabled={isSyncing}
-                className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-50"
+                className="p-2 rounded-lg hover:bg-surface-container text-outline hover:text-on-surface-variant transition-colors disabled:opacity-50"
                 title="Re-sync reviews"
               >
                 <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
@@ -339,7 +332,7 @@ export default function AuditReportGrexa({
               <button
                 data-pdf-hide="true"
                 onClick={onShare}
-                className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-semibold px-4 py-2 rounded-xl transition-colors shadow-sm"
+                className="flex items-center gap-2 bg-surface-container-lowest border border-outline-variant hover:bg-surface text-on-surface text-sm font-semibold px-4 py-2 rounded-xl transition-colors shadow-sm"
               >
                 <Share2 className="w-4 h-4" />
                 Share
@@ -348,7 +341,7 @@ export default function AuditReportGrexa({
             <button
               data-pdf-hide="true"
               onClick={onDownload}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors shadow-sm"
+              className="flex items-center gap-2 bg-primary-container hover:bg-primary text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors shadow-sm"
             >
               <Download className="w-4 h-4" />
               Download PDF
@@ -356,19 +349,19 @@ export default function AuditReportGrexa({
           </div>
         </div>
         <div className="px-6 py-5">
-          <h1 className="text-2xl font-extrabold text-slate-900 mb-2 leading-tight">{audit.businessName}</h1>
-          <div className="flex items-center flex-wrap gap-2 text-sm text-slate-500">
+          <h1 className="text-2xl font-heading font-extrabold text-on-surface mb-2 leading-tight">{audit.businessName}</h1>
+          <div className="flex items-center flex-wrap gap-2 text-sm text-on-surface-variant">
             {rating > 0 && (
               <>
                 <StarRating rating={rating} />
-                <span className="font-bold text-slate-800">{rating.toFixed(1)}</span>
-                {reviewCount > 0 && <span className="text-slate-400">({reviewCount} reviews)</span>}
+                <span className="font-bold text-on-surface">{rating.toFixed(1)}</span>
+                {reviewCount > 0 && <span className="text-outline">({reviewCount} reviews)</span>}
               </>
             )}
             {audit.address && (
               <>
-                {rating > 0 && <span className="text-slate-200">|</span>}
-                <span className="text-slate-400 truncate max-w-lg">{audit.address}</span>
+                {rating > 0 && <span className="text-outline-variant">|</span>}
+                <span className="text-outline truncate max-w-lg">{audit.address}</span>
               </>
             )}
           </div>
@@ -379,12 +372,12 @@ export default function AuditReportGrexa({
       <div className="grid grid-cols-2 gap-5">
 
         {/* Google Search Rank */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col overflow-hidden relative">
+        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant shadow-sm p-6 flex flex-col overflow-hidden relative">
           <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-5"
-            style={{ background: 'radial-gradient(circle, #2563eb, transparent)', transform: 'translate(30%,-30%)' }} />
+            style={{ background: 'radial-gradient(circle, #00386c, transparent)', transform: 'translate(30%,-30%)' }} />
           <div className="flex items-center gap-2 mb-5">
             <GoogleLogo size={18} />
-            <span className="text-sm font-bold text-slate-700">Google Search Rank</span>
+            <span className="text-sm font-bold text-on-surface">Google Search Rank</span>
           </div>
           {hasRankData ? (
             <>
@@ -393,66 +386,66 @@ export default function AuditReportGrexa({
                   {rankDisplay}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mb-5 leading-relaxed">
+              <p className="text-xs text-on-surface-variant mb-5 leading-relaxed">
                 {overallRank > 20 ? (
                   <>
                     Not appearing in Google&apos;s local pack for most tracked keywords
                     {typeof visibilityPct === 'number' && (
-                      <> · visible in <strong className="text-slate-700">{visibilityPct}%</strong> of nearby searches</>
+                      <> · visible in <strong className="text-on-surface">{visibilityPct}%</strong> of nearby searches</>
                     )}
                   </>
                 ) : (
                   <>
                     Overall average rank for the{' '}
-                    <strong className="text-slate-700">{keywords.length} most searched keywords</strong>{' '}
+                    <strong className="text-on-surface">{keywords.length} most searched keywords</strong>{' '}
                     on Google for your business
                     {typeof visibilityPct === 'number' && (
-                      <> · visible in <strong className="text-slate-700">{visibilityPct}%</strong> of nearby searches</>
+                      <> · visible in <strong className="text-on-surface">{visibilityPct}%</strong> of nearby searches</>
                     )}
                   </>
                 )}
               </p>
-              <div className="flex gap-4 mt-auto text-xs text-slate-600">
+              <div className="flex gap-4 mt-auto text-xs text-on-surface-variant">
                 <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0" />
+                  <div className="w-3 h-3 rounded-full bg-secondary flex-shrink-0" />
                   <span>Top 5</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-amber-400 flex-shrink-0" />
+                  <div className="w-3 h-3 rounded-full bg-primary-container flex-shrink-0" />
                   <span>Under 10</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-red-500 flex-shrink-0" />
+                  <div className="w-3 h-3 rounded-full bg-error flex-shrink-0" />
                   <span>20+</span>
                 </div>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-sm text-slate-400">
+            <div className="flex-1 flex items-center justify-center text-sm text-outline">
               Ranking data unavailable — re-run audit with SerpApi configured
             </div>
           )}
         </div>
 
         {/* Google Profile Score */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col overflow-hidden relative">
+        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant shadow-sm p-6 flex flex-col overflow-hidden relative">
           <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-5"
-            style={{ background: 'radial-gradient(circle, #7c3aed, transparent)', transform: 'translate(30%,-30%)' }} />
+            style={{ background: 'radial-gradient(circle, #00386c, transparent)', transform: 'translate(30%,-30%)' }} />
           <div className="flex items-center gap-2 mb-5">
             <GoogleLogo size={18} />
-            <span className="text-sm font-bold text-slate-700">Google Profile Score</span>
+            <span className="text-sm font-bold text-on-surface">Google Profile Score</span>
           </div>
           <div className="flex items-center gap-5 flex-1">
             <CircularGauge value={profilePct} size={120} color={profileColor} />
             <div>
-              <p className="text-xs text-slate-500 leading-relaxed mb-3">
+              <p className="text-xs text-on-surface-variant leading-relaxed mb-3">
                 Based on 25+ parameters — SEO, Reviews, Completion, Rating.
               </p>
-              <p className="text-xs font-semibold text-slate-700">
+              <p className="text-xs font-semibold text-on-surface">
                 Good businesses score more than 90%
               </p>
               <div className="mt-3">
-                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden w-32">
+                <div className="h-1.5 rounded-full bg-surface-container overflow-hidden w-32">
                   <div
                     className="h-full rounded-full"
                     style={{ width: `${profilePct}%`, background: profileColor }}
@@ -467,28 +460,28 @@ export default function AuditReportGrexa({
 
       {/* ══ 3. RANK ANALYTICS ════════════════════════════════════════════ */}
       {(keywords.length > 0 || localComps.length > 0) && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <h2 className="text-base font-bold text-slate-900 mb-5">Your Google Rank Analytics</h2>
+        <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant p-6">
+          <h2 className="text-base font-bold text-on-surface mb-5">Your Google Rank Analytics</h2>
           <div className="grid grid-cols-2 gap-8">
 
             {/* Keywords table */}
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
+              <p className="text-[10px] font-bold text-outline uppercase tracking-widest mb-3">
                 Your rank for top {Math.max(keywords.length, 1)} keywords
               </p>
               {keywords.length > 0 ? (
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b-2 border-slate-100">
-                      <th className="text-left text-[10px] font-bold text-slate-400 uppercase pb-2 tracking-widest">KEYWORD</th>
-                      <th className="text-right text-[10px] font-bold text-slate-400 uppercase pb-2 tracking-widest">AVG RANK</th>
+                    <tr className="border-b-2 border-outline-variant">
+                      <th className="text-left text-[10px] font-bold text-outline uppercase pb-2 tracking-widest">KEYWORD</th>
+                      <th className="text-right text-[10px] font-bold text-outline uppercase pb-2 tracking-widest">AVG RANK</th>
                     </tr>
                   </thead>
                   <tbody>
                     {keywords.slice(0, 5).map((kw: IGeoGridKeyword, i: number) => (
-                      <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                      <tr key={i} className="border-b border-outline-variant hover:bg-surface/50 transition-colors">
                         <td className="py-3 pr-4">
-                          <span className="text-sm text-blue-600 font-medium leading-snug">{kw.keyword}</span>
+                          <span className="text-sm text-primary font-medium leading-snug">{kw.keyword}</span>
                         </td>
                         <td className="py-3 text-right">
                           <span className={`text-sm font-black ${rankTextClass(kw.avgRank)}`}>
@@ -500,7 +493,7 @@ export default function AuditReportGrexa({
                   </tbody>
                 </table>
               ) : (
-                <div className="py-6 text-center text-sm text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="py-6 text-center text-sm text-outline bg-surface rounded-xl border border-outline-variant">
                   No keyword ranking data
                 </div>
               )}
@@ -508,28 +501,28 @@ export default function AuditReportGrexa({
 
             {/* Competitors table */}
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
+              <p className="text-[10px] font-bold text-outline uppercase tracking-widest mb-3">
                 Competitors ranking higher at your locations
               </p>
               {localComps.length > 0 ? (
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b-2 border-slate-100">
-                      <th className="text-left text-[10px] font-bold text-slate-400 uppercase pb-2 tracking-widest">NAME</th>
-                      <th className="text-right text-[10px] font-bold text-slate-400 uppercase pb-2 tracking-widest">AVG RANK</th>
+                    <tr className="border-b-2 border-outline-variant">
+                      <th className="text-left text-[10px] font-bold text-outline uppercase pb-2 tracking-widest">NAME</th>
+                      <th className="text-right text-[10px] font-bold text-outline uppercase pb-2 tracking-widest">AVG RANK</th>
                     </tr>
                   </thead>
                   <tbody>
                     {localComps.map((c, i) => {
                       const rank = c.avgRank;
                       return (
-                        <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                        <tr key={i} className="border-b border-outline-variant hover:bg-surface/50 transition-colors">
                           <td className="py-3 pr-4">
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center flex-shrink-0 text-[9px] font-bold text-slate-400">
+                              <div className="w-6 h-6 rounded-md bg-surface-container border border-outline-variant flex items-center justify-center flex-shrink-0 text-[9px] font-bold text-outline">
                                 {i + 1}
                               </div>
-                              <span className="text-sm text-slate-700 leading-snug truncate max-w-[160px]">{c.name}</span>
+                              <span className="text-sm text-on-surface leading-snug truncate max-w-[160px]">{c.name}</span>
                             </div>
                           </td>
                           <td className="py-3 text-right">
@@ -543,7 +536,7 @@ export default function AuditReportGrexa({
                   </tbody>
                 </table>
               ) : (
-                <div className="py-6 text-center text-sm text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="py-6 text-center text-sm text-outline bg-surface rounded-xl border border-outline-variant">
                   No competitor data available
                 </div>
               )}
@@ -554,14 +547,14 @@ export default function AuditReportGrexa({
 
       {/* ══ 4. GEO-GRID MAPS (top 2 keywords) ═══════════════════════════ */}
       {mapKeywords.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <h2 className="text-base font-bold text-slate-900">
+        <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant p-6">
+          <h2 className="text-base font-bold text-on-surface">
             Your Google Search Rank at Nearby Locations
-            <span className="text-xs font-normal text-slate-400 ml-2">
+            <span className="text-xs font-normal text-outline ml-2">
               ({geoGrid?.areaSqKm ?? 9} sq. km. area)
             </span>
           </h2>
-          <p className="text-xs text-slate-400 mt-0.5 mb-5">
+          <p className="text-xs text-outline mt-0.5 mb-5">
             Showing top {mapKeywords.length} {mapKeywords.length === 1 ? 'keyword' : 'keywords'} · Search rank at surrounding locations
           </p>
           <div className={`grid gap-5 ${mapKeywords.length === 1 ? 'grid-cols-1 max-w-md' : 'grid-cols-2'}`}>
@@ -580,8 +573,8 @@ export default function AuditReportGrexa({
       )}
 
       {/* ══ 5. PROFILE SCORE DETAILS ════════════════════════════════════ */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-        <h2 className="text-base font-bold text-slate-900 mb-5">
+      <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant p-6">
+        <h2 className="text-base font-bold text-on-surface mb-5">
           Your Profile Score ({profilePct}%)
         </h2>
 
@@ -589,25 +582,25 @@ export default function AuditReportGrexa({
         <div className="grid grid-cols-3 gap-4 mb-4">
 
           {/* Profile SEO Score */}
-          <div className="col-span-2 border border-slate-100 rounded-2xl p-5 bg-slate-50/40">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Profile SEO Score</p>
+          <div className="col-span-2 border border-outline-variant rounded-2xl p-5 bg-surface/40">
+            <p className="text-[10px] font-bold text-outline uppercase tracking-widest mb-4">Profile SEO Score</p>
             <div className="flex items-start gap-6">
               <div className="flex-shrink-0">
                 <CircularGauge value={seoPct} size={96} color={seoColor} />
-                <p className="text-[10px] text-center text-slate-400 mt-2">Should be above 80%</p>
+                <p className="text-[10px] text-center text-outline mt-2">Should be above 80%</p>
               </div>
               <div className="flex-1 pt-1">
-                <p className="text-sm font-semibold text-slate-700 mb-3">
+                <p className="text-sm font-semibold text-on-surface mb-3">
                   Top searched keywords are missing in
                 </p>
                 <ul className="space-y-2">
                   {missingFields.length > 0 ? missingFields.map((f) => (
                     <li key={f} className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
-                      <span className="text-sm text-red-600 font-medium">{f}</span>
+                      <div className="w-1.5 h-1.5 rounded-full bg-error flex-shrink-0" />
+                      <span className="text-sm text-error font-medium">{f}</span>
                     </li>
                   )) : (
-                    <li className="text-sm text-emerald-600 font-medium">No major SEO gaps detected</li>
+                    <li className="text-sm text-secondary font-medium">No major SEO gaps detected</li>
                   )}
                 </ul>
               </div>
@@ -616,23 +609,23 @@ export default function AuditReportGrexa({
 
           {/* Services + Categories */}
           <div className="space-y-3">
-            <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/40 flex flex-col justify-between h-[calc(50%-6px)]">
+            <div className="border border-outline-variant rounded-2xl p-4 bg-surface/40 flex flex-col justify-between h-[calc(50%-6px)]">
               <div className="flex items-start justify-between gap-2 mb-1.5">
-                <span className="text-sm font-bold text-slate-800 leading-tight">
+                <span className="text-sm font-bold text-on-surface leading-tight">
                   {servicesCnt !== null ? `${servicesCnt} Services Added` : 'Services'}
                 </span>
                 <StatusBadge status={servicesOk ? 'Good' : 'Poor'} />
               </div>
-              <p className="text-[11px] text-slate-400">Should add up to 20 services</p>
+              <p className="text-[11px] text-outline">Should add up to 20 services</p>
             </div>
-            <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/40 flex flex-col justify-between h-[calc(50%-6px)]">
+            <div className="border border-outline-variant rounded-2xl p-4 bg-surface/40 flex flex-col justify-between h-[calc(50%-6px)]">
               <div className="flex items-start justify-between gap-2 mb-1.5">
-                <span className="text-sm font-bold text-slate-800 leading-tight">
+                <span className="text-sm font-bold text-on-surface leading-tight">
                   {categoriesCnt !== null ? `${categoriesCnt} Categories Added` : 'Categories'}
                 </span>
                 <StatusBadge status={categoriesOk ? 'Good' : 'Poor'} />
               </div>
-              <p className="text-[11px] text-slate-400">Should have 5+ categories</p>
+              <p className="text-[11px] text-outline">Should have 5+ categories</p>
             </div>
           </div>
         </div>
@@ -645,61 +638,61 @@ export default function AuditReportGrexa({
           <div className="grid grid-cols-3 gap-4">
 
             {/* Reviews Per Week */}
-            <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/40">
+            <div className="border border-outline-variant rounded-2xl p-5 bg-surface/40">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-slate-700">Reviews Per Week</span>
+                <span className="text-sm font-semibold text-on-surface">Reviews Per Week</span>
                 <StatusBadge status={rpw >= industryAvg ? 'Good' : 'Poor'} />
               </div>
               <div className="mb-1.5">
-                <span className="text-4xl font-black text-slate-900">{rpw.toFixed(2)}</span>
-                <span className="text-sm font-semibold text-slate-400 ml-1">/Week</span>
+                <span className="text-4xl font-black text-on-surface">{rpw.toFixed(2)}</span>
+                <span className="text-sm font-semibold text-outline ml-1">/Week</span>
               </div>
-              <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden mb-2">
+              <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden mb-2">
                 <div
                   className="h-full rounded-full"
-                  style={{ width: `${Math.min(100, (rpw / (industryAvg * 1.5)) * 100)}%`, background: rpw >= industryAvg ? '#22c55e' : '#ef4444' }}
+                  style={{ width: `${Math.min(100, (rpw / (industryAvg * 1.5)) * 100)}%`, background: rpw >= industryAvg ? '#006c45' : '#ba1a1a' }}
                 />
               </div>
-              <p className="text-[10px] text-slate-400">
-                Industry avg <strong className="text-slate-600">{industryAvg}</strong>/week · based on last {reviewPeriodDays} days
+              <p className="text-[10px] text-outline">
+                Industry avg <strong className="text-on-surface-variant">{industryAvg}</strong>/week · based on last {reviewPeriodDays} days
               </p>
             </div>
 
             {/* Response Percentage */}
-            <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/40">
+            <div className="border border-outline-variant rounded-2xl p-5 bg-surface/40">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-slate-700">Response Rate</span>
+                <span className="text-sm font-semibold text-on-surface">Response Rate</span>
                 <StatusBadge status={responsePct >= 80 ? 'Good' : 'Poor'} />
               </div>
               <div className="flex justify-center my-1">
                 <CircularGauge
                   value={responsePct}
                   size={80}
-                  color={responsePct >= 80 ? '#22c55e' : '#ef4444'}
+                  color={responsePct >= 80 ? '#006c45' : '#ba1a1a'}
                 />
               </div>
-              <p className="text-[10px] text-slate-400 text-center mt-1">
-                Should reply to <strong className="text-slate-600">80%</strong> of reviews
+              <p className="text-[10px] text-outline text-center mt-1">
+                Should reply to <strong className="text-on-surface-variant">80%</strong> of reviews
               </p>
             </div>
 
             {/* Suspension Risk */}
-            <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/40">
+            <div className="border border-outline-variant rounded-2xl p-5 bg-surface/40">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-slate-700">Suspension Risk</span>
+                <span className="text-sm font-semibold text-on-surface">Suspension Risk</span>
                 <StatusBadge status={suspLevel} />
               </div>
               <div className="flex justify-center my-1">
                 <CircularGauge value={suspPct} size={80} color={suspColor} />
               </div>
-              <p className="text-[10px] text-slate-400 text-center mt-1">0 Policy Violation</p>
+              <p className="text-[10px] text-outline text-center mt-1">0 Policy Violation</p>
             </div>
 
           </div>
         ) : (
-          <div className="border border-slate-100 rounded-2xl p-5 bg-slate-50/40 flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-            <p className="text-sm text-slate-500">
+          <div className="border border-outline-variant rounded-2xl p-5 bg-surface/40 flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-primary-container shrink-0" />
+            <p className="text-sm text-on-surface-variant">
               Review-based metrics (reviews/week, response rate, suspension risk) will appear once
               reviews have synced from your newly-connected Google Business Profile.
             </p>
@@ -708,34 +701,34 @@ export default function AuditReportGrexa({
       </div>
 
       {/* ══ 6. PROFILE COMPLETION ══════════════════════════════════════ */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+      <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant p-6">
         <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
           <div>
-            <h2 className="text-base font-bold text-slate-900">
+            <h2 className="text-base font-bold text-on-surface">
               Your Profile Completion
-              <span className="ml-2 text-2xl font-black text-blue-600">{completionPct}%</span>
+              <span className="ml-2 text-2xl font-black text-primary">{completionPct}%</span>
             </h2>
-            <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden w-40">
+            <div className="mt-2 h-2 rounded-full bg-surface-container overflow-hidden w-40">
               <div
                 className="h-full rounded-full transition-all"
-                style={{ width: `${completionPct}%`, background: completionPct >= 90 ? '#22c55e' : completionPct >= 70 ? '#f59e0b' : '#ef4444' }}
+                style={{ width: `${completionPct}%`, background: completionPct >= 90 ? '#006c45' : completionPct >= 70 ? '#1a4f8b' : '#ba1a1a' }}
               />
             </div>
           </div>
-          <div className="flex items-center gap-4 text-[11px] text-slate-600 flex-wrap">
-            <span className="text-slate-400 font-medium">Should be 100%</span>
+          <div className="flex items-center gap-4 text-[11px] text-on-surface-variant flex-wrap">
+            <span className="text-outline font-medium">Should be 100%</span>
             {[
-              { color: '#22c55e', icon: <svg className="w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#22c55e" /><path d="M8 12l3 3 5-5" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>, label: 'Complete' },
-              { color: '#f97316', icon: <svg className="w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#f97316" /><path d="M12 7v5M12 16h.01" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>, label: 'Partial' },
-              { color: '#ef4444', icon: <svg className="w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#ef4444" /><path d="M15 9l-6 6M9 9l6 6" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>, label: 'Incomplete' },
+              { color: '#006c45', icon: <svg className="w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#006c45" /><path d="M8 12l3 3 5-5" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>, label: 'Complete' },
+              { color: '#1a4f8b', icon: <svg className="w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1a4f8b" /><path d="M12 7v5M12 16h.01" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>, label: 'Partial' },
+              { color: '#ba1a1a', icon: <svg className="w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#ba1a1a" /><path d="M15 9l-6 6M9 9l6 6" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>, label: 'Incomplete' },
             ].map(({ icon, label }) => (
               <div key={label} className="flex items-center gap-1.5">{icon}<span>{label}</span></div>
             ))}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-0 border-t border-slate-100">
-          <div className="pr-6 border-r border-slate-100">
+        <div className="grid grid-cols-2 gap-0 border-t border-outline-variant">
+          <div className="pr-6 border-r border-outline-variant">
             {leftCL.map((item: IChecklistItem, i: number) => (
               <ChecklistRow key={i} field={item.field} status={item.status} />
             ))}
@@ -750,49 +743,49 @@ export default function AuditReportGrexa({
 
       {/* ══ 7. ACTION PLAN (Feature 2B — Improvement Plan Duration) ═════ */}
       {(thirtyDayPlan.length > 0 || ninetyDayPlan.length > 0) && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant p-6">
           <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
-            <h2 className="text-base font-bold text-slate-900">{planLabel}</h2>
-            <span className="text-[10px] font-bold px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-full uppercase tracking-wider">
+            <h2 className="text-base font-bold text-on-surface">{planLabel}</h2>
+            <span className="text-[10px] font-bold px-2.5 py-1 bg-primary-fixed text-primary rounded-full uppercase tracking-wider">
               {planDurationDays}-Day Plan
             </span>
           </div>
 
           <div className="space-y-5 mb-6">
             {thirtyDayPlan.map((period: any, i: number) => (
-              <div key={i} className="p-4 bg-slate-50/60 rounded-xl border border-slate-100">
-                <h3 className="font-bold text-indigo-600 text-sm uppercase tracking-wide mb-2">
+              <div key={i} className="p-4 bg-surface/60 rounded-xl border border-outline-variant">
+                <h3 className="font-bold text-primary text-sm uppercase tracking-wide mb-2">
                   {period.week || period.month || `Period ${i + 1}`}
                 </h3>
                 <ul className="space-y-1.5">
                   {(period.tasks || []).map((t: string, j: number) => (
-                    <li key={j} className="text-sm text-slate-600 flex items-start gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 shrink-0" />
+                    <li key={j} className="text-sm text-on-surface-variant flex items-start gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary-fixed-dim mt-1.5 shrink-0" />
                       <span>{t}</span>
                     </li>
                   ))}
                 </ul>
                 {period.expectedOutcome && (
-                  <p className="text-xs text-slate-400 mt-2">Expected outcome: {period.expectedOutcome}</p>
+                  <p className="text-xs text-outline mt-2">Expected outcome: {period.expectedOutcome}</p>
                 )}
               </div>
             ))}
           </div>
 
           {ninetyDayPlan.length > 0 && (
-            <div className="pt-5 border-t border-slate-100">
-              <h3 className="font-bold text-purple-600 text-sm uppercase tracking-wide mb-3">{extendedLabel}</h3>
+            <div className="pt-5 border-t border-outline-variant">
+              <h3 className="font-bold text-primary text-sm uppercase tracking-wide mb-3">{extendedLabel}</h3>
               {ninetyDayPlan.map((phase: any, i: number) => (
                 <div key={i} className="mb-3">
                   <div className="flex gap-2 mb-2 flex-wrap">
                     {(phase.focusAreas || []).map((fa: string, j: number) => (
-                      <span key={j} className="text-[10px] font-bold px-2 py-0.5 bg-purple-50 text-purple-600 rounded uppercase tracking-wider">{fa}</span>
+                      <span key={j} className="text-[10px] font-bold px-2 py-0.5 bg-primary-fixed text-primary rounded uppercase tracking-wider">{fa}</span>
                     ))}
                   </div>
                   <ul className="space-y-1.5">
                     {(phase.tasks || []).map((t: string, j: number) => (
-                      <li key={j} className="text-sm text-slate-600 flex items-start gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 shrink-0" />
+                      <li key={j} className="text-sm text-on-surface-variant flex items-start gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
                         <span>{t}</span>
                       </li>
                     ))}
@@ -806,30 +799,30 @@ export default function AuditReportGrexa({
 
       {/* ══ 8. CTA BANNER ══════════════════════════════════════════════ */}
       <div
-        className="rounded-2xl overflow-hidden shadow-lg"
-        style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 60%, #9333ea 100%)' }}
+        className="rounded-2xl overflow-hidden card-shadow"
+        style={{ background: 'linear-gradient(135deg, #00386c 0%, #00386c 60%, #006c45 100%)' }}
       >
         <div className="px-8 py-8 flex items-center justify-between gap-6 flex-wrap">
           <div>
             <h3 className="text-xl font-black text-white mb-1.5 leading-tight">
               Would you like to{' '}
-              <span className="text-yellow-300">be on top in</span>
+              <span className="text-secondary-fixed">be on top in</span>
               {' '}Google local searches?
             </h3>
-            <p className="text-indigo-200 text-sm">
+            <p className="text-on-primary-container text-sm">
               Our AI platform optimizes your Google Business Profile automatically.
             </p>
           </div>
           <button
             data-pdf-hide="true"
             onClick={onDownload}
-            className="bg-yellow-400 hover:bg-yellow-300 text-slate-900 font-black text-sm px-6 py-3.5 rounded-xl transition-all shadow-xl flex-shrink-0 hover:scale-105"
+            className="bg-secondary-fixed hover:bg-secondary-container text-on-surface font-black text-sm px-6 py-3.5 rounded-xl transition-all card-shadow flex-shrink-0 hover:scale-105"
           >
             Download Full Report
           </button>
         </div>
         <div className="px-8 py-2.5 flex items-center justify-between bg-black/20">
-          <span className="text-xs text-indigo-200/70">GrowwMatics AI · AI-Powered Google Business Growth Platform</span>
+          <span className="text-xs text-on-primary-container/70">GrowwMatics AI · AI-Powered Google Business Growth Platform</span>
         </div>
       </div>
 

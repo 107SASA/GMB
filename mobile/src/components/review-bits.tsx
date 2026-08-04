@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { View } from 'react-native';
 
 import type { Review } from '@/api/endpoints/reviews';
+import { useTheme } from '@/lib/theme';
 
 export function sentimentTone(
   sentiment: string | null
@@ -38,6 +39,7 @@ export function replyStatusBadge(status: Review['replyStatus']): {
 }
 
 export function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
+  const t = useTheme();
   return (
     <View className="flex-row gap-0.5">
       {[1, 2, 3, 4, 5].map((i) => (
@@ -45,7 +47,7 @@ export function Stars({ rating, size = 14 }: { rating: number; size?: number }) 
           key={i}
           name={i <= rating ? 'star' : 'star-outline'}
           size={size}
-          color={i <= rating ? '#f59e0b' : '#4A5175'}
+          color={i <= rating ? '#ffb300' : t.border}
         />
       ))}
     </View>

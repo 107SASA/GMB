@@ -38,10 +38,10 @@ function EditPostModal({ post, onClose }: { post: ContentPost; onClose: () => vo
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/60" onPress={onClose} />
       <View className="rounded-t-3xl border-t border-surface-border bg-surface p-5 pb-8">
-        <Text className="mb-4 text-lg font-bold text-white">Edit Post</Text>
-        <Text className="mb-1.5 px-1 text-xs font-semibold text-zinc-400">Title</Text>
+        <Text className="mb-4 font-display-bold text-lg text-white">Edit Post</Text>
+        <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Title</Text>
         <Field value={title} onChangeText={setTitle} placeholder="Post title" />
-        <Text className="mb-1.5 mt-3 px-1 text-xs font-semibold text-zinc-400">Content</Text>
+        <Text className="mb-1.5 mt-3 px-1 font-sans-semibold text-xs text-zinc-400">Content</Text>
         <Field
           value={content}
           onChangeText={setContent}
@@ -86,7 +86,7 @@ function PostCard({ post, onEdit }: { post: ContentPost; onEdit: () => void }) {
 
   return (
     <View
-      className="mb-3 overflow-hidden rounded-3xl border border-surface-border bg-surface-raised"
+      className="mb-3 overflow-hidden rounded-card border border-surface-border bg-surface-raised"
       style={{ opacity: remove.isPending ? 0.5 : 1 }}
     >
       <View className="h-24 justify-between bg-surface-overlay p-3">
@@ -96,7 +96,7 @@ function PostCard({ post, onEdit }: { post: ContentPost; onEdit: () => void }) {
             style={{ backgroundColor: `${t.amber}33` }}
           >
             <Ionicons name="newspaper-outline" size={13} color={t.amber} />
-            <Text className="text-xs font-bold" style={{ color: t.amber }}>
+            <Text className="font-sans-bold text-xs" style={{ color: t.amber }}>
               {isUpdate ? 'Update Post' : post.postType}
             </Text>
           </View>
@@ -117,7 +117,7 @@ function PostCard({ post, onEdit }: { post: ContentPost; onEdit: () => void }) {
           </View>
         </View>
         {!!post.scheduledDate && (
-          <Text className="text-xs text-zinc-500">
+          <Text className="font-sans text-xs text-zinc-500">
             Scheduled{' '}
             {new Date(post.scheduledDate).toLocaleDateString(undefined, {
               weekday: 'short',
@@ -128,11 +128,11 @@ function PostCard({ post, onEdit }: { post: ContentPost; onEdit: () => void }) {
         )}
       </View>
       <View className="p-4">
-        <Text className="text-base font-bold leading-6 text-white" numberOfLines={2}>
+        <Text className="font-sans-bold text-base leading-6 text-white" numberOfLines={2}>
           {post.title || post.content?.slice(0, 80) || 'Untitled post'}
         </Text>
         {!!post.content && (
-          <Text className="mt-1 text-sm text-zinc-400" numberOfLines={2}>
+          <Text className="mt-1 font-sans text-sm text-zinc-400" numberOfLines={2}>
             {post.content}
           </Text>
         )}
@@ -191,32 +191,32 @@ export function PostsTab() {
       <View className="flex-row items-center justify-between pt-2">
         <View className="flex-row items-center gap-2">
           <View>
-            <Text className="text-lg font-extrabold text-white">Upcoming Posts</Text>
-            <Text className="text-xs text-zinc-500">Next 7 days</Text>
+            <Text className="font-display-bold text-lg text-white">Upcoming Posts</Text>
+            <Text className="font-sans text-xs text-zinc-500">Next 7 days</Text>
           </View>
           <View className="h-6 min-w-6 items-center justify-center rounded-full bg-surface-overlay px-1.5">
-            <Text className="text-xs font-bold text-zinc-300">{upcoming.length}</Text>
+            <Text className="font-sans-bold text-xs text-zinc-300">{upcoming.length}</Text>
           </View>
         </View>
         <Pressable
           onPress={() => generate.mutate()}
           disabled={generate.isPending}
-          className="flex-row items-center gap-1.5 rounded-xl px-4 py-2.5 active:opacity-80"
+          className="flex-row items-center gap-1.5 rounded-full px-4 py-2.5 active:scale-95"
           style={{ backgroundColor: t.brand, opacity: generate.isPending ? 0.6 : 1 }}
         >
           <Ionicons name="sparkles" size={14} color="#ffffff" />
-          <Text className="text-sm font-bold text-white">
+          <Text className="font-sans-bold text-sm text-white">
             {generate.isPending ? 'Generating…' : 'Generate Posts'}
           </Text>
         </Pressable>
       </View>
 
       <View
-        className="mt-3 flex-row items-center gap-2.5 rounded-2xl px-4 py-3.5"
+        className="mt-3 flex-row items-center gap-2.5 rounded-card px-4 py-3.5"
         style={{ backgroundColor: `${t.brand}1f`, borderWidth: 1, borderColor: `${t.brand}44` }}
       >
         <Text className="text-base">✨</Text>
-        <Text className="flex-1 text-sm leading-5 text-zinc-200">
+        <Text className="flex-1 font-sans text-sm leading-5 text-zinc-200">
           Posts will be published once our AI finalizes keywords & optimizations
         </Text>
       </View>
@@ -228,11 +228,11 @@ export function PostsTab() {
             <Skeleton className="h-48" />
           </>
         ) : upcoming.length === 0 ? (
-          <View className="items-center rounded-2xl border border-surface-border bg-surface-raised px-5 py-8">
-            <Text className="mb-1 text-base font-semibold text-zinc-300">
+          <View className="items-center rounded-card border border-surface-border bg-surface-raised px-5 py-8">
+            <Text className="mb-1 font-sans-semibold text-base text-zinc-300">
               No posts in the next 7 days
             </Text>
-            <Text className="text-center text-sm text-zinc-500">
+            <Text className="text-center font-sans text-sm text-zinc-500">
               Tap Generate Posts and AI will write and schedule a week of content for you.
             </Text>
           </View>

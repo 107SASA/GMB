@@ -72,7 +72,7 @@ function MenuRow({ item, locked }: { item: MenuItem; locked: boolean }) {
       >
         <Ionicons name={item.icon} size={17} color={tint} />
       </View>
-      <Text className="flex-1 text-base font-medium text-white">{item.label}</Text>
+      <Text className="flex-1 font-sans-semibold text-base text-white">{item.label}</Text>
       {locked && <Ionicons name="lock-closed" size={15} color={t.textFaint} />}
       <Ionicons name="chevron-forward" size={16} color={t.textFaint} />
     </Pressable>
@@ -99,16 +99,16 @@ export default function MoreScreen() {
       <ScrollView contentContainerClassName="px-5 pb-10">
         <Pressable
           onPress={() => router.push('/profile')}
-          className="flex-row items-center gap-3.5 rounded-2xl border border-surface-border bg-surface-raised p-4 active:bg-surface-overlay"
+          className="flex-row items-center gap-3.5 rounded-card border border-surface-border bg-surface-raised p-4 active:bg-surface-overlay"
         >
           <InitialsAvatar name={user?.name ?? user?.email} size={48} />
           <View className="flex-1">
             {!!user?.name && (
-              <Text className="text-base font-bold text-white" numberOfLines={1}>
+              <Text className="font-display-bold text-base text-white" numberOfLines={1}>
                 {user.name}
               </Text>
             )}
-            <Text className="text-sm text-zinc-400" numberOfLines={1}>
+            <Text className="font-sans text-sm text-zinc-400" numberOfLines={1}>
               {user?.email}
             </Text>
           </View>
@@ -124,7 +124,7 @@ export default function MoreScreen() {
           return (
             <View key={section}>
               <SectionLabel>{section}</SectionLabel>
-              <View className="overflow-hidden rounded-2xl border border-surface-border bg-surface-raised">
+              <View className="overflow-hidden rounded-card border border-surface-border bg-surface-raised">
                 {visibleItems.map((item) => (
                   <MenuRow
                     key={item.label}
@@ -141,10 +141,10 @@ export default function MoreScreen() {
         <Pressable
           onPress={handleLogout}
           disabled={loggingOut}
-          className="flex-row items-center justify-center gap-2 rounded-2xl border border-rose-400/20 bg-rose-400/10 py-3.5 active:opacity-80"
+          className="flex-row items-center justify-center gap-2 rounded-full border border-error/25 bg-error-container py-3.5 active:scale-95"
         >
           <Ionicons name="log-out-outline" size={18} color={t.rose} />
-          <Text className="text-base font-bold text-rose-300">
+          <Text className="font-sans-bold text-base text-on-error-container">
             {loggingOut ? 'Logging out…' : 'Log out'}
           </Text>
         </Pressable>

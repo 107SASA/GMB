@@ -23,6 +23,16 @@ export interface ISalesConversation extends Document {
   phoneKey: string;                     // last-10-digits key for robust matching
   leadName: string;
   status: 'active' | 'subscribed' | 'stopped' | 'completed';
+  /**
+   * 'not_required' — this phone has messaged the platform before, so no
+   *   separate opt-in is needed.
+   * 'pending' — this phone has never messaged first (e.g. submitted via the
+   *   public /free-report web form); the real nurture pitch is withheld and
+   *   only a "reply YES" consent request has been sent.
+   * 'granted' — they replied affirmatively; the real pitch + follow-up drip
+   *   may proceed.
+   */
+  consentStatus: 'not_required' | 'pending' | 'granted';
   scores: ISalesScores;
   messages: ISalesMessage[];
   firstSentAt?: Date;
@@ -41,6 +51,7 @@ const SalesConversationSchema: Schema = new Schema(
     phoneKey: { type: String, index: true },
     leadName: { type: String, default: '' },
     status: { type: String, enum: ['active', 'subscribed', 'stopped', 'completed'], default: 'active', index: true },
+    consentStatus: { type: String, enum: ['not_required', 'pending', 'granted'], default: 'not_required' },
     scores: {
       businessName: { type: String, default: '' },
       rank: { type: Number, default: null },

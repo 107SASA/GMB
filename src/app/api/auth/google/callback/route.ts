@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { jwtVerify } from 'jose';
 import dbConnect from '@/lib/mongodb';
-import GBPToken from '@/models/GBPToken';
 import Business from '@/models/Business';
+import PendingGbpConnection from '@/models/PendingGbpConnection';
 import { encrypt } from '@/lib/crypto';
-import { inngest } from '@/services/inngest/client';
+import { finalizeGbpConnection, formatLocationAddress } from '@/lib/gbpConnect';
 
 function getSigningKey(): Uint8Array {
   const secret = process.env.SESSION_SECRET;
@@ -132,71 +133,90 @@ export async function GET(request: NextRequest) {
   // --- Fetch locations for this account ---
   await dbConnect();
   const business = await Business.findById(businessId).lean() as any;
+  const organizationId: string = business?.organizationId?.toString?.() ?? business?.organizationId;
 
+  // `metadata` MUST be in the readMask — the matching logic below reads
+  // `l.metadata?.placeId`, and Google's Business Information API only
+  // returns fields you explicitly ask for. Without it, metadata is
+  // undefined on every location and the placeId match below can never
+  // succeed.
   const locUrl =
     `https://mybusinessbusinessinformation.googleapis.com/v1/${accountId}/locations` +
-    `?readMask=name,title,storefrontAddress`;
+    `?readMask=name,title,storefrontAddress,metadata`;
 
   const locRes = await fetch(locUrl, {
     headers: { Authorization: `Bearer ${access_token}` },
   });
 
-  let locationId = '';
+  let locations: any[] = [];
   if (locRes.ok) {
     const locData = await locRes.json();
-    const locations: any[] = locData.locations ?? [];
-
-    // Try to match by googlePlaceId, otherwise take the first location
-    const matched = business?.googlePlaceId
-      ? locations.find((l: any) =>
-          l.metadata?.placeId === business.googlePlaceId
-        )
-      : null;
-
-    const chosenLocation = matched ?? locations[0];
-    locationId = chosenLocation?.name ?? '';
+    locations = locData.locations ?? [];
   }
 
-  // --- Encrypt and upsert GBPToken ---
+  // Try to match by googlePlaceId when the workspace has one on file.
+  const matched = business?.googlePlaceId
+    ? locations.find((l: any) => l.metadata?.placeId === business.googlePlaceId)
+    : null;
+
   const expiresAt = new Date(Date.now() + expires_in * 1000);
   const scopes: string[] = scope ? scope.split(' ') : [];
 
-  await GBPToken.findOneAndUpdate(
-    { businessId },
-    {
-      $set: {
-        businessId,
-        organizationId: business?.organizationId,
-        googleAccountId,
-        googleEmail,
-        accessToken: encrypt(access_token),
-        refreshToken: encrypt(refresh_token),
-        expiresAt,
-        locationId,
-        accountId,
-        scopes,
-        connectedAt: new Date(),
-      },
-    },
-    { upsert: true, new: true }
-  );
+  if (!matched && locations.length > 1) {
+    // Multiple candidate locations and no confident match — do NOT guess.
+    // Silently picking locations[0] here is exactly what caused every
+    // workspace connecting this Google account to inherit the same first
+    // listing. Stage the exchanged tokens + candidates and let the user
+    // choose (src/app/dashboard/gbp-profile/select-location/page.tsx).
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
 
-  // --- Update Business ---
-  await Business.findByIdAndUpdate(businessId, {
-    googleConnected: true,
-    googleLocationId: locationId,
-  });
-
-  // --- Trigger automatic GBP sync in the background ---
-  try {
-    await inngest.send({
-      name: 'gbp/sync.requested',
-      data: { businessId },
+    await PendingGbpConnection.create({
+      tokenHash,
+      businessId,
+      organizationId,
+      googleAccountId,
+      googleEmail,
+      accessToken: encrypt(access_token),
+      refreshToken: encrypt(refresh_token),
+      expiresAt,
+      accountId,
+      scopes,
+      candidateLocations: locations.map((l: any) => ({
+        locationId: l.name,
+        title: l.title ?? '',
+        address: formatLocationAddress(l.storefrontAddress),
+        placeId: l.metadata?.placeId,
+      })),
     });
-  } catch (e) {
-    // Non-blocking — sync will be retried by the nightly cron if this fails
-    console.error('Failed to trigger GBP auto-sync:', e);
+
+    const response = appRedirect('/dashboard/gbp-profile/select-location', request);
+    response.cookies.set('gbp_oauth_state', '', { maxAge: 0, path: '/' });
+    response.cookies.set('gbp_pending_selection', rawToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 15 * 60,
+    });
+    return response;
   }
+
+  // Confident match, or unambiguous (0 or 1 total locations) — proceed as before.
+  const locationId: string = matched?.name ?? locations[0]?.name ?? '';
+
+  await finalizeGbpConnection({
+    businessId,
+    organizationId,
+    googleAccountId,
+    googleEmail,
+    accessToken: access_token,
+    refreshToken: refresh_token,
+    expiresAt,
+    locationId,
+    accountId,
+    scopes,
+  });
 
   // --- Clear state cookie and redirect to Dashboard (GBP section is now inline) ---
   const response = appRedirect('/dashboard?connected=true', request);

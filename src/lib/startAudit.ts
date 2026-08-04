@@ -31,6 +31,10 @@ export async function createPendingAuditAndDispatch(business: any, organization:
     location: finalLocation,
     status: 'PENDING',
     metadata: { userDefinedCategory: effectiveCategory },
+    // This helper is only ever called from the lead-gen entry points
+    // (/free-report, WhatsApp report-connect) — never from the authenticated
+    // POST /api/audit route — so it's always safe to request the fast path.
+    fastMode: true,
   });
 
   await inngest.send({

@@ -10,7 +10,7 @@ import { FinalCTA } from "@/components/sections/SocialProof";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-background selection:bg-primary/30">
+    <main className="min-h-screen bg-background selection:bg-primary-fixed">
       <Navbar />
 
       <Hero />

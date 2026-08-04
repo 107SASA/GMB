@@ -207,6 +207,13 @@ export interface IAudit extends Document {
   // Improvement Plan Duration (Feature 2B) — drives the generated action plan.
   actionPlanDurationDays?: 30 | 45 | 90;
 
+  // ADDITIVE — set only by the lead-gen entry points (/free-report,
+  // WhatsApp report-connect), never by the authenticated POST /api/audit
+  // route. Skips geo-grid ranking (45 SerpApi calls) and the first-time
+  // review sync in processAuditJob so a brand-new visitor's first report
+  // generates fast. Paying customers' dashboard audits are unaffected.
+  fastMode?: boolean;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -246,6 +253,9 @@ const AuditSchema = new Schema<IAudit>(
     // Improvement Plan Duration — defaults to 30 days, matching the
     // original hardcoded "30-Day Action Plan" the report always showed.
     actionPlanDurationDays: { type: Number, enum: [30, 45, 90], default: 30 },
+
+    // ADDITIVE — see fastMode in IAudit above.
+    fastMode: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

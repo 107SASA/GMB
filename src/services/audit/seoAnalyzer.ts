@@ -1,10 +1,7 @@
-import axios from 'axios';
 import type { IProfileCompletion, IChecklistItem, IDataQuality, IAuditConfidence, IBusinessIntelligence, IGeoGridKeyword, IKeywordRank } from '@/models/Audit';
 import type { GeoGridPoint } from './geoGrid';
 import { generateGeoGrid, GRID_SPACING_KM, GRID_AREA_SQ_KM } from './geoGrid';
-
-const SERPAPI_KEY = process.env.SERPAPI_KEY;
-const BASE_URL = "https://serpapi.com/search.json";
+import { fetchMapsLocalResultsBatch } from './dataForSeoClient';
 
 // ── Profile Completion ─────────────────────────────────────────────────────────
 //
@@ -217,23 +214,7 @@ export function analyzeReviewKeywords(reviews: any[], business: any): {
   };
 }
 
-// ── Concurrency + retry helpers ────────────────────────────────────────────────
-
-async function withConcurrency<T>(
-  tasks: Array<() => Promise<T>>,
-  limit: number,
-): Promise<T[]> {
-  const results: T[] = new Array(tasks.length);
-  let next = 0;
-  async function run() {
-    while (next < tasks.length) {
-      const i = next++;
-      results[i] = await tasks[i]();
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, run));
-  return results;
-}
+// ── Retry helper ────────────────────────────────────────────────────────────────
 
 async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -249,7 +230,7 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 3): Promis
   throw new Error('unreachable');
 }
 
-// ── Geo-grid keyword ranking via SerpApi ───────────────────────────────────────
+// ── Geo-grid keyword ranking via DataForSEO ─────────────────────────────────────
 // Checks rank from 9 points in a 3×3 grid (1.5 km spacing) around the business.
 // Harvests local-pack competitors from the same 45 responses at no extra cost.
 //
@@ -399,25 +380,15 @@ export async function fetchGeoGridRankings(business: any): Promise<{
 
   // ── No coordinates → single-point fallback ───────────────────────────────────
   if (!business.coordinates?.lat || !business.coordinates?.lng) {
-    const rawResults: any[][] = [];
+    const rawResults: any[][] = await fetchMapsLocalResultsBatch(
+      keywords.map(keyword => ({ keyword, business })),
+    ).catch(() => keywords.map(() => []));
 
-    const legacyRankings: IKeywordRank[] = await Promise.all(
-      keywords.map(async (keyword, idx) => {
-        try {
-          const res = await axios.get(BASE_URL, {
-            params: { engine: 'google_maps', q: keyword, api_key: SERPAPI_KEY },
-            timeout: 15000,
-          });
-          const localResults: any[] = res.data.local_results || [];
-          rawResults[idx] = localResults;
-          const rank = findTargetRank(localResults, business);
-          return { keyword, rank, sourceQuery: keyword, confidence: rank < NOT_FOUND_RANK ? 'High' : 'Low' };
-        } catch {
-          rawResults[idx] = [];
-          return { keyword, rank: NOT_FOUND_RANK, sourceQuery: keyword, confidence: 'Low' };
-        }
-      }),
-    );
+    const legacyRankings: IKeywordRank[] = keywords.map((keyword, idx) => {
+      const localResults = rawResults[idx] || [];
+      const rank = findTargetRank(localResults, business);
+      return { keyword, rank, sourceQuery: keyword, confidence: rank < NOT_FOUND_RANK ? 'High' : 'Low' };
+    });
 
     // Harvest competitors with their REAL local-pack positions (not the 21 sentinel)
     const competitorMap = new Map<string, {
@@ -477,7 +448,7 @@ export async function fetchGeoGridRankings(business: any): Promise<{
     };
   }
 
-  // ── 3×3 geo-grid: 5 keywords × 9 points = 45 SerpApi calls ─────────────────
+  // ── 3×3 geo-grid: 5 keywords × 9 points = 45 DataForSEO Maps calls ─────────
   const gridPoints: GeoGridPoint[] = generateGeoGrid(
     business.coordinates.lat,
     business.coordinates.lng,
@@ -491,48 +462,38 @@ export async function fetchGeoGridRankings(business: any): Promise<{
     competitors: Array<{ name: string; rank: number; rating?: number; reviewCount?: number; placeId?: string }>;
   };
 
-  const tasks = keywords.flatMap(keyword =>
-    gridPoints.map(point => async (): Promise<TaskResult> => {
-      try {
-        const res = await retryWithBackoff(() =>
-          axios.get(BASE_URL, {
-            params: {
-              engine: 'google_maps',
-              q: keyword,
-              ll: `@${point.lat},${point.lng},14z`,
-              api_key: SERPAPI_KEY,
-            },
-            timeout: 15000,
-          }),
-        );
+  const queries = keywords.flatMap(keyword => gridPoints.map(point => ({ keyword, point })));
 
-        const localResults: any[] = res.data.local_results || [];
-        const rank = findTargetRank(localResults, business);
-        const rankIdx = rank - 1; // 0-based index of target, or -1 if not found
+  // All 45 keyword/point combinations go out in a single DataForSEO request
+  // (their Live endpoint accepts a batch of tasks and processes them
+  // server-side) instead of 45 individually-throttled client calls — this is
+  // what previously made geo-grid the slowest part of generating an audit.
+  const batchResults = await retryWithBackoff(() =>
+    fetchMapsLocalResultsBatch(queries.map(q => ({ ...q, business }))),
+  ).catch(() => queries.map(() => []));
 
-        // Collect results ranked above the target (or top 5 when target not found)
-        const aboveCount = rank === NOT_FOUND_RANK
-          ? Math.min(5, localResults.length)
-          : rankIdx;
+  const allResults: TaskResult[] = queries.map(({ keyword, point }, i) => {
+    const localResults = batchResults[i] || [];
+    const rank = findTargetRank(localResults, business);
+    const rankIdx = rank - 1; // 0-based index of target, or -1 if not found
 
-        const competitors = localResults.slice(0, aboveCount)
-          .map((r: any, i: number) => ({
-            name: (r.title || '') as string,
-            rank: i + 1,
-            rating: r.rating as number | undefined,
-            reviewCount: r.reviews as number | undefined,
-            placeId: (r.place_id || r.data_id) as string | undefined,
-          }))
-          .filter(c => c.name && !isOwnBusiness(c.name, business));
+    // Collect results ranked above the target (or top 5 when target not found)
+    const aboveCount = rank === NOT_FOUND_RANK
+      ? Math.min(5, localResults.length)
+      : rankIdx;
 
-        return { keyword, point, rank, competitors };
-      } catch {
-        return { keyword, point, rank: NOT_FOUND_RANK, competitors: [] };
-      }
-    }),
-  );
+    const competitors = localResults.slice(0, aboveCount)
+      .map((r: any, i: number) => ({
+        name: (r.title || '') as string,
+        rank: i + 1,
+        rating: r.rating as number | undefined,
+        reviewCount: r.reviews as number | undefined,
+        placeId: (r.place_id || r.data_id) as string | undefined,
+      }))
+      .filter(c => c.name && !isOwnBusiness(c.name, business));
 
-  const allResults: TaskResult[] = await withConcurrency(tasks, 6);
+    return { keyword, point, rank, competitors };
+  });
 
   // ── Aggregate competitors: dedupe by placeId or name, average their ranks ───
   const competitorMap = new Map<string, {

@@ -27,11 +27,13 @@ export function OfflineBanner() {
   return (
     <View
       pointerEvents="none"
-      className="absolute left-0 right-0 z-50 flex-row items-center justify-center gap-1.5 bg-amber-500/95 py-1.5"
-      style={{ top: insets.top }}
+      className="absolute left-0 right-0 z-50 flex-row items-center justify-center gap-1.5 py-1.5"
+      style={{ top: insets.top, backgroundColor: '#ffb300f2' }}
     >
       <Ionicons name="cloud-offline-outline" size={13} color="#1c1400" />
-      <Text className="text-xs font-semibold text-[#1c1400]">You're offline — showing saved data</Text>
+      <Text className="font-sans-semibold text-xs text-[#1c1400]">
+        You're offline — showing saved data
+      </Text>
     </View>
   );
 }

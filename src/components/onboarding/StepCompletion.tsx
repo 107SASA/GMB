@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { OnboardingData } from './types';
-import { Rocket, Loader2 } from 'lucide-react';
+import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 
@@ -53,16 +53,16 @@ export default function StepCompletion({ data }: Props) {
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.2 }}
-        className="w-20 h-20 bg-green-500 rounded-3xl flex items-center justify-center mb-8 shadow-2xl shadow-green-500/30"
+        className="w-20 h-20 bg-secondary rounded-xl flex items-center justify-center mb-8"
       >
-        <Rocket className="text-white w-10 h-10" />
+        <MaterialIcon name="rocket_launch" size={40} className="text-on-secondary" />
       </motion.div>
       
       <motion.h1 
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.3 }}
-        className="text-4xl font-bold text-slate-900 tracking-tight mb-4"
+        className="text-headline-lg font-heading text-on-surface tracking-tight mb-4"
       >
         Almost there.
       </motion.h1>
@@ -71,13 +71,13 @@ export default function StepCompletion({ data }: Props) {
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.4 }}
-        className="text-lg text-slate-500 mb-10 max-w-md"
+        className="text-lg text-on-surface-variant mb-10 max-w-md"
       >
-        We'll provision the <strong>{data.businessName || 'Acme'}</strong> organization and spin up your AI services. We'll also email you a code to confirm your address before your workspace unlocks.
+        We&apos;ll provision the <strong>{data.businessName || 'Acme'}</strong> organization and spin up your AI services. We&apos;ll also email you a code to confirm your address before your workspace unlocks.
       </motion.p>
 
       {error && (
-        <div className="text-red-500 text-sm font-bold mb-4">{error}</div>
+        <div className="text-error text-sm font-bold mb-4">{error}</div>
       )}
 
       <motion.button
@@ -86,9 +86,9 @@ export default function StepCompletion({ data }: Props) {
         transition={{ delay: 0.5 }}
         onClick={handleLaunch}
         disabled={loading}
-        className="flex items-center gap-2 px-10 py-5 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl hover:-translate-y-1 disabled:opacity-70 disabled:cursor-not-allowed"
+        className="flex items-center gap-2 px-10 py-3.5 bg-secondary hover:opacity-95 text-on-secondary rounded-lg font-bold transition-all disabled:opacity-70 disabled:cursor-not-allowed"
       >
-        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Create My Workspace'}
+        {loading ? <MaterialIcon name="progress_activity" size={20} className="animate-spin" /> : 'Create My Workspace'}
       </motion.button>
     </div>
   );

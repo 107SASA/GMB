@@ -25,10 +25,10 @@ function getInitials(fullName: string): string {
 
 function getAvatarColors(letter: string): string {
   const l = letter.toUpperCase();
-  if (l >= 'A' && l <= 'F') return 'bg-indigo-100 text-indigo-700';
-  if (l >= 'G' && l <= 'L') return 'bg-violet-100 text-violet-700';
-  if (l >= 'M' && l <= 'R') return 'bg-emerald-100 text-emerald-700';
-  return 'bg-amber-100 text-amber-700';
+  if (l >= 'A' && l <= 'F') return 'bg-primary-fixed text-primary';
+  if (l >= 'G' && l <= 'L') return 'bg-primary-fixed text-primary';
+  if (l >= 'M' && l <= 'R') return 'bg-secondary-container text-on-secondary-container';
+  return 'bg-error-container text-on-error-container';
 }
 
 function formatMemberSince(date: string | Date): string {
@@ -58,7 +58,7 @@ const MODULE_LABELS: Record<string, string> = {
 };
 
 function inputCls(extra = '') {
-  return `w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white ${extra}`;
+  return `w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-surface-container-lowest ${extra}`;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -193,7 +193,7 @@ export default function ProfilePage() {
   };
 
   const initials = user ? getInitials(user.fullName ?? '') : '?';
-  const avatarColors = user ? getAvatarColors((user.fullName ?? 'U')[0]) : 'bg-slate-100 text-slate-500';
+  const avatarColors = user ? getAvatarColors((user.fullName ?? 'U')[0]) : 'bg-surface-container text-on-surface-variant';
 
   const enabledModules = subscription?.modules
     ? Object.entries(subscription.modules).filter(([, v]: [string, any]) => v?.enabled)
@@ -201,15 +201,15 @@ export default function ProfilePage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold text-slate-900 mb-1">Profile</h1>
-      <p className="text-sm text-slate-500 mb-6">Manage your account information and security settings.</p>
+      <h1 className="font-heading text-2xl font-bold text-on-surface mb-1">Profile</h1>
+      <p className="text-sm text-on-surface-variant mb-6">Manage your account information and security settings.</p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* ── LEFT COLUMN ─────────────────────────────────────────────── */}
         <div className="space-y-6">
 
           {/* Personal Information card */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 space-y-5">
             {/* Avatar + read-only info */}
             <div className="flex items-center gap-4">
               <div
@@ -218,18 +218,18 @@ export default function ProfilePage() {
                 {initials}
               </div>
               <div className="space-y-1 min-w-0">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Email</p>
+                <p className="text-xs font-semibold text-outline uppercase tracking-wider">Email</p>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm text-slate-700 break-all">{user?.email ?? '—'}</span>
-                  <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium shrink-0">read-only</span>
+                  <span className="text-sm text-on-surface break-all">{user?.email ?? '—'}</span>
+                  <span className="text-xs bg-surface-container text-on-surface-variant px-2 py-0.5 rounded-full font-medium shrink-0">read-only</span>
                 </div>
-                <p className="text-xs text-slate-400">Contact support if you need to change your email.</p>
+                <p className="text-xs text-outline">Contact support if you need to change your email.</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Full Name</label>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Full Name</label>
                 <input
                   className={inputCls()}
                   value={infoForm.fullName}
@@ -238,7 +238,7 @@ export default function ProfilePage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Phone</label>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Phone</label>
                 <input
                   className={inputCls()}
                   value={infoForm.phone}
@@ -247,7 +247,7 @@ export default function ProfilePage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Company Name</label>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Company Name</label>
                 <input
                   className={inputCls()}
                   value={infoForm.companyName}
@@ -258,23 +258,23 @@ export default function ProfilePage() {
             </div>
 
             {/* Read-only meta */}
-            <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-4">
+            <div className="grid grid-cols-2 gap-3 border-t border-outline-variant pt-4">
               <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Member Since</p>
-                <p className="text-sm text-slate-700">{user?.createdAt ? formatMemberSince(user.createdAt) : '—'}</p>
+                <p className="text-xs font-semibold text-outline uppercase tracking-wider mb-0.5">Member Since</p>
+                <p className="text-sm text-on-surface">{user?.createdAt ? formatMemberSince(user.createdAt) : '—'}</p>
               </div>
               <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Last Login</p>
-                <p className="text-sm text-slate-700">{user?.lastLoginAt ? timeAgo(user.lastLoginAt) : '—'}</p>
+                <p className="text-xs font-semibold text-outline uppercase tracking-wider mb-0.5">Last Login</p>
+                <p className="text-sm text-on-surface">{user?.lastLoginAt ? timeAgo(user.lastLoginAt) : '—'}</p>
               </div>
               <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Email Verified</p>
+                <p className="text-xs font-semibold text-outline uppercase tracking-wider mb-0.5">Email Verified</p>
                 {user?.isEmailVerified ? (
-                  <span className="inline-flex items-center gap-1 text-emerald-700 text-sm font-semibold">
+                  <span className="inline-flex items-center gap-1 text-on-secondary-container text-sm font-semibold">
                     <CheckCircle2 className="w-4 h-4" /> Verified
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 text-amber-600 text-sm font-semibold">
+                  <span className="inline-flex items-center gap-1 text-error text-sm font-semibold">
                     <XCircle className="w-4 h-4" /> Not Verified
                   </span>
                 )}
@@ -282,7 +282,7 @@ export default function ProfilePage() {
             </div>
 
             {infoError && (
-              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+              <p className="text-sm text-error bg-error-container border border-error-container rounded-xl px-4 py-2.5">
                 {infoError}
               </p>
             )}
@@ -304,16 +304,16 @@ export default function ProfilePage() {
           </div>
 
           {/* Account Overview card */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-            <h2 className="text-base font-bold text-slate-900">Account Overview</h2>
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 space-y-4">
+            <h2 className="text-base font-bold text-on-surface">Account Overview</h2>
 
             {/* Plan */}
             <div className="flex items-center gap-3">
               <span
                 className={`px-3 py-1 rounded-full text-sm font-bold ${
                   isPaidPlanLabel(subscription?.planType)
-                    ? 'bg-indigo-100 text-primary'
-                    : 'bg-slate-100 text-slate-600'
+                    ? 'bg-primary-fixed text-primary'
+                    : 'bg-surface-container text-on-surface-variant'
                 }`}
               >
                 {planDisplayLabel(subscription?.planType)}
@@ -330,7 +330,7 @@ export default function ProfilePage() {
 
             {/* Trial */}
             {subscription?.trialStatus?.isActive && subscription.trialStatus.endsAt && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 font-medium">
+              <div className="bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container font-medium">
                 Trial ends in <strong>{trialDaysLeft(subscription.trialStatus.endsAt)} days</strong>
               </div>
             )}
@@ -338,12 +338,12 @@ export default function ProfilePage() {
             {/* Modules */}
             {enabledModules.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Active Modules</p>
+                <p className="text-xs font-semibold text-outline uppercase tracking-wider mb-2">Active Modules</p>
                 <div className="flex flex-wrap gap-2">
                   {enabledModules.map(([key]) => (
                     <span
                       key={key}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold bg-secondary-container/40 text-on-secondary-container px-3 py-1 rounded-full"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       {MODULE_LABELS[key] ?? key}
@@ -359,16 +359,16 @@ export default function ProfilePage() {
         <div className="space-y-6">
 
           {/* Change Password card */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 space-y-5">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Change Password</h2>
-              <p className="text-sm text-slate-500 mt-0.5">
-                Changing password for <span className="font-medium text-slate-700">{user?.email ?? '—'}</span>
+              <h2 className="text-base font-bold text-on-surface">Change Password</h2>
+              <p className="text-sm text-on-surface-variant mt-0.5">
+                Changing password for <span className="font-medium text-on-surface">{user?.email ?? '—'}</span>
               </p>
             </div>
 
             {pwdSuccess && (
-              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2 text-sm text-on-secondary-container bg-secondary-container/40 border border-secondary-fixed rounded-xl px-4 py-3">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 Password updated successfully.
               </div>
@@ -377,7 +377,7 @@ export default function ProfilePage() {
             <form onSubmit={handlePwdSubmit} className="space-y-4">
               {/* Current password */}
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Current Password</label>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Current Password</label>
                 <div className="relative">
                   <input
                     type={pwdShow.current ? 'text' : 'password'}
@@ -389,19 +389,19 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setPwdShow(p => ({ ...p, current: !p.current }))}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface-variant"
                   >
                     {pwdShow.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
                 {pwdError && (
-                  <p className="text-xs text-red-600 mt-1.5">{pwdError}</p>
+                  <p className="text-xs text-error mt-1.5">{pwdError}</p>
                 )}
               </div>
 
               {/* New password */}
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">New Password</label>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">New Password</label>
                 <div className="relative">
                   <input
                     type={pwdShow.next ? 'text' : 'password'}
@@ -413,18 +413,18 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setPwdShow(p => ({ ...p, next: !p.next }))}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface-variant"
                   >
                     {pwdShow.next ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
                 {pwdForm.next.length > 0 && (
                   <div className="mt-1.5 space-y-0.5">
-                    <p className={`text-xs flex items-center gap-1 ${pwdMinLen ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    <p className={`text-xs flex items-center gap-1 ${pwdMinLen ? 'text-secondary' : 'text-outline'}`}>
                       {pwdMinLen ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
                       At least 8 characters ({pwdForm.next.length})
                     </p>
-                    <p className={`text-xs flex items-center gap-1 ${pwdHasNumberOrSymbol ? 'text-emerald-600' : 'text-slate-400'}`}>
+                    <p className={`text-xs flex items-center gap-1 ${pwdHasNumberOrSymbol ? 'text-secondary' : 'text-outline'}`}>
                       {pwdHasNumberOrSymbol ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
                       Contains a number or symbol
                     </p>
@@ -434,7 +434,7 @@ export default function ProfilePage() {
 
               {/* Confirm password */}
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Confirm New Password</label>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Confirm New Password</label>
                 <div className="relative">
                   <input
                     type={pwdShow.confirm ? 'text' : 'password'}
@@ -446,13 +446,13 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setPwdShow(p => ({ ...p, confirm: !p.confirm }))}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface-variant"
                   >
                     {pwdShow.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
                 {pwdForm.confirm.length > 0 && (
-                  <p className={`text-xs flex items-center gap-1 mt-1.5 ${pwdMatch ? 'text-emerald-600' : 'text-red-500'}`}>
+                  <p className={`text-xs flex items-center gap-1 mt-1.5 ${pwdMatch ? 'text-secondary' : 'text-error'}`}>
                     {pwdMatch ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
                     {pwdMatch ? 'Passwords match' : "Passwords don't match"}
                   </p>
@@ -470,17 +470,17 @@ export default function ProfilePage() {
           </div>
 
           {/* Danger Zone card */}
-          <div className="bg-white border-2 border-red-200 rounded-2xl p-6 space-y-4">
+          <div className="bg-surface-container-lowest border-2 border-error-container rounded-2xl p-6 space-y-4">
             <div className="flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5 text-red-500" />
-              <h2 className="text-base font-bold text-red-700">Danger Zone</h2>
+              <ShieldAlert className="w-5 h-5 text-error" />
+              <h2 className="text-base font-bold text-on-error-container">Danger Zone</h2>
             </div>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-on-surface-variant">
               Permanently delete your account and all associated data. This action cannot be undone.
             </p>
             <button
               onClick={() => setShowDeleteModal(true)}
-              className="px-5 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl font-semibold text-sm transition-all"
+              className="px-5 py-2.5 bg-error-container hover:bg-error-container text-on-error-container border border-error-container rounded-xl font-semibold text-sm transition-all"
             >
               Delete My Account
             </button>
@@ -491,25 +491,25 @@ export default function ProfilePage() {
       {/* ── Delete Account Modal ──────────────────────────────────────── */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-slate-200">
-            <div className="p-6 border-b border-slate-100">
+          <div className="bg-surface-container-lowest rounded-2xl card-shadow w-full max-w-md border border-outline-variant">
+            <div className="p-6 border-b border-outline-variant">
               <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="w-5 h-5 text-red-500" />
-                <h2 className="text-lg font-bold text-slate-900">Delete Your Account</h2>
+                <AlertTriangle className="w-5 h-5 text-error" />
+                <h2 className="text-lg font-bold text-on-surface">Delete Your Account</h2>
               </div>
-              <p className="text-sm text-slate-600 mt-3 leading-relaxed">
+              <p className="text-sm text-on-surface-variant mt-3 leading-relaxed">
                 Your account, all your business data, leads, reviews, content, and campaigns will be{' '}
                 <strong>permanently deleted</strong>. This cannot be undone.
               </p>
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">
                   Type your email address to confirm
                 </label>
                 <input
                   type="email"
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                  className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
                   placeholder={user?.email ?? 'your@email.com'}
                   value={deleteEmail}
                   onChange={e => { setDeleteEmail(e.target.value); setDeleteError(''); }}
@@ -517,14 +517,14 @@ export default function ProfilePage() {
                 />
               </div>
               {deleteError && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+                <p className="text-sm text-error bg-error-container border border-error-container rounded-xl px-4 py-2.5">
                   {deleteError}
                 </p>
               )}
               <div className="flex gap-3">
                 <button
                   onClick={() => { setShowDeleteModal(false); setDeleteEmail(''); setDeleteError(''); }}
-                  className="flex-1 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl font-semibold text-sm transition-all"
+                  className="flex-1 py-2.5 bg-surface hover:bg-surface-container text-on-surface border border-outline-variant rounded-xl font-semibold text-sm transition-all"
                 >
                   Cancel
                 </button>

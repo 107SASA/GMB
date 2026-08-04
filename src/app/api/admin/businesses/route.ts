@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('userId', 'fullName email subscriptionPlan')
+        .populate('userId', 'fullName email')
         .lean(),
       Business.countDocuments(query),
     ]);

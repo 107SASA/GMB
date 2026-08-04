@@ -97,16 +97,16 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
 
   if (isEditing) {
     return (
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col h-full">
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm flex flex-col h-full">
         <input
           value={post.title}
           onChange={(e) => setPost({ ...post, title: e.target.value })}
-          className="font-bold text-slate-900 w-full mb-3 px-2 py-1 border rounded"
+          className="font-bold text-on-surface w-full mb-3 px-2 py-1 border rounded"
         />
         <textarea
           value={post.body}
           onChange={(e) => setPost({ ...post, body: e.target.value })}
-          className="text-sm text-slate-600 grow w-full mb-3 px-2 py-1 border rounded h-32 resize-none"
+          className="text-sm text-on-surface-variant grow w-full mb-3 px-2 py-1 border rounded h-32 resize-none"
         />
         <input
           value={post.cta}
@@ -116,11 +116,11 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
         <input
           value={post.hashtags.join(' ')}
           onChange={(e) => setPost({ ...post, hashtags: e.target.value.split(' ') })}
-          className="text-xs text-blue-600 w-full mb-4 px-2 py-1 border rounded"
+          className="text-xs text-primary w-full mb-4 px-2 py-1 border rounded"
         />
         <button
           onClick={() => setIsEditing(false)}
-          className="w-full py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800"
+          className="w-full py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary"
         >
           Save Edits
         </button>
@@ -129,11 +129,11 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow flex flex-col h-full relative group overflow-hidden">
+    <div className="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm hover:card-shadow transition-shadow flex flex-col h-full relative group overflow-hidden">
 
       {/* Thumbnail */}
       {showThumbnail ? (
-        <div className="relative w-full h-40 bg-slate-100 shrink-0">
+        <div className="relative w-full h-40 bg-surface-container shrink-0">
           <img
             src={post.imageUrl!}
             alt={post.title}
@@ -143,24 +143,24 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
         </div>
       ) : imagePending ? (
         // Thumbnail still generating in the background — animated skeleton.
-        <div className="relative w-full h-40 shrink-0 overflow-hidden bg-linear-to-br from-indigo-50 to-slate-100 flex items-center justify-center animate-pulse">
+        <div className="relative w-full h-40 shrink-0 overflow-hidden bg-linear-to-br from-primary to-surface-container flex items-center justify-center animate-pulse">
           <div className="relative text-center px-4">
-            <svg className="w-6 h-6 text-indigo-400 mx-auto mb-2 animate-spin" fill="none" viewBox="0 0 24 24">
+            <svg className="w-6 h-6 text-primary-fixed-dim mx-auto mb-2 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
             </svg>
-            <p className="text-xs font-medium text-indigo-500">Your thumbnail is being generated…</p>
+            <p className="text-xs font-medium text-primary">Your thumbnail is being generated…</p>
           </div>
         </div>
       ) : (
-        <div className="w-full h-40 bg-linear-to-br from-indigo-50 to-slate-100 flex items-center justify-center shrink-0">
+        <div className="w-full h-40 bg-linear-to-br from-primary to-surface-container flex items-center justify-center shrink-0">
           <div className="text-center px-4">
-            <div className="w-10 h-10 bg-indigo-100 rounded-xl mx-auto mb-2 flex items-center justify-center">
-              <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-10 h-10 bg-primary-fixed rounded-xl mx-auto mb-2 flex items-center justify-center">
+              <svg className="w-5 h-5 text-primary-fixed-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-outline">
               {post.imageUrl ? 'Image unavailable' : 'No thumbnail generated'}
             </p>
           </div>
@@ -169,26 +169,26 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
 
       <div className="p-5 flex flex-col flex-1">
         <div className="flex justify-between items-start mb-4">
-          <span className="inline-block px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-md">
+          <span className="inline-block px-2.5 py-1 bg-primary-fixed text-primary text-xs font-bold rounded-md">
             {post.dayLabel}
           </span>
-          <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-600 text-xs font-semibold rounded-md border border-slate-200">
+          <span className="inline-block px-2.5 py-1 bg-surface-container text-on-surface-variant text-xs font-semibold rounded-md border border-outline-variant">
             {post.postType}
           </span>
         </div>
 
-        <h4 className="font-bold text-slate-900 mb-2 leading-snug">{post.title}</h4>
-        <p className="text-sm text-slate-600 mb-4 whitespace-pre-wrap grow">{post.body}</p>
+        <h4 className="font-bold text-on-surface mb-2 leading-snug">{post.title}</h4>
+        <p className="text-sm text-on-surface-variant mb-4 whitespace-pre-wrap grow">{post.body}</p>
 
         <div className="mb-3">
-          <p className="font-semibold text-sm text-slate-800">
-            CTA: <span className="font-normal text-slate-600">{post.cta}</span>
+          <p className="font-semibold text-sm text-on-surface">
+            CTA: <span className="font-normal text-on-surface-variant">{post.cta}</span>
           </p>
         </div>
 
         <div className="flex flex-wrap gap-1 mb-5">
           {post.hashtags.map((tag, i) => (
-            <span key={i} className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-sm">
+            <span key={i} className="text-xs text-primary bg-primary-fixed px-2 py-0.5 rounded-sm">
               {tag}
             </span>
           ))}
@@ -196,29 +196,29 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
 
         {/* Inline date picker */}
         {showDatePicker && !confirmedDate && (
-          <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
-            <p className="text-xs font-semibold text-slate-600">Pick a date &amp; time:</p>
+          <div className="mb-4 p-3 bg-surface border border-outline-variant rounded-lg space-y-2">
+            <p className="text-xs font-semibold text-on-surface-variant">Pick a date &amp; time:</p>
             <input
               type="datetime-local"
               value={scheduledDate}
               min={nowDateTimeLocal()}
               onChange={(e) => setScheduledDate(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 focus:outline-none"
+              className="w-full px-3 py-2 text-sm border border-outline-variant rounded-lg focus:ring-2 focus:ring-primary focus:outline-none"
             />
             {scheduleError && (
-              <p className="text-xs text-red-500 leading-tight">{scheduleError}</p>
+              <p className="text-xs text-error leading-tight">{scheduleError}</p>
             )}
             <div className="flex gap-2 pt-1">
               <button
                 onClick={() => { setShowDatePicker(false); setScheduleError(''); }}
-                className="flex-1 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
+                className="flex-1 py-1.5 text-sm border border-outline-variant rounded-lg hover:bg-surface-container transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleScheduleConfirm}
                 disabled={isScheduling}
-                className="flex-1 py-1.5 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-60"
+                className="flex-1 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary transition-colors disabled:opacity-60"
               >
                 {isScheduling ? 'Saving…' : 'Confirm'}
               </button>
@@ -228,11 +228,11 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
 
         <div className="grid grid-cols-2 gap-2 mt-auto">
           {confirmedDate ? (
-            <div className="col-span-2 py-2 px-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
-              <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="col-span-2 py-2 px-3 bg-secondary-container/40 border border-secondary-fixed rounded-lg flex items-center gap-2">
+              <svg className="w-4 h-4 text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span className="text-xs font-medium text-green-700">
+              <span className="text-xs font-medium text-on-secondary-container">
                 Scheduled for {formatScheduledDate(confirmedDate)}
               </span>
             </div>
@@ -240,14 +240,14 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
             <>
               <button
                 onClick={() => setIsEditing(true)}
-                className="py-2 border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+                className="py-2 border border-outline-variant text-on-surface rounded-lg text-sm font-medium hover:bg-surface transition-colors"
               >
                 Edit
               </button>
               <button
                 onClick={showDatePicker ? undefined : handleScheduleClick}
                 disabled={isScheduling}
-                className="py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors disabled:opacity-70"
+                className="py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary transition-colors disabled:opacity-70"
               >
                 {isScheduling ? '…' : 'Schedule'}
               </button>
@@ -259,7 +259,7 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
       <button
         onClick={handleCopy}
         title="Copy to clipboard"
-        className="absolute top-44 right-4 text-slate-400 hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute top-44 right-4 text-outline hover:text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2-2v8a2 2 0 002 2z" />

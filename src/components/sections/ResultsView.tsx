@@ -1,24 +1,19 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { 
-  CheckCircle2, 
-  Download,
-  Share2,
-  Star,
-} from "lucide-react";
-import { 
-  ResponsiveContainer, 
-  PieChart, 
-  Pie, 
-  Cell, 
-  Tooltip, 
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
 } from "recharts";
 import { cn } from "@/lib/utils";
+import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
 export function ResultsView({ audit }: { audit: any }) {
   const { business, recommendations, reviews = [] } = audit;
-  
+
   let posPercent = 0;
   let neuPercent = 0;
   let negPercent = 0;
@@ -27,7 +22,7 @@ export function ResultsView({ audit }: { audit: any }) {
     const positive = reviews.filter((r: any) => r.sentiment?.toLowerCase() === "positive").length;
     const negative = reviews.filter((r: any) => r.sentiment?.toLowerCase() === "negative").length;
     const neutral = reviews.length - positive - negative;
-    
+
     posPercent = Math.round((positive / reviews.length) * 100);
     negPercent = Math.round((negative / reviews.length) * 100);
     neuPercent = Math.round((neutral / reviews.length) * 100);
@@ -40,13 +35,13 @@ export function ResultsView({ audit }: { audit: any }) {
   }
 
   const sentimentData = [
-    { name: "Positive", value: posPercent, color: "#10b981" },
-    { name: "Neutral", value: neuPercent, color: "#3b82f6" },
-    { name: "Negative", value: negPercent, color: "#ef4444" },
+    { name: "Positive", value: posPercent, color: "#006c45" },
+    { name: "Neutral", value: neuPercent, color: "#00386c" },
+    { name: "Negative", value: negPercent, color: "#ba1a1a" },
   ];
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="space-y-10"
@@ -55,19 +50,19 @@ export function ResultsView({ audit }: { audit: any }) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <div className="flex items-center gap-2 text-primary font-bold text-sm mb-2 uppercase tracking-widest">
-            <CheckCircle2 className="w-4 h-4" />
+            <MaterialIcon name="check_circle" size={16} className="text-primary" />
             Audit Report
           </div>
-          <h1 className="text-4xl font-bold text-slate-900">{business.name}</h1>
-          <p className="text-slate-500">{business.address}</p>
+          <h1 className="font-heading text-4xl font-bold text-on-surface">{business.name}</h1>
+          <p className="text-on-surface-variant">{business.address}</p>
         </div>
         <div className="flex items-center gap-4">
-          <button className="px-6 py-3 bg-white border border-slate-200 shadow-sm text-slate-900 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all">
-            <Download className="w-4 h-4" />
+          <button className="px-6 py-3 bg-surface-container-lowest border border-outline-variant card-shadow text-on-surface rounded-lg font-bold flex items-center gap-2 hover:bg-surface-container-low transition-all">
+            <MaterialIcon name="download" size={16} />
             Export Report
           </button>
-          <button className="px-6 py-3 bg-primary text-white rounded-xl font-bold flex items-center gap-2 hover:bg-primary/90 transition-all shadow-sm">
-            <Share2 className="w-4 h-4" />
+          <button className="px-6 py-3 bg-primary text-on-primary rounded-lg font-bold flex items-center gap-2 hover:bg-primary-container transition-all card-shadow">
+            <MaterialIcon name="share" size={16} className="text-on-primary" />
             Share Result
           </button>
         </div>
@@ -75,7 +70,7 @@ export function ResultsView({ audit }: { audit: any }) {
 
       {/* Score Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-4 bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm flex flex-col items-center text-center">
+        <div className="lg:col-span-4 bg-surface-container-lowest p-10 rounded-xl border border-outline-variant card-shadow flex flex-col items-center text-center">
           <div className="relative w-48 h-48 mb-6">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -87,24 +82,24 @@ export function ResultsView({ audit }: { audit: any }) {
                   endAngle={450}
                   dataKey="value"
                 >
-                  <Cell fill="#8b5cf6" stroke="none" />
-                  <Cell fill="#f1f5f9" stroke="none" />
+                  <Cell fill="#00386c" stroke="none" />
+                  <Cell fill="#eceef0" stroke="none" />
                 </Pie>
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-5xl font-extrabold text-slate-900">{audit.overallScore}</span>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Score</span>
+              <span className="font-heading text-5xl font-extrabold text-on-surface">{audit.overallScore}</span>
+              <span className="text-[10px] font-bold text-outline uppercase tracking-widest">Score</span>
             </div>
           </div>
-          <h3 className="text-2xl font-bold text-slate-900 mb-2">
+          <h3 className="font-heading text-2xl font-bold text-on-surface mb-2">
             {audit.overallScore > 80 ? "Excellent" : audit.overallScore > 60 ? "Good" : "Needs Improvement"}
           </h3>
-          <p className="text-sm text-slate-500 leading-relaxed">{audit.aiSummary}</p>
+          <p className="text-sm text-on-surface-variant leading-relaxed">{audit.aiSummary}</p>
         </div>
 
-        <div className="lg:col-span-8 bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm">
-          <h3 className="text-xl font-bold text-slate-900 mb-8">Performance Metrics</h3>
+        <div className="lg:col-span-8 bg-surface-container-lowest p-10 rounded-xl border border-outline-variant card-shadow">
+          <h3 className="font-heading text-xl font-bold text-on-surface mb-8">Performance Metrics</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             {[
               { label: "SEO", score: audit.seoScore },
@@ -112,10 +107,10 @@ export function ResultsView({ audit }: { audit: any }) {
               { label: "Engagement", score: audit.engagementScore },
               { label: "Completeness", score: audit.completenessScore },
             ].map((metric, i) => (
-              <div key={i} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 text-center shadow-sm">
-                <div className="text-[10px] font-bold text-slate-400 uppercase mb-4">{metric.label}</div>
-                <div className="text-3xl font-extrabold text-slate-900 mb-2">{metric.score}%</div>
-                <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+              <div key={i} className="p-6 bg-surface rounded-xl border border-outline-variant text-center">
+                <div className="text-[10px] font-bold text-outline uppercase mb-4">{metric.label}</div>
+                <div className="font-heading text-3xl font-extrabold text-on-surface mb-2">{metric.score}%</div>
+                <div className="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
                   <div className="h-full bg-primary" style={{ width: `${metric.score}%` }} />
                 </div>
               </div>
@@ -125,14 +120,16 @@ export function ResultsView({ audit }: { audit: any }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm">
-          <h3 className="text-xl font-bold text-slate-900 mb-8">Sentiment Analysis</h3>
-          
+        <div className="bg-surface-container-lowest p-10 rounded-xl border border-outline-variant card-shadow">
+          <h3 className="font-heading text-xl font-bold text-on-surface mb-8">Sentiment Analysis</h3>
+
           {posPercent === 0 && neuPercent === 0 && negPercent === 0 ? (
-            <div className="h-64 w-full flex flex-col items-center justify-center text-center p-6 bg-slate-50 rounded-3xl border border-slate-100 border-dashed">
-              <Star className="w-10 h-10 text-slate-300 mb-3" />
-              <p className="text-sm font-bold text-slate-700">Not Enough Data</p>
-              <p className="text-xs text-slate-500 mt-1 max-w-[200px]">This business currently has 0 reviews on Google Maps. Start collecting reviews to see sentiment insights!</p>
+            <div className="h-64 w-full flex flex-col items-center justify-center text-center p-6 bg-surface rounded-xl border border-outline-variant border-dashed">
+              <MaterialIcon name="star" size={40} className="text-outline mb-3" />
+              <p className="text-sm font-bold text-on-surface">Not Enough Data</p>
+              <p className="text-xs text-on-surface-variant mt-1 max-w-[200px]">
+                This business currently has 0 reviews on Google Maps. Start collecting reviews to see sentiment insights!
+              </p>
             </div>
           ) : (
             <>
@@ -140,7 +137,9 @@ export function ResultsView({ audit }: { audit: any }) {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={sentimentData} innerRadius={60} outerRadius={80} dataKey="value">
-                      {sentimentData.map((entry, index) => <Cell key={index} fill={entry.color} />)}
+                      {sentimentData.map((entry, index) => (
+                        <Cell key={index} fill={entry.color} />
+                      ))}
                     </Pie>
                     <Tooltip />
                   </PieChart>
@@ -149,8 +148,10 @@ export function ResultsView({ audit }: { audit: any }) {
               <div className="flex justify-around mt-8">
                 {sentimentData.map((item, i) => (
                   <div key={i} className="text-center">
-                    <div className="text-lg font-bold" style={{ color: item.color }}>{item.value}%</div>
-                    <div className="text-[10px] text-slate-400 uppercase font-bold">{item.name}</div>
+                    <div className="text-lg font-bold" style={{ color: item.color }}>
+                      {item.value}%
+                    </div>
+                    <div className="text-[10px] text-outline uppercase font-bold">{item.name}</div>
                   </div>
                 ))}
               </div>
@@ -159,15 +160,27 @@ export function ResultsView({ audit }: { audit: any }) {
         </div>
 
         <div className="space-y-6">
-          <h3 className="text-xl font-bold text-slate-900">AI Prioritized Actions</h3>
+          <h3 className="font-heading text-xl font-bold text-on-surface">AI Prioritized Actions</h3>
           {recommendations.slice(0, 4).map((rec: any, i: number) => (
-            <div key={i} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden group">
-              <div className={cn("absolute top-0 left-0 w-1 h-full", rec.priority === "High" ? "bg-red-500" : "bg-primary")} />
+            <div
+              key={i}
+              className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow relative overflow-hidden group"
+            >
+              <div
+                className={cn(
+                  "absolute top-0 left-0 w-1 h-full",
+                  rec.priority === "High" ? "bg-error" : "bg-primary"
+                )}
+              />
               <div className="flex items-start justify-between mb-2">
-                <h4 className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors">{rec.title}</h4>
-                <span className="text-[8px] font-bold px-2 py-1 rounded bg-slate-100 text-slate-500 uppercase tracking-widest">{rec.priority}</span>
+                <h4 className="text-sm font-bold text-on-surface group-hover:text-primary transition-colors">
+                  {rec.title}
+                </h4>
+                <span className="text-[8px] font-bold px-2 py-1 rounded bg-surface-container text-on-surface-variant uppercase tracking-widest">
+                  {rec.priority}
+                </span>
               </div>
-              <p className="text-xs text-slate-500 leading-relaxed">{rec.description}</p>
+              <p className="text-xs text-on-surface-variant leading-relaxed">{rec.description}</p>
             </div>
           ))}
         </div>

@@ -22,9 +22,9 @@ function fmtRank(rank: number | null): string {
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <View className="flex-1 rounded-2xl border border-surface-border bg-surface-raised px-4 py-4">
-      <Text className="text-sm text-zinc-400">{label}</Text>
-      <Text className="mt-1 text-2xl font-extrabold text-white">{value}</Text>
+    <View className="flex-1 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
+      <Text className="font-sans text-sm text-zinc-400">{label}</Text>
+      <Text className="mt-1 font-display text-2xl text-white">{value}</Text>
     </View>
   );
 }
@@ -33,7 +33,7 @@ function SectionTitle({ children, hint }: { children: string; hint?: boolean }) 
   const t = useTheme();
   return (
     <View className="mb-3 mt-8 flex-row items-center gap-1.5">
-      <Text className="text-lg font-extrabold text-white">{children}</Text>
+      <Text className="font-display-bold text-lg text-white">{children}</Text>
       {!!hint && <Ionicons name="information-circle-outline" size={16} color={t.textFaint} />}
     </View>
   );
@@ -44,7 +44,7 @@ function ShowMore({ expanded, onPress }: { expanded: boolean; onPress: () => voi
   const t = useTheme();
   return (
     <Pressable onPress={onPress} className="flex-row items-center gap-1 px-1 py-3 active:opacity-70">
-      <Text className="text-sm font-bold" style={{ color: t.brandBright }}>
+      <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
         {expanded ? 'Show less' : 'Show more'}
       </Text>
       <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={t.brandBright} />
@@ -57,12 +57,12 @@ function KeywordRows({ keywords }: { keywords: AuditKeywordRank[] }) {
   const [expanded, setExpanded] = useState(false);
   const rows = expanded ? keywords : keywords.slice(0, SHOW_LIMIT);
   return (
-    <View className="overflow-hidden rounded-2xl border border-surface-border bg-surface-raised">
+    <View className="overflow-hidden rounded-card border border-surface-border bg-surface-raised">
       <View className="flex-row items-center border-b border-surface-border px-4 py-3">
-        <Text className="flex-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        <Text className="flex-1 font-sans-bold text-xs uppercase tracking-wide text-zinc-500">
           Keywords
         </Text>
-        <Text className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        <Text className="font-sans-bold text-xs uppercase tracking-wide text-zinc-500">
           Rank (Change)
         </Text>
       </View>
@@ -71,13 +71,15 @@ function KeywordRows({ keywords }: { keywords: AuditKeywordRank[] }) {
           key={kw.keyword + i}
           className="flex-row items-center gap-3 border-b border-surface-border px-4 py-3.5 last:border-b-0"
         >
-          <Text className="w-5 text-sm text-zinc-500">{i + 1}</Text>
-          <Text className="flex-1 text-base text-zinc-200" numberOfLines={1}>
+          <Text className="w-5 font-sans text-sm text-zinc-500">{i + 1}</Text>
+          <Text className="flex-1 font-sans text-base text-zinc-200" numberOfLines={1}>
             {kw.keyword}
           </Text>
-          <Text className="text-base font-bold text-white">{fmtRank(kw.rank ?? kw.avgRank)}</Text>
-          <View className="rounded-lg px-2 py-1" style={{ backgroundColor: `${t.brand}26` }}>
-            <Text className="text-xs font-bold" style={{ color: t.brandBright }}>
+          <Text className="font-sans-bold text-base text-white">
+            {fmtRank(kw.rank ?? kw.avgRank)}
+          </Text>
+          <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: `${t.brand}26` }}>
+            <Text className="font-sans-bold text-xs" style={{ color: t.brandBright }}>
               New
             </Text>
           </View>
@@ -101,15 +103,15 @@ function CompetitorRows({
   const [expanded, setExpanded] = useState(false);
   const rows = expanded ? competitors : competitors.slice(0, 4);
   return (
-    <View className="overflow-hidden rounded-2xl border border-surface-border bg-surface-raised">
+    <View className="overflow-hidden rounded-card border border-surface-border bg-surface-raised">
       <View className="flex-row items-center border-b border-surface-border px-4 py-3">
-        <Text className="flex-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        <Text className="flex-1 font-sans-bold text-xs uppercase tracking-wide text-zinc-500">
           Competitor
         </Text>
-        <Text className="w-20 text-right text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        <Text className="w-20 text-right font-sans-bold text-xs uppercase tracking-wide text-zinc-500">
           Reviews
         </Text>
-        <Text className="w-14 text-right text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        <Text className="w-14 text-right font-sans-bold text-xs uppercase tracking-wide text-zinc-500">
           Rank
         </Text>
       </View>
@@ -119,44 +121,41 @@ function CompetitorRows({
           className="flex-row items-center border-b border-surface-border px-4 py-3.5"
         >
           <View className="flex-1 pr-2">
-            <Text className="text-base font-semibold text-white" numberOfLines={1}>
+            <Text className="font-sans-semibold text-base text-white" numberOfLines={1}>
               {c.name}
             </Text>
             {c.rating != null && (
               <View className="mt-0.5 flex-row items-center gap-1">
                 <Ionicons name="star" size={12} color={t.amber} />
-                <Text className="text-xs text-zinc-400">{c.rating}</Text>
+                <Text className="font-sans text-xs text-zinc-400">{c.rating}</Text>
               </View>
             )}
           </View>
-          <Text className="w-20 text-right text-base font-bold" style={{ color: t.emerald }}>
+          <Text className="w-20 text-right font-sans-semibold text-base" style={{ color: t.emerald }}>
             {c.reviewCount ?? '—'}
           </Text>
-          <Text className="w-14 text-right text-base font-bold text-white">
+          <Text className="w-14 text-right font-sans-bold text-base text-white">
             {fmtRank(c.estimatedRank ?? c.avgRank)}
           </Text>
         </View>
       ))}
       {/* Your business — highlighted row, like the reference app */}
-      <View
-        className="flex-row items-center px-4 py-3.5"
-        style={{ backgroundColor: `${t.amber}20` }}
-      >
+      <View className="flex-row items-center bg-warning-container/50 px-4 py-3.5">
         <View className="flex-1 pr-2">
-          <Text className="text-base font-semibold text-white" numberOfLines={1}>
+          <Text className="font-sans-semibold text-base text-white" numberOfLines={1}>
             {you.name}
           </Text>
           {you.rating != null && (
             <View className="mt-0.5 flex-row items-center gap-1">
               <Ionicons name="star" size={12} color={t.amber} />
-              <Text className="text-xs text-zinc-400">{you.rating}</Text>
+              <Text className="font-sans text-xs text-zinc-400">{you.rating}</Text>
             </View>
           )}
         </View>
-        <Text className="w-20 text-right text-base font-bold" style={{ color: t.amber }}>
+        <Text className="w-20 text-right font-sans-bold text-base text-on-warning-container">
           {you.reviews ?? '—'}
         </Text>
-        <Text className="w-14 text-right text-base font-bold" style={{ color: t.amber }}>
+        <Text className="w-14 text-right font-sans-bold text-base text-on-warning-container">
           {fmtRank(you.rank)}
         </Text>
       </View>
@@ -228,8 +227,8 @@ export function PerformanceTab() {
       <View className="flex-row items-center gap-2 pt-2">
         <Ionicons name="logo-google" size={18} color={t.brandBright} />
         <View>
-          <Text className="text-lg font-extrabold text-white">GBP Performance</Text>
-          <Text className="text-xs text-zinc-500">Last 28 days</Text>
+          <Text className="font-display-bold text-lg text-white">GBP Performance</Text>
+          <Text className="font-sans text-xs text-zinc-500">Last 28 days</Text>
         </View>
       </View>
 
@@ -244,10 +243,10 @@ export function PerformanceTab() {
       )}
 
       {/* Latest Google Rank */}
-      <View className="mt-3 rounded-2xl border border-surface-border bg-surface-raised px-4 py-4">
-        <Text className="text-sm text-zinc-400">Latest Google Rank</Text>
+      <View className="mt-3 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
+        <Text className="font-sans text-sm text-zinc-400">Latest Google Rank</Text>
         <View className="mt-1 flex-row items-center justify-between">
-          <Text className="text-3xl font-extrabold text-white">
+          <Text className="font-display text-3xl text-white">
             {auditLoading ? '…' : fmtRank(avgRank)}
           </Text>
           <Pressable
@@ -255,12 +254,12 @@ export function PerformanceTab() {
             className="flex-row items-center gap-1.5 active:opacity-70"
           >
             <Ionicons name="refresh" size={16} color={t.brandBright} />
-            <Text className="text-base font-bold" style={{ color: t.brandBright }}>
+            <Text className="font-sans-bold text-base" style={{ color: t.brandBright }}>
               Refresh
             </Text>
           </Pressable>
         </View>
-        <Text className="mt-1 text-xs text-zinc-500">
+        <Text className="mt-1 font-sans text-xs text-zinc-500">
           Lower is better{auditDate ? ` • Last updated on ${auditDate}` : ' • Run an audit to get your rank'}
         </Text>
       </View>
@@ -272,8 +271,8 @@ export function PerformanceTab() {
       ) : keywords.length > 0 ? (
         <KeywordRows keywords={keywords} />
       ) : (
-        <View className="rounded-2xl border border-surface-border bg-surface-raised px-4 py-5">
-          <Text className="text-sm text-zinc-400">
+        <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-5">
+          <Text className="font-sans text-sm text-zinc-400">
             No keyword ranks yet — run an audit to track where you rank for your target searches.
           </Text>
         </View>
@@ -282,10 +281,10 @@ export function PerformanceTab() {
       {/* Rank by location (geo grid summary) */}
       <SectionTitle>Rank by Location</SectionTitle>
       {geo && (geo.overallAvgRank != null || (geo.keywords ?? []).length > 0) ? (
-        <View className="rounded-2xl border border-surface-border bg-surface-raised px-4 py-4">
+        <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-4">
           {geo.keywords?.[0]?.keyword ? (
-            <View className="mb-3 self-start rounded-xl bg-surface-overlay px-3 py-2">
-              <Text className="text-sm text-zinc-300">Keyword: {geo.keywords[0].keyword}</Text>
+            <View className="mb-3 self-start rounded-full bg-surface-overlay px-3 py-2">
+              <Text className="font-sans text-sm text-zinc-300">Keyword: {geo.keywords[0].keyword}</Text>
             </View>
           ) : null}
           <View className="flex-row items-center gap-4">
@@ -293,21 +292,21 @@ export function PerformanceTab() {
               className="h-16 w-16 items-center justify-center rounded-full"
               style={{ backgroundColor: `${t.rose}33` }}
             >
-              <Text className="text-lg font-extrabold" style={{ color: t.rose }}>
+              <Text className="font-display text-lg" style={{ color: t.rose }}>
                 {geo.overallAvgRank != null && geo.overallAvgRank > 20
                   ? '20+'
                   : fmtRank(geo.overallAvgRank)}
               </Text>
             </View>
-            <Text className="flex-1 text-sm leading-5 text-zinc-400">
+            <Text className="flex-1 font-sans text-sm leading-5 text-zinc-400">
               Average rank across the locations around you. Open the web dashboard for the full
               map view.
             </Text>
           </View>
         </View>
       ) : (
-        <View className="rounded-2xl border border-surface-border bg-surface-raised px-4 py-5">
-          <Text className="text-sm text-zinc-400">
+        <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-5">
+          <Text className="font-sans text-sm text-zinc-400">
             Location grid data appears after your next audit.
           </Text>
         </View>
@@ -331,8 +330,8 @@ export function PerformanceTab() {
           }}
         />
       ) : (
-        <View className="rounded-2xl border border-surface-border bg-surface-raised px-4 py-5">
-          <Text className="text-sm text-zinc-400">
+        <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-5">
+          <Text className="font-sans text-sm text-zinc-400">
             Competitor comparison appears after your next audit.
           </Text>
         </View>
@@ -344,33 +343,33 @@ export function PerformanceTab() {
         <Skeleton className="h-56" />
       ) : insights ? (
         <>
-          <View className="mb-3 flex-row items-center justify-between rounded-2xl border border-surface-border bg-surface-raised px-4 py-3.5">
-            <Text className="text-base text-zinc-300">Your Avg. Reviews</Text>
-            <Text className="text-xl font-extrabold text-white">
-              {avgPerWeek} <Text className="text-sm font-medium text-zinc-500">/ Week</Text>
+          <View className="mb-3 flex-row items-center justify-between rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
+            <Text className="font-sans text-base text-zinc-300">Your Avg. Reviews</Text>
+            <Text className="font-display text-xl text-white">
+              {avgPerWeek} <Text className="font-sans-semibold text-sm text-zinc-500">/ Week</Text>
             </Text>
           </View>
-          <View className="rounded-2xl border border-surface-border bg-surface-raised px-4 py-4">
+          <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-4">
             <WeeklyBars data={insights.weekly} industryAvg={industryAvg} />
           </View>
           <View className="mb-4 mt-3 flex-row gap-3">
-            <View className="flex-1 rounded-2xl border border-surface-border bg-surface-raised px-4 py-4">
-              <Text className="text-sm text-zinc-400">Rating</Text>
+            <View className="flex-1 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
+              <Text className="font-sans text-sm text-zinc-400">Rating</Text>
               <View className="mt-1 flex-row items-center gap-1.5">
-                <Text className="text-2xl font-extrabold text-white">
+                <Text className="font-display text-2xl text-white">
                   {stats.data?.metrics.avgRating ?? insights.avgRating}
                 </Text>
                 <Ionicons name="star" size={18} color={t.amber} />
               </View>
             </View>
-            <View className="flex-1 rounded-2xl border border-surface-border bg-surface-raised px-4 py-4">
-              <Text className="text-sm text-zinc-400">Reviews</Text>
-              <Text className="mt-1 text-2xl font-extrabold text-white">
+            <View className="flex-1 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
+              <Text className="font-sans text-sm text-zinc-400">Reviews</Text>
+              <Text className="mt-1 font-display text-2xl text-white">
                 {stats.data?.metrics.totalReviews ?? insights.total}
               </Text>
               {insights.eightWeekChangePct != null && (
                 <View
-                  className="mt-1.5 flex-row items-center gap-1 self-start rounded-lg px-2 py-1"
+                  className="mt-1.5 flex-row items-center gap-1 self-start rounded-full px-2.5 py-1"
                   style={{
                     backgroundColor:
                       insights.eightWeekChangePct >= 0 ? `${t.emerald}26` : `${t.rose}26`,
@@ -382,7 +381,7 @@ export function PerformanceTab() {
                     color={insights.eightWeekChangePct >= 0 ? t.emerald : t.rose}
                   />
                   <Text
-                    className="text-xs font-bold"
+                    className="font-sans-bold text-xs"
                     style={{ color: insights.eightWeekChangePct >= 0 ? t.emerald : t.rose }}
                   >
                     {Math.abs(insights.eightWeekChangePct)}% last 8 w…

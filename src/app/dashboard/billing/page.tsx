@@ -10,6 +10,7 @@ import {
 import { cn } from '@/lib/utils';
 import { planDisplayLabel, isPaidPlanLabel } from '@/lib/billing/planLabel';
 import Link from 'next/link';
+import { useBusiness } from '@/context/BusinessContext';
 
 interface BillingStatus {
   planType: string;
@@ -61,38 +62,38 @@ function UsageBar({
   const isFull = pct >= 100;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant p-5 shadow-sm">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2.5">
           <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center', color)}>
             <Icon className="w-4 h-4 text-white" />
           </div>
-          <span className="text-sm font-semibold text-slate-700">{label}</span>
+          <span className="text-sm font-semibold text-on-surface">{label}</span>
         </div>
         <span className={cn(
           'text-sm font-bold',
-          isFull ? 'text-red-600' : isWarning ? 'text-amber-600' : 'text-slate-900'
+          isFull ? 'text-error' : isWarning ? 'text-error' : 'text-on-surface'
         )}>
-          {used} <span className="text-slate-400 font-normal">/ {limit}</span>
+          {used} <span className="text-outline font-normal">/ {limit}</span>
         </span>
       </div>
-      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+      <div className="h-2 bg-surface-container rounded-full overflow-hidden">
         <div
           className={cn(
             'h-full rounded-full transition-all',
-            isFull ? 'bg-red-500' : isWarning ? 'bg-amber-400' : 'bg-emerald-500'
+            isFull ? 'bg-error' : isWarning ? 'bg-error' : 'bg-secondary'
           )}
           style={{ width: `${pct}%` }}
         />
       </div>
       <div className="flex items-center justify-between mt-1.5">
-        <span className="text-[11px] text-slate-400">{pct}% used</span>
+        <span className="text-[11px] text-outline">{pct}% used</span>
         {isFull ? (
-          <span className="text-[11px] font-bold text-red-500">Limit reached</span>
+          <span className="text-[11px] font-bold text-error">Limit reached</span>
         ) : isWarning ? (
-          <span className="text-[11px] font-bold text-amber-500">{limit - used} remaining</span>
+          <span className="text-[11px] font-bold text-error">{limit - used} remaining</span>
         ) : (
-          <span className="text-[11px] text-slate-400">{limit - used} remaining</span>
+          <span className="text-[11px] text-outline">{limit - used} remaining</span>
         )}
       </div>
     </div>
@@ -108,8 +109,8 @@ function PlanBadge({ plan, planName }: { plan: string; planName?: string | null 
       className={cn(
         'px-3 py-1 text-sm font-bold rounded-lg border',
         paid
-          ? 'bg-indigo-50 text-indigo-700 border-indigo-100'
-          : 'bg-slate-100 text-slate-600 border-slate-200'
+          ? 'bg-primary-fixed text-primary border-primary-fixed-dim'
+          : 'bg-surface-container text-on-surface-variant border-outline-variant'
       )}
     >
       {planDisplayLabel(plan, planName)}
@@ -124,6 +125,7 @@ interface WorkspaceBilling {
 }
 
 function SubscriptionCard() {
+  const { activeBusiness } = useBusiness();
   const [status, setStatus] = useState<BillingStatus | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceBilling | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -138,15 +140,23 @@ function SubscriptionCard() {
     } catch { /* card just doesn't render */ }
   };
 
-  useEffect(() => { loadStatus(); }, []);
+  // /api/billing/status reads the ACTIVE workspace's subscription — this
+  // previously fetched once on mount only, so switching workspaces left the
+  // billing card showing the PREVIOUS workspace's plan/status, which could
+  // seriously mislead a user about whether the workspace they're looking at
+  // is actually paid.
+  useEffect(() => {
+    if (!activeBusiness?._id) return;
+    loadStatus();
+  }, [activeBusiness?._id]);
 
   if (!status) return null;
 
   const statusStyles: Record<string, string> = {
-    Active:   'bg-emerald-50 text-emerald-700 border-emerald-100',
-    Trialing: 'bg-blue-50 text-blue-700 border-blue-100',
-    PastDue:  'bg-amber-50 text-amber-700 border-amber-100',
-    Canceled: 'bg-slate-100 text-slate-500 border-slate-200',
+    Active:   'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed',
+    Trialing: 'bg-primary-fixed text-primary border-primary-fixed-dim',
+    PastDue:  'bg-error-container text-on-error-container border-error',
+    Canceled: 'bg-surface-container text-on-surface-variant border-outline-variant',
   };
 
   const enabledModules = Object.entries(status.modules ?? {})
@@ -175,9 +185,9 @@ function SubscriptionCard() {
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+    <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-bold text-slate-900">Subscription</h2>
+        <h2 className="text-base font-bold text-on-surface">Subscription</h2>
         <span className={cn(
           'px-2.5 py-1 text-xs font-bold rounded-lg border',
           statusStyles[status.billingStatus] ?? statusStyles.Canceled
@@ -187,54 +197,54 @@ function SubscriptionCard() {
       </div>
 
       <div className="space-y-2.5 text-sm">
-        <div className="flex items-center justify-between py-2 border-b border-slate-50">
-          <span className="text-slate-500">Plan</span>
+        <div className="flex items-center justify-between py-2 border-b border-outline-variant">
+          <span className="text-on-surface-variant">Plan</span>
           <PlanBadge plan={status.planType} />
         </div>
         {status.trialStatus?.isActive && status.trialStatus.endsAt && (
-          <div className="flex items-center justify-between py-2 border-b border-slate-50">
-            <span className="text-slate-500">Trial ends</span>
-            <span className="font-bold text-slate-800">
+          <div className="flex items-center justify-between py-2 border-b border-outline-variant">
+            <span className="text-on-surface-variant">Trial ends</span>
+            <span className="font-bold text-on-surface">
               {new Date(status.trialStatus.endsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
             </span>
           </div>
         )}
         {(status.currentPeriodEnd || workspace?.currentPeriodEnd) && status.billingStatus === 'Active' && (
-          <div className="flex items-center justify-between py-2 border-b border-slate-50">
-            <span className="text-slate-500">{workspace?.cancelAtPeriodEnd ? 'Access until' : 'Renews on'}</span>
-            <span className="font-bold text-slate-800">
+          <div className="flex items-center justify-between py-2 border-b border-outline-variant">
+            <span className="text-on-surface-variant">{workspace?.cancelAtPeriodEnd ? 'Access until' : 'Renews on'}</span>
+            <span className="font-bold text-on-surface">
               {new Date((workspace?.currentPeriodEnd || status.currentPeriodEnd)!).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
             </span>
           </div>
         )}
         {workspace?.cancelAtPeriodEnd && (
-          <div className="flex items-start gap-2 py-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3">
+          <div className="flex items-start gap-2 py-2 text-xs text-on-error-container bg-error-container border border-error-container rounded-lg px-3">
             <span>Your subscription is cancelled and <strong>won&apos;t renew</strong>. You keep full access until the date above — then this workspace locks. Resubscribe anytime to stay unlocked.</span>
           </div>
         )}
         <div className="py-2">
-          <span className="text-slate-500 block mb-2">Enabled modules</span>
+          <span className="text-on-surface-variant block mb-2">Enabled modules</span>
           <div className="flex flex-wrap gap-1.5">
             {enabledModules.length > 0 ? enabledModules.map(m => (
-              <span key={m} className="px-2 py-0.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-md">
+              <span key={m} className="px-2 py-0.5 text-xs font-semibold bg-primary-fixed text-primary border border-primary-fixed-dim rounded-md">
                 {m}
               </span>
             )) : (
-              <span className="text-xs text-slate-400">None</span>
+              <span className="text-xs text-outline">None</span>
             )}
           </div>
         </div>
       </div>
 
       {message && (
-        <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">{message}</div>
+        <div className="mt-3 p-3 bg-surface border border-outline-variant rounded-lg text-xs text-on-surface-variant">{message}</div>
       )}
 
       <div className="mt-4 flex items-center gap-3">
         {(status.billingStatus !== 'Active' || workspace?.cancelAtPeriodEnd) && (
           <Link
             href="/pricing"
-            className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-colors"
+            className="px-4 py-2 bg-primary text-white text-sm font-bold rounded-xl hover:bg-primary-container transition-colors"
           >
             {workspace?.cancelAtPeriodEnd ? 'Resubscribe' : 'Subscribe'}
           </Link>
@@ -251,7 +261,7 @@ function SubscriptionCard() {
               </button>
               <button
                 onClick={() => setConfirmCancel(false)}
-                className="px-3 py-2 text-sm font-semibold text-slate-500 hover:text-slate-800"
+                className="px-3 py-2 text-sm font-semibold text-on-surface-variant hover:text-on-surface"
               >
                 Keep plan
               </button>
@@ -259,7 +269,7 @@ function SubscriptionCard() {
           ) : (
             <button
               onClick={() => setConfirmCancel(true)}
-              className="px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+              className="px-4 py-2 text-sm font-semibold text-error hover:bg-error-container rounded-xl transition-colors"
             >
               Cancel subscription
             </button>
@@ -272,6 +282,7 @@ function SubscriptionCard() {
 
 export default function BillingPage() {
   const router = useRouter();
+  const { activeBusiness } = useBusiness();
   const [data, setData] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -290,7 +301,14 @@ export default function BillingPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  // Despite the URL, /api/user/usage reads SubscriptionUsage scoped by the
+  // ACTIVE business (see src/app/api/user/usage/route.ts) — this previously
+  // fetched once on mount only, so switching workspaces left the usage
+  // panel showing the PREVIOUS workspace's numbers.
+  useEffect(() => {
+    if (!activeBusiness?._id) return;
+    load();
+  }, [activeBusiness?._id]);
 
   const monthLabel = data
     ? new Date(`${data.month}-01`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -302,13 +320,13 @@ export default function BillingPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Usage & Billing</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Your plan usage for {monthLabel || '...'}</p>
+          <h1 className="font-heading text-2xl font-bold text-on-surface tracking-tight">Usage & Billing</h1>
+          <p className="text-sm text-on-surface-variant mt-0.5">Your plan usage for {monthLabel || '...'}</p>
         </div>
         <button
           onClick={load}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm font-semibold text-on-surface-variant hover:bg-surface transition-all shadow-sm disabled:opacity-50"
         >
           <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
           Refresh
@@ -316,18 +334,18 @@ export default function BillingPage() {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>
+        <div className="p-4 bg-error-container border border-error-container rounded-xl text-sm text-on-error-container">{error}</div>
       )}
 
       {loading && !data ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm animate-pulse">
+            <div key={i} className="bg-surface-container-lowest rounded-2xl border border-outline-variant p-5 shadow-sm animate-pulse">
               <div className="flex items-center gap-2.5 mb-3">
-                <div className="w-8 h-8 bg-slate-200 rounded-lg" />
-                <div className="h-4 w-32 bg-slate-200 rounded" />
+                <div className="w-8 h-8 bg-surface-container-high rounded-lg" />
+                <div className="h-4 w-32 bg-surface-container-high rounded" />
               </div>
-              <div className="h-2 bg-slate-100 rounded-full" />
+              <div className="h-2 bg-surface-container rounded-full" />
             </div>
           ))}
         </div>
@@ -337,27 +355,27 @@ export default function BillingPage() {
           <SubscriptionCard />
 
           {/* Plan card */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex items-center gap-4">
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5 flex items-center gap-4">
             <div className={cn(
               'w-12 h-12 rounded-xl flex items-center justify-center',
-              isPaidPlanLabel(data.plan) ? 'bg-indigo-600' : 'bg-slate-400'
+              isPaidPlanLabel(data.plan) ? 'bg-primary' : 'bg-outline'
             )}>
               <Crown className="w-6 h-6 text-white" />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="font-bold text-slate-900">Current Plan</span>
+                <span className="font-bold text-on-surface">Current Plan</span>
                 <PlanBadge plan={data.plan} />
                 {data.hasOverride && (
-                  <span className="text-[10px] font-bold text-violet-600 bg-violet-50 border border-violet-100 px-1.5 py-0.5 rounded-md">Custom limits</span>
+                  <span className="text-[10px] font-bold text-primary bg-primary-fixed border border-primary-fixed-dim px-1.5 py-0.5 rounded-md">Custom limits</span>
                 )}
               </div>
-              <p className="text-sm text-slate-500">Resets on the 1st of every month</p>
+              <p className="text-sm text-on-surface-variant">Resets on the 1st of every month</p>
             </div>
             {data.plan === 'Free' && (
               <Link
                 href="#upgrade"
-                className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 text-white text-sm font-bold rounded-xl hover:bg-violet-700 transition-colors shadow-sm"
+                className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm font-bold rounded-xl hover:bg-primary-container transition-colors shadow-sm"
               >
                 <Zap className="w-4 h-4" /> Upgrade
               </Link>
@@ -366,42 +384,42 @@ export default function BillingPage() {
 
           {/* Usage bars */}
           <div>
-            <h2 className="text-base font-bold text-slate-900 mb-3">This Month's Usage</h2>
+            <h2 className="text-base font-bold text-on-surface mb-3">This Month's Usage</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <UsageBar
                 label="AI Generations"
                 icon={Bot}
                 used={data.usage.aiGenerationsUsed}
                 limit={data.limits.maxAIGenerations}
-                color="bg-violet-500"
+                color="bg-primary"
               />
               <UsageBar
                 label="Audits Run"
                 icon={FileText}
                 used={data.usage.auditsUsed}
                 limit={data.limits.maxAuditsPerBusiness}
-                color="bg-blue-500"
+                color="bg-primary"
               />
               <UsageBar
                 label="Posts Generated"
                 icon={BarChart3}
                 used={data.usage.postsUsed}
                 limit={data.limits.maxPostsPerMonth}
-                color="bg-emerald-500"
+                color="bg-secondary"
               />
               <UsageBar
                 label="WhatsApp Messages"
                 icon={MessageSquare}
                 used={data.usage.whatsappUsed}
                 limit={data.limits.maxWhatsAppMessagesPerDay}
-                color="bg-amber-500"
+                color="bg-error-container"
               />
             </div>
           </div>
 
           {/* Plan limits reference */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-            <h2 className="text-base font-bold text-slate-900 mb-4">Plan Limits</h2>
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5">
+            <h2 className="text-base font-bold text-on-surface mb-4">Plan Limits</h2>
             <div className="space-y-2.5 text-sm">
               {[
                 { label: 'AI Generations / Month',     icon: Bot,            value: data.limits.maxAIGenerations },
@@ -410,12 +428,12 @@ export default function BillingPage() {
                 { label: 'WhatsApp Messages / Day',     icon: MessageSquare,  value: data.limits.maxWhatsAppMessagesPerDay },
                 { label: 'Review Request Cooldown',     icon: Clock,          value: `${data.limits.reviewRequestCooldownDays} days` },
               ].map(({ label, icon: Icon, value }) => (
-                <div key={label} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
-                  <div className="flex items-center gap-2 text-slate-500">
-                    <Icon className="w-4 h-4 text-slate-400" />
+                <div key={label} className="flex items-center justify-between py-2 border-b border-outline-variant last:border-0">
+                  <div className="flex items-center gap-2 text-on-surface-variant">
+                    <Icon className="w-4 h-4 text-outline" />
                     {label}
                   </div>
-                  <span className="font-bold text-slate-800">{value}</span>
+                  <span className="font-bold text-on-surface">{value}</span>
                 </div>
               ))}
             </div>
@@ -423,14 +441,14 @@ export default function BillingPage() {
 
           {/* Subscribe CTA — only shown to unpaid users; there is one plan */}
           {data.plan === 'Free' && (
-            <div id="upgrade" className="bg-linear-to-br from-violet-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg shadow-violet-200">
+            <div id="upgrade" className="bg-linear-to-br from-primary to-primary-container rounded-2xl p-6 text-white card-shadow card-shadow">
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+                <div className="w-12 h-12 bg-surface-container-lowest/20 rounded-xl flex items-center justify-center shrink-0">
                   <TrendingUp className="w-6 h-6" />
                 </div>
                 <div className="flex-1">
                   <h2 className="text-lg font-bold mb-1">Unlock all features</h2>
-                  <p className="text-violet-200 text-sm mb-4">
+                  <p className="text-on-primary-container text-sm mb-4">
                     One plan, everything included — on the website and the mobile app.
                   </p>
                   <div className="grid grid-cols-2 gap-2 mb-5 text-sm">
@@ -442,7 +460,7 @@ export default function BillingPage() {
                       'Marketing Automation',
                       'Higher usage limits',
                     ].map(b => (
-                      <div key={b} className="flex items-center gap-2 text-violet-100">
+                      <div key={b} className="flex items-center gap-2 text-on-primary-container">
                         <CheckCircle2 className="w-4 h-4 shrink-0" />
                         {b}
                       </div>
@@ -450,7 +468,7 @@ export default function BillingPage() {
                   </div>
                   <Link
                     href="/pricing"
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-white text-violet-700 font-bold rounded-xl hover:bg-violet-50 transition-colors shadow-sm text-sm"
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-surface-container-lowest text-primary font-bold rounded-xl hover:bg-primary-fixed transition-colors shadow-sm text-sm"
                   >
                     Subscribe now
                     <ArrowRight className="w-4 h-4" />

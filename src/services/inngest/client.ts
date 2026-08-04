@@ -29,6 +29,9 @@ type Events = {
   "sales/agent.reply": {
     data: { conversationId: string; body: string };
   };
+  "sales/nurture.consented": {
+    data: { conversationId: string };
+  };
   "booking/agent.reply": {
     data: { conversationId: string; body: string };
   };

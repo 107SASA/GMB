@@ -3,6 +3,7 @@ import { z } from 'zod';
 import dbConnect from '@/lib/mongodb';
 import Audit from '@/models/Audit';
 import Business from '@/models/Business';
+import GBPToken from '@/models/GBPToken';
 import { requireClient } from '@/lib/auth';
 import { inngest } from '@/services/inngest/client';
 import { checkUsageLimit, incrementUsage } from '@/lib/featureGating';
@@ -61,6 +62,26 @@ export async function POST(req: Request) {
         },
         { status: 403 }
       );
+    }
+
+    // Once a workspace is paying, every audit run does a live SerpApi
+    // geo-grid check (45 calls) and, on a business's first-ever audit, a
+    // SerpApi review backfill — both real costs. Requiring Google to be
+    // connected first ensures that spend only happens for businesses the
+    // client has actually set up, not ones abandoned mid-onboarding. The
+    // one-time free trial audit (workspace not yet unlocked) is exempt so
+    // new signups can still see a report before connecting anything.
+    if (authResult.user.role !== 'SUPER_ADMIN' && workspaceUnlocked) {
+      const gbpToken = await GBPToken.findOne({ businessId: business._id }).select('_id').lean();
+      if (!gbpToken) {
+        return NextResponse.json(
+          {
+            error: 'Connect your Google Business Profile before running an audit.',
+            code: 'GOOGLE_CONNECTION_REQUIRED',
+          },
+          { status: 403 }
+        );
+      }
     }
 
     const isOwner = business.userId?.toString() === authResult.userId;

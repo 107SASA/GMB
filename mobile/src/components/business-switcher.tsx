@@ -58,7 +58,7 @@ export function BusinessSwitcher() {
             key={business._id}
             onPress={() => void selectBusiness(business._id)}
             disabled={busy}
-            className={`flex-row items-center gap-3 rounded-2xl border p-3.5 ${
+            className={`flex-row items-center gap-3 rounded-card border p-3.5 ${
               active
                 ? 'border-brand/60 bg-brand/10'
                 : 'border-surface-border bg-surface-raised active:bg-surface-overlay'
@@ -70,11 +70,11 @@ export function BusinessSwitcher() {
               colors={active ? undefined : t.inactiveAvatar}
             />
             <View className="flex-1">
-              <Text className="text-base font-semibold text-white" numberOfLines={1}>
+              <Text className="font-sans-semibold text-base text-white" numberOfLines={1}>
                 {business.name}
               </Text>
               {!!business.address && (
-                <Text className="text-xs text-zinc-400" numberOfLines={1}>
+                <Text className="font-sans text-xs text-zinc-400" numberOfLines={1}>
                   {business.address}
                 </Text>
               )}

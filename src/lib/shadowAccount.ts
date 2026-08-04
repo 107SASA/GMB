@@ -6,6 +6,8 @@ import Business from '@/models/Business';
 import Subscription from '@/models/Subscription';
 import { createSession } from '@/lib/session';
 import { normalizePhoneE164 } from '@/lib/phone';
+import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
+import { isQaTestingMode } from '@/lib/testingMode';
 
 /**
  * Shadow accounts: a real, unverified, passwordless User+Organization+Business
@@ -38,14 +40,33 @@ export interface ProvisionShadowAccountInput {
   businessData: ShadowBusinessData;
   /** Traceability tag, e.g. 'free-report-form'. */
   source: string;
+  /**
+   * True ONLY when the caller has independently verified this phone number
+   * out-of-band (e.g. an authenticated inbound WhatsApp message from that
+   * exact number). False (the default) for anonymous HTTP callers like
+   * /free-report's public form, where `phone` is just user-typed input.
+   *
+   * SECURITY: without this distinction, an unauthenticated caller could POST
+   * any phone number and be silently logged in AS that phone's existing
+   * account — including an already-claimed, password-protected real
+   * customer, or a shadow account that has already paid but not yet
+   * claimed (i.e. hijacking a paid account before its real owner sets a
+   * password). See CLAIMED_OR_PAID_REUSE_ERROR below for the guard.
+   */
+  phoneVerified?: boolean;
 }
+
+export const CLAIMED_OR_PAID_REUSE_ERROR =
+  'An account already exists for this phone number. Please log in to continue.';
 
 export interface ProvisionShadowAccountResult {
   user: any;
   organization: any;
   business: any;
-  /** True if an existing account for this phone number was found and reused
-   *  instead of creating a new one — the second-visit idempotency guarantee. */
+  /** True if this exact business (matched by googlePlaceId, or name when
+   *  neither side has one) already existed for this phone number and was
+   *  reused — false if a new business was created, even for a returning
+   *  phone checking a different business for the first time. */
   reused: boolean;
 }
 
@@ -66,11 +87,54 @@ export async function provisionShadowAccount(
   let user = await User.findOne({ phone: normalizedPhone });
   let organization: any = null;
   let business: any = null;
-  const reused = !!user;
 
   if (user) {
+    // A returning phone number doesn't always mean the same business — an
+    // agency (or someone just testing) may check several. Only reuse an
+    // existing business if it's genuinely the SAME one: matched by
+    // googlePlaceId when both sides have it, otherwise by name (case-
+    // insensitive). Search all of this user's businesses, not just the
+    // currently-active one, so re-checking an earlier business also works.
+    const candidates = user.businessIds?.length
+      ? await Business.find({ _id: { $in: user.businessIds } })
+      : [];
+
+    // SECURITY: an anonymous HTTP caller (phoneVerified not set — e.g. the
+    // public /free-report form) must NEVER be silently logged into an
+    // existing account unless there is genuinely nothing to protect yet.
+    // Refuse when the account is already claimed (real password), or when
+    // ANY of its workspaces has already paid — that's the exact window
+    // where a phone-guessing attacker could hijack a freshly-paid account
+    // before its real owner claims it. Reusing an unclaimed, never-paid
+    // shadow account is fine (nothing of value to steal) and is what makes
+    // "recognize a returning visitor" work safely.
+    if (!input.phoneVerified && !isQaTestingMode()) {
+      const isClaimed = !user.isShadowAccount;
+      const hasUnclaimedPaidWorkspace = candidates.some((c: any) =>
+        isWorkspaceUnlocked({
+          subscriptionStatus: c.subscriptionStatus,
+          userSubscriptionPlan: user.subscriptionPlan,
+          businessCreatedAt: c.createdAt,
+        }),
+      );
+      if (isClaimed || hasUnclaimedPaidWorkspace) {
+        throw new Error(CLAIMED_OR_PAID_REUSE_ERROR);
+      }
+    }
+
     if (user.organizationId) organization = await Organization.findById(user.organizationId);
-    if (user.activeBusinessId) business = await Business.findById(user.activeBusinessId);
+
+    const incomingPlaceId = input.businessData.googlePlaceId;
+    const incomingName = input.businessData.name.trim().toLowerCase();
+    business = candidates.find((c: any) => {
+      if (incomingPlaceId && c.googlePlaceId) return c.googlePlaceId === incomingPlaceId;
+      return !c.googlePlaceId && c.name?.trim().toLowerCase() === incomingName;
+    }) || null;
+
+    if (business) {
+      await User.findByIdAndUpdate(user._id, { $set: { activeBusinessId: business._id } });
+      user.activeBusinessId = business._id;
+    }
   } else {
     user = await User.create({
       fullName: input.businessData.name || 'Business Owner',
@@ -91,6 +155,10 @@ export async function provisionShadowAccount(
       subscriptionPlan: 'Free',
     });
   }
+
+  // Captured before the create-if-missing block below, which always leaves
+  // `business` truthy — this is the "did we actually reuse one" signal.
+  const reused = !!business;
 
   if (!business) {
     business = await Business.create({

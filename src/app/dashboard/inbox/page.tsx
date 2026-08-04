@@ -85,7 +85,7 @@ export default function InboxDashboard() {
   if (loading) {
     return (
       <div className="h-[calc(100vh-4rem)] flex items-center justify-center">
-        <div className="text-slate-400 text-sm">Loading workspace...</div>
+        <div className="text-outline text-sm">Loading workspace...</div>
       </div>
     );
   }
@@ -93,32 +93,32 @@ export default function InboxDashboard() {
   if (!activeBusiness) {
     return (
       <div className="h-[calc(100vh-4rem)] flex items-center justify-center">
-        <div className="text-slate-400 text-sm">No business found. Please complete onboarding.</div>
+        <div className="text-outline text-sm">No business found. Please complete onboarding.</div>
       </div>
     );
   }
 
   return (
-    <div className="h-[calc(100vh-4rem)] bg-white flex flex-col">
+    <div className="h-[calc(100vh-4rem)] bg-surface-container-lowest flex flex-col">
       {/* Top Bar */}
-      <div className="h-14 border-b border-slate-200 flex items-center px-6 bg-white shrink-0 justify-between">
+      <div className="h-14 border-b border-outline-variant flex items-center px-6 bg-surface-container-lowest shrink-0 justify-between">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold text-slate-800">Sales Inbox</h1>
-          <span className={`flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${isLive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+          <h1 className="font-heading text-xl font-bold text-on-surface">Sales Inbox</h1>
+          <span className={`flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${isLive ? 'bg-secondary-container/40 text-on-secondary-container' : 'bg-surface-container text-outline'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-secondary animate-pulse' : 'bg-surface-container-highest'}`} />
             {isLive ? 'Live' : 'Connecting…'}
           </span>
         </div>
-        <div className="flex bg-slate-100 p-1 rounded-lg">
+        <div className="flex bg-surface-container p-1 rounded-lg">
           <button
             onClick={() => setActiveTab('inbox')}
-            className={`px-4 py-1 text-sm font-bold rounded-md transition-all ${activeTab === 'inbox' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-4 py-1 text-sm font-bold rounded-md transition-all ${activeTab === 'inbox' ? 'bg-surface-container-lowest shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
           >
             Conversations
           </button>
           <button
             onClick={() => setActiveTab('config')}
-            className={`px-4 py-1 text-sm font-bold rounded-md transition-all ${activeTab === 'config' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-4 py-1 text-sm font-bold rounded-md transition-all ${activeTab === 'config' ? 'bg-surface-container-lowest shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
           >
             AI Settings
           </button>
@@ -132,7 +132,7 @@ export default function InboxDashboard() {
                 - Mobile: full-width, hidden when a thread is open
                 - Desktop: fixed-width panel, always visible */}
             <div className={`
-              flex flex-col w-full md:w-80 md:flex-none md:border-r md:border-slate-100
+              flex flex-col w-full md:w-80 md:flex-none md:border-r md:border-outline-variant
               ${activeThread ? 'hidden md:flex' : 'flex'}
             `}>
               <ConversationThreadList
@@ -159,7 +159,7 @@ export default function InboxDashboard() {
             </div>
           </div>
         ) : (
-          <div className="p-4 sm:p-8 h-full overflow-y-auto bg-slate-50">
+          <div className="p-4 sm:p-8 h-full overflow-y-auto bg-surface">
             <PromptEditor />
           </div>
         )}

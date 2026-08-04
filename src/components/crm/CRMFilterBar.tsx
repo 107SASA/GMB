@@ -22,25 +22,25 @@ export default function CRMFilterBar({
   setStageFilter,
 }: CRMFilterBarProps) {
   return (
-    <div className="flex flex-col sm:flex-row gap-4 mb-6 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm items-center">
+    <div className="flex flex-col sm:flex-row gap-4 mb-6 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant card-shadow items-center">
       <div className="relative flex-1 w-full">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
         <input
           type="text"
           placeholder="Search leads by name, email, or phone..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
+          className="w-full pl-10 pr-4 py-2 bg-surface border border-outline-variant rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-all outline-none"
         />
       </div>
 
       <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap">
-        <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+        <Filter className="w-4 h-4 text-outline shrink-0" />
 
         <select
           value={stageFilter}
           onChange={(e) => setStageFilter(e.target.value)}
-          className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-xl px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+          className="bg-surface border border-outline-variant text-on-surface text-sm rounded-xl px-3 py-2 focus:ring-primary focus:border-primary outline-none"
         >
           <option value="all">All Stages</option>
           <option value="initial">Initial</option>
@@ -52,7 +52,7 @@ export default function CRMFilterBar({
         <select
           value={sourceFilter}
           onChange={(e) => setSourceFilter(e.target.value)}
-          className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-xl px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+          className="bg-surface border border-outline-variant text-on-surface text-sm rounded-xl px-3 py-2 focus:ring-primary focus:border-primary outline-none"
         >
           <option value="all">All Sources</option>
           <option value="Google Business Profile">Google Business Profile</option>
@@ -67,7 +67,7 @@ export default function CRMFilterBar({
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-xl px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+          className="bg-surface border border-outline-variant text-on-surface text-sm rounded-xl px-3 py-2 focus:ring-primary focus:border-primary outline-none"
         >
           <option value="all">All Status</option>
           <option value="active">Active</option>

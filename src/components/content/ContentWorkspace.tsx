@@ -121,17 +121,17 @@ export default function ContentWorkspace() {
       <div className="max-w-5xl mx-auto mt-10 space-y-6">
         <div className="flex justify-between items-end">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Content Workspace</h1>
-            <p className="text-slate-500 mt-1">Review, edit, and schedule your AI-generated content.</p>
+            <h1 className="font-heading text-2xl sm:text-3xl font-bold text-on-surface">Content Workspace</h1>
+            <p className="text-on-surface-variant mt-1">Review, edit, and schedule your AI-generated content.</p>
           </div>
           <button
             onClick={() => setShowHistory(false)}
-            className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
+            className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors"
           >
             &larr; Back to Generator
           </button>
         </div>
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-4 sm:p-8">
+        <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant overflow-hidden p-4 sm:p-8">
           <ContentHistoryTab />
         </div>
       </div>
@@ -144,7 +144,7 @@ export default function ContentWorkspace() {
         <div className="flex justify-end mb-3">
           <button
             onClick={() => setShowHistory(true)}
-            className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
+            className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors"
           >
             View Content History &rarr;
           </button>
@@ -168,18 +168,18 @@ export default function ContentWorkspace() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-2">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Content Workspace</h1>
-          <p className="text-slate-500 mt-1">Review, edit, and schedule your AI-generated content.</p>
+          <h1 className="font-heading text-2xl sm:text-3xl font-bold text-on-surface">Content Workspace</h1>
+          <p className="text-on-surface-variant mt-1">Review, edit, and schedule your AI-generated content.</p>
         </div>
         <button
           onClick={() => setContentData(null)}
-          className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors self-start sm:self-auto"
+          className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors self-start sm:self-auto"
         >
           &larr; Generate New Content
         </button>
       </div>
 
-      <div className="flex items-start gap-2.5 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
+      <div className="flex items-start gap-2.5 rounded-xl border border-primary-fixed-dim bg-primary-fixed px-4 py-3 text-sm text-primary">
         <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
@@ -191,9 +191,9 @@ export default function ContentWorkspace() {
         </span>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant overflow-hidden">
         {/* Tab Navigation — horizontally scrollable on narrow screens */}
-        <div className="overflow-x-auto border-b border-slate-200 bg-slate-50/50">
+        <div className="overflow-x-auto border-b border-outline-variant bg-surface/50">
           <div className="flex px-4 sm:px-6 min-w-max">
             {TABS.map((tab) => (
               <button
@@ -201,8 +201,8 @@ export default function ContentWorkspace() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`whitespace-nowrap py-4 px-5 sm:px-6 font-medium text-sm transition-colors border-b-2 ${
                   activeTab === tab.id
-                    ? 'border-slate-900 text-slate-900 bg-white'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/50'
+                    ? 'border-on-surface text-on-surface bg-surface-container-lowest'
+                    : 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container/50'
                 }`}
               >
                 {tab.label}
@@ -212,7 +212,7 @@ export default function ContentWorkspace() {
         </div>
 
         {/* Tab Content */}
-        <div className="p-4 sm:p-8 bg-white min-h-150">
+        <div className="p-4 sm:p-8 bg-surface-container-lowest min-h-150">
           <AnimatePresence mode="wait">
             {activeTab === 'posts' && (
               <motion.div

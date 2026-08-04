@@ -11,13 +11,15 @@ import { AppHeader } from '@/components/app-header';
 import { Badge, Chip, EmptyState, Field, Screen, Skeleton } from '@/components/ui';
 import { useMobileFlags } from '@/lib/featureFlags';
 import { timeAgo } from '@/lib/format';
+import { useTheme } from '@/lib/theme';
 
 const UNASSIGNED = 'Unassigned';
 
-function scoreTone(score: number): 'positive' | 'warning' | 'neutral' {
+/** Semantic score-color rule: ≥70 green, 40-69 amber, <40 rose. */
+function scoreTone(score: number): 'positive' | 'warning' | 'negative' {
   if (score >= 70) return 'positive';
   if (score >= 40) return 'warning';
-  return 'neutral';
+  return 'negative';
 }
 
 function LeadCard({ lead }: { lead: Lead }) {
@@ -25,10 +27,10 @@ function LeadCard({ lead }: { lead: Lead }) {
   return (
     <Pressable
       onPress={() => router.push(`/leads/${lead._id}`)}
-      className="mb-3 rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5 active:opacity-80"
+      className="mb-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5 active:opacity-80"
     >
       <View className="flex-row items-center justify-between">
-        <Text className="flex-1 text-base font-semibold text-white" numberOfLines={1}>
+        <Text className="flex-1 font-sans-semibold text-base text-white" numberOfLines={1}>
           {lead.name}
         </Text>
         {lead.aiLeadScore != null && (
@@ -38,7 +40,9 @@ function LeadCard({ lead }: { lead: Lead }) {
       <View className="mt-2 flex-row flex-wrap items-center gap-2">
         <Badge label={lead.source} />
         <Badge label={lead.pipelineStage || UNASSIGNED} tone="info" />
-        <Text className="ml-auto text-xs text-zinc-500">{timeAgo(lead.lastActivityAt)}</Text>
+        <Text className="ml-auto font-sans text-xs text-zinc-500">
+          {timeAgo(lead.lastActivityAt)}
+        </Text>
       </View>
     </Pressable>
   );
@@ -54,19 +58,21 @@ function CaptureAction({
   href: Href;
 }) {
   const router = useRouter();
+  const t = useTheme();
   return (
     <Pressable
       onPress={() => router.push(href)}
-      className="flex-row items-center gap-1.5 rounded-full border border-surface-border bg-surface-raised px-3.5 py-2 active:opacity-70"
+      className="flex-row items-center gap-1.5 rounded-full border border-surface-border bg-surface-raised px-3.5 py-2 active:scale-95"
     >
-      <Ionicons name={icon} size={14} color="#6366F1" />
-      <Text className="text-sm font-medium text-zinc-200">{label}</Text>
+      <Ionicons name={icon} size={14} color={t.brandBright} />
+      <Text className="font-sans-semibold text-sm text-zinc-200">{label}</Text>
     </Pressable>
   );
 }
 
 export default function LeadsScreen() {
   const { activeBusinessId } = useBusiness();
+  const t = useTheme();
   const flags = useMobileFlags();
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
@@ -173,7 +179,7 @@ export default function LeadsScreen() {
             <RefreshControl
               refreshing={leads.isRefetching}
               onRefresh={() => void leads.refetch()}
-              tintColor="#6366F1"
+              tintColor={t.brandBright}
             />
           }
           ListEmptyComponent={

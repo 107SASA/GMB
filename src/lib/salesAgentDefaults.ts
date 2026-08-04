@@ -122,10 +122,19 @@ export function defaultSalesAgentConfig(subscribeUrl = '', shopUrl = ''): SalesA
   };
 }
 
-/** Fills {{var}} placeholders. Unknown placeholders are left as-is. */
+/**
+ * Fills {{var}} placeholders. A missing, empty, or unrecognised placeholder
+ * is dropped to '' rather than left as literal "{{var}}" text — matching the
+ * guarantee the review-campaign template builder (fillTemplate() in
+ * services/inngest/functions.ts) gives its callers, that templating syntax
+ * never reaches the customer. That builder gets this for free because its
+ * four vars are always pre-filled with a real fallback string by its caller;
+ * this function's vars are optional by design (super-admin-edited templates
+ * can reference any subset), so the same guarantee has to live here instead.
+ */
 export function renderTemplate(template: string, vars: Record<string, string | number | null | undefined>): string {
-  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, key) => {
+  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, key) => {
     const v = vars[key];
-    return v === undefined || v === null || v === '' ? m : String(v);
+    return v === undefined || v === null || v === '' ? '' : String(v);
   });
 }

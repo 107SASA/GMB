@@ -30,6 +30,7 @@ import { formatTime } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
 function MessageBubble({ message }: { message: ConversationMessage }) {
+  const t = useTheme();
   const outbound = message.direction === 'outbound';
   return (
     <View className={`mb-2 max-w-[80%] ${outbound ? 'self-end' : 'self-start'}`}>
@@ -38,18 +39,20 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
           outbound ? 'rounded-br-sm bg-brand' : 'rounded-bl-sm bg-surface-raised'
         }`}
       >
-        <Text className={`text-base ${outbound ? "text-on-brand" : "text-white"}`}>{message.messageText}</Text>
+        <Text className={`font-sans text-base ${outbound ? 'text-on-brand' : 'text-white'}`}>
+          {message.messageText}
+        </Text>
       </View>
       <View className={`mt-1 flex-row items-center gap-1.5 ${outbound ? 'self-end' : 'self-start'}`}>
         {message.isAI && (
           <>
-            <Ionicons name="sparkles" size={10} color="#6366F1" />
-            <Text className="text-xs text-indigo-300">AI</Text>
+            <Ionicons name="sparkles" size={10} color={t.brandBright} />
+            <Text className="font-sans-semibold text-xs text-indigo-300">AI</Text>
           </>
         )}
-        <Text className="text-xs text-zinc-500">{formatTime(message.timestamp)}</Text>
+        <Text className="font-sans text-xs text-zinc-500">{formatTime(message.timestamp)}</Text>
         {outbound && message.messageStatus === 'failed' && (
-          <Text className="text-xs text-rose-300">failed</Text>
+          <Text className="font-sans-semibold text-xs text-rose-300">failed</Text>
         )}
       </View>
     </View>
@@ -189,15 +192,19 @@ export default function ThreadScreen() {
           <BackChevron />
         </Pressable>
         <View className="flex-1">
-          <Text className="text-base font-semibold text-white" numberOfLines={1}>
+          <Text className="font-sans-semibold text-base text-white" numberOfLines={1}>
             {lead.name}
           </Text>
-          {!!lead.phone && <Text className="text-xs text-zinc-500">{lead.phone}</Text>}
+          {!!lead.phone && <Text className="font-sans text-xs text-zinc-500">{lead.phone}</Text>}
         </View>
         <View className="items-end">
           <View className="flex-row items-center gap-1.5">
-            <Ionicons name="sparkles" size={12} color={thread.aiEnabled ? '#6366F1' : '#666E94'} />
-            <Text className="text-xs text-zinc-400">AI agent</Text>
+            <Ionicons
+              name="sparkles"
+              size={12}
+              color={thread.aiEnabled ? t.brandBright : t.textFaint}
+            />
+            <Text className="font-sans text-xs text-zinc-400">AI agent</Text>
           </View>
           <Switch
             value={thread.aiEnabled}
@@ -241,26 +248,26 @@ export default function ThreadScreen() {
                 value={draft}
                 onChangeText={setDraft}
                 placeholder="Type a message"
-                placeholderTextColor="#666E94"
+                placeholderTextColor={t.textFaint}
                 multiline
-                className="max-h-28 flex-1 rounded-2xl border border-surface-border bg-surface-raised px-4 py-2.5 text-base text-white"
+                className="max-h-28 flex-1 rounded-2xl border border-surface-border bg-surface-raised px-4 py-2.5 font-sans text-base text-white"
               />
               <Pressable
                 onPress={handleSend}
                 disabled={!draft.trim() || send.isPending}
                 className={`h-11 w-11 items-center justify-center rounded-full ${
-                  draft.trim() && !send.isPending ? 'bg-brand active:opacity-80' : 'bg-surface-raised'
+                  draft.trim() && !send.isPending ? 'bg-brand active:scale-95' : 'bg-surface-raised'
                 }`}
               >
                 <Ionicons
                   name="send"
                   size={18}
-                  color={draft.trim() && !send.isPending ? '#ffffff' : '#666E94'}
+                  color={draft.trim() && !send.isPending ? '#ffffff' : t.textFaint}
                 />
               </Pressable>
             </View>
           ) : (
-            <Text className="py-2 text-center text-sm text-zinc-500">
+            <Text className="py-2 text-center font-sans text-sm text-zinc-500">
               This lead has no phone number, so messages can't be sent.
             </Text>
           )}

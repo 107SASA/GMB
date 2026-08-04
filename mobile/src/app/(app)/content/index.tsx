@@ -54,7 +54,7 @@ function GeneratedPostCard({ post, imageUrl }: { post: GeneratedPost; imageUrl: 
   // has landed yet (they arrive via background polling).
   const pending = !imageUrl && !!post.thumbnailPrompt;
   return (
-    <View className="mb-3 overflow-hidden rounded-xl border border-surface-border bg-surface-raised">
+    <View className="mb-3 overflow-hidden rounded-card border border-surface-border bg-surface-raised">
       {imageUrl ? (
         <Image
           source={{ uri: imageUrl }}
@@ -64,17 +64,21 @@ function GeneratedPostCard({ post, imageUrl }: { post: GeneratedPost; imageUrl: 
         />
       ) : pending ? (
         <View className="h-[110px] items-center justify-center bg-indigo-500/10">
-          <ActivityIndicator color="#818CF8" />
-          <Text className="mt-2 text-xs font-medium text-indigo-300">Generating thumbnail…</Text>
+          <ActivityIndicator color="#a6c8ff" />
+          <Text className="mt-2 font-sans-semibold text-xs text-indigo-300">
+            Generating thumbnail…
+          </Text>
         </View>
       ) : null}
       <View className="px-4 py-3.5">
-        {!!post.title && <Text className="text-base font-semibold text-white">{post.title}</Text>}
-        <Text className="mt-1.5 text-sm leading-5 text-zinc-300">{post.body}</Text>
-        {post.hashtags.length > 0 && (
-          <Text className="mt-2 text-xs text-indigo-300">{post.hashtags.join(' ')}</Text>
+        {!!post.title && (
+          <Text className="font-sans-semibold text-base text-white">{post.title}</Text>
         )}
-        {!!post.cta && <Text className="mt-1 text-xs text-zinc-500">CTA: {post.cta}</Text>}
+        <Text className="mt-1.5 font-sans text-sm leading-5 text-zinc-300">{post.body}</Text>
+        {post.hashtags.length > 0 && (
+          <Text className="mt-2 font-sans text-xs text-indigo-300">{post.hashtags.join(' ')}</Text>
+        )}
+        {!!post.cta && <Text className="mt-1 font-sans text-xs text-zinc-500">CTA: {post.cta}</Text>}
       </View>
     </View>
   );
@@ -188,14 +192,14 @@ function GenerateSegment() {
         placeholder="e.g. Summer Sale, Diwali Offers…"
       />
 
-      <Text className="mb-1.5 px-1 text-xs font-medium text-zinc-400">Tone</Text>
+      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Tone</Text>
       <View className="mb-3 flex-row flex-wrap gap-2">
         {TONES.map((t) => (
           <Chip key={t} label={t} selected={tone === t} onPress={() => setTone(t)} />
         ))}
       </View>
 
-      <Text className="mb-1.5 px-1 text-xs font-medium text-zinc-400">Target keywords</Text>
+      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Target keywords</Text>
       <View className="mb-2 flex-row gap-2">
         <View className="flex-1">
           <Field
@@ -208,7 +212,7 @@ function GenerateSegment() {
         </View>
         <Pressable
           onPress={addKeyword}
-          className="items-center justify-center rounded-xl border border-surface-border bg-surface-raised px-4 active:opacity-80"
+          className="items-center justify-center rounded-xl border border-surface-border bg-surface-raised px-4 active:scale-95"
         >
           <Ionicons name="add" size={20} color={t.text} />
         </Pressable>
@@ -226,7 +230,7 @@ function GenerateSegment() {
         </View>
       )}
 
-      <Text className="mb-1.5 px-1 text-xs font-medium text-zinc-400">What to generate</Text>
+      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">What to generate</Text>
       <View className="mb-4 flex-row flex-wrap gap-2">
         {CONTENT_TYPES.map((t) => (
           <Chip
@@ -257,7 +261,7 @@ function GenerateSegment() {
         disabled={types.length === 0}
       />
       {generate.isPending && (
-        <Text className="mt-2 text-center text-xs text-zinc-500">
+        <Text className="mt-2 text-center font-sans text-xs text-zinc-500">
           This takes 30–60 seconds. Keep the app open.
         </Text>
       )}
@@ -272,14 +276,14 @@ function GenerateSegment() {
                   <Pressable
                     onPress={() => autoSchedule.mutate(schedulableIds)}
                     disabled={autoSchedule.isPending}
-                    className="mt-4 flex-row items-center gap-1 rounded-full bg-brand px-3 py-1.5 active:opacity-80"
+                    className="mt-4 flex-row items-center gap-1 rounded-full bg-brand px-3 py-1.5 active:scale-95"
                   >
                     {autoSchedule.isPending ? (
                       <ActivityIndicator size="small" color="#ffffff" />
                     ) : (
                       <Ionicons name="calendar-outline" size={13} color="#ffffff" />
                     )}
-                    <Text className="text-xs font-semibold text-on-brand">Auto-schedule all</Text>
+                    <Text className="font-sans-bold text-xs text-on-brand">Auto-schedule all</Text>
                   </Pressable>
                 )}
               </View>
@@ -298,10 +302,14 @@ function GenerateSegment() {
           {!!result.seoDescription && (
             <View>
               <SectionLabel>SEO description</SectionLabel>
-              <View className="rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5">
-                <Text className="text-sm leading-5 text-zinc-300">{result.seoDescription}</Text>
+              <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
+                <Text className="font-sans text-sm leading-5 text-zinc-300">
+                  {result.seoDescription}
+                </Text>
                 {result.seoScore !== null && (
-                  <Text className="mt-2 text-xs text-zinc-500">SEO score: {result.seoScore}</Text>
+                  <Text className="mt-2 font-sans text-xs text-zinc-500">
+                    SEO score: {result.seoScore}
+                  </Text>
                 )}
               </View>
             </View>
@@ -316,10 +324,12 @@ function GenerateSegment() {
                   .map((faq, i) => (
                     <View
                       key={i}
-                      className="rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5"
+                      className="rounded-card border border-surface-border bg-surface-raised px-4 py-3.5"
                     >
-                      <Text className="text-sm font-semibold text-white">{faq.question}</Text>
-                      <Text className="mt-1 text-sm leading-5 text-zinc-400">{faq.answer}</Text>
+                      <Text className="font-sans-semibold text-sm text-white">{faq.question}</Text>
+                      <Text className="mt-1 font-sans text-sm leading-5 text-zinc-400">
+                        {faq.answer}
+                      </Text>
                     </View>
                   ))}
               </View>
@@ -351,21 +361,22 @@ function HistoryCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const t = useTheme();
   const status = postStatusBadge(post);
   const published = post.status === 'published';
   return (
-    <View className="mb-3 rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5">
+    <View className="mb-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
       <View className="flex-row items-center justify-between gap-2">
-        <Text className="flex-1 text-base font-semibold text-white" numberOfLines={1}>
+        <Text className="flex-1 font-sans-semibold text-base text-white" numberOfLines={1}>
           {post.title || 'Untitled post'}
         </Text>
         <Badge label={status.label} tone={status.tone} />
       </View>
-      <Text className="mt-1.5 text-sm text-zinc-400" numberOfLines={3}>
+      <Text className="mt-1.5 font-sans text-sm text-zinc-400" numberOfLines={3}>
         {post.content}
       </Text>
       {!!post.scheduledDate && !published && (
-        <Text className="mt-1.5 text-xs text-zinc-500">
+        <Text className="mt-1.5 font-sans text-xs text-zinc-500">
           Scheduled for {formatDateTime(post.scheduledDate)}
         </Text>
       )}
@@ -373,24 +384,24 @@ function HistoryCard({
         <View className="mt-3 flex-row gap-2">
           <Pressable
             onPress={onSchedule}
-            className="flex-row items-center gap-1 rounded-full border border-surface-border px-3 py-1.5 active:opacity-70"
+            className="flex-row items-center gap-1 rounded-full border border-surface-border px-3 py-1.5 active:scale-95"
           >
-            <Ionicons name="calendar-outline" size={13} color="#8B93B8" />
-            <Text className="text-xs font-medium text-zinc-300">Schedule</Text>
+            <Ionicons name="calendar-outline" size={13} color={t.textFaint} />
+            <Text className="font-sans-semibold text-xs text-zinc-300">Schedule</Text>
           </Pressable>
           <Pressable
             onPress={onEdit}
-            className="flex-row items-center gap-1 rounded-full border border-surface-border px-3 py-1.5 active:opacity-70"
+            className="flex-row items-center gap-1 rounded-full border border-surface-border px-3 py-1.5 active:scale-95"
           >
-            <Ionicons name="pencil-outline" size={13} color="#8B93B8" />
-            <Text className="text-xs font-medium text-zinc-300">Edit</Text>
+            <Ionicons name="pencil-outline" size={13} color={t.textFaint} />
+            <Text className="font-sans-semibold text-xs text-zinc-300">Edit</Text>
           </Pressable>
           <Pressable
             onPress={onDelete}
-            className="flex-row items-center gap-1 rounded-full border border-rose-400/25 px-3 py-1.5 active:opacity-70"
+            className="flex-row items-center gap-1 rounded-full border border-rose-400/25 px-3 py-1.5 active:scale-95"
           >
-            <Ionicons name="trash-outline" size={13} color="#FB7185" />
-            <Text className="text-xs font-medium text-rose-300">Delete</Text>
+            <Ionicons name="trash-outline" size={13} color={t.rose} />
+            <Text className="font-sans-semibold text-xs text-rose-300">Delete</Text>
           </Pressable>
         </View>
       )}
@@ -423,10 +434,10 @@ function EditPostModal({
     <Modal transparent animationType="slide" onRequestClose={onClose}>
       <View className="flex-1 justify-end bg-black/60">
         <View className="max-h-[85%] rounded-t-2xl border-t border-surface-border bg-surface px-5 pb-8 pt-4">
-          <Text className="mb-3 text-lg font-bold text-white">Edit post</Text>
+          <Text className="mb-3 font-display-bold text-lg text-white">Edit post</Text>
           <ScrollView keyboardShouldPersistTaps="handled">
             <LabeledField label="Title" value={title} onChangeText={setTitle} />
-            <Text className="mb-1.5 px-1 text-xs font-medium text-zinc-400">Content</Text>
+            <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Content</Text>
             <Field
               value={content}
               onChangeText={setContent}
@@ -441,7 +452,7 @@ function EditPostModal({
               disabled={!content.trim()}
             />
             <Pressable onPress={onClose} className="mt-3 items-center py-2 active:opacity-70">
-              <Text className="text-sm text-zinc-400">Cancel</Text>
+              <Text className="font-sans-semibold text-sm text-zinc-400">Cancel</Text>
             </Pressable>
           </ScrollView>
         </View>
@@ -454,6 +465,7 @@ function HistorySegment() {
   const { activeBusinessId } = useBusiness();
   const queryClient = useQueryClient();
   const picker = useDateTimePicker();
+  const t = useTheme();
   const [editing, setEditing] = useState<ContentPost | null>(null);
 
   const history = useInfiniteQuery({
@@ -532,7 +544,7 @@ function HistorySegment() {
         onEndReachedThreshold={0.4}
         ListFooterComponent={
           history.isFetchingNextPage ? (
-            <ActivityIndicator color="#6366F1" style={{ paddingVertical: 12 }} />
+            <ActivityIndicator color={t.brandBright} style={{ paddingVertical: 12 }} />
           ) : null
         }
         ListEmptyComponent={

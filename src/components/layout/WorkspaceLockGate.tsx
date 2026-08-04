@@ -88,17 +88,17 @@ function LockOverlay() {
 
   return (
     <div className="absolute inset-0 z-20 flex items-start justify-center px-4 pt-8 sm:pt-14">
-      <div className="w-full max-w-md overflow-hidden rounded-2xl border-2 border-indigo-500 bg-white shadow-2xl shadow-indigo-500/20">
-        <div className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 px-5 py-3 text-xs font-bold uppercase tracking-widest text-white">
+      <div className="w-full max-w-md overflow-hidden rounded-2xl border-2 border-primary bg-surface-container-lowest card-shadow card-shadow">
+        <div className="flex items-center gap-2 bg-gradient-to-r from-primary to-primary-container px-5 py-3 text-xs font-bold uppercase tracking-widest text-white">
           <Lock className="h-3.5 w-3.5" /> Locked — upgrade to unlock
         </div>
 
         <div className="p-6">
-          <div className="mb-1 flex items-center gap-1.5 text-indigo-600">
+          <div className="mb-1 flex items-center gap-1.5 text-primary">
             <Sparkles className="h-4 w-4" />
             <span className="text-sm font-semibold">This is a paid feature</span>
           </div>
-          <p className="mb-5 text-sm text-slate-600">
+          <p className="mb-5 text-sm text-on-surface-variant">
             You&apos;re seeing a preview of this tab. Unlock the full dashboard to use it with your real data.
           </p>
 
@@ -108,24 +108,24 @@ function LockOverlay() {
 
           <div className="mb-5">
             {loading ? (
-              <span className="inline-block h-9 w-32 animate-pulse rounded bg-slate-200" />
+              <span className="inline-block h-9 w-32 animate-pulse rounded bg-surface-container-high" />
             ) : plan && price != null ? (
               <>
-                <div className="text-3xl font-extrabold tracking-tight text-slate-900">
+                <div className="text-3xl font-extrabold tracking-tight text-on-surface">
                   ₹{price.toLocaleString('en-IN')}
-                  <span className="text-base font-medium text-slate-500"> / {cycleLabel}</span>
+                  <span className="text-base font-medium text-on-surface-variant"> / {cycleLabel}</span>
                 </div>
-                <div className="mt-1 text-sm font-bold text-slate-900">{plan.displayName}</div>
+                <div className="mt-1 text-sm font-bold text-on-surface">{plan.displayName}</div>
               </>
             ) : (
-              <div className="text-sm text-slate-500">Pricing unavailable right now.</div>
+              <div className="text-sm text-on-surface-variant">Pricing unavailable right now.</div>
             )}
           </div>
 
           <ul className="mb-6 space-y-2.5">
             {(features.length ? features : Object.values(MODULE_LABELS)).map((f, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm text-slate-700">
-                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-indigo-600">
+              <li key={i} className="flex items-start gap-2.5 text-sm text-on-surface">
+                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary">
                   <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
                 </span>
                 {f}
@@ -134,7 +134,7 @@ function LockOverlay() {
           </ul>
 
           {checkout.phase === 'error' && (
-            <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">
+            <div role="alert" className="mb-4 rounded-xl border border-error-container bg-error-container p-3 text-sm font-medium text-on-error-container">
               {checkout.message}
             </div>
           )}
@@ -142,7 +142,7 @@ function LockOverlay() {
           <button
             onClick={() => subscribe(cycle)}
             disabled={busy || !plan?.available}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3.5 font-bold text-white transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 py-3.5 font-bold text-on-primary transition-all hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-60"
           >
             {checkout.phase === 'starting' && (<><Loader2 className="h-4 w-4 animate-spin" /> Opening checkout…</>)}
             {checkout.phase === 'confirming' && (<><Loader2 className="h-4 w-4 animate-spin" /> Activating…</>)}
@@ -150,7 +150,7 @@ function LockOverlay() {
             {(checkout.phase === 'idle' || checkout.phase === 'error') && (<><Lock className="h-4 w-4" /> Unlock full dashboard</>)}
           </button>
 
-          <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+          <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-outline">
             <ShieldCheck className="h-3.5 w-3.5" />
             Secure payment via Razorpay · Cancel anytime
           </div>

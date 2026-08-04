@@ -37,39 +37,39 @@ export default function UpgradePage() {
 
   return (
     <div className="flex flex-col items-center justify-center py-20 px-4">
-      <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-3xl p-10 shadow-sm text-center relative overflow-hidden">
+      <div className="w-full max-w-2xl bg-surface-container-lowest border border-outline-variant rounded-xl p-10 shadow-sm text-center relative overflow-hidden">
         
         {/* Background Accents */}
         <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-primary/5 rounded-full blur-[80px] pointer-events-none -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-blue-500/5 rounded-full blur-[80px] pointer-events-none translate-y-1/2 -translate-x-1/2" />
+        <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-primary/5 rounded-full blur-[80px] pointer-events-none translate-y-1/2 -translate-x-1/2" />
 
         <div className="relative z-10">
-          <div className="w-20 h-20 bg-slate-50 border border-slate-100 rounded-3xl mx-auto flex items-center justify-center mb-8 shadow-sm">
-            {isFreeAuditGate ? <Zap className="w-10 h-10 text-amber-500" /> : <Lock className="w-10 h-10 text-slate-400" />}
+          <div className="w-20 h-20 bg-surface border border-outline-variant rounded-xl mx-auto flex items-center justify-center mb-8 shadow-sm">
+            {isFreeAuditGate ? <Zap className="w-10 h-10 text-error" /> : <Lock className="w-10 h-10 text-outline" />}
           </div>
 
-          <h1 className="text-3xl font-bold text-slate-900 mb-4 tracking-tight">
+          <h1 className="font-heading text-3xl font-bold text-on-surface mb-4 tracking-tight">
             {heading}
           </h1>
-          <p className="text-lg text-slate-500 mb-10 max-w-md mx-auto">
+          <p className="text-lg text-on-surface-variant mb-10 max-w-md mx-auto">
             {subtext}
           </p>
 
-          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6 mb-10 text-left max-w-md mx-auto">
-            <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Zap className="w-5 h-5 text-amber-500" />
+          <div className="bg-surface border border-outline-variant rounded-2xl p-6 mb-10 text-left max-w-md mx-auto">
+            <h3 className="font-bold text-on-surface mb-4 flex items-center gap-2">
+              <Zap className="w-5 h-5 text-error" />
               What's included
             </h3>
             <ul className="space-y-3">
-              <li className="flex items-center gap-3 text-sm text-slate-600">
+              <li className="flex items-center gap-3 text-sm text-on-surface-variant">
                 <CheckCircle2 className="w-5 h-5 text-primary" />
                 Unlimited GMB Audits & Insights
               </li>
-              <li className="flex items-center gap-3 text-sm text-slate-600">
+              <li className="flex items-center gap-3 text-sm text-on-surface-variant">
                 <CheckCircle2 className="w-5 h-5 text-primary" />
                 AI Content Generation & Scheduling
               </li>
-              <li className="flex items-center gap-3 text-sm text-slate-600">
+              <li className="flex items-center gap-3 text-sm text-on-surface-variant">
                 <CheckCircle2 className="w-5 h-5 text-primary" />
                 Review Management & CRM Pipeline
               </li>
@@ -88,7 +88,7 @@ export default function UpgradePage() {
             {!isFreeAuditGate && (
               <button
                 onClick={() => router.back()}
-                className="px-8 py-4 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-2xl font-bold transition-all shadow-sm"
+                className="px-8 py-4 bg-surface-container-lowest border border-outline-variant text-on-surface hover:bg-surface rounded-2xl font-bold transition-all shadow-sm"
               >
                 Go Back
               </button>
@@ -96,7 +96,7 @@ export default function UpgradePage() {
             {isFreeAuditGate && (
               <Link
                 href="/dashboard/audit"
-                className="px-8 py-4 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-2xl font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+                className="px-8 py-4 bg-surface-container-lowest border border-outline-variant text-on-surface hover:bg-surface rounded-2xl font-bold transition-all shadow-sm flex items-center justify-center gap-2"
               >
                 View my report again
               </Link>

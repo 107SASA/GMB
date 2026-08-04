@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { OnboardingData } from './types';
-import { ArrowRight, ArrowLeft, AlertCircle } from 'lucide-react';
+import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { COUNTRY_CODES, splitPhone } from '@/lib/countryCodes';
 
 interface Props {
@@ -12,6 +12,9 @@ interface Props {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
+
+const inputCls =
+  'w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all';
 
 export default function StepAccount({ data, updateData, onNext, onBack }: Props) {
   const [error, setError] = useState('');
@@ -48,40 +51,40 @@ export default function StepAccount({ data, updateData, onNext, onBack }: Props)
   };
 
   return (
-    <div className="h-full bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-10 flex flex-col border border-slate-100">
+    <div className="h-full bg-surface-container-lowest rounded-xl card-shadow p-10 flex flex-col border border-outline-variant">
       <div className="flex-1">
-        <h2 className="text-3xl font-bold text-slate-900 mb-2">Create your account</h2>
-        <p className="text-slate-500 mb-8">Enter your personal details to get started.</p>
+        <h2 className="text-headline-md font-heading text-on-surface mb-2">Create your account</h2>
+        <p className="text-on-surface-variant mb-8">Enter your personal details to get started.</p>
 
         <div className="space-y-5">
           <div>
-            <label className="block text-sm font-bold text-slate-900 mb-2">Full Name</label>
+            <label className="block text-label-md text-on-surface mb-2">Full Name</label>
             <input
               type="text"
               value={data.fullName}
               onChange={e => updateData({ fullName: e.target.value })}
-              className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+              className={inputCls}
               placeholder="John Doe"
             />
           </div>
           <div>
-            <label className="block text-sm font-bold text-slate-900 mb-2">Email Address</label>
+            <label className="block text-label-md text-on-surface mb-2">Email Address</label>
             <input
               type="email"
               value={data.email}
               onChange={e => updateData({ email: e.target.value })}
-              className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+              className={inputCls}
               placeholder="john@example.com"
             />
           </div>
           <div>
-            <label className="block text-sm font-bold text-slate-900 mb-2">Your Phone Number</label>
+            <label className="block text-label-md text-on-surface mb-2">Your Phone Number</label>
             <div className="flex gap-2">
               <select
                 value={dialCode}
                 onChange={e => handleDialCodeChange(e.target.value)}
                 aria-label="Country code"
-                className="w-27.5 shrink-0 px-2 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none text-sm"
+                className="w-27.5 shrink-0 px-2 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-sm"
               >
                 {COUNTRY_CODES.map(c => (
                   <option key={`${c.iso2}-${c.dialCode}`} value={c.dialCode}>
@@ -93,12 +96,12 @@ export default function StepAccount({ data, updateData, onNext, onBack }: Props)
                 type="tel"
                 value={localNumber}
                 onChange={e => handleLocalNumberChange(e.target.value)}
-                className="flex-1 min-w-0 px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all outline-none"
+                className={`flex-1 min-w-0 ${inputCls}`}
                 placeholder="4155550100"
               />
             </div>
-            <p className="text-xs text-slate-400 mt-1.5">
-              Your own contact number — this stays separate from your business's phone number, which you'll add next.
+            <p className="text-xs text-outline mt-1.5">
+              Your own contact number — this stays separate from your business&apos;s phone number, which you&apos;ll add next.
             </p>
           </div>
         </div>
@@ -110,22 +113,22 @@ export default function StepAccount({ data, updateData, onNext, onBack }: Props)
         <div
           role="alert"
           aria-live="assertive"
-          className="mt-4 p-4 bg-red-50 text-red-700 rounded-xl text-sm font-medium border border-red-200 flex items-start gap-3"
+          className="mt-4 p-4 bg-error-container text-on-error-container rounded-lg text-sm font-medium border border-outline-variant flex items-start gap-3"
         >
-          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          <MaterialIcon name="error" size={20} className="shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
       )}
 
-      <div className="flex justify-between items-center pt-6 border-t border-slate-100">
-        <button onClick={onBack} className="text-slate-500 font-bold hover:text-slate-900 transition-colors px-4 py-2">
+      <div className="flex justify-between items-center pt-6 border-t border-outline-variant">
+        <button onClick={onBack} className="text-on-surface-variant font-bold hover:text-on-surface transition-colors px-4 py-2">
           Back
         </button>
         <button 
           onClick={handleContinue}
-          className="flex items-center gap-2 px-8 py-3.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-md"
+          className="flex items-center gap-2 px-8 py-3 bg-primary hover:bg-primary-container text-on-primary rounded-lg font-bold transition-all"
         >
-          Continue <ArrowRight className="w-4 h-4" />
+          Continue <MaterialIcon name="arrow_forward" size={16} />
         </button>
       </div>
     </div>

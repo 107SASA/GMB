@@ -51,7 +51,7 @@ export function useDateTimePicker() {
           <View className="rounded-t-2xl border-t border-surface-border bg-surface-raised pb-8">
             <View className="flex-row items-center justify-between px-5 py-3">
               <Pressable onPress={() => setState(null)}>
-                <Text className="text-base text-zinc-400">Cancel</Text>
+                <Text className="font-sans-semibold text-base text-zinc-400">Cancel</Text>
               </Pressable>
               <Pressable
                 onPress={() => {
@@ -61,7 +61,7 @@ export function useDateTimePicker() {
                   onPick(picked);
                 }}
               >
-                <Text className="text-base font-semibold text-indigo-300">Done</Text>
+                <Text className="font-sans-bold text-base text-indigo-300">Done</Text>
               </Pressable>
             </View>
             <DateTimePicker

@@ -88,7 +88,7 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
     <View>
       <LabeledField label="Business name" value={form.name} onChangeText={set('name')} />
       <LabeledField label="Category" value={form.category} onChangeText={set('category')} />
-      <Text className="mb-1.5 px-1 text-xs font-medium text-zinc-400">Description</Text>
+      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Description</Text>
       <Field
         value={form.description}
         onChangeText={set('description')}
@@ -113,7 +113,7 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
         placeholder="+91…"
       />
 
-      <Text className="mb-1.5 px-1 text-xs font-medium text-zinc-400">Keywords (max 20)</Text>
+      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Keywords (max 20)</Text>
       <View className="mb-2 flex-row gap-2">
         <View className="flex-1">
           <Field
@@ -126,7 +126,7 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
         </View>
         <Pressable
           onPress={addKeyword}
-          className="items-center justify-center rounded-xl border border-surface-border bg-surface-raised px-4 active:opacity-80"
+          className="items-center justify-center rounded-xl border border-surface-border bg-surface-raised px-4 active:scale-95"
         >
           <Ionicons name="add" size={20} color={t.text} />
         </Pressable>
@@ -177,7 +177,7 @@ function NotificationsSection({ initial }: { initial: NotificationPrefs }) {
   }
 
   return (
-    <View className="overflow-hidden rounded-xl border border-surface-border bg-surface-raised">
+    <View className="overflow-hidden rounded-card border border-surface-border bg-surface-raised">
       {NOTIFICATION_PREFS.map(({ key, label }, i) => (
         <View
           key={key}
@@ -185,7 +185,7 @@ function NotificationsSection({ initial }: { initial: NotificationPrefs }) {
             i > 0 ? 'border-t border-surface-border' : ''
           }`}
         >
-          <Text className="flex-1 text-sm text-white">{label}</Text>
+          <Text className="flex-1 font-sans text-sm text-white">{label}</Text>
           <Switch
             value={prefs[key]}
             onValueChange={(v) => toggle(key, v)}
@@ -242,10 +242,10 @@ function GoogleConnectionRow({ connected }: { connected: boolean }) {
       onPress={handlePress}
       className="flex-row items-center justify-between px-4 py-3 active:bg-surface-overlay"
     >
-      <Text className="text-sm text-white">Google Business Profile</Text>
+      <Text className="font-sans text-sm text-white">Google Business Profile</Text>
       <View className="flex-row items-center gap-1.5">
-        <View className={`h-2 w-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
-        <Text className={`text-xs ${connected ? 'text-emerald-400' : 'text-zinc-500'}`}>
+        <View className={`h-2 w-2 rounded-full ${connected ? 'bg-secondary' : 'bg-zinc-600'}`} />
+        <Text className={`font-sans-semibold text-xs ${connected ? 'text-secondary' : 'text-zinc-500'}`}>
           {disconnect.isPending ? 'Disconnecting…' : connected ? 'Connected — tap to disconnect' : 'Tap to connect'}
         </Text>
       </View>
@@ -285,7 +285,7 @@ export default function SettingsScreen() {
         {prefs.isLoading ? (
           <Skeleton className="h-64" />
         ) : prefs.isError || !prefs.data ? (
-          <Text className="px-1 text-sm text-zinc-500">Couldn't load notification preferences.</Text>
+          <Text className="px-1 font-sans text-sm text-zinc-500">Couldn't load notification preferences.</Text>
         ) : (
           <NotificationsSection key={prefs.dataUpdatedAt} initial={prefs.data} />
         )}
@@ -294,7 +294,7 @@ export default function SettingsScreen() {
         {business.isLoading ? (
           <Skeleton className="h-14" />
         ) : (
-          <View className="overflow-hidden rounded-xl border border-surface-border bg-surface-raised">
+          <View className="overflow-hidden rounded-card border border-surface-border bg-surface-raised">
             <GoogleConnectionRow connected={business.data?.googleConnected ?? false} />
           </View>
         )}

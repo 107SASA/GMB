@@ -75,9 +75,9 @@ interface CustomersApiResponse {
 // ─────────────────────────────────────────────────────────────────────────────
 function PlanBadge({ plan }: { plan: string }) {
   const map: Record<string, string> = {
-    Free:       'bg-slate-50 text-slate-600 border-slate-200',
-    Pro:        'bg-indigo-50 text-indigo-700 border-indigo-100',
-    Enterprise: 'bg-violet-50 text-violet-700 border-violet-100',
+    Free:       'bg-surface text-on-surface-variant border-outline-variant',
+    Pro:        'bg-primary-fixed text-primary border-primary-fixed-dim',
+    Enterprise: 'bg-primary-fixed text-primary border-primary-fixed-dim',
   };
   return (
     <span className={cn('px-2 py-0.5 text-xs font-bold rounded-md border', map[plan] ?? map.Free)}>
@@ -89,8 +89,8 @@ function PlanBadge({ plan }: { plan: string }) {
 function Avatar({ name, plan }: { name: string; plan: string }) {
   const initials = name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
   const color =
-    plan === 'Enterprise' ? 'bg-violet-600' :
-    plan === 'Pro'        ? 'bg-indigo-600' : 'bg-slate-400';
+    plan === 'Enterprise' ? 'bg-primary' :
+    plan === 'Pro'        ? 'bg-primary' : 'bg-outline';
   return (
     <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0', color)}>
       {initials || '?'}
@@ -100,13 +100,13 @@ function Avatar({ name, plan }: { name: string; plan: string }) {
 
 function BillingBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    Active:   'bg-emerald-50 text-emerald-700 border-emerald-100',
-    Trialing: 'bg-cyan-50 text-cyan-700 border-cyan-100',
-    PastDue:  'bg-amber-50 text-amber-700 border-amber-100',
-    Canceled: 'bg-rose-50 text-rose-700 border-rose-100',
+    Active:   'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed',
+    Trialing: 'bg-primary-fixed text-primary border-primary-fixed-dim',
+    PastDue:  'bg-primary-fixed text-primary border-primary-fixed-dim',
+    Canceled: 'bg-error-container text-on-error-container border-error-container',
   };
   return (
-    <span className={cn('px-2 py-0.5 text-xs font-bold rounded-md border', map[status] ?? 'bg-slate-50 text-slate-600 border-slate-200')}>
+    <span className={cn('px-2 py-0.5 text-xs font-bold rounded-md border', map[status] ?? 'bg-surface text-on-surface-variant border-outline-variant')}>
       {status}
     </span>
   );
@@ -121,30 +121,30 @@ function ExpandedRow({ customer, onImpersonate, impersonating }: {
   impersonating: boolean;
 }) {
   return (
-    <tr className="bg-violet-50/40">
+    <tr className="bg-primary-fixed/40">
       <td colSpan={7} className="px-6 py-4">
         <div className="flex flex-wrap gap-6 text-sm">
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase mb-1">Email</p>
-            <p className="text-slate-700 font-medium">{customer.email}</p>
+            <p className="text-xs font-bold text-outline uppercase mb-1">Email</p>
+            <p className="text-on-surface font-medium">{customer.email}</p>
           </div>
           {customer.phone && (
             <div>
-              <p className="text-xs font-bold text-slate-400 uppercase mb-1">Phone</p>
-              <p className="text-slate-700 font-medium">{customer.phone}</p>
+              <p className="text-xs font-bold text-outline uppercase mb-1">Phone</p>
+              <p className="text-on-surface font-medium">{customer.phone}</p>
             </div>
           )}
           {customer.business && (
             <>
               <div>
-                <p className="text-xs font-bold text-slate-400 uppercase mb-1">Business</p>
-                <p className="text-slate-700 font-medium">{customer.business.name}</p>
-                <p className="text-slate-500 text-xs">{customer.business.category}</p>
+                <p className="text-xs font-bold text-outline uppercase mb-1">Business</p>
+                <p className="text-on-surface font-medium">{customer.business.name}</p>
+                <p className="text-on-surface-variant text-xs">{customer.business.category}</p>
               </div>
               {(customer.business.address || customer.business.city) && (
                 <div>
-                  <p className="text-xs font-bold text-slate-400 uppercase mb-1">Address</p>
-                  <p className="text-slate-700 font-medium">
+                  <p className="text-xs font-bold text-outline uppercase mb-1">Address</p>
+                  <p className="text-on-surface font-medium">
                     {[customer.business.address, customer.business.city].filter(Boolean).join(', ')}
                   </p>
                 </div>
@@ -153,16 +153,16 @@ function ExpandedRow({ customer, onImpersonate, impersonating }: {
           )}
           {customer.subscription && (
             <div>
-              <p className="text-xs font-bold text-slate-400 uppercase mb-1">Billing</p>
+              <p className="text-xs font-bold text-outline uppercase mb-1">Billing</p>
               <BillingBadge status={customer.subscription.billingStatus} />
               {customer.subscription.trialActive && (
-                <span className="ml-2 text-xs text-cyan-600 font-semibold">Trial active</span>
+                <span className="ml-2 text-xs text-primary font-semibold">Trial active</span>
               )}
             </div>
           )}
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase mb-1">Onboarding</p>
-            <span className={cn('text-xs font-bold', customer.onboardingCompleted ? 'text-emerald-600' : 'text-amber-500')}>
+            <p className="text-xs font-bold text-outline uppercase mb-1">Onboarding</p>
+            <span className={cn('text-xs font-bold', customer.onboardingCompleted ? 'text-secondary' : 'text-primary-fixed-dim')}>
               {customer.onboardingCompleted ? 'Completed' : 'Incomplete'}
             </span>
           </div>
@@ -171,7 +171,7 @@ function ExpandedRow({ customer, onImpersonate, impersonating }: {
               <button
                 onClick={() => onImpersonate(customer.business!._id)}
                 disabled={impersonating}
-                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-xs font-bold rounded-xl hover:bg-violet-700 transition-all disabled:opacity-60 shadow-sm"
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary text-xs font-bold rounded-xl hover:bg-primary-container transition-all disabled:opacity-60 shadow-sm"
               >
                 <UserCheck className="w-4 h-4" />
                 {impersonating ? 'Switching...' : 'Impersonate'}
@@ -269,25 +269,25 @@ function EditLimitsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-primary/60 backdrop-blur-sm">
+      <div className="bg-surface-container-lowest rounded-xl card-shadow w-full max-w-lg">
         {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b border-slate-100">
+        <div className="flex items-start justify-between p-6 border-b border-outline-variant">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center">
-              <SlidersHorizontal className="w-5 h-5 text-violet-600" />
+            <div className="w-10 h-10 bg-primary-fixed rounded-xl flex items-center justify-center">
+              <SlidersHorizontal className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h2 className="font-bold text-slate-900">{row.fullName}</h2>
+              <h2 className="font-bold text-on-surface">{row.fullName}</h2>
               <div className="flex items-center gap-2 mt-0.5">
                 <PlanBadge plan={row.plan} />
                 {row.business && (
-                  <span className="text-xs text-slate-400">{row.business.name}</span>
+                  <span className="text-xs text-outline">{row.business.name}</span>
                 )}
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+          <button onClick={onClose} className="text-outline hover:text-on-surface-variant transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -295,7 +295,7 @@ function EditLimitsModal({
         {/* Body */}
         <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
 
-          <div className="flex items-start gap-2 px-3 py-2.5 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700">
+          <div className="flex items-start gap-2 px-3 py-2.5 bg-primary-fixed border border-primary-fixed-dim rounded-xl text-xs text-primary">
             <Info className="w-4 h-4 shrink-0 mt-0.5" />
             <span>
               Leave a field empty to use the <strong>{row.plan}</strong> plan default.
@@ -310,15 +310,15 @@ function EditLimitsModal({
             return (
               <div key={key}>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-sm font-semibold text-slate-700">{label}</label>
+                  <label className="text-sm font-semibold text-on-surface">{label}</label>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400">
-                      Plan default: <strong className="text-slate-600">{planDefault} {unit}</strong>
+                    <span className="text-xs text-outline">
+                      Plan default: <strong className="text-on-surface-variant">{planDefault} {unit}</strong>
                     </span>
                     {isOverridden && (
                       <button
                         onClick={() => setDraft(d => ({ ...d, [key]: null }))}
-                        className="text-xs text-rose-500 hover:text-rose-700 font-semibold flex items-center gap-0.5"
+                        className="text-xs text-error hover:text-on-error-container font-semibold flex items-center gap-0.5"
                       >
                         <RotateCcw className="w-3 h-3" /> Reset
                       </button>
@@ -338,12 +338,12 @@ function EditLimitsModal({
                     className={cn(
                       'w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 transition-all',
                       isOverridden
-                        ? 'border-violet-300 bg-violet-50/60 focus:ring-violet-100 text-violet-800 font-semibold'
-                        : 'border-slate-200 bg-white focus:ring-violet-100 focus:border-violet-300 text-slate-500'
+                        ? 'border-primary-fixed-dim bg-primary-fixed/60 focus:ring-primary text-primary font-semibold'
+                        : 'border-outline-variant bg-surface-container-lowest focus:ring-primary focus:border-primary text-on-surface-variant'
                     )}
                   />
                   {isOverridden && (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-violet-600 bg-violet-100 px-1.5 py-0.5 rounded-md">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-primary bg-primary-fixed px-1.5 py-0.5 rounded-md">
                       CUSTOM
                     </span>
                   )}
@@ -354,27 +354,27 @@ function EditLimitsModal({
 
           {/* Admin notes */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Admin Notes</label>
+            <label className="block text-sm font-semibold text-on-surface mb-1.5">Admin Notes</label>
             <textarea
               rows={2}
               value={notes}
               onChange={e => setNotes(e.target.value)}
               placeholder="Reason for override, customer request, etc."
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300 resize-none"
+              className="w-full px-4 py-2.5 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary resize-none"
             />
           </div>
         </div>
 
         {/* Footer */}
         {saveError && (
-          <div className="mx-6 mb-0 mt-0 px-3 py-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium">
+          <div className="mx-6 mb-0 mt-0 px-3 py-2.5 bg-error-container border border-error-container rounded-xl text-xs text-on-error-container font-medium">
             {saveError}
           </div>
         )}
-        <div className="flex items-center gap-3 p-6 border-t border-slate-100">
+        <div className="flex items-center gap-3 p-6 border-t border-outline-variant">
           <button
             onClick={handleReset}
-            className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-on-surface-variant bg-surface-container rounded-xl hover:bg-surface-container-high transition-colors"
           >
             <RotateCcw className="w-4 h-4" />
             Reset All to Defaults
@@ -382,14 +382,14 @@ function EditLimitsModal({
           <div className="flex-1" />
           <button
             onClick={onClose}
-            className="px-4 py-2.5 text-sm font-semibold text-slate-600 hover:text-slate-800 transition-colors"
+            className="px-4 py-2.5 text-sm font-semibold text-on-surface-variant hover:text-on-surface transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-bold rounded-xl hover:bg-violet-700 transition-colors disabled:opacity-60 shadow-sm"
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary-container transition-colors disabled:opacity-60 shadow-sm"
           >
             {saving ? (
               <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Saving…</>
@@ -461,19 +461,19 @@ function EditPlanModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div className="flex items-start justify-between p-6 border-b border-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-primary/60 backdrop-blur-sm">
+      <div className="bg-surface-container-lowest rounded-xl card-shadow w-full max-w-md">
+        <div className="flex items-start justify-between p-6 border-b border-outline-variant">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
-              <Settings2 className="w-5 h-5 text-indigo-600" />
+            <div className="w-10 h-10 bg-primary-fixed rounded-xl flex items-center justify-center">
+              <Settings2 className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h2 className="font-bold text-slate-900">Edit {config.plan} Plan Defaults</h2>
-              <p className="text-xs text-slate-400 mt-0.5">These apply to all {config.plan} users without individual overrides</p>
+              <h2 className="font-bold text-on-surface">Edit {config.plan} Plan Defaults</h2>
+              <p className="text-xs text-outline mt-0.5">These apply to all {config.plan} users without individual overrides</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+          <button onClick={onClose} className="text-outline hover:text-on-surface-variant transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -481,45 +481,45 @@ function EditPlanModal({
         <div className="p-6 space-y-4">
           {LIMIT_FIELDS.map(({ key, label, unit }) => (
             <div key={key}>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">{label}</label>
+              <label className="block text-sm font-semibold text-on-surface mb-1.5">{label}</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
                   min={0}
                   value={draft[key]}
                   onChange={e => setDraft(d => ({ ...d, [key]: Math.max(0, Number(e.target.value) || 0) }))}
-                  className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300"
+                  className="flex-1 px-4 py-2.5 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary-fixed-dim"
                 />
-                <span className="text-xs text-slate-400 font-medium w-10 shrink-0">{unit}</span>
+                <span className="text-xs text-outline font-medium w-10 shrink-0">{unit}</span>
               </div>
             </div>
           ))}
         </div>
 
         {planSaveError && (
-          <div className="mx-6 px-3 py-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium">
+          <div className="mx-6 px-3 py-2.5 bg-error-container border border-error-container rounded-xl text-xs text-on-error-container font-medium">
             {planSaveError}
           </div>
         )}
-        <div className="flex items-center gap-3 p-6 border-t border-slate-100">
+        <div className="flex items-center gap-3 p-6 border-t border-outline-variant">
           {config.isCustom && (
             <button
               onClick={handleReset}
               disabled={resetting}
-              className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 transition-colors disabled:opacity-60"
+              className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-on-error-container bg-error-container border border-error-container rounded-xl hover:bg-error-container transition-colors disabled:opacity-60"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               {resetting ? 'Resetting…' : 'Reset to Hardcoded'}
             </button>
           )}
           <div className="flex-1" />
-          <button onClick={onClose} className="px-4 py-2.5 text-sm font-semibold text-slate-600 hover:text-slate-800 transition-colors">
+          <button onClick={onClose} className="px-4 py-2.5 text-sm font-semibold text-on-surface-variant hover:text-on-surface transition-colors">
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-60 shadow-sm"
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary-container transition-colors disabled:opacity-60 shadow-sm"
           >
             {saving ? (
               <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Saving…</>
@@ -655,30 +655,30 @@ function UsageLimitsTab() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-5">
         <div className="relative flex-1 min-w-[220px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
           <input
             type="text"
             placeholder="Search by name or email…"
             value={search}
             onChange={e => handleSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300 shadow-sm"
+            className="w-full pl-9 pr-4 py-2.5 text-sm bg-surface-container-lowest border border-outline-variant rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary shadow-sm"
           />
         </div>
         <div className="relative">
           <select
             value={plan}
             onChange={e => { setPlan(e.target.value); setPage(1); fetch_({ plan: e.target.value, page: 1 }); }}
-            className="pl-4 pr-9 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300 shadow-sm appearance-none font-medium text-slate-700"
+            className="pl-4 pr-9 py-2.5 text-sm bg-surface-container-lowest border border-outline-variant rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary shadow-sm appearance-none font-medium text-on-surface"
           >
             <option value="all">All Plans</option>
             {Object.keys(PLAN_DEFAULTS).map(p => <option key={p} value={p}>{p}</option>)}
           </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline pointer-events-none" />
         </div>
         <button
           onClick={() => fetch_()}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-60"
+          className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm font-semibold text-on-surface-variant hover:bg-surface transition-all shadow-sm disabled:opacity-60"
         >
           <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
         </button>
@@ -687,19 +687,19 @@ function UsageLimitsTab() {
       {/* Plan defaults reference cards — editable */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         {displayConfigs.map(cfg => (
-          <div key={cfg.plan} className={cn('bg-white rounded-xl border shadow-sm p-4', cfg.isCustom ? 'border-indigo-200' : 'border-slate-200')}>
+          <div key={cfg.plan} className={cn('bg-surface-container-lowest rounded-xl border shadow-sm p-4', cfg.isCustom ? 'border-primary-fixed-dim' : 'border-outline-variant')}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <PlanBadge plan={cfg.plan} />
                 {cfg.isCustom ? (
-                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-md">CUSTOM</span>
+                  <span className="text-[10px] font-bold text-primary bg-primary-fixed border border-primary-fixed-dim px-1.5 py-0.5 rounded-md">CUSTOM</span>
                 ) : (
-                  <span className="text-xs text-slate-400 font-medium">defaults</span>
+                  <span className="text-xs text-outline font-medium">defaults</span>
                 )}
               </div>
               <button
                 onClick={() => setEditPlan(cfg)}
-                className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-primary bg-primary-fixed border border-primary-fixed-dim rounded-lg hover:bg-primary-fixed transition-colors"
               >
                 <Pencil className="w-3 h-3" /> Edit
               </button>
@@ -707,8 +707,8 @@ function UsageLimitsTab() {
             <div className="space-y-1.5 text-xs">
               {LIMIT_FIELDS.map(({ key, label, unit }) => (
                 <div key={key} className="flex items-center justify-between">
-                  <span className="text-slate-500 truncate pr-2">{label}</span>
-                  <span className={cn('font-bold shrink-0', cfg.isCustom ? 'text-indigo-700' : 'text-slate-700')}>{cfg[key]} {unit}</span>
+                  <span className="text-on-surface-variant truncate pr-2">{label}</span>
+                  <span className={cn('font-bold shrink-0', cfg.isCustom ? 'text-primary' : 'text-on-surface')}>{cfg[key]} {unit}</span>
                 </div>
               ))}
             </div>
@@ -717,34 +717,34 @@ function UsageLimitsTab() {
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>
+        <div className="mb-4 p-4 bg-error-container border border-error-container rounded-xl text-on-error-container text-sm">{error}</div>
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-5">
+      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden mb-5">
         {loading ? (
           <div className="flex items-center justify-center h-40">
-            <div className="w-8 h-8 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+            <div className="w-8 h-8 border-4 border-primary-fixed-dim border-t-primary rounded-full animate-spin" />
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="px-5 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">User / Business</th>
-                  <th className="px-5 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Plan</th>
+                <tr className="bg-surface-container-low border-b border-outline-variant">
+                  <th className="px-5 py-3 text-left text-label-sm text-on-surface-variant">User / Business</th>
+                  <th className="px-5 py-3 text-left text-label-sm text-on-surface-variant">Plan</th>
                   {LIMIT_FIELDS.map(f => (
-                    <th key={f.key} className="px-4 py-3 text-center text-[11px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                    <th key={f.key} className="px-4 py-3 text-center text-label-sm text-on-surface-variant whitespace-nowrap">
                       {f.label}
                     </th>
                   ))}
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-outline-variant">
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={LIMIT_FIELDS.length + 3} className="px-6 py-12 text-center text-slate-400 text-sm">
+                    <td colSpan={LIMIT_FIELDS.length + 3} className="px-6 py-12 text-center text-outline text-sm">
                       No users found
                     </td>
                   </tr>
@@ -754,16 +754,16 @@ function UsageLimitsTab() {
                   const isSaved  = savedId === row.userId;
 
                   return (
-                    <tr key={row.userId} className="hover:bg-slate-50/60 transition-colors">
+                    <tr key={row.userId} className="hover:bg-surface/60 transition-colors">
                       {/* User */}
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           <Avatar name={row.fullName} plan={row.plan} />
                           <div className="min-w-0">
-                            <div className="text-sm font-semibold text-slate-900 truncate">{row.fullName}</div>
+                            <div className="text-sm font-semibold text-on-surface truncate">{row.fullName}</div>
                             {row.business
-                              ? <div className="text-xs text-slate-400 truncate">{row.business.name}</div>
-                              : <div className="text-xs text-slate-300">No business</div>
+                              ? <div className="text-xs text-outline truncate">{row.business.name}</div>
+                              : <div className="text-xs text-outline">No business</div>
                             }
                           </div>
                         </div>
@@ -774,7 +774,7 @@ function UsageLimitsTab() {
                         {row.hasOverride ? (
                           <div className="flex flex-col gap-1">
                             <PlanBadge plan={row.plan} />
-                            <span className="text-[10px] font-bold text-violet-600 bg-violet-50 border border-violet-100 px-1.5 py-0.5 rounded-md w-fit">
+                            <span className="text-[10px] font-bold text-primary bg-primary-fixed border border-primary-fixed-dim px-1.5 py-0.5 rounded-md w-fit">
                               + Custom
                             </span>
                           </div>
@@ -794,16 +794,16 @@ function UsageLimitsTab() {
                             <div className="flex flex-col items-center gap-0.5">
                               <span className={cn(
                                 'text-base font-bold',
-                                isOverridden ? 'text-violet-700' : 'text-slate-700'
+                                isOverridden ? 'text-primary' : 'text-on-surface'
                               )}>
                                 {effective}
                               </span>
                               {isOverridden ? (
-                                <span className="text-[10px] text-violet-400 font-medium">
+                                <span className="text-[10px] text-primary-fixed-dim font-medium">
                                   plan: {planDefault}
                                 </span>
                               ) : (
-                                <span className="text-[10px] text-slate-300">default</span>
+                                <span className="text-[10px] text-outline">default</span>
                               )}
                             </div>
                           </td>
@@ -813,13 +813,13 @@ function UsageLimitsTab() {
                       {/* Edit */}
                       <td className="px-4 py-4">
                         {isSaved ? (
-                          <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
+                          <span className="flex items-center gap-1 text-xs font-bold text-secondary">
                             <Check className="w-4 h-4" /> Saved
                           </span>
                         ) : (
                           <button
                             onClick={() => setEditRow(row)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-violet-700 bg-violet-50 border border-violet-100 rounded-xl hover:bg-violet-100 transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-primary bg-primary-fixed border border-primary-fixed-dim rounded-xl hover:bg-primary-fixed transition-colors"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                             Edit
@@ -838,23 +838,23 @@ function UsageLimitsTab() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-2">
-          <p className="text-sm text-slate-500">
-            Showing <span className="font-semibold text-slate-900">{start}–{end}</span> of{' '}
-            <span className="font-semibold text-slate-900">{total}</span>
+          <p className="text-sm text-on-surface-variant">
+            Showing <span className="font-semibold text-on-surface">{start}–{end}</span> of{' '}
+            <span className="font-semibold text-on-surface">{total}</span>
           </p>
           <div className="flex items-center gap-2">
             <button
               onClick={() => { setPage(p => p - 1); fetch_({ page: page - 1 }); }}
               disabled={page <= 1}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-on-surface-variant bg-surface-container-lowest border border-outline-variant rounded-xl hover:bg-surface transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
             >
               <ArrowLeft className="w-4 h-4" /> Prev
             </button>
-            <span className="text-sm font-medium text-slate-500 px-2">{page} / {totalPages}</span>
+            <span className="text-sm font-medium text-on-surface-variant px-2">{page} / {totalPages}</span>
             <button
               onClick={() => { setPage(p => p + 1); fetch_({ page: page + 1 }); }}
               disabled={page >= totalPages}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-on-surface-variant bg-surface-container-lowest border border-outline-variant rounded-xl hover:bg-surface transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
             >
               Next <ArrowRight className="w-4 h-4" />
             </button>
@@ -967,8 +967,8 @@ function CustomersTab() {
   if (loading) return (
     <div className="min-h-[40vh] flex items-center justify-center">
       <div className="text-center">
-        <div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-sm font-medium text-slate-500">Loading customers...</p>
+        <div className="w-10 h-10 border-4 border-primary-fixed-dim border-t-primary rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-sm font-medium text-on-surface-variant">Loading customers...</p>
       </div>
     </div>
   );
@@ -976,8 +976,8 @@ function CustomersTab() {
   if (error) return (
     <div className="min-h-[40vh] flex items-center justify-center">
       <div className="text-center">
-        <p className="text-sm text-rose-500 font-medium mb-3">{error}</p>
-        <button onClick={() => fetchData()} className="text-sm text-violet-600 hover:underline font-medium">Retry</button>
+        <p className="text-sm text-error font-medium mb-3">{error}</p>
+        <button onClick={() => fetchData()} className="text-sm text-primary hover:underline font-medium">Retry</button>
       </div>
     </div>
   );
@@ -993,16 +993,16 @@ function CustomersTab() {
       {/* Stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         {[
-          { label: 'Total Users',   value: stats.totalUsers,                            color: 'bg-slate-600' },
-          { label: 'New This Week', value: stats.newThisWeek,                           color: 'bg-cyan-600' },
-          { label: 'Paid Users',    value: stats.proUsers + stats.enterpriseUsers,      color: 'bg-indigo-600' },
+          { label: 'Total Users',   value: stats.totalUsers,                            color: 'bg-on-surface-variant' },
+          { label: 'New This Week', value: stats.newThisWeek,                           color: 'bg-primary' },
+          { label: 'Paid Users',    value: stats.proUsers + stats.enterpriseUsers,      color: 'bg-primary' },
         ].map(s => (
-          <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div key={s.label} className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5">
             <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center mb-3', s.color)}>
               <Users className="w-4 h-4 text-white" />
             </div>
-            <div className="text-2xl font-bold text-slate-900">{s.value.toLocaleString()}</div>
-            <div className="text-sm text-slate-500 font-medium">{s.label}</div>
+            <div className="text-2xl font-bold text-on-surface">{s.value.toLocaleString()}</div>
+            <div className="text-sm text-on-surface-variant font-medium">{s.label}</div>
           </div>
         ))}
       </div>
@@ -1010,31 +1010,35 @@ function CustomersTab() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-5">
         <div className="relative flex-1 min-w-[220px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
           <input
             type="text"
             placeholder="Search by name or email..."
             value={search}
             onChange={e => handleSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300 shadow-sm"
+            className="w-full pl-9 pr-4 py-2.5 text-sm bg-surface-container-lowest border border-outline-variant rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary shadow-sm"
           />
         </div>
         <div className="relative">
           <select
             value={plan}
             onChange={e => handlePlan(e.target.value)}
-            className="pl-4 pr-9 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300 shadow-sm appearance-none font-medium text-slate-700"
+            className="pl-4 pr-9 py-2.5 text-sm bg-surface-container-lowest border border-outline-variant rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary shadow-sm appearance-none font-medium text-on-surface"
           >
             <option value="all">All Plans</option>
             <option value="Free">Free</option>
             <option value="Pro">Pro</option>
+            {/* Legacy tier — no longer sold (planDefaults.ts resolves it to Pro
+                limits), but real customers can still be on it, so it needs to
+                stay filterable rather than becoming invisible to search. */}
+            <option value="Enterprise">Enterprise (legacy)</option>
           </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline pointer-events-none" />
         </div>
         <button
           onClick={() => fetchData({ refresh: true })}
           disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-60"
+          className="flex items-center gap-2 px-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm font-semibold text-on-surface-variant hover:bg-surface transition-all shadow-sm disabled:opacity-60"
         >
           <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
           Refresh
@@ -1042,22 +1046,22 @@ function CustomersTab() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden mb-6">
         <table className="w-full">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-100">
-              <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">User</th>
-              <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Business</th>
-              <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Plan</th>
-              <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Joined</th>
-              <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">Status</th>
+            <tr className="bg-surface-container-low border-b border-outline-variant">
+              <th className="px-6 py-3 text-left text-label-sm text-on-surface-variant">User</th>
+              <th className="px-6 py-3 text-left text-label-sm text-on-surface-variant">Business</th>
+              <th className="px-6 py-3 text-left text-label-sm text-on-surface-variant">Plan</th>
+              <th className="px-6 py-3 text-left text-label-sm text-on-surface-variant">Joined</th>
+              <th className="px-6 py-3 text-left text-label-sm text-on-surface-variant">Status</th>
               <th className="px-6 py-3" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-outline-variant">
             {users.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-6 py-12 text-center text-slate-400 text-sm">
+                <td colSpan={6} className="px-6 py-12 text-center text-outline text-sm">
                   No customers found
                 </td>
               </tr>
@@ -1067,46 +1071,46 @@ function CustomersTab() {
               return (
                 <React.Fragment key={customer._id}>
                   <tr
-                    className="hover:bg-slate-50/60 transition-colors cursor-pointer"
+                    className="hover:bg-surface/60 transition-colors cursor-pointer"
                     onClick={() => setExpandedId(isExpanded ? null : customer._id)}
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <Avatar name={customer.fullName} plan={customer.subscriptionPlan} />
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-900 truncate">{customer.fullName}</div>
-                          <div className="text-xs text-slate-400 truncate">{customer.email}</div>
+                          <div className="text-sm font-semibold text-on-surface truncate">{customer.fullName}</div>
+                          <div className="text-xs text-outline truncate">{customer.email}</div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       {customer.business ? (
                         <div>
-                          <div className="text-sm font-semibold text-slate-900 truncate max-w-[180px]">{customer.business.name}</div>
-                          <div className="text-xs text-slate-400">{customer.business.category}</div>
+                          <div className="text-sm font-semibold text-on-surface truncate max-w-[180px]">{customer.business.name}</div>
+                          <div className="text-xs text-outline">{customer.business.category}</div>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-300 font-medium">No business</span>
+                        <span className="text-xs text-outline font-medium">No business</span>
                       )}
                     </td>
                     <td className="px-6 py-4"><PlanBadge plan={customer.subscriptionPlan} /></td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-1.5 text-sm text-slate-500">
+                      <div className="flex items-center gap-1.5 text-sm text-on-surface-variant">
                         <Calendar className="w-3.5 h-3.5" />
                         {new Date(customer.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <span className={cn('px-2 py-0.5 text-xs font-bold rounded-md border',
-                        customer.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-200'
+                        customer.isActive ? 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed' : 'bg-surface text-on-surface-variant border-outline-variant'
                       )}>
                         {customer.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
                       {isExpanded
-                        ? <ChevronDown className="w-4 h-4 text-slate-400 ml-auto" />
-                        : <ChevronRight className="w-4 h-4 text-slate-400 ml-auto" />}
+                        ? <ChevronDown className="w-4 h-4 text-outline ml-auto" />
+                        : <ChevronRight className="w-4 h-4 text-outline ml-auto" />}
                     </td>
                   </tr>
                   {isExpanded && (
@@ -1127,23 +1131,23 @@ function CustomersTab() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-2 mb-10">
-          <p className="text-sm text-slate-500">
-            Showing <span className="font-semibold text-slate-900">{start}–{end}</span> of{' '}
-            <span className="font-semibold text-slate-900">{total}</span>
+          <p className="text-sm text-on-surface-variant">
+            Showing <span className="font-semibold text-on-surface">{start}–{end}</span> of{' '}
+            <span className="font-semibold text-on-surface">{total}</span>
           </p>
           <div className="flex items-center gap-2">
             <button
               onClick={() => handlePage(page - 1)}
               disabled={page <= 1}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-on-surface-variant bg-surface-container-lowest border border-outline-variant rounded-xl hover:bg-surface transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
             >
               <ArrowLeft className="w-4 h-4" /> Prev
             </button>
-            <span className="text-sm font-medium text-slate-500 px-2">{page} / {totalPages}</span>
+            <span className="text-sm font-medium text-on-surface-variant px-2">{page} / {totalPages}</span>
             <button
               onClick={() => handlePage(page + 1)}
               disabled={page >= totalPages}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-on-surface-variant bg-surface-container-lowest border border-outline-variant rounded-xl hover:bg-surface transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
             >
               Next <ArrowRight className="w-4 h-4" />
             </button>
@@ -1172,36 +1176,36 @@ function RecentDemoRequests() {
   }, []);
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-        <h2 className="text-base font-bold text-slate-900">GrowwMatics AI Demo Requests</h2>
-        <Link href="/admin/demo-bookings" className="text-sm font-semibold text-violet-600 hover:underline flex items-center gap-1">
+    <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden">
+      <div className="px-6 py-4 border-b border-outline-variant flex items-center justify-between">
+        <h2 className="text-base font-bold text-on-surface">GrowwMatics AI Demo Requests</h2>
+        <Link href="/admin/demo-bookings" className="text-sm font-semibold text-primary hover:underline flex items-center gap-1">
           View All <ArrowRight className="w-3.5 h-3.5" />
         </Link>
       </div>
       {loading ? (
-        <div className="px-6 py-8 text-center text-sm text-slate-400">Loading...</div>
+        <div className="px-6 py-8 text-center text-sm text-outline">Loading...</div>
       ) : bookings.length === 0 ? (
-        <div className="px-6 py-8 text-center text-sm text-slate-400">No demo requests yet</div>
+        <div className="px-6 py-8 text-center text-sm text-outline">No demo requests yet</div>
       ) : (
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-outline-variant">
           {bookings.map((b: any) => (
             <div key={b._id} className="px-6 py-4 flex items-center gap-4">
-              <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-                <Calendar className="w-4 h-4 text-amber-500" />
+              <div className="w-9 h-9 rounded-xl bg-primary-fixed flex items-center justify-center shrink-0">
+                <Calendar className="w-4 h-4 text-primary-fixed-dim" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-slate-900 truncate">{b.name}</div>
-                <div className="text-xs text-slate-400 truncate">{b.email} · {b.company}</div>
+                <div className="text-sm font-semibold text-on-surface truncate">{b.name}</div>
+                <div className="text-xs text-outline truncate">{b.email} · {b.company}</div>
               </div>
               <div className="text-right shrink-0">
-                <div className="text-xs font-semibold text-slate-700">
+                <div className="text-xs font-semibold text-on-surface">
                   {new Date(b.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                 </div>
                 <span className={cn('text-xs font-bold px-2 py-0.5 rounded-md border',
-                  b.status === 'Pending'   ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                  b.status === 'Confirmed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                  'bg-slate-50 text-slate-600 border-slate-200'
+                  b.status === 'Pending'   ? 'bg-primary-fixed text-primary border-primary-fixed-dim' :
+                  b.status === 'Confirmed' ? 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed' :
+                  'bg-surface text-on-surface-variant border-outline-variant'
                 )}>
                   {b.status}
                 </span>
@@ -1231,17 +1235,17 @@ export default function CustomersPage() {
     <div>
       {/* Page header */}
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 bg-violet-600 rounded-xl flex items-center justify-center shadow-md shadow-violet-600/20">
+        <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center card-shadow">
           <Users className="w-5 h-5 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Customers</h1>
-          <p className="text-sm text-slate-500 font-medium">Users, subscriptions, and per-company usage limits</p>
+          <h1 className="font-heading text-2xl font-bold text-on-surface">Customers</h1>
+          <p className="text-sm text-on-surface-variant font-medium">Users, subscriptions, and per-company usage limits</p>
         </div>
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-7 w-fit">
+      <div className="flex gap-1 bg-surface-container rounded-xl p-1 mb-7 w-fit">
         {TABS.map(tab => {
           const Icon = tab.icon;
           return (
@@ -1251,14 +1255,14 @@ export default function CustomersPage() {
               className={cn(
                 'flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all',
                 activeTab === tab.key
-                  ? 'bg-white text-violet-700 shadow-sm border border-slate-200'
-                  : 'text-slate-500 hover:text-slate-700'
+                  ? 'bg-surface-container-lowest text-primary shadow-sm border border-outline-variant'
+                  : 'text-on-surface-variant hover:text-on-surface'
               )}
             >
               <Icon className="w-4 h-4" />
               {tab.label}
               {tab.key === 'usage-limits' && (
-                <span className="ml-1 text-[10px] font-bold bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-md">NEW</span>
+                <span className="ml-1 text-[10px] font-bold bg-primary-fixed text-primary px-1.5 py-0.5 rounded-md">NEW</span>
               )}
             </button>
           );

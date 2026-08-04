@@ -11,11 +11,99 @@ import { inngest } from '@/services/inngest/client';
 import Customer from '@/models/Customer';
 import { validateTwilioSignature } from '@/lib/twilioSignature';
 import { sendOutboundMessage } from '@/services/whatsapp/send';
+import { checkRateLimit } from '@/lib/rateLimit';
+import ProcessedWebhookEvent from '@/models/ProcessedWebhookEvent';
 
 export const dynamic = 'force-dynamic';
 
 const EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
 const twimlOk = () => new NextResponse(EMPTY_TWIML, { status: 200, headers: { 'Content-Type': 'text/xml' } });
+
+/**
+ * Shared by both inbound pipelines below (tenant and platform) so the STOP
+ * handling and the consent gate can't drift between the two copies the way
+ * the legacy Twilio route drifted from the unified handler.
+ *
+ * Returns true if this phone had an active SalesConversation and the message
+ * was fully handled here (caller should stop processing it any further).
+ */
+async function handleActiveSalesConversation(salesConvo: any, body: string): Promise<boolean> {
+  const normalized = body.trim().toUpperCase();
+  if (['STOP', 'UNSUBSCRIBE', 'CANCEL'].includes(normalized)) {
+    salesConvo.status = 'stopped';
+    await salesConvo.save();
+    return true;
+  }
+
+  if (salesConvo.consentStatus === 'pending') {
+    const { isAffirmativeReply } = await import('@/lib/whatsappConsent');
+    salesConvo.messages.push({ role: 'lead', text: body, at: new Date() });
+    salesConvo.lastLeadReplyAt = new Date();
+    if (isAffirmativeReply(body)) {
+      salesConvo.consentStatus = 'granted';
+      await salesConvo.save();
+      await inngest.send({ name: 'sales/nurture.consented', data: { conversationId: salesConvo._id.toString() } });
+    } else {
+      // Not a yes — stay silent rather than re-nudging (avoids turning the
+      // consent ask itself into the unsolicited-message problem it exists
+      // to prevent). They can still say "yes" later; nothing expires this.
+      await salesConvo.save();
+    }
+    return true;
+  }
+
+  salesConvo.messages.push({ role: 'lead', text: body, at: new Date() });
+  salesConvo.lastLeadReplyAt = new Date();
+  await salesConvo.save();
+  await inngest.send({ name: 'sales/agent.reply', data: { conversationId: salesConvo._id.toString(), body } });
+  return true;
+}
+
+// Both providers retry aggressively on anything slower than their own
+// timeout, and Meta disables webhooks that keep failing — so a redelivery of
+// the exact same message is a routine, expected event, not an edge case.
+// Reuses the same (provider, eventId) unique-index claim pattern already
+// proven for the Razorpay webhook (src/app/api/webhook/razorpay/route.ts):
+// the insert IS the atomicity guarantee — a concurrent/replayed delivery
+// hits the duplicate-key error and is skipped, which a "does it already
+// exist" read-then-write check can't guarantee under a race. Checked before
+// the rate limiter and before either processing function, so a redelivery
+// never reaches Groq or a second outbound send, and never spends the
+// sender's rate-limit budget either.
+async function isDuplicateInboundMessage(provider: 'twilio' | 'meta', messageId: string): Promise<boolean> {
+  if (!messageId) return false; // nothing to key on — never treat as a duplicate
+  try {
+    await ProcessedWebhookEvent.create({ provider: `whatsapp-${provider}`, eventId: messageId });
+    return false; // first time we've seen this id — claimed, proceed
+  } catch (err: any) {
+    if (err?.code === 11000) {
+      console.warn(`[whatsapp-webhook] duplicate delivery of message ${messageId} (${provider}) — skipping, no second reply.`);
+      return true;
+    }
+    throw err;
+  }
+}
+
+// Per-phone abuse cap on INBOUND processing, checked before either provider's
+// message reaches processInboundMessage/processPlatformInbound — i.e. before
+// any Groq call or outbound send is queued. A real conversation partner never
+// approaches this; a script hammering the webhook does. Deliberately
+// drop-and-log rather than reject with an error status: an error response
+// would make Twilio/Meta retry the same message, compounding the flood
+// instead of absorbing it — the provider still gets its normal 200/TwiML ack.
+const INBOUND_MESSAGE_MAX = 10;
+const INBOUND_MESSAGE_WINDOW_MS = 60 * 1000;
+
+function isInboundMessageAllowed(phone: string, messageSid: string): boolean {
+  const result = checkRateLimit(`whatsapp-inbound:${phone}`, INBOUND_MESSAGE_MAX, INBOUND_MESSAGE_WINDOW_MS);
+  if (!result.allowed) {
+    console.warn(
+      `[whatsapp-webhook] rate limit exceeded for ${phone} — dropping message ` +
+      `${messageSid || '(no sid)'}, retry after ${result.retryAfterSeconds}s. No Groq call, no outbound send.`
+    );
+  }
+  return result.allowed;
+}
 
 /**
  * Meta webhook verification handshake: Meta calls GET with
@@ -68,16 +156,7 @@ async function processInboundMessage({ business, phone, profileName, body, messa
   const { phoneDedupeKey } = await import('@/lib/phone');
   const salesConvo = await SalesConversation.findOne({ phoneKey: phoneDedupeKey(phone), status: 'active' });
   if (salesConvo) {
-    const normalized = body.trim().toUpperCase();
-    if (['STOP', 'UNSUBSCRIBE', 'CANCEL'].includes(normalized)) {
-      salesConvo.status = 'stopped';
-      await salesConvo.save();
-      return;
-    }
-    salesConvo.messages.push({ role: 'lead', text: body, at: new Date() });
-    salesConvo.lastLeadReplyAt = new Date();
-    await salesConvo.save();
-    await inngest.send({ name: 'sales/agent.reply', data: { conversationId: salesConvo._id.toString(), body } });
+    await handleActiveSalesConversation(salesConvo, body);
     return;
   }
 
@@ -201,15 +280,7 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
   // 1. Post-audit SALES nurture takes priority while active.
   const salesConvo = await SalesConversation.findOne({ phoneKey: key, status: 'active' });
   if (salesConvo) {
-    if (isOptOut) {
-      salesConvo.status = 'stopped';
-      await salesConvo.save();
-      return;
-    }
-    salesConvo.messages.push({ role: 'lead', text: body, at: new Date() });
-    salesConvo.lastLeadReplyAt = new Date();
-    await salesConvo.save();
-    await inngest.send({ name: 'sales/agent.reply', data: { conversationId: salesConvo._id.toString(), body } });
+    await handleActiveSalesConversation(salesConvo, body);
     return;
   }
 
@@ -394,6 +465,9 @@ async function handleMetaWebhook(req: Request) {
             : message[message.type]?.caption || message.button?.text || message.interactive?.button_reply?.title || '';
           const numMedia = ['image', 'video', 'audio', 'document', 'sticker'].includes(message.type) ? 1 : 0;
 
+          if (await isDuplicateInboundMessage('meta', message.id || '')) continue;
+          if (!isInboundMessageAllowed(phone, message.id || '')) continue;
+
           if (platform) {
             await processPlatformInbound({ phone, profileName, body, messageSid: message.id || '' });
           } else {
@@ -422,7 +496,7 @@ async function handleMetaWebhook(req: Request) {
 // Legacy Twilio webhook (form-encoded) — kept for provider rollback
 // ---------------------------------------------------------------------------
 
-async function handleTwilioWebhook(req: Request) {
+export async function handleTwilioWebhook(req: Request) {
   try {
     // Twilio sends form data
     const formData = await req.formData();
@@ -453,6 +527,13 @@ async function handleTwilioWebhook(req: Request) {
       : (business!.integrations as any)?.twilioAuthToken;
     const verification = await validateTwilioSignature(req, formData, authToken);
     if (!verification.ok) return verification.response;
+
+    // Dedup BEFORE the rate limiter — a rejected/forged request never reaches
+    // here (signature already verified above), so claiming the id only after
+    // that check can't be used to suppress a real, later redelivery of the
+    // same message from ever being processed.
+    if (await isDuplicateInboundMessage('twilio', messageSid || '')) return twimlOk();
+    if (!isInboundMessageAllowed(phone, messageSid || '')) return twimlOk();
 
     if (platform) {
       await processPlatformInbound({

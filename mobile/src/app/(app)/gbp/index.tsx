@@ -70,7 +70,7 @@ export default function GbpScreen() {
                 }}
               >
                 <Text
-                  className="text-base font-semibold"
+                  className="font-sans-bold text-base"
                   style={{ color: active ? t.brandBright : t.text }}
                 >
                   {label}

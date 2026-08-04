@@ -2,17 +2,17 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Sparkles, Calendar } from "lucide-react";
-import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
+import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 
 export function Hero() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
-      {/* Background Elements */}
+    <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden bg-background">
+      {/* Calm trust blue / growth green atmosphere */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary/20 blur-[120px] rounded-full animate-pulse" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-secondary/20 blur-[120px] rounded-full animate-pulse" style={{ animationDelay: '2s' }} />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(circle_at_center,rgba(139,92,246,0.05)_0%,transparent_70%)]" />
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary/15 blur-[120px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-secondary/15 blur-[120px] rounded-full" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(circle_at_center,rgba(0,56,108,0.06)_0%,transparent_70%)]" />
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 text-center">
@@ -20,7 +20,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 mb-5"
+          className="font-heading text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-primary mb-5"
         >
           GrowwMatics AI
         </motion.p>
@@ -29,7 +29,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="text-2xl md:text-4xl lg:text-5xl font-bold tracking-tight text-slate-800 mb-6 leading-[1.15]"
+          className="font-heading text-2xl md:text-4xl lg:text-5xl font-bold tracking-tight text-on-surface mb-6 leading-[1.15]"
         >
           Scale Your Local Business{" "}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
@@ -41,9 +41,9 @@ export function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.15 }}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-50 border border-indigo-100 text-sm font-medium text-indigo-600 mb-8 shadow-sm"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-fixed border border-primary-fixed-dim text-sm font-medium text-primary mb-8"
         >
-          <Sparkles className="w-4 h-4" />
+          <MaterialIcon name="auto_awesome" size={16} className="text-primary" />
           <span>AI-Powered Google Business Growth Platform</span>
         </motion.p>
 
@@ -51,7 +51,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
-          className="text-lg md:text-xl text-slate-500 max-w-2xl mx-auto mb-12 leading-relaxed"
+          className="text-lg md:text-xl text-on-surface-variant max-w-2xl mx-auto mb-12 leading-relaxed"
         >
           Automate your Google Business Profile, generate more reviews, convert leads faster, and grow your local visibility with AI.
         </motion.p>
@@ -62,17 +62,20 @@ export function Hero() {
           transition={{ duration: 0.6, delay: 0.3 }}
           className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-20"
         >
-          <Link href="/onboarding" className="w-full sm:w-auto px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/20">
-            Start Free Audit
-            <ArrowRight className="w-5 h-5" />
+          <Link
+            href="/free-report"
+            className="w-full sm:w-auto px-8 py-4 bg-primary text-on-primary rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-primary-container transition-all card-shadow"
+          >
+            Get My Free Report
+            <MaterialIcon name="arrow_forward" size={20} className="text-on-primary" />
           </Link>
           <a
-            href={bookDemoLink()}
+            href={boostProfileLink()}
             {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-            className="w-full sm:w-auto px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+            className="w-full sm:w-auto px-8 py-4 bg-whatsapp text-white rounded-lg font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all card-shadow"
           >
-            <Calendar className="w-5 h-5" />
-            Book a Demo
+            <MaterialIcon name="chat" size={20} className="text-white" />
+            Get Report on WhatsApp
           </a>
         </motion.div>
 
@@ -83,51 +86,54 @@ export function Hero() {
           transition={{ duration: 1, delay: 0.4, ease: "easeOut" }}
           className="relative max-w-5xl mx-auto"
         >
-          <div className="relative bg-slate-50/50 backdrop-blur-xl rounded-t-3xl border-t border-x border-slate-200 p-4 pb-0 overflow-hidden shadow-2xl">
+          <div className="relative bg-surface-container-low/80 backdrop-blur-xl rounded-t-3xl border-t border-x border-outline-variant p-4 pb-0 overflow-hidden card-shadow">
             <div className="flex items-center gap-2 mb-4 px-2">
-              <div className="w-3 h-3 rounded-full bg-slate-300" />
-              <div className="w-3 h-3 rounded-full bg-slate-300" />
-              <div className="w-3 h-3 rounded-full bg-slate-300" />
-              <div className="ml-4 px-3 py-1 rounded-lg bg-white border border-slate-200 text-[10px] text-slate-500 shadow-sm">growwmatics.com/dashboard</div>
+              <div className="w-3 h-3 rounded-full bg-outline-variant" />
+              <div className="w-3 h-3 rounded-full bg-outline-variant" />
+              <div className="w-3 h-3 rounded-full bg-outline-variant" />
+              <div className="ml-4 px-3 py-1 rounded-lg bg-surface-container-lowest border border-outline-variant text-[10px] text-on-surface-variant">
+                growwmatics.com/dashboard
+              </div>
             </div>
-            
-            <div className="grid grid-cols-12 gap-4 h-[400px] md:h-[600px] bg-white rounded-t-2xl border-t border-x border-slate-100 shadow-sm">
+
+            <div className="grid grid-cols-12 gap-4 h-[400px] md:h-[600px] bg-surface-container-lowest rounded-t-2xl border-t border-x border-outline-variant">
               {/* Sidebar Mock */}
-              <div className="col-span-2 border-r border-slate-100 p-4 hidden md:block">
+              <div className="col-span-2 border-r border-outline-variant p-4 hidden md:block">
                 {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="h-8 w-full bg-slate-50 rounded-lg mb-4 border border-slate-100" />
+                  <div key={i} className="h-8 w-full bg-surface-container rounded-lg mb-4 border border-outline-variant" />
                 ))}
               </div>
-              
+
               {/* Content Mock */}
               <div className="col-span-12 md:col-span-10 p-6 text-left">
                 <div className="flex items-center justify-between mb-8">
-                  <div className="h-8 w-48 bg-slate-100 rounded-xl" />
-                  <div className="h-10 w-32 bg-indigo-50 border border-indigo-100 rounded-xl" />
+                  <div className="h-8 w-48 bg-surface-container rounded-xl" />
+                  <div className="h-10 w-32 bg-primary-fixed border border-primary-fixed-dim rounded-xl" />
                 </div>
-                
+
                 <div className="grid grid-cols-3 gap-6 mb-8">
-                  <div className="h-32 bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-                    <div className="h-4 w-20 bg-slate-100 rounded mb-4" />
-                    <div className="h-8 w-24 bg-slate-200 rounded" />
-                  </div>
-                  <div className="h-32 bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-                    <div className="h-4 w-20 bg-slate-100 rounded mb-4" />
-                    <div className="h-8 w-24 bg-slate-200 rounded" />
-                  </div>
-                  <div className="h-32 bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-                    <div className="h-4 w-20 bg-slate-100 rounded mb-4" />
-                    <div className="h-8 w-24 bg-slate-200 rounded" />
-                  </div>
+                  {[1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="h-32 bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4"
+                    >
+                      <div className="h-4 w-20 bg-surface-container rounded mb-4" />
+                      <div className="h-8 w-24 bg-surface-container-high rounded" />
+                    </div>
+                  ))}
                 </div>
-                
-                <div className="h-64 bg-slate-50 rounded-3xl border border-slate-200 relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-t from-indigo-50/50 to-transparent" />
+
+                <div className="h-64 bg-surface rounded-xl border border-outline-variant relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-t from-primary/40 to-transparent" />
                   <div className="p-6">
-                    <div className="h-4 w-32 bg-slate-200 rounded mb-6" />
+                    <div className="h-4 w-32 bg-surface-container-high rounded mb-6" />
                     <div className="flex items-end gap-2 h-32">
                       {[40, 70, 45, 90, 65, 80, 50, 85, 30, 95].map((h, i) => (
-                        <div key={i} className="flex-1 bg-indigo-400 rounded-t-sm" style={{ height: `${h}%` }} />
+                        <div
+                          key={i}
+                          className="flex-1 bg-primary-fixed-dim rounded-t-sm"
+                          style={{ height: `${h}%` }}
+                        />
                       ))}
                     </div>
                   </div>
@@ -139,15 +145,15 @@ export function Hero() {
             <motion.div
               animate={{ y: [0, -10, 0] }}
               transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute top-20 right-[-20px] md:right-10 p-4 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200 shadow-xl hidden sm:block"
+              className="absolute top-20 right-[-20px] md:right-10 p-4 bg-surface-container-lowest/95 backdrop-blur-md rounded-xl border border-outline-variant card-shadow hidden sm:block"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-emerald-50 border border-emerald-100 rounded-full flex items-center justify-center">
-                  <Sparkles className="w-5 h-5 text-emerald-600" />
+                <div className="w-10 h-10 bg-secondary-container/40 border border-secondary-fixed rounded-lg flex items-center justify-center">
+                  <MaterialIcon name="auto_awesome" size={20} className="text-secondary" />
                 </div>
                 <div>
-                  <div className="text-[10px] text-slate-500 font-medium">New Lead Captured</div>
-                  <div className="text-xs font-bold text-slate-900">Conversion Rate +24%</div>
+                  <div className="text-[10px] text-on-surface-variant font-medium">New Lead Captured</div>
+                  <div className="text-xs font-bold text-on-surface">Conversion Rate +24%</div>
                 </div>
               </div>
             </motion.div>
@@ -155,20 +161,20 @@ export function Hero() {
             <motion.div
               animate={{ y: [0, 10, 0] }}
               transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-              className="absolute bottom-20 left-[-20px] md:left-10 p-4 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200 shadow-xl hidden sm:block"
+              className="absolute bottom-20 left-[-20px] md:left-10 p-4 bg-surface-container-lowest/95 backdrop-blur-md rounded-xl border border-outline-variant card-shadow hidden sm:block"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold">
-                  ★
+                <div className="w-10 h-10 bg-primary-fixed border border-primary-fixed-dim rounded-lg flex items-center justify-center">
+                  <MaterialIcon name="star" size={20} className="text-primary" filled />
                 </div>
                 <div>
-                  <div className="text-[10px] text-slate-500 font-medium">Review Auto-Replied</div>
-                  <div className="text-xs font-bold text-slate-900">5-Star Feedback Posted</div>
+                  <div className="text-[10px] text-on-surface-variant font-medium">Review Auto-Replied</div>
+                  <div className="text-xs font-bold text-on-surface">5-Star Feedback Posted</div>
                 </div>
               </div>
             </motion.div>
           </div>
-          
+
           <div className="absolute -bottom-px left-0 right-0 h-40 bg-gradient-to-t from-background via-background/80 to-transparent z-20" />
         </motion.div>
       </div>

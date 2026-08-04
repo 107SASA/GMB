@@ -4,17 +4,17 @@ import { Phone, MessageSquare, Mail, FileText, Calendar } from 'lucide-react';
 type ActivityType = 'call' | 'WhatsApp' | 'email' | 'note' | 'meeting';
 
 const ACTIVITY_TYPES: { type: ActivityType; label: string; icon: ReactNode; color: string }[] = [
-  { type: 'call',     label: 'Call',     icon: <Phone className="w-4 h-4" />,         color: 'text-green-600 bg-green-50 border-green-200 data-[active=true]:bg-green-600 data-[active=true]:text-white data-[active=true]:border-green-600' },
-  { type: 'WhatsApp', label: 'WhatsApp', icon: <MessageSquare className="w-4 h-4" />, color: 'text-emerald-600 bg-emerald-50 border-emerald-200 data-[active=true]:bg-emerald-600 data-[active=true]:text-white data-[active=true]:border-emerald-600' },
-  { type: 'email',    label: 'Email',    icon: <Mail className="w-4 h-4" />,          color: 'text-blue-600 bg-blue-50 border-blue-200 data-[active=true]:bg-blue-600 data-[active=true]:text-white data-[active=true]:border-blue-600' },
-  { type: 'note',     label: 'Note',     icon: <FileText className="w-4 h-4" />,      color: 'text-slate-600 bg-slate-50 border-slate-200 data-[active=true]:bg-slate-700 data-[active=true]:text-white data-[active=true]:border-slate-700' },
-  { type: 'meeting',  label: 'Meeting',  icon: <Calendar className="w-4 h-4" />,      color: 'text-purple-600 bg-purple-50 border-purple-200 data-[active=true]:bg-purple-600 data-[active=true]:text-white data-[active=true]:border-purple-600' },
+  { type: 'call',     label: 'Call',     icon: <Phone className="w-4 h-4" />,         color: 'text-secondary bg-secondary-container/40 border-secondary-fixed data-[active=true]:bg-secondary data-[active=true]:text-white data-[active=true]:border-secondary' },
+  { type: 'WhatsApp', label: 'WhatsApp', icon: <MessageSquare className="w-4 h-4" />, color: 'text-secondary bg-secondary-container/40 border-secondary-fixed data-[active=true]:bg-whatsapp data-[active=true]:text-white data-[active=true]:border-whatsapp' },
+  { type: 'email',    label: 'Email',    icon: <Mail className="w-4 h-4" />,          color: 'text-primary bg-primary-fixed border-primary-fixed-dim data-[active=true]:bg-primary data-[active=true]:text-white data-[active=true]:border-primary' },
+  { type: 'note',     label: 'Note',     icon: <FileText className="w-4 h-4" />,      color: 'text-on-surface-variant bg-surface border-outline-variant data-[active=true]:bg-on-surface data-[active=true]:text-white data-[active=true]:border-on-surface' },
+  { type: 'meeting',  label: 'Meeting',  icon: <Calendar className="w-4 h-4" />,      color: 'text-primary bg-primary-fixed border-primary-fixed-dim data-[active=true]:bg-primary data-[active=true]:text-white data-[active=true]:border-primary' },
 ];
 
 const TYPE_DOT: Record<string, string> = {
-  call: 'bg-green-400', WhatsApp: 'bg-emerald-400', email: 'bg-blue-400',
-  note: 'bg-slate-400', meeting: 'bg-purple-400', status_change: 'bg-amber-400',
-  followUp: 'bg-indigo-400',
+  call: 'bg-secondary', WhatsApp: 'bg-whatsapp', email: 'bg-primary',
+  note: 'bg-outline', meeting: 'bg-primary', status_change: 'bg-error',
+  followUp: 'bg-primary',
 };
 
 interface ActivityTimelineProps {
@@ -77,13 +77,13 @@ export default function ActivityTimeline({ leadId, onActivityLogged }: ActivityT
     }
   };
 
-  if (loading) return <div className="p-4 text-center text-sm text-slate-500">Loading timeline...</div>;
+  if (loading) return <div className="p-4 text-center text-sm text-on-surface-variant">Loading timeline...</div>;
 
   return (
     <div className="flex flex-col gap-6">
       {/* Log Activity Form */}
-      <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
-        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Log Activity</p>
+      <div className="bg-surface rounded-2xl border border-outline-variant p-4">
+        <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3">Log Activity</p>
 
         {/* Type selector */}
         <div className="flex flex-wrap gap-2 mb-3">
@@ -104,12 +104,12 @@ export default function ActivityTimeline({ leadId, onActivityLogged }: ActivityT
           value={content}
           onChange={e => setContent(e.target.value)}
           placeholder={`What happened on this ${selectedType}?`}
-          className="w-full text-sm px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none mb-3"
+          className="w-full text-sm px-3 py-2.5 rounded-xl border border-outline-variant focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none mb-3"
         />
 
         <div className="flex items-center justify-between gap-3">
           {logError ? (
-            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5 flex-1">
+            <p className="text-xs text-error bg-error-container border border-error-container rounded-lg px-3 py-1.5 flex-1">
               {logError}
             </p>
           ) : (
@@ -118,7 +118,7 @@ export default function ActivityTimeline({ leadId, onActivityLogged }: ActivityT
           <button
             onClick={handleLog}
             disabled={!content.trim() || submitting}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-bold rounded-lg transition-colors shrink-0"
+            className="px-4 py-2 bg-primary hover:bg-primary disabled:opacity-40 text-white text-xs font-bold rounded-lg transition-colors shrink-0"
           >
             {submitting ? 'Logging…' : 'Log'}
           </button>
@@ -127,24 +127,24 @@ export default function ActivityTimeline({ leadId, onActivityLogged }: ActivityT
 
       {/* Timeline */}
       {timeline.length === 0 ? (
-        <p className="text-slate-400 text-sm text-center py-6">No activity yet.</p>
+        <p className="text-outline text-sm text-center py-6">No activity yet.</p>
       ) : (
-        <div className="relative border-l-2 border-slate-200 ml-3 space-y-8 pb-10">
+        <div className="relative border-l-2 border-outline-variant ml-3 space-y-8 pb-10">
           {timeline.map((item, idx) => (
             <div key={idx} className="relative pl-6">
-              <div className={`absolute w-3 h-3 rounded-full -left-1.75 top-1.5 border-2 border-white ${TYPE_DOT[item.type] || TYPE_DOT[item.timelineType] || 'bg-slate-300'}`} />
-              <div className="text-xs font-bold text-slate-400 mb-1">
+              <div className={`absolute w-3 h-3 rounded-full -left-1.75 top-1.5 border-2 border-white ${TYPE_DOT[item.type] || TYPE_DOT[item.timelineType] || 'bg-surface-container-highest'}`} />
+              <div className="text-xs font-bold text-outline mb-1">
                 {new Date(item.date).toLocaleString()}
               </div>
-              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+              <div className="bg-surface-container-lowest p-3 rounded-xl border border-outline-variant shadow-sm">
                 {item.timelineType === 'followUp' ? (
-                  <p className="text-sm text-slate-800">
+                  <p className="text-sm text-on-surface">
                     <strong>Follow-Up:</strong> {item.messageTemplate || 'Reminder'}{' '}
-                    <span className="uppercase text-xs font-bold text-amber-600">{item.status}</span>
+                    <span className="uppercase text-xs font-bold text-error">{item.status}</span>
                   </p>
                 ) : (
-                  <p className="text-sm text-slate-800">
-                    <span className="uppercase text-xs font-bold text-indigo-600 mr-2">[{item.type}]</span>
+                  <p className="text-sm text-on-surface">
+                    <span className="uppercase text-xs font-bold text-primary mr-2">[{item.type}]</span>
                     {item.content}
                   </p>
                 )}

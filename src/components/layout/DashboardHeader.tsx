@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Menu, MapPin, MessageSquare, Store } from "lucide-react";
 import { useBusiness } from "@/context/BusinessContext";
 import { useMobileNav } from "@/context/MobileNavContext";
 import { BusinessSwitcher } from "./BusinessSwitcher";
 import { NotificationBell } from "./NotificationBell";
+import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
 interface HeaderUser {
   fullName?: string;
@@ -14,12 +14,14 @@ interface HeaderUser {
 
 function initialsOf(name?: string): string {
   if (!name) return "U";
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(w => w[0].toUpperCase())
-    .join("") || "U";
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0].toUpperCase())
+      .join("") || "U"
+  );
 }
 
 export function DashboardHeader() {
@@ -29,68 +31,67 @@ export function DashboardHeader() {
 
   useEffect(() => {
     fetch("/api/user/profile")
-      .then(res => (res.ok ? res.json() : null))
-      .then(json => { if (json?.user) setUser(json.user); })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (json?.user) setUser(json.user);
+      })
       .catch(() => {});
   }, []);
 
   if (loading || !activeBusiness) {
     return (
-      <header className="h-16 lg:h-20 border-b border-slate-200 px-4 lg:px-8 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-40 w-full">
+      <header className="h-16 border-b border-outline-variant px-4 lg:px-6 flex items-center justify-between bg-surface-container-lowest sticky top-0 z-40 w-full">
         <div className="flex items-center gap-3">
           <button
             onClick={toggle}
-            className="lg:hidden p-2 rounded-xl hover:bg-slate-100 transition-colors"
+            className="lg:hidden p-2 rounded-lg hover:bg-surface-container transition-colors"
             aria-label="Open menu"
           >
-            <Menu className="w-5 h-5 text-slate-600" />
+            <MaterialIcon name="menu" size={20} className="text-on-surface-variant" />
           </button>
-          <div className="animate-pulse bg-slate-100 h-8 w-48 rounded-xl" />
+          <div className="animate-pulse bg-surface-container h-8 w-48 rounded-lg" />
         </div>
       </header>
     );
   }
 
   return (
-    <header className="h-16 lg:h-20 border-b border-slate-200 px-4 lg:px-8 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-40 w-full">
+    <header className="h-16 border-b border-outline-variant px-4 lg:px-6 flex items-center justify-between bg-surface-container-lowest sticky top-0 z-40 w-full">
       <div className="flex items-center gap-3 min-w-0">
-        {/* Hamburger — mobile only */}
         <button
           onClick={toggle}
-          className="lg:hidden p-2 rounded-xl hover:bg-slate-100 transition-colors shrink-0"
+          className="lg:hidden p-2 rounded-lg hover:bg-surface-container transition-colors shrink-0"
           aria-label="Open menu"
         >
-          <Menu className="w-5 h-5 text-slate-600" />
+          <MaterialIcon name="menu" size={20} className="text-on-surface-variant" />
         </button>
 
-        {/* Business info */}
         <div className="flex items-center gap-3 min-w-0">
           <BusinessSwitcher />
           <div className="min-w-0">
-            <h1 className="text-base lg:text-xl font-bold text-slate-900 truncate">
+            <h1 className="text-base lg:text-lg font-heading font-bold text-on-surface truncate">
               {activeBusiness.name}
             </h1>
-            {/* Detail row — hidden below md to avoid overflow */}
-            <div className="hidden md:flex items-center gap-4 text-xs font-medium text-slate-500 mt-1">
+            <div className="hidden md:flex items-center gap-4 text-xs font-medium text-on-surface-variant mt-0.5">
               {activeBusiness.category && (
                 <span className="flex items-center gap-1">
-                  <Store className="w-3 h-3" /> {activeBusiness.category}
+                  <MaterialIcon name="storefront" size={12} /> {activeBusiness.category}
                 </span>
               )}
               {activeBusiness.address && (
                 <span className="flex items-center gap-1">
-                  <MapPin className="w-3 h-3" /> {activeBusiness.address.split(',')[0]}
+                  <MaterialIcon name="location_on" size={12} /> {activeBusiness.address.split(",")[0]}
                 </span>
               )}
               <div className="flex gap-2 ml-2">
                 {activeBusiness.googleConnected && (
-                  <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-md border border-blue-100 flex items-center gap-1">
+                  <span className="px-2 py-0.5 bg-primary-fixed text-primary rounded-md border border-primary-fixed-dim flex items-center gap-1 text-[10px] font-semibold">
                     Google Connected
                   </span>
                 )}
                 {activeBusiness.whatsappConfig?.isConnected && (
-                  <span className="px-2 py-0.5 bg-green-50 text-green-600 rounded-md border border-green-100 flex items-center gap-1">
-                    <MessageSquare className="w-3 h-3" /> WhatsApp
+                  <span className="px-2 py-0.5 bg-secondary-container text-on-secondary-container rounded-md border border-secondary-fixed flex items-center gap-1 text-[10px] font-semibold">
+                    <MaterialIcon name="chat" size={12} /> WhatsApp
                   </span>
                 )}
               </div>
@@ -101,14 +102,14 @@ export function DashboardHeader() {
 
       <div className="flex items-center gap-3 shrink-0">
         <NotificationBell />
-        <div className="hidden sm:flex items-center gap-3 pl-3 lg:pl-6 border-l border-slate-200">
+        <div className="hidden sm:flex items-center gap-3 pl-3 lg:pl-6 border-l border-outline-variant">
           <div className="text-right">
-            <div className="text-sm font-bold text-slate-900">{user?.fullName || "…"}</div>
-            <div className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">
+            <div className="text-sm font-bold text-on-surface">{user?.fullName || "…"}</div>
+            <div className="text-label-sm text-on-surface-variant normal-case tracking-wider">
               {user?.subscriptionPlan ? `${user.subscriptionPlan} Plan` : ""}
             </div>
           </div>
-          <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-slate-900 flex items-center justify-center font-bold text-white shadow-sm text-sm">
+          <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-full bg-primary flex items-center justify-center font-bold text-on-primary text-sm">
             {initialsOf(user?.fullName)}
           </div>
         </div>

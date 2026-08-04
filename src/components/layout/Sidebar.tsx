@@ -1,27 +1,5 @@
 "use client";
 
-import {
-  Rocket,
-  LayoutDashboard,
-  MessageSquare,
-  Calendar,
-  Users,
-  BarChart3,
-  BarChart2,
-  Settings,
-  LogOut,
-  Zap,
-  Megaphone,
-  Star,
-  ChevronDown,
-  Check,
-  Plus,
-  Building2,
-  Bot,
-  MapPin,
-  Trash2,
-  Loader2,
-} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
@@ -30,16 +8,15 @@ import { useBusiness } from "@/context/BusinessContext";
 import { useMobileNav } from "@/context/MobileNavContext";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { AddWorkspaceModal } from "./AddWorkspaceModal";
+import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
 const AVATAR_COLORS = [
-  "bg-indigo-500",
-  "bg-violet-500",
-  "bg-emerald-500",
-  "bg-amber-500",
-  "bg-rose-500",
-  "bg-sky-500",
-  "bg-pink-500",
-  "bg-teal-500",
+  "bg-primary",
+  "bg-primary-container",
+  "bg-secondary",
+  "bg-tertiary-container",
+  "bg-on-surface-variant",
+  "bg-outline",
 ];
 
 function avatarColor(index: number) {
@@ -50,7 +27,7 @@ function BusinessAvatar({ name, index, size = "md" }: { name: string; index: num
   const sizeClass = size === "sm" ? "w-6 h-6 text-[10px]" : "w-8 h-8 text-sm";
   return (
     <div
-      className={`${sizeClass} ${avatarColor(index)} rounded-lg flex items-center justify-center text-white font-bold shrink-0`}
+      className={`${sizeClass} ${avatarColor(index)} rounded-full flex items-center justify-center text-on-primary font-bold shrink-0`}
     >
       {name.charAt(0).toUpperCase()}
     </div>
@@ -58,32 +35,28 @@ function BusinessAvatar({ name, index, size = "md" }: { name: string; index: num
 }
 
 const sidebarLinks = [
-  { name: "Dashboard Home", icon: LayoutDashboard, href: "/dashboard" },
-  { name: "Audit Engine", icon: Zap, href: "/dashboard/audit" },
-  { name: "Google Profile", icon: MapPin, href: "/dashboard/gbp-profile" },
-  { name: "Review Management", icon: Star, href: "/dashboard/reviews" },
-  { name: "CRM", icon: MessageSquare, href: "/dashboard/crm" },
-  { name: "Content Generator", icon: Megaphone, href: "/dashboard/content" },
-  { name: "Content Scheduler", icon: Calendar, href: "/dashboard/scheduler" },
-  { name: "WhatsApp AI Agent", icon: MessageSquare, href: "/dashboard/whatsapp", superAdminOnly: true },
-  { name: "Settings", icon: Settings, href: "/dashboard/settings" },
-  { name: "Billing", icon: BarChart3, href: "/dashboard/billing" },
-  { name: "Profile", icon: Users, href: "/dashboard/profile" },
+  { name: "Dashboard Home", icon: "dashboard", href: "/dashboard" },
+  { name: "Audit Engine", icon: "analytics", href: "/dashboard/audit" },
+  { name: "Google Profile", icon: "location_on", href: "/dashboard/gbp-profile" },
+  { name: "Review Management", icon: "star", href: "/dashboard/reviews" },
+  { name: "CRM", icon: "forum", href: "/dashboard/crm" },
+  { name: "Content Generator", icon: "campaign", href: "/dashboard/content" },
+  { name: "Content Scheduler", icon: "calendar_month", href: "/dashboard/scheduler" },
+  { name: "WhatsApp AI Agent", icon: "chat", href: "/dashboard/whatsapp", superAdminOnly: true },
+  { name: "Settings", icon: "settings", href: "/dashboard/settings" },
+  { name: "Billing", icon: "bar_chart", href: "/dashboard/billing" },
+  { name: "Profile", icon: "person", href: "/dashboard/profile" },
 ];
 
 function UsagePill() {
-  const [used, setUsed]   = useState<number | null>(null);
+  const [used, setUsed] = useState<number | null>(null);
   const [limit, setLimit] = useState<number | null>(null);
-  // Only paid/active workspaces see the usage meter. For a brand-new freemium
-  // workspace the free tier is 1 generation, so this pill would briefly flash a
-  // scary red "1/1 · Limit reached" the moment the auto-audit runs — misleading
-  // when the upgrade paywall already covers the upsell. `null` = still checking.
   const [active, setActive] = useState<boolean | null>(null);
 
   useEffect(() => {
-    fetch('/api/user/usage')
-      .then(r => r.json())
-      .then(json => {
+    fetch("/api/user/usage")
+      .then((r) => r.json())
+      .then((json) => {
         if (json.success) {
           setUsed(json.data.usage.aiGenerationsUsed);
           setLimit(json.data.limits.maxAIGenerations);
@@ -91,45 +64,49 @@ function UsagePill() {
       })
       .catch(() => {});
 
-    fetch('/api/billing/status')
-      .then(r => r.json())
-      .then(json => setActive(!json?.workspace || !!json.workspace.isActive))
+    fetch("/api/billing/status")
+      .then((r) => r.json())
+      .then((json) => setActive(!json?.workspace || !!json.workspace.isActive))
       .catch(() => setActive(false));
   }, []);
 
-  // Hide for locked/freemium workspaces (and until we know) — no scary flash.
   if (active !== true) return null;
   if (used === null || limit === null) return null;
 
   const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  const isFull    = pct >= 100;
+  const isFull = pct >= 100;
   const isWarning = pct >= 80 && !isFull;
 
   return (
-    <Link href="/dashboard/billing" className="block mb-3 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl hover:bg-indigo-50 hover:border-indigo-200 transition-colors group">
+    <Link
+      href="/dashboard/billing"
+      className="block mb-3 px-3 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-lg hover:bg-primary-fixed hover:border-primary-fixed-dim transition-colors group"
+    >
       <div className="flex items-center justify-between mb-1.5">
-        <div className="flex items-center gap-1.5 text-slate-500 group-hover:text-indigo-600 transition-colors">
-          <Bot className="w-3.5 h-3.5" />
+        <div className="flex items-center gap-1.5 text-on-surface-variant group-hover:text-primary transition-colors">
+          <MaterialIcon name="smart_toy" size={14} />
           <span className="text-[11px] font-semibold">AI Generations</span>
         </div>
-        <span className={cn(
-          'text-[11px] font-bold',
-          isFull ? 'text-red-500' : isWarning ? 'text-amber-500' : 'text-slate-600'
-        )}>
+        <span
+          className={cn(
+            "text-[11px] font-bold",
+            isFull ? "text-error" : isWarning ? "text-on-surface-variant" : "text-on-surface"
+          )}
+        >
           {used}/{limit}
         </span>
       </div>
-      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+      <div className="h-1.5 bg-surface-container-high rounded-full overflow-hidden">
         <div
           className={cn(
-            'h-full rounded-full transition-all',
-            isFull ? 'bg-red-500' : isWarning ? 'bg-amber-400' : 'bg-indigo-500'
+            "h-full rounded-full transition-all",
+            isFull ? "bg-error" : isWarning ? "bg-outline" : "bg-primary"
           )}
           style={{ width: `${pct}%` }}
         />
       </div>
       {isFull && (
-        <p className="text-[10px] text-red-500 font-semibold mt-1">Limit reached · Upgrade</p>
+        <p className="text-[10px] text-error font-semibold mt-1">Limit reached · Upgrade</p>
       )}
     </Link>
   );
@@ -139,7 +116,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { businesses, activeBusiness, switchBusiness, refreshBusinesses, loading } = useBusiness();
-  const { isOpen, close } = useMobileNav();
+  const { isOpen, close, toggle } = useMobileNav();
   const { isSuperAdmin } = useCurrentUserRole();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -149,33 +126,30 @@ export function Sidebar() {
     if (!confirm(`Delete workspace "${name}"? It will be removed from your list — you can re-add the business later.`)) return;
     setDeletingId(businessId);
     try {
-      const res = await fetch('/api/business/delete-workspace', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/business/delete-workspace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ businessId }),
       });
       const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'Failed to delete workspace');
-      // The server already moved the active-workspace cookie; refresh context +
-      // server components so the switcher and gate reflect the new state.
+      if (!json.success) throw new Error(json.error || "Failed to delete workspace");
       await refreshBusinesses();
       router.refresh();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete workspace');
+      alert(err instanceof Error ? err.message : "Failed to delete workspace");
     } finally {
       setDeletingId(null);
     }
   };
 
   const visibleLinks = sidebarLinks.filter(
-    (link) => !(link as any).superAdminOnly || isSuperAdmin
+    (link) => !(link as { superAdminOnly?: boolean }).superAdminOnly || isSuperAdmin
   );
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -198,61 +172,64 @@ export function Sidebar() {
 
   const activeIndex = businesses.findIndex((b) => b._id === activeBusiness?._id);
 
+  const navLinkClass = (isActive: boolean) =>
+    cn(
+      "w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all",
+      isActive
+        ? "bg-primary-container text-on-primary-container"
+        : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container"
+    );
+
   return (
     <>
-      {/* ── Desktop sidebar (unchanged) ────────────────────────────────── */}
-      <aside className="w-64 border-r border-slate-200 bg-white flex-col hidden lg:flex h-screen fixed top-0 left-0 z-50 overflow-y-auto custom-scrollbar">
+      {/* Desktop sidebar */}
+      <aside className="w-64 border-r border-outline-variant bg-surface-container-low flex-col hidden lg:flex h-screen fixed top-0 left-0 z-50 overflow-y-auto custom-scrollbar">
         <div className="p-6">
-          {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-2 mb-6 group">
-            <div className="w-8 h-8 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center justify-center group-hover:rotate-12 transition-transform duration-300">
-              <Rocket className="text-primary w-5 h-5" />
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <MaterialIcon name="rocket_launch" size={18} className="text-on-primary" />
             </div>
-            <span className="text-lg font-bold tracking-tight text-slate-900">
+            <span className="text-lg font-heading font-bold tracking-tight text-on-surface">
               Groww<span className="text-primary">Matics</span> AI
             </span>
           </Link>
 
-          {/* Workspace Switcher */}
           {!loading && businesses.length > 0 && (
             <div className="mb-6" ref={dropdownRef}>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Active Workspace
-              </p>
+              <p className="text-label-sm text-on-surface-variant mb-2">Active Workspace</p>
 
-              {/* Trigger button */}
               <button
                 onClick={() => setDropdownOpen((v) => !v)}
                 className={cn(
-                  "w-full flex items-center gap-2.5 p-2.5 rounded-xl border transition-all text-left",
+                  "w-full flex items-center gap-2.5 p-2.5 rounded-lg border transition-all text-left",
                   dropdownOpen
-                    ? "bg-indigo-50 border-indigo-200 shadow-sm"
-                    : "bg-slate-50 border-slate-200 hover:bg-slate-100"
+                    ? "bg-primary-fixed border-primary-fixed-dim card-shadow"
+                    : "bg-surface-container-lowest border-outline-variant hover:bg-surface-container"
                 )}
               >
                 {activeBusiness && (
                   <BusinessAvatar name={activeBusiness.name} index={activeIndex} />
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-slate-900 truncate">
+                  <p className="text-sm font-semibold text-on-surface truncate">
                     {activeBusiness?.name ?? "Select workspace"}
                   </p>
                   {activeBusiness?.category && (
-                    <p className="text-[10px] text-slate-400 truncate">{activeBusiness.category}</p>
+                    <p className="text-[10px] text-on-surface-variant truncate">{activeBusiness.category}</p>
                   )}
                 </div>
-                <ChevronDown
+                <MaterialIcon
+                  name="expand_more"
+                  size={18}
                   className={cn(
-                    "w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200",
+                    "text-on-surface-variant shrink-0 transition-transform duration-200",
                     dropdownOpen && "rotate-180"
                   )}
                 />
               </button>
 
-              {/* Dropdown panel */}
               {dropdownOpen && (
-                <div className="mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-50">
-                  {/* Business list */}
+                <div className="mt-1.5 bg-surface-container-lowest border border-outline-variant rounded-lg card-shadow overflow-hidden z-50">
                   <div className="py-1 max-h-52 overflow-y-auto">
                     {businesses.map((b, i) => {
                       const isActive = b._id === activeBusiness?._id;
@@ -260,8 +237,8 @@ export function Sidebar() {
                         <div
                           key={b._id}
                           className={cn(
-                            "group/ws w-full flex items-center gap-1 px-3 py-2.5 hover:bg-slate-50 transition-colors",
-                            isActive && "bg-indigo-50/60"
+                            "group/ws w-full flex items-center gap-1 px-3 py-2.5 hover:bg-surface-container-low transition-colors",
+                            isActive && "bg-primary-fixed/60"
                           )}
                         >
                           <button
@@ -273,43 +250,44 @@ export function Sidebar() {
                               <p
                                 className={cn(
                                   "text-sm font-medium truncate",
-                                  isActive ? "text-indigo-700" : "text-slate-800"
+                                  isActive ? "text-primary" : "text-on-surface"
                                 )}
                               >
                                 {b.name}
                               </p>
                               {b.category && (
-                                <p className="text-[10px] text-slate-400 truncate">{b.category}</p>
+                                <p className="text-[10px] text-on-surface-variant truncate">{b.category}</p>
                               )}
                             </div>
-                            {isActive && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+                            {isActive && <MaterialIcon name="check" size={14} className="text-primary shrink-0" />}
                           </button>
                           <button
                             onClick={(e) => handleDeleteWorkspace(e, b._id, b.name)}
                             disabled={deletingId === b._id}
                             title="Delete workspace"
-                            className="shrink-0 p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover/ws:opacity-100 focus:opacity-100 transition-all disabled:opacity-100"
+                            className="shrink-0 p-1.5 rounded-lg text-outline hover:text-error hover:bg-error-container opacity-0 group-hover/ws:opacity-100 focus:opacity-100 transition-all disabled:opacity-100"
                           >
-                            {deletingId === b._id
-                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              : <Trash2 className="w-3.5 h-3.5" />}
+                            {deletingId === b._id ? (
+                              <MaterialIcon name="progress_activity" size={14} className="animate-spin" />
+                            ) : (
+                              <MaterialIcon name="delete" size={14} />
+                            )}
                           </button>
                         </div>
                       );
                     })}
                   </div>
 
-                  {/* Divider + Add Workspace */}
-                  <div className="border-t border-slate-100">
+                  <div className="border-t border-outline-variant">
                     <button
                       onClick={() => {
                         setDropdownOpen(false);
                         setShowAddModal(true);
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors"
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-primary hover:bg-primary-fixed transition-colors"
                     >
-                      <div className="w-6 h-6 rounded-lg border-2 border-dashed border-indigo-300 flex items-center justify-center shrink-0">
-                        <Plus className="w-3 h-3 text-indigo-500" />
+                      <div className="w-6 h-6 rounded-lg border-2 border-dashed border-primary-fixed-dim flex items-center justify-center shrink-0">
+                        <MaterialIcon name="add" size={12} className="text-primary" />
                       </div>
                       Add Workspace
                     </button>
@@ -319,103 +297,89 @@ export function Sidebar() {
             </div>
           )}
 
-          {/* Empty state — no businesses yet */}
           {!loading && businesses.length === 0 && (
             <div className="mb-6">
               <button
                 onClick={() => setShowAddModal(true)}
-                className="w-full flex items-center gap-2.5 p-3 rounded-xl border-2 border-dashed border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition-all group"
+                className="w-full flex items-center gap-2.5 p-3 rounded-lg border-2 border-dashed border-outline-variant hover:border-primary hover:bg-primary-fixed/50 transition-all group"
               >
-                <div className="w-8 h-8 bg-slate-100 group-hover:bg-indigo-100 rounded-lg flex items-center justify-center shrink-0 transition-colors">
-                  <Building2 className="w-4 h-4 text-slate-400 group-hover:text-indigo-500" />
+                <div className="w-8 h-8 bg-surface-container group-hover:bg-primary-fixed rounded-lg flex items-center justify-center shrink-0 transition-colors">
+                  <MaterialIcon name="storefront" size={16} className="text-on-surface-variant group-hover:text-primary" />
                 </div>
-                <span className="text-sm font-semibold text-slate-500 group-hover:text-indigo-600 transition-colors">
+                <span className="text-sm font-semibold text-on-surface-variant group-hover:text-primary transition-colors">
                   Add your first workspace
                 </span>
               </button>
             </div>
           )}
 
-          {/* Navigation links */}
           <nav className="space-y-1">
             {visibleLinks.map((link) => {
               const isActive = pathname === link.href;
-              const isGbpLink = (link as any).gbpBadge;
-              const isGbpConnected = activeBusiness?.googleConnected;
               return (
-                <Link
-                  key={link.name}
-                  href={link.href}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border border-transparent",
-                    isActive
-                      ? "bg-indigo-50 text-primary border-indigo-100 shadow-sm"
-                      : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                  )}
-                >
-                  <link.icon className="w-5 h-5 shrink-0" />
+                <Link key={link.name} href={link.href} className={navLinkClass(isActive)}>
+                  <MaterialIcon name={link.icon} size={20} filled={isActive} />
                   <span className="font-medium text-sm flex-1">{link.name}</span>
-                  {isGbpLink && (
-                    isGbpConnected ? (
-                      <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full leading-none">
-                        LIVE
-                      </span>
-                    ) : (
-                      <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-full leading-none">
-                        Connect
-                      </span>
-                    )
-                  )}
                 </Link>
               );
             })}
           </nav>
         </div>
 
-        {/* Usage pill + Logout */}
-        <div className="mt-auto p-6">
+        <div className="mt-auto p-6 space-y-2">
           <UsagePill />
+          <Link
+            href="/dashboard/settings"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all"
+          >
+            <MaterialIcon name="support_agent" size={20} />
+            <span className="font-medium text-sm">Support / Settings</span>
+          </Link>
+          <Link
+            href="/dashboard/upgrade"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-secondary text-on-secondary font-semibold text-sm hover:opacity-95 transition-opacity"
+          >
+            <MaterialIcon name="trending_up" size={18} className="text-on-secondary" />
+            Upgrade Plan
+          </Link>
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-400/10 transition-all"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-error hover:bg-error-container transition-all"
           >
-            <LogOut className="w-5 h-5" />
+            <MaterialIcon name="logout" size={20} />
             <span className="font-medium text-sm">Logout</span>
           </button>
         </div>
       </aside>
 
-      {/* ── Mobile drawer ──────────────────────────────────────────────── */}
-      {/* Overlay */}
+      {/* Mobile overlay */}
       <div
         className={cn(
-          "lg:hidden fixed inset-0 z-50 bg-black/40 transition-opacity duration-300 ease-in-out",
+          "lg:hidden fixed inset-0 z-50 bg-on-surface/40 transition-opacity duration-300 ease-in-out",
           isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         )}
         onClick={close}
         aria-hidden="true"
       />
 
-      {/* Drawer panel — slides in from left */}
+      {/* Mobile drawer */}
       <div
         className={cn(
-          "lg:hidden fixed top-0 left-0 h-full w-64 bg-white z-50 flex flex-col overflow-y-auto custom-scrollbar shadow-2xl",
+          "lg:hidden fixed top-0 left-0 h-full w-64 bg-surface-container-low z-50 flex flex-col overflow-y-auto custom-scrollbar card-shadow",
           "transform transition-transform duration-300 ease-in-out",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         <div className="p-6">
-          {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-2 mb-6" onClick={close}>
-            <div className="w-8 h-8 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center justify-center">
-              <Rocket className="text-primary w-5 h-5" />
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <MaterialIcon name="rocket_launch" size={18} className="text-on-primary" />
             </div>
-            <span className="text-lg font-bold tracking-tight text-slate-900">
+            <span className="text-lg font-heading font-bold tracking-tight text-on-surface">
               Groww<span className="text-primary">Matics</span> AI
             </span>
           </Link>
 
-          {/* Navigation links — same visibleLinks array as desktop */}
           <nav className="space-y-1">
             {visibleLinks.map((link) => {
               const isActive = pathname === link.href;
@@ -424,14 +388,9 @@ export function Sidebar() {
                   key={link.name}
                   href={link.href}
                   onClick={close}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border border-transparent",
-                    isActive
-                      ? "bg-indigo-50 text-primary border-indigo-100 shadow-sm"
-                      : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                  )}
+                  className={navLinkClass(isActive)}
                 >
-                  <link.icon className="w-5 h-5 shrink-0" />
+                  <MaterialIcon name={link.icon} size={20} filled={isActive} />
                   <span className="font-medium text-sm flex-1">{link.name}</span>
                 </Link>
               );
@@ -439,19 +398,72 @@ export function Sidebar() {
           </nav>
         </div>
 
-        {/* Logout */}
-        <div className="mt-auto p-6">
-          <button
-            onClick={() => { close(); handleLogout(); }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-400/10 transition-all"
+        <div className="mt-auto p-6 space-y-2">
+          <Link
+            href="/dashboard/upgrade"
+            onClick={close}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-secondary text-on-secondary font-semibold text-sm"
           >
-            <LogOut className="w-5 h-5" />
+            Upgrade Plan
+          </Link>
+          <button
+            onClick={() => {
+              close();
+              handleLogout();
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-error hover:bg-error-container transition-all"
+          >
+            <MaterialIcon name="logout" size={20} />
             <span className="font-medium text-sm">Logout</span>
           </button>
         </div>
       </div>
 
-      {/* Add Workspace modal (rendered outside aside so it's not clipped) */}
+      {/* Mobile bottom tab bar */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 h-16 bg-surface-container-lowest border-t border-outline-variant flex items-center justify-around px-2 safe-area-pb">
+        {[
+          { name: "Home", icon: "dashboard", href: "/dashboard" },
+          { name: "Audit", icon: "analytics", href: "/dashboard/audit" },
+          { name: "Reviews", icon: "star", href: "/dashboard/reviews" },
+          { name: "CRM", icon: "forum", href: "/dashboard/crm" },
+          { name: "More", icon: "menu", href: "#more" },
+        ].map((tab) => {
+          const isActive = tab.href === "#more" ? false : pathname === tab.href;
+          if (tab.href === "#more") {
+            return (
+              <button
+                key={tab.name}
+                onClick={toggle}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-full transition-colors",
+                  isOpen ? "bg-primary-fixed text-primary" : "text-on-surface-variant"
+                )}
+                aria-label="Open menu"
+                type="button"
+              >
+                <MaterialIcon name={tab.icon} size={22} filled={isOpen} />
+                <span className="text-[10px] font-medium">{tab.name}</span>
+              </button>
+            );
+          }
+          return (
+            <Link
+              key={tab.name}
+              href={tab.href}
+              className={cn(
+                "flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-full transition-colors",
+                isActive
+                  ? "bg-primary-fixed text-primary"
+                  : "text-on-surface-variant"
+              )}
+            >
+              <MaterialIcon name={tab.icon} size={22} filled={isActive} />
+              <span className="text-[10px] font-medium">{tab.name}</span>
+            </Link>
+          );
+        })}
+      </nav>
+
       {showAddModal && <AddWorkspaceModal onClose={() => setShowAddModal(false)} />}
     </>
   );

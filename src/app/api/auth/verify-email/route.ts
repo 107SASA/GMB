@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { verifyOTP } from '@/services/auth/otp';
+import { isQaTestingMode } from '@/lib/testingMode';
 
 const MAX_ATTEMPTS = 5;
 const GENERIC_ERROR = 'Invalid or expired code.';
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: 'Already verified.' });
     }
 
-    if (user.failedOtpAttempts >= MAX_ATTEMPTS) {
+    if (user.failedOtpAttempts >= MAX_ATTEMPTS && !isQaTestingMode()) {
       return NextResponse.json(
         { success: false, error: 'Too many attempts. Please request a new code.' },
         { status: 429 }

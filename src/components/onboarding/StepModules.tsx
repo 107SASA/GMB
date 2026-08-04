@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { OnboardingData } from './types';
-import { ArrowRight, Layers, Check } from 'lucide-react';
+import { MaterialIcon } from '@/components/ui/MaterialIcon';
 
 interface Props {
   data: OnboardingData;
@@ -51,44 +51,44 @@ export default function StepModules({ data, updateData, onNext, onBack }: Props)
   }, [data.selectedPlan]);
 
   return (
-    <div className="h-full bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-10 flex flex-col border border-slate-100">
+    <div className="h-full bg-surface-container-lowest rounded-xl card-shadow p-10 flex flex-col border border-outline-variant">
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-4">
-        <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center mb-6">
-          <Layers className="text-purple-600 w-6 h-6" />
+        <div className="w-12 h-12 bg-primary-fixed rounded-lg flex items-center justify-center mb-6">
+          <MaterialIcon name="layers" size={24} className="text-primary" />
         </div>
-        <h2 className="text-3xl font-bold text-slate-900 mb-2">What you get</h2>
-        <p className="text-slate-500 mb-8">
+        <h2 className="text-headline-md font-heading text-on-surface mb-2">What you get</h2>
+        <p className="text-on-surface-variant mb-8">
           One plan, everything included. No tiers, no add-ons.
         </p>
 
-        <div className="rounded-2xl border-2 border-slate-900 bg-slate-50 p-6">
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low p-6">
           <div className="flex items-baseline justify-between gap-4 mb-1">
-            <div className="font-bold text-lg text-slate-900">
+            <div className="font-bold text-lg text-on-surface">
               {plan?.displayName ?? 'GrowwMatics AI'}
             </div>
             <div className="text-right">
               {plan ? (
                 <>
-                  <span className="text-2xl font-extrabold tracking-tight text-slate-900">
+                  <span className="text-2xl font-extrabold tracking-tight text-on-surface">
                     ₹{plan.priceInr.toLocaleString('en-IN')}
                   </span>
-                  <span className="text-sm font-medium text-slate-500"> /month</span>
+                  <span className="text-sm font-medium text-on-surface-variant"> /month</span>
                 </>
               ) : (
-                <span className="inline-block h-7 w-24 animate-pulse rounded bg-slate-200" />
+                <span className="inline-block h-7 w-24 animate-pulse rounded bg-surface-container-high" />
               )}
             </div>
           </div>
 
-          <p className="text-xs text-slate-500 mb-5">
+          <p className="text-xs text-on-surface-variant mb-5">
             {plan?.description ?? 'Everything included, on web and mobile.'}
           </p>
 
           <ul className="space-y-2.5">
             {INCLUDED_MODULES.map((feature) => (
-              <li key={feature} className="flex items-start gap-2.5 text-sm text-slate-700">
-                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-slate-900">
-                  <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
+              <li key={feature} className="flex items-start gap-2.5 text-sm text-on-surface">
+                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-secondary">
+                  <MaterialIcon name="check" size={10} className="text-on-secondary" />
                 </span>
                 {feature}
               </li>
@@ -96,20 +96,20 @@ export default function StepModules({ data, updateData, onNext, onBack }: Props)
           </ul>
         </div>
 
-        <p className="mt-4 text-xs text-slate-400">
+        <p className="mt-4 text-xs text-outline">
           You can finish setting up now and subscribe later from your dashboard.
         </p>
       </div>
 
-      <div className="flex justify-between items-center pt-8 border-t border-slate-100 mt-auto">
-        <button onClick={onBack} className="text-slate-500 font-bold hover:text-slate-900 transition-colors px-4 py-2">
+      <div className="flex justify-between items-center pt-8 border-t border-outline-variant mt-auto">
+        <button onClick={onBack} className="text-on-surface-variant font-bold hover:text-on-surface transition-colors px-4 py-2">
           Back
         </button>
         <button
           onClick={onNext}
-          className="flex items-center gap-2 px-8 py-3.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-md"
+          className="flex items-center gap-2 px-8 py-3 bg-primary hover:bg-primary-container text-on-primary rounded-lg font-bold transition-all"
         >
-          Review &amp; Build <ArrowRight className="w-4 h-4" />
+          Review &amp; Build <MaterialIcon name="arrow_forward" size={16} />
         </button>
       </div>
     </div>

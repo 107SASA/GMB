@@ -59,12 +59,12 @@ export async function GET() {
     const leadIds = [...new Set(recentThreadsRaw.map((t: any) => t.leadId?.toString()))];
 
     const [businesses, leads] = await Promise.all([
-      Business.find({ _id: { $in: bizIds } }).select('businessName').lean(),
+      Business.find({ _id: { $in: bizIds } }).select('name').lean(),
       Lead.find({ _id: { $in: leadIds } }).select('name phone').lean(),
     ]);
 
     const bizMap: Record<string, string> = {};
-    businesses.forEach((b: any) => { bizMap[b._id.toString()] = b.businessName; });
+    businesses.forEach((b: any) => { bizMap[b._id.toString()] = b.name; });
     const leadMap: Record<string, { name: string; phone?: string }> = {};
     leads.forEach((l: any) => { leadMap[l._id.toString()] = { name: l.name, phone: l.phone }; });
 

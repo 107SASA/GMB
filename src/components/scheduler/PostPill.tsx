@@ -13,10 +13,10 @@ interface PostPillProps {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  published: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-  scheduled:  'bg-blue-100 text-blue-800 border-blue-200',
-  draft:      'bg-amber-100 text-amber-800 border-amber-200',
-  failed:     'bg-rose-100 text-rose-800 border-rose-200',
+  published: 'bg-secondary-container text-on-secondary-container border-secondary-fixed',
+  scheduled:  'bg-primary-fixed text-primary border-primary-fixed-dim',
+  draft:      'bg-error-container text-on-error-container border-error-container',
+  failed:     'bg-error-container text-error border-error-container',
 };
 
 export default function PostPill({ post, onPublish, onEditSave, onEditingChange }: PostPillProps) {
@@ -76,7 +76,7 @@ export default function PostPill({ post, onPublish, onEditSave, onEditingChange 
   if (isEditing) {
     return (
       <div
-        className={`p-3 rounded-lg border shadow-sm mb-2 flex flex-col gap-2 bg-white ${statusColor}`}
+        className={`p-3 rounded-lg border shadow-sm mb-2 flex flex-col gap-2 bg-surface-container-lowest ${statusColor}`}
         // Swallow pointer-down so the DraggablePost wrapper never sees it
         onPointerDown={e => e.stopPropagation()}
       >
@@ -88,14 +88,14 @@ export default function PostPill({ post, onPublish, onEditSave, onEditingChange 
             <button
               onClick={saveEdit}
               disabled={saving}
-              className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-200 px-2 py-1 rounded flex items-center gap-0.5 disabled:opacity-50"
+              className="text-[10px] font-bold text-on-secondary-container bg-secondary-container/40 hover:bg-secondary-fixed px-2 py-1 rounded flex items-center gap-0.5 disabled:opacity-50"
             >
               <Check className="w-2.5 h-2.5" />
               {saving ? 'Saving…' : 'Save'}
             </button>
             <button
               onClick={cancelEdit}
-              className="text-[10px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded flex items-center gap-0.5"
+              className="text-[10px] font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high px-2 py-1 rounded flex items-center gap-0.5"
             >
               <X className="w-2.5 h-2.5" />
               Cancel
@@ -107,14 +107,14 @@ export default function PostPill({ post, onPublish, onEditSave, onEditingChange 
           value={editTitle}
           onChange={e => setEditTitle(e.target.value)}
           onPointerDown={e => e.stopPropagation()}
-          className="text-sm font-semibold text-slate-900 border border-slate-300 rounded px-2 py-1 w-full focus:outline-none focus:ring-1 focus:ring-blue-400"
+          className="text-sm font-semibold text-on-surface border border-outline-variant rounded px-2 py-1 w-full focus:outline-none focus:ring-1 focus:ring-primary"
           placeholder="Title"
         />
         <textarea
           value={editContent}
           onChange={e => setEditContent(e.target.value)}
           onPointerDown={e => e.stopPropagation()}
-          className="text-xs text-slate-700 border border-slate-300 rounded px-2 py-1 w-full resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
+          className="text-xs text-on-surface border border-outline-variant rounded px-2 py-1 w-full resize-none focus:outline-none focus:ring-1 focus:ring-primary"
           rows={3}
           placeholder="Content"
         />
@@ -125,40 +125,40 @@ export default function PostPill({ post, onPublish, onEditSave, onEditingChange 
   // ── Normal mode ───────────────────────────────────────────────────────────
   return (
     <div
-      className={`p-3 rounded-lg border shadow-sm mb-2 transition-transform hover:-translate-y-0.5 flex flex-col gap-2 ${statusColor} bg-white bg-opacity-50 hover:bg-opacity-100`}
+      className={`p-3 rounded-lg border shadow-sm mb-2 transition-transform hover:-translate-y-0.5 flex flex-col gap-2 ${statusColor} bg-surface-container-lowest bg-opacity-50 hover:bg-opacity-100`}
     >
       <div className="flex justify-between items-start">
         <span className="text-xs font-bold uppercase tracking-wider">{post.status}</span>
         <div className="flex items-center gap-1">
           {post.aiGenerated && (
-            <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold">
+            <span className="text-[10px] bg-primary-fixed text-primary px-1.5 py-0.5 rounded font-bold">
               AI
             </span>
           )}
           <button
             onClick={openEdit}
             title="Edit post"
-            className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 p-0.5 rounded"
+            className="text-outline hover:text-on-surface hover:bg-surface-container p-0.5 rounded"
           >
             <Pencil className="w-3 h-3" />
           </button>
         </div>
       </div>
 
-      <h4 className="text-sm font-semibold text-slate-900 leading-snug line-clamp-2">
+      <h4 className="text-sm font-semibold text-on-surface leading-snug line-clamp-2">
         {post.title}
       </h4>
-      <p className="text-xs text-slate-600 truncate">{post.content}</p>
+      <p className="text-xs text-on-surface-variant truncate">{post.content}</p>
 
       {scheduledTime && (
-        <span className="text-[10px] text-slate-500 font-medium">{scheduledTime}</span>
+        <span className="text-[10px] text-on-surface-variant font-medium">{scheduledTime}</span>
       )}
 
       <div className="mt-1 flex gap-1 justify-end border-t border-black/5 pt-2">
         {post.status === 'scheduled' && (
           <button
             onClick={e => { e.stopPropagation(); onPublish(post._id); }}
-            className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-200 px-2 py-1 rounded"
+            className="text-[10px] font-bold text-on-secondary-container bg-secondary-container/40 hover:bg-secondary-fixed px-2 py-1 rounded"
           >
             Publish Now
           </button>

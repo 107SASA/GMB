@@ -2,10 +2,17 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { createSession, destroySession } from '@/lib/session';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { isQaTestingMode } from '@/lib/testingMode';
 import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
   try {
+    // SUPER_ADMIN is the highest-privilege role in the system — this had no
+    // rate limiting at all, making it brute-forceable/credential-stuffable
+    // with no lockout. Keyed by IP+email so one IP guessing many emails and
+    // many IPs guessing one email are both throttled.
+    const ip = getClientIp(req);
     await dbConnect();
     const { email, password } = await req.json();
 
@@ -13,6 +20,14 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { success: false, error: 'Email and password are required' },
         { status: 400 }
+      );
+    }
+
+    const rate = checkRateLimit(`admin-auth:${ip}:${String(email).toLowerCase().trim()}`, 5, 15 * 60 * 1000);
+    if (!rate.allowed && !isQaTestingMode()) {
+      return NextResponse.json(
+        { success: false, error: 'Too many attempts. Please try again in a few minutes.' },
+        { status: 429 }
       );
     }
 

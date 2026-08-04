@@ -1,6 +1,7 @@
 'use client';
 
 import { BusinessProvider } from '@/context/BusinessContext';
+import { BusinessSwitcher } from '@/components/layout/BusinessSwitcher';
 import InboxDashboard from '@/app/dashboard/whatsapp/page';
 
 /**
@@ -13,12 +14,23 @@ import InboxDashboard from '@/app/dashboard/whatsapp/page';
  * that component needs, since the Admin Panel layout doesn't include one
  * (the regular dashboard layout does).
  *
+ * `adminScope` makes BusinessProvider list every customer's business (server
+ * enforces SUPER_ADMIN-only, see /api/business/all) instead of just ones the
+ * logged-in admin account happens to own — without it this page could only
+ * ever show an empty inbox, since a real super-admin doesn't own any
+ * customer businesses themselves. BusinessSwitcher is rendered explicitly
+ * here because the regular dashboard layout normally supplies it; this route
+ * doesn't use that layout.
+ *
  * This route inherits its Super Admin–only protection from the existing
  * src/app/admin/layout.tsx guard — no separate check needed here.
  */
 export default function AdminWhatsAppAgentPage() {
   return (
-    <BusinessProvider>
+    <BusinessProvider adminScope>
+      <div className="p-4 border-b border-outline-variant bg-surface-container-lowest">
+        <BusinessSwitcher />
+      </div>
       <InboxDashboard />
     </BusinessProvider>
   );

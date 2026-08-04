@@ -157,15 +157,15 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
     <div>
       <div className="flex justify-between items-start mb-6">
         <div>
-          <h3 className="text-xl font-bold text-slate-900">Your Generated Posts</h3>
-          <p className="text-slate-500 text-sm mt-1">
+          <h3 className="text-xl font-bold text-on-surface">Your Generated Posts</h3>
+          <p className="text-on-surface-variant text-sm mt-1">
             Review and schedule these posts directly to your Google Business Profile.
           </p>
         </div>
 
         {/* Top-right action area */}
         {isScheduled ? (
-          <div className="flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 font-medium">
+          <div className="flex items-center gap-2 px-4 py-2 bg-secondary-container/40 border border-secondary-fixed rounded-lg text-sm text-on-secondary-container font-medium">
             <CheckCircle className="w-4 h-4 shrink-0" />
             {autoResult
               ? `${autoResult.count} posts auto-scheduled · ${formatShortDate(autoResult.firstDate)} → ${formatShortDate(autoResult.lastDate)}`
@@ -176,14 +176,14 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
           <div className="flex items-center gap-2">
             <button
               onClick={() => { setMode('auto'); setAutoError(''); }}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary-container transition-colors shadow-sm"
             >
               <Zap className="w-4 h-4" />
               Auto Schedule
             </button>
             <button
               onClick={() => { setMode('manual'); setBatchError(''); }}
-              className="flex items-center gap-2 px-4 py-2 border border-slate-200 bg-white text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-50 transition-colors shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 border border-outline-variant bg-surface-container-lowest text-on-surface text-sm font-semibold rounded-lg hover:bg-surface transition-colors shadow-sm"
             >
               <Calendar className="w-4 h-4" />
               Manual Schedule
@@ -192,7 +192,7 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
         ) : (
           <button
             onClick={() => setMode('none')}
-            className="text-sm text-slate-500 hover:text-slate-800 transition-colors"
+            className="text-sm text-on-surface-variant hover:text-on-surface transition-colors"
           >
             Cancel
           </button>
@@ -201,18 +201,18 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
 
       {/* Auto Schedule Panel */}
       {mode === 'auto' && !isScheduled && (
-        <div className="mb-6 p-5 bg-indigo-50 border border-indigo-200 rounded-xl space-y-4">
+        <div className="mb-6 p-5 bg-primary-fixed border border-primary-fixed-dim rounded-xl space-y-4">
           <div>
-            <p className="text-sm font-semibold text-indigo-900 mb-1 flex items-center gap-2">
+            <p className="text-sm font-semibold text-primary mb-1 flex items-center gap-2">
               <Zap className="w-4 h-4" />
               Auto Schedule — one post per day after your last scheduled post
             </p>
-            <p className="text-xs text-indigo-700">
+            <p className="text-xs text-primary">
               We'll find your most recently scheduled post and queue all {posts.length} new posts immediately after it at 9:00 AM, spaced one day apart.
             </p>
           </div>
           {autoError && (
-            <div className="flex items-center gap-2 text-sm text-red-600">
+            <div className="flex items-center gap-2 text-sm text-error">
               <AlertCircle className="w-4 h-4 shrink-0" />
               {autoError}
             </div>
@@ -220,14 +220,14 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
           <div className="flex gap-3">
             <button
               onClick={() => setMode('none')}
-              className="px-4 py-2 text-sm border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors"
+              className="px-4 py-2 text-sm border border-primary-fixed-dim text-primary rounded-lg hover:bg-primary-fixed transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleAutoSchedule}
               disabled={isScheduling}
-              className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-60 flex items-center gap-2"
+              className="px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary-container transition-colors disabled:opacity-60 flex items-center gap-2"
             >
               {isScheduling && (
                 <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -244,10 +244,10 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
 
       {/* Manual Schedule Panel */}
       {mode === 'manual' && !isScheduled && (
-        <div className="mb-6 p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+        <div className="mb-6 p-5 bg-surface border border-outline-variant rounded-xl space-y-4">
           <div>
-            <p className="text-sm font-semibold text-slate-700 mb-1">Pick a start date</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-sm font-semibold text-on-surface mb-1">Pick a start date</p>
+            <p className="text-xs text-on-surface-variant">
               All {posts.length} posts will be spaced one day apart, each at the same time, starting from your chosen date.
             </p>
           </div>
@@ -256,22 +256,22 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
             value={startDate}
             min={nowDateTimeLocal()}
             onChange={(e) => setStartDate(e.target.value)}
-            className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 focus:outline-none"
+            className="px-3 py-2 text-sm border border-outline-variant rounded-lg focus:ring-2 focus:ring-primary focus:outline-none"
           />
           {batchError && (
-            <p className="text-sm text-red-500">{batchError}</p>
+            <p className="text-sm text-error">{batchError}</p>
           )}
           <div className="flex gap-3 pt-1">
             <button
               onClick={() => { setMode('none'); setBatchError(''); }}
-              className="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
+              className="px-4 py-2 text-sm border border-outline-variant rounded-lg hover:bg-surface-container transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleManualSchedule}
               disabled={isScheduling || !startDate}
-              className="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-60 flex items-center gap-2"
+              className="px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary transition-colors disabled:opacity-60 flex items-center gap-2"
             >
               {isScheduling && (
                 <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">

@@ -20,9 +20,9 @@ export default function MetricsGrid({ metrics }: MetricsGridProps) {
       value: metrics.totalLeads.toLocaleString(),
       sub: null,
       Icon: Users,
-      color: 'text-indigo-600',
-      bg: 'bg-indigo-50',
-      ring: 'ring-indigo-100',
+      color: 'text-primary',
+      bg: 'bg-primary-fixed',
+      ring: 'ring-primary',
       badge: null as React.ReactNode,
     },
     {
@@ -30,9 +30,9 @@ export default function MetricsGrid({ metrics }: MetricsGridProps) {
       value: `${metrics.conversionRate}%`,
       sub: `${metrics.convertedLeads} of ${metrics.totalLeads} converted`,
       Icon: TrendingUp,
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50',
-      ring: 'ring-emerald-100',
+      color: 'text-secondary',
+      bg: 'bg-secondary-container/40',
+      ring: 'ring-secondary-container',
       badge: null as React.ReactNode,
     },
     {
@@ -40,9 +40,9 @@ export default function MetricsGrid({ metrics }: MetricsGridProps) {
       value: metrics.avgRating > 0 ? metrics.avgRating.toFixed(1) : '—',
       sub: `${metrics.totalReviews} reviews total`,
       Icon: Star,
-      color: 'text-amber-500',
-      bg: 'bg-amber-50',
-      ring: 'ring-amber-100',
+      color: 'text-primary',
+      bg: 'bg-primary-fixed',
+      ring: 'ring-primary-fixed',
       badge: null as React.ReactNode,
     },
     {
@@ -50,11 +50,11 @@ export default function MetricsGrid({ metrics }: MetricsGridProps) {
       value: metrics.unansweredReviews.toLocaleString(),
       sub: metrics.unansweredReviews > 0 ? 'Need your reply' : 'All caught up!',
       Icon: MessageSquare,
-      color: metrics.unansweredReviews > 0 ? 'text-rose-500' : 'text-blue-500',
-      bg: metrics.unansweredReviews > 0 ? 'bg-rose-50' : 'bg-blue-50',
-      ring: metrics.unansweredReviews > 0 ? 'ring-rose-100' : 'ring-blue-100',
+      color: metrics.unansweredReviews > 0 ? 'text-error' : 'text-primary',
+      bg: metrics.unansweredReviews > 0 ? 'bg-error-container' : 'bg-primary-fixed',
+      ring: metrics.unansweredReviews > 0 ? 'ring-error-container' : 'ring-primary-fixed',
       badge: metrics.unansweredReviews > 0
-        ? <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full">Action needed</span>
+        ? <span className="text-[10px] font-bold text-on-error-container bg-error-container border border-error-container px-1.5 py-0.5 rounded-full">Action needed</span>
         : null,
     },
     {
@@ -62,9 +62,9 @@ export default function MetricsGrid({ metrics }: MetricsGridProps) {
       value: metrics.postsPublished.toLocaleString(),
       sub: 'All time published',
       Icon: Megaphone,
-      color: 'text-violet-600',
-      bg: 'bg-violet-50',
-      ring: 'ring-violet-100',
+      color: 'text-primary',
+      bg: 'bg-primary-fixed',
+      ring: 'ring-primary',
       badge: null as React.ReactNode,
     },
   ];
@@ -74,7 +74,7 @@ export default function MetricsGrid({ metrics }: MetricsGridProps) {
       {cards.map((c, i) => (
         <div
           key={i}
-          className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all group"
+          className="bg-surface-container-lowest rounded-xl p-5 border border-outline-variant card-shadow hover:card-shadow hover:-translate-y-0.5 transition-all group"
         >
           <div className="flex justify-between items-start mb-3">
             <div className={`p-2.5 rounded-xl ${c.bg} ring-4 ${c.ring} transition-all group-hover:ring-8`}>
@@ -82,9 +82,9 @@ export default function MetricsGrid({ metrics }: MetricsGridProps) {
             </div>
             {c.badge}
           </div>
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">{c.label}</p>
-          <p className="text-2xl font-bold text-slate-900">{c.value}</p>
-          {c.sub && <p className="text-[11px] text-slate-400 mt-1">{c.sub}</p>}
+          <p className="text-label-sm text-on-surface-variant mb-1">{c.label}</p>
+          <p className="text-2xl font-bold text-on-surface">{c.value}</p>
+          {c.sub && <p className="text-[11px] text-outline mt-1">{c.sub}</p>}
         </div>
       ))}
     </div>

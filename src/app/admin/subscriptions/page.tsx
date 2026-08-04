@@ -49,15 +49,15 @@ interface Pagination { total: number; page: number; limit: number; totalPages: n
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const PLAN_COLORS: Record<string, string> = {
-  Free:       'bg-slate-50   text-slate-500   border-slate-200',
-  Pro:        'bg-indigo-50  text-indigo-700  border-indigo-100',
-  Enterprise: 'bg-violet-50  text-violet-700  border-violet-100',
+  Free:       'bg-surface   text-on-surface-variant   border-outline-variant',
+  Pro:        'bg-primary-fixed  text-primary  border-primary-fixed-dim',
+  Enterprise: 'bg-primary-fixed  text-primary  border-primary-fixed-dim',
 };
 const STATUS_COLORS: Record<string, string> = {
-  Active:   'bg-emerald-50 text-emerald-700 border-emerald-100',
-  Trialing: 'bg-cyan-50    text-cyan-700    border-cyan-100',
-  PastDue:  'bg-amber-50   text-amber-700   border-amber-100',
-  Canceled: 'bg-rose-50    text-rose-700    border-rose-100',
+  Active:   'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed',
+  Trialing: 'bg-primary-fixed    text-primary    border-primary-fixed-dim',
+  PastDue:  'bg-primary-fixed   text-primary   border-primary-fixed-dim',
+  Canceled: 'bg-error-container    text-on-error-container    border-error-container',
 };
 const STATUS_ICONS: Record<string, React.ElementType> = {
   Active:   CheckCircle2,
@@ -74,7 +74,10 @@ const MODULE_LABELS: Record<string, string> = {
   marketing_automation:   'Marketing',
 };
 
-const PLAN_OPTIONS   = ['all', 'Free', 'Pro'];
+// 'Enterprise' is a legacy tier — no longer sold (planDefaults.ts resolves it
+// to Pro limits), but real subscribers can still be on it, so it stays
+// filterable rather than becoming invisible to search.
+const PLAN_OPTIONS   = ['all', 'Free', 'Pro', 'Enterprise'];
 const STATUS_OPTIONS = ['all', 'Active', 'Trialing', 'PastDue', 'Canceled'];
 
 // ── The single sellable plan (super-admin editable) ──────────────────────────
@@ -171,21 +174,21 @@ function PlanPricingCard() {
     draft.durations.every(d => !d.enabled || d.priceInr >= 1);
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-6">
+    <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5 mb-6">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center shadow-md shadow-emerald-600/20">
+          <div className="w-10 h-10 bg-secondary rounded-xl flex items-center justify-center card-shadow shadow-secondary/20">
             <IndianRupee className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h2 className="font-bold text-slate-900">Subscription Plan</h2>
-            <p className="text-xs text-slate-400">Design the plan customers subscribe to — durations, prices &amp; features</p>
+            <h2 className="font-bold text-on-surface">Subscription Plan</h2>
+            <p className="text-xs text-outline">Design the plan customers subscribe to — durations, prices &amp; features</p>
           </div>
         </div>
         {!editing && (
           <button
             onClick={startEdit}
-            className="flex items-center gap-1.5 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-all"
+            className="flex items-center gap-1.5 px-4 py-2 bg-surface border border-outline-variant rounded-xl text-sm font-semibold text-on-surface-variant hover:bg-surface-container transition-all"
           >
             <Pencil className="w-3.5 h-3.5" /> Edit plan
           </button>
@@ -196,44 +199,44 @@ function PlanPricingCard() {
         <div className="mt-5 space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Plan name</label>
+              <label className="block text-sm font-semibold text-on-surface mb-1.5">Plan name</label>
               <input
                 type="text" value={draft.displayName} maxLength={60}
                 onChange={e => setDraft(d => ({ ...d, displayName: e.target.value }))}
-                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300"
+                className="w-full px-4 py-2.5 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Description</label>
+              <label className="block text-sm font-semibold text-on-surface mb-1.5">Description</label>
               <input
                 type="text" value={draft.description} maxLength={300}
                 onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
-                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300"
+                className="w-full px-4 py-2.5 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
               />
             </div>
           </div>
 
           {/* Durations */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Billing durations &amp; prices</label>
+            <label className="block text-sm font-semibold text-on-surface mb-2">Billing durations &amp; prices</label>
             <div className="space-y-2">
               {draft.durations.map(d => (
                 <div key={d.cycle} className={cn(
                   'flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors',
-                  d.enabled ? 'border-violet-200 bg-violet-50/40' : 'border-slate-200 bg-slate-50'
+                  d.enabled ? 'border-primary-fixed-dim bg-primary-fixed/40' : 'border-outline-variant bg-surface'
                 )}>
                   <label className="flex items-center gap-2 cursor-pointer select-none w-32 shrink-0">
                     <input type="checkbox" checked={d.enabled} onChange={e => setDuration(d.cycle, { enabled: e.target.checked })} />
-                    <span className="text-sm font-semibold text-slate-700">{d.label}</span>
+                    <span className="text-sm font-semibold text-on-surface">{d.label}</span>
                   </label>
                   <div className="flex items-center gap-1.5 flex-1">
-                    <span className="text-slate-400 text-sm">₹</span>
+                    <span className="text-outline text-sm">₹</span>
                     <input
                       type="number" min={1} value={d.priceInr} disabled={!d.enabled}
                       onChange={e => setDuration(d.cycle, { priceInr: Math.max(0, Number(e.target.value) || 0) })}
-                      className="w-32 px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300 disabled:opacity-50 disabled:bg-slate-100"
+                      className="w-32 px-3 py-1.5 border border-outline-variant rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 disabled:bg-surface-container"
                     />
-                    <span className="text-xs text-slate-400">/ {d.label.toLowerCase()}</span>
+                    <span className="text-xs text-outline">/ {d.label.toLowerCase()}</span>
                   </div>
                 </div>
               ))}
@@ -242,18 +245,18 @@ function PlanPricingCard() {
 
           {/* Features */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Features (shown on the pricing card)</label>
+            <label className="block text-sm font-semibold text-on-surface mb-2">Features (shown on the pricing card)</label>
             <div className="space-y-2">
               {draft.features.map((f, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <input
                     type="text" value={f} maxLength={120} placeholder="e.g. Unlimited AI posts"
                     onChange={e => setDraft(d => ({ ...d, features: d.features.map((x, idx) => idx === i ? e.target.value : x) }))}
-                    className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-100 focus:border-violet-300"
+                    className="flex-1 px-4 py-2 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                   />
                   <button
                     onClick={() => setDraft(d => ({ ...d, features: d.features.filter((_, idx) => idx !== i) }))}
-                    className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                    className="p-2 text-outline hover:text-error transition-colors"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -262,7 +265,7 @@ function PlanPricingCard() {
               {draft.features.length < 12 && (
                 <button
                   onClick={() => setDraft(d => ({ ...d, features: [...d.features, ''] }))}
-                  className="text-sm font-semibold text-violet-600 hover:text-violet-700"
+                  className="text-sm font-semibold text-primary hover:text-primary"
                 >
                   + Add feature
                 </button>
@@ -273,7 +276,7 @@ function PlanPricingCard() {
           <div className="flex items-center gap-3 pt-1">
             <button
               onClick={save} disabled={saving || !canSave}
-              className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white text-sm font-bold rounded-xl hover:bg-violet-700 transition-colors disabled:opacity-60 shadow-sm"
+              className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary text-sm font-bold rounded-xl hover:bg-primary-container transition-colors disabled:opacity-60 shadow-sm"
             >
               {saving ? (
                 <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Saving…</>
@@ -281,7 +284,7 @@ function PlanPricingCard() {
                 <><CheckCircle2 className="w-4 h-4" /> Save plan</>
               )}
             </button>
-            <button onClick={() => setEditing(false)} className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors">
+            <button onClick={() => setEditing(false)} className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-on-surface-variant hover:text-on-surface transition-colors">
               <X className="w-4 h-4" /> Cancel
             </button>
           </div>
@@ -290,13 +293,13 @@ function PlanPricingCard() {
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-start gap-x-8 gap-y-3">
             <div>
-              <div className="text-sm font-semibold text-slate-600">{plan.displayName}</div>
-              <p className="text-sm text-slate-500 max-w-md mt-0.5">{plan.description}</p>
+              <div className="text-sm font-semibold text-on-surface-variant">{plan.displayName}</div>
+              <p className="text-sm text-on-surface-variant max-w-md mt-0.5">{plan.description}</p>
             </div>
             <div className="flex flex-col gap-1.5">
               <span className={cn(
                 'inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border w-fit',
-                plan.razorpayConfigured ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'
+                plan.razorpayConfigured ? 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed' : 'bg-primary-fixed text-primary border-primary-fixed-dim'
               )}>
                 {plan.razorpayConfigured ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
                 {plan.razorpayConfigured ? 'Razorpay connected' : 'Razorpay keys missing'}
@@ -307,9 +310,9 @@ function PlanPricingCard() {
           {/* Duration chips */}
           <div className="flex flex-wrap gap-2">
             {enabledDurations.map(d => (
-              <span key={d.cycle} className="inline-flex items-baseline gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl">
-                <span className="text-lg font-extrabold text-slate-900">₹{d.priceInr.toLocaleString('en-IN')}</span>
-                <span className="text-xs font-medium text-slate-400">/ {d.label}</span>
+              <span key={d.cycle} className="inline-flex items-baseline gap-1.5 px-3 py-1.5 bg-surface border border-outline-variant rounded-xl">
+                <span className="text-lg font-extrabold text-on-surface">₹{d.priceInr.toLocaleString('en-IN')}</span>
+                <span className="text-xs font-medium text-outline">/ {d.label}</span>
               </span>
             ))}
           </div>
@@ -318,8 +321,8 @@ function PlanPricingCard() {
           {plan.features.length > 0 && (
             <div className="flex flex-wrap gap-x-4 gap-y-1">
               {plan.features.map((f, i) => (
-                <span key={i} className="inline-flex items-center gap-1.5 text-xs text-slate-500">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-500" /> {f}
+                <span key={i} className="inline-flex items-center gap-1.5 text-xs text-on-surface-variant">
+                  <CheckCircle2 className="w-3 h-3 text-secondary" /> {f}
                 </span>
               ))}
             </div>
@@ -330,9 +333,9 @@ function PlanPricingCard() {
       {notice && (
         <div className={cn(
           'mt-4 px-3 py-2.5 rounded-xl text-xs font-medium border',
-          notice.kind === 'ok'   && 'bg-emerald-50 border-emerald-200 text-emerald-700',
-          notice.kind === 'warn' && 'bg-amber-50 border-amber-200 text-amber-700',
-          notice.kind === 'err'  && 'bg-red-50 border-red-200 text-red-700',
+          notice.kind === 'ok'   && 'bg-secondary-container/40 border-secondary-fixed text-on-secondary-container',
+          notice.kind === 'warn' && 'bg-primary-fixed border-primary-fixed-dim text-primary',
+          notice.kind === 'err'  && 'bg-error-container border-error-container text-on-error-container',
         )}>
           {notice.text}
         </div>
@@ -345,13 +348,13 @@ function OverviewCard({
   label, value, icon: Icon, color,
 }: { label: string; value: number; icon: React.ElementType; color: string }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex items-center gap-4">
+    <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5 flex items-center gap-4">
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
         <Icon className="w-5 h-5 text-white" />
       </div>
       <div>
-        <div className="text-2xl font-bold text-slate-900">{value.toLocaleString()}</div>
-        <div className="text-xs font-medium text-slate-500">{label}</div>
+        <div className="text-2xl font-bold text-on-surface">{value.toLocaleString()}</div>
+        <div className="text-xs font-medium text-on-surface-variant">{label}</div>
       </div>
     </div>
   );
@@ -359,10 +362,10 @@ function OverviewCard({
 
 function UsageBar({ used, limit }: { used: number; limit: number }) {
   const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  const color = pct >= 90 ? 'bg-rose-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
+  const color = pct >= 90 ? 'bg-error' : pct >= 70 ? 'bg-primary-fixed-dim' : 'bg-secondary';
   return (
-    <div className="flex items-center gap-2 text-xs text-slate-500">
-      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+    <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+      <div className="flex-1 h-1.5 bg-surface-container rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
       </div>
       <span className="flex-shrink-0 font-medium">{used}/{limit}</span>
@@ -445,8 +448,8 @@ export default function SubscriptionsPage() {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="text-center">
-          <div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-sm font-medium text-slate-500">Loading subscriptions...</p>
+          <div className="w-10 h-10 border-4 border-primary-fixed-dim border-t-primary rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-sm font-medium text-on-surface-variant">Loading subscriptions...</p>
         </div>
       </div>
     );
@@ -455,7 +458,7 @@ export default function SubscriptionsPage() {
   if (error) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <p className="text-sm text-rose-500 font-medium">{error}</p>
+        <p className="text-sm text-error font-medium">{error}</p>
       </div>
     );
   }
@@ -465,12 +468,12 @@ export default function SubscriptionsPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-violet-600 rounded-xl flex items-center justify-center shadow-md shadow-violet-600/20">
+          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center card-shadow">
             <CreditCard className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Subscriptions</h1>
-            <p className="text-sm text-slate-500 font-medium">
+            <h1 className="font-heading text-2xl font-bold text-on-surface">Subscriptions</h1>
+            <p className="text-sm text-on-surface-variant font-medium">
               {pagination.total.toLocaleString()} total subscriptions
             </p>
           </div>
@@ -478,7 +481,7 @@ export default function SubscriptionsPage() {
         <button
           onClick={() => fetchData({ isRefresh: true })}
           disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-60"
+          className="flex items-center gap-2 px-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm font-semibold text-on-surface-variant hover:bg-surface transition-all shadow-sm disabled:opacity-60"
         >
           <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
           Refresh
@@ -491,35 +494,35 @@ export default function SubscriptionsPage() {
       {/* Overview cards */}
       {overview && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-          <OverviewCard label="Free"     value={overview.byPlan.Free}                                  icon={Users}        color="bg-slate-500" />
-          <OverviewCard label="Paid"     value={overview.byPlan.Pro + overview.byPlan.Enterprise}      icon={CreditCard}   color="bg-indigo-600" />
-          <OverviewCard label="Active"   value={overview.byStatus.Active}                              icon={CheckCircle2} color="bg-emerald-600" />
-          <OverviewCard label="Trialing" value={overview.byStatus.Trialing}                            icon={Clock}        color="bg-cyan-600" />
-          <OverviewCard label="Canceled" value={overview.byStatus.Canceled}                            icon={XCircle}      color="bg-rose-500" />
+          <OverviewCard label="Free"     value={overview.byPlan.Free}                                  icon={Users}        color="bg-surface0" />
+          <OverviewCard label="Paid"     value={overview.byPlan.Pro + overview.byPlan.Enterprise}      icon={CreditCard}   color="bg-primary" />
+          <OverviewCard label="Active"   value={overview.byStatus.Active}                              icon={CheckCircle2} color="bg-secondary" />
+          <OverviewCard label="Trialing" value={overview.byStatus.Trialing}                            icon={Clock}        color="bg-primary" />
+          <OverviewCard label="Canceled" value={overview.byStatus.Canceled}                            icon={XCircle}      color="bg-error" />
         </div>
       )}
 
       {/* Search & Filters */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-6">
+      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 mb-6">
         <div className="flex flex-col sm:flex-row gap-3">
           <form onSubmit={handleSearch} className="flex gap-2 flex-1">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
               <input
                 type="text"
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
                 placeholder="Search by name or email…"
-                className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all"
+                className="w-full pl-9 pr-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm font-medium text-on-surface placeholder:text-outline focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
               />
             </div>
-            <button type="submit" className="px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold rounded-xl transition-all">
+            <button type="submit" className="px-4 py-2.5 bg-primary hover:bg-primary-container text-white text-sm font-bold rounded-xl transition-all">
               Search
             </button>
           </form>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <Filter className="w-4 h-4 text-slate-400 flex-shrink-0" />
+            <Filter className="w-4 h-4 text-outline flex-shrink-0" />
             {/* Plan filter */}
             {PLAN_OPTIONS.map(opt => (
               <button
@@ -528,8 +531,8 @@ export default function SubscriptionsPage() {
                 className={cn(
                   'px-3 py-2 rounded-xl text-xs font-bold transition-all border',
                   planFilter === opt
-                    ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
-                    : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                    ? 'bg-primary-container text-on-primary-container border-primary-container'
+                    : 'bg-surface text-on-surface-variant border-outline-variant hover:bg-surface-container'
                 )}
               >
                 {opt === 'all' ? 'All Plans' : opt}
@@ -545,8 +548,8 @@ export default function SubscriptionsPage() {
                 className={cn(
                   'px-3 py-2 rounded-xl text-xs font-bold transition-all border',
                   statusFilter === opt
-                    ? 'bg-slate-800 text-white border-slate-800 shadow-sm'
-                    : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                    ? 'bg-primary-container text-on-primary-container border-primary-container'
+                    : 'bg-surface text-on-surface-variant border-outline-variant hover:bg-surface-container'
                 )}
               >
                 {opt}
@@ -558,25 +561,25 @@ export default function SubscriptionsPage() {
 
       {/* Table */}
       {subscriptions.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm py-24 text-center">
-          <CreditCard className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-          <p className="text-sm font-medium text-slate-400">No subscriptions found.</p>
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow py-24 text-center">
+          <CreditCard className="w-10 h-10 text-outline-variant mx-auto mb-3" />
+          <p className="text-sm font-medium text-outline">No subscriptions found.</p>
         </div>
       ) : (
         <>
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden mb-6">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/60">
+                  <tr className="border-b border-outline-variant bg-surface-container-low">
                     {['User', 'Plan', 'Status', 'Modules', 'AI Usage', 'Trial / Since'].map(h => (
-                      <th key={h} className="text-left px-6 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      <th key={h} className="text-left px-6 py-3 text-label-sm text-on-surface-variant">
                         {h}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-outline-variant">
                   {subscriptions.map(sub => {
                     const StatusIcon = STATUS_ICONS[sub.billingStatus] ?? AlertCircle;
                     const enabledModules = Object.entries(sub.modules ?? {})
@@ -584,16 +587,16 @@ export default function SubscriptionsPage() {
                       .map(([k]) => MODULE_LABELS[k] ?? k);
 
                     return (
-                      <tr key={sub._id} className="hover:bg-slate-50/50 transition-colors">
+                      <tr key={sub._id} className="hover:bg-surface/50 transition-colors">
                         {/* User */}
                         <td className="px-6 py-4">
                           {sub.user ? (
                             <div>
-                              <div className="font-semibold text-slate-900 leading-tight">{sub.user.fullName}</div>
-                              <div className="text-xs text-slate-400 mt-0.5">{sub.user.email}</div>
+                              <div className="font-semibold text-on-surface leading-tight">{sub.user.fullName}</div>
+                              <div className="text-xs text-outline mt-0.5">{sub.user.email}</div>
                             </div>
                           ) : (
-                            <span className="text-slate-300 text-xs italic">No user</span>
+                            <span className="text-outline text-xs italic">No user</span>
                           )}
                         </td>
 
@@ -611,7 +614,7 @@ export default function SubscriptionsPage() {
                             {sub.billingStatus}
                           </span>
                           {sub.trialStatus?.isActive && sub.trialStatus?.endsAt && (
-                            <div className="text-[10px] text-slate-400 mt-1">
+                            <div className="text-[10px] text-outline mt-1">
                               Trial ends {new Date(sub.trialStatus.endsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                             </div>
                           )}
@@ -620,16 +623,16 @@ export default function SubscriptionsPage() {
                         {/* Modules */}
                         <td className="px-6 py-4">
                           {enabledModules.length === 0 ? (
-                            <span className="text-slate-300 text-xs italic">None</span>
+                            <span className="text-outline text-xs italic">None</span>
                           ) : (
                             <div className="flex flex-wrap gap-1">
                               {enabledModules.slice(0, 3).map(m => (
-                                <span key={m} className="px-1.5 py-0.5 bg-cyan-50 text-cyan-700 text-[10px] font-bold rounded border border-cyan-100">
+                                <span key={m} className="px-1.5 py-0.5 bg-primary-fixed text-primary text-[10px] font-bold rounded border border-primary-fixed-dim">
                                   {m}
                                 </span>
                               ))}
                               {enabledModules.length > 3 && (
-                                <span className="px-1.5 py-0.5 bg-slate-50 text-slate-400 text-[10px] font-bold rounded border border-slate-200">
+                                <span className="px-1.5 py-0.5 bg-surface text-outline text-[10px] font-bold rounded border border-outline-variant">
                                   +{enabledModules.length - 3}
                                 </span>
                               )}
@@ -641,20 +644,20 @@ export default function SubscriptionsPage() {
                         <td className="px-6 py-4 min-w-[140px]">
                           {sub.usage ? (
                             <div className="space-y-1.5">
-                              <div className="flex items-center gap-1 text-[10px] text-slate-500 font-medium">
-                                <Zap className="w-3 h-3 text-cyan-500" /> AI Generations
+                              <div className="flex items-center gap-1 text-[10px] text-on-surface-variant font-medium">
+                                <Zap className="w-3 h-3 text-primary" /> AI Generations
                               </div>
                               <UsageBar used={sub.usage.aiGenerations} limit={sub.usage.aiGenerationsLimit} />
                             </div>
                           ) : (
-                            <span className="text-slate-300 text-xs italic">No data</span>
+                            <span className="text-outline text-xs italic">No data</span>
                           )}
                         </td>
 
                         {/* Dates */}
-                        <td className="px-6 py-4 text-xs text-slate-400 whitespace-nowrap">
+                        <td className="px-6 py-4 text-xs text-outline whitespace-nowrap">
                           {sub.trialStatus?.isActive ? (
-                            <span className="text-cyan-600 font-semibold">In Trial</span>
+                            <span className="text-primary font-semibold">In Trial</span>
                           ) : (
                             <span>
                               Since{' '}
@@ -664,7 +667,7 @@ export default function SubscriptionsPage() {
                             </span>
                           )}
                           {sub.user?.lastLoginAt && (
-                            <div className="text-[10px] text-slate-300 mt-0.5">
+                            <div className="text-[10px] text-outline mt-0.5">
                               Last login{' '}
                               {new Date(sub.user.lastLoginAt).toLocaleDateString('en-GB', {
                                 day: 'numeric', month: 'short',
@@ -683,20 +686,20 @@ export default function SubscriptionsPage() {
           {/* Pagination */}
           {pagination.totalPages > 1 && (
             <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-500 font-medium">
+              <p className="text-sm text-on-surface-variant font-medium">
                 Showing{' '}
-                <span className="font-bold text-slate-900">
+                <span className="font-bold text-on-surface">
                   {(pagination.page - 1) * pagination.limit + 1}–
                   {Math.min(pagination.page * pagination.limit, pagination.total)}
                 </span>{' '}
                 of{' '}
-                <span className="font-bold text-slate-900">{pagination.total.toLocaleString()}</span>
+                <span className="font-bold text-on-surface">{pagination.total.toLocaleString()}</span>
               </p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => handlePage(page - 1)}
                   disabled={page === 1}
-                  className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  className="w-9 h-9 rounded-xl border border-outline-variant bg-surface-container-lowest flex items-center justify-center text-on-surface-variant hover:bg-surface disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
@@ -710,7 +713,7 @@ export default function SubscriptionsPage() {
                   }, [])
                   .map((p, idx) =>
                     p === '...' ? (
-                      <span key={`e${idx}`} className="px-2 text-slate-400 text-sm">…</span>
+                      <span key={`e${idx}`} className="px-2 text-outline text-sm">…</span>
                     ) : (
                       <button
                         key={p}
@@ -718,8 +721,8 @@ export default function SubscriptionsPage() {
                         className={cn(
                           'w-9 h-9 rounded-xl text-sm font-bold transition-all border',
                           page === p
-                            ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
-                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                            ? 'bg-primary-container text-on-primary-container border-primary-container'
+                            : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:bg-surface'
                         )}
                       >
                         {p}
@@ -729,7 +732,7 @@ export default function SubscriptionsPage() {
                 <button
                   onClick={() => handlePage(page + 1)}
                   disabled={page === pagination.totalPages}
-                  className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  className="w-9 h-9 rounded-xl border border-outline-variant bg-surface-container-lowest flex items-center justify-center text-on-surface-variant hover:bg-surface disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>

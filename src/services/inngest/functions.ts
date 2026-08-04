@@ -1141,9 +1141,69 @@ export const generateAuditJob = inngest.createFunction(
   }
 );
 
+/**
+ * Follow-up drip shared by salesNurtureRequested (normal path) and
+ * salesNurtureConsented (post-opt-in path) — identical logic, factored out
+ * so the consent gate below doesn't require a second copy to drift from.
+ * `step` is passed in rather than closed over so each caller's own Inngest
+ * step-name namespace is used.
+ */
+async function runSalesFollowUpDrip(step: any, conversationId: string, followUpCount: number) {
+  for (let i = 0; i < followUpCount; i++) {
+    const cfg = await step.run(`load-followup-${i}`, async () => {
+      const { getSalesAgentConfig } = await import('@/services/sales/salesAgent');
+      const config = await getSalesAgentConfig();
+      const f = config.followUps[i];
+      return f ? { delayHours: Math.max(0, f.delayHours || 0), onlyIfNoReply: f.onlyIfNoReply } : null;
+    });
+    if (!cfg) break;
+
+    if (cfg.delayHours > 0) {
+      await step.sleep(`wait-followup-${i}`, `${cfg.delayHours}h`);
+    }
+
+    const stop = await step.run(`send-followup-${i}`, async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: SalesConversation } = await import('@/models/SalesConversation');
+      const { getSalesAgentConfig, composeFollowUp } = await import('@/services/sales/salesAgent');
+      const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+
+      const convo: any = await SalesConversation.findById(conversationId);
+      if (!convo || convo.status !== 'active') return true; // stop drip
+      // If the lead engaged, hand off to the live agent — stop the drip.
+      if (cfg.onlyIfNoReply && convo.lastLeadReplyAt && convo.firstSentAt && convo.lastLeadReplyAt > convo.firstSentAt) {
+        return true;
+      }
+      const config = await getSalesAgentConfig();
+      const f = config.followUps[i];
+      if (!f) return true;
+      const msg = await composeFollowUp(f, config, convo.scores, convo.leadName);
+      const res = await sendOutboundMessage(convo.leadPhone, msg, undefined, convo.businessId.toString());
+      if (res.success) {
+        convo.messages.push({ role: 'agent', text: msg, at: new Date() });
+        convo.lastAgentAt = new Date();
+        convo.followUpsSent = (convo.followUpsSent || 0) + 1;
+        await convo.save();
+      }
+      return false;
+    });
+    if (stop) break;
+  }
+}
+
 // 7b. WhatsApp Sales Nurture drip (platform → lead, after a free audit).
 // Timing (first-message delay + follow-up delays) and content come from the
 // super-admin SalesAgentConfig. Durable sleeps survive restarts.
+//
+// Consent gate: a number sourced from the public /free-report web form has
+// never been verified to belong to the person who submitted it — anyone can
+// type in a third party's number. If this phone has never messaged the
+// platform's WhatsApp line before, the real pitch is withheld and only a
+// "reply YES" consent request is sent; the real first message + follow-up
+// drip only run once salesNurtureConsented (below) fires from an affirmative
+// reply. A phone that HAS messaged before (booking/report-connect/an earlier
+// sales reply) skips the gate — it has already engaged with the platform.
 export const salesNurtureRequested = inngest.createFunction(
   { id: 'sales-nurture-requested', triggers: [{ event: 'sales/nurture.requested' }] },
   async ({ event, step }) => {
@@ -1158,6 +1218,7 @@ export const salesNurtureRequested = inngest.createFunction(
       const { default: User } = await import('@/models/User');
       const { default: SalesConversation } = await import('@/models/SalesConversation');
       const { isWorkspaceUnlocked } = await import('@/lib/workspaceAccess');
+      const { hasPhoneMessagedPlatformBefore } = await import('@/lib/whatsappConsent');
 
       const config = await getSalesAgentConfig();
       if (!config.enabled) return { skip: 'agent disabled' as const };
@@ -1179,14 +1240,17 @@ export const salesNurtureRequested = inngest.createFunction(
       if (!phone) return { skip: 'no phone' as const };
 
       const { normalizePhoneE164, phoneDedupeKey } = await import('@/lib/phone');
+      const phoneKey = phoneDedupeKey(phone);
+      const priorContact = await hasPhoneMessagedPlatformBefore(phoneKey);
       const scores = extractScores(audit, business);
       const convo = await SalesConversation.create({
         businessId: business._id,
         auditId: audit._id,
         leadPhone: normalizePhoneE164(phone) || phone,
-        phoneKey: phoneDedupeKey(phone),
+        phoneKey,
         leadName: owner?.fullName || business.name || '',
         status: 'active',
+        consentStatus: priorContact ? 'not_required' : 'pending',
         scores,
       });
       // Send-once guard so re-runs don't double-message.
@@ -1196,6 +1260,7 @@ export const salesNurtureRequested = inngest.createFunction(
         conversationId: convo._id.toString(),
         phone,
         leadName: owner?.fullName || '',
+        needsConsent: !priorContact,
         firstDelayMinutes: Math.max(0, config.firstMessage.delayMinutes || 0),
         followUpCount: config.followUps.length,
       };
@@ -1205,6 +1270,29 @@ export const salesNurtureRequested = inngest.createFunction(
 
     if (prep.firstDelayMinutes > 0) {
       await step.sleep('wait-before-first', `${prep.firstDelayMinutes}m`);
+    }
+
+    if (prep.needsConsent) {
+      // Send the consent request only. No real pitch, no follow-up drip —
+      // those run in salesNurtureConsented once (if) an affirmative reply
+      // arrives (see the SalesConversation branch in the WhatsApp webhook).
+      await step.run('send-consent-request', async () => {
+        const dbConnect = (await import('@/lib/mongodb')).default;
+        await dbConnect();
+        const { default: SalesConversation } = await import('@/models/SalesConversation');
+        const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+        const { CONSENT_REQUEST_MESSAGE } = await import('@/lib/whatsappConsent');
+
+        const convo: any = await SalesConversation.findById(prep.conversationId);
+        if (!convo || convo.status !== 'active' || convo.consentStatus !== 'pending') return;
+        const res = await sendOutboundMessage(convo.leadPhone, CONSENT_REQUEST_MESSAGE, undefined, convo.businessId.toString());
+        if (res.success) {
+          convo.messages.push({ role: 'agent', text: CONSENT_REQUEST_MESSAGE, at: new Date() });
+          convo.lastAgentAt = new Date();
+          await convo.save();
+        }
+      });
+      return { success: true, conversationId: prep.conversationId, awaitingConsent: true };
     }
 
     // Send first message.
@@ -1228,52 +1316,68 @@ export const salesNurtureRequested = inngest.createFunction(
       }
     });
 
-    // Follow-up drip.
-    for (let i = 0; i < prep.followUpCount; i++) {
-      const cfg = await step.run(`load-followup-${i}`, async () => {
-        const { getSalesAgentConfig } = await import('@/services/sales/salesAgent');
-        const config = await getSalesAgentConfig();
-        const f = config.followUps[i];
-        return f ? { delayHours: Math.max(0, f.delayHours || 0), onlyIfNoReply: f.onlyIfNoReply } : null;
-      });
-      if (!cfg) break;
-
-      if (cfg.delayHours > 0) {
-        await step.sleep(`wait-followup-${i}`, `${cfg.delayHours}h`);
-      }
-
-      const stop = await step.run(`send-followup-${i}`, async () => {
-        const dbConnect = (await import('@/lib/mongodb')).default;
-        await dbConnect();
-        const { default: SalesConversation } = await import('@/models/SalesConversation');
-        const { getSalesAgentConfig, composeFollowUp } = await import('@/services/sales/salesAgent');
-        const { sendOutboundMessage } = await import('@/services/whatsapp/send');
-
-        const convo: any = await SalesConversation.findById(prep.conversationId);
-        if (!convo || convo.status !== 'active') return true; // stop drip
-        // If the lead engaged, hand off to the live agent — stop the drip.
-        if (cfg.onlyIfNoReply && convo.lastLeadReplyAt && convo.firstSentAt && convo.lastLeadReplyAt > convo.firstSentAt) {
-          return true;
-        }
-        const config = await getSalesAgentConfig();
-        const f = config.followUps[i];
-        if (!f) return true;
-        const msg = await composeFollowUp(f, config, convo.scores, convo.leadName);
-        const res = await sendOutboundMessage(convo.leadPhone, msg, undefined, convo.businessId.toString());
-        if (res.success) {
-          convo.messages.push({ role: 'agent', text: msg, at: new Date() });
-          convo.lastAgentAt = new Date();
-          convo.followUpsSent = (convo.followUpsSent || 0) + 1;
-          await convo.save();
-        }
-        return false;
-      });
-      if (stop) break;
-    }
+    await runSalesFollowUpDrip(step, prep.conversationId, prep.followUpCount);
 
     return { success: true, conversationId: prep.conversationId };
   }
 );
+
+// 7b-ii. Fires once a lead who was gated behind the consent request (above)
+// replies affirmatively — sends the real pitch immediately (no delay; they
+// just actively opted in) and then runs the same follow-up drip.
+export const salesNurtureConsented = inngest.createFunction(
+  { id: 'sales-nurture-consented', triggers: [{ event: 'sales/nurture.consented' }] },
+  async ({ event, step }) => {
+    const { conversationId } = event.data;
+
+    const prep = await step.run('prepare-consented-nurture', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: SalesConversation } = await import('@/models/SalesConversation');
+      const { getSalesAgentConfig } = await import('@/services/sales/salesAgent');
+
+      const convo: any = await SalesConversation.findById(conversationId);
+      if (!convo || convo.status !== 'active' || convo.consentStatus !== 'granted') {
+        return { skip: 'not eligible' as const };
+      }
+      const config = await getSalesAgentConfig();
+      if (!config.enabled) return { skip: 'agent disabled' as const };
+      return { followUpCount: config.followUps.length };
+    });
+
+    if ('skip' in prep) return { skipped: prep.skip };
+
+    await step.run('send-first-message-after-consent', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: SalesConversation } = await import('@/models/SalesConversation');
+      const { getSalesAgentConfig, composeFirstMessage } = await import('@/services/sales/salesAgent');
+      const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+
+      const convo: any = await SalesConversation.findById(conversationId);
+      if (!convo || convo.status !== 'active') return;
+      const config = await getSalesAgentConfig();
+      const msg = await composeFirstMessage(config, convo.scores, convo.leadName);
+      const res = await sendOutboundMessage(convo.leadPhone, msg, undefined, convo.businessId.toString());
+      if (res.success) {
+        convo.messages.push({ role: 'agent', text: msg, at: new Date() });
+        convo.firstSentAt = new Date();
+        convo.lastAgentAt = new Date();
+        await convo.save();
+      }
+    });
+
+    await runSalesFollowUpDrip(step, conversationId, prep.followUpCount);
+
+    return { success: true, conversationId };
+  }
+);
+
+// Shared fallback for salesAgentReply/bookingAgentReply below: a lead who
+// just texted an agent that's currently turned off used to get nothing back
+// at all — no menu, no acknowledgement. This fires every time a reply would
+// otherwise be produced but the config says the agent is disabled.
+const AGENT_DISABLED_FALLBACK_MESSAGE = "Thanks for reaching out — a team member will get back to you shortly.";
 
 // 7c. Live inbound reply from a sales lead → AI sales-agent response.
 export const salesAgentReply = inngest.createFunction(
@@ -1290,7 +1394,15 @@ export const salesAgentReply = inngest.createFunction(
       const convo: any = await SalesConversation.findById(conversationId);
       if (!convo || convo.status !== 'active') return;
       const config = await getSalesAgentConfig();
-      if (!config.enabled) return;
+      if (!config.enabled) {
+        const res = await sendOutboundMessage(convo.leadPhone, AGENT_DISABLED_FALLBACK_MESSAGE, undefined, convo.businessId.toString());
+        if (res.success) {
+          convo.messages.push({ role: 'agent', text: AGENT_DISABLED_FALLBACK_MESSAGE, at: new Date() });
+          convo.lastAgentAt = new Date();
+          await convo.save();
+        }
+        return;
+      }
 
       const reply = await composeAgentReply(config, convo);
       const res = await sendOutboundMessage(convo.leadPhone, reply, undefined, convo.businessId.toString());
@@ -1327,7 +1439,14 @@ export const bookingAgentReply = inngest.createFunction(
       if (!convo || convo.status !== 'active') return;
 
       const config = await getBookingAgentConfig();
-      if (!config.enabled) return;
+      if (!config.enabled) {
+        const res = await sendOutboundMessage(convo.leadPhone, AGENT_DISABLED_FALLBACK_MESSAGE, convo.leadId?.toString());
+        if (res.success) {
+          convo.messages.push({ role: 'agent', text: AGENT_DISABLED_FALLBACK_MESSAGE, at: new Date() });
+          await convo.save();
+        }
+        return;
+      }
 
       const { reply, ready, details } = await composeAgentReply(config, convo);
       convo.details = { ...convo.details, ...details };
@@ -1484,11 +1603,11 @@ export const reportCardDeliver = inngest.createFunction(
       const { default: Business } = await import('@/models/Business');
       const { default: User } = await import('@/models/User');
       const { default: ReportShare } = await import('@/models/ReportShare');
+      const { default: LoginLink } = await import('@/models/LoginLink');
       const { getReportAgentConfig, composeSummaryMessage, extractReportScores } = await import('@/services/report/reportAgent');
       const { sendOutboundMessage } = await import('@/services/whatsapp/send');
       const { launchBrowser } = await import('@/lib/pdf/browser');
       const { uploadPublicObject } = await import('@/lib/storage');
-      const { signSessionToken } = await import('@/lib/session');
       const crypto = await import('crypto');
 
       const convo: any = await ReportConversation.findById(conversationId);
@@ -1559,10 +1678,20 @@ export const reportCardDeliver = inngest.createFunction(
         );
       }
 
+      // Single-use, short-lived login link (NOT a reusable session JWT — see
+      // src/models/LoginLink.ts for why: WhatsApp links get forwarded,
+      // screenshotted, and cached, so a multi-use 30-day bearer token
+      // embedded in a URL sent over that channel is a real takeover risk).
       let dashboardLink = baseUrl;
       if (user) {
-        const loginToken = await signSessionToken(user._id.toString(), user.role);
-        dashboardLink = `${baseUrl}/api/auth/session-link/${loginToken}`;
+        const rawToken = crypto.randomBytes(32).toString('hex');
+        const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+        await LoginLink.create({
+          tokenHash,
+          userId: user._id,
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
+        });
+        dashboardLink = `${baseUrl}/api/auth/session-link/${rawToken}`;
       }
 
       const summary = composeSummaryMessage(config, scores, convo.leadName, dashboardLink);
@@ -1582,11 +1711,20 @@ export const reportCardDeliver = inngest.createFunction(
 export const reviewSyncWorker = inngest.createFunction(
   { id: "review-sync-worker", triggers: [{ cron: "0 2 * * *" }] }, // Nightly at 2 AM
   async ({ step }) => {
-    const businesses = await step.run("fetch-active-businesses", async () => {
+    // Only businesses with a connected GBP token get auto-synced here — for
+    // everyone else, syncReviewsForBusiness would silently fall back to
+    // SerpApi (a paid API), burning a credit every night for businesses that
+    // haven't connected Google yet. Unconnected businesses get reviews via
+    // the manual "Sync reviews" button instead (which requires GBP already —
+    // see reviews/fetch/route.ts), or as soon as they connect.
+    const businesses = await step.run("fetch-gbp-connected-businesses", async () => {
       const dbConnect = (await import("@/lib/mongodb")).default;
       await dbConnect();
       const { default: Business } = await import("@/models/Business");
-      return await Business.find({ isActive: true }).select('_id').lean();
+      const { default: GBPToken } = await import("@/models/GBPToken");
+      const tokens = await GBPToken.find({}).select('businessId').lean();
+      const connectedIds = tokens.map(t => (t as any).businessId);
+      return await Business.find({ isActive: true, _id: { $in: connectedIds } }).select('_id').lean();
     });
 
     const events = businesses.map(b => ({
@@ -1896,30 +2034,16 @@ export const processDemoBooking = inngest.createFunction(
       
       if (!booking) return;
 
-      // Ensure SendGrid logic can be placed here or use a helper
-      const sendEmail = async (to: string, subject: string, html: string) => {
-        try {
-          await fetch('https://api.sendgrid.com/v3/mail/send', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              personalizations: [{ to: [{ email: to }] }],
-              from: { email: process.env.EMAIL_FROM!, name: 'GrowwMatics AI' },
-              subject,
-              content: [{ type: 'text/html', value: html }],
-            }),
-          });
-        } catch (error) {
-          console.error('Email send error:', error);
-        }
-      };
+      // Was a raw fetch() straight to SendGrid with an empty SENDGRID_API_KEY
+      // and no status check — the 401 "succeeded" silently. sendTransactionalEmail
+      // (services/email.ts) is the same Resend-first, status-checked sender
+      // already used for OTP and billing-lifecycle email; every call below is
+      // now checked, not fire-and-forget.
+      const { sendTransactionalEmail } = await import("@/services/email");
 
       // Admin Alert
       if (process.env.ADMIN_EMAIL) {
-        await sendEmail(
+        const result = await sendTransactionalEmail(
           process.env.ADMIN_EMAIL,
           `New Demo Booking - ${booking.name} from ${booking.company}`,
           `
@@ -1936,27 +2060,37 @@ export const processDemoBooking = inngest.createFunction(
             </div>
           `
         );
+        if (!result.success) {
+          console.error(`[demo-booking] admin alert email to ${process.env.ADMIN_EMAIL} FAILED:`, (result as any).error);
+        }
+      } else {
+        console.warn(`[demo-booking] ADMIN_EMAIL is not set — no one was alerted about booking ${bookingId}. Check /admin/demo-bookings manually.`);
       }
 
       // Customer Confirmation (WhatsApp bookings may have no email — skip then;
       // the booking agent already sent a WhatsApp confirmation).
-      if (booking.email) await sendEmail(
-        booking.email,
-        'Demo Booking Confirmed - GrowwMatics AI',
-        `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #2563eb;">Demo Confirmed!</h2>
-            <p>Hi <b>${booking.name}</b>,</p>
-            <p>Your free demo has been successfully booked!</p>
-            <div style="background: #f0f7ff; border-radius: 12px; padding: 20px; margin: 20px 0;">
-              <p style="margin: 0;"><b>Date:</b> ${booking.date}</p>
-              <p style="margin: 8px 0 0;"><b>Time:</b> ${booking.timeSlot}</p>
+      if (booking.email) {
+        const result = await sendTransactionalEmail(
+          booking.email,
+          'Demo Booking Confirmed - GrowwMatics AI',
+          `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #2563eb;">Demo Confirmed!</h2>
+              <p>Hi <b>${booking.name}</b>,</p>
+              <p>Your free demo has been successfully booked!</p>
+              <div style="background: #f0f7ff; border-radius: 12px; padding: 20px; margin: 20px 0;">
+                <p style="margin: 0;"><b>Date:</b> ${booking.date}</p>
+                <p style="margin: 8px 0 0;"><b>Time:</b> ${booking.timeSlot}</p>
+              </div>
+              <p>Our team will contact you shortly to confirm the meeting link.</p>
+              <p style="color: #64748b; font-size: 14px;">Team GrowwMatics AI</p>
             </div>
-            <p>Our team will contact you shortly to confirm the meeting link.</p>
-            <p style="color: #64748b; font-size: 14px;">Team GrowwMatics AI</p>
-          </div>
-        `
-      );
+          `
+        );
+        if (!result.success) {
+          console.error(`[demo-booking] customer confirmation email to ${booking.email} FAILED:`, (result as any).error);
+        }
+      }
     });
 
     return { success: true };
@@ -2091,6 +2225,25 @@ export const gbpSyncWorker = inngest.createFunction(
 
       await GBPTokenModel.findOneAndUpdate({ businessId }, { $set: { lastSyncAt: now } });
       return { daysProcessed: dailyData.length, keywordsProcessed: allKeywords.length };
+    });
+
+    // Pulls real, reply-capable reviews from the official GBP API now that a
+    // connection exists (finalizeGbpConnection already purged any stale
+    // SerpApi-sourced reviews for this business — see src/lib/gbpConnect.ts).
+    // Runs on every gbp/sync.requested firing (connect + the periodic
+    // re-sync dispatcher above), so reviews stay current the same way
+    // insights/keywords do. Best-effort: a failure here shouldn't fail the
+    // insights/keywords sync that already succeeded above.
+    await step.run("sync-gbp-reviews", async () => {
+      const { default: BusinessModel } = await import("@/models/Business");
+      const { syncReviewsForBusiness } = await import("@/services/reviews/syncReviews");
+      const business = await BusinessModel.findById(businessId).select('organizationId').lean() as any;
+      const tenantId = business?.organizationId?.toString() ?? businessId;
+      try {
+        await syncReviewsForBusiness(businessId, tenantId);
+      } catch (err: any) {
+        console.error(`[GBP Sync] Review sync failed for ${businessId}:`, err.message);
+      }
     });
   }
 );

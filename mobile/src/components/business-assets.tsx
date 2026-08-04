@@ -120,9 +120,9 @@ export function BusinessAssets() {
               onPress={() =>
                 promptConnectGoogle(media.error?.message ?? 'Connect your Google Business Profile to add photos.')
               }
-              className="mt-3 rounded-xl bg-brand px-5 py-2.5 active:opacity-80"
+              className="mt-3 rounded-full bg-brand px-5 py-2.5 active:scale-95"
             >
-              <Text className="text-sm font-semibold text-on-brand">Connect Google</Text>
+              <Text className="font-sans-bold text-sm text-on-brand">Connect Google</Text>
             </Pressable>
           }
         />
@@ -135,7 +135,7 @@ export function BusinessAssets() {
         <View className="mb-4">
           {!media.data.liveWritesEnabled && (
             <View className="mb-3 rounded-xl border border-amber-400/25 bg-amber-400/10 px-3.5 py-2.5">
-              <Text className="text-xs leading-4 text-amber-300">
+              <Text className="font-sans-semibold text-xs leading-4 text-amber-300">
                 New uploads are saved but won't appear on Google yet — live publishing is temporarily paused.
               </Text>
             </View>
@@ -144,7 +144,7 @@ export function BusinessAssets() {
             {media.data.media.map((item) => (
               <View
                 key={item.name || item.url}
-                className="overflow-hidden rounded-2xl border border-surface-border bg-surface-raised"
+                className="overflow-hidden rounded-card border border-surface-border bg-surface-raised"
               >
                 <Image
                   source={{ uri: item.thumbnailUrl || item.url }}
@@ -152,7 +152,7 @@ export function BusinessAssets() {
                   contentFit="cover"
                 />
                 <View className="absolute bottom-0 left-0 right-0 bg-black/50 px-1.5 py-1">
-                  <Text className="text-[10px] font-semibold text-white" numberOfLines={1}>
+                  <Text className="font-sans-bold text-[10px] text-white" numberOfLines={1}>
                     {CATEGORY_LABEL[item.category]}
                   </Text>
                 </View>
@@ -161,11 +161,11 @@ export function BusinessAssets() {
           </View>
         </View>
       ) : (
-        <View className="mb-4 items-center rounded-3xl border border-surface-border bg-surface-raised px-6 py-10">
+        <View className="mb-4 items-center rounded-card border border-surface-border bg-surface-raised px-6 py-10">
           <View className="mb-3 h-16 w-16 items-center justify-center rounded-2xl bg-surface-overlay">
             <Ionicons name="image-outline" size={30} color={t.violet} />
           </View>
-          <Text className="mb-5 text-base font-semibold text-zinc-300">No Assets Added</Text>
+          <Text className="mb-5 font-sans-semibold text-base text-zinc-300">No Assets Added</Text>
         </View>
       )}
 
@@ -173,7 +173,7 @@ export function BusinessAssets() {
         <Pressable
           onPress={handleAddMedia}
           disabled={upload.isPending}
-          className="mb-2 self-start overflow-hidden rounded-2xl active:opacity-85"
+          className="mb-2 self-start overflow-hidden rounded-full active:scale-95"
         >
           <LinearGradient
             colors={[...BRAND_GRADIENT]}
@@ -182,7 +182,7 @@ export function BusinessAssets() {
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 22, paddingVertical: 13 }}
           >
             <Ionicons name="add" size={18} color="#ffffff" />
-            <Text className="text-base font-bold text-on-brand">
+            <Text className="font-sans-bold text-base text-on-brand">
               {upload.isPending ? 'Uploading…' : 'Add your Business Media'}
             </Text>
           </LinearGradient>
@@ -193,12 +193,12 @@ export function BusinessAssets() {
       <View className="mb-2 mt-6 flex-row items-center justify-between">
         <View className="flex-row items-center gap-2">
           <Text className="text-base">💡</Text>
-          <Text className="text-base font-bold" style={{ color: t.cyan }}>
+          <Text className="font-display-bold text-base" style={{ color: t.cyan }}>
             Smart Tips
           </Text>
         </View>
         <Pressable onPress={() => void Linking.openURL(GUIDELINES_URL)} className="active:opacity-70">
-          <Text className="text-sm font-semibold underline" style={{ color: t.brandBright }}>
+          <Text className="font-sans-semibold text-sm underline" style={{ color: t.brandBright }}>
             View Guidelines
           </Text>
         </Pressable>
@@ -207,12 +207,12 @@ export function BusinessAssets() {
         {SMART_TIPS.map((tip) => (
           <View
             key={tip.text}
-            className="flex-row items-center gap-3 rounded-2xl border border-surface-border bg-surface-raised px-4 py-3.5"
+            className="flex-row items-center gap-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5"
           >
             <View className="h-10 w-10 items-center justify-center rounded-xl bg-surface-overlay">
               <Ionicons name={tip.icon} size={19} color={t.brandBright} />
             </View>
-            <Text className="flex-1 text-sm leading-5 text-zinc-300">{tip.text}</Text>
+            <Text className="flex-1 font-sans text-sm leading-5 text-zinc-300">{tip.text}</Text>
           </View>
         ))}
       </View>

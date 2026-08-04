@@ -37,7 +37,17 @@ interface BusinessContextType {
 
 const BusinessContext = createContext<BusinessContextType | undefined>(undefined);
 
-export function BusinessProvider({ children }: { children: React.ReactNode }) {
+export function BusinessProvider({
+  children,
+  adminScope = false,
+}: {
+  children: React.ReactNode;
+  /** SUPER_ADMIN-only: list every customer's business, not just the caller's
+   *  own. Used by src/app/admin/whatsapp-agent/page.tsx to let an admin pick
+   *  which customer's WhatsApp inbox to view — server-side enforces the role
+   *  check regardless of this flag (see /api/business/all). */
+  adminScope?: boolean;
+}) {
   const router = useRouter();
 
   const [businesses, setBusinesses] = useState<Business[]>([]);
@@ -46,7 +56,7 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
 
   const fetchBusinesses = useCallback(async () => {
     try {
-      const res = await fetch('/api/business/all');
+      const res = await fetch(adminScope ? '/api/business/all?scope=all' : '/api/business/all');
       const json = await res.json();
       if (json.success && json.businesses && json.businesses.length > 0) {
         setBusinesses(json.businesses);
@@ -64,7 +74,7 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [adminScope]);
 
   useEffect(() => {
     fetchBusinesses();

@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Loader2, MapPin, Store, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { MaterialIcon } from '@/components/ui/MaterialIcon';
 
 interface CandidateLocation {
   locationId: string;
@@ -15,8 +15,8 @@ export default function SelectListingPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-          <Loader2 className="w-10 h-10 animate-spin text-violet-600" />
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <MaterialIcon name="progress_activity" size={40} className="animate-spin text-primary" />
         </div>
       }
     >
@@ -74,26 +74,26 @@ function SelectListingContent() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 p-8 sm:p-10">
-        <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center mb-6">
-          <MapPin className="text-slate-900 w-6 h-6" />
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-lg bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant p-8 sm:p-10">
+        <div className="w-12 h-12 bg-primary-fixed rounded-lg flex items-center justify-center mb-6">
+          <MaterialIcon name="location_on" size={24} className="text-primary" />
         </div>
-        <h1 className="text-2xl font-bold text-slate-900 mb-2">Which listing is yours?</h1>
-        <p className="text-slate-500 mb-8">
-          Your Google account manages more than one Business Profile. Pick the one you'd like a report for.
+        <h1 className="text-headline-md font-heading text-on-surface mb-2">Which listing is yours?</h1>
+        <p className="text-on-surface-variant mb-8">
+          Your Google account manages more than one Business Profile. Pick the one you&apos;d like a report for.
         </p>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-xl text-sm font-medium border border-red-200 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          <div className="mb-6 p-4 bg-error-container text-on-error-container rounded-lg text-sm font-medium border border-outline-variant flex items-start gap-3">
+            <MaterialIcon name="error" size={20} className="shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
         )}
 
         {!locations && !error && (
           <div className="flex items-center justify-center py-10">
-            <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
+            <MaterialIcon name="progress_activity" size={32} className="animate-spin text-primary" />
           </div>
         )}
 
@@ -105,20 +105,22 @@ function SelectListingContent() {
                 type="button"
                 onClick={() => handleSelect(loc.locationId)}
                 disabled={!!submittingId}
-                className="w-full text-left px-5 py-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl flex items-start gap-4 transition-colors disabled:opacity-50"
+                className="w-full text-left px-5 py-4 bg-surface-container-low hover:bg-surface-container border border-outline-variant rounded-lg flex items-start gap-4 transition-colors disabled:opacity-50"
               >
-                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                <div className="bg-surface-container-lowest p-2 rounded-lg border border-outline-variant">
                   {submittingId === loc.locationId ? (
-                    <Loader2 className="w-5 h-5 text-violet-600 animate-spin" />
+                    <MaterialIcon name="progress_activity" size={20} className="text-primary animate-spin" />
                   ) : (
-                    <Store className="w-5 h-5 text-slate-500" />
+                    <MaterialIcon name="store" size={20} className="text-on-surface-variant" />
                   )}
                 </div>
                 <div className="flex-1">
-                  <div className="font-bold text-slate-900">{loc.title}</div>
-                  {loc.address && <div className="text-sm text-slate-500 mt-0.5">{loc.address}</div>}
+                  <div className="font-bold text-on-surface">{loc.title}</div>
+                  {loc.address && <div className="text-sm text-on-surface-variant mt-0.5">{loc.address}</div>}
                 </div>
-                {submittingId === loc.locationId && <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />}
+                {submittingId === loc.locationId && (
+                  <MaterialIcon name="check_circle" size={20} className="text-secondary shrink-0" />
+                )}
               </button>
             ))}
           </div>

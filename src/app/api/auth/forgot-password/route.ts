@@ -4,6 +4,7 @@ import User from '@/models/User';
 import { generateOTP, hashOTP } from '@/services/auth/otp';
 import { sendEmailOtp } from '@/services/email';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { isQaTestingMode } from '@/lib/testingMode';
 
 // How long a password-reset OTP remains valid.
 const OTP_EXPIRY_MINUTES = 10;
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
     // Cap reset requests per IP so one client can't cycle many addresses / spam
     // OTP emails. Stays generic (200) even when throttled so nothing leaks.
     const rl = checkRateLimit(`forgot:${getClientIp(req)}`, 10, 15 * 60 * 1000);
-    if (!rl.allowed) {
+    if (!rl.allowed && !isQaTestingMode()) {
       return NextResponse.json({ success: true, message: GENERIC_MESSAGE });
     }
 

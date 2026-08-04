@@ -7,7 +7,7 @@ The WhatsApp AI Agent acts as an automated frontline responder for inbound Whats
 - **Frontend Structure**: 
   - N/A. Operates entirely as a background webhook.
 - **Backend Structure**: 
-  - `src/app/api/webhook/twilio/route.ts`: The entry point for incoming Twilio POST requests. It parses the `From`, `Body`, and `ProfileName` URL-encoded form data.
+  - `src/app/api/whatsapp/webhook/route.ts`: The entry point for incoming WhatsApp messages, both Twilio (form-encoded) and Meta Cloud API (JSON) — routed by `Content-Type`. Parses `From`/`Body`/`ProfileName` for Twilio. `src/app/api/webhook/twilio/route.ts` still exists and works (it delegates to the same handler) for any Twilio number whose console config wasn't updated, but new setups should point at the unified URL below.
 - **Service Layer**: 
   - `src/services/whatsapp.ts`: Handles interactions with the Twilio SDK to actually dispatch outgoing messages.
   - `src/services/ai.ts`: Contains `generateSalesResponse()`, which processes the chat history and outputs both the textual reply and embedded JSON metadata for CRM tracking.
@@ -16,7 +16,7 @@ The WhatsApp AI Agent acts as an automated frontline responder for inbound Whats
 
 ## 3. APIs Used
 - **Internal APIs**: 
-  - `POST /api/webhook/twilio`: The public-facing endpoint configured in the Twilio Console.
+  - `POST /api/whatsapp/webhook`: The public-facing endpoint to configure in the Twilio Console (and the same URL Meta's Cloud API webhook uses). The old `POST /api/webhook/twilio` still works via delegation but is not the one to configure for new setups.
 - **External APIs**: 
   - **Twilio Messaging API**: For sending outbound WhatsApp messages (`whatsapp:+1234567890`).
   - **Groq API**: For the LLM inference.
@@ -46,7 +46,7 @@ GROQ_API_KEY=gsk_...
 
 ## 9. Execution/Setup Guide
 1. Obtain an Ngrok URL for your local `localhost:3000`.
-2. Configure your Twilio WhatsApp Sandbox to point its "When a message comes in" webhook to `https://<ngrok-url>/api/webhook/twilio`.
+2. Configure your Twilio WhatsApp Sandbox to point its "When a message comes in" webhook to `https://<ngrok-url>/api/whatsapp/webhook`.
 3. Message the Twilio sandbox number from your personal WhatsApp to trigger the flow.
 
 ## 10. Module Dependencies

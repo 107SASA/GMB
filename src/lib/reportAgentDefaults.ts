@@ -65,10 +65,15 @@ export function defaultReportAgentConfig(): ReportAgentConfigShape {
   };
 }
 
-/** Fills {{var}} placeholders. Unknown placeholders are left as-is. */
+/**
+ * Fills {{var}} placeholders. Unmatched/empty ones resolve to '' rather than
+ * being left in place — a super-admin-typo'd or unrecognized {{var}} in the
+ * template must never reach a customer's WhatsApp message. Matches the same
+ * guarantee salesAgentDefaults.ts / bookingAgentDefaults.ts already make.
+ */
 export function renderTemplate(template: string, vars: Record<string, string | number | null | undefined>): string {
-  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, key) => {
+  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, key) => {
     const v = vars[key];
-    return v === undefined || v === null || v === '' ? m : String(v);
+    return v === undefined || v === null || v === '' ? '' : String(v);
   });
 }

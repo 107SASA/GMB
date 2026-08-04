@@ -32,17 +32,17 @@ export async function GET() {
       newUsersLast7Days,
       newBusinessesLast7Days,
     ] = await Promise.all([
-      User.countDocuments({ role: { $ne: 'super_admin' }, ...notShadow }),
+      User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, ...notShadow }),
       Business.countDocuments(),
       ContentGenerationLog.countDocuments(),
       // Recent signups (last 10 users, non-super_admin)
-      User.find({ role: { $ne: 'super_admin' }, ...notShadow })
+      User.find({ role: { $ne: 'SUPER_ADMIN' }, ...notShadow })
         .sort({ createdAt: -1 })
         .limit(10)
         .select('fullName email role createdAt subscriptionPlan')
         .lean(),
       User.countDocuments({
-        role: { $ne: 'super_admin' },
+        role: { $ne: 'SUPER_ADMIN' },
         ...notShadow,
         createdAt: { $gte: sevenDaysAgo },
       }),

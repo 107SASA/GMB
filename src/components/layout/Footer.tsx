@@ -1,63 +1,99 @@
 import Link from "next/link";
-import { Rocket } from "lucide-react";
-import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
+import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
+import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
 export function Footer() {
   return (
-    <footer className="py-20 px-6 border-t border-slate-200 bg-slate-50">
-      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
+    <footer className="py-20 px-6 border-t border-outline-variant bg-surface-container-low">
+      <div className="max-w-container-max mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
         <div className="col-span-1 md:col-span-1">
           <Link href="/" className="flex items-center gap-2 mb-6">
-            <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center shadow-sm">
-              <Rocket className="text-white w-5 h-5" />
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <MaterialIcon name="rocket_launch" size={18} className="text-on-primary" />
             </div>
-            <span className="text-xl font-bold tracking-tight text-slate-900">
+            <span className="text-xl font-heading font-bold tracking-tight text-on-surface">
               GrowwMatics AI
             </span>
           </Link>
-          <p className="text-slate-500 text-sm leading-relaxed mb-6">
+          <p className="text-on-surface-variant text-sm leading-relaxed mb-6">
             The #1 AI-powered platform for local business growth and Google Business Profile automation.
           </p>
         </div>
 
         <div>
-          <h4 className="font-bold text-slate-900 mb-6">Product</h4>
-          <ul className="space-y-4 text-sm text-slate-500">
-            <li><Link href="/#features" className="hover:text-primary transition-colors">Features</Link></li>
-            <li><Link href="/pricing" className="hover:text-primary transition-colors">Pricing</Link></li>
+          <h4 className="font-heading font-bold text-on-surface mb-6">Product</h4>
+          <ul className="space-y-4 text-sm text-on-surface-variant">
+            <li>
+              <Link href="/#features" className="hover:text-primary transition-colors">
+                Features
+              </Link>
+            </li>
+            <li>
+              <Link href="/pricing" className="hover:text-primary transition-colors">
+                Pricing
+              </Link>
+            </li>
             <li>
               <a
-                href={bookDemoLink()}
+                href={boostProfileLink()}
                 {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                 className="hover:text-primary transition-colors"
               >
-                Book a Demo
+                Get Report on WhatsApp
               </a>
             </li>
           </ul>
         </div>
 
         <div>
-          <h4 className="font-bold text-slate-900 mb-6">Get Started</h4>
-          <ul className="space-y-4 text-sm text-slate-500">
-            <li><Link href="/onboarding" className="hover:text-primary transition-colors">Create Account</Link></li>
-            <li><Link href="/login" className="hover:text-primary transition-colors">Sign In</Link></li>
-            <li><Link href="/contact" className="hover:text-primary transition-colors">Contact Us</Link></li>
+          <h4 className="font-heading font-bold text-on-surface mb-6">Get Started</h4>
+          <ul className="space-y-4 text-sm text-on-surface-variant">
+            <li>
+              <Link href="/free-report" className="hover:text-primary transition-colors">
+                Get Free Report
+              </Link>
+            </li>
+            <li>
+              <Link href="/login" className="hover:text-primary transition-colors">
+                Sign In
+              </Link>
+            </li>
+            <li>
+              <Link href="/contact" className="hover:text-primary transition-colors">
+                Contact Us
+              </Link>
+            </li>
           </ul>
         </div>
 
         <div>
-          <h4 className="font-bold text-slate-900 mb-6">Legal</h4>
-          <ul className="space-y-4 text-sm text-slate-500">
-            <li><Link href="/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
-            <li><Link href="/terms" className="hover:text-primary transition-colors">Terms &amp; Conditions</Link></li>
-            <li><Link href="/refund" className="hover:text-primary transition-colors">Refund &amp; Cancellation</Link></li>
-            <li><Link href="/contact" className="hover:text-primary transition-colors">Contact Us</Link></li>
+          <h4 className="font-heading font-bold text-on-surface mb-6">Legal</h4>
+          <ul className="space-y-4 text-sm text-on-surface-variant">
+            <li>
+              <Link href="/privacy" className="hover:text-primary transition-colors">
+                Privacy Policy
+              </Link>
+            </li>
+            <li>
+              <Link href="/terms" className="hover:text-primary transition-colors">
+                Terms &amp; Conditions
+              </Link>
+            </li>
+            <li>
+              <Link href="/refund" className="hover:text-primary transition-colors">
+                Refund &amp; Cancellation
+              </Link>
+            </li>
+            <li>
+              <Link href="/contact" className="hover:text-primary transition-colors">
+                Contact Us
+              </Link>
+            </li>
           </ul>
         </div>
       </div>
-      
-      <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-slate-200 text-center text-slate-400 text-xs">
+
+      <div className="max-w-container-max mx-auto mt-20 pt-8 border-t border-outline-variant text-center text-outline text-xs">
         © {new Date().getFullYear()} GrowwMatics AI. All rights reserved. Built for the future of local SEO.
       </div>
     </footer>

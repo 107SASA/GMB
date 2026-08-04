@@ -175,3 +175,53 @@ export const sendEmailOtp = async (
 
   return { success: false, error: 'All configured email providers failed to send the OTP.' };
 };
+
+/**
+ * Generic transactional email — same Resend-then-SendGrid fallback chain as
+ * sendEmailOtp(), for callers whose content isn't OTP-shaped (billing
+ * lifecycle emails, etc). Never throws; always resolves with a success flag
+ * so a provider outage can't break the caller's own workflow — same
+ * best-effort contract as notifyBusinessUsers() in services/notifications.ts.
+ */
+export const sendTransactionalEmail = async (to: string, subject: string, html: string) => {
+  if (!resend && !transporter) {
+    console.warn(`Mocking transactional email to ${to} ("${subject}") — no email provider configured.`);
+    return { success: true, messageId: 'mock_txn_id' };
+  }
+
+  if (resend) {
+    try {
+      const { data, error } = await resend.emails.send({
+        from: process.env.RESEND_FROM_EMAIL || 'GrowwMatics AI <onboarding@resend.dev>',
+        to: [to],
+        subject,
+        html,
+      });
+      if (!error) {
+        console.log(`✅ Transactional email sent to ${to} via Resend ("${subject}"): ${data?.id}`);
+        return { success: true, messageId: data?.id };
+      }
+      console.error(`Resend API error sending "${subject}" to ${to}:`, error.message, '— falling back to SendGrid if configured.');
+    } catch (error: any) {
+      console.error(`Resend threw sending "${subject}" to ${to}:`, error.message);
+    }
+  }
+
+  if (transporter) {
+    try {
+      const info = await transporter.sendMail({
+        from: `"${process.env.EMAIL_FROM_NAME || 'GrowwMatics AI'}" <${process.env.EMAIL_FROM || 'noreply@example.com'}>`,
+        to,
+        subject,
+        html,
+      });
+      console.log(`✅ Transactional email sent to ${to} via SendGrid: ${info.messageId}`);
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      console.error(`SendGrid error sending "${subject}" to ${to}:`, error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  return { success: false, error: 'All configured email providers failed to send this email.' };
+};

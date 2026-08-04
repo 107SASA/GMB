@@ -27,13 +27,15 @@ function ReviewCard({ review }: { review: Review }) {
   return (
     <Pressable
       onPress={() => router.push(`/reviews/${review._id}`)}
-      className="mb-3 rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5 active:opacity-80"
+      className="mb-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5 active:opacity-80"
     >
       <View className="flex-row items-center justify-between">
-        <Text className="flex-1 text-base font-semibold text-white" numberOfLines={1}>
+        <Text className="flex-1 font-sans-semibold text-base text-white" numberOfLines={1}>
           {review.reviewer}
         </Text>
-        <Text className="text-xs text-zinc-500">{timeAgo(review.postedAt ?? review.createdAt)}</Text>
+        <Text className="font-sans text-xs text-zinc-500">
+          {timeAgo(review.postedAt ?? review.createdAt)}
+        </Text>
       </View>
       <View className="mt-1.5 flex-row items-center gap-2">
         <Stars rating={review.rating} />
@@ -45,7 +47,7 @@ function ReviewCard({ review }: { review: Review }) {
         </View>
       </View>
       {!!review.reviewText && (
-        <Text className="mt-2 text-sm text-zinc-400" numberOfLines={2}>
+        <Text className="mt-2 font-sans text-sm text-zinc-400" numberOfLines={2}>
           {review.reviewText}
         </Text>
       )}
@@ -92,7 +94,7 @@ export default function ReviewsScreen() {
   return (
     <Screen>
       <View className="flex-row items-center justify-between px-5 pb-2 pt-4">
-        <Text className="text-[28px] font-extrabold tracking-tight text-white">Reviews</Text>
+        <Text className="font-display text-[28px] leading-8.5 tracking-tight text-white">Reviews</Text>
         <Pressable
           onPress={() => sync.mutate()}
           disabled={sync.isPending || !activeBusinessId}
@@ -145,7 +147,7 @@ export default function ReviewsScreen() {
             <RefreshControl
               refreshing={reviews.isRefetching || sync.isPending}
               onRefresh={() => sync.mutate()}
-              tintColor="#6366F1"
+              tintColor={t.brandBright}
             />
           }
           ListEmptyComponent={

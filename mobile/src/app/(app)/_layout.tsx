@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Redirect, Tabs } from 'expo-router';
-import { Text, View } from 'react-native';
+import { Tabs, useRouter } from 'expo-router';
+import { useEffect } from 'react';
+import { Text, useColorScheme, View } from 'react-native';
 
 import { useAuth } from '@/auth/AuthContext';
 import { useBusiness } from '@/business/BusinessContext';
@@ -20,7 +21,7 @@ function SelectBusinessScreen() {
     <Screen>
       <ScreenTitle>Choose a business</ScreenTitle>
       <View className="px-5 pb-4">
-        <Text className="text-sm leading-5 text-zinc-400">
+        <Text className="font-sans text-sm leading-5 text-zinc-400">
           Pick the business you want to work with. You can switch anytime from the More tab.
         </Text>
       </View>
@@ -31,8 +32,15 @@ function SelectBusinessScreen() {
   );
 }
 
-/** Outline icon normally, filled when the tab is focused. */
-function tabIcon(outline: keyof typeof Ionicons.glyphMap, filled: keyof typeof Ionicons.glyphMap) {
+/** Secondary-container pill (M3 nav-bar indicator) behind the active tab's icon. */
+const SECONDARY_CONTAINER = { light: '#9af2c0', dark: '#005233' } as const;
+
+/** Outline icon normally, filled + pill-backed when the tab is focused. */
+function tabIcon(
+  outline: keyof typeof Ionicons.glyphMap,
+  filled: keyof typeof Ionicons.glyphMap,
+  scheme: 'light' | 'dark'
+) {
   return ({
     color,
     size,
@@ -42,17 +50,39 @@ function tabIcon(outline: keyof typeof Ionicons.glyphMap, filled: keyof typeof I
     size: number;
     focused: boolean;
   }) => (
-    <Ionicons name={focused ? filled : outline} size={size} color={color} />
+    <View
+      style={{
+        paddingHorizontal: 18,
+        paddingVertical: 4,
+        borderRadius: 999,
+        backgroundColor: focused ? SECONDARY_CONTAINER[scheme] : 'transparent',
+      }}
+    >
+      <Ionicons name={focused ? filled : outline} size={size} color={color} />
+    </View>
   );
 }
+
+/** Active-tab tint follows the pill's on-secondary-container text color. */
+const ACTIVE_TINT = { light: '#0c7149', dark: '#9df5c3' } as const;
 
 export default function AppLayout() {
   const { isAuthenticated } = useAuth();
   const { isLoading, needsSelection } = useBusiness();
   const { modules } = useEntitlements();
   const t = useTheme();
+  const scheme = useColorScheme() === 'light' ? 'light' : 'dark';
+  const router = useRouter();
 
-  if (!isAuthenticated) return <Redirect href="/login" />;
+  // Imperative redirect (not a declarative <Redirect>) — mirrors
+  // (auth)/_layout.tsx: avoids mounting <Redirect> (whose internal
+  // useFocusEffect wants a stable navigator/focus context) at the exact
+  // moment this layout would otherwise be swapping its own navigator out.
+  useEffect(() => {
+    if (!isAuthenticated) router.replace('/login');
+  }, [isAuthenticated, router]);
+
+  if (!isAuthenticated) return <LoadingScreen />;
   if (isLoading) return <LoadingScreen />;
   if (needsSelection) return <SelectBusinessScreen />;
 
@@ -70,9 +100,9 @@ export default function AppLayout() {
       backBehavior="history"
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: t.brandBright,
+        tabBarActiveTintColor: ACTIVE_TINT[scheme],
         tabBarInactiveTintColor: t.textFaint,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
         tabBarStyle: {
           backgroundColor: t.tabBg,
           borderTopColor: t.border,
@@ -84,22 +114,22 @@ export default function AppLayout() {
       {/* Reference layout: Home · GBP · Photos · All Contacts */}
       <Tabs.Screen
         name="dashboard"
-        options={{ title: 'Home', tabBarIcon: tabIcon('home-outline', 'home') }}
+        options={{ title: 'Home', tabBarIcon: tabIcon('home-outline', 'home', scheme) }}
       />
       <Tabs.Screen
         name="gbp"
-        options={{ title: 'GBP', tabBarIcon: tabIcon('storefront-outline', 'storefront') }}
+        options={{ title: 'GBP', tabBarIcon: tabIcon('storefront-outline', 'storefront', scheme) }}
       />
       <Tabs.Screen
         name="photos"
-        options={{ title: 'Photos', tabBarIcon: tabIcon('folder-outline', 'folder') }}
+        options={{ title: 'Photos', tabBarIcon: tabIcon('folder-outline', 'folder', scheme) }}
       />
       <Tabs.Screen
         name="leads"
         options={{
           title: 'All Contacts',
           href: tabHref('leads'),
-          tabBarIcon: tabIcon('people-outline', 'people'),
+          tabBarIcon: tabIcon('people-outline', 'people', scheme),
         }}
       />
       {/* Hidden sections — reachable from the header (gear/Help) and in-app links. */}

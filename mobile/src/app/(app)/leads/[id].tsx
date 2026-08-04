@@ -40,12 +40,13 @@ import {
   Skeleton,
 } from '@/components/ui';
 import { formatDateTime, whatsappNumber } from '@/lib/format';
+import { useTheme } from '@/lib/theme';
 
 const UNASSIGNED = 'Unassigned';
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <Text className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+    <Text className="mb-2 mt-6 font-sans-bold text-xs uppercase tracking-wider text-zinc-500">
       {children}
     </Text>
   );
@@ -60,13 +61,14 @@ function ContactAction({
   label: string;
   onPress: () => void;
 }) {
+  const t = useTheme();
   return (
     <Pressable
       onPress={onPress}
-      className="flex-1 items-center gap-1 rounded-xl border border-surface-border bg-surface-raised py-3 active:opacity-70"
+      className="flex-1 items-center gap-1 rounded-card border border-surface-border bg-surface-raised py-3 active:opacity-70"
     >
-      <Ionicons name={icon} size={20} color="#6366F1" />
-      <Text className="text-xs font-medium text-zinc-300">{label}</Text>
+      <Ionicons name={icon} size={20} color={t.brandBright} />
+      <Text className="font-sans-semibold text-xs text-zinc-300">{label}</Text>
     </Pressable>
   );
 }
@@ -98,17 +100,18 @@ function TimelineRow({ entry }: { entry: TimelineEntry }) {
         : entry.type || 'Activity';
   const body = entry.timelineType === 'followUp' ? entry.messageTemplate : entry.content;
 
+  const t = useTheme();
   return (
     <View className="flex-row gap-3 border-b border-surface-border px-4 py-3">
       <View className="mt-0.5 h-7 w-7 items-center justify-center rounded-full bg-zinc-800">
-        <Ionicons name={timelineIcon(entry)} size={14} color="#8B93B8" />
+        <Ionicons name={timelineIcon(entry)} size={14} color={t.textFaint} />
       </View>
       <View className="flex-1">
         <View className="flex-row items-center justify-between">
-          <Text className="text-sm font-semibold text-zinc-200">{label}</Text>
-          <Text className="text-xs text-zinc-500">{formatDateTime(entry.date)}</Text>
+          <Text className="font-sans-semibold text-sm text-zinc-200">{label}</Text>
+          <Text className="font-sans text-xs text-zinc-500">{formatDateTime(entry.date)}</Text>
         </View>
-        {!!body && <Text className="mt-0.5 text-sm text-zinc-400">{body}</Text>}
+        {!!body && <Text className="mt-0.5 font-sans text-sm text-zinc-400">{body}</Text>}
       </View>
     </View>
   );
@@ -119,6 +122,7 @@ export default function LeadDetailScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { activeBusinessId } = useBusiness();
+  const t = useTheme();
 
   const [notesDraft, setNotesDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -241,10 +245,10 @@ export default function LeadDetailScreen() {
           <BackChevron />
         </Pressable>
         <View className="flex-1">
-          <Text className="text-lg font-bold text-white" numberOfLines={1}>
+          <Text className="font-display-bold text-lg text-white" numberOfLines={1}>
             {lead.name}
           </Text>
-          <Text className="text-xs text-zinc-500">
+          <Text className="font-sans text-xs text-zinc-500">
             {lead.source}
             {lead.phone ? ` · ${lead.phone}` : ''}
           </Text>
@@ -262,7 +266,7 @@ export default function LeadDetailScreen() {
               void leads.refetch();
               void timeline.refetch();
             }}
-            tintColor="#6366F1"
+            tintColor={t.brandBright}
           />
         }
       >
@@ -331,16 +335,16 @@ export default function LeadDetailScreen() {
         {(lead.interest || lead.aiInsights) && (
           <>
             <SectionLabel>Details</SectionLabel>
-            <View className="gap-2 rounded-xl border border-surface-border bg-surface-raised px-4 py-3.5">
+            <View className="gap-2 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
               {!!lead.interest && (
-                <Text className="text-sm text-zinc-300">
-                  <Text className="font-semibold text-zinc-400">Interest: </Text>
+                <Text className="font-sans text-sm text-zinc-300">
+                  <Text className="font-sans-semibold text-zinc-400">Interest: </Text>
                   {lead.interest}
                 </Text>
               )}
               {!!lead.aiInsights && (
-                <Text className="text-sm text-zinc-300">
-                  <Text className="font-semibold text-zinc-400">AI insights: </Text>
+                <Text className="font-sans text-sm text-zinc-300">
+                  <Text className="font-sans-semibold text-zinc-400">AI insights: </Text>
                   {lead.aiInsights}
                 </Text>
               )}
@@ -377,8 +381,8 @@ export default function LeadDetailScreen() {
         >
           <View className="flex-1 justify-end bg-black/60">
             <View className="rounded-t-3xl border border-surface-border bg-surface-raised px-6 pb-10 pt-6">
-              <Text className="text-lg font-bold text-white">How did the call go?</Text>
-              <Text className="mt-1 text-sm text-zinc-400">
+              <Text className="font-display-bold text-lg text-white">How did the call go?</Text>
+              <Text className="mt-1 font-sans text-sm text-zinc-400">
                 A call activity will be added to {lead.name}'s timeline.
               </Text>
               <View className="mt-4">
@@ -405,7 +409,9 @@ export default function LeadDetailScreen() {
                 }}
                 className="mt-2 items-center py-3 active:opacity-60"
               >
-                <Text className="text-sm font-medium text-zinc-400">Don't log this call</Text>
+                <Text className="font-sans-semibold text-sm text-zinc-400">
+                  Don't log this call
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -415,17 +421,17 @@ export default function LeadDetailScreen() {
         {/* Timeline */}
         <SectionLabel>Activity timeline</SectionLabel>
         {timeline.isLoading ? (
-          <Skeleton className="h-32" />
+          <Skeleton className="h-32 rounded-card" />
         ) : timeline.isError ? (
-          <Text className="text-sm text-zinc-500">
+          <Text className="font-sans text-sm text-zinc-500">
             {getApiErrorMessage(timeline.error, 'Could not load the timeline.')}
           </Text>
         ) : (timeline.data ?? []).length === 0 ? (
-          <View className="rounded-xl border border-surface-border bg-surface-raised px-4 py-6">
-            <Text className="text-center text-sm text-zinc-400">No activity yet.</Text>
+          <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-6">
+            <Text className="text-center font-sans text-sm text-zinc-400">No activity yet.</Text>
           </View>
         ) : (
-          <View className="overflow-hidden rounded-xl border border-surface-border bg-surface-raised">
+          <View className="overflow-hidden rounded-card border border-surface-border bg-surface-raised">
             {timeline.data!.map((entry) => (
               <TimelineRow key={`${entry.timelineType}-${entry._id}`} entry={entry} />
             ))}

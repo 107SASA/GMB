@@ -15,7 +15,7 @@ interface Profile {
   address: string;
 }
 
-const inputCls = 'w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors';
+const inputCls = 'w-full px-4 py-3 rounded-xl border border-outline-variant focus:ring-2 focus:ring-primary focus:border-primary transition-colors';
 
 export default function GbpProfilePage() {
   const { activeBusiness } = useBusiness();
@@ -104,23 +104,23 @@ export default function GbpProfilePage() {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center py-32"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>;
+    return <div className="flex items-center justify-center py-32"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
 
   return (
     <div className="max-w-3xl mx-auto py-6">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <MapPin className="w-6 h-6 text-indigo-600" /> Google Business Profile
+          <h1 className="font-heading text-2xl font-bold text-on-surface tracking-tight flex items-center gap-2">
+            <MapPin className="w-6 h-6 text-primary" /> Google Business Profile
           </h1>
-          <p className="text-slate-500 mt-1">View and edit the live details on your Google profile.</p>
+          <p className="text-on-surface-variant mt-1">View and edit the live details on your Google profile.</p>
         </div>
         {connected && (
           <button
             onClick={disconnect}
             disabled={disconnecting}
-            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors disabled:opacity-60"
+            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm font-semibold text-on-surface-variant hover:bg-error-container hover:text-error hover:border-error-container transition-colors disabled:opacity-60"
           >
             {disconnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unplug className="w-4 h-4" />}
             {disconnecting ? 'Disconnecting…' : 'Disconnect'}
@@ -130,18 +130,18 @@ export default function GbpProfilePage() {
 
       {/* Not connected */}
       {!connected && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm text-center">
-          <div className="w-16 h-16 bg-indigo-50 border border-indigo-100 rounded-2xl mx-auto flex items-center justify-center mb-4">
-            <ShieldCheck className="w-8 h-8 text-indigo-600" />
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-8 shadow-sm text-center">
+          <div className="w-16 h-16 bg-primary-fixed border border-primary-fixed-dim rounded-2xl mx-auto flex items-center justify-center mb-4">
+            <ShieldCheck className="w-8 h-8 text-primary" />
           </div>
-          <h2 className="text-lg font-bold text-slate-900">Connect your Google Business Profile</h2>
-          <p className="text-slate-500 mt-2 max-w-md mx-auto text-sm">
+          <h2 className="text-lg font-bold text-on-surface">Connect your Google Business Profile</h2>
+          <p className="text-on-surface-variant mt-2 max-w-md mx-auto text-sm">
             Verify and connect your Google account, then choose the business location. We&apos;ll pull your live profile so you can manage it here.
           </p>
-          {error && <p className="text-sm text-amber-600 mt-3">{error}</p>}
+          {error && <p className="text-sm text-error mt-3">{error}</p>}
           <a
             href="/api/auth/google"
-            className="inline-flex items-center gap-2 mt-6 px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-semibold transition-colors"
+            className="inline-flex items-center gap-2 mt-6 px-6 py-3 bg-primary hover:bg-primary text-white rounded-xl font-semibold transition-colors"
           >
             <ExternalLink className="w-4 h-4" /> Connect Google Business Profile
           </a>
@@ -152,7 +152,7 @@ export default function GbpProfilePage() {
       {connected && profile && (
         <div className="space-y-6">
           {!liveWrites && (
-            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+            <div className="flex items-start gap-2 bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container">
               <Info className="w-4 h-4 mt-0.5 shrink-0" />
               <span>
                 Editing is in <strong>preview mode</strong>. Your changes are saved in GrowwMatics now and will
@@ -161,39 +161,39 @@ export default function GbpProfilePage() {
             </div>
           )}
 
-          {error && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div>}
-          {saved && <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-700">{saved}</div>}
+          {error && <div className="bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container">{error}</div>}
+          {saved && <div className="bg-secondary-container/40 border border-secondary-fixed rounded-xl px-4 py-3 text-sm text-on-secondary-container">{saved}</div>}
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 shadow-sm space-y-5">
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Business name</label>
+              <label className="text-sm font-semibold text-on-surface">Business name</label>
               <input className={inputCls} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Description</label>
+              <label className="text-sm font-semibold text-on-surface">Description</label>
               <textarea rows={4} maxLength={750} className={inputCls} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-              <p className="text-xs text-slate-400 text-right">{form.description.length}/750</p>
+              <p className="text-xs text-outline text-right">{form.description.length}/750</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700">Primary phone</label>
+                <label className="text-sm font-semibold text-on-surface">Primary phone</label>
                 <input className={inputCls} value={form.primaryPhone} onChange={(e) => setForm({ ...form, primaryPhone: e.target.value })} placeholder="+91 …" />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700">Website</label>
+                <label className="text-sm font-semibold text-on-surface">Website</label>
                 <input className={inputCls} value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} placeholder="https://…" />
               </div>
             </div>
 
             {/* Read-only context */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2 border-t border-slate-100">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2 border-t border-outline-variant">
               <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Primary category</p>
-                <p className="text-sm text-slate-700 mt-1">{profile.primaryCategory || '—'}</p>
+                <p className="text-xs font-semibold text-outline uppercase tracking-wide">Primary category</p>
+                <p className="text-sm text-on-surface mt-1">{profile.primaryCategory || '—'}</p>
               </div>
               <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Address</p>
-                <p className="text-sm text-slate-700 mt-1">{profile.address || '—'}</p>
+                <p className="text-xs font-semibold text-outline uppercase tracking-wide">Address</p>
+                <p className="text-sm text-on-surface mt-1">{profile.address || '—'}</p>
               </div>
             </div>
           </div>
@@ -202,11 +202,11 @@ export default function GbpProfilePage() {
             <button
               onClick={save}
               disabled={saving}
-              className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition-colors disabled:opacity-60 flex items-center gap-2"
+              className="px-6 py-3 rounded-xl bg-primary hover:bg-primary-container text-white font-bold transition-colors disabled:opacity-60 flex items-center gap-2"
             >
               {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : 'Save changes'}
             </button>
-            <button onClick={load} disabled={saving} className="px-4 py-3 rounded-xl text-slate-500 hover:text-slate-800 font-medium transition-colors">
+            <button onClick={load} disabled={saving} className="px-4 py-3 rounded-xl text-on-surface-variant hover:text-on-surface font-medium transition-colors">
               Reset
             </button>
           </div>
@@ -218,7 +218,7 @@ export default function GbpProfilePage() {
 
       {/* Connected but profile failed to load */}
       {connected && !profile && error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container">{error}</div>
       )}
     </div>
   );

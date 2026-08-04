@@ -9,10 +9,27 @@ import { createSession, signSessionToken, SESSION_MAX_AGE_SECONDS } from '@/lib/
 import { validatePasswordStrength } from '@/services/auth/security';
 import { generateOTP, hashOTP } from '@/services/auth/otp';
 import { sendEmailOtp } from '@/services/email';
+import { checkRateLimit, resetRateLimit, getClientIp } from '@/lib/rateLimit';
+import { isQaTestingMode } from '@/lib/testingMode';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
+// Existing-account branch below is functionally a login (see the block that
+// uses these) — same thresholds as /api/auth/login/route.ts, kept in sync
+// deliberately rather than imported, since these two routes should be free
+// to diverge later without one silently changing the other's behavior.
+const ONBOARDING_AUTH_MAX_ATTEMPTS = 8;
+const ONBOARDING_AUTH_WINDOW_MS = 15 * 60 * 1000;
+const ONBOARDING_ACCOUNT_LOCK_THRESHOLD = 10;
+const ONBOARDING_ACCOUNT_LOCK_DURATION_MS = 15 * 60 * 1000;
+// Reserved for shadow accounts (see src/lib/shadowAccount.ts) — must never be
+// registerable through normal signup. Without this block, an attacker could
+// pre-register a specific phone number's future shadow email, permanently
+// denying that phone the /free-report flow (targeted DoS via unique-index
+// collision) — see shadowAccount.ts's shadowEmailFor().
+const SHADOW_EMAIL_DOMAIN = '@shadow.growwmatics.internal';
 
 function normalizePhone(phone: string): string {
   return phone.replace(/[^\d+]/g, '');
@@ -23,8 +40,18 @@ export async function POST(req: Request) {
   // back without deleting a pre-existing account that was merely resuming.
   let createdUserId: string | null = null;
   let createdOrgId: string | null = null;
+  let createdBusinessId: string | null = null;
 
   try {
+    const ip = getClientIp(req);
+    const rate = checkRateLimit(`onboarding:${ip}`, 8, 15 * 60 * 1000);
+    if (!rate.allowed && !isQaTestingMode()) {
+      return NextResponse.json(
+        { error: 'Too many signup attempts. Please try again in a few minutes.' },
+        { status: 429 }
+      );
+    }
+
     await dbConnect();
     const body = await req.json();
 
@@ -36,6 +63,10 @@ export async function POST(req: Request) {
     // the unique-email index with "these details already exist", even though the
     // account was right there and just couldn't be matched.
     const email = String(body.email || '').trim().toLowerCase();
+
+    if (email.endsWith(SHADOW_EMAIL_DOMAIN)) {
+      return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
+    }
 
     let newUser = await User.findOne({ email });
 
@@ -107,96 +138,176 @@ export async function POST(req: Request) {
       if (!otpResult.success) {
         console.error('Failed to send onboarding OTP email:', otpResult.error);
       }
-    } else if (body.companyName && !newUser.companyName) {
-      // Existing account resuming onboarding (e.g. after an earlier step failed) —
-      // backfill the company name they just typed in StepOrganization. Never
-      // overwrites one already saved (e.g. edited later from the Profile page).
-      newUser.companyName = body.companyName;
+    } else {
+      // Existing account (verified or not) resuming onboarding. This branch
+      // used to skip password validation entirely — the only remaining gate
+      // was `isEmailVerified` below, which is true for every real customer —
+      // so submitting nothing but a known email here silently returned a
+      // valid session for that account. Treat it exactly like a login
+      // attempt: same rate limit + DB-backed lockout + bcrypt/legacy-plaintext
+      // compare as /api/auth/login/route.ts, because that's what this is.
+      const authRlKey = `onboarding-auth:${ip}:${email}`;
+      const authRl = checkRateLimit(authRlKey, ONBOARDING_AUTH_MAX_ATTEMPTS, ONBOARDING_AUTH_WINDOW_MS);
+      if (!authRl.allowed && !isQaTestingMode()) {
+        return NextResponse.json(
+          { success: false, error: `Too many attempts. Try again in ${Math.ceil(authRl.retryAfterSeconds / 60)} minute(s).` },
+          { status: 429, headers: { 'Retry-After': String(authRl.retryAfterSeconds) } }
+        );
+      }
+
+      if (
+        newUser.accountLockedUntil &&
+        newUser.accountLockedUntil.getTime() > Date.now() &&
+        !isQaTestingMode()
+      ) {
+        const retryAfterSeconds = Math.ceil((newUser.accountLockedUntil.getTime() - Date.now()) / 1000);
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Account temporarily locked due to repeated failed attempts. Try again in ${Math.ceil(retryAfterSeconds / 60)} minute(s).`,
+          },
+          { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
+        );
+      }
+
+      const submittedPassword = String(body.password || '');
+      let isValid = false;
+      const isBcrypt = newUser.passwordHash?.startsWith('$2b$') || newUser.passwordHash?.startsWith('$2a$');
+      if (isBcrypt) {
+        isValid = await bcrypt.compare(submittedPassword, newUser.passwordHash!);
+      } else if (newUser.passwordHash) {
+        // Legacy plain-text password — constant-time compare, and upgrade to
+        // bcrypt on success, matching /api/auth/login/route.ts exactly.
+        const a = Buffer.from(newUser.passwordHash);
+        const b = Buffer.from(submittedPassword);
+        isValid = a.length === b.length && crypto.timingSafeEqual(a, b);
+        if (isValid) {
+          newUser.passwordHash = await bcrypt.hash(submittedPassword, 12);
+        }
+      }
+
+      if (!isValid) {
+        if (!isQaTestingMode()) {
+          const attempts = (newUser.failedLoginAttempts || 0) + 1;
+          const update: Record<string, unknown> = { failedLoginAttempts: attempts };
+          if (attempts >= ONBOARDING_ACCOUNT_LOCK_THRESHOLD) {
+            update.accountLockedUntil = new Date(Date.now() + ONBOARDING_ACCOUNT_LOCK_DURATION_MS);
+          }
+          await User.updateOne({ _id: newUser._id }, { $set: update });
+        }
+        // Same generic message /login uses — never reveal whether the email
+        // exists, whether it's verified, or which check failed.
+        return NextResponse.json({ success: false, error: 'Invalid credentials' }, { status: 401 });
+      }
+
+      // Correct password — this really is the account owner. Clear the
+      // throttle and any accumulated lockout state, and backfill the company
+      // name they just typed in StepOrganization (never overwrites one
+      // already saved, e.g. edited later from the Profile page).
+      resetRateLimit(authRlKey);
+      newUser.failedLoginAttempts = 0;
+      newUser.accountLockedUntil = undefined;
+      if (body.companyName && !newUser.companyName) {
+        newUser.companyName = body.companyName;
+      }
       await newUser.save();
     }
 
-    // 2. Create Organization
-    const newOrg = await Organization.create({
-      name: body.businessName || 'My Organization',
-      ownerId: newUser._id,
-      subscriptionPlan: body.selectedPlan === 'starter' ? 'Free' : 'Pro',
-    });
-    createdOrgId = newOrg._id.toString();
-
-    // Naive city/state extraction from comma-separated address
-    const addressParts = (body.address || '').split(',').map((p: string) => p.trim());
-    let city = 'Unknown';
-    let state = 'Unknown';
-    if (addressParts.length >= 3) {
-      city = addressParts[addressParts.length - 3];
-      state = addressParts[addressParts.length - 2].split(' ')[0];
-    } else if (addressParts.length === 2) {
-      city = addressParts[0];
-      state = addressParts[1].split(' ')[0];
+    // 2 & 3. Create Organization + Business — UNLESS this (possibly resuming)
+    // user already completed this exact step before. Without this guard, a
+    // double-click or a client retry after a network blip (the request may
+    // have actually succeeded server-side) silently creates a SECOND
+    // Organization + Business for the same account on every retry.
+    let newOrg: any = null;
+    let newBusiness: any = null;
+    if (newUser.organizationId && newUser.activeBusinessId) {
+      newOrg = await Organization.findById(newUser.organizationId);
+      newBusiness = await Business.findById(newUser.activeBusinessId);
     }
 
-    // 3. Create Business
-    const newBusiness = await Business.create({
-      name: body.businessName,
-      category: body.category || 'Local Business',
-      description: body.description,
-      address: body.address || 'Unknown',
-      area: body.area,
-      city: body.city || city,
-      state: body.state || state,
-      country: body.country,
-      phone: body.phone,
-      website: body.website,
-      placeId: body.googlePlaceId || undefined,
-      googlePlaceId: body.googlePlaceId || undefined,
-      googleMapsUrl: body.googleMapsUrl,
-      coordinates:
-        body.latitude && body.longitude
-          ? { lat: body.latitude, lng: body.longitude }
-          : undefined,
-      googleConnected: !!body.googlePlaceId,
-      organizationId: newOrg._id,
-      userId: newUser._id,
-      metaBusinessProfileUrl: body.metaBusinessProfileUrl,
-      facebookPageUrl: body.facebookPageUrl,
-      instagramUrl: body.instagramUrl,
-      // integrations.whatsappNumber is the Twilio WhatsApp number for this business.
-      // The webhook routes incoming messages by matching To against this field.
-      // whatsappConfig.businessPhone stores the same value for display / Meta future use.
-      //
-      // Migration for existing records (run once in MongoDB shell):
-      // db.businesses.updateMany(
-      //   { 'whatsappConfig.businessPhone': { $exists: true, $ne: '' }, 'integrations.whatsappNumber': { $exists: false } },
-      //   [{ $set: { 'integrations.whatsappNumber': '$whatsappConfig.businessPhone' } }]
-      // )
-      integrations: {
-        whatsappNumber: body.whatsappBusinessNumber || undefined,
-      },
-      whatsappConfig: {
-        provider: 'meta',
-        businessPhone: body.whatsappBusinessNumber,
-        metaProfileUrl: body.metaBusinessProfileUrl,
-        isConnected: !!body.whatsappBusinessNumber,
-      },
-      aiSettings: {
-        tone: body.aiTone || 'professional',
-        salesPrompt: body.aiSalesPrompt,
-      },
-      onboardingCompleted: true,
-    });
+    if (!newOrg || !newBusiness) {
+      newOrg = await Organization.create({
+        name: body.businessName || 'My Organization',
+        ownerId: newUser._id,
+        subscriptionPlan: body.selectedPlan === 'starter' ? 'Free' : 'Pro',
+      });
+      createdOrgId = newOrg._id.toString();
 
-    // 4. Update User context. `businessIds` is the canonical list of workspaces
-    //    a user owns — it's read by automation.ts, push/notification targeting
-    //    and the user's business-list routes, so every workspace a user creates
-    //    must be recorded here (this was previously never populated, which is
-    //    why a second business per user didn't behave as a first-class workspace).
-    await User.findByIdAndUpdate(newUser._id, {
-      $set: {
+      // Naive city/state extraction from comma-separated address
+      const addressParts = (body.address || '').split(',').map((p: string) => p.trim());
+      let city = 'Unknown';
+      let state = 'Unknown';
+      if (addressParts.length >= 3) {
+        city = addressParts[addressParts.length - 3];
+        state = addressParts[addressParts.length - 2].split(' ')[0];
+      } else if (addressParts.length === 2) {
+        city = addressParts[0];
+        state = addressParts[1].split(' ')[0];
+      }
+
+      newBusiness = await Business.create({
+        name: body.businessName,
+        category: body.category || 'Local Business',
+        description: body.description,
+        address: body.address || 'Unknown',
+        area: body.area,
+        city: body.city || city,
+        state: body.state || state,
+        country: body.country,
+        phone: body.phone,
+        website: body.website,
+        placeId: body.googlePlaceId || undefined,
+        googlePlaceId: body.googlePlaceId || undefined,
+        googleMapsUrl: body.googleMapsUrl,
+        coordinates:
+          body.latitude && body.longitude
+            ? { lat: body.latitude, lng: body.longitude }
+            : undefined,
+        googleConnected: !!body.googlePlaceId,
         organizationId: newOrg._id,
-        activeBusinessId: newBusiness._id,
-      },
-      $addToSet: { businessIds: newBusiness._id },
-    });
+        userId: newUser._id,
+        metaBusinessProfileUrl: body.metaBusinessProfileUrl,
+        facebookPageUrl: body.facebookPageUrl,
+        instagramUrl: body.instagramUrl,
+        // integrations.whatsappNumber is the Twilio WhatsApp number for this business.
+        // The webhook routes incoming messages by matching To against this field.
+        // whatsappConfig.businessPhone stores the same value for display / Meta future use.
+        //
+        // Migration for existing records (run once in MongoDB shell):
+        // db.businesses.updateMany(
+        //   { 'whatsappConfig.businessPhone': { $exists: true, $ne: '' }, 'integrations.whatsappNumber': { $exists: false } },
+        //   [{ $set: { 'integrations.whatsappNumber': '$whatsappConfig.businessPhone' } }]
+        // )
+        integrations: {
+          whatsappNumber: body.whatsappBusinessNumber || undefined,
+        },
+        whatsappConfig: {
+          provider: 'meta',
+          businessPhone: body.whatsappBusinessNumber,
+          metaProfileUrl: body.metaBusinessProfileUrl,
+          isConnected: !!body.whatsappBusinessNumber,
+        },
+        aiSettings: {
+          tone: body.aiTone || 'professional',
+          salesPrompt: body.aiSalesPrompt,
+        },
+        onboardingCompleted: true,
+      });
+      createdBusinessId = newBusiness._id.toString();
+
+      // 4. Update User context. `businessIds` is the canonical list of workspaces
+      //    a user owns — it's read by automation.ts, push/notification targeting
+      //    and the user's business-list routes, so every workspace a user creates
+      //    must be recorded here (this was previously never populated, which is
+      //    why a second business per user didn't behave as a first-class workspace).
+      await User.findByIdAndUpdate(newUser._id, {
+        $set: {
+          organizationId: newOrg._id,
+          activeBusinessId: newBusiness._id,
+        },
+        $addToSet: { businessIds: newBusiness._id },
+      });
+    }
 
     // 5. Unverified accounts don't get a session until they confirm their email —
     //    an existing, already-verified user resuming onboarding does.
@@ -242,7 +353,7 @@ export async function POST(req: Request) {
     // slate instead of tripping over a half-built account. Only records created
     // in this request are removed — a pre-existing user resuming onboarding
     // (createdUserId stays null) is never touched.
-    await rollbackPartialSignup({ createdUserId, createdOrgId });
+    await rollbackPartialSignup({ createdUserId, createdOrgId, createdBusinessId });
 
     return NextResponse.json(
       { error: friendlyOnboardingError(error) },
@@ -253,9 +364,13 @@ export async function POST(req: Request) {
 
 /** Deletes records created by a signup attempt that failed partway through. */
 async function rollbackPartialSignup(
-  { createdUserId, createdOrgId }: { createdUserId: string | null; createdOrgId: string | null }
+  { createdUserId, createdOrgId, createdBusinessId }:
+  { createdUserId: string | null; createdOrgId: string | null; createdBusinessId: string | null }
 ) {
   try {
+    // Business first — it references the Organization/User being deleted
+    // next, so this order avoids leaving it pointing at nothing.
+    if (createdBusinessId) await Business.deleteOne({ _id: createdBusinessId });
     if (createdOrgId) await Organization.deleteOne({ _id: createdOrgId });
     if (createdUserId) {
       await Subscription.deleteMany({ userId: createdUserId });

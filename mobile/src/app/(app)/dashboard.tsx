@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { getApiErrorMessage } from '@/api/client';
 import { quickAddLead } from '@/api/endpoints/leads';
@@ -16,7 +17,7 @@ import { BillingBanner, LockedScreen } from '@/components/locked';
 import { Field, PrimaryButton, Screen, Skeleton } from '@/components/ui';
 import { useSurfaceLocked } from '@/entitlements/entitlements';
 import { computeReviewInsights, WEEKLY_REVIEW_GOAL } from '@/lib/review-insights';
-import { useTheme } from '@/lib/theme';
+import { AMBER_GRADIENT, useTheme } from '@/lib/theme';
 
 /** One step of the "More Customers → More Reviews → Better Ranking" strip. */
 function FunnelStep({
@@ -35,7 +36,9 @@ function FunnelStep({
         <View className="h-12 w-12 items-center justify-center rounded-full bg-white/10">
           <Ionicons name={icon} size={22} color="#ffffff" />
         </View>
-        <Text className="text-[11px] font-semibold text-white/90">{label}</Text>
+        <Text className="font-sans-bold text-[11px] uppercase tracking-[0.6px] text-white/90">
+          {label}
+        </Text>
       </View>
       {showArrow && <Ionicons name="arrow-forward" size={16} color={t.emerald} />}
     </>
@@ -51,27 +54,29 @@ function WeeklyReviewsCard() {
     enabled: !!activeBusinessId,
   });
 
-  if (reviews.isLoading) return <Skeleton className="mx-4 h-52" />;
+  if (reviews.isLoading) return <Skeleton className="mx-4 h-52 rounded-card" />;
   const insights = computeReviewInsights(reviews.data ?? []);
   const goalMet = insights.thisWeek >= WEEKLY_REVIEW_GOAL;
   const pct = Math.min(100, Math.round((insights.thisWeek / WEEKLY_REVIEW_GOAL) * 100));
+  // Deep tonal container so white body copy stays legible everywhere on the
+  // card — the diagonal gradients are reserved for headers/CTAs and would
+  // wash out against this much running text.
+  const cardBg = goalMet ? '#005233' : '#93000a';
+  const accent = goalMet ? '#9af2c0' : '#ffdad6';
 
   return (
-    <View
-      className="mx-4 rounded-3xl p-4"
-      style={{ backgroundColor: goalMet ? '#0B3D2E' : '#4A0D14' }}
-    >
-      <Text className="text-sm text-white/80">This Week's Reviews</Text>
+    <View className="mx-4 rounded-card p-4" style={{ backgroundColor: cardBg }}>
+      <Text className="font-sans text-sm text-white/80">This Week's Reviews</Text>
       <View className="mt-1 flex-row items-center justify-between">
-        <Text className="flex-1 pr-3 text-lg font-extrabold text-white">
+        <Text className="flex-1 pr-3 font-display-bold text-lg text-white">
           {insights.thisWeek === 0
             ? 'No recent reviews received'
             : goalMet
               ? 'Weekly review goal hit!'
               : `${insights.thisWeek} new review${insights.thisWeek > 1 ? 's' : ''} this week`}
         </Text>
-        <Text className="text-xl font-extrabold">
-          <Text style={{ color: goalMet ? '#34D399' : '#FB7185' }}>{insights.thisWeek}</Text>
+        <Text className="font-display text-xl">
+          <Text style={{ color: accent }}>{insights.thisWeek}</Text>
           <Text className="text-white/70">/{WEEKLY_REVIEW_GOAL}</Text>
         </Text>
       </View>
@@ -82,16 +87,16 @@ function WeeklyReviewsCard() {
           <Text className="text-sm">🔥</Text>
         </View>
         <View className="h-2 flex-1 overflow-hidden rounded-full bg-white/15">
-          <View
-            className="h-full rounded-full"
-            style={{ width: `${pct}%`, backgroundColor: goalMet ? '#34D399' : '#FB7185' }}
-          />
+          <View className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: accent }} />
         </View>
       </View>
 
       {insights.daysSinceLast != null && insights.daysSinceLast > 3 && (
-        <Text className="mt-3 text-sm leading-5 text-white/80">
-          Your last review was <Text className="font-bold text-rose-400">{insights.daysSinceLast} days</Text>{' '}
+        <Text className="mt-3 font-sans text-sm leading-5 text-white/80">
+          Your last review was{' '}
+          <Text className="font-sans-bold" style={{ color: accent }}>
+            {insights.daysSinceLast} days
+          </Text>{' '}
           ago, reviews are vital for good Google ranking.
         </Text>
       )}
@@ -141,7 +146,7 @@ function AddCustomerCard() {
         </View>
         <Pressable
           onPress={() => router.push('/leads/import-contacts')}
-          className="h-13 w-13 items-center justify-center rounded-2xl border border-surface-border bg-surface-raised active:bg-surface-overlay"
+          className="h-13 w-13 items-center justify-center rounded-xl border border-surface-border bg-surface-raised active:bg-surface-overlay"
         >
           <Ionicons name="people-outline" size={22} color={t.brandBright} />
         </Pressable>
@@ -164,23 +169,25 @@ function OnboardingTasks() {
   const t = useTheme();
   return (
     <View className="mx-4 mt-8">
-      <Text className="mb-3 text-lg font-extrabold text-white">Complete Your Onboarding Tasks</Text>
-      <View className="rounded-3xl border border-surface-border bg-surface-raised p-4">
+      <Text className="mb-3 font-display-bold text-lg text-white">
+        Complete Your Onboarding Tasks
+      </Text>
+      <View className="rounded-card border border-surface-border bg-surface-raised p-4">
         <View className="flex-row items-center gap-1.5">
-          <Text className="text-base font-bold text-white">Upload Photos for GBP</Text>
+          <Text className="font-sans-bold text-base text-white">Upload Photos for GBP</Text>
           <Ionicons name="information-circle-outline" size={15} color={t.textFaint} />
         </View>
-        <Text className="mt-1 text-sm leading-5 text-zinc-400" numberOfLines={2}>
+        <Text className="mt-1 font-sans text-sm leading-5 text-zinc-400" numberOfLines={2}>
           Add photos to the photobucket and they are posted to your Google Business Profile at
           regular intervals.
         </Text>
         <View className="mt-4 flex-row items-end justify-between">
           <Pressable
             onPress={() => router.push('/photos')}
-            className="rounded-xl px-4 py-2.5 active:opacity-80"
+            className="rounded-full px-4 py-2.5 active:scale-95"
             style={{ backgroundColor: t.brand }}
           >
-            <Text className="text-sm font-bold text-white">Upload Photos</Text>
+            <Text className="font-sans-bold text-sm text-white">Upload Photos</Text>
           </Pressable>
           <Ionicons name="storefront" size={34} color={t.brandBright} />
         </View>
@@ -248,21 +255,26 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
-      {/* Orange "fresh photos" nudge pinned above the tab bar */}
+      {/* Amber "attention needed" nudge pinned above the tab bar */}
       {showFreshPhotosBanner && (
-        <Pressable
-          onPress={() => router.push('/photos')}
-          className="flex-row items-center justify-between px-4 py-3 active:opacity-90"
-          style={{ backgroundColor: '#F97316' }}
-        >
-          <View className="flex-row items-center gap-2">
-            <Ionicons name="images-outline" size={18} color="#ffffff" />
-            <Text className="text-sm font-bold text-white">It's been {staleDays} days</Text>
-          </View>
-          <View className="flex-row items-center gap-1">
-            <Text className="text-sm font-bold text-white">Add Fresh Photos</Text>
-            <Ionicons name="chevron-forward" size={16} color="#ffffff" />
-          </View>
+        <Pressable onPress={() => router.push('/photos')} className="active:opacity-90">
+          <LinearGradient
+            colors={[...AMBER_GRADIENT]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            className="flex-row items-center justify-between px-4 py-3"
+          >
+            <View className="flex-row items-center gap-2">
+              <Ionicons name="images-outline" size={18} color="#1c1400" />
+              <Text className="font-sans-bold text-sm text-[#1c1400]">
+                It's been {staleDays} days
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-1">
+              <Text className="font-sans-bold text-sm text-[#1c1400]">Add Fresh Photos</Text>
+              <Ionicons name="chevron-forward" size={16} color="#1c1400" />
+            </View>
+          </LinearGradient>
         </Pressable>
       )}
     </Screen>

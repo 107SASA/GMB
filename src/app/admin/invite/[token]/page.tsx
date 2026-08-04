@@ -59,13 +59,13 @@ export default function AcceptInvitePage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <ShieldCheck className="w-8 h-8 text-emerald-600" />
+      <div className="min-h-screen bg-surface flex items-center justify-center p-4">
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-8 max-w-md w-full text-center">
+          <div className="w-16 h-16 bg-secondary-container rounded-full flex items-center justify-center mx-auto mb-4">
+            <ShieldCheck className="w-8 h-8 text-secondary" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Account Created!</h1>
-          <p className="text-slate-500 text-sm">
+          <h1 className="font-heading text-2xl font-bold text-on-surface mb-2">Account Created!</h1>
+          <p className="text-on-surface-variant text-sm">
             Your super admin account has been created successfully. Redirecting to login...
           </p>
         </div>
@@ -74,59 +74,59 @@ export default function AcceptInvitePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 max-w-md w-full">
+    <div className="min-h-screen bg-surface flex items-center justify-center p-4">
+      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-8 max-w-md w-full">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-violet-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <div className="w-14 h-14 bg-primary rounded-xl flex items-center justify-center mx-auto mb-4">
             <ShieldCheck className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">Accept Admin Invite</h1>
-          <p className="text-sm text-slate-500 mt-1">Set up your super admin account</p>
+          <h1 className="font-heading text-2xl font-bold text-on-surface">Accept Admin Invite</h1>
+          <p className="text-sm text-on-surface-variant mt-1">Set up your super admin account</p>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+          <div className="mb-4 p-3 bg-error-container border border-error-container rounded-xl text-on-error-container text-sm">
             {error}
           </div>
         )}
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+            <label className="block text-sm font-medium text-on-surface mb-1">Full Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Your full name"
-              className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-full px-4 py-2 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Phone (optional)</label>
+            <label className="block text-sm font-medium text-on-surface mb-1">Phone (optional)</label>
             <input
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+91XXXXXXXXXX"
-              className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-full px-4 py-2 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+            <label className="block text-sm font-medium text-on-surface mb-1">Password</label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Min 8 characters"
-                className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 pr-10"
+                className="w-full px-4 py-2 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary pr-10"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-outline"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -134,20 +134,20 @@ export default function AcceptInvitePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Confirm Password</label>
+            <label className="block text-sm font-medium text-on-surface mb-1">Confirm Password</label>
             <input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Re-enter password"
-              className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-full px-4 py-2 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
 
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-all text-sm font-medium disabled:opacity-50 mt-2"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-on-primary rounded-xl hover:bg-primary-container transition-all text-sm font-medium disabled:opacity-50 mt-2"
           >
             {submitting ? (
               <Loader2 className="w-4 h-4 animate-spin" />

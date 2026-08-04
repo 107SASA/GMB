@@ -1,11 +1,17 @@
 import '../global.css';
 
+import { Inter_400Regular, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import {
+  PublicSans_700Bold,
+  PublicSans_800ExtraBold,
+} from '@expo-google-fonts/public-sans';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import Constants from 'expo-constants';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider, useRouter } from 'expo-router';
+import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
@@ -67,9 +73,17 @@ function RootNavigator() {
   const router = useRouter();
   const t = useTheme();
 
+  const [fontsLoaded] = useFonts({
+    PublicSans_700Bold,
+    PublicSans_800ExtraBold,
+    Inter_400Regular,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
+
   useEffect(() => {
-    if (!isHydrating) SplashScreen.hideAsync();
-  }, [isHydrating]);
+    if (!isHydrating && fontsLoaded) SplashScreen.hideAsync();
+  }, [isHydrating, fontsLoaded]);
 
   // Deep-link notification taps: { leadId } → inbox thread, { reviewId } →
   // review detail. useLastNotificationResponse also covers cold starts;
@@ -91,9 +105,10 @@ function RootNavigator() {
     }
   }, [lastResponse, isHydrating, isAuthenticated, router]);
 
-  // Keep the native splash visible until the stored session is restored, so
-  // returning users never flash the login screen.
-  if (isHydrating) return null;
+  // Keep the native splash visible until the stored session is restored and
+  // the Public Sans / Inter fonts are ready, so returning users never flash
+  // the login screen or a system-font layout jump.
+  if (isHydrating || !fontsLoaded) return null;
 
   return (
     <View style={{ flex: 1 }}>

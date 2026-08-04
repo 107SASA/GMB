@@ -13,6 +13,7 @@ import {
   BackChevron, ErrorText, Field, PrimaryButton, Screen
 } from '@/components/ui';
 import { parsePhoneCandidate } from '@/lib/phone';
+import { useTheme } from '@/lib/theme';
 
 /**
  * Quick lead capture. Plain mode adds a lead; ?intent=call is the "Log a
@@ -23,6 +24,7 @@ export default function AddLeadScreen() {
   const { intent } = useLocalSearchParams<{ intent?: string }>();
   const isCallLog = intent === 'call';
   const router = useRouter();
+  const t = useTheme();
   const queryClient = useQueryClient();
   const { activeBusinessId } = useBusiness();
   const { ensureConsent, consentSheet } = useCrmCaptureConsent();
@@ -103,7 +105,7 @@ export default function AddLeadScreen() {
         <Pressable onPress={() => router.back()} hitSlop={8} className="active:opacity-60">
           <BackChevron />
         </Pressable>
-        <Text className="text-lg font-bold text-white">
+        <Text className="font-display-bold text-lg text-white">
           {isCallLog ? 'Log a call' : 'Add lead'}
         </Text>
       </View>
@@ -113,21 +115,23 @@ export default function AddLeadScreen() {
         {Platform.OS === 'android' && clipboardPhone && clipboardPhone !== phone ? (
           <Pressable
             onPress={() => setPhone(clipboardPhone)}
-            className="flex-row items-center gap-2 self-start rounded-full border border-brand/50 bg-indigo-400/15 px-3.5 py-2 active:opacity-70"
+            className="flex-row items-center gap-2 self-start rounded-full border border-brand/50 bg-indigo-400/15 px-3.5 py-2 active:scale-95"
           >
-            <Ionicons name="clipboard-outline" size={14} color="#6366F1" />
-            <Text className="text-sm font-medium text-indigo-300">Paste {clipboardPhone}</Text>
+            <Ionicons name="clipboard-outline" size={14} color={t.brandBright} />
+            <Text className="font-sans-semibold text-sm text-indigo-300">
+              Paste {clipboardPhone}
+            </Text>
           </Pressable>
         ) : (
           <Pressable
             onPress={() => void pasteFromClipboard()}
-            className="flex-row items-center gap-2 self-start rounded-full border border-surface-border bg-surface-raised px-3.5 py-2 active:opacity-70"
+            className="flex-row items-center gap-2 self-start rounded-full border border-surface-border bg-surface-raised px-3.5 py-2 active:scale-95"
           >
-            <Ionicons name="clipboard-outline" size={14} color="#8B93B8" />
-            <Text className="text-sm font-medium text-zinc-300">Paste number</Text>
+            <Ionicons name="clipboard-outline" size={14} color={t.textFaint} />
+            <Text className="font-sans-semibold text-sm text-zinc-300">Paste number</Text>
           </Pressable>
         )}
-        {!!notice && <Text className="text-sm text-zinc-500">{notice}</Text>}
+        {!!notice && <Text className="font-sans text-sm text-zinc-500">{notice}</Text>}
 
         <Field
           value={phone}
@@ -152,7 +156,7 @@ export default function AddLeadScreen() {
         )}
 
         {!!phone.trim() && !phoneValid && (
-          <Text className="text-sm text-zinc-500">
+          <Text className="font-sans text-sm text-zinc-500">
             Enter a 10-digit number or use +country format.
           </Text>
         )}
@@ -170,7 +174,7 @@ export default function AddLeadScreen() {
             })();
           }}
         />
-        <Text className="text-center text-xs text-zinc-600">
+        <Text className="text-center font-sans text-xs text-zinc-600">
           If this number already exists, you'll be taken to the existing lead.
         </Text>
       </ScrollView>

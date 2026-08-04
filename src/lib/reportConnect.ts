@@ -80,6 +80,11 @@ export async function finalizeReportConnection(
   const { user, business, organization } = await provisionShadowAccount({
     phone: convo.leadPhone,
     source: 'whatsapp-report-agent',
+    // The webhook that created this conversation already verified the
+    // inbound WhatsApp message's sender (Meta/Twilio signature validation)
+    // — phone ownership is proven out-of-band here, unlike an anonymous
+    // HTTP form submission.
+    phoneVerified: true,
     businessData: {
       name: location.title,
       address: location.address,

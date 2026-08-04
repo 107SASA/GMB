@@ -11,39 +11,39 @@ export default function BufferHealthBar({ scheduled, target, healthStatus }: Buf
   const percentage = target > 0 ? Math.min(100, Math.round((scheduled / target) * 100)) : 0;
   
   const statusColors = {
-    Healthy: 'from-emerald-400 to-emerald-500',
-    Warning: 'from-amber-400 to-amber-500',
-    Critical: 'from-rose-400 to-rose-500',
+    Healthy: 'from-secondary to-secondary',
+    Warning: 'from-error to-error',
+    Critical: 'from-error to-error',
   };
 
   const badgeColors = {
-    Healthy: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    Warning: 'bg-amber-100 text-amber-800 border-amber-200',
-    Critical: 'bg-rose-100 text-rose-800 border-rose-200',
+    Healthy: 'bg-secondary-container text-on-secondary-container border-secondary-fixed',
+    Warning: 'bg-error-container text-on-error-container border-error-container',
+    Critical: 'bg-error-container text-error border-error-container',
   };
 
   const bgGradient = statusColors[healthStatus as keyof typeof statusColors] || statusColors.Healthy;
   const badgeColor = badgeColors[healthStatus as keyof typeof badgeColors] || badgeColors.Healthy;
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col md:flex-row items-center gap-6">
+    <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant p-6 flex flex-col md:flex-row items-center gap-6">
       <div className="flex-shrink-0 text-center md:text-left">
-        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-1">Buffer Health</h3>
+        <h3 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-1">Buffer Health</h3>
         <div className="flex items-center gap-3 justify-center md:justify-start">
-          <span className="text-3xl font-black text-slate-900">{scheduled}<span className="text-xl text-slate-400">/{target}</span></span>
+          <span className="text-3xl font-black text-on-surface">{scheduled}<span className="text-xl text-outline">/{target}</span></span>
           <span className={`px-2.5 py-1 rounded-md text-xs font-bold border ${badgeColor}`}>
             {healthStatus}
           </span>
         </div>
-        <p className="text-xs text-slate-400 mt-1">posts scheduled this week</p>
+        <p className="text-xs text-outline mt-1">posts scheduled this week</p>
       </div>
 
       <div className="flex-grow w-full">
-        <div className="flex justify-between text-xs font-semibold text-slate-500 mb-2">
+        <div className="flex justify-between text-xs font-semibold text-on-surface-variant mb-2">
           <span>Empty week</span>
           <span>{target} posts (Optimal)</span>
         </div>
-        <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden relative">
+        <div className="h-4 w-full bg-surface-container rounded-full overflow-hidden relative">
           <motion.div 
             initial={{ width: 0 }}
             animate={{ width: `${percentage}%` }}

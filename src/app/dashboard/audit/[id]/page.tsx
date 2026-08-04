@@ -1,7 +1,7 @@
 import GatedAuditReport from '@/components/audit/GatedAuditReport';
 
 export const metadata = {
-  title: 'Audit Results | GrowwMatics AI',
+  title: 'Audit Results',
   description: 'View your AI-powered Google Business Profile audit results.',
 };
 
@@ -11,7 +11,7 @@ export default async function AuditResultsPage(
   const { id } = await params;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 pt-10">
+    <div className="min-h-screen bg-surface p-4 pt-10">
       <GatedAuditReport auditId={id} />
     </div>
   );

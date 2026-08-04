@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import BufferHealthBar from './BufferHealthBar';
 import LowBufferBanner from './LowBufferBanner';
 import WeeklyCalendar from './WeeklyCalendar';
+import { useBusiness } from '@/context/BusinessContext';
 
 export default function SchedulerDashboard() {
+  const { activeBusiness } = useBusiness();
   const [bufferData, setBufferData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -21,9 +23,14 @@ export default function SchedulerDashboard() {
     }
   }, []);
 
+  // /api/scheduler/buffer is scoped to the active business server-side, but
+  // this previously fetched once on mount only — switching workspaces left
+  // the buffer health bar and calendar (which is fully driven by this data,
+  // see the WeeklyCalendar posts prop below) showing the PREVIOUS workspace.
   useEffect(() => {
+    if (!activeBusiness?._id) return;
     fetchBuffer();
-  }, [fetchBuffer]);
+  }, [fetchBuffer, activeBusiness?._id]);
 
   const handleManualGenerate = async () => {
     try {
@@ -73,14 +80,14 @@ export default function SchedulerDashboard() {
     fetchBuffer();
   }, [fetchBuffer]);
 
-  if (loading) return <div className="p-8 text-center text-slate-500">Loading scheduler...</div>;
-  if (!bufferData) return <div className="p-8 text-center text-rose-500">Failed to load scheduler data.</div>;
+  if (loading) return <div className="p-8 text-center text-on-surface-variant">Loading scheduler...</div>;
+  if (!bufferData) return <div className="p-8 text-center text-error">Failed to load scheduler data.</div>;
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">AI Marketing Automation</h1>
-        <p className="text-slate-500 mt-1">
+        <h1 className="font-heading text-3xl font-bold text-on-surface tracking-tight">AI Marketing Automation</h1>
+        <p className="text-on-surface-variant mt-1">
           Manage your 14-day content buffer and automated publishing workflow.
         </p>
       </div>

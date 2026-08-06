@@ -23,6 +23,18 @@ export default function AuditReportV6({ audit, onDownload }: { audit: IAudit; on
 
   if (!data) return <div className="p-8 text-center text-on-surface-variant">No data available</div>;
 
+  // Competitor RANK lookup — the "Top Local Competitors" table below already
+  // lists name/rating/reviews/distance but never showed each competitor's
+  // search rank (the actual gap: "competitor ranking is missing"). Same
+  // fallback AuditReportGrexa (current template) uses: prefer real geo-grid
+  // avgRank from localPackCompetitors, keyed by name since data.competitors
+  // itself may not carry a rank on older audits.
+  const rankByName = new Map<string, number | undefined>(
+    (data.localPackCompetitors ?? []).map((c: any) => [c.name, c.avgRank])
+  );
+  const competitorRank = (c: any): number | undefined =>
+    rankByName.get(c.name) ?? c.avgRank ?? c.estimatedRank;
+
   return (
     <div className="max-w-6xl mx-auto pb-20 space-y-8 font-sans">
       
@@ -110,22 +122,31 @@ export default function AuditReportV6({ audit, onDownload }: { audit: IAudit; on
             <thead>
               <tr className="border-b-2 border-outline-variant">
                 <th className="pb-3 text-sm font-bold text-on-surface-variant uppercase">Business Name</th>
+                <th className="pb-3 text-sm font-bold text-on-surface-variant uppercase text-right">Avg. Rank</th>
                 <th className="pb-3 text-sm font-bold text-on-surface-variant uppercase">Rating</th>
                 <th className="pb-3 text-sm font-bold text-on-surface-variant uppercase">Reviews</th>
                 <th className="pb-3 text-sm font-bold text-on-surface-variant uppercase">Distance</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant">
-              {(data.competitors || []).map((c: any, i: number) => (
-                <tr key={i} className="hover:bg-surface">
-                  <td className="py-4 text-on-surface font-bold">{c.name}</td>
-                  <td className="py-4 text-on-surface font-medium flex items-center gap-1">
-                    {c.rating} <Star className="w-4 h-4 text-secondary-fixed fill-secondary-fixed" />
-                  </td>
-                  <td className="py-4 text-on-surface-variant">{c.reviewCount}</td>
-                  <td className="py-4 text-on-surface-variant">{c.distance || 'Unknown'}</td>
-                </tr>
-              ))}
+              {(data.competitors || []).map((c: any, i: number) => {
+                const rank = competitorRank(c);
+                return (
+                  <tr key={i} className="hover:bg-surface">
+                    <td className="py-4 text-on-surface font-bold">{c.name}</td>
+                    <td className="py-4 text-right">
+                      <span className="inline-block px-3 py-1 rounded-full text-sm font-bold bg-surface-container text-on-surface-variant">
+                        {rank ? `#${Math.round(rank)}` : '—'}
+                      </span>
+                    </td>
+                    <td className="py-4 text-on-surface font-medium flex items-center gap-1">
+                      {c.rating} <Star className="w-4 h-4 text-secondary-fixed fill-secondary-fixed" />
+                    </td>
+                    <td className="py-4 text-on-surface-variant">{c.reviewCount}</td>
+                    <td className="py-4 text-on-surface-variant">{c.distance || 'Unknown'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
@@ -8,12 +8,24 @@ import { generateBufferPosts } from '@/api/endpoints/scheduler';
 import { useBusiness } from '@/business/BusinessContext';
 import { SchedulerPanel } from '@/components/scheduler-panel';
 import { Screen, ScreenTitle } from '@/components/ui';
+import { useTheme } from '@/lib/theme';
 
 export default function SchedulerScreen() {
   const { activeBusinessId } = useBusiness();
+  const t = useTheme();
   const queryClient = useQueryClient();
   const [generating, setGenerating] = useState(false);
   const generateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The ref above exists specifically so this timer can be cancelled — it
+  // previously wasn't, so navigating away from this screen within the 6s
+  // window still called setGenerating/invalidateQueries against an
+  // unmounted screen.
+  useEffect(() => {
+    return () => {
+      if (generateTimer.current) clearTimeout(generateTimer.current);
+    };
+  }, []);
 
   const generate = useMutation({
     mutationFn: generateBufferPosts,
@@ -37,11 +49,18 @@ export default function SchedulerScreen() {
         <Pressable
           onPress={() => generate.mutate()}
           disabled={generate.isPending || generating}
-          className={`flex-row items-center gap-1.5 rounded-full px-4 py-2 ${
-            generate.isPending || generating
-              ? 'bg-brand-muted opacity-60'
-              : 'bg-brand active:scale-95'
-          }`}
+          // No `className` — react-native-css-interop can swallow onPress on
+          // styled Pressables (see components/ui.tsx).
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            borderRadius: 999,
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            backgroundColor: generate.isPending || generating ? t.brandMuted : t.brand,
+            opacity: generate.isPending || generating ? 0.6 : 1,
+          }}
         >
           {generate.isPending || generating ? (
             <ActivityIndicator size="small" color="#ffffff" />

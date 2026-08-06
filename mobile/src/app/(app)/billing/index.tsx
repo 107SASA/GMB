@@ -19,7 +19,7 @@ import {
 } from '@/components/ui';
 import { ALL_MODULE_KEYS, MODULE_NAMES } from '@/entitlements/entitlements';
 import { formatDateTime } from '@/lib/format';
-import { useTheme } from '@/lib/theme';
+import { useTheme, withAlpha } from '@/lib/theme';
 
 function billingTone(status: string): 'positive' | 'info' | 'warning' | 'negative' | 'neutral' {
   if (status === 'Active') return 'positive';
@@ -155,7 +155,18 @@ export default function BillingScreen() {
                 onPress={() =>
                   void WebBrowser.openBrowserAsync(`${process.env.EXPO_PUBLIC_API_URL}/pricing`)
                 }
-                className="flex-1 flex-row items-center justify-center gap-1.5 rounded-full bg-brand py-3 active:scale-95"
+                // No `className` — react-native-css-interop can swallow
+                // onPress on styled Pressables (see components/ui.tsx).
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  borderRadius: 999,
+                  backgroundColor: t.brand,
+                  paddingVertical: 12,
+                }}
               >
                 <Ionicons name="open-outline" size={15} color="#ffffff" />
                 <Text className="font-sans-bold text-sm text-on-brand">View plans on the web</Text>
@@ -170,7 +181,16 @@ export default function BillingScreen() {
                   <Pressable
                     onPress={confirmCancel}
                     disabled={cancel.isPending}
-                    className="items-center justify-center rounded-full border border-rose-400/25 px-4 py-3 active:scale-95"
+                    // No `className` — see note above.
+                    style={{
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: withAlpha(t.rose, 0.25),
+                      paddingHorizontal: 16,
+                      paddingVertical: 12,
+                    }}
                   >
                     <Text className="font-sans-bold text-sm text-rose-300">
                       {cancel.isPending ? 'Cancelling…' : 'Cancel'}

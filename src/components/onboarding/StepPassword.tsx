@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { OnboardingData } from './types';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { getPasswordError as validatePasswordStrength } from '@/lib/passwordPolicy';
 
 interface Props {
   data: OnboardingData;
@@ -11,17 +12,6 @@ interface Props {
 
 const inputCls =
   'w-full px-4 py-3 pr-12 bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all';
-
-// Mirrors validatePasswordStrength in src/services/auth/security.ts — kept in sync manually
-// since that file pulls in bcryptjs/jsonwebtoken and can't be imported into a client bundle.
-function validatePasswordStrength(password: string): string | null {
-  if (password.length < 8) return 'Password must be at least 8 characters long.';
-  if (!/[A-Z]/.test(password)) return 'Password must contain an uppercase letter.';
-  if (!/[a-z]/.test(password)) return 'Password must contain a lowercase letter.';
-  if (!/[0-9]/.test(password)) return 'Password must contain a number.';
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) return 'Password must contain a special character.';
-  return null;
-}
 
 export default function StepPassword({ data, updateData, onNext, onBack }: Props) {
   const [error, setError] = useState('');

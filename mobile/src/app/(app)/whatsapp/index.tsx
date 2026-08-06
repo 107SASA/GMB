@@ -43,7 +43,7 @@ import {
   SegmentedControl,
   Skeleton,
 } from '@/components/ui';
-import { useTheme } from '@/lib/theme';
+import { useTheme, withAlpha } from '@/lib/theme';
 
 const PERSONALITIES = ['friendly', 'professional', 'enthusiastic', 'calm'];
 const TONES = ['professional', 'casual', 'formal', 'playful'];
@@ -302,6 +302,7 @@ function CancelModal({
   onCancelled: () => void;
 }) {
   const [reason, setReason] = useState('');
+  const t = useTheme();
   const cancel = useMutation({
     mutationFn: () => cancelAppointment(appointment._id, reason.trim() || 'Cancelled by business'),
     onSuccess: () => {
@@ -326,14 +327,16 @@ function CancelModal({
           <View className="mt-4 flex-row gap-3">
             <Pressable
               onPress={onClose}
-              className="flex-1 items-center rounded-full border border-surface-border py-3 active:scale-95"
+              // No `className` — see components/ui.tsx PrimaryButton note.
+              style={{ flex: 1, alignItems: 'center', borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingVertical: 12 }}
             >
               <Text className="font-sans-semibold text-sm text-zinc-300">Keep it</Text>
             </Pressable>
             <Pressable
               onPress={() => cancel.mutate()}
               disabled={cancel.isPending}
-              className="flex-1 items-center rounded-full bg-error-container py-3 active:scale-95"
+              // No `className` — see note above.
+              style={{ flex: 1, alignItems: 'center', borderRadius: 999, backgroundColor: t.errorContainer, paddingVertical: 12 }}
             >
               <Text className="font-sans-bold text-sm text-on-error-container">
                 {cancel.isPending ? 'Cancelling…' : 'Cancel it'}
@@ -411,7 +414,16 @@ function AppointmentsSegment() {
               {(item.status === 'Pending' || item.status === 'Confirmed') && (
                 <Pressable
                   onPress={() => setCancelling(item)}
-                  className="mt-3 self-start rounded-full border border-rose-400/25 px-3 py-1.5 active:scale-95"
+                  // No `className` — see components/ui.tsx PrimaryButton note.
+                  style={{
+                    marginTop: 12,
+                    alignSelf: 'flex-start',
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: withAlpha(t.rose, 0.25),
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                  }}
                 >
                   <Text className="font-sans-semibold text-xs text-rose-300">Cancel appointment</Text>
                 </Pressable>
@@ -453,7 +465,20 @@ export default function WhatsappScreen() {
 
       <Pressable
         onPress={() => router.push('/inbox')}
-        className="mx-5 mb-3 flex-row items-center gap-2 rounded-card border border-surface-border bg-surface-raised px-3.5 py-2.5 active:opacity-70"
+        // No `className` — see components/ui.tsx PrimaryButton note.
+        style={{
+          marginHorizontal: 20,
+          marginBottom: 12,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          borderRadius: 20,
+          borderWidth: 1,
+          borderColor: t.border,
+          backgroundColor: t.card,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+        }}
       >
         <Ionicons name="chatbubbles-outline" size={16} color={t.brandBright} />
         <Text className="flex-1 font-sans text-xs text-zinc-300">

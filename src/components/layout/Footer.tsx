@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { BRAND_ATTRIBUTION } from "@/lib/companyInfo";
 
 export function Footer() {
   return (
@@ -93,8 +94,9 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="max-w-container-max mx-auto mt-20 pt-8 border-t border-outline-variant text-center text-outline text-xs">
-        © {new Date().getFullYear()} GrowwMatics AI. All rights reserved. Built for the future of local SEO.
+      <div className="max-w-container-max mx-auto mt-20 pt-8 border-t border-outline-variant text-center text-outline text-xs space-y-1">
+        <p>© {new Date().getFullYear()} GrowwMatics AI. All rights reserved. Built for the future of local SEO.</p>
+        <p>{BRAND_ATTRIBUTION}</p>
       </div>
     </footer>
   );

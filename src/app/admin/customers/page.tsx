@@ -410,6 +410,7 @@ interface PlanConfigRow {
   plan: string;
   maxAuditsPerBusiness:      number;
   maxPostsPerMonth:          number;
+  postLimitFrequency:        'monthly' | 'weekly';
   maxWhatsAppMessagesPerDay: number;
   reviewRequestCooldownDays: number;
   maxAIGenerations:          number;
@@ -430,6 +431,7 @@ function EditPlanModal({
   const [draft, setDraft] = useState({
     maxAuditsPerBusiness:      config.maxAuditsPerBusiness,
     maxPostsPerMonth:          config.maxPostsPerMonth,
+    postLimitFrequency:        config.postLimitFrequency ?? 'monthly',
     maxWhatsAppMessagesPerDay: config.maxWhatsAppMessagesPerDay,
     reviewRequestCooldownDays: config.reviewRequestCooldownDays,
     maxAIGenerations:          config.maxAIGenerations,
@@ -481,7 +483,11 @@ function EditPlanModal({
         <div className="p-6 space-y-4">
           {LIMIT_FIELDS.map(({ key, label, unit }) => (
             <div key={key}>
-              <label className="block text-sm font-semibold text-on-surface mb-1.5">{label}</label>
+              <label className="block text-sm font-semibold text-on-surface mb-1.5">
+                {key === 'maxPostsPerMonth'
+                  ? `Max Posts / ${draft.postLimitFrequency === 'weekly' ? 'Week' : 'Month'}`
+                  : label}
+              </label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
@@ -492,6 +498,22 @@ function EditPlanModal({
                 />
                 <span className="text-xs text-outline font-medium w-10 shrink-0">{unit}</span>
               </div>
+              {/* Frequency toggle sits right under the post-limit field it
+                  governs — resets on either a calendar month or a Monday-
+                  based week (see lib/featureGating.ts checkUsageLimit). */}
+              {key === 'maxPostsPerMonth' && (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-outline font-medium">Resets:</span>
+                  <select
+                    value={draft.postLimitFrequency}
+                    onChange={e => setDraft(d => ({ ...d, postLimitFrequency: e.target.value as 'monthly' | 'weekly' }))}
+                    className="px-3 py-1.5 border border-outline-variant rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary-fixed-dim"
+                  >
+                    <option value="monthly">Monthly</option>
+                    <option value="weekly">Weekly</option>
+                  </select>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -593,6 +615,7 @@ function UsageLimitsTab() {
       plan:                      planName,
       maxAuditsPerBusiness:      hc.maxAuditsPerBusiness,
       maxPostsPerMonth:          hc.maxPostsPerMonth,
+      postLimitFrequency:        hc.postLimitFrequency ?? 'monthly',
       maxWhatsAppMessagesPerDay: hc.maxWhatsAppMessagesPerDay,
       reviewRequestCooldownDays: hc.reviewRequestCooldownDays,
       maxAIGenerations:          hc.maxAIGenerations,
@@ -707,7 +730,9 @@ function UsageLimitsTab() {
             <div className="space-y-1.5 text-xs">
               {LIMIT_FIELDS.map(({ key, label, unit }) => (
                 <div key={key} className="flex items-center justify-between">
-                  <span className="text-on-surface-variant truncate pr-2">{label}</span>
+                  <span className="text-on-surface-variant truncate pr-2">
+                    {key === 'maxPostsPerMonth' ? `Max Posts / ${cfg.postLimitFrequency === 'weekly' ? 'Week' : 'Month'}` : label}
+                  </span>
                   <span className={cn('font-bold shrink-0', cfg.isCustom ? 'text-primary' : 'text-on-surface')}>{cfg[key]} {unit}</span>
                 </div>
               ))}

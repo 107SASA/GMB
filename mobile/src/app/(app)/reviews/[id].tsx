@@ -27,6 +27,7 @@ import {
   Screen,
 } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
+import { useTheme, withAlpha } from '@/lib/theme';
 
 function SecondaryButton({
   title,
@@ -39,13 +40,23 @@ function SecondaryButton({
   loading?: boolean;
   destructive?: boolean;
 }) {
+  const t = useTheme();
   return (
     <Pressable
       onPress={onPress}
       disabled={loading}
-      className={`flex-1 items-center rounded-full border py-3 active:scale-95 ${
-        destructive ? 'border-error/25 bg-error-container' : 'border-surface-border bg-surface-raised'
-      } ${loading ? 'opacity-60' : ''}`}
+      // No `className` on this Pressable — react-native-css-interop can
+      // swallow onPress on styled Pressables (see ui.tsx PrimaryButton).
+      style={{
+        flex: 1,
+        alignItems: 'center',
+        borderRadius: 999,
+        borderWidth: 1,
+        paddingVertical: 12,
+        borderColor: destructive ? withAlpha(t.rose, 0.25) : t.border,
+        backgroundColor: destructive ? t.errorContainer : t.card,
+        opacity: loading ? 0.6 : 1,
+      }}
     >
       <Text
         className={`font-sans-semibold text-sm ${destructive ? 'text-on-error-container' : 'text-zinc-200'}`}
@@ -135,7 +146,7 @@ export default function ReviewDetailScreen() {
     <Screen>
       {/* Header */}
       <View className="flex-row items-center gap-3 border-b border-surface-border px-4 pb-3 pt-2">
-        <Pressable onPress={() => router.back()} hitSlop={8} className="active:opacity-60">
+        <Pressable onPress={() => router.back()} hitSlop={8}>
           <BackChevron />
         </Pressable>
         <View className="flex-1">

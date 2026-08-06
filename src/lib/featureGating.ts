@@ -5,6 +5,7 @@ import UserLimitOverride from '@/models/UserLimitOverride';
 import SubscriptionUsage from '@/models/SubscriptionUsage';
 import AIUsageLog from '@/models/AIUsageLog';
 import PlanConfig from '@/models/PlanConfig';
+import Post from '@/models/Post';
 import { getPlanDefaults, type PlanLimits } from '@/lib/planDefaults';
 
 async function getPlanLimitsFromDB(planName: string): Promise<PlanLimits> {
@@ -15,6 +16,7 @@ async function getPlanLimitsFromDB(planName: string): Promise<PlanLimits> {
       return {
         maxAuditsPerBusiness:      config.maxAuditsPerBusiness,
         maxPostsPerMonth:          config.maxPostsPerMonth,
+        postLimitFrequency:        config.postLimitFrequency ?? 'monthly',
         maxWhatsAppMessagesPerDay: config.maxWhatsAppMessagesPerDay,
         reviewRequestCooldownDays: config.reviewRequestCooldownDays,
         maxAIGenerations:          config.maxAIGenerations,
@@ -22,6 +24,15 @@ async function getPlanLimitsFromDB(planName: string): Promise<PlanLimits> {
     }
   } catch { /* fall through to hardcoded */ }
   return getPlanDefaults(planName);
+}
+
+/** Start of the current Monday-based calendar week, UTC. */
+function startOfWeekUTC(): Date {
+  const now = new Date();
+  const day = now.getUTCDay(); // 0 = Sunday
+  const diffToMonday = day === 0 ? 6 : day - 1;
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diffToMonday));
+  return start;
 }
 
 async function resolveUserLimits(
@@ -38,6 +49,8 @@ async function resolveUserLimits(
   return {
     maxAuditsPerBusiness:      override.maxAuditsPerBusiness      ?? planLimits.maxAuditsPerBusiness,
     maxPostsPerMonth:          override.maxPostsPerMonth          ?? planLimits.maxPostsPerMonth,
+    // Frequency is a plan-level policy — UserLimitOverride never carries it.
+    postLimitFrequency:        planLimits.postLimitFrequency,
     maxWhatsAppMessagesPerDay: override.maxWhatsAppMessagesPerDay ?? planLimits.maxWhatsAppMessagesPerDay,
     reviewRequestCooldownDays: override.reviewRequestCooldownDays ?? planLimits.reviewRequestCooldownDays,
     maxAIGenerations:          override.maxAIGenerations          ?? planLimits.maxAIGenerations,
@@ -82,8 +95,15 @@ export async function checkUsageLimit(
     }
     case 'posts': {
       limit = limits.maxPostsPerMonth;
-      const usage = await SubscriptionUsage.findOne({ businessId, month }).lean() as any;
-      currentUsage = usage?.postsUsed ?? 0;
+      if (limits.postLimitFrequency === 'weekly') {
+        // SubscriptionUsage only buckets by month, so a weekly cap can't
+        // reuse that counter — count actual posts created since the start
+        // of this calendar week instead.
+        currentUsage = await Post.countDocuments({ businessId, createdAt: { $gte: startOfWeekUTC() } });
+      } else {
+        const usage = await SubscriptionUsage.findOne({ businessId, month }).lean() as any;
+        currentUsage = usage?.postsUsed ?? 0;
+      }
       break;
     }
     case 'aiGenerations': {

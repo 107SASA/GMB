@@ -14,10 +14,29 @@ function shortDate(iso?: string | null): string {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+type AiAction = {
+  key: string;
+  badge: string;
+  date: string;
+  title: string;
+  bullets: string[];
+  /** Present only for items that represent a specific, completable task. */
+  onPress?: () => void;
+};
+
 /**
  * "AI Actions" feed card — what the platform has recently done for this
- * business (latest completed audit + content pipeline status), in the
- * reference app's "Profile Updated" card style.
+ * business, and what's left to complete.
+ *
+ * Each card here maps 1:1 to a specific `priorityFixes`/`quickWins` entry on
+ * the latest audit (in that priority order — fixes matter more than wins),
+ * keyed as `${section}-${index}`. That key is a stable id for a given audit
+ * document without needing a DB migration: audit content is generated once
+ * and never reordered/edited after creation, so array position is already
+ * permanent. Tapping a card deep-links straight to that item, highlighted
+ * and scrolled into view, inside its audit (`/audit/[id]?highlight=<key>`,
+ * handled in audit/[id].tsx) — previously nothing here was tappable except
+ * "View All", which just opened the generic audit list.
  */
 export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean }) {
   const { activeBusinessId } = useBusiness();
@@ -34,24 +53,57 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
   const publishedPosts = (buffer.data?.allPosts ?? []).filter((p) => p.status === 'published');
   const latestPublished = publishedPosts[0] ?? null;
 
-  const actions: { badge: string; date: string; title: string; bullets: string[] }[] = [];
+  const actions: AiAction[] = [];
 
   if (audit) {
-    const fixes = audit.auditData?.priorityFixes?.length ?? 0;
-    const wins = audit.auditData?.quickWins?.length ?? 0;
-    actions.push({
-      badge: 'Profile Audited',
-      date: shortDate(audit.createdAt),
-      title: 'Your Google Business Profile: audited to attract more customers',
-      bullets: [
-        audit.overallScore != null ? `Overall score ${audit.overallScore}/100` : 'Audit completed',
-        ...(fixes ? [`${fixes} priority fixes identified`] : []),
-        ...(wins ? [`${wins} quick wins suggested`] : []),
-      ],
+    const priorityFixes = audit.auditData?.priorityFixes ?? [];
+    const quickWins = audit.auditData?.quickWins ?? [];
+    const date = shortDate(audit.createdAt);
+
+    // Priority fixes first (highest-impact, concrete tasks); quick wins as
+    // a fallback so the card isn't empty when the audit found no fixes.
+    priorityFixes.slice(0, 2).forEach((fix, i) => {
+      actions.push({
+        key: `priorityFixes-${i}`,
+        badge: 'Priority Fix',
+        date,
+        title: fix.title,
+        bullets: [fix.detail, fix.impact ? `Impact: ${fix.impact}` : null].filter(
+          (b): b is string => !!b
+        ),
+        onPress: () => router.push(`/audit/${audit._id}?highlight=priorityFixes-${i}`),
+      });
     });
+    if (priorityFixes.length === 0) {
+      quickWins.slice(0, 2).forEach((win, i) => {
+        actions.push({
+          key: `quickWins-${i}`,
+          badge: 'Quick Win',
+          date,
+          title: win,
+          bullets: [],
+          onPress: () => router.push(`/audit/${audit._id}?highlight=quickWins-${i}`),
+        });
+      });
+    }
+    // No individual action items on this audit at all — fall back to the
+    // old summary card so something still shows, tapping opens the full report.
+    if (actions.length === 0) {
+      actions.push({
+        key: 'audit-summary',
+        badge: 'Profile Audited',
+        date,
+        title: 'Your Google Business Profile: audited to attract more customers',
+        bullets: [audit.overallScore != null ? `Overall score ${audit.overallScore}/100` : 'Audit completed'],
+        onPress: () => router.push(`/audit/${audit._id}`),
+      });
+    }
   }
   if (latestPublished) {
+    // Already completed — nothing left to do, so this one stays
+    // non-interactive (no onPress), same as before.
     actions.push({
+      key: 'latest-post',
       badge: 'Post Published',
       date: shortDate(latestPublished.publishedAt ?? latestPublished.createdAt),
       title: latestPublished.title || 'New post published to your profile',
@@ -69,7 +121,9 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
         {showViewAll && (
           <Pressable
             onPress={() => router.push('/audit')}
-            className="flex-row items-center gap-1 active:opacity-70"
+            // No `className` — react-native-css-interop can swallow onPress
+            // on styled Pressables (see components/ui.tsx).
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
           >
             <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
               View All
@@ -88,33 +142,57 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
         </View>
       ) : (
         <View className="gap-3">
-          {actions.map((action) => (
-            <View
-              key={action.badge + action.title}
-              className="rounded-card border border-surface-border bg-surface-raised p-4"
-            >
-              <View className="mb-3 flex-row items-center justify-between">
-                <View className="flex-row items-center gap-1.5 rounded-full bg-warning-container px-3 py-1.5">
-                  <Ionicons name="checkmark-circle-outline" size={14} color={t.amber} />
-                  <Text className="font-sans-bold text-[11px] uppercase tracking-[0.6px] text-on-warning-container">
-                    {action.badge}
-                  </Text>
-                </View>
-                <Text className="font-sans text-xs text-zinc-500">{action.date}</Text>
-              </View>
-              <Text className="mb-2 font-display-bold text-lg leading-6 text-white">
-                {action.title}
-              </Text>
-              <View className="gap-1.5">
-                {action.bullets.map((b) => (
-                  <View key={b} className="flex-row items-center gap-2">
-                    <Ionicons name="checkmark" size={14} color={t.brandBright} />
-                    <Text className="flex-1 font-sans text-sm text-zinc-300">{b}</Text>
+          {actions.map((action) => {
+            return (
+              <Pressable
+                key={action.key}
+                onPress={action.onPress}
+                disabled={!action.onPress}
+                // No `className` — react-native-css-interop can swallow
+                // onPress on styled Pressables (see components/ui.tsx).
+                style={{
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: t.border,
+                  backgroundColor: t.card,
+                  padding: 16,
+                }}
+              >
+                <View className="mb-3 flex-row items-center justify-between">
+                  <View className="flex-row items-center gap-1.5 rounded-full bg-warning-container px-3 py-1.5">
+                    <Ionicons name="checkmark-circle-outline" size={14} color={t.amber} />
+                    <Text className="font-sans-bold text-[11px] uppercase tracking-[0.6px] text-on-warning-container">
+                      {action.badge}
+                    </Text>
                   </View>
-                ))}
-              </View>
-            </View>
-          ))}
+                  <Text className="font-sans text-xs text-zinc-500">{action.date}</Text>
+                </View>
+                <View className="flex-row items-start justify-between gap-2">
+                  <Text className="mb-2 flex-1 font-display-bold text-lg leading-6 text-white">
+                    {action.title}
+                  </Text>
+                  {!!action.onPress && (
+                    <Ionicons name="chevron-forward" size={18} color={t.brandBright} style={{ marginTop: 3 }} />
+                  )}
+                </View>
+                {action.bullets.length > 0 && (
+                  <View className="gap-1.5">
+                    {action.bullets.map((b) => (
+                      <View key={b} className="flex-row items-center gap-2">
+                        <Ionicons name="checkmark" size={14} color={t.brandBright} />
+                        <Text className="flex-1 font-sans text-sm text-zinc-300">{b}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {!!action.onPress && (
+                  <Text className="mt-2 font-sans-bold text-xs" style={{ color: t.brandBright }}>
+                    Tap to complete →
+                  </Text>
+                )}
+              </Pressable>
+            );
+          })}
         </View>
       )}
     </View>

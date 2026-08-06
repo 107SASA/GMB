@@ -21,7 +21,17 @@ function ThreadRow({ thread }: { thread: ConversationThread }) {
   return (
     <Pressable
       onPress={() => router.push(`/inbox/${lead._id}`)}
-      className="flex-row items-center gap-3 border-b border-surface-border px-5 py-3.5 active:bg-surface-raised"
+      // No `className` — react-native-css-interop can swallow onPress on
+      // styled Pressables (see components/ui.tsx).
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: t.border,
+        paddingHorizontal: 20,
+        paddingVertical: 14,
+      }}
     >
       {/* Avatar: initials on a tinted disc */}
       <View className="h-11 w-11 items-center justify-center rounded-full bg-indigo-400/15">

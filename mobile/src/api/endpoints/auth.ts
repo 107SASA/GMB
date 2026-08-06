@@ -66,6 +66,29 @@ export async function login(email: string, password: string): Promise<LoginRespo
   return loginResponseSchema.parse(data);
 }
 
+const requestPhoneOtpResponseSchema = z.object({
+  success: z.literal(true),
+  maskedPhone: z.string().optional(),
+});
+
+/**
+ * POST /api/auth/phone-login/request — sends a one-time code to `phone` over
+ * WhatsApp. Same account, alternate first factor to email+password.
+ */
+export async function requestPhoneLoginOtp(phone: string): Promise<{ maskedPhone?: string }> {
+  const { data } = await api.post('/api/auth/phone-login/request', { phone });
+  return requestPhoneOtpResponseSchema.parse(data);
+}
+
+/**
+ * POST /api/auth/phone-login/verify — same x-client: mobile token response
+ * shape as email login above.
+ */
+export async function verifyPhoneLoginOtp(phone: string, otp: string): Promise<LoginResponse> {
+  const { data } = await api.post('/api/auth/phone-login/verify', { phone, otp });
+  return loginResponseSchema.parse(data);
+}
+
 /** GET /api/auth/me — hydrates the signed-in user + subscription state. */
 export async function fetchCurrentUser(): Promise<CurrentUser> {
   const { data } = await api.get('/api/auth/me');

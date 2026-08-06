@@ -126,7 +126,17 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
         </View>
         <Pressable
           onPress={addKeyword}
-          className="items-center justify-center rounded-xl border border-surface-border bg-surface-raised px-4 active:scale-95"
+          // No `className` — react-native-css-interop can swallow onPress on
+          // styled Pressables (see components/ui.tsx).
+          style={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: t.border,
+            backgroundColor: t.card,
+            paddingHorizontal: 16,
+          }}
         >
           <Ionicons name="add" size={20} color={t.text} />
         </Pressable>
@@ -240,7 +250,9 @@ function GoogleConnectionRow({ connected }: { connected: boolean }) {
   return (
     <Pressable
       onPress={handlePress}
-      className="flex-row items-center justify-between px-4 py-3 active:bg-surface-overlay"
+      // No `className` — react-native-css-interop can swallow onPress on
+      // styled Pressables (see components/ui.tsx).
+      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }}
     >
       <Text className="font-sans text-sm text-white">Google Business Profile</Text>
       <View className="flex-row items-center gap-1.5">

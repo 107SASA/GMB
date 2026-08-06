@@ -35,7 +35,7 @@ export default function RecentCallsScreen() {
   return (
     <Screen>
       <View className="flex-row items-center gap-3 border-b border-surface-border px-4 pb-3 pt-2">
-        <Pressable onPress={() => router.back()} hitSlop={8} className="active:opacity-60">
+        <Pressable onPress={() => router.back()} hitSlop={8}>
           <BackChevron />
         </Pressable>
         <Text className="font-display-bold text-lg text-white">Recent calls</Text>

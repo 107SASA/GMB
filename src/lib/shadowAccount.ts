@@ -137,7 +137,14 @@ export async function provisionShadowAccount(
     }
   } else {
     user = await User.create({
-      fullName: input.businessData.name || 'Business Owner',
+      // NOT input.businessData.name — that's the BUSINESS's name (e.g.
+      // "Desun Academy - Top IT Training Institute in Kolkata"), not the
+      // person's. It was leaking into every "who's logged in" display
+      // (DashboardHeader's name + initials avatar) and into WhatsApp sales
+      // messages that address the lead by "first name" (composeFirstMessage
+      // → firstName(owner?.fullName)) until POST /api/onboarding/claim
+      // overwrites this with what they actually type on the claim page.
+      fullName: 'New User',
       email: shadowEmailFor(normalizedPhone),
       phone: normalizedPhone,
       role: 'CLIENT',

@@ -150,23 +150,33 @@ export default async function proxy(request: NextRequest) {
       })
     ) {
       // Paid + still a shadow account -> must set a real email/password
-      // before anything else, including intake.
-      if (user.isShadowAccount && !isAllowedBeforeClaim(pathname)) {
-        return NextResponse.redirect(new URL(CLAIM_PATH, request.url));
-      }
+      // before anything else, including intake. Checked as one combined
+      // "claim still outstanding" condition (rather than two independent
+      // early-return checks) so the intake gate below can never redirect a
+      // pending-claim user away from the claim page — that was the exact bug:
+      // isAllowedBeforeIntake() didn't exempt CLAIM_PATH, so a brand-new
+      // (post-2026-07-23) shadow-account workspace landing on /claim got
+      // bounced to /intake, which immediately bounced back to /claim
+      // (isShadowAccount still true there) — an infinite redirect loop.
+      const needsClaim =
+        user.isShadowAccount ||
+        // Claimed (isShadowAccount just flipped false) but the OTP step was
+        // never completed -> the pre-existing session would otherwise let
+        // this straight through, silently defeating the whole point of the
+        // claim step (POST /api/auth/login refuses unverified accounts, so
+        // this person would have no way back in once this session expires).
+        // Scoped to former shadow accounts only via shadowSource, so normal
+        // /onboarding signups (which never get a session before verifying)
+        // are untouched.
+        (!!user.shadowSource && !user.isEmailVerified);
 
-      // Claimed (isShadowAccount just flipped false above) but the OTP step
-      // was never completed -> the pre-existing session would otherwise let
-      // this straight through, silently defeating the whole point of the
-      // claim step (POST /api/auth/login refuses unverified accounts, so
-      // this person would have no way back in once this session expires).
-      // Scoped to former shadow accounts only via shadowSource, so normal
-      // /onboarding signups (which never get a session before verifying)
-      // are untouched.
-      if (user.shadowSource && !user.isShadowAccount && !user.isEmailVerified && !isAllowedBeforeClaim(pathname)) {
+      if (needsClaim) {
+        if (isAllowedBeforeClaim(pathname)) return NextResponse.next();
         const url = new URL(CLAIM_PATH, request.url);
-        url.searchParams.set('step', 'verify');
-        if (user.email) url.searchParams.set('email', user.email);
+        if (!user.isShadowAccount) {
+          url.searchParams.set('step', 'verify');
+          if (user.email) url.searchParams.set('email', user.email);
+        }
         return NextResponse.redirect(url);
       }
 

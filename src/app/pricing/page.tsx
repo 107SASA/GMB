@@ -9,6 +9,7 @@ import {
 } from '@/components/billing/useRazorpayCheckout';
 import { DurationPicker, pickDuration } from '@/components/billing/DurationPicker';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { BRAND_ATTRIBUTION } from '@/lib/companyInfo';
 
 /** One plan, one card — price and copy come from the super-admin config. */
 export default function PricingPage() {
@@ -119,6 +120,7 @@ export default function PricingPage() {
         <p className="text-center text-xs text-outline mt-10">
           Payments are processed securely by Razorpay. Cancel anytime from your dashboard billing page.
         </p>
+        <p className="text-center text-xs text-outline mt-1">{BRAND_ATTRIBUTION}</p>
       </div>
     </div>
   );

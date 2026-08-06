@@ -36,7 +36,7 @@ function EditPostModal({ post, onClose }: { post: ContentPost; onClose: () => vo
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable className="flex-1 bg-black/60" onPress={onClose} />
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={onClose} />
       <View className="rounded-t-3xl border-t border-surface-border bg-surface p-5 pb-8">
         <Text className="mb-4 font-display-bold text-lg text-white">Edit Post</Text>
         <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Title</Text>
@@ -103,14 +103,17 @@ function PostCard({ post, onEdit }: { post: ContentPost; onEdit: () => void }) {
           <View className="flex-row gap-1.5">
             <Pressable
               onPress={onEdit}
-              className="h-9 w-9 items-center justify-center rounded-full bg-surface active:opacity-70"
+              // No `className` — react-native-css-interop can swallow onPress
+              // on styled Pressables (see components/ui.tsx).
+              style={{ height: 36, width: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: t.bg }}
             >
               <Ionicons name="pencil" size={15} color={t.brandBright} />
             </Pressable>
             <Pressable
               onPress={confirmDelete}
               disabled={remove.isPending}
-              className="h-9 w-9 items-center justify-center rounded-full bg-surface active:opacity-70"
+              // No `className` — see note above.
+              style={{ height: 36, width: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: t.bg }}
             >
               <Ionicons name="trash-outline" size={15} color={t.rose} />
             </Pressable>
@@ -201,11 +204,20 @@ export function PostsTab() {
         <Pressable
           onPress={() => generate.mutate()}
           disabled={generate.isPending}
-          className="flex-row items-center gap-1.5 rounded-full px-4 py-2.5 active:scale-95"
-          style={{ backgroundColor: t.brand, opacity: generate.isPending ? 0.6 : 1 }}
+          // No `className` — see note above.
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            borderRadius: 999,
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            backgroundColor: t.brand,
+            opacity: generate.isPending ? 0.6 : 1,
+          }}
         >
           <Ionicons name="sparkles" size={14} color="#ffffff" />
-          <Text className="font-sans-bold text-sm text-white">
+          <Text className="font-sans-bold text-sm text-on-brand">
             {generate.isPending ? 'Generating…' : 'Generate Posts'}
           </Text>
         </Pressable>

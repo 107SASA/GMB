@@ -120,7 +120,9 @@ export function BusinessAssets() {
               onPress={() =>
                 promptConnectGoogle(media.error?.message ?? 'Connect your Google Business Profile to add photos.')
               }
-              className="mt-3 rounded-full bg-brand px-5 py-2.5 active:scale-95"
+              // No `className` — react-native-css-interop can swallow onPress
+              // on styled Pressables (see components/ui.tsx).
+              style={{ marginTop: 12, borderRadius: 999, backgroundColor: t.brand, paddingHorizontal: 20, paddingVertical: 10 }}
             >
               <Text className="font-sans-bold text-sm text-on-brand">Connect Google</Text>
             </Pressable>
@@ -173,7 +175,8 @@ export function BusinessAssets() {
         <Pressable
           onPress={handleAddMedia}
           disabled={upload.isPending}
-          className="mb-2 self-start overflow-hidden rounded-full active:scale-95"
+          // No `className` — see note above.
+          style={{ marginBottom: 8, alignSelf: 'flex-start', overflow: 'hidden', borderRadius: 999 }}
         >
           <LinearGradient
             colors={[...BRAND_GRADIENT]}
@@ -197,7 +200,7 @@ export function BusinessAssets() {
             Smart Tips
           </Text>
         </View>
-        <Pressable onPress={() => void Linking.openURL(GUIDELINES_URL)} className="active:opacity-70">
+        <Pressable onPress={() => void Linking.openURL(GUIDELINES_URL)}>
           <Text className="font-sans-semibold text-sm underline" style={{ color: t.brandBright }}>
             View Guidelines
           </Text>

@@ -8,6 +8,7 @@ interface HistoryPost {
   title?: string;
   content: string;
   contentType?: string;
+  platform?: string;
   hashtags?: string[];
   cta?: string;
   status: string;
@@ -22,6 +23,18 @@ const STATUS_STYLES: Record<string, string> = {
   published: 'bg-secondary-container/40 text-on-secondary-container',
   pending_approval: 'bg-error-container text-on-error-container',
 };
+
+const PLATFORM_LABELS: Record<string, string> = {
+  gmb: 'Google Business',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  whatsapp: 'WhatsApp',
+};
+
+function platformLabel(platform?: string): string {
+  if (!platform) return 'Google Business';
+  return PLATFORM_LABELS[platform.toLowerCase()] ?? platform;
+}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', {
@@ -271,7 +284,7 @@ export default function ContentHistoryTab() {
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {posts.map((post) => {
           const isPublished = post.status === 'published';
           const isEditingRow = editingId === post._id;
@@ -280,83 +293,93 @@ export default function ContentHistoryTab() {
           return (
             <div
               key={post._id}
-              className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm"
+              className="bg-surface-container-lowest border border-outline-variant rounded-2xl overflow-hidden shadow-sm flex flex-col"
             >
-              <div className="px-5 py-4 flex items-center gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span
-                      className={`inline-block px-2 py-0.5 text-xs font-semibold rounded-md ${
-                        STATUS_STYLES[post.status] ?? 'bg-surface-container text-on-surface-variant'
-                      }`}
-                    >
-                      {post.status.replace('_', ' ')}
+              {/* Preview — thumbnail if there's an image, otherwise a text excerpt */}
+              {post.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={post.imageUrl}
+                  alt={post.title || 'Post thumbnail'}
+                  className="w-full h-36 object-cover border-b border-outline-variant"
+                />
+              ) : (
+                <div className="w-full h-24 px-5 py-3 border-b border-outline-variant bg-surface/50 overflow-hidden">
+                  <p className="text-xs text-on-surface-variant line-clamp-3 leading-relaxed">{post.content}</p>
+                </div>
+              )}
+
+              <div className="px-5 py-4 flex-1 flex flex-col gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className={`inline-block px-2 py-0.5 text-xs font-semibold rounded-md ${
+                      STATUS_STYLES[post.status] ?? 'bg-surface-container text-on-surface-variant'
+                    }`}
+                  >
+                    {post.status.replace('_', ' ')}
+                  </span>
+                  <span className="text-xs text-on-surface-variant border border-outline-variant px-2 py-0.5 rounded-md">
+                    {platformLabel(post.platform)}
+                  </span>
+                  {post.contentType && (
+                    <span className="text-xs text-on-surface-variant border border-outline-variant px-2 py-0.5 rounded-md">
+                      {post.contentType}
                     </span>
-                    {post.contentType && (
-                      <span className="text-xs text-on-surface-variant border border-outline-variant px-2 py-0.5 rounded-md">
-                        {post.contentType}
-                      </span>
-                    )}
-                  </div>
-                  <p className="font-semibold text-on-surface truncate">
-                    {post.title || '(Untitled)'}
-                  </p>
-                  <p className="text-xs text-outline mt-0.5">
-                    Created {formatDate(post.createdAt)}
-                    {post.scheduledDate && (
-                      <>
-                        {' · '}
-                        {post.status === 'published' ? 'Published' : 'Scheduled for'} {formatDate(post.scheduledDate)}
-                      </>
-                    )}
-                  </p>
+                  )}
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
+                <p className="font-semibold text-on-surface line-clamp-2">
+                  {post.title || '(Untitled)'}
+                </p>
+
+                <p className="text-xs text-outline mt-auto">
+                  Created {formatDate(post.createdAt)}
+                  {post.scheduledDate && (
+                    <>
+                      {' · '}
+                      {post.status === 'published' ? 'Published' : 'Scheduled for'} {formatDate(post.scheduledDate)}
+                    </>
+                  )}
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="px-5 py-3 border-t border-outline-variant flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={() => {
+                    closeAllRowActions();
+                    setExpandedId((id) => (id === post._id ? null : post._id));
+                  }}
+                  className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap"
+                >
+                  {expandedId === post._id ? 'Hide' : 'View'}
+                </button>
+                <button
+                  onClick={() => startEdit(post)}
+                  className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap"
+                >
+                  Edit
+                </button>
+                {!isPublished && (
                   <button
-                    onClick={() => {
-                      closeAllRowActions();
-                      setExpandedId((id) => (id === post._id ? null : post._id));
-                    }}
+                    onClick={() => startSchedule(post)}
                     className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap"
                   >
-                    {expandedId === post._id ? 'Hide' : 'View'}
+                    Schedule
                   </button>
+                )}
+                {!isPublished && (
                   <button
-                    onClick={() => startEdit(post)}
-                    className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap"
+                    onClick={() => { closeAllRowActions(); setConfirmDeleteId(post._id); }}
+                    className="text-sm font-medium text-error hover:text-on-error-container transition-colors whitespace-nowrap ml-auto"
                   >
-                    Edit
+                    Delete
                   </button>
-                  {!isPublished && (
-                    <button
-                      onClick={() => startSchedule(post)}
-                      className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap"
-                    >
-                      Schedule
-                    </button>
-                  )}
-                  {!isPublished && (
-                    <button
-                      onClick={() => { closeAllRowActions(); setConfirmDeleteId(post._id); }}
-                      className="text-sm font-medium text-error hover:text-on-error-container transition-colors whitespace-nowrap"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
 
               {expandedId === post._id && !isEditingRow && (
                 <div className="px-5 pb-5 border-t border-outline-variant bg-surface/50">
-                  {post.imageUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={post.imageUrl}
-                      alt={post.title || 'Post thumbnail'}
-                      className="mt-3 w-full max-w-sm rounded-lg border border-outline-variant object-cover"
-                    />
-                  )}
                   <p className="text-sm text-on-surface whitespace-pre-wrap leading-relaxed pt-3">
                     {post.content}
                   </p>

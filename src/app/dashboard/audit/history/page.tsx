@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Calendar, Star, TrendingUp, Trash2 } from "lucide-react";
+import { BackLink } from "@/components/ui/BackLink";
 
 export default function AuditHistoryPage() {
   const [audits, setAudits] = useState<any[]>([]);
@@ -21,6 +22,7 @@ export default function AuditHistoryPage() {
 
   return (
     <div className="space-y-8 pb-10">
+      <BackLink href="/dashboard/audit" label="Back to Audit Engine" />
       <div>
         <h1 className="font-heading text-3xl font-bold text-on-surface mb-2">Audit History (Local)</h1>
         <p className="text-on-surface-variant">Manage your locally saved Google Business Profile reports.</p>

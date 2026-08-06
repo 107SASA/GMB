@@ -11,14 +11,11 @@ export const verifyPassword = async (password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 };
 
-export const validatePasswordStrength = (password: string): { isValid: boolean; error?: string } => {
-  if (password.length < 8) return { isValid: false, error: 'Password must be at least 8 characters long.' };
-  if (!/[A-Z]/.test(password)) return { isValid: false, error: 'Password must contain an uppercase letter.' };
-  if (!/[a-z]/.test(password)) return { isValid: false, error: 'Password must contain a lowercase letter.' };
-  if (!/[0-9]/.test(password)) return { isValid: false, error: 'Password must contain a number.' };
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) return { isValid: false, error: 'Password must contain a special character.' };
-  return { isValid: true };
-};
+// Rules live in src/lib/passwordPolicy.ts (client-safe, no bcrypt/jwt deps)
+// so client components can import the exact same check instead of
+// hand-copying the regexes — re-exported here so existing server-side
+// callers of `validatePasswordStrength` from this module keep working.
+export { validatePasswordStrength } from '@/lib/passwordPolicy';
 
 export const generateToken = (payload: object, expiresIn: string = '7d'): string => {
   if (!process.env.JWT_SECRET) {

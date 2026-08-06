@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
-import Business from '@/models/Business';
-import { createSession, signSessionToken, SESSION_MAX_AGE_SECONDS } from '@/lib/session';
+import { finalizeLogin } from '@/lib/authSession';
 import { checkRateLimit, resetRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
 import bcrypt from 'bcryptjs';
@@ -104,45 +102,10 @@ export async function POST(req: Request) {
       );
     }
 
-    await createSession(user._id.toString(), user.role);
-
-    // Powers "Last Login" on the Profile page — was never written anywhere,
-    // so it always showed as missing/"Never" regardless of actual login history.
-    // Also clears the account-lockout counter on any successful login.
-    await User.updateOne(
-      { _id: user._id },
-      { $set: { lastLoginAt: new Date(), failedLoginAttempts: 0 }, $unset: { accountLockedUntil: '' } }
-    );
-
-    // Sync activeBusinessId cookie so client-side context loads the right business
-    let activeBusinessId = user.activeBusinessId?.toString();
-    if (!activeBusinessId) {
-      const business = await Business.findOne({ userId: user._id });
-      if (business) {
-        activeBusinessId = business._id.toString();
-        await User.updateOne({ _id: user._id }, { $set: { activeBusinessId: business._id } });
-      }
-    }
-
-    if (activeBusinessId) {
-      const cookieStore = await cookies();
-      cookieStore.set('activeBusinessId', activeBusinessId, {
-        path: '/',
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 30,
-      });
-    }
-
-    // Mobile clients get the JWT in the body (no cookie support); web never does.
-    if (req.headers.get('x-client') === 'mobile') {
-      const token = await signSessionToken(user._id.toString(), user.role);
-      const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
-      return NextResponse.json({ success: true, token, expiresAt }, { status: 200 });
-    }
-
-    return NextResponse.json({ success: true }, { status: 200 });
+    // Session creation, lastLoginAt, activeBusinessId cookie sync, and the
+    // mobile bearer-token response are all shared with phone+OTP login —
+    // see lib/authSession.ts.
+    return await finalizeLogin(user, req);
   } catch (error: any) {
     console.error('Login Error:', error);
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });

@@ -3,9 +3,22 @@
  * These are used as fallback when no per-user override exists.
  * Update these when final plan tiers are decided.
  */
+/** Billing/quota frequency a post limit resets on. Additive — defaults to
+ *  'monthly' everywhere so existing plans/overrides behave exactly as before
+ *  until a super admin explicitly switches a plan to weekly. New frequencies
+ *  (e.g. 'daily') can be added here later without touching every call site,
+ *  as long as the corresponding usage-window logic is added in
+ *  featureGating.ts's checkUsageLimit(). */
+export type PostLimitFrequency = 'monthly' | 'weekly';
+
 export interface PlanLimits {
   maxAuditsPerBusiness:      number;
   maxPostsPerMonth:          number;
+  /** How often maxPostsPerMonth resets — despite the field's name (kept for
+   *  backward compatibility), it's the post cap for whichever frequency this
+   *  is set to, e.g. postLimitFrequency: 'weekly' + maxPostsPerMonth: 4 means
+   *  "4 posts per week". */
+  postLimitFrequency:        PostLimitFrequency;
   maxWhatsAppMessagesPerDay: number;
   reviewRequestCooldownDays: number;
   maxAIGenerations:          number;
@@ -20,6 +33,7 @@ export const PLAN_DEFAULTS: Record<string, PlanLimits> = {
   Free: {
     maxAuditsPerBusiness:      2,
     maxPostsPerMonth:          10,
+    postLimitFrequency:        'monthly',
     maxWhatsAppMessagesPerDay: 50,
     reviewRequestCooldownDays: 30,
     maxAIGenerations:          20,
@@ -27,6 +41,7 @@ export const PLAN_DEFAULTS: Record<string, PlanLimits> = {
   Pro: {
     maxAuditsPerBusiness:      10,
     maxPostsPerMonth:          50,
+    postLimitFrequency:        'monthly',
     maxWhatsAppMessagesPerDay: 200,
     reviewRequestCooldownDays: 14,
     maxAIGenerations:          100,
@@ -45,7 +60,7 @@ export function getPlanDefaults(plan: string): PlanLimits {
  */
 export function resolveEffectiveLimits(
   plan: string,
-  override: Partial<Record<keyof PlanLimits, number | null>>
+  override: Partial<Record<keyof PlanLimits, number | string | null>>
 ): PlanLimits & { overriddenFields: (keyof PlanLimits)[] } {
   const defaults = getPlanDefaults(plan);
   const keys = Object.keys(defaults) as (keyof PlanLimits)[];
@@ -53,6 +68,10 @@ export function resolveEffectiveLimits(
 
   const resolved = { ...defaults } as PlanLimits;
   for (const key of keys) {
+    // postLimitFrequency is a plan-level policy, not a per-user override —
+    // UserLimitOverride never carries it, so it always falls through to the
+    // plan's default/configured frequency here.
+    if (key === 'postLimitFrequency') continue;
     const val = override[key];
     if (val !== null && val !== undefined) {
       (resolved as any)[key] = val;

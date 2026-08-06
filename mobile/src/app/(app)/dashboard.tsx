@@ -6,7 +6,7 @@ import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { getApiErrorMessage } from '@/api/client';
-import { quickAddLead } from '@/api/endpoints/leads';
+import { quickAddCustomer } from '@/api/endpoints/customers';
 import { fetchReviews } from '@/api/endpoints/reviews';
 import { fetchBuffer } from '@/api/endpoints/scheduler';
 import { useAuth } from '@/auth/AuthContext';
@@ -29,19 +29,35 @@ function FunnelStep({
   label: string;
   showArrow: boolean;
 }) {
-  const t = useTheme();
   return (
-    <>
-      <View className="items-center gap-1.5">
-        <View className="h-12 w-12 items-center justify-center rounded-full bg-white/10">
+    // flex-1 on the whole step (not just the label) so all three steps share
+    // the row equally and shrink together on narrow screens instead of the
+    // last one ("Better Ranking") getting pushed past the card edge.
+    <View className="flex-1 flex-row items-start">
+      <View className="flex-1 items-center gap-1.5">
+        <View
+          className="h-12 w-12 items-center justify-center rounded-full"
+          style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+        >
           <Ionicons name={icon} size={22} color="#ffffff" />
         </View>
-        <Text className="font-sans-bold text-[11px] uppercase tracking-[0.6px] text-white/90">
+        <Text
+          className="w-full text-center font-sans-bold text-[11px] uppercase tracking-[0.6px]"
+          style={{ color: 'rgba(255,255,255,0.9)' }}
+          numberOfLines={2}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+        >
           {label}
         </Text>
       </View>
-      {showArrow && <Ionicons name="arrow-forward" size={16} color={t.emerald} />}
-    </>
+      {/* Fixed light green, not theme-relative — this card's background is a
+          hardcoded color (see cardBg below), so its "arrow" accent must stay
+          fixed-light regardless of the phone's light/dark setting too.
+          marginTop centers it on the icon circle rather than the full
+          (now two-line-capable) label block below it. */}
+      {showArrow && <Ionicons name="arrow-forward" size={16} color="#9af2c0" style={{ marginTop: 14 }} />}
+    </View>
   );
 }
 
@@ -66,9 +82,16 @@ function WeeklyReviewsCard() {
 
   return (
     <View className="mx-4 rounded-card p-4" style={{ backgroundColor: cardBg }}>
-      <Text className="font-sans text-sm text-white/80">This Week's Reviews</Text>
+      {/* Every text/overlay color in this card is a fixed literal (never the
+          theme-relative text-white/bg-white classes) because cardBg above is
+          a hardcoded hex, not a theme token — text-white resolves to
+          near-black in light mode, which was invisible against this fixed
+          dark card. */}
+      <Text className="font-sans text-sm" style={{ color: 'rgba(255,255,255,0.8)' }}>
+        This Week's Reviews
+      </Text>
       <View className="mt-1 flex-row items-center justify-between">
-        <Text className="flex-1 pr-3 font-display-bold text-lg text-white">
+        <Text className="flex-1 pr-3 font-display-bold text-lg" style={{ color: '#ffffff' }}>
           {insights.thisWeek === 0
             ? 'No recent reviews received'
             : goalMet
@@ -77,22 +100,28 @@ function WeeklyReviewsCard() {
         </Text>
         <Text className="font-display text-xl">
           <Text style={{ color: accent }}>{insights.thisWeek}</Text>
-          <Text className="text-white/70">/{WEEKLY_REVIEW_GOAL}</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.7)' }}>/{WEEKLY_REVIEW_GOAL}</Text>
         </Text>
       </View>
 
       {/* Flame progress bar */}
       <View className="mt-3 flex-row items-center gap-2">
-        <View className="h-8 w-8 items-center justify-center rounded-full bg-white/10">
+        <View
+          className="h-8 w-8 items-center justify-center rounded-full"
+          style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+        >
           <Text className="text-sm">🔥</Text>
         </View>
-        <View className="h-2 flex-1 overflow-hidden rounded-full bg-white/15">
+        <View
+          className="h-2 flex-1 overflow-hidden rounded-full"
+          style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
+        >
           <View className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: accent }} />
         </View>
       </View>
 
       {insights.daysSinceLast != null && insights.daysSinceLast > 3 && (
-        <Text className="mt-3 font-sans text-sm leading-5 text-white/80">
+        <Text className="mt-3 font-sans text-sm leading-5" style={{ color: 'rgba(255,255,255,0.8)' }}>
           Your last review was{' '}
           <Text className="font-sans-bold" style={{ color: accent }}>
             {insights.daysSinceLast} days
@@ -101,7 +130,11 @@ function WeeklyReviewsCard() {
         </Text>
       )}
 
-      <View className="mt-4 flex-row items-center justify-between px-1">
+      {/* Each FunnelStep is flex-1 (see above), so the three steps always
+          split the row's width evenly and the label text wraps/shrinks to
+          fit its own column — no more relying on asymmetric edge padding to
+          keep "Better Ranking" from running past the card boundary. */}
+      <View className="mt-4 flex-row items-start">
         <FunnelStep icon="people-outline" label="More Customers" showArrow />
         <FunnelStep icon="star-outline" label="More Reviews" showArrow />
         <FunnelStep icon="trending-up-outline" label="Better Ranking" showArrow={false} />
@@ -110,23 +143,33 @@ function WeeklyReviewsCard() {
   );
 }
 
-/** Phone input + "Add Customer" — quick-adds a contact to All Contacts. */
+/**
+ * Phone input + "Add Customer" — the intended flow: enter a customer's
+ * number, the app immediately sends them a WhatsApp review request (same
+ * one-off send the "Send Review Request" button on the website's Customers
+ * page uses, via POST /api/customers/quick-add → the processReviewCampaign
+ * Inngest job). This used to call the CRM lead endpoint instead, which only
+ * filed a sales-pipeline contact and queued a generic 24h-later "thanks for
+ * your interest" WhatsApp drip — no review request was ever sent.
+ */
 function AddCustomerCard() {
   const router = useRouter();
   const t = useTheme();
-  const queryClient = useQueryClient();
   const [phone, setPhone] = useState('');
 
   const add = useMutation({
-    mutationFn: () => quickAddLead({ phone: phone.trim(), source: 'Manual' }),
+    mutationFn: () => quickAddCustomer({ phone: phone.trim() }),
     onSuccess: (result) => {
       setPhone('');
-      void queryClient.invalidateQueries({ queryKey: ['crm-leads'] });
+      if (!result.reviewRequestSent) {
+        Alert.alert('Customer saved', result.reason ?? 'No review request was sent.');
+        return;
+      }
       Alert.alert(
-        result.existing ? 'Already added' : 'Customer added',
+        'Review request sent',
         result.existing
-          ? `${result.lead.name} is already in All Contacts.`
-          : 'Saved to All Contacts — ask them for a review!'
+          ? `${result.customer.name} was already a customer — sent them another WhatsApp review request.`
+          : `We've texted ${result.customer.name} on WhatsApp asking for a Google review.`
       );
     },
     onError: (error) =>
@@ -146,7 +189,17 @@ function AddCustomerCard() {
         </View>
         <Pressable
           onPress={() => router.push('/leads/import-contacts')}
-          className="h-13 w-13 items-center justify-center rounded-xl border border-surface-border bg-surface-raised active:bg-surface-overlay"
+          // No `className` — see app-header.tsx note.
+          style={{
+            height: 52,
+            width: 52,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: t.border,
+            backgroundColor: t.card,
+          }}
         >
           <Ionicons name="people-outline" size={22} color={t.brandBright} />
         </Pressable>
@@ -184,10 +237,10 @@ function OnboardingTasks() {
         <View className="mt-4 flex-row items-end justify-between">
           <Pressable
             onPress={() => router.push('/photos')}
-            className="rounded-full px-4 py-2.5 active:scale-95"
-            style={{ backgroundColor: t.brand }}
+            // No `className` — see app-header.tsx note.
+            style={{ borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: t.brand }}
           >
-            <Text className="font-sans-bold text-sm text-white">Upload Photos</Text>
+            <Text className="font-sans-bold text-sm text-on-brand">Upload Photos</Text>
           </Pressable>
           <Ionicons name="storefront" size={34} color={t.brandBright} />
         </View>
@@ -257,12 +310,20 @@ export default function HomeScreen() {
 
       {/* Amber "attention needed" nudge pinned above the tab bar */}
       {showFreshPhotosBanner && (
-        <Pressable onPress={() => router.push('/photos')} className="active:opacity-90">
+        <Pressable onPress={() => router.push('/photos')}>
           <LinearGradient
             colors={[...AMBER_GRADIENT]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            className="flex-row items-center justify-between px-4 py-3"
+            // No `className` on Pressable (swallows onPress) or LinearGradient
+            // (layout classes silently fail on it) — see app-header.tsx.
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: 16,
+              paddingVertical: 12,
+            }}
           >
             <View className="flex-row items-center gap-2">
               <Ionicons name="images-outline" size={18} color="#1c1400" />

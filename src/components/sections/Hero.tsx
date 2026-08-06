@@ -7,7 +7,11 @@ import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 
 export function Hero() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden bg-background">
+    <section className="relative min-h-screen flex items-center justify-center pt-28 md:pt-32 lg:pt-36 overflow-hidden bg-background">
+      {/* pt increased from pt-20 — the fixed h-16 Navbar left only ~16px of
+          clearance above the "GrowwMatics AI" wordmark below, which read as
+          cramped. This gives the header room to breathe before the hero
+          content starts. */}
       {/* Calm trust blue / growth green atmosphere */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary/15 blur-[120px] rounded-full" />
@@ -20,7 +24,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="font-heading text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-primary mb-5"
+          className="font-heading text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-primary mb-6 md:mb-8"
         >
           GrowwMatics AI
         </motion.p>

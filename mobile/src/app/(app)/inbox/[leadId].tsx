@@ -188,7 +188,7 @@ export default function ThreadScreen() {
     <Screen>
       {/* Header */}
       <View className="flex-row items-center gap-3 border-b border-surface-border px-4 pb-3 pt-2">
-        <Pressable onPress={() => router.back()} hitSlop={8} className="active:opacity-60">
+        <Pressable onPress={() => router.back()} hitSlop={8}>
           <BackChevron />
         </Pressable>
         <View className="flex-1">
@@ -255,9 +255,16 @@ export default function ThreadScreen() {
               <Pressable
                 onPress={handleSend}
                 disabled={!draft.trim() || send.isPending}
-                className={`h-11 w-11 items-center justify-center rounded-full ${
-                  draft.trim() && !send.isPending ? 'bg-brand active:scale-95' : 'bg-surface-raised'
-                }`}
+                // No `className` — react-native-css-interop can swallow
+                // onPress on styled Pressables (see components/ui.tsx).
+                style={{
+                  height: 44,
+                  width: 44,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 999,
+                  backgroundColor: draft.trim() && !send.isPending ? t.brand : t.card,
+                }}
               >
                 <Ionicons
                   name="send"

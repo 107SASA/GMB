@@ -85,7 +85,12 @@ export function PrimaryButton({
         onPress();
       }}
       disabled={inactive}
-      className={`overflow-hidden rounded-full ${inactive ? 'opacity-50' : 'active:scale-95'}`}
+      // No `className` on this Pressable — confirmed by direct testing that
+      // react-native-css-interop's pseudo-class/reactive-style tracking for
+      // styled Pressables can swallow onPress entirely (nativewind 4.2.6 +
+      // SDK 57). Static layout styles moved to plain `style`; the active:scale
+      // press-animation is dropped rather than risk the same breakage.
+      style={{ overflow: 'hidden', borderRadius: 999, opacity: inactive ? 0.5 : 1 }}
     >
       <LinearGradient
         colors={[...BRAND_GRADIENT]}
@@ -113,13 +118,22 @@ export function SecondaryButton({
   onPress: () => void;
   disabled?: boolean;
 }) {
+  const t = useTheme();
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      className={`items-center rounded-full border border-brand bg-surface-raised py-3.5 ${
-        disabled ? 'opacity-50' : 'active:scale-95 active:bg-surface-overlay'
-      }`}
+      // No `className` on this Pressable — see PrimaryButton above:
+      // react-native-css-interop can swallow onPress on styled Pressables.
+      style={{
+        alignItems: 'center',
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: t.brand,
+        backgroundColor: t.card,
+        paddingVertical: 14,
+        opacity: disabled ? 0.5 : 1,
+      }}
     >
       <Text className="font-sans-bold text-base text-brand">{title}</Text>
     </Pressable>
@@ -220,14 +234,19 @@ export function Chip({
   selected: boolean;
   onPress: () => void;
 }) {
+  const t = useTheme();
   return (
     <Pressable
       onPress={onPress}
-      className={`rounded-full border px-4 py-2 active:scale-95 ${
-        selected
-          ? 'border-brand bg-brand'
-          : 'border-surface-border bg-surface active:bg-surface-overlay'
-      }`}
+      // No `className` — see PrimaryButton above.
+      style={{
+        borderRadius: 999,
+        borderWidth: 1,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderColor: selected ? t.brand : t.border,
+        backgroundColor: selected ? t.brand : t.bg,
+      }}
     >
       <Text className={`font-sans-semibold text-sm ${selected ? 'text-on-brand' : 'text-zinc-400'}`}>
         {label}
@@ -255,15 +274,21 @@ export function SegmentedControl<T extends string>({
   value: T;
   onChange: (id: T) => void;
 }) {
+  const t = useTheme();
   return (
     <View className="mx-5 mb-3 flex-row rounded-full border border-surface-border bg-surface-raised p-1">
       {segments.map((segment) => (
         <Pressable
           key={segment.id}
           onPress={() => onChange(segment.id)}
-          className={`flex-1 items-center rounded-full py-2 ${
-            value === segment.id ? 'bg-brand' : ''
-          }`}
+          // No `className` — see PrimaryButton above.
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            borderRadius: 999,
+            paddingVertical: 8,
+            backgroundColor: value === segment.id ? t.brand : 'transparent',
+          }}
         >
           <Text
             className={`font-sans-semibold text-sm ${

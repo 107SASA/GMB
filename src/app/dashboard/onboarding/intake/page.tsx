@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 
@@ -93,6 +93,63 @@ export default function IntakePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ── AI keyword suggestions ──────────────────────────────────────────────
+  const [suggestedKeywords, setSuggestedKeywords] = useState<string[]>([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestError, setSuggestError] = useState(false);
+  // Every keyword ever shown (picked or not) across every batch, so "more
+  // like this" never repeats a suggestion the user already saw and skipped.
+  const shownKeywordsRef = useRef<string[]>([]);
+  const hasFetchedInitialRef = useRef(false);
+
+  const fetchKeywordSuggestions = async (selected: string[]) => {
+    setSuggestLoading(true);
+    setSuggestError(false);
+    try {
+      const res = await fetch('/api/onboarding/suggest-keywords', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: data.category,
+          description: data.description,
+          selectedKeywords: selected,
+          excludeKeywords: shownKeywordsRef.current,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Failed to load suggestions');
+      shownKeywordsRef.current = [...shownKeywordsRef.current, ...json.keywords];
+      setSuggestedKeywords(json.keywords);
+    } catch {
+      setSuggestError(true);
+    } finally {
+      setSuggestLoading(false);
+    }
+  };
+
+  // Fires the initial suggestion batch once category + a real description
+  // are both filled in — debounced so it doesn't fire on every keystroke.
+  useEffect(() => {
+    if (hasFetchedInitialRef.current) return;
+    if (!data.category.trim() || data.description.trim().length < 10) return;
+    const t = setTimeout(() => {
+      hasFetchedInitialRef.current = true;
+      fetchKeywordSuggestions(data.keywords);
+    }, 800);
+    return () => clearTimeout(t);
+  }, [data.category, data.description]);
+
+  const pickSuggestedKeyword = (kw: string) => {
+    if (!data.keywords.includes(kw)) {
+      const nextKeywords = [...data.keywords, kw];
+      set('keywords', nextKeywords);
+      // "show more like that" — refine the next batch around what they just
+      // picked instead of just repeating the same generic starting mix.
+      fetchKeywordSuggestions(nextKeywords);
+    }
+    setSuggestedKeywords((prev) => prev.filter((k) => k !== kw));
+  };
+
   useEffect(() => {
     (async () => {
       try {
@@ -184,6 +241,58 @@ export default function IntakePage() {
             validate={isValidKeyword}
             placeholder="e.g. best bakery in Kolkata"
           />
+
+          {/* AI suggestions — appear once category + description are filled
+              in above. Clicking one adds it and immediately refreshes with
+              more suggestions in that same theme, so building out the full
+              list is a few clicks instead of typing every keyword by hand. */}
+          {(suggestLoading || suggestedKeywords.length > 0 || suggestError) && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+                  <MaterialIcon name="auto_awesome" size={14} className="text-primary" />
+                  Suggested for you
+                </p>
+                {suggestedKeywords.length > 0 && !suggestLoading && (
+                  <button
+                    type="button"
+                    onClick={() => fetchKeywordSuggestions(data.keywords)}
+                    className="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
+                  >
+                    <MaterialIcon name="refresh" size={14} /> More like this
+                  </button>
+                )}
+              </div>
+
+              {suggestLoading ? (
+                <div className="flex items-center gap-2 text-xs text-outline py-1">
+                  <MaterialIcon name="progress_activity" size={14} className="animate-spin" />
+                  Finding keywords that fit your business…
+                </div>
+              ) : suggestError ? (
+                <p className="text-xs text-outline">
+                  Couldn&apos;t load suggestions right now.{' '}
+                  <button type="button" onClick={() => fetchKeywordSuggestions(data.keywords)} className="text-primary hover:underline font-medium">
+                    Try again
+                  </button>
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {suggestedKeywords.map((kw) => (
+                    <button
+                      key={kw}
+                      type="button"
+                      onClick={() => pickSuggestedKeyword(kw)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-surface-container border border-outline-variant text-on-surface hover:border-primary hover:text-primary hover:bg-primary-fixed transition-colors"
+                    >
+                      <MaterialIcon name="add" size={14} />
+                      {kw}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <Field label="City"><input className={inputCls} value={data.city} onChange={(e) => set('city', e.target.value)} placeholder="e.g. Kolkata" /></Field>
             <Field label="Area / locality"><input className={inputCls} value={data.area} onChange={(e) => set('area', e.target.value)} placeholder="e.g. Kasba" /></Field>

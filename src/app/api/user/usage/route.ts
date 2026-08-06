@@ -6,6 +6,7 @@ import UserLimitOverride from '@/models/UserLimitOverride';
 import PlanConfig from '@/models/PlanConfig';
 import SubscriptionUsage from '@/models/SubscriptionUsage';
 import AIUsageLog from '@/models/AIUsageLog';
+import Post from '@/models/Post';
 import { getPlanDefaults, type PlanLimits } from '@/lib/planDefaults';
 
 async function getPlanLimits(planName: string): Promise<PlanLimits> {
@@ -16,6 +17,7 @@ async function getPlanLimits(planName: string): Promise<PlanLimits> {
       return {
         maxAuditsPerBusiness:      config.maxAuditsPerBusiness,
         maxPostsPerMonth:          config.maxPostsPerMonth,
+        postLimitFrequency:        config.postLimitFrequency ?? 'monthly',
         maxWhatsAppMessagesPerDay: config.maxWhatsAppMessagesPerDay,
         reviewRequestCooldownDays: config.reviewRequestCooldownDays,
         maxAIGenerations:          config.maxAIGenerations,
@@ -55,14 +57,27 @@ export async function GET() {
     const limits: PlanLimits = {
       maxAuditsPerBusiness:      override?.maxAuditsPerBusiness      ?? planLimits.maxAuditsPerBusiness,
       maxPostsPerMonth:          override?.maxPostsPerMonth          ?? planLimits.maxPostsPerMonth,
+      // Plan-level policy — never comes from a per-user override.
+      postLimitFrequency:        planLimits.postLimitFrequency,
       maxWhatsAppMessagesPerDay: override?.maxWhatsAppMessagesPerDay ?? planLimits.maxWhatsAppMessagesPerDay,
       reviewRequestCooldownDays: override?.reviewRequestCooldownDays ?? planLimits.reviewRequestCooldownDays,
       maxAIGenerations:          override?.maxAIGenerations          ?? planLimits.maxAIGenerations,
     };
 
+    // SubscriptionUsage only buckets postsUsed by month — for a weekly-cap
+    // plan, count actual posts since Monday instead so the number shown
+    // matches what checkUsageLimit() enforces (see lib/featureGating.ts).
+    let postsUsed = subUsage?.postsUsed ?? 0;
+    if (limits.postLimitFrequency === 'weekly') {
+      const now = new Date();
+      const day = now.getUTCDay();
+      const startOfWeek = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (day === 0 ? 6 : day - 1)));
+      postsUsed = await Post.countDocuments({ businessId: ctx.businessId, createdAt: { $gte: startOfWeek } });
+    }
+
     const usage = {
       auditsUsed:         subUsage?.auditsUsed            ?? 0,
-      postsUsed:          subUsage?.postsUsed             ?? 0,
+      postsUsed,
       whatsappUsed:       subUsage?.whatsappMessagesUsed  ?? 0,
       aiGenerationsUsed:  aiCount,
     };

@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { getPasswordError as validatePasswordStrength } from '@/lib/passwordPolicy';
 
 type Step = 'email' | 'otp' | 'choose' | 'newPassword' | 'done';
 
@@ -14,18 +15,6 @@ const inputCls =
   'w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all';
 const primaryBtn =
   'w-full flex items-center justify-center py-3 bg-primary hover:bg-primary-container text-on-primary font-bold rounded-lg transition-all disabled:opacity-70';
-
-// Mirrors validatePasswordStrength in src/services/auth/security.ts — kept in sync
-// manually since that file pulls in bcryptjs/jsonwebtoken and can't be imported
-// into a client bundle. See also StepPassword.tsx, which does the same thing.
-function validatePasswordStrength(password: string): string | null {
-  if (password.length < 8) return 'Password must be at least 8 characters long.';
-  if (!/[A-Z]/.test(password)) return 'Password must contain an uppercase letter.';
-  if (!/[a-z]/.test(password)) return 'Password must contain a lowercase letter.';
-  if (!/[0-9]/.test(password)) return 'Password must contain a number.';
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) return 'Password must contain a special character.';
-  return null;
-}
 
 function ForgotPasswordForm() {
   const router = useRouter();

@@ -23,6 +23,9 @@ export interface Palette {
   emerald: string;
   amber: string;
   rose: string;
+  /** Destructive-action soft fill (error-container) + its on-color text. */
+  errorContainer: string;
+  onErrorContainer: string;
 
   text: string;
   textDim: string;
@@ -55,6 +58,8 @@ const dark: Palette = {
   emerald: '#81d8a8',
   amber: '#ffb74d',
   rose: '#ffb4ab',
+  errorContainer: '#93000a',
+  onErrorContainer: '#ffdad6',
 
   text: '#eff1f3',
   textDim: '#c3c6d1',
@@ -79,6 +84,8 @@ const light: Palette = {
   emerald: '#016c45',
   amber: '#7a4a00',
   rose: '#ba1a1a',
+  errorContainer: '#ffdad6',
+  onErrorContainer: '#93000a',
 
   text: '#191c1e',
   textDim: '#43474f',
@@ -92,4 +99,18 @@ export const palettes = { light, dark } as const;
 /** Palette matching the phone's current light/dark setting. */
 export function useTheme(): Palette {
   return useColorScheme() === 'light' ? light : dark;
+}
+
+/**
+ * `#rrggbb` + 0-1 alpha → `rgba(...)`. For inline `style` props standing in
+ * for NativeWind's `color/opacity` shorthand (e.g. `bg-brand/10`) on
+ * components — like Pressable — where `className` isn't safe to use (see
+ * ui.tsx PrimaryButton).
+ */
+export function withAlpha(hex: string, alpha: number): string {
+  const n = parseInt(hex.replace('#', ''), 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }

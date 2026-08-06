@@ -13,7 +13,7 @@ import {
   BackChevron, ErrorText, Field, PrimaryButton, Screen
 } from '@/components/ui';
 import { parsePhoneCandidate } from '@/lib/phone';
-import { useTheme } from '@/lib/theme';
+import { useTheme, withAlpha } from '@/lib/theme';
 
 /**
  * Quick lead capture. Plain mode adds a lead; ?intent=call is the "Log a
@@ -102,7 +102,7 @@ export default function AddLeadScreen() {
       {consentSheet}
       {/* Header */}
       <View className="flex-row items-center gap-3 border-b border-surface-border px-4 pb-3 pt-2">
-        <Pressable onPress={() => router.back()} hitSlop={8} className="active:opacity-60">
+        <Pressable onPress={() => router.back()} hitSlop={8}>
           <BackChevron />
         </Pressable>
         <Text className="font-display-bold text-lg text-white">
@@ -115,7 +115,20 @@ export default function AddLeadScreen() {
         {Platform.OS === 'android' && clipboardPhone && clipboardPhone !== phone ? (
           <Pressable
             onPress={() => setPhone(clipboardPhone)}
-            className="flex-row items-center gap-2 self-start rounded-full border border-brand/50 bg-indigo-400/15 px-3.5 py-2 active:scale-95"
+            // No `className` — react-native-css-interop can swallow onPress
+            // on styled Pressables (see components/ui.tsx).
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              alignSelf: 'flex-start',
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: withAlpha(t.brand, 0.5),
+              backgroundColor: withAlpha(t.brand, 0.15),
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+            }}
           >
             <Ionicons name="clipboard-outline" size={14} color={t.brandBright} />
             <Text className="font-sans-semibold text-sm text-indigo-300">
@@ -125,7 +138,19 @@ export default function AddLeadScreen() {
         ) : (
           <Pressable
             onPress={() => void pasteFromClipboard()}
-            className="flex-row items-center gap-2 self-start rounded-full border border-surface-border bg-surface-raised px-3.5 py-2 active:scale-95"
+            // No `className` — see note above.
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              alignSelf: 'flex-start',
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: t.border,
+              backgroundColor: t.card,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+            }}
           >
             <Ionicons name="clipboard-outline" size={14} color={t.textFaint} />
             <Text className="font-sans-semibold text-sm text-zinc-300">Paste number</Text>

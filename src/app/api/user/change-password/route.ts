@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { requireClient } from '@/lib/auth';
+import { validatePasswordStrength } from '@/services/auth/security';
 
 export async function POST(req: Request) {
   const auth = await requireClient();
@@ -19,8 +20,13 @@ export async function POST(req: Request) {
   if (newPassword !== confirmPassword) {
     return NextResponse.json({ error: 'New passwords do not match.' }, { status: 400 });
   }
-  if (newPassword.length < 8) {
-    return NextResponse.json({ error: 'New password must be at least 8 characters.' }, { status: 400 });
+  // Same complexity policy enforced by /api/auth/reset-password — this route
+  // previously only checked length, so a password without an uppercase/
+  // lowercase/number/special character could be set here even though the
+  // reset-password flow would have rejected it.
+  const strength = validatePasswordStrength(newPassword);
+  if (!strength.isValid) {
+    return NextResponse.json({ error: strength.error }, { status: 400 });
   }
 
   const user = await User.findById(auth.userId);

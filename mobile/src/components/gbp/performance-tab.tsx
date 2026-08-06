@@ -43,7 +43,12 @@ function SectionTitle({ children, hint }: { children: string; hint?: boolean }) 
 function ShowMore({ expanded, onPress }: { expanded: boolean; onPress: () => void }) {
   const t = useTheme();
   return (
-    <Pressable onPress={onPress} className="flex-row items-center gap-1 px-1 py-3 active:opacity-70">
+    <Pressable
+      onPress={onPress}
+      // No `className` — react-native-css-interop can swallow onPress on
+      // styled Pressables (see components/ui.tsx).
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4, paddingVertical: 12 }}
+    >
       <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
         {expanded ? 'Show less' : 'Show more'}
       </Text>
@@ -53,7 +58,6 @@ function ShowMore({ expanded, onPress }: { expanded: boolean; onPress: () => voi
 }
 
 function KeywordRows({ keywords }: { keywords: AuditKeywordRank[] }) {
-  const t = useTheme();
   const [expanded, setExpanded] = useState(false);
   const rows = expanded ? keywords : keywords.slice(0, SHOW_LIMIT);
   return (
@@ -63,7 +67,7 @@ function KeywordRows({ keywords }: { keywords: AuditKeywordRank[] }) {
           Keywords
         </Text>
         <Text className="font-sans-bold text-xs uppercase tracking-wide text-zinc-500">
-          Rank (Change)
+          Rank
         </Text>
       </View>
       {rows.map((kw, i) => (
@@ -78,11 +82,6 @@ function KeywordRows({ keywords }: { keywords: AuditKeywordRank[] }) {
           <Text className="font-sans-bold text-base text-white">
             {fmtRank(kw.rank ?? kw.avgRank)}
           </Text>
-          <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: `${t.brand}26` }}>
-            <Text className="font-sans-bold text-xs" style={{ color: t.brandBright }}>
-              New
-            </Text>
-          </View>
         </View>
       ))}
       {keywords.length > SHOW_LIMIT && (
@@ -251,7 +250,8 @@ export function PerformanceTab() {
           </Text>
           <Pressable
             onPress={() => router.push('/audit/run')}
-            className="flex-row items-center gap-1.5 active:opacity-70"
+            // No `className` — see note above.
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
           >
             <Ionicons name="refresh" size={16} color={t.brandBright} />
             <Text className="font-sans-bold text-base" style={{ color: t.brandBright }}>

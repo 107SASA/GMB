@@ -41,7 +41,7 @@ import {
   SegmentedControl,
   Skeleton,
 } from '@/components/ui';
-import { useTheme } from '@/lib/theme';
+import { useTheme, withAlpha } from '@/lib/theme';
 import { formatDateTime } from '@/lib/format';
 
 const TONES = ['Professional', 'Friendly', 'Motivational', 'Luxury', 'Conversational'];
@@ -212,7 +212,17 @@ function GenerateSegment() {
         </View>
         <Pressable
           onPress={addKeyword}
-          className="items-center justify-center rounded-xl border border-surface-border bg-surface-raised px-4 active:scale-95"
+          // No `className` — react-native-css-interop can swallow onPress on
+          // styled Pressables (see components/ui.tsx).
+          style={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: t.border,
+            backgroundColor: t.card,
+            paddingHorizontal: 16,
+          }}
         >
           <Ionicons name="add" size={20} color={t.text} />
         </Pressable>
@@ -276,7 +286,17 @@ function GenerateSegment() {
                   <Pressable
                     onPress={() => autoSchedule.mutate(schedulableIds)}
                     disabled={autoSchedule.isPending}
-                    className="mt-4 flex-row items-center gap-1 rounded-full bg-brand px-3 py-1.5 active:scale-95"
+                    // No `className` — see note above.
+                    style={{
+                      marginTop: 16,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      borderRadius: 999,
+                      backgroundColor: t.brand,
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                    }}
                   >
                     {autoSchedule.isPending ? (
                       <ActivityIndicator size="small" color="#ffffff" />
@@ -384,21 +404,24 @@ function HistoryCard({
         <View className="mt-3 flex-row gap-2">
           <Pressable
             onPress={onSchedule}
-            className="flex-row items-center gap-1 rounded-full border border-surface-border px-3 py-1.5 active:scale-95"
+            // No `className` — see components/ui.tsx PrimaryButton note.
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingHorizontal: 12, paddingVertical: 6 }}
           >
             <Ionicons name="calendar-outline" size={13} color={t.textFaint} />
             <Text className="font-sans-semibold text-xs text-zinc-300">Schedule</Text>
           </Pressable>
           <Pressable
             onPress={onEdit}
-            className="flex-row items-center gap-1 rounded-full border border-surface-border px-3 py-1.5 active:scale-95"
+            // No `className` — see note above.
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingHorizontal: 12, paddingVertical: 6 }}
           >
             <Ionicons name="pencil-outline" size={13} color={t.textFaint} />
             <Text className="font-sans-semibold text-xs text-zinc-300">Edit</Text>
           </Pressable>
           <Pressable
             onPress={onDelete}
-            className="flex-row items-center gap-1 rounded-full border border-rose-400/25 px-3 py-1.5 active:scale-95"
+            // No `className` — see note above.
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, borderWidth: 1, borderColor: withAlpha(t.rose, 0.25), paddingHorizontal: 12, paddingVertical: 6 }}
           >
             <Ionicons name="trash-outline" size={13} color={t.rose} />
             <Text className="font-sans-semibold text-xs text-rose-300">Delete</Text>
@@ -451,7 +474,7 @@ function EditPostModal({
               loading={save.isPending}
               disabled={!content.trim()}
             />
-            <Pressable onPress={onClose} className="mt-3 items-center py-2 active:opacity-70">
+            <Pressable onPress={onClose} style={{ marginTop: 12, alignItems: 'center', paddingVertical: 8 }}>
               <Text className="font-sans-semibold text-sm text-zinc-400">Cancel</Text>
             </Pressable>
           </ScrollView>

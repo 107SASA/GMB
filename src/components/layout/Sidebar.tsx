@@ -112,6 +112,51 @@ function UsagePill() {
   );
 }
 
+/**
+ * "Upgrade Plan" CTA — this is single-plan billing (there is only one
+ * sellable plan, "Pro"), so once the active workspace's subscription is
+ * active there is nothing left to upgrade to. Previously this button always
+ * rendered and always linked to /dashboard/upgrade regardless of plan state.
+ */
+function UpgradeCta({ isSuperAdmin, mobile, onClick }: { isSuperAdmin: boolean; mobile?: boolean; onClick?: () => void }) {
+  const [active, setActive] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch('/api/billing/status')
+      .then((r) => r.json())
+      .then((json) => setActive(!json?.workspace || !!json.workspace.isActive))
+      .catch(() => setActive(false));
+  }, []);
+
+  // The owner isn't on a customer plan at all — never show either state.
+  if (isSuperAdmin) return null;
+  // Unresolved yet — avoid flashing "Upgrade" then swapping to the other state.
+  if (active === null) return null;
+
+  if (active) {
+    return (
+      <div className={cn(
+        'w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-surface-container text-on-surface-variant font-semibold text-sm',
+        mobile && 'text-xs'
+      )}>
+        <MaterialIcon name="verified" size={18} className="text-secondary" />
+        You already have the Pro Plan
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      href="/dashboard/upgrade"
+      onClick={onClick}
+      className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-secondary text-on-secondary font-semibold text-sm hover:opacity-95 transition-opacity"
+    >
+      <MaterialIcon name="trending_up" size={18} className="text-on-secondary" />
+      Upgrade Plan
+    </Link>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -162,7 +207,12 @@ export function Sidebar() {
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
+    // Hard navigation, not router.push — mirrors the login page's same
+    // deliberate choice. A soft client-side transition leaves the just-logged-
+    // out dashboard eligible for the browser's back/forward cache, so hitting
+    // Back could resurrect the authenticated view without re-checking the
+    // (now-cleared) session. window.location forces a real reload instead.
+    window.location.href = "/login";
   };
 
   const handleSwitch = async (businessId: string) => {
@@ -328,20 +378,10 @@ export function Sidebar() {
 
         <div className="mt-auto p-6 space-y-2">
           <UsagePill />
-          <Link
-            href="/dashboard/settings"
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all"
-          >
-            <MaterialIcon name="support_agent" size={20} />
-            <span className="font-medium text-sm">Support / Settings</span>
-          </Link>
-          <Link
-            href="/dashboard/upgrade"
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-secondary text-on-secondary font-semibold text-sm hover:opacity-95 transition-opacity"
-          >
-            <MaterialIcon name="trending_up" size={18} className="text-on-secondary" />
-            Upgrade Plan
-          </Link>
+          {/* "Support / Settings" used to duplicate the "Settings" nav item
+              above (both pointed at /dashboard/settings) — removed rather
+              than kept as a second link to the same page. */}
+          <UpgradeCta isSuperAdmin={isSuperAdmin} />
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-error hover:bg-error-container transition-all"
@@ -399,13 +439,7 @@ export function Sidebar() {
         </div>
 
         <div className="mt-auto p-6 space-y-2">
-          <Link
-            href="/dashboard/upgrade"
-            onClick={close}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-secondary text-on-secondary font-semibold text-sm"
-          >
-            Upgrade Plan
-          </Link>
+          <UpgradeCta isSuperAdmin={isSuperAdmin} mobile onClick={close} />
           <button
             onClick={() => {
               close();

@@ -23,11 +23,22 @@ const FILTERS: { id: Filter; label: string }[] = [
 
 function ReviewCard({ review }: { review: Review }) {
   const router = useRouter();
+  const t = useTheme();
   const status = replyStatusBadge(review.replyStatus);
   return (
     <Pressable
       onPress={() => router.push(`/reviews/${review._id}`)}
-      className="mb-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5 active:opacity-80"
+      // No `className` — react-native-css-interop can swallow onPress on
+      // styled Pressables (see components/ui.tsx).
+      style={{
+        marginBottom: 12,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: t.border,
+        backgroundColor: t.card,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+      }}
     >
       <View className="flex-row items-center justify-between">
         <Text className="flex-1 font-sans-semibold text-base text-white" numberOfLines={1}>
@@ -99,7 +110,8 @@ export default function ReviewsScreen() {
           onPress={() => sync.mutate()}
           disabled={sync.isPending || !activeBusinessId}
           hitSlop={10}
-          className="h-10 w-10 items-center justify-center rounded-full bg-surface-raised active:bg-surface-overlay"
+          // No `className` — see note above.
+          style={{ height: 40, width: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: t.card }}
         >
           {sync.isPending ? (
             <ActivityIndicator size="small" color={t.brandBright} />

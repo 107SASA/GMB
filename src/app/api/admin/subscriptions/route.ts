@@ -4,7 +4,11 @@ import dbConnect from '@/lib/mongodb';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import Subscription from '@/models/Subscription';
 import User from '@/models/User';
-import UsageTracking from '@/models/UsageTracking';
+import Business from '@/models/Business';
+import SubscriptionUsage from '@/models/SubscriptionUsage';
+import AIUsageLog from '@/models/AIUsageLog';
+import PlanConfig from '@/models/PlanConfig';
+import { getPlanDefaults } from '@/lib/planDefaults';
 
 export async function GET(req: NextRequest) {
   const auth = await requireSuperAdmin();
@@ -64,16 +68,77 @@ export async function GET(req: NextRequest) {
     ]);
 
     // ── 3. ENRICH WITH USAGE DATA ─────────────────────────────────────────────
+    // Sourced from the same models the customer-facing billing page reads
+    // (SubscriptionUsage + AIUsageLog — see /api/user/usage), not the legacy
+    // per-user UsageTracking collection this route used before. UsageTracking
+    // isn't written to by any current feature, so this admin table was
+    // showing stale/zero numbers that didn't match what customers actually
+    // saw on their own billing page.
     const userIds = subscriptions.map((s: any) => s.userId?._id).filter(Boolean);
-    const usageRecords = await UsageTracking.find({ userId: { $in: userIds } })
-      .sort({ billingPeriodStart: -1 })
-      .lean();
+    const month = new Date().toISOString().slice(0, 7);
+    const startOfMonth = new Date(`${month}-01T00:00:00.000Z`);
+    const endOfMonth = new Date(startOfMonth);
+    endOfMonth.setUTCMonth(endOfMonth.getUTCMonth() + 1);
 
-    // Keep latest usage record per user
+    const [ownedBusinesses, aiCounts, planConfigs] = await Promise.all([
+      Business.find({ userId: { $in: userIds } }).select('_id userId').lean(),
+      AIUsageLog.aggregate([
+        { $match: { userId: { $in: userIds }, status: 'success', createdAt: { $gte: startOfMonth, $lt: endOfMonth } } },
+        { $group: { _id: '$userId', count: { $sum: 1 } } },
+      ]),
+      PlanConfig.find({}).lean(),
+    ]);
+
+    const businessIdsByUser: Record<string, string[]> = {};
+    ownedBusinesses.forEach((b: any) => {
+      const key = b.userId?.toString();
+      if (!key) return;
+      (businessIdsByUser[key] ??= []).push(b._id.toString());
+    });
+    const allBusinessIds = ownedBusinesses.map((b: any) => b._id);
+
+    const subUsageRecords = allBusinessIds.length
+      ? await SubscriptionUsage.find({ businessId: { $in: allBusinessIds }, month }).lean()
+      : [];
+    const subUsageByBusiness: Record<string, any> = {};
+    subUsageRecords.forEach((u: any) => { subUsageByBusiness[u.businessId.toString()] = u; });
+
+    const aiCountByUser: Record<string, number> = {};
+    aiCounts.forEach((row: any) => { aiCountByUser[row._id.toString()] = row.count; });
+
+    const planConfigByName: Record<string, any> = {};
+    planConfigs.forEach((c: any) => { planConfigByName[c.plan] = c; });
+
     const usageMap: Record<string, any> = {};
-    usageRecords.forEach((u: any) => {
-      const key = u.userId.toString();
-      if (!usageMap[key]) usageMap[key] = u;
+    subscriptions.forEach((sub: any) => {
+      const userId = sub.userId?._id?.toString();
+      if (!userId || usageMap[userId]) return;
+
+      const businessIds = businessIdsByUser[userId] ?? [];
+      const totals = businessIds.reduce(
+        (acc, bId) => {
+          const u = subUsageByBusiness[bId];
+          if (u) {
+            acc.postsUsed += u.postsUsed ?? 0;
+            acc.whatsappMessagesUsed += u.whatsappMessagesUsed ?? 0;
+            acc.reviewRequestsUsed += u.reviewRequestsUsed ?? 0;
+          }
+          return acc;
+        },
+        { postsUsed: 0, whatsappMessagesUsed: 0, reviewRequestsUsed: 0 }
+      );
+
+      let planName = sub.userId?.subscriptionPlan || 'Free';
+      if (planName === 'Enterprise') planName = 'Pro'; // legacy paid tier → THE paid plan
+      const limits = planConfigByName[planName] ?? getPlanDefaults(planName);
+
+      usageMap[userId] = {
+        aiGenerations:      aiCountByUser[userId] ?? 0,
+        aiGenerationsLimit: limits.maxAIGenerations ?? 0,
+        whatsappMessages:   totals.whatsappMessagesUsed,
+        reviewRequests:     totals.reviewRequestsUsed,
+        contentUsage:       totals.postsUsed,
+      };
     });
 
     const enriched = subscriptions.map((sub: any) => {
@@ -98,15 +163,7 @@ export async function GET(req: NextRequest) {
               lastLoginAt:      sub.userId.lastLoginAt,
             }
           : null,
-        usage: usage
-          ? {
-              aiGenerations:     usage.metrics?.aiGenerations     ?? 0,
-              aiGenerationsLimit:usage.limits?.aiGenerations      ?? 0,
-              whatsappMessages:  usage.metrics?.whatsappMessages  ?? 0,
-              reviewRequests:    usage.metrics?.reviewRequests    ?? 0,
-              contentUsage:      usage.metrics?.contentUsage      ?? 0,
-            }
-          : null,
+        usage,
       };
     });
 

@@ -35,6 +35,7 @@ export async function GET(_req: NextRequest) {
         plan,
         maxAuditsPerBusiness:      db?.maxAuditsPerBusiness      ?? hc.maxAuditsPerBusiness,
         maxPostsPerMonth:          db?.maxPostsPerMonth          ?? hc.maxPostsPerMonth,
+        postLimitFrequency:        db?.postLimitFrequency        ?? hc.postLimitFrequency ?? 'monthly',
         maxWhatsAppMessagesPerDay: db?.maxWhatsAppMessagesPerDay ?? hc.maxWhatsAppMessagesPerDay,
         reviewRequestCooldownDays: db?.reviewRequestCooldownDays ?? hc.reviewRequestCooldownDays,
         maxAIGenerations:          db?.maxAIGenerations          ?? hc.maxAIGenerations,
@@ -74,6 +75,12 @@ export async function PATCH(req: NextRequest) {
         }
         update[key] = Math.round(val);
       }
+    }
+    if ('postLimitFrequency' in rest) {
+      if (rest.postLimitFrequency !== 'monthly' && rest.postLimitFrequency !== 'weekly') {
+        return NextResponse.json({ error: "postLimitFrequency must be 'monthly' or 'weekly'" }, { status: 400 });
+      }
+      update.postLimitFrequency = rest.postLimitFrequency;
     }
 
     if (Object.keys(update).length === 1) {

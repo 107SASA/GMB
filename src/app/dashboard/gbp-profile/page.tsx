@@ -161,9 +161,6 @@ export default function GbpProfilePage() {
             </div>
           )}
 
-          {error && <div className="bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container">{error}</div>}
-          {saved && <div className="bg-secondary-container/40 border border-secondary-fixed rounded-xl px-4 py-3 text-sm text-on-secondary-container">{saved}</div>}
-
           <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 shadow-sm space-y-5">
             <div className="space-y-2">
               <label className="text-sm font-semibold text-on-surface">Business name</label>
@@ -197,6 +194,12 @@ export default function GbpProfilePage() {
               </div>
             </div>
           </div>
+
+          {/* Validation/result messages sit directly above the action row —
+              not at the top of the page — so they're visible right where the
+              user just clicked, instead of scrolled out of view above them. */}
+          {error && <div className="bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container">{error}</div>}
+          {saved && <div className="bg-secondary-container/40 border border-secondary-fixed rounded-xl px-4 py-3 text-sm text-on-secondary-container">{saved}</div>}
 
           <div className="flex items-center gap-3">
             <button

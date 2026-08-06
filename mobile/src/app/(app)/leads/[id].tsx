@@ -65,7 +65,18 @@ function ContactAction({
   return (
     <Pressable
       onPress={onPress}
-      className="flex-1 items-center gap-1 rounded-card border border-surface-border bg-surface-raised py-3 active:opacity-70"
+      // No `className` — react-native-css-interop can swallow onPress on
+      // styled Pressables (see components/ui.tsx).
+      style={{
+        flex: 1,
+        alignItems: 'center',
+        gap: 4,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: t.border,
+        backgroundColor: t.card,
+        paddingVertical: 12,
+      }}
     >
       <Ionicons name={icon} size={20} color={t.brandBright} />
       <Text className="font-sans-semibold text-xs text-zinc-300">{label}</Text>
@@ -241,7 +252,7 @@ export default function LeadDetailScreen() {
     <Screen>
       {/* Header */}
       <View className="flex-row items-center gap-3 border-b border-surface-border px-4 pb-3 pt-2">
-        <Pressable onPress={() => router.back()} hitSlop={8} className="active:opacity-60">
+        <Pressable onPress={() => router.back()} hitSlop={8}>
           <BackChevron />
         </Pressable>
         <View className="flex-1">
@@ -407,7 +418,8 @@ export default function LeadDetailScreen() {
                   setCallPromptVisible(false);
                   setCallNote('');
                 }}
-                className="mt-2 items-center py-3 active:opacity-60"
+                // No `className` — see components/ui.tsx PrimaryButton note.
+                style={{ marginTop: 8, alignItems: 'center', paddingVertical: 12 }}
               >
                 <Text className="font-sans-semibold text-sm text-zinc-400">
                   Don't log this call

@@ -13,6 +13,9 @@ const PlanConfigSchema = new Schema<IPlanConfig>(
     plan:                      { type: String, required: true, unique: true, index: true },
     maxAuditsPerBusiness:      { type: Number, required: true },
     maxPostsPerMonth:          { type: Number, required: true },
+    // Which window maxPostsPerMonth resets on — additive field, defaults to
+    // the historical behavior (monthly) so existing configs are unaffected.
+    postLimitFrequency:        { type: String, enum: ['monthly', 'weekly'], default: 'monthly' },
     maxWhatsAppMessagesPerDay: { type: Number, required: true },
     reviewRequestCooldownDays: { type: Number, required: true },
     maxAIGenerations:          { type: Number, required: true },

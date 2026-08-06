@@ -110,7 +110,9 @@ export default function ForgotPasswordScreen() {
           <Pressable
             onPress={() => (step === 'email' ? router.back() : setStep('email'))}
             hitSlop={12}
-            className="mb-8 h-9 w-9 items-center justify-center rounded-full bg-surface-raised active:bg-surface-overlay"
+            // No `className` — react-native-css-interop can swallow onPress
+            // on styled Pressables (see components/ui.tsx).
+            style={{ marginBottom: 32, height: 36, width: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: t.card }}
           >
             <Ionicons name="arrow-back" size={18} color={t.text} />
           </Pressable>
@@ -168,7 +170,8 @@ export default function ForgotPasswordScreen() {
               <Pressable
                 onPress={() => cooldown === 0 && void sendOtp()}
                 disabled={cooldown > 0 || submitting}
-                className="items-center py-2"
+                // No `className` — see note above.
+                style={{ alignItems: 'center', paddingVertical: 8 }}
               >
                 <Text className={`font-sans-semibold text-sm ${cooldown > 0 ? 'text-zinc-500' : 'text-brand-bright'}`}>
                   {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}

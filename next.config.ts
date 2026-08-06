@@ -17,10 +17,24 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=()" },
 ];
 
+// Dashboard pages render per-session data server-side (DashboardLayout calls
+// requireClient()) but ship no explicit cache directive of their own, so a
+// browser's back/forward cache (bfcache) is free to restore a previously
+// rendered authenticated view verbatim after logout — the page just reappears
+// with no re-check. Login already avoids the mirror-image problem with a
+// hard navigation (see (auth)/login/page.tsx); this closes the logout side.
+const noStoreHeaders = [
+  { key: "Cache-Control", value: "no-store, must-revalidate" },
+];
+
 const nextConfig: NextConfig = {
   serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      { source: "/dashboard/:path*", headers: noStoreHeaders },
+      { source: "/admin/:path*", headers: noStoreHeaders },
+    ];
   },
 };
 

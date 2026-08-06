@@ -20,11 +20,22 @@ const RATING_FILTERS: RatingFilter[] = ['all', 5, 4, 3, 2, 1];
 
 function ReviewRow({ review }: { review: Review }) {
   const router = useRouter();
+  const t = useTheme();
   const status = replyStatusBadge(review.replyStatus);
   return (
     <Pressable
       onPress={() => router.push(`/reviews/${review._id}`)}
-      className="mb-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5 active:opacity-80"
+      // No `className` — react-native-css-interop can swallow onPress on
+      // styled Pressables (see components/ui.tsx).
+      style={{
+        marginBottom: 12,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: t.border,
+        backgroundColor: t.card,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+      }}
     >
       <View className="flex-row items-center justify-between">
         <Text className="flex-1 font-sans-semibold text-base text-white" numberOfLines={1}>
@@ -129,8 +140,8 @@ export function ReviewsTab() {
         <Text className="font-display-bold text-lg text-white">Google Reviews</Text>
         <Pressable
           onPress={() => setFilterOpen((v) => !v)}
-          className="flex-row items-center gap-1.5 rounded-full border px-4 py-2 active:opacity-70"
-          style={{ borderColor: t.brandBright }}
+          // No `className` — see note above.
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 8, borderColor: t.brandBright }}
         >
           <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
             {rating === 'all' ? 'All Ratings' : `${rating} Stars`}
@@ -148,9 +159,15 @@ export function ReviewsTab() {
                 setRating(f);
                 setFilterOpen(false);
               }}
-              className={`rounded-full border px-4 py-2 ${
-                rating === f ? 'border-brand bg-brand' : 'border-surface-border bg-surface-raised'
-              }`}
+              // No `className` — see note above.
+              style={{
+                borderRadius: 999,
+                borderWidth: 1,
+                paddingHorizontal: 16,
+                paddingVertical: 8,
+                borderColor: rating === f ? t.brand : t.border,
+                backgroundColor: rating === f ? t.brand : t.card,
+              }}
             >
               <Text
                 className={`font-sans-semibold text-sm ${rating === f ? 'text-on-brand' : 'text-zinc-400'}`}

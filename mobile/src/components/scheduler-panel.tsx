@@ -9,7 +9,7 @@ import { useBusiness } from '@/business/BusinessContext';
 import { useDateTimePicker } from '@/components/datetime-picker';
 import { Badge, EmptyState, SectionLabel, Skeleton } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
-import { useTheme } from '@/lib/theme';
+import { useTheme, withAlpha } from '@/lib/theme';
 
 /**
  * The Content Scheduler body — buffer health + scheduled/draft posts with
@@ -91,21 +91,25 @@ function PostRow({
         <View className="mt-3 flex-row gap-2">
           <Pressable
             onPress={onPublish}
-            className="flex-row items-center gap-1 rounded-full border border-surface-border px-3 py-1.5 active:scale-95"
+            // No `className` — react-native-css-interop can swallow onPress
+            // on styled Pressables (see components/ui.tsx).
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingHorizontal: 12, paddingVertical: 6 }}
           >
             <Ionicons name="send-outline" size={13} color={t.textFaint} />
             <Text className="font-sans-semibold text-xs text-zinc-300">Publish now</Text>
           </Pressable>
           <Pressable
             onPress={onReschedule}
-            className="flex-row items-center gap-1 rounded-full border border-surface-border px-3 py-1.5 active:scale-95"
+            // No `className` — see note above.
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingHorizontal: 12, paddingVertical: 6 }}
           >
             <Ionicons name="calendar-outline" size={13} color={t.textFaint} />
             <Text className="font-sans-semibold text-xs text-zinc-300">Reschedule</Text>
           </Pressable>
           <Pressable
             onPress={onDelete}
-            className="flex-row items-center gap-1 rounded-full border border-rose-400/25 px-3 py-1.5 active:scale-95"
+            // No `className` — see note above.
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, borderWidth: 1, borderColor: withAlpha(t.rose, 0.25), paddingHorizontal: 12, paddingVertical: 6 }}
           >
             <Ionicons name="trash-outline" size={13} color={t.rose} />
             <Text className="font-sans-semibold text-xs text-rose-300">Delete</Text>

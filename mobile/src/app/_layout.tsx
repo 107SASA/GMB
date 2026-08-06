@@ -16,6 +16,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
 import { useColorScheme, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { BusinessProvider } from '@/business/BusinessContext';
@@ -25,7 +26,11 @@ import { useLastNotificationResponse } from '@/notifications/push';
 
 SplashScreen.preventAutoHideAsync();
 
-const queryClient = new QueryClient({
+// Exported so non-component code (lib/connectGoogle.ts) can invalidate
+// queries directly — the Google OAuth "connect" flow opens an in-app
+// browser with no deep-link/redirect handling back into the app, so
+// nothing else refetches the GBP/business status once the user returns.
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 60_000 },
   },
@@ -69,7 +74,7 @@ const navThemes = {
 };
 
 function RootNavigator() {
-  const { isHydrating, isAuthenticated } = useAuth();
+  const { isHydrating, isAuthenticated, user } = useAuth();
   const router = useRouter();
   const t = useTheme();
 
@@ -86,8 +91,10 @@ function RootNavigator() {
   }, [isHydrating, fontsLoaded]);
 
   // Deep-link notification taps: { leadId } → inbox thread, { reviewId } →
-  // review detail. useLastNotificationResponse also covers cold starts;
-  // the ref stops the same tap from re-navigating on re-renders.
+  // review detail, { postId } → content tab (no per-post detail screen on
+  // mobile — the published post is visible in that list).
+  // useLastNotificationResponse also covers cold starts; the ref stops the
+  // same tap from re-navigating on re-renders.
   const lastResponse = useLastNotificationResponse();
   const handledResponse = useRef<string | null>(null);
 
@@ -98,12 +105,19 @@ function RootNavigator() {
     handledResponse.current = id;
 
     const data = lastResponse.notification.request.content.data as Record<string, unknown>;
-    if (typeof data?.leadId === 'string') {
+    // Inbox is SUPER_ADMIN-only ((app)/inbox/_layout.tsx redirects everyone
+    // else to /more) — routing a regular business-owner here from a raw
+    // push tap silently bounced them to /more with no explanation, which
+    // just reads as "the notification is broken". See the same gate in
+    // notifications.tsx's LINK_MAP for the in-app notification list.
+    if (typeof data?.leadId === 'string' && user?.role === 'SUPER_ADMIN') {
       router.push(`/inbox/${data.leadId}`);
     } else if (typeof data?.reviewId === 'string') {
       router.push(`/reviews/${data.reviewId}`);
+    } else if (typeof data?.postId === 'string') {
+      router.push('/content');
     }
-  }, [lastResponse, isHydrating, isAuthenticated, router]);
+  }, [lastResponse, isHydrating, isAuthenticated, user, router]);
 
   // Keep the native splash visible until the stored session is restored and
   // the Public Sans / Inter fonts are ready, so returning users never flash
@@ -126,28 +140,35 @@ function RootNavigator() {
 function RootLayout() {
   const scheme = useColorScheme();
   return (
-    <PersistQueryClientProvider
-      client={queryClient}
-      persistOptions={{
-        persister,
-        maxAge: 24 * 60 * 60 * 1000,
-        buster: Constants.expoConfig?.version,
-        // Only persist queries that actually resolved — an errored or
-        // still-pending query has nothing useful to show from a cold start.
-        dehydrateOptions: {
-          shouldDehydrateQuery: (query) => query.state.status === 'success',
-        },
-      }}
-    >
-      <AuthProvider>
-        <BusinessProvider>
-          <ThemeProvider value={scheme === 'light' ? navThemes.light : navThemes.dark}>
-            <StatusBar style="auto" />
-            <RootNavigator />
-          </ThemeProvider>
-        </BusinessProvider>
-      </AuthProvider>
-    </PersistQueryClientProvider>
+    // Required at the true root by react-native-gesture-handler — react-native-screens'
+    // native-stack navigator (what expo-router's <Stack> uses) relies on gesture-handler
+    // internally for its transitions. Without this wrapper, gesture-handler's internal
+    // recognizers can swallow the entire touch-responder chain app-wide: every Pressable
+    // renders and looks normal, but nothing anywhere responds to taps.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister,
+          maxAge: 24 * 60 * 60 * 1000,
+          buster: Constants.expoConfig?.version,
+          // Only persist queries that actually resolved — an errored or
+          // still-pending query has nothing useful to show from a cold start.
+          dehydrateOptions: {
+            shouldDehydrateQuery: (query) => query.state.status === 'success',
+          },
+        }}
+      >
+        <AuthProvider>
+          <BusinessProvider>
+            <ThemeProvider value={scheme === 'light' ? navThemes.light : navThemes.dark}>
+              <StatusBar style="auto" />
+              <RootNavigator />
+            </ThemeProvider>
+          </BusinessProvider>
+        </AuthProvider>
+      </PersistQueryClientProvider>
+    </GestureHandlerRootView>
   );
 }
 

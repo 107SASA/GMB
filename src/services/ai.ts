@@ -367,3 +367,62 @@ Return ONLY the category word.`;
     return rating >= 4 ? 'positive' : rating === 3 ? 'neutral' : 'negative';
   }
 }
+
+/**
+ * Target-keyword suggestions for the post-payment intake form
+ * (dashboard/onboarding/intake). Called twice per session, typically:
+ *  1. Initial suggestions from category + description alone.
+ *  2. "More like this" — once the user picks one or more, pass them back as
+ *     `selectedKeywords` so the next batch leans into that theme instead of
+ *     just repeating generic category terms.
+ * `excludeKeywords` should be every keyword already shown across BOTH calls
+ * (selected or not) so the second batch doesn't just repeat the first.
+ */
+export async function suggestTargetKeywords(
+  category: string,
+  description: string,
+  selectedKeywords: string[] = [],
+  excludeKeywords: string[] = []
+): Promise<string[]> {
+  try {
+    const prompt = `You are a local SEO strategist helping a small business pick Google search keywords.
+
+Business category: ${category || 'Local business'}
+Business description: ${description || 'Not provided'}
+${selectedKeywords.length > 0
+  ? `The business owner has already picked these keywords — suggest MORE keywords in a similar theme (close variations, related services, nearby search intent), not a completely different direction:\n${selectedKeywords.join(', ')}`
+  : 'Suggest a good starting mix: a few broad category keywords and a few more specific long-tail ones.'}
+
+Rules:
+- Each keyword is 2-6 words, realistic, and something a real customer would actually type into Google to find a business like this.
+- Local-intent phrasing is good (e.g. "near me", a service + city-style pattern) but don't invent a specific city if none was mentioned.
+- Do NOT suggest any of these — they've already been shown:
+${excludeKeywords.length > 0 ? excludeKeywords.join(', ') : '(none yet)'}
+- Return exactly 8 keywords.
+- Return ONLY a JSON array of strings, no explanation, no markdown fences.
+
+Example format: ["keyword one", "keyword two"]`;
+
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.8,
+      max_tokens: 300,
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim() || '[]';
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed)) return [];
+
+    const excludeLower = new Set([...selectedKeywords, ...excludeKeywords].map((k) => k.toLowerCase().trim()));
+    return parsed
+      .filter((k): k is string => typeof k === 'string' && k.trim().length > 0)
+      .map((k) => k.trim())
+      .filter((k) => !excludeLower.has(k.toLowerCase()))
+      .slice(0, 8);
+  } catch (error) {
+    console.error('Keyword suggestion error', error);
+    return [];
+  }
+}

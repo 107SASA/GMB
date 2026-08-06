@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useBusiness } from '@/context/BusinessContext';
 import { planDisplayLabel, isPaidPlanLabel } from '@/lib/billing/planLabel';
+import { checkPasswordStrength } from '@/lib/passwordPolicy';
 import {
   Eye,
   EyeOff,
@@ -69,6 +72,7 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { activeBusiness } = useBusiness();
 
   // ── User data ───────────────────────────────────────────────────────────
   const [user, setUser] = useState<any>(null);
@@ -102,7 +106,11 @@ export default function ProfilePage() {
       if (uRes.ok) {
         const { user: u } = await uRes.json();
         setUser(u);
-        setInfoForm({ fullName: u.fullName ?? '', phone: u.phone ?? '', companyName: u.companyName ?? '' });
+        // Company Name is read-only here — it mirrors the active Business's
+        // name (edited in Settings → Business Profile) instead of the old
+        // separately-typed User.companyName, which could silently drift out
+        // of sync with the actual business record shown everywhere else.
+        setInfoForm({ fullName: u.fullName ?? '', phone: u.phone ?? '', companyName: '' });
       }
       if (sRes.ok) {
         const { subscription: s } = await sRes.json();
@@ -112,12 +120,27 @@ export default function ProfilePage() {
     load();
   }, []);
 
+  useEffect(() => {
+    if (activeBusiness?.name) {
+      setInfoForm(p => ({ ...p, companyName: activeBusiness.name }));
+    }
+  }, [activeBusiness?.name]);
+
   // ── Password validation ─────────────────────────────────────────────────
-  const pwdMinLen = pwdForm.next.length >= 8;
-  const pwdHasNumberOrSymbol = /[\d!@#$%^&*()\-_=+\[\]{}|;:'",.<>?/\\`~]/.test(pwdForm.next);
+  // Same policy as signup/reset-password (src/lib/passwordPolicy.ts) — this
+  // form previously only required length + "a digit or symbol", so it was
+  // possible to set a password here with no uppercase/lowercase/special
+  // character that the reset-password flow would have rejected outright.
+  const pwdStrength = checkPasswordStrength(pwdForm.next);
   const pwdMatch = pwdForm.next === pwdForm.confirm && pwdForm.confirm.length > 0;
   const pwdValid =
-    pwdForm.current.length > 0 && pwdMinLen && pwdHasNumberOrSymbol && pwdMatch;
+    pwdForm.current.length > 0 &&
+    pwdStrength.minLength &&
+    pwdStrength.hasUpper &&
+    pwdStrength.hasLower &&
+    pwdStrength.hasNumber &&
+    pwdStrength.hasSpecial &&
+    pwdMatch;
 
   // ── Personal info save ──────────────────────────────────────────────────
   const handleInfoSave = async () => {
@@ -130,7 +153,8 @@ export default function ProfilePage() {
         body: JSON.stringify({
           fullName: infoForm.fullName,
           phone: infoForm.phone,
-          companyName: infoForm.companyName,
+          // companyName intentionally omitted — it's read-only here, sourced
+          // from the active Business, not saved back onto the User doc.
         }),
       });
       const data = await res.json();
@@ -249,11 +273,18 @@ export default function ProfilePage() {
               <div>
                 <label className="block text-xs font-semibold text-on-surface-variant mb-1">Company Name</label>
                 <input
-                  className={inputCls()}
+                  className={inputCls('bg-surface-container disabled:opacity-70 cursor-not-allowed')}
                   value={infoForm.companyName}
-                  onChange={e => setInfoForm(p => ({ ...p, companyName: e.target.value }))}
-                  placeholder="Acme Corp (optional)"
+                  disabled
+                  readOnly
                 />
+                <p className="text-xs text-outline mt-1">
+                  Pulled from your business profile —{' '}
+                  <Link href="/dashboard/settings" className="text-primary font-semibold hover:underline">
+                    edit it in Settings
+                  </Link>
+                  .
+                </p>
               </div>
             </div>
 
@@ -420,13 +451,25 @@ export default function ProfilePage() {
                 </div>
                 {pwdForm.next.length > 0 && (
                   <div className="mt-1.5 space-y-0.5">
-                    <p className={`text-xs flex items-center gap-1 ${pwdMinLen ? 'text-secondary' : 'text-outline'}`}>
-                      {pwdMinLen ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                    <p className={`text-xs flex items-center gap-1 ${pwdStrength.minLength ? 'text-secondary' : 'text-outline'}`}>
+                      {pwdStrength.minLength ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
                       At least 8 characters ({pwdForm.next.length})
                     </p>
-                    <p className={`text-xs flex items-center gap-1 ${pwdHasNumberOrSymbol ? 'text-secondary' : 'text-outline'}`}>
-                      {pwdHasNumberOrSymbol ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                      Contains a number or symbol
+                    <p className={`text-xs flex items-center gap-1 ${pwdStrength.hasUpper ? 'text-secondary' : 'text-outline'}`}>
+                      {pwdStrength.hasUpper ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                      An uppercase letter
+                    </p>
+                    <p className={`text-xs flex items-center gap-1 ${pwdStrength.hasLower ? 'text-secondary' : 'text-outline'}`}>
+                      {pwdStrength.hasLower ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                      A lowercase letter
+                    </p>
+                    <p className={`text-xs flex items-center gap-1 ${pwdStrength.hasNumber ? 'text-secondary' : 'text-outline'}`}>
+                      {pwdStrength.hasNumber ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                      A number
+                    </p>
+                    <p className={`text-xs flex items-center gap-1 ${pwdStrength.hasSpecial ? 'text-secondary' : 'text-outline'}`}>
+                      {pwdStrength.hasSpecial ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                      A special character (!@#$%^&* etc.)
                     </p>
                   </div>
                 )}

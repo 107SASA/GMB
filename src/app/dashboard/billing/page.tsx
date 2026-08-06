@@ -4,13 +4,14 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Zap, CheckCircle2, ArrowRight, RefreshCw,
-  BarChart3, FileText, MessageSquare, Bot, Clock,
+  BarChart3, FileText, Bot, Clock,
   TrendingUp, Crown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { planDisplayLabel, isPaidPlanLabel } from '@/lib/billing/planLabel';
 import Link from 'next/link';
 import { useBusiness } from '@/context/BusinessContext';
+import { BRAND_ATTRIBUTION } from '@/lib/companyInfo';
 
 interface BillingStatus {
   planType: string;
@@ -35,6 +36,7 @@ interface UsageData {
   limits: {
     maxAuditsPerBusiness:      number;
     maxPostsPerMonth:          number;
+    postLimitFrequency?:       'monthly' | 'weekly';
     maxWhatsAppMessagesPerDay: number;
     reviewRequestCooldownDays: number;
     maxAIGenerations:          number;
@@ -401,19 +403,17 @@ export default function BillingPage() {
                 color="bg-primary"
               />
               <UsageBar
-                label="Posts Generated"
+                label={data.limits.postLimitFrequency === 'weekly' ? 'Posts Generated (This Week)' : 'Posts Generated'}
                 icon={BarChart3}
                 used={data.usage.postsUsed}
                 limit={data.limits.maxPostsPerMonth}
                 color="bg-secondary"
               />
-              <UsageBar
-                label="WhatsApp Messages"
-                icon={MessageSquare}
-                used={data.usage.whatsappUsed}
-                limit={data.limits.maxWhatsAppMessagesPerDay}
-                color="bg-error-container"
-              />
+              {/* WhatsApp usage is no longer surfaced as a billed/limited
+                  feature on the customer-facing billing page — the sales &
+                  booking WhatsApp agents keep working and usage still tracks
+                  internally (SubscriptionUsage.whatsappMessagesUsed), this is
+                  a display-only removal. */}
             </div>
           </div>
 
@@ -424,8 +424,7 @@ export default function BillingPage() {
               {[
                 { label: 'AI Generations / Month',     icon: Bot,            value: data.limits.maxAIGenerations },
                 { label: 'Audits / Business / Month',  icon: FileText,       value: data.limits.maxAuditsPerBusiness },
-                { label: 'Posts / Month',               icon: BarChart3,      value: data.limits.maxPostsPerMonth },
-                { label: 'WhatsApp Messages / Day',     icon: MessageSquare,  value: data.limits.maxWhatsAppMessagesPerDay },
+                { label: data.limits.postLimitFrequency === 'weekly' ? 'Posts / Week' : 'Posts / Month', icon: BarChart3, value: data.limits.maxPostsPerMonth },
                 { label: 'Review Request Cooldown',     icon: Clock,          value: `${data.limits.reviewRequestCooldownDays} days` },
               ].map(({ label, icon: Icon, value }) => (
                 <div key={label} className="flex items-center justify-between py-2 border-b border-outline-variant last:border-0">
@@ -479,6 +478,8 @@ export default function BillingPage() {
           )}
         </>
       ) : null}
+
+      <p className="text-center text-xs text-outline pt-2">{BRAND_ATTRIBUTION}</p>
     </div>
   );
 }

@@ -128,7 +128,7 @@ export default function ImportContactsScreen() {
       {consentSheet}
       {/* Header */}
       <View className="flex-row items-center gap-3 border-b border-surface-border px-4 pb-3 pt-2">
-        <Pressable onPress={() => router.back()} hitSlop={8} className="active:opacity-60">
+        <Pressable onPress={() => router.back()} hitSlop={8}>
           <BackChevron />
         </Pressable>
         <Text className="flex-1 font-display-bold text-lg text-white">Add from contacts</Text>
@@ -151,7 +151,9 @@ export default function ImportContactsScreen() {
           action={
             <Pressable
               onPress={() => void Linking.openSettings()}
-              className="mt-2 rounded-full bg-brand px-5 py-3 active:scale-95"
+              // No `className` — react-native-css-interop can swallow onPress
+              // on styled Pressables (see components/ui.tsx).
+              style={{ marginTop: 8, borderRadius: 999, backgroundColor: t.brand, paddingHorizontal: 20, paddingVertical: 12 }}
             >
               <Text className="font-sans-bold text-sm text-on-brand">Open settings</Text>
             </Pressable>
@@ -191,7 +193,16 @@ export default function ImportContactsScreen() {
               return (
                 <Pressable
                   onPress={() => toggle(item.key)}
-                  className="flex-row items-center gap-3 border-b border-surface-border px-5 py-3 active:bg-surface-raised"
+                  // No `className` — see note above.
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    borderBottomWidth: 1,
+                    borderBottomColor: t.border,
+                    paddingHorizontal: 20,
+                    paddingVertical: 12,
+                  }}
                 >
                   <Ionicons
                     name={isSelected ? 'checkbox' : 'square-outline'}

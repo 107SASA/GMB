@@ -5,7 +5,7 @@ import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 
 import { useBusiness } from '@/business/BusinessContext';
 import { InitialsAvatar } from '@/components/ui';
-import { useTheme } from '@/lib/theme';
+import { useTheme, withAlpha } from '@/lib/theme';
 
 /**
  * List of the user's businesses; tapping one makes it the active workspace
@@ -58,11 +58,20 @@ export function BusinessSwitcher() {
             key={business._id}
             onPress={() => void selectBusiness(business._id)}
             disabled={busy}
-            className={`flex-row items-center gap-3 rounded-card border p-3.5 ${
-              active
-                ? 'border-brand/60 bg-brand/10'
-                : 'border-surface-border bg-surface-raised active:bg-surface-overlay'
-            } ${busy ? 'opacity-50' : ''}`}
+            // No `className` on this Pressable — react-native-css-interop can
+            // swallow onPress on styled Pressables (confirmed by device
+            // testing; see ui.tsx PrimaryButton for the full explanation).
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              borderRadius: 20,
+              borderWidth: 1,
+              padding: 14,
+              borderColor: active ? withAlpha(t.brand, 0.6) : t.border,
+              backgroundColor: active ? withAlpha(t.brand, 0.1) : t.card,
+              opacity: busy ? 0.5 : 1,
+            }}
           >
             <InitialsAvatar
               name={business.name}
@@ -91,7 +100,15 @@ export function BusinessSwitcher() {
                 <Pressable
                   hitSlop={10}
                   onPress={() => confirmDelete(business._id, business.name)}
-                  className="ml-1 h-9 w-9 items-center justify-center rounded-xl active:bg-surface-overlay"
+                  // No `className` — see note above.
+                  style={{
+                    marginLeft: 4,
+                    height: 36,
+                    width: 36,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 12,
+                  }}
                 >
                   <Ionicons name="trash-outline" size={18} color={t.rose} />
                 </Pressable>

@@ -6,6 +6,7 @@ import { Alert, ScrollView, Text, View } from 'react-native';
 import { getApiErrorMessage } from '@/api/client';
 import { changePassword, fetchProfile, updateProfile, type Profile } from '@/api/endpoints/account';
 import { useAuth } from '@/auth/AuthContext';
+import { getPasswordError } from '@/lib/passwordPolicy';
 import {
   Badge,
   EmptyState,
@@ -79,12 +80,12 @@ function PasswordForm() {
 
   function submit() {
     setError('');
-    if (next.length < 8) {
-      setError('New password must be at least 8 characters.');
-      return;
-    }
-    if (!/\d/.test(next) || !/[^A-Za-z0-9]/.test(next)) {
-      setError('New password needs at least one number and one symbol.');
+    // Same policy the backend now enforces (src/lib/passwordPolicy.ts /
+    // mobile mirror below) — this used to only require a digit + a symbol,
+    // so a password could pass here and still get rejected server-side.
+    const passwordError = getPasswordError(next);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
     if (next !== confirm) {

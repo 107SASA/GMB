@@ -35,6 +35,11 @@ export interface IUser extends Document {
   failedOtpAttempts: number;
   emailVerifiedAt?: Date;
 
+  // Phone + OTP login (WhatsApp-delivered) — separate from the email-based
+  // OTP fields above since a user can attempt both flows independently.
+  phoneOtpHash?: string;
+  phoneOtpExpiry?: Date;
+
   // Security fields
   failedLoginAttempts: number;
   accountLockedUntil?: Date;
@@ -128,6 +133,8 @@ const UserSchema: Schema = new Schema(
     emailOtpExpiry: { type: Date },
     passwordResetOtp: { type: String },
     passwordResetExpiry: { type: Date },
+    phoneOtpHash: { type: String },
+    phoneOtpExpiry: { type: Date },
 
     // Verification timestamps and rate limiting
     failedOtpAttempts: { type: Number, default: 0 },

@@ -1081,7 +1081,7 @@ export const processPublishPostJob = inngest.createFunction(
       post.status = "published";
       post.publishedAt = new Date();
       await post.save();
-      
+
       await AutomationLog.create({
         tenantId: post.tenantId?.toString(),
         businessId: post.businessId?.toString(),
@@ -1090,8 +1090,39 @@ export const processPublishPostJob = inngest.createFunction(
         action: 'publish_post',
         status: 'success',
       });
+
+      // Mobile push + in-app bell notification — same best-effort pattern as
+      // the critical-review and reply-drafted alerts above. Fires on the
+      // same "published" transition the rest of the app already shows,
+      // whether or not GBP_LIVE_WRITES_ENABLED is on (see the mock/live
+      // branch above) — post.status flips to "published" either way, and
+      // that's the one status every other surface in the app already shows
+      // the user, so the notification isn't saying anything new relative to
+      // what's already displayed elsewhere.
+      const businessIdStr = post.businessId.toString();
+      try {
+        const { sendPushToBusinessUsers } = await import("@/services/push");
+        await sendPushToBusinessUsers(businessIdStr, {
+          title: 'Post published',
+          body: `"${post.title || 'Your post'}" is now live on your Google Business Profile`,
+          data: { postId: post._id.toString() },
+        });
+      } catch (e) {
+        console.error('[push] post-published notify failed:', e);
+      }
+      try {
+        const { notifyBusinessUsers } = await import("@/services/notifications");
+        await notifyBusinessUsers(businessIdStr, {
+          type: 'post_published',
+          title: 'Post published',
+          body: `"${post.title || 'Your post'}" is now live on your Google Business Profile.`,
+          link: '/dashboard/scheduler',
+        });
+      } catch (e: any) {
+        console.error('[notifications] post-published notify failed:', e.message);
+      }
     });
-    
+
     return { success: true };
   }
 );
@@ -1105,14 +1136,28 @@ export const generateAuditJob = inngest.createFunction(
     // Pull fresh reviews before scoring so the audit sees current data.
     // If the sync fails for any reason, we fall through and use whatever
     // reviews are already in the DB rather than blocking the whole audit.
+    //
+    // fastMode (lead-gen entry points — /free-report, WhatsApp report-connect,
+    // see src/lib/startAudit.ts) skips this entirely. Without this check, a
+    // fastMode audit paid the full cost of a first-time SerpApi sync here
+    // (data_id resolve + paginated backfill, ~10 sequential calls) BEFORE
+    // process-audit below even got a chance to run its own fastMode-aware
+    // skip — silently defeating the "seconds instead of up to a minute"
+    // trade-off that fastMode exists for. See processAuditJob's identical
+    // `!audit.fastMode` gate in auditService.ts for the fast-mode path this
+    // was supposed to match.
     await step.run('pre-sync-reviews', async () => {
       try {
         const dbConnect = (await import('@/lib/mongodb')).default;
         await dbConnect();
         const { default: Audit } = await import('@/models/Audit');
-        const audit = await Audit.findById(auditId).select('businessId tenantId').lean();
+        const audit = await Audit.findById(auditId).select('businessId tenantId fastMode').lean();
         if (!audit) {
           console.warn(`[generate-audit] Audit ${auditId} not found for pre-sync`);
+          return;
+        }
+        if ((audit as any).fastMode) {
+          console.log(`[generate-audit] fastMode audit ${auditId} — skipping pre-sync-reviews`);
           return;
         }
         const { syncReviewsForBusiness } = await import('@/services/reviews/syncReviews');

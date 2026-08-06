@@ -33,7 +33,20 @@ function AuditCard({ audit }: { audit: AuditListItem }) {
   return (
     <Pressable
       onPress={() => router.push(`/audit/${audit._id}`)}
-      className="mb-3 flex-row items-center gap-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5 active:opacity-80"
+      // No `className` — react-native-css-interop can swallow onPress on
+      // styled Pressables (see components/ui.tsx).
+      style={{
+        marginBottom: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: t.border,
+        backgroundColor: t.card,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+      }}
     >
       <ScoreRing score={audit.status === 'COMPLETED' ? audit.overallScore : null} />
       <View className="flex-1">
@@ -68,7 +81,8 @@ export default function AuditListScreen() {
         <ScreenTitle>Audit Engine</ScreenTitle>
         <Pressable
           onPress={() => router.push('/audit/run')}
-          className="flex-row items-center gap-1.5 rounded-full bg-brand px-4 py-2 active:scale-95"
+          // No `className` — see note above.
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, backgroundColor: t.brand, paddingHorizontal: 16, paddingVertical: 8 }}
         >
           <Ionicons name="flash" size={14} color="#ffffff" />
           <Text className="font-sans-bold text-sm text-on-brand">Run audit</Text>

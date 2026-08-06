@@ -27,6 +27,23 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const inputs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  // Local (not-yet-uploaded) previews — shown the instant a file is picked
+  // instead of waiting for the upload to finish and the media grid to
+  // refetch from Google. Keyed by object URL so they can be revoked cleanly.
+  const [previews, setPreviews] = useState<Partial<Record<UploadCategory, string>>>({});
+  // Mirrors `previews` for the unmount-only cleanup below, which must read
+  // whatever is current at unmount time without re-running (and revoking
+  // still-active preview URLs) on every preview add/remove in between.
+  const previewsRef = useRef(previews);
+  useEffect(() => { previewsRef.current = previews; }, [previews]);
+
+  // Revoke any still-pending preview URLs on unmount to avoid leaking memory.
+  useEffect(() => {
+    return () => {
+      Object.values(previewsRef.current).forEach((url) => url && URL.revokeObjectURL(url));
+    };
+  }, []);
+
   const loadMedia = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -47,6 +64,16 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
 
   const handleFile = async (category: UploadCategory, file: File | undefined) => {
     if (!file) return;
+
+    // Show the picked file immediately — don't make the user wait for the
+    // upload + a full media refetch just to see what they selected.
+    const localUrl = URL.createObjectURL(file);
+    setPreviews((prev) => {
+      const old = prev[category];
+      if (old) URL.revokeObjectURL(old);
+      return { ...prev, [category]: localUrl };
+    });
+
     setUploading(category);
     setMsg(null);
     try {
@@ -63,8 +90,19 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
           : (json.note || 'Uploaded. It will publish to Google once live publishing is enabled.'),
       });
       await loadMedia();
+      // Real thumbnail now renders in the "On your Google profile" grid
+      // below — drop the local stand-in.
+      setPreviews((prev) => {
+        const url = prev[category];
+        if (url) URL.revokeObjectURL(url);
+        const next = { ...prev };
+        delete next[category];
+        return next;
+      });
     } catch (err) {
       setMsg({ ok: false, text: err instanceof Error ? err.message : 'Upload failed.' });
+      // Keep the local preview on failure so the user can see what they were
+      // trying to upload while they retry.
     } finally {
       setUploading(null);
     }
@@ -97,6 +135,19 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
           <div key={slot.category} className="border border-dashed border-outline-variant rounded-xl p-4 text-center">
             <p className="text-sm font-semibold text-on-surface">{slot.label}</p>
             <p className="text-xs text-outline mt-0.5 mb-3">{slot.hint}</p>
+
+            {previews[slot.category] && (
+              <div className="relative mb-3 rounded-lg overflow-hidden border border-outline-variant aspect-video bg-surface">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={previews[slot.category]} alt={`${slot.label} preview`} className="w-full h-full object-cover" />
+                {uploading === slot.category && (
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                    <Loader2 className="w-5 h-5 text-white animate-spin" />
+                  </div>
+                )}
+              </div>
+            )}
+
             <input
               ref={(el) => { inputs.current[slot.category] = el; }}
               type="file"

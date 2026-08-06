@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useAuth } from '@/auth/AuthContext';
 import { BusinessSwitcher } from '@/components/business-switcher';
@@ -11,7 +11,7 @@ import {
   useEntitlements,
   type SurfaceKey,
 } from '@/entitlements/entitlements';
-import { useTheme, type Palette } from '@/lib/theme';
+import { useTheme, withAlpha, type Palette } from '@/lib/theme';
 
 /**
  * The app's counterpart of the website sidebar: every section that doesn't
@@ -64,7 +64,17 @@ function MenuRow({ item, locked }: { item: MenuItem; locked: boolean }) {
   return (
     <Pressable
       onPress={() => router.push(item.href)}
-      className="flex-row items-center gap-3 border-b border-surface-border px-4 py-3 active:bg-surface-overlay"
+      // No `className` — react-native-css-interop can swallow onPress on
+      // styled Pressables (see src/components/ui.tsx PrimaryButton).
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: t.border,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+      }}
     >
       <View
         className="h-9 w-9 items-center justify-center rounded-xl"
@@ -86,11 +96,24 @@ export default function MoreScreen() {
   const t = useTheme();
   const [loggingOut, setLoggingOut] = useState(false);
 
-  async function handleLogout() {
+  function handleLogout() {
     if (loggingOut) return;
-    setLoggingOut(true);
-    await logout();
-    // (app)/_layout redirects to /login once isAuthenticated flips.
+    // Every other quasi-destructive action in the app (disconnect Google,
+    // delete workspace, delete post, cancel appointment, reject reply)
+    // confirms first — logout previously fired immediately on tap, so a
+    // single mis-tap logged the user out with no "are you sure."
+    Alert.alert('Log out?', 'You’ll need to sign in again to access your account.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log out',
+        style: 'destructive',
+        onPress: async () => {
+          setLoggingOut(true);
+          await logout();
+          // (app)/_layout redirects to /login once isAuthenticated flips.
+        },
+      },
+    ]);
   }
 
   return (
@@ -99,7 +122,17 @@ export default function MoreScreen() {
       <ScrollView contentContainerClassName="px-5 pb-10">
         <Pressable
           onPress={() => router.push('/profile')}
-          className="flex-row items-center gap-3.5 rounded-card border border-surface-border bg-surface-raised p-4 active:bg-surface-overlay"
+          // No `className` — see note above.
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 14,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: t.border,
+            backgroundColor: t.card,
+            padding: 16,
+          }}
         >
           <InitialsAvatar name={user?.name ?? user?.email} size={48} />
           <View className="flex-1">
@@ -141,7 +174,18 @@ export default function MoreScreen() {
         <Pressable
           onPress={handleLogout}
           disabled={loggingOut}
-          className="flex-row items-center justify-center gap-2 rounded-full border border-error/25 bg-error-container py-3.5 active:scale-95"
+          // No `className` — see note above.
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: withAlpha(t.rose, 0.25),
+            backgroundColor: t.errorContainer,
+            paddingVertical: 14,
+          }}
         >
           <Ionicons name="log-out-outline" size={18} color={t.rose} />
           <Text className="font-sans-bold text-base text-on-error-container">

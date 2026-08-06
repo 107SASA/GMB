@@ -1,0 +1,84 @@
+diff --git a/node_modules/react-native-css-interop/.cache/android.js b/node_modules/react-native-css-interop/.cache/android.js
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-css-interop/.cache/android.map b/node_modules/react-native-css-interop/.cache/android.map
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-css-interop/.cache/ios.js b/node_modules/react-native-css-interop/.cache/ios.js
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-css-interop/.cache/macos.js b/node_modules/react-native-css-interop/.cache/macos.js
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-css-interop/.cache/native.js b/node_modules/react-native-css-interop/.cache/native.js
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-css-interop/.cache/windows.js b/node_modules/react-native-css-interop/.cache/windows.js
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/react-native-css-interop/dist/runtime/native/render-component.js b/node_modules/react-native-css-interop/dist/runtime/native/render-component.js
+index eba25ec..2f482d5 100644
+--- a/node_modules/react-native-css-interop/dist/runtime/native/render-component.js
++++ b/node_modules/react-native-css-interop/dist/runtime/native/render-component.js
+@@ -121,22 +121,46 @@ function printUpgradeWarning(warning, originalProps) {
+     console.log(`CssInterop upgrade warning.\n\n${warning}.\n\nThis warning was caused by a component with the props:\n${stringify(originalProps)}\n\nIf adding or removing sibling components caused this warning you should add a unique "key" prop to your components. https://react.dev/learn/rendering-lists#keeping-list-items-in-order-with-key\n`);
+ }
+ function stringify(object) {
++    // PATCHED (see patches/react-native-css-interop+0.2.6.patch): this is a
++    // dev-only diagnostic helper that only ever builds a console.log warning
++    // message — never real app behavior. Some prop chains (e.g. a React
++    // Navigation context's default value, which has intentionally-throwing
++    // getters to detect missing Providers) throw when read via
++    // Object.entries(), which crashed the ENTIRE render instead of just
++    // failing to print a nice warning. Made every step defensive so a
++    // malformed/throwing prop degrades to a placeholder string instead of
++    // taking down the app.
+     const seen = new WeakSet();
+-    return JSON.stringify(object, function replace(_, value) {
+-        if (!(value !== null && typeof value === "object")) {
+-            return value;
+-        }
+-        if (seen.has(value)) {
+-            return "[Circular]";
+-        }
+-        seen.add(value);
+-        const newValue = Array.isArray(value) ? [] : {};
+-        for (const entry of Object.entries(value)) {
+-            newValue[entry[0]] = replace(entry[0], entry[1]);
+-        }
+-        seen.delete(value);
+-        return newValue;
+-    }, 2);
++    try {
++        return JSON.stringify(object, function replace(_, value) {
++            if (!(value !== null && typeof value === "object")) {
++                return value;
++            }
++            if (seen.has(value)) {
++                return "[Circular]";
++            }
++            seen.add(value);
++            const newValue = Array.isArray(value) ? [] : {};
++            let entries;
++            try {
++                entries = Object.entries(value);
++            } catch {
++                seen.delete(value);
++                return "[Unserializable]";
++            }
++            for (const entry of entries) {
++                try {
++                    newValue[entry[0]] = replace(entry[0], entry[1]);
++                } catch {
++                    newValue[entry[0]] = "[Unserializable]";
++                }
++            }
++            seen.delete(value);
++            return newValue;
++        }, 2);
++    } catch (error) {
++        return `[css-interop: could not stringify props for warning message: ${error?.message ?? "unknown error"}]`;
++    }
+ }
+ function getDebugReplacer() {
+     const seen = new WeakSet();

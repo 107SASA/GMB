@@ -1,4 +1,5 @@
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { BRAND_ATTRIBUTION } from "@/lib/companyInfo";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -17,6 +18,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
 
         {children}
+
+        <p className="text-center text-xs text-outline mt-8 relative z-10">{BRAND_ATTRIBUTION}</p>
       </div>
     </div>
   );

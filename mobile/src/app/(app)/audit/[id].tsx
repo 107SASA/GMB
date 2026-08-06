@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  InteractionManager,
   Pressable,
   ScrollView,
   Share,
@@ -26,6 +27,64 @@ import {
 import { useBusiness } from '@/business/BusinessContext';
 import { Badge, EmptyState, ProgressBar, Screen, ScreenTitle, SectionLabel, Skeleton } from '@/components/ui';
 import { useTheme } from '@/lib/theme';
+
+/**
+ * Deep-link-to-a-specific-item support. AiActionsCard on the dashboard links
+ * here as `/audit/[id]?highlight=<section>-<index>` (e.g. "priorityFixes-0")
+ * — `<section>` matches the section keys passed to RichSection/BulletSection
+ * below, `<index>` the item's position within that section's array. Every
+ * highlightable item wraps itself in <HighlightTarget>, which measures its
+ * own position against the shared ScrollView ref and scrolls to it once
+ * layout has settled, plus draws an accent border so the target is obvious
+ * even before the scroll animation finishes.
+ */
+const AuditHighlightContext = createContext<{
+  scrollRef: React.RefObject<ScrollView | null>;
+  highlightKey: string | null;
+}>({ scrollRef: { current: null }, highlightKey: null });
+
+function HighlightTarget({ itemKey, children }: { itemKey: string; children: React.ReactNode }) {
+  const { scrollRef, highlightKey } = useContext(AuditHighlightContext);
+  const ref = useRef<View>(null);
+  const t = useTheme();
+  const isTarget = !!highlightKey && itemKey === highlightKey;
+
+  useEffect(() => {
+    if (!isTarget) return;
+    // Wait for the full results tree above this item to finish laying out
+    // before measuring — InteractionManager + a frame is the standard RN
+    // idiom for "screen has settled", since there's no synchronous signal
+    // for "every sibling section has finished rendering."
+    const task = InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => {
+        const scrollNode = scrollRef.current;
+        if (!ref.current || !scrollNode) return;
+        // `measureLayout`'s TS signature wants a host-component ref, but the
+        // standard RN scroll-to-child recipe is to pass the ScrollView ref
+        // directly — it forwards to the right native node at runtime.
+        (ref.current as any).measureLayout(
+          scrollNode as any,
+          (_x: number, y: number) => scrollNode.scrollTo({ y: Math.max(y - 24, 0), animated: true }),
+          () => {}
+        );
+      });
+    });
+    return () => task.cancel();
+  }, [isTarget]);
+
+  return (
+    <View
+      ref={ref}
+      style={
+        isTarget
+          ? { borderRadius: 22, borderWidth: 2, borderColor: t.brandBright, padding: 2, marginBottom: -2 }
+          : undefined
+      }
+    >
+      {children}
+    </View>
+  );
+}
 
 /** Semantic score-color tier — green ≥70/rank≤5, amber 40-69/rank≤10, rose below. */
 type ScoreTone = 'positive' | 'warning' | 'negative' | 'neutral';
@@ -81,20 +140,29 @@ function BulletSection({
   items,
   icon,
   color,
+  sectionKey,
 }: {
   title: string;
   items: string[];
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
+  /** Section id used to build each item's `${sectionKey}-${index}` highlight key. */
+  sectionKey?: string;
 }) {
   if (items.length === 0) return null;
   return (
     <View>
       <SectionLabel>{title}</SectionLabel>
       <View className="gap-2">
-        {items.map((item, i) => (
-          <Bullet key={i} text={item} icon={icon} color={color} />
-        ))}
+        {items.map((item, i) =>
+          sectionKey ? (
+            <HighlightTarget key={i} itemKey={`${sectionKey}-${i}`}>
+              <Bullet text={item} icon={icon} color={color} />
+            </HighlightTarget>
+          ) : (
+            <Bullet key={i} text={item} icon={icon} color={color} />
+          )
+        )}
       </View>
     </View>
   );
@@ -106,37 +174,49 @@ function RichSection({
   items,
   icon,
   color,
+  sectionKey,
 }: {
   title: string;
   items: AuditRichItem[];
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
+  /** Section id used to build each item's `${sectionKey}-${index}` highlight key. */
+  sectionKey?: string;
 }) {
   if (items.length === 0) return null;
   return (
     <View>
       <SectionLabel>{title}</SectionLabel>
       <View className="gap-2">
-        {items.map((item, i) => (
-          <Card key={i}>
-            <View className="flex-row items-start gap-2.5">
-              <Ionicons name={icon} size={16} color={color} style={{ marginTop: 2 }} />
-              <View className="flex-1">
-                <Text className="font-sans-semibold text-sm text-white">{item.title}</Text>
-                {!!item.detail && (
-                  <Text className="mt-1 font-sans text-sm leading-5 text-zinc-400">{item.detail}</Text>
-                )}
-                {(item.impact || item.effort || item.gain) && (
-                  <View className="mt-2 flex-row flex-wrap gap-2">
-                    {!!item.impact && <Badge label={`Impact: ${item.impact}`} tone="warning" />}
-                    {!!item.effort && <Badge label={`Effort: ${item.effort}`} tone="neutral" />}
-                    {!!item.gain && <Badge label={`+${item.gain}`} tone="positive" />}
-                  </View>
-                )}
+        {items.map((item, i) => {
+          const card = (
+            <Card>
+              <View className="flex-row items-start gap-2.5">
+                <Ionicons name={icon} size={16} color={color} style={{ marginTop: 2 }} />
+                <View className="flex-1">
+                  <Text className="font-sans-semibold text-sm text-white">{item.title}</Text>
+                  {!!item.detail && (
+                    <Text className="mt-1 font-sans text-sm leading-5 text-zinc-400">{item.detail}</Text>
+                  )}
+                  {(item.impact || item.effort || item.gain) && (
+                    <View className="mt-2 flex-row flex-wrap gap-2">
+                      {!!item.impact && <Badge label={`Impact: ${item.impact}`} tone="warning" />}
+                      {!!item.effort && <Badge label={`Effort: ${item.effort}`} tone="neutral" />}
+                      {!!item.gain && <Badge label={`+${item.gain}`} tone="positive" />}
+                    </View>
+                  )}
+                </View>
               </View>
-            </View>
-          </Card>
-        ))}
+            </Card>
+          );
+          return sectionKey ? (
+            <HighlightTarget key={i} itemKey={`${sectionKey}-${i}`}>
+              {card}
+            </HighlightTarget>
+          ) : (
+            <View key={i}>{card}</View>
+          );
+        })}
       </View>
     </View>
   );
@@ -336,6 +416,7 @@ function ChecklistSection({
 }
 
 function PendingBody({ timedOut, onRetry }: { timedOut: boolean; onRetry: () => void }) {
+  const t = useTheme();
   if (timedOut) {
     return (
       <View className="flex-1 items-center justify-center gap-3 px-10">
@@ -346,7 +427,9 @@ function PendingBody({ timedOut, onRetry }: { timedOut: boolean; onRetry: () => 
         </Text>
         <Pressable
           onPress={onRetry}
-          className="mt-2 flex-row items-center gap-2 rounded-full bg-brand px-5 py-2.5 active:scale-95"
+          // No `className` — react-native-css-interop can swallow onPress on
+          // styled Pressables (see components/ui.tsx).
+          style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 999, backgroundColor: t.brand, paddingHorizontal: 20, paddingVertical: 10 }}
         >
           <Ionicons name="refresh" size={15} color="#ffffff" />
           <Text className="font-sans-bold text-sm text-on-brand">Check again</Text>
@@ -366,7 +449,8 @@ function PendingBody({ timedOut, onRetry }: { timedOut: boolean; onRetry: () => 
   );
 }
 
-function ResultsBody({ audit }: { audit: Audit }) {
+function ResultsBody({ audit, highlightKey }: { audit: Audit; highlightKey: string | null }) {
+  const scrollRef = useRef<ScrollView>(null);
   const data = audit.auditData;
   const overall = audit.overallScore ?? data?.overallScore ?? null;
 
@@ -401,7 +485,8 @@ function ResultsBody({ audit }: { audit: Audit }) {
   const seoTone = scoreTone(seo?.score ?? null);
 
   return (
-    <ScrollView contentContainerClassName="px-5 pb-12">
+    <AuditHighlightContext.Provider value={{ scrollRef, highlightKey }}>
+    <ScrollView ref={scrollRef} contentContainerClassName="px-5 pb-12">
       {/* Overall score header — tinted container matches the score's tier, never bare colored text alone */}
       <View className={`items-center rounded-card border border-surface-border py-6 ${TONE_BG[overallTone]}`}>
         <Text className={`font-display text-5xl ${TONE_TEXT[overallTone]}`}>{overall ?? '—'}</Text>
@@ -563,7 +648,16 @@ function ResultsBody({ audit }: { audit: Audit }) {
 
       <RichSection title="Strengths" items={data?.strengths ?? []} icon="checkmark-circle" color={t.emerald} />
       <RichSection title="Weaknesses" items={data?.weaknesses ?? []} icon="close-circle" color={t.rose} />
-      <BulletSection title="Quick wins" items={data?.quickWins ?? []} icon="flash" color={t.amber} />
+      {/* sectionKey on these two only — they're the only sections AiActionsCard
+          currently deep-links into (see ai-actions.tsx). Add sectionKey to any
+          other section here if it ever becomes a linkable "AI Action" too. */}
+      <BulletSection
+        title="Quick wins"
+        items={data?.quickWins ?? []}
+        icon="flash"
+        color={t.amber}
+        sectionKey="quickWins"
+      />
       <BulletSection
         title="Growth opportunities"
         items={data?.growthOpportunities ?? []}
@@ -575,16 +669,18 @@ function ResultsBody({ audit }: { audit: Audit }) {
         items={data?.priorityFixes ?? []}
         icon="alert-circle"
         color="#ff8f00"
+        sectionKey="priorityFixes"
       />
       <PlanSection title="30-day plan" blocks={data?.thirtyDayPlan ?? []} />
       <PlanSection title="90-day plan" blocks={data?.ninetyDayPlan ?? []} />
     </ScrollView>
+    </AuditHighlightContext.Provider>
   );
 }
 
 export default function AuditDetailScreen() {
   const t = useTheme();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, highlight } = useLocalSearchParams<{ id: string; highlight?: string }>();
   const { activeBusinessId } = useBusiness();
 
   // Job-status poll: keep asking every 3s until the background worker
@@ -629,7 +725,18 @@ export default function AuditDetailScreen() {
           <Pressable
             onPress={() => share.mutate()}
             disabled={share.isPending}
-            className="flex-row items-center gap-1.5 rounded-full border border-surface-border bg-surface-raised px-4 py-2 active:opacity-80"
+            // No `className` — see note above.
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: t.border,
+              backgroundColor: t.card,
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+            }}
           >
             {share.isPending ? (
               <ActivityIndicator size="small" color={t.brandBright} />
@@ -667,7 +774,7 @@ export default function AuditDetailScreen() {
           hint="Something went wrong while generating this audit. Run a new one from the audit list."
         />
       ) : (
-        <ResultsBody audit={audit.data!} />
+        <ResultsBody audit={audit.data!} highlightKey={highlight ?? null} />
       )}
     </Screen>
   );

@@ -24,10 +24,21 @@ function scoreTone(score: number): 'positive' | 'warning' | 'negative' {
 
 function LeadCard({ lead }: { lead: Lead }) {
   const router = useRouter();
+  const t = useTheme();
   return (
     <Pressable
       onPress={() => router.push(`/leads/${lead._id}`)}
-      className="mb-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5 active:opacity-80"
+      // No `className` — react-native-css-interop can swallow onPress on
+      // styled Pressables (see components/ui.tsx).
+      style={{
+        marginBottom: 12,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: t.border,
+        backgroundColor: t.card,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+      }}
     >
       <View className="flex-row items-center justify-between">
         <Text className="flex-1 font-sans-semibold text-base text-white" numberOfLines={1}>
@@ -62,7 +73,18 @@ function CaptureAction({
   return (
     <Pressable
       onPress={() => router.push(href)}
-      className="flex-row items-center gap-1.5 rounded-full border border-surface-border bg-surface-raised px-3.5 py-2 active:scale-95"
+      // No `className` — see note above.
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: t.border,
+        backgroundColor: t.card,
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+      }}
     >
       <Ionicons name={icon} size={14} color={t.brandBright} />
       <Text className="font-sans-semibold text-sm text-zinc-200">{label}</Text>

@@ -29,7 +29,15 @@ export async function GET(req: Request) {
       ownershipConditions.push({ _id: { $in: user.businessIds } });
     }
 
-    const businesses = await Business.find({ $or: ownershipConditions }).lean();
+    // isDeleted must be filtered at the top level, not inside each $or
+    // branch — otherwise a soft-deleted business (delete-workspace sets
+    // isDeleted: true but leaves userId/organizationId untouched) still
+    // matches the ownership clause and keeps reappearing here, which is why
+    // deleted workspaces stayed visible on mobile after being removed on
+    // the website (mobile has no other client-side filtering of this list).
+    const businesses = await Business.find({
+      $and: [{ $or: ownershipConditions }, { isDeleted: { $ne: true } }],
+    }).lean();
 
     return NextResponse.json(businesses, { status: 200 });
 

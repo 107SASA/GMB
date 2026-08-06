@@ -63,8 +63,12 @@ export default function GbpScreen() {
               <Pressable
                 key={id}
                 onPress={() => setTab(id)}
-                className="px-4 pb-3 pt-1 active:opacity-70"
+                // No `className` — react-native-css-interop can swallow
+                // onPress on styled Pressables (see components/ui.tsx).
                 style={{
+                  paddingHorizontal: 16,
+                  paddingBottom: 12,
+                  paddingTop: 4,
                   borderBottomWidth: 2,
                   borderBottomColor: active ? t.brandBright : 'transparent',
                 }}

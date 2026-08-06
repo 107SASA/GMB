@@ -2,6 +2,8 @@ import * as SecureStore from 'expo-secure-store';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
 
+import { useTheme } from '@/lib/theme';
+
 const CONSENT_KEY = 'crm_capture_consent_v1';
 
 /**
@@ -22,6 +24,7 @@ export function useCrmCaptureConsent(): {
 } {
   const [visible, setVisible] = useState(false);
   const resolver = useRef<((granted: boolean) => void) | null>(null);
+  const t = useTheme();
 
   const ensureConsent = useCallback(async () => {
     const stored = await SecureStore.getItemAsync(CONSENT_KEY).catch(() => null);
@@ -53,11 +56,13 @@ export function useCrmCaptureConsent(): {
           </Text>
           <Pressable
             onPress={() => settle(true)}
-            className="mt-5 items-center rounded-full bg-brand py-3.5 active:scale-95"
+            // No `className` — react-native-css-interop can swallow onPress
+            // on styled Pressables (see components/ui.tsx).
+            style={{ marginTop: 20, alignItems: 'center', borderRadius: 999, backgroundColor: t.brand, paddingVertical: 14 }}
           >
             <Text className="font-sans-bold text-base text-on-brand">Continue</Text>
           </Pressable>
-          <Pressable onPress={() => settle(false)} className="mt-2 items-center py-3 active:opacity-60">
+          <Pressable onPress={() => settle(false)} style={{ marginTop: 8, alignItems: 'center', paddingVertical: 12 }}>
             <Text className="font-sans-semibold text-sm text-zinc-400">Not now</Text>
           </Pressable>
         </View>

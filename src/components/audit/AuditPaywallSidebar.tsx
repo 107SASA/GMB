@@ -8,7 +8,7 @@ import {
   useRazorpayCheckout,
   MODULE_LABELS,
 } from '@/components/billing/useRazorpayCheckout';
-import { DurationPicker, pickDuration } from '@/components/billing/DurationPicker';
+import { DurationPicker, pickDuration, getPreferredCycle, setPreferredCycle } from '@/components/billing/DurationPicker';
 
 /** Generic, non-numeric comparisons — deliberately no invented rupee figures. */
 const COMPARISON_ROWS = [
@@ -43,7 +43,7 @@ export default function AuditPaywallSidebar({
 }) {
   const router = useRouter();
   const { plan, loading } = usePublicPlan();
-  const [cycle, setCycle] = useState('monthly');
+  const [cycle, setCycle] = useState(() => getPreferredCycle() ?? 'monthly');
   const { checkout, subscribe } = useRazorpayCheckout({
     onUnauthenticated: () => router.push('/login'),
     // Gate is lifted by the webhook; refresh so the proxy stops redirecting.
@@ -78,7 +78,11 @@ export default function AuditPaywallSidebar({
           </p>
 
           {plan && plan.durations?.length > 1 && (
-            <DurationPicker durations={plan.durations} value={cycle} onChange={setCycle} />
+            <DurationPicker
+              durations={plan.durations}
+              value={cycle}
+              onChange={(c) => { setCycle(c); setPreferredCycle(c); }}
+            />
           )}
 
           <div className="mb-5">

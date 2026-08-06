@@ -35,7 +35,7 @@ function BusinessAvatar({ name, index, size = "md" }: { name: string; index: num
 }
 
 const sidebarLinks = [
-  { name: "Dashboard Home", icon: "dashboard", href: "/dashboard" },
+  { name: "Dashboard", icon: "dashboard", href: "/dashboard" },
   { name: "Audit Engine", icon: "analytics", href: "/dashboard/audit" },
   { name: "Google Profile", icon: "location_on", href: "/dashboard/gbp-profile" },
   { name: "Review Management", icon: "star", href: "/dashboard/reviews" },

@@ -7,7 +7,7 @@ import {
   usePublicPlan,
   useRazorpayCheckout,
 } from '@/components/billing/useRazorpayCheckout';
-import { DurationPicker, pickDuration } from '@/components/billing/DurationPicker';
+import { DurationPicker, pickDuration, getPreferredCycle, setPreferredCycle } from '@/components/billing/DurationPicker';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { BRAND_ATTRIBUTION } from '@/lib/companyInfo';
 
@@ -15,7 +15,7 @@ import { BRAND_ATTRIBUTION } from '@/lib/companyInfo';
 export default function PricingPage() {
   const router = useRouter();
   const { plan, loading } = usePublicPlan();
-  const [cycle, setCycle] = useState('monthly');
+  const [cycle, setCycle] = useState(() => getPreferredCycle() ?? 'monthly');
   const { checkout, subscribe } = useRazorpayCheckout({
     onUnauthenticated: () => router.push('/login'),
     // Matches AuditPaywallSidebar/WorkspaceLockGate: redirect the instant the
@@ -84,7 +84,11 @@ export default function PricingPage() {
             </div>
             <p className="text-sm text-on-surface-variant mb-6">{plan.description}</p>
             {plan.durations?.length > 1 && (
-              <DurationPicker durations={plan.durations} value={cycle} onChange={setCycle} />
+              <DurationPicker
+                durations={plan.durations}
+                value={cycle}
+                onChange={(c) => { setCycle(c); setPreferredCycle(c); }}
+              />
             )}
             <div className="mb-6">
               <span className="font-heading text-4xl font-bold text-on-surface">

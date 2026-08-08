@@ -8,6 +8,13 @@ import { requireClient } from '@/lib/auth';
 import { inngest } from '@/services/inngest/client';
 import { checkUsageLimit, incrementUsage } from '@/lib/featureGating';
 import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
+import { checkRateLimit } from '@/lib/rateLimit';
+
+// Each run does a live SerpApi geo-grid check (45 calls) plus Groq calls —
+// real, per-request cost on top of the plan's audit-count quota. This is a
+// burst guard (per account, short window), independent of that quota.
+const RATE_LIMIT = 5;
+const RATE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
 const auditRequestSchema = z.object({
   businessId: z.string().min(1, 'Business ID is required'),
@@ -23,6 +30,14 @@ export async function POST(req: Request) {
   try {
     const authResult = await requireClient();
     if (!authResult.ok) return authResult.response;
+
+    const rl = checkRateLimit(`audit:${authResult.userId}`, RATE_LIMIT, RATE_WINDOW_MS);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many audit requests — please wait a few minutes and try again.' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
+      );
+    }
 
     const body = await req.json();
     const parsed = auditRequestSchema.safeParse(body);

@@ -9,7 +9,7 @@ import {
   MODULE_LABELS,
   WORKSPACE_UNLOCKED_EVENT,
 } from '@/components/billing/useRazorpayCheckout';
-import { DurationPicker, pickDuration } from '@/components/billing/DurationPicker';
+import { DurationPicker, pickDuration, getPreferredCycle, setPreferredCycle } from '@/components/billing/DurationPicker';
 
 /**
  * Client-side lock for unsubscribed workspaces.
@@ -75,7 +75,7 @@ export default function WorkspaceLockGate({ children }: { children: React.ReactN
 function LockOverlay() {
   const router = useRouter();
   const { plan, loading } = usePublicPlan();
-  const [cycle, setCycle] = useState('monthly');
+  const [cycle, setCycle] = useState(() => getPreferredCycle() ?? 'monthly');
   const { checkout, subscribe } = useRazorpayCheckout({
     onUnauthenticated: () => router.push('/login'),
     onActivated: () => { router.push('/dashboard'); router.refresh(); },
@@ -103,7 +103,11 @@ function LockOverlay() {
           </p>
 
           {plan && plan.durations?.length > 1 && (
-            <DurationPicker durations={plan.durations} value={cycle} onChange={setCycle} />
+            <DurationPicker
+              durations={plan.durations}
+              value={cycle}
+              onChange={(c) => { setCycle(c); setPreferredCycle(c); }}
+            />
           )}
 
           <div className="mb-5">

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { getPreferredCycle, setPreferredCycle } from "@/components/billing/DurationPicker";
 
 /**
  * The ONE plan, priced live from /api/billing/plans (super-admin editable —
@@ -28,18 +29,29 @@ interface PublicPlanData {
 
 export function PricingCards() {
   const [plan, setPlan] = useState<PublicPlanData | null>(null);
+  const [cycle, setCycle] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/billing/plans")
       .then((r) => r.json())
-      .then((json) => setPlan(json.plan ?? json.plans?.[0] ?? null))
+      .then((json) => {
+        const p: PublicPlanData | null = json.plan ?? json.plans?.[0] ?? null;
+        setPlan(p);
+        const preferred = getPreferredCycle();
+        const initial = p?.durations?.find((d) => d.cycle === preferred)?.cycle
+          ?? p?.durations?.find((d) => d.cycle === "monthly")?.cycle
+          ?? p?.durations?.[0]?.cycle
+          ?? null;
+        setCycle(initial);
+      })
       .catch(() => setPlan(null));
   }, []);
 
   const features = plan?.features?.length ? plan.features : FALLBACK_FEATURES;
-  const monthly = plan?.durations?.find((d) => d.cycle === "monthly");
-  const otherDurations = (plan?.durations ?? []).filter((d) => d.cycle !== "monthly");
-  const headlinePrice = monthly?.priceInr ?? plan?.priceInr;
+  const durations = plan?.durations ?? [];
+  const selected = durations.find((d) => d.cycle === cycle) ?? durations.find((d) => d.cycle === "monthly");
+  const headlinePrice = selected?.priceInr ?? plan?.priceInr;
+  const billedLabel = selected && selected.cycle !== "monthly" ? `Billed ${selected.label.toLowerCase()}` : null;
 
   return (
     <div className="w-full max-w-lg mx-auto px-4 md:px-6 z-10 relative">
@@ -60,7 +72,25 @@ export function PricingCards() {
           <h4 className="font-heading text-xl font-bold text-on-surface mb-2">
             {plan?.displayName ?? "GrowwMatics AI"}
           </h4>
-          <div className="flex items-baseline gap-1 mb-2 text-on-surface">
+          {durations.length > 1 && (
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {durations.map((d) => (
+                <button
+                  key={d.cycle}
+                  type="button"
+                  onClick={() => { setCycle(d.cycle); setPreferredCycle(d.cycle); }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                    d.cycle === selected?.cycle
+                      ? "bg-primary text-on-primary"
+                      : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high"
+                  }`}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex items-baseline gap-1 mb-1 text-on-surface">
             {plan && headlinePrice != null ? (
               <span className="font-heading text-4xl font-extrabold tracking-tight">
                 ₹{headlinePrice.toLocaleString("en-IN")}
@@ -68,19 +98,11 @@ export function PricingCards() {
             ) : (
               <span className="inline-block w-28 h-10 bg-surface-container rounded-lg animate-pulse" />
             )}
-            <span className="text-on-surface-variant text-sm font-medium">/month</span>
+            {(!selected || selected.cycle === "monthly") && (
+              <span className="text-on-surface-variant text-sm font-medium">/month</span>
+            )}
           </div>
-          {otherDurations.length > 0 && (
-            <p className="text-xs text-outline mb-2">
-              Also available:{" "}
-              {otherDurations.map((d, i) => (
-                <span key={d.cycle}>
-                  {i > 0 ? " · " : ""}
-                  {d.label} ₹{d.priceInr.toLocaleString("en-IN")}
-                </span>
-              ))}
-            </p>
-          )}
+          {billedLabel && <p className="text-xs text-outline mb-2">{billedLabel}</p>}
           <p className="text-on-surface-variant text-sm">
             {plan?.description ?? "Every feature unlocked — website and mobile app."}
           </p>

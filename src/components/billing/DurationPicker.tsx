@@ -8,6 +8,32 @@ export function pickDuration(durations: PlanDuration[] | undefined, cycle: strin
   return durations.find((d) => d.cycle === cycle) ?? durations[0];
 }
 
+const PREFERRED_CYCLE_KEY = 'gm_preferred_billing_cycle';
+
+/**
+ * The billing cycle a visitor picked on the homepage pricing teaser, before
+ * they ever hit a real checkout button — persisted so it carries through the
+ * free-audit flow to wherever checkout actually happens (the audit paywall
+ * sidebar, the dashboard lock gate, or a direct visit to /pricing).
+ */
+export function getPreferredCycle(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(PREFERRED_CYCLE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setPreferredCycle(cycle: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(PREFERRED_CYCLE_KEY, cycle);
+  } catch {
+    // Private browsing / storage disabled — the picker still works in-page.
+  }
+}
+
 /**
  * Compact billing-duration selector. Renders nothing when there's only one
  * (or zero) duration, so single-cycle plans look exactly as before.

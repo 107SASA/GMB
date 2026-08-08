@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { inngest } from '@/services/inngest/client';
 import { requireBusinessContext } from '@/lib/tenant';
+import { checkRateLimit } from '@/lib/rateLimit';
+
+// Burst guard — each dispatch fans out into an AI content-generation job.
+const RATE_LIMIT = 10;
+const RATE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
 export async function POST(req: Request) {
   try {
@@ -8,6 +13,14 @@ export async function POST(req: Request) {
 
     const ctx = await requireBusinessContext({ businessIdFromBody: businessId });
     if (!ctx.ok) return ctx.response;
+
+    const rl = checkRateLimit(`scheduler-generate:${ctx.userId}`, RATE_LIMIT, RATE_WINDOW_MS);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many generation requests — please wait a few minutes and try again.' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
+      );
+    }
 
     await inngest.send({
       name: 'scheduler/manual-generate',

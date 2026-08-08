@@ -8,6 +8,7 @@ export default function AdminLoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (e: { preventDefault(): void; currentTarget: HTMLFormElement }) => {
     e.preventDefault();
@@ -76,13 +77,23 @@ export default function AdminLoginPage() {
               Forgot password?
             </a>
           </div>
-          <input
-            type="password"
-            name="password"
-            required
-            className="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
-            placeholder="••••••••"
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              name="password"
+              required
+              className="w-full px-4 py-3 pr-11 bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+              placeholder="••••••••"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors"
+            >
+              <MaterialIcon name={showPassword ? 'visibility_off' : 'visibility'} size={20} />
+            </button>
+          </div>
         </div>
 
         <button

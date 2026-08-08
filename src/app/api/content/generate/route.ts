@@ -8,9 +8,16 @@ import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
 import { logAIUsage } from '@/lib/logAIUsage';
 import { checkUsageLimit } from '@/lib/featureGating';
+import { checkRateLimit } from '@/lib/rateLimit';
 
 // Allow up to 2 minutes — sequential thumbnail generation adds time
 export const maxDuration = 120;
+
+// Burst guard (per account, short window), independent of the plan's
+// aiGenerations quota — each call is a Groq content generation plus up to
+// several sequential Gemini thumbnail calls.
+const RATE_LIMIT = 10;
+const RATE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
 const generateContentSchema = z.object({
   businessName: z.string().min(2).optional(),
@@ -26,6 +33,14 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+
+    const rl = checkRateLimit(`content-generate:${ctx.userId}`, RATE_LIMIT, RATE_WINDOW_MS);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many generation requests — please wait a few minutes and try again.' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
+      );
+    }
 
     const body = await req.json();
     const parsed = generateContentSchema.safeParse(body);

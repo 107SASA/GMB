@@ -7,6 +7,12 @@ import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { logAIUsage } from '@/lib/logAIUsage';
 import { checkUsageLimit } from '@/lib/featureGating';
+import { checkRateLimit } from '@/lib/rateLimit';
+
+// Burst guard (per account, short window), independent of the plan's
+// aiGenerations quota.
+const RATE_LIMIT = 20;
+const RATE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
 export async function POST(req: Request) {
   try {
@@ -14,6 +20,14 @@ export async function POST(req: Request) {
     if (!ctx.ok) return ctx.response;
     const gate = await requireModule(ctx.userId, 'reputation_agent');
     if (!gate.ok) return gate.response;
+
+    const rl = checkRateLimit(`review-reply:${ctx.userId}`, RATE_LIMIT, RATE_WINDOW_MS);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests — please wait a few minutes and try again.' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
+      );
+    }
 
     const { reviewId, tone } = await req.json();
 

@@ -1,20 +1,36 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
+import { SERVICES } from "@/lib/servicesData";
 
 const navLinks = [
-  { name: "Features", href: "#features" },
-  { name: "Pricing", href: "#pricing" },
-  { name: "FAQ", href: "#faq" },
+  { name: "Features", href: "/features" },
+  { name: "Pricing", href: "/pricing" },
+  { name: "FAQ", href: "/faq" },
 ];
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileServicesOpen, setMobileServicesOpen] = useState(false);
+  const [servicesMenuOpen, setServicesMenuOpen] = useState(false);
+  // Delays closing the desktop dropdown slightly so moving the mouse from
+  // the "OnDemand Service" trigger down into the panel doesn't close it
+  // mid-transit — a bare onMouseLeave on either element alone is too eager.
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const openServicesMenu = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setServicesMenuOpen(true);
+  };
+  const scheduleCloseServicesMenu = () => {
+    closeTimer.current = setTimeout(() => setServicesMenuOpen(false), 150);
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -44,6 +60,68 @@ export function Navbar() {
         </Link>
 
         <div className="hidden md:flex items-center gap-8">
+          {/* OnDemand Service — mega-menu, placed before Features per the site's nav order */}
+          <div
+            className="relative"
+            onMouseEnter={openServicesMenu}
+            onMouseLeave={scheduleCloseServicesMenu}
+          >
+            <button
+              type="button"
+              onClick={() => setServicesMenuOpen((v) => !v)}
+              aria-expanded={servicesMenuOpen}
+              className="flex items-center gap-1 text-sm font-medium text-on-surface-variant hover:text-primary transition-colors"
+            >
+              OnDemand Service
+              <MaterialIcon
+                name="expand_more"
+                size={18}
+                className={cn("transition-transform text-outline", servicesMenuOpen && "rotate-180")}
+              />
+            </button>
+
+            <AnimatePresence>
+              {servicesMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute top-full left-1/2 -translate-x-1/2 pt-3 w-[560px]"
+                >
+                  <div className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-4 grid grid-cols-2 gap-1">
+                    {SERVICES.map((service) => (
+                      <Link
+                        key={service.slug}
+                        href={`/services/${service.slug}`}
+                        onClick={() => setServicesMenuOpen(false)}
+                        className="flex items-start gap-3 p-3 rounded-lg hover:bg-surface-container-low transition-colors group"
+                      >
+                        <div className="w-9 h-9 rounded-lg bg-primary-fixed text-primary flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                          <MaterialIcon name={service.icon} size={18} />
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-on-surface group-hover:text-primary transition-colors">
+                            {service.name}
+                          </div>
+                          <div className="text-xs text-on-surface-variant mt-0.5">{service.tagline}</div>
+                        </div>
+                      </Link>
+                    ))}
+                    <Link
+                      href="/services"
+                      onClick={() => setServicesMenuOpen(false)}
+                      className="col-span-2 flex items-center justify-center gap-1 mt-1 p-3 rounded-lg text-sm font-semibold text-primary hover:bg-surface-container-low transition-colors border-t border-outline-variant"
+                    >
+                      View all services
+                      <MaterialIcon name="arrow_forward" size={16} className="text-primary" />
+                    </Link>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
           {navLinks.map((link) => (
             <Link
               key={link.name}
@@ -62,12 +140,13 @@ export function Navbar() {
           >
             Login
           </Link>
-          <Link
-            href="/free-report"
+          <a
+            href={bookDemoLink()}
+            {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
             className="px-5 py-2.5 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:bg-primary-container transition-all active:scale-95"
           >
-            Get Free Report
-          </Link>
+            Book Free Demo
+          </a>
         </div>
 
         <button
@@ -85,8 +164,55 @@ export function Navbar() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="absolute top-full left-0 right-0 bg-surface-container-lowest border-b border-outline-variant p-6 flex flex-col gap-6 md:hidden card-shadow"
+            className="absolute top-full left-0 right-0 bg-surface-container-lowest border-b border-outline-variant p-6 flex flex-col gap-6 md:hidden card-shadow max-h-[calc(100vh-4rem)] overflow-y-auto"
           >
+            {/* OnDemand Service — expandable on mobile instead of a hover menu */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setMobileServicesOpen((v) => !v)}
+                aria-expanded={mobileServicesOpen}
+                className="w-full flex items-center justify-between text-lg font-medium text-on-surface-variant hover:text-on-surface"
+              >
+                OnDemand Service
+                <MaterialIcon
+                  name="expand_more"
+                  size={22}
+                  className={cn("transition-transform", mobileServicesOpen && "rotate-180")}
+                />
+              </button>
+              <AnimatePresence>
+                {mobileServicesOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pt-4 pl-4 flex flex-col gap-4">
+                      {SERVICES.map((service) => (
+                        <Link
+                          key={service.slug}
+                          href={`/services/${service.slug}`}
+                          onClick={() => setMobileMenuOpen(false)}
+                          className="text-base font-medium text-on-surface-variant hover:text-primary"
+                        >
+                          {service.name}
+                        </Link>
+                      ))}
+                      <Link
+                        href="/services"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="text-base font-bold text-primary"
+                      >
+                        View all services →
+                      </Link>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
             {navLinks.map((link) => (
               <Link
                 key={link.name}
@@ -105,13 +231,14 @@ export function Navbar() {
               >
                 Login
               </Link>
-              <Link
-                href="/free-report"
+              <a
+                href={bookDemoLink()}
+                {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                 onClick={() => setMobileMenuOpen(false)}
                 className="px-6 py-3 bg-primary text-on-primary rounded-lg text-center font-bold"
               >
-                Get Free Report
-              </Link>
+                Book Free Demo
+              </a>
             </div>
           </motion.div>
         )}

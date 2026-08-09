@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { Image } from 'expo-image';
 import { Pressable, Text, View } from 'react-native';
 
 import { fetchBuffer } from '@/api/endpoints/scheduler';
+import { fetchProfileActivity } from '@/api/endpoints/gbp';
 import { useBusiness } from '@/business/BusinessContext';
 import { useLatestAudit } from '@/components/gbp/use-latest-audit';
 import { useTheme } from '@/lib/theme';
@@ -18,10 +20,17 @@ type AiAction = {
   key: string;
   badge: string;
   date: string;
+  /** Sorts the merged feed newest-first; falls back to epoch 0 for entries with no real date. */
+  sortTime: number;
   title: string;
   bullets: string[];
+  thumbnail?: string | null;
   /** Present only for items that represent a specific, completable task. */
   onPress?: () => void;
+  /** "Tap to complete" only makes sense for actual open tasks (priority
+   *  fixes/quick wins) — history entries (posts, activity log) that happen
+   *  to also be tappable get "View →" instead. */
+  isTask?: boolean;
 };
 
 /**
@@ -49,6 +58,13 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
     queryFn: fetchBuffer,
     enabled: !!activeBusinessId,
   });
+  // Real profile-change events (profile edits, photo publishes) — see
+  // logProfileActivity.ts on the backend for what actually writes these.
+  const activity = useQuery({
+    queryKey: ['profile-activity', activeBusinessId],
+    queryFn: fetchProfileActivity,
+    enabled: !!activeBusinessId,
+  });
 
   const publishedPosts = (buffer.data?.allPosts ?? []).filter((p) => p.status === 'published');
   const latestPublished = publishedPosts[0] ?? null;
@@ -59,6 +75,7 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
     const priorityFixes = audit.auditData?.priorityFixes ?? [];
     const quickWins = audit.auditData?.quickWins ?? [];
     const date = shortDate(audit.createdAt);
+    const auditTime = audit.createdAt ? new Date(audit.createdAt).getTime() : 0;
 
     // Priority fixes first (highest-impact, concrete tasks); quick wins as
     // a fallback so the card isn't empty when the audit found no fixes.
@@ -67,11 +84,13 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
         key: `priorityFixes-${i}`,
         badge: 'Priority Fix',
         date,
+        sortTime: auditTime,
         title: fix.title,
         bullets: [fix.detail, fix.impact ? `Impact: ${fix.impact}` : null].filter(
           (b): b is string => !!b
         ),
         onPress: () => router.push(`/audit/${audit._id}?highlight=priorityFixes-${i}`),
+        isTask: true,
       });
     });
     if (priorityFixes.length === 0) {
@@ -80,9 +99,11 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
           key: `quickWins-${i}`,
           badge: 'Quick Win',
           date,
+          sortTime: auditTime,
           title: win,
           bullets: [],
           onPress: () => router.push(`/audit/${audit._id}?highlight=quickWins-${i}`),
+          isTask: true,
         });
       });
     }
@@ -93,23 +114,46 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
         key: 'audit-summary',
         badge: 'Profile Audited',
         date,
+        sortTime: auditTime,
         title: 'Your Google Business Profile: audited to attract more customers',
         bullets: [audit.overallScore != null ? `Overall score ${audit.overallScore}/100` : 'Audit completed'],
         onPress: () => router.push(`/audit/${audit._id}`),
+        isTask: true,
       });
     }
   }
   if (latestPublished) {
     // Already completed — nothing left to do, so this one stays
     // non-interactive (no onPress), same as before.
+    const publishedIso = latestPublished.publishedAt ?? latestPublished.createdAt;
     actions.push({
       key: 'latest-post',
       badge: 'Post Published',
-      date: shortDate(latestPublished.publishedAt ?? latestPublished.createdAt),
+      date: shortDate(publishedIso),
+      sortTime: publishedIso ? new Date(publishedIso).getTime() : 0,
       title: latestPublished.title || 'New post published to your profile',
       bullets: ['Published to Google Business Profile'],
+      thumbnail: latestPublished.imageUrl,
     });
   }
+  // Real profile-edit / photo-publish history.
+  (activity.data ?? []).forEach((a) => {
+    actions.push({
+      key: `activity-${a._id}`,
+      badge: a.type === 'photo_published' ? 'Photo Published' : 'Gbp Updated',
+      date: shortDate(a.createdAt),
+      sortTime: new Date(a.createdAt).getTime(),
+      title: a.title,
+      bullets: [a.detail, `Updated By: ${a.updatedBy}`].filter((b): b is string => !!b),
+      onPress: () => router.push((a.type === 'photo_published' ? '/photos' : '/gbp') as never),
+    });
+  });
+
+  // Merged, newest-first, capped — this now draws from three independent
+  // sources (audit, posts, activity log) so without a shared cap the card
+  // could grow unbounded over a business's lifetime.
+  actions.sort((a, b) => b.sortTime - a.sortTime);
+  const visibleActions = actions.slice(0, 5);
 
   return (
     <View className="mt-6 pb-2">
@@ -133,7 +177,7 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
         )}
       </View>
 
-      {actions.length === 0 ? (
+      {visibleActions.length === 0 ? (
         <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-6">
           <Text className="font-sans text-sm leading-5 text-zinc-400">
             No AI actions yet — run an audit or schedule posts and the work done for your profile
@@ -142,7 +186,7 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
         </View>
       ) : (
         <View className="gap-3">
-          {actions.map((action) => {
+          {visibleActions.map((action) => {
             return (
               <Pressable
                 key={action.key}
@@ -167,12 +211,20 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
                   </View>
                   <Text className="font-sans text-xs text-zinc-500">{action.date}</Text>
                 </View>
-                <View className="flex-row items-start justify-between gap-2">
+                <View className="flex-row items-start justify-between gap-3">
                   <Text className="mb-2 flex-1 font-display-bold text-lg leading-6 text-white">
                     {action.title}
                   </Text>
-                  {!!action.onPress && (
-                    <Ionicons name="chevron-forward" size={18} color={t.brandBright} style={{ marginTop: 3 }} />
+                  {action.thumbnail ? (
+                    <Image
+                      source={{ uri: action.thumbnail }}
+                      style={{ width: 56, height: 56, borderRadius: 12 }}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    !!action.onPress && (
+                      <Ionicons name="chevron-forward" size={18} color={t.brandBright} style={{ marginTop: 3 }} />
+                    )
                   )}
                 </View>
                 {action.bullets.length > 0 && (
@@ -187,7 +239,7 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
                 )}
                 {!!action.onPress && (
                   <Text className="mt-2 font-sans-bold text-xs" style={{ color: t.brandBright }}>
-                    Tap to complete →
+                    {action.isTask ? 'Tap to complete →' : 'View →'}
                   </Text>
                 )}
               </Pressable>

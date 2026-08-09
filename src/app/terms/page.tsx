@@ -4,9 +4,12 @@ import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 import { COMPANY } from "@/lib/companyInfo";
 
 export const metadata: Metadata = {
-  title: "Terms & Conditions | GrowwMatics AI",
+  // See contact/page.tsx — root layout's template appends " | GrowwMatics AI"
+  // already; don't repeat it here or the rendered <title> doubles it up.
+  title: "Terms & Conditions",
   description:
     "The terms governing your use of the GrowwMatics AI website and services.",
+  alternates: { canonical: "/terms" },
 };
 
 export default function TermsPage() {

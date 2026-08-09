@@ -36,6 +36,7 @@ const MENU: { section: string; items: MenuItem[] }[] = [
     section: 'Grow',
     items: [
       { label: 'Audit Engine', icon: 'flash', href: '/audit', tint: 'amber' },
+      { label: 'Business Profile', icon: 'storefront', href: '/gbp', tint: 'brandBright', surface: 'dashboard' },
       { label: 'Content Generator', icon: 'megaphone', href: '/content', tint: 'violet', surface: 'content' },
       { label: 'Content Scheduler', icon: 'calendar', href: '/scheduler', tint: 'cyan', surface: 'scheduler' },
     ],
@@ -44,18 +45,28 @@ const MENU: { section: string; items: MenuItem[] }[] = [
     section: 'Customers',
     items: [
       { label: 'Leads', icon: 'people', href: '/leads', tint: 'brandBright', surface: 'leads' },
+      { label: 'Inbox', icon: 'chatbubbles', href: '/inbox', tint: 'emerald', surface: 'inbox' },
       { label: 'WhatsApp AI Agent', icon: 'logo-whatsapp', href: '/whatsapp', tint: 'emerald', superAdminOnly: true },
     ],
   },
   {
     section: 'Account',
     items: [
+      { label: 'Notifications', icon: 'notifications', href: '/notifications', tint: 'rose' },
       { label: 'Settings', icon: 'settings', href: '/settings', tint: 'textDim' },
       { label: 'Billing', icon: 'card', href: '/billing', tint: 'cyan' },
       { label: 'Profile', icon: 'person', href: '/profile', tint: 'brandBright' },
     ],
   },
 ];
+
+// Every tab/screen not in the 5-slot bottom bar (Home/Performance/Posts/
+// Photos/Reviews) is intentionally routed through here for now — Aug 2026,
+// per an explicit ask to park everything under More rather than deciding
+// per-screen whether it stays in the app. Audit/Business Profile/Content
+// Generator/Content Scheduler/Leads/Inbox/WhatsApp AI Agent/Settings/
+// Billing/Profile/Notifications are all listed above; nothing hidden is
+// currently unreachable. Revisit this list once that decision is made.
 
 function MenuRow({ item, locked }: { item: MenuItem; locked: boolean }) {
   const router = useRouter();

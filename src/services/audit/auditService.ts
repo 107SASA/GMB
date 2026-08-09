@@ -200,9 +200,23 @@ export async function processAuditJob(auditId: string) {
       reviews:        formattedReviews,
     };
 
+    // Places snapshot fallback (see Business.placesRating/placesReviewCount):
+    // a rating+count read live from the Places API when the visitor picked
+    // their listing on /free-report, stored at intake. Only used here to
+    // keep the AI-written narrative and the displayed reviewCount/rating
+    // from contradicting each other when no reviews have been synced yet —
+    // it does NOT feed formattedReviews, so scoring (reviewQualityScore,
+    // keywordCoverageScore, hasReviewData below) is untouched by this.
+    const placesReviewCount = typeof business.placesReviewCount === 'number' ? business.placesReviewCount : undefined;
+    const placesRating      = typeof business.placesRating === 'number' ? business.placesRating : undefined;
+    const hasPlacesSnapshot = !!placesReviewCount && placesReviewCount > 0 && placesRating != null;
+
     if (formattedReviews.length > 0) {
       const sum = formattedReviews.reduce((acc, r) => acc + r.rating, 0);
       businessData.rating = parseFloat((sum / formattedReviews.length).toFixed(1));
+    } else if (hasPlacesSnapshot) {
+      businessData.rating = placesRating!;
+      businessData.reviewCount = placesReviewCount!;
     }
 
     const profileCompletionPayload = calculateProfileCompletion(business);
@@ -377,6 +391,29 @@ export async function processAuditJob(auditId: string) {
           neutralPercent:  reviewMetrics.neutralPercent,
           negativePercent: reviewMetrics.negativePercent,
         };
+      } else if (hasPlacesSnapshot) {
+        // No synced Review documents (fastMode audits skip that sync — see
+        // needsReviewSync above), but we have a real rating/count read live
+        // from Places at intake. Show that instead of omitting the section —
+        // per-review detail (reviews/week, response rate, sentiment split)
+        // genuinely isn't available without synced reviews, so those are left
+        // at 0/'0%' and flagged via `estimatedFromPlaces` rather than implied
+        // as real findings; AuditReportGrexa hides just those sub-widgets
+        // when it sees the flag. Scoring is untouched: hasReviewData (used
+        // for reviewQualityScore/keywordCoverageScore/finalScore above) is
+        // still driven only by formattedReviews, not this fallback.
+        aiResult.reviewAnalysis = {
+          ...aiResult.reviewAnalysis,
+          reviewCount:    placesReviewCount,
+          averageRating:  placesRating,
+          reviewsPerWeek: 0,
+          industryAverage: 4.2,
+          responseRate:   '0%',
+          positivePercent: 0,
+          neutralPercent:  0,
+          negativePercent: 0,
+          estimatedFromPlaces: true,
+        };
       } else {
         delete aiResult.reviewAnalysis;
       }
@@ -403,7 +440,11 @@ export async function processAuditJob(auditId: string) {
         competitors:       compEvidence,
         searchRankings:    rankingsEvidence,
         profileCompletion: profileCompletionPayload.evidenceSource,
-        reviewAnalysis:    reviewMetricsPayload.evidenceSource,
+        reviewAnalysis:    hasReviewData
+          ? reviewMetricsPayload.evidenceSource
+          : hasPlacesSnapshot
+            ? 'Rating & review count captured live from Google Places at report intake — full review-level detail (per-review sentiment, response rate) requires a review sync, not yet performed for this report.'
+            : reviewMetricsPayload.evidenceSource,
         reviewKeywords:    reviewKeywordResult.evidenceSource,
       };
 

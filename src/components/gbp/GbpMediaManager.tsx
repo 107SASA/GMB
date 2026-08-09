@@ -1,48 +1,77 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Loader2, ImagePlus, Info, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  Loader2,
+  ImagePlus,
+  Info,
+  CheckCircle2,
+  AlertCircle,
+  Trash2,
+  UploadCloud,
+  RefreshCw,
+  X,
+  Clock,
+} from 'lucide-react';
 
-interface MediaItem {
-  name: string;
-  category: string;
+type MediaCategory = 'LOGO' | 'COVER' | 'ADDITIONAL' | 'PROFILE';
+type MediaStatus = 'staged' | 'published' | 'failed';
+
+interface MediaAsset {
+  _id: string;
+  category: MediaCategory;
   url: string;
-  thumbnailUrl: string;
+  status: MediaStatus;
+  googleMediaName?: string;
+  publishedAt?: string;
+  failureReason?: string;
+  createdAt: string;
 }
 
-type UploadCategory = 'LOGO' | 'COVER' | 'ADDITIONAL';
-
-const UPLOAD_SLOTS: { category: UploadCategory; label: string; hint: string }[] = [
-  { category: 'LOGO', label: 'Logo', hint: 'Square, your brand mark' },
-  { category: 'COVER', label: 'Cover photo', hint: 'Wide banner at the top of your profile' },
-  { category: 'ADDITIONAL', label: 'Business photo', hint: 'Storefront, team, products…' },
+const GALLERY_CATEGORIES: MediaCategory[] = ['ADDITIONAL', 'PROFILE'];
+const EDITABLE_CATEGORIES: { value: MediaCategory; label: string }[] = [
+  { value: 'ADDITIONAL', label: 'Additional' },
+  { value: 'PROFILE', label: 'Profile' },
+  { value: 'COVER', label: 'Cover' },
+  { value: 'LOGO', label: 'Logo' },
 ];
 
+function StatusBadge({ status, failureReason }: { status: MediaStatus; failureReason?: string }) {
+  if (status === 'published')
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary-container/40 text-on-secondary-container text-[10px] font-semibold">
+        <CheckCircle2 className="w-3 h-3" /> Live on Google
+      </span>
+    );
+  if (status === 'failed')
+    return (
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-error-container text-on-error-container text-[10px] font-semibold"
+        title={failureReason}
+      >
+        <AlertCircle className="w-3 h-3" /> Failed to publish
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant text-[10px] font-semibold">
+      <Clock className="w-3 h-3" /> Staged — not live yet
+    </span>
+  );
+}
+
 export default function GbpMediaManager({ businessId }: { businessId?: string }) {
-  const [media, setMedia] = useState<MediaItem[]>([]);
+  const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [liveWrites, setLiveWrites] = useState(false);
-  const [uploading, setUploading] = useState<UploadCategory | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const inputs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [uploadingSlot, setUploadingSlot] = useState<MediaCategory | 'ADD_PHOTO' | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
 
-  // Local (not-yet-uploaded) previews — shown the instant a file is picked
-  // instead of waiting for the upload to finish and the media grid to
-  // refetch from Google. Keyed by object URL so they can be revoked cleanly.
-  const [previews, setPreviews] = useState<Partial<Record<UploadCategory, string>>>({});
-  // Mirrors `previews` for the unmount-only cleanup below, which must read
-  // whatever is current at unmount time without re-running (and revoking
-  // still-active preview URLs) on every preview add/remove in between.
-  const previewsRef = useRef(previews);
-  useEffect(() => { previewsRef.current = previews; }, [previews]);
-
-  // Revoke any still-pending preview URLs on unmount to avoid leaking memory.
-  useEffect(() => {
-    return () => {
-      Object.values(previewsRef.current).forEach((url) => url && URL.revokeObjectURL(url));
-    };
-  }, []);
+  const logoInput = useRef<HTMLInputElement | null>(null);
+  const coverInput = useRef<HTMLInputElement | null>(null);
+  const addPhotoInput = useRef<HTMLInputElement | null>(null);
 
   const loadMedia = useCallback(async () => {
     setLoading(true);
@@ -51,7 +80,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
       const res = await fetch('/api/gbp/media');
       const json = await res.json();
       setLiveWrites(Boolean(json.liveWritesEnabled));
-      if (json.success) setMedia(json.media || []);
+      if (json.success) setAssets(json.media || []);
       else setError(json.error || 'Could not load media.');
     } catch {
       setError('Could not load your Google Business Profile media.');
@@ -60,21 +89,23 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
     }
   }, []);
 
-  useEffect(() => { loadMedia(); }, [loadMedia, businessId]);
+  useEffect(() => {
+    loadMedia();
+  }, [loadMedia, businessId]);
 
-  const handleFile = async (category: UploadCategory, file: File | undefined) => {
-    if (!file) return;
+  const find = (category: MediaCategory, status: MediaStatus | MediaStatus[]) => {
+    const statuses = Array.isArray(status) ? status : [status];
+    return assets.find((a) => a.category === category && statuses.includes(a.status));
+  };
 
-    // Show the picked file immediately — don't make the user wait for the
-    // upload + a full media refetch just to see what they selected.
-    const localUrl = URL.createObjectURL(file);
-    setPreviews((prev) => {
-      const old = prev[category];
-      if (old) URL.revokeObjectURL(old);
-      return { ...prev, [category]: localUrl };
-    });
+  const logoLive = find('LOGO', 'published');
+  const logoPending = find('LOGO', ['staged', 'failed']);
+  const coverLive = find('COVER', 'published');
+  const coverPending = find('COVER', ['staged', 'failed']);
+  const galleryItems = assets.filter((a) => GALLERY_CATEGORIES.includes(a.category));
 
-    setUploading(category);
+  const upload = async (category: MediaCategory, file: File, slotKey: MediaCategory | 'ADD_PHOTO') => {
+    setUploadingSlot(slotKey);
     setMsg(null);
     try {
       const fd = new FormData();
@@ -83,30 +114,151 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
       const res = await fetch('/api/gbp/media/upload', { method: 'POST', body: fd });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || 'Upload failed.');
-      setMsg({
-        ok: true,
-        text: json.liveWriteApplied
-          ? 'Uploaded and published to Google.'
-          : (json.note || 'Uploaded. It will publish to Google once live publishing is enabled.'),
-      });
+      setMsg({ ok: true, text: 'Uploaded — review it below, then publish when ready.' });
       await loadMedia();
-      // Real thumbnail now renders in the "On your Google profile" grid
-      // below — drop the local stand-in.
-      setPreviews((prev) => {
-        const url = prev[category];
-        if (url) URL.revokeObjectURL(url);
-        const next = { ...prev };
-        delete next[category];
-        return next;
-      });
     } catch (err) {
       setMsg({ ok: false, text: err instanceof Error ? err.message : 'Upload failed.' });
-      // Keep the local preview on failure so the user can see what they were
-      // trying to upload while they retry.
     } finally {
-      setUploading(null);
+      setUploadingSlot(null);
     }
   };
+
+  const publish = async (asset: MediaAsset) => {
+    setBusyId(asset._id);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/gbp/media/${asset._id}/publish`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Publish failed.');
+      setMsg({
+        ok: json.liveWriteApplied,
+        text: json.liveWriteApplied ? 'Published to Google.' : (json.note || 'Live publishing is currently disabled.'),
+      });
+      await loadMedia();
+    } catch (err) {
+      setMsg({ ok: false, text: err instanceof Error ? err.message : 'Publish failed.' });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const remove = async (asset: MediaAsset) => {
+    if (asset.status === 'published' && !confirm('This photo is live on Google. Remove it from your profile?')) return;
+    setBusyId(asset._id);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/gbp/media/${asset._id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Delete failed.');
+      setMsg({ ok: true, text: 'Photo removed.' });
+      if (previewAsset?._id === asset._id) setPreviewAsset(null);
+      await loadMedia();
+    } catch (err) {
+      setMsg({ ok: false, text: err instanceof Error ? err.message : 'Delete failed.' });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const changeCategory = async (asset: MediaAsset, category: MediaCategory) => {
+    setBusyId(asset._id);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/gbp/media/${asset._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Could not change category.');
+      await loadMedia();
+    } catch (err) {
+      setMsg({ ok: false, text: err instanceof Error ? err.message : 'Could not change category.' });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const renderSingletonSlot = (
+    label: string,
+    hint: string,
+    category: MediaCategory,
+    live: MediaAsset | undefined,
+    pending: MediaAsset | undefined,
+    inputRef: React.RefObject<HTMLInputElement | null>,
+  ) => (
+    <div className="border border-outline-variant rounded-xl p-4">
+      <p className="text-sm font-semibold text-on-surface">{label}</p>
+      <p className="text-xs text-outline mt-0.5 mb-3">{hint}</p>
+
+      {live && (
+        <div className="mb-3">
+          <p className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wide mb-1.5">Current {label.toLowerCase()}</p>
+          <div className="relative rounded-lg overflow-hidden border border-outline-variant aspect-video bg-surface">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/gbp/media/proxy?url=${encodeURIComponent(live.url)}`}
+              alt={`Current ${label.toLowerCase()}`}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        </div>
+      )}
+
+      {pending && (
+        <div className="mb-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wide">Pending replacement</p>
+            <StatusBadge status={pending.status} failureReason={pending.failureReason} />
+          </div>
+          <div className="relative rounded-lg overflow-hidden border border-outline-variant aspect-video bg-surface mb-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={pending.url} alt="Pending replacement" className="w-full h-full object-cover" />
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => publish(pending)}
+              disabled={busyId === pending._id}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-white text-xs font-semibold disabled:opacity-60"
+            >
+              {busyId === pending._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+              Publish
+            </button>
+            <button
+              type="button"
+              onClick={() => remove(pending)}
+              disabled={busyId === pending._id}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-outline-variant text-xs font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Discard
+            </button>
+          </div>
+        </div>
+      )}
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) upload(category, file, category);
+          e.target.value = '';
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={uploadingSlot === category}
+        className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-primary text-white text-sm font-semibold transition-colors disabled:opacity-60"
+      >
+        {uploadingSlot === category ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
+        {uploadingSlot === category ? 'Uploading…' : live || pending ? `Replace this ${label.toLowerCase()}` : `Upload ${label.toLowerCase()}`}
+      </button>
+    </div>
+  );
 
   return (
     <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 shadow-sm space-y-5">
@@ -118,7 +270,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
       {!liveWrites && (
         <div className="flex items-start gap-2 bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container">
           <Info className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>Preview mode — uploads are saved now and publish to Google automatically once live publishing is enabled.</span>
+          <span>Preview mode — uploads are staged here. Publishing to Google will start working automatically once live publishing is enabled.</span>
         </div>
       )}
 
@@ -129,72 +281,174 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
         </div>
       )}
 
-      {/* Upload slots */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {UPLOAD_SLOTS.map((slot) => (
-          <div key={slot.category} className="border border-dashed border-outline-variant rounded-xl p-4 text-center">
-            <p className="text-sm font-semibold text-on-surface">{slot.label}</p>
-            <p className="text-xs text-outline mt-0.5 mb-3">{slot.hint}</p>
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-outline py-6 justify-center">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading media…
+        </div>
+      ) : error ? (
+        <p className="text-sm text-error">{error}</p>
+      ) : (
+        <>
+          {/* Logo / Cover — singleton slots */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {renderSingletonSlot('Logo', 'Square, your brand mark', 'LOGO', logoLive, logoPending, logoInput)}
+            {renderSingletonSlot('Cover photo', 'Wide banner at the top of your profile', 'COVER', coverLive, coverPending, coverInput)}
+          </div>
 
-            {previews[slot.category] && (
-              <div className="relative mb-3 rounded-lg overflow-hidden border border-outline-variant aspect-video bg-surface">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={previews[slot.category]} alt={`${slot.label} preview`} className="w-full h-full object-cover" />
-                {uploading === slot.category && (
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                    <Loader2 className="w-5 h-5 text-white animate-spin" />
+          {/* Additional photos — gallery with CRUD + category */}
+          <div className="pt-2 border-t border-outline-variant">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-outline uppercase tracking-wide">Additional photos</p>
+              <div>
+                <input
+                  ref={addPhotoInput}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) upload('ADDITIONAL', file, 'ADD_PHOTO');
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => addPhotoInput.current?.click()}
+                  disabled={uploadingSlot === 'ADD_PHOTO'}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold disabled:opacity-60"
+                >
+                  {uploadingSlot === 'ADD_PHOTO' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
+                  Add photo
+                </button>
+              </div>
+            </div>
+
+            {galleryItems.length === 0 ? (
+              <p className="text-sm text-outline">No additional photos yet.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {galleryItems.map((item) => (
+                  <div key={item._id} className="border border-outline-variant rounded-xl overflow-hidden bg-surface-container-lowest">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewAsset(item)}
+                      className="block w-full aspect-square bg-surface relative group"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.status === 'published' ? `/api/gbp/media/proxy?url=${encodeURIComponent(item.url)}` : item.url}
+                        alt={item.category}
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                    </button>
+                    <div className="p-2.5 space-y-2">
+                      <StatusBadge status={item.status} failureReason={item.failureReason} />
+                      <select
+                        value={item.category}
+                        disabled={item.status === 'published' || busyId === item._id}
+                        onChange={(e) => changeCategory(item, e.target.value as MediaCategory)}
+                        className="w-full text-xs px-2 py-1.5 rounded-lg border border-outline-variant bg-surface disabled:opacity-60 disabled:cursor-not-allowed"
+                        title={item.status === 'published' ? "Live on Google — category can't be changed" : 'Change category'}
+                      >
+                        {EDITABLE_CATEGORIES.map((c) => (
+                          <option key={c.value} value={c.value}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex gap-1.5">
+                        {item.status !== 'published' && (
+                          <button
+                            type="button"
+                            onClick={() => publish(item)}
+                            disabled={busyId === item._id}
+                            className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-primary text-white text-[11px] font-semibold disabled:opacity-60"
+                          >
+                            {busyId === item._id ? <Loader2 className="w-3 h-3 animate-spin" /> : <UploadCloud className="w-3 h-3" />}
+                            Publish
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => remove(item)}
+                          disabled={busyId === item._id}
+                          className="inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg border border-outline-variant text-[11px] font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
             )}
-
-            <input
-              ref={(el) => { inputs.current[slot.category] = el; }}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={(e) => handleFile(slot.category, e.target.files?.[0])}
-            />
-            <button
-              type="button"
-              onClick={() => inputs.current[slot.category]?.click()}
-              disabled={uploading !== null}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-primary text-white text-sm font-semibold transition-colors disabled:opacity-60"
-            >
-              {uploading === slot.category ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
-              {uploading === slot.category ? 'Uploading…' : 'Upload'}
-            </button>
           </div>
-        ))}
-      </div>
+        </>
+      )}
 
-      {/* Existing media */}
-      <div className="pt-2 border-t border-outline-variant">
-        <p className="text-xs font-semibold text-outline uppercase tracking-wide mb-3">On your Google profile</p>
-        {loading ? (
-          <div className="flex items-center gap-2 text-sm text-outline py-6 justify-center"><Loader2 className="w-4 h-4 animate-spin" /> Loading media…</div>
-        ) : error ? (
-          <p className="text-sm text-error">{error}</p>
-        ) : media.length === 0 ? (
-          <p className="text-sm text-outline">No photos on your Google profile yet. Upload your logo, cover and a few photos above.</p>
-        ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-            {media.map((m, i) => (
-              <div key={m.name || i} className="relative aspect-square rounded-lg overflow-hidden border border-outline-variant bg-surface group">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`/api/gbp/media/proxy?url=${encodeURIComponent(m.thumbnailUrl || m.url)}`}
-                  alt={m.category}
-                  className="w-full h-full object-cover"
-                />
-                <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-[10px] font-medium">
-                  {m.category}
-                </span>
+      {/* Full-size preview modal */}
+      {previewAsset && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6"
+          onClick={() => setPreviewAsset(null)}
+        >
+          <div
+            className="max-w-2xl w-full bg-surface-container-lowest rounded-2xl overflow-hidden card-shadow"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant">
+              <div className="flex items-center gap-2">
+                <StatusBadge status={previewAsset.status} failureReason={previewAsset.failureReason} />
+                <span className="text-xs text-on-surface-variant">{previewAsset.category}</span>
               </div>
-            ))}
+              <button type="button" onClick={() => setPreviewAsset(null)} className="p-1 rounded-lg hover:bg-surface-container-low">
+                <X className="w-4 h-4 text-on-surface-variant" />
+              </button>
+            </div>
+            <div className="bg-surface aspect-video">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={previewAsset.status === 'published' ? `/api/gbp/media/proxy?url=${encodeURIComponent(previewAsset.url)}` : previewAsset.url}
+                alt={previewAsset.category}
+                className="w-full h-full object-contain"
+              />
+            </div>
+            {previewAsset.failureReason && (
+              <p className="px-4 pt-3 text-xs text-error">{previewAsset.failureReason}</p>
+            )}
+            <div className="flex gap-2 p-4">
+              {previewAsset.status !== 'published' && (
+                <button
+                  type="button"
+                  onClick={() => publish(previewAsset)}
+                  disabled={busyId === previewAsset._id}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold disabled:opacity-60"
+                  title={previewAsset.status === 'failed' ? 'Retry publishing' : undefined}
+                >
+                  {busyId === previewAsset._id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : previewAsset.status === 'failed' ? (
+                    <RefreshCw className="w-4 h-4" />
+                  ) : (
+                    <UploadCloud className="w-4 h-4" />
+                  )}
+                  {previewAsset.status === 'failed' ? 'Retry publish' : 'Publish'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => remove(previewAsset)}
+                disabled={busyId === previewAsset._id}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-outline-variant text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60"
+              >
+                {busyId === previewAsset._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Delete
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

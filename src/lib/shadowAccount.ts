@@ -32,6 +32,23 @@ export interface ShadowBusinessData {
   googlePlaceId?: string;
   googleMapsUrl?: string;
   coordinates?: { lat: number; lng: number };
+  /**
+   * Rating/review-count snapshot read live from the Places Details API when
+   * the visitor picked their listing — see PlaceDetailsResult in
+   * src/services/google/places.ts. Stored as Business.placesRating/
+   * placesReviewCount so the free-report audit (which otherwise only has
+   * access to synced Review documents, and skips syncing in fastMode — see
+   * auditService.ts) has real numbers to fall back to instead of 0.
+   */
+  placesRating?: number;
+  placesReviewCount?: number;
+  /**
+   * Google's own one-line summary of the place (editorial_summary.overview),
+   * used as the closest available live substitute for a business description
+   * when the visitor hasn't typed one — most listings don't have one, so
+   * this is commonly absent even for a fully "live" fetch.
+   */
+  editorialSummary?: string;
 }
 
 export interface ProvisionShadowAccountInput {
@@ -170,7 +187,15 @@ export async function provisionShadowAccount(
   if (!business) {
     business = await Business.create({
       name: input.businessData.name,
+      // Falls back to 'Local Business' only when BOTH the Places API v1
+      // primaryTypeDisplayName lookup AND the legacy types[]-derived guess
+      // failed to produce anything — see deriveCategory()/getDetails() in
+      // src/services/google/places.ts for the actual resolution order.
       category: input.businessData.category || 'Local Business',
+      // Google's own editorial summary is the closest live substitute for a
+      // description the free-report form never asks the visitor to type —
+      // absent on most listings, but real when present (see ShadowBusinessData).
+      description: input.businessData.editorialSummary || undefined,
       address: input.businessData.address || 'Unknown',
       area: input.businessData.area,
       city: input.businessData.city || 'Unknown',
@@ -183,6 +208,8 @@ export async function provisionShadowAccount(
       googleMapsUrl: input.businessData.googleMapsUrl,
       coordinates: input.businessData.coordinates,
       googleConnected: !!input.businessData.googlePlaceId,
+      placesRating: input.businessData.placesRating,
+      placesReviewCount: input.businessData.placesReviewCount,
       organizationId: organization._id,
       userId: user._id,
       provisionedVia: input.source,

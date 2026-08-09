@@ -80,6 +80,40 @@ const gbpInsightsSchema = z.object({
     )
     .catch([])
     .optional(),
+  // Before/After — split on the real GBP-connect date (GBPToken.connectedAt),
+  // not a fixed lookback window. Either side's fields are null when that side
+  // has no data yet (e.g. connected too recently for a "before" period to
+  // exist) — treat null as "not enough history", not zero.
+  impact: z
+    .object({
+      connectedAt: z.string(),
+      before: z.object({
+        views: z.number().nullable().catch(null),
+        callClicks: z.number().nullable().catch(null),
+        directionRequests: z.number().nullable().catch(null),
+        days: z.number().catch(0),
+      }),
+      after: z.object({
+        views: z.number().nullable().catch(null),
+        callClicks: z.number().nullable().catch(null),
+        directionRequests: z.number().nullable().catch(null),
+        days: z.number().catch(0),
+      }),
+    })
+    .optional(),
+  // Last 6 calendar months with data, monthly totals — Performance tab's
+  // trend chart. Independent of the `range` param above.
+  monthlyTrend: z
+    .array(
+      z.object({
+        month: z.string(),
+        views: z.number().catch(0),
+        callClicks: z.number().catch(0),
+        directionRequests: z.number().catch(0),
+      })
+    )
+    .catch([])
+    .optional(),
 });
 export type GbpInsights = z.infer<typeof gbpInsightsSchema>;
 

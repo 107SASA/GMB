@@ -13,6 +13,10 @@ import { useAuth } from '@/auth/AuthContext';
 import { useBusiness } from '@/business/BusinessContext';
 import { AppHeader } from '@/components/app-header';
 import { AiActionsCard } from '@/components/gbp/ai-actions';
+import { AiAgentCard } from '@/components/home/ai-agent-card';
+import { BrandingFooter } from '@/components/home/branding-footer';
+import { ImpactCard } from '@/components/home/impact-card';
+import { HomeStatList } from '@/components/home/stat-list';
 import { BillingBanner, LockedScreen } from '@/components/locked';
 import { Field, PrimaryButton, Screen, Skeleton } from '@/components/ui';
 import { useSurfaceLocked } from '@/entitlements/entitlements';
@@ -216,39 +220,6 @@ function AddCustomerCard() {
   );
 }
 
-/** "Complete Your Onboarding Tasks" — upload-photos task card. */
-function OnboardingTasks() {
-  const router = useRouter();
-  const t = useTheme();
-  return (
-    <View className="mx-4 mt-8">
-      <Text className="mb-3 font-display-bold text-lg text-white">
-        Complete Your Onboarding Tasks
-      </Text>
-      <View className="rounded-card border border-surface-border bg-surface-raised p-4">
-        <View className="flex-row items-center gap-1.5">
-          <Text className="font-sans-bold text-base text-white">Upload Photos for GBP</Text>
-          <Ionicons name="information-circle-outline" size={15} color={t.textFaint} />
-        </View>
-        <Text className="mt-1 font-sans text-sm leading-5 text-zinc-400" numberOfLines={2}>
-          Add photos to the photobucket and they are posted to your Google Business Profile at
-          regular intervals.
-        </Text>
-        <View className="mt-4 flex-row items-end justify-between">
-          <Pressable
-            onPress={() => router.push('/photos')}
-            // No `className` — see app-header.tsx note.
-            style={{ borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: t.brand }}
-          >
-            <Text className="font-sans-bold text-sm text-on-brand">Upload Photos</Text>
-          </Pressable>
-          <Ionicons name="storefront" size={34} color={t.brandBright} />
-        </View>
-      </View>
-    </View>
-  );
-}
-
 export default function HomeScreen() {
   const { refreshUser } = useAuth();
   const { activeBusiness, activeBusinessId } = useBusiness();
@@ -301,11 +272,16 @@ export default function HomeScreen() {
 
         <WeeklyReviewsCard />
         <AddCustomerCard />
-        <OnboardingTasks />
+        <AiAgentCard />
+
+        <HomeStatList />
+        <ImpactCard />
 
         <View className="mx-4">
           <AiActionsCard />
         </View>
+
+        <BrandingFooter />
       </ScrollView>
 
       {/* Amber "attention needed" nudge pinned above the tab bar */}

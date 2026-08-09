@@ -1,4 +1,5 @@
 import { Text, View } from 'react-native';
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
 
 import { useTheme } from '@/lib/theme';
 
@@ -116,6 +117,175 @@ export function ImpactBars({
         {items.map((item) => (
           <Text key={item.label} className="flex-1 text-center font-sans text-xs text-zinc-400">
             {item.label}
+          </Text>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Real Before/After comparison — one grouped pair of bars per metric (Views /
+ * Calls / Directions), both bars in a pair scaled against the SAME max so
+ * the heights are actually comparable (ImpactBars above renders each side
+ * as an independent chart, which normalizes them separately — fine for a
+ * single-side "current" view, wrong for a side-by-side comparison, where a
+ * before=1000/after=1040 pair should look nearly level, not two different
+ * full-height bars). `null` for either side of a metric renders as an empty
+ * "—" slot rather than a fabricated zero-height bar.
+ */
+export function BeforeAfterBars({
+  metrics,
+}: {
+  metrics: { label: string; before: number | null; after: number | null }[];
+}) {
+  const t = useTheme();
+  const overallMax = Math.max(...metrics.flatMap((m) => [m.before ?? 0, m.after ?? 0]), 1);
+
+  return (
+    <View>
+      <View className="flex-row items-end justify-around gap-5">
+        {metrics.map((m) => (
+          <View key={m.label} className="flex-1 items-center">
+            <View className="h-28 w-full flex-row items-end justify-center gap-1.5">
+              <View className="items-center">
+                {m.before != null && (
+                  <Text className="mb-1 font-sans-semibold text-xs" style={{ color: t.amber }}>
+                    {m.before}
+                  </Text>
+                )}
+                <View
+                  className="w-6 rounded-t-md"
+                  style={{
+                    height: m.before != null ? Math.max((m.before / overallMax) * 90, 4) : 2,
+                    backgroundColor: m.before != null ? t.amber : t.border,
+                    opacity: m.before != null ? 0.9 : 1,
+                  }}
+                />
+              </View>
+              <View className="items-center">
+                {m.after != null && (
+                  <Text className="mb-1 font-sans-semibold text-xs" style={{ color: t.brandBright }}>
+                    {m.after}
+                  </Text>
+                )}
+                <View
+                  className="w-6 rounded-t-md"
+                  style={{
+                    height: m.after != null ? Math.max((m.after / overallMax) * 90, 4) : 2,
+                    backgroundColor: m.after != null ? t.brandBright : t.border,
+                    opacity: m.after != null ? 0.9 : 1,
+                  }}
+                />
+              </View>
+            </View>
+            <Text className="mt-1.5 text-center font-sans text-xs text-zinc-400">{m.label}</Text>
+            <Text className="text-center font-sans text-[10px] text-zinc-500">Avg/month</Text>
+          </View>
+        ))}
+      </View>
+
+      <View className="mt-4 flex-row items-center justify-center gap-5">
+        <View className="flex-row items-center gap-1.5">
+          <View className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: t.amber }} />
+          <Text className="font-sans text-xs text-zinc-400">Before</Text>
+        </View>
+        <View className="flex-row items-center gap-1.5">
+          <View className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: t.brandBright }} />
+          <Text className="font-sans text-xs text-zinc-400">After</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function formatAxisValue(n: number): string {
+  if (n >= 1000) return `${Math.round(n / 100) / 10}K`.replace('.0K', 'K');
+  return String(Math.round(n));
+}
+
+/**
+ * Smooth line + gradient-fill area chart — "Last N Months Trends" on the
+ * Performance tab. Uses a fixed internal viewBox scaled to 100% width via
+ * SVG's own viewBox scaling, so no onLayout measurement is needed. A flat
+ * (all-zero or single-point) series still renders a valid, non-degenerate
+ * line rather than dividing by a zero range.
+ */
+export function LineChart({
+  points,
+  color,
+}: {
+  points: { label: string; value: number }[];
+  color: string;
+}) {
+  const t = useTheme();
+  const VB_W = 300;
+  const VB_H = 130;
+  const PAD_TOP = 10;
+  const PAD_BOTTOM = 10;
+
+  if (points.length === 0) {
+    return (
+      <View className="h-36 items-center justify-center">
+        <Text className="font-sans text-sm text-zinc-500">Not enough history yet</Text>
+      </View>
+    );
+  }
+
+  const values = points.map((p) => p.value);
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+
+  const xAt = (i: number) => (points.length === 1 ? VB_W / 2 : (i / (points.length - 1)) * VB_W);
+  const yAt = (v: number) => PAD_TOP + (1 - (v - min) / range) * (VB_H - PAD_TOP - PAD_BOTTOM);
+
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xAt(i)} ${yAt(p.value)}`).join(' ');
+  const areaPath = `${linePath} L ${xAt(points.length - 1)} ${VB_H} L ${xAt(0)} ${VB_H} Z`;
+
+  const gridValues = [max, max * 0.5, min];
+
+  return (
+    <View>
+      <View className="flex-row">
+        {/* Y-axis labels */}
+        <View className="mr-2 justify-between" style={{ height: VB_H }}>
+          {gridValues.map((v, i) => (
+            <Text key={i} className="font-sans text-[10px] text-zinc-500">
+              {formatAxisValue(v)}
+            </Text>
+          ))}
+        </View>
+        <View style={{ flex: 1, height: VB_H }}>
+          <Svg width="100%" height={VB_H} viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none">
+            <Defs>
+              <LinearGradient id="lineFill" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={color} stopOpacity={0.35} />
+                <Stop offset="1" stopColor={color} stopOpacity={0} />
+              </LinearGradient>
+            </Defs>
+            {gridValues.map((v, i) => (
+              <Line
+                key={i}
+                x1={0}
+                x2={VB_W}
+                y1={yAt(v)}
+                y2={yAt(v)}
+                stroke={t.border}
+                strokeWidth={1}
+                strokeDasharray="4,4"
+              />
+            ))}
+            <Path d={areaPath} fill="url(#lineFill)" stroke="none" />
+            <Path d={linePath} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+            <Circle cx={xAt(points.length - 1)} cy={yAt(points[points.length - 1].value)} r={4} fill={color} />
+          </Svg>
+        </View>
+      </View>
+      <View className="ml-8 mt-1.5 flex-row justify-between">
+        {points.map((p, i) => (
+          <Text key={i} className="font-sans text-[10px] text-zinc-500">
+            {p.label}
           </Text>
         ))}
       </View>

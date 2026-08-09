@@ -15,6 +15,11 @@ import axios, { AxiosError } from 'axios';
 
 const baseURL = process.env.EXPO_PUBLIC_API_URL;
 
+/** For non-axios consumers that need the raw server URL — e.g. an <Image>
+ *  source hitting an authenticated image endpoint directly (axios/its
+ *  interceptors never run for those; see components/gbp/rank-map.tsx). */
+export const API_BASE_URL = baseURL;
+
 if (!baseURL) {
   // Fail loudly in development — a missing base URL otherwise surfaces as
   // confusing "Network Error" messages on the login screen.

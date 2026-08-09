@@ -24,6 +24,14 @@ interface SelectedBusiness {
   googleMapsUrl?: string;
   latitude?: number | null;
   longitude?: number | null;
+  // Live rating/review-count read from the Places Details response — see
+  // handleSelect(). Previously fetched and then discarded here, which is
+  // why every free report showed 0 reviews/0 rating regardless of the
+  // business's real Google listing.
+  rating?: number;
+  totalReviews?: number;
+  // Google's own one-line summary of the place, when it has one.
+  editorialSummary?: string;
 }
 
 const BUDGET_OPTIONS = [
@@ -127,6 +135,9 @@ export default function FreeReportPage() {
           googleMapsUrl: d.googleMapsUrl,
           latitude: d.latitude ?? null,
           longitude: d.longitude ?? null,
+          rating: d.rating,
+          totalReviews: d.totalReviews,
+          editorialSummary: d.editorialSummary,
         });
       } else {
         throw new Error();
@@ -171,6 +182,9 @@ export default function FreeReportPage() {
           googleMapsUrl: business.googleMapsUrl,
           latitude: business.latitude,
           longitude: business.longitude,
+          placesRating: business.rating,
+          placesReviewCount: business.totalReviews,
+          editorialSummary: business.editorialSummary,
           phone,
           budget,
         }),

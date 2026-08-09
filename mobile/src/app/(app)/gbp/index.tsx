@@ -4,34 +4,30 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { useBusiness } from '@/business/BusinessContext';
 import { AppHeader } from '@/components/app-header';
-import { BusinessAssets } from '@/components/business-assets';
 import { OverviewTab } from '@/components/gbp/overview-tab';
-import { PerformanceTab } from '@/components/gbp/performance-tab';
-import { PostsTab } from '@/components/gbp/posts-tab';
 import { GbpProfileTab } from '@/components/gbp/profile-tab';
-import { ReviewsTab } from '@/components/gbp/reviews-tab';
 import { LockedScreen } from '@/components/locked';
 import { Screen } from '@/components/ui';
 import { useSurfaceLocked } from '@/entitlements/entitlements';
 import { useTheme } from '@/lib/theme';
 
-type GbpTab = 'overview' | 'performance' | 'posts' | 'reviews' | 'photos' | 'profile';
+// Performance / Posts / Reviews / Photos were promoted to their own
+// top-level bottom-bar tabs (see (app)/performance, (app)/posts,
+// (app)/reviews, (app)/photos) — this hub now only holds what doesn't have
+// a tab slot of its own. Reachable from More → "Business Profile", not the
+// bottom bar (see more.tsx). Overview's content (AI Impact chart + AI
+// Actions feed) is slated to move onto Home directly in the next pass —
+// left here for now so nothing regresses mid-restructure.
+type GbpTab = 'profile' | 'overview';
 
 const TABS: { id: GbpTab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'performance', label: 'Performance' },
-  { id: 'posts', label: 'Posts' },
-  { id: 'reviews', label: 'Reviews' },
-  { id: 'photos', label: 'Photos' },
   { id: 'profile', label: 'Profile' },
+  { id: 'overview', label: 'Overview' },
 ];
 
-/**
- * Google Business Profile hub — reference-app layout: shared header plus a
- * scrollable top tab bar (Overview / Performance / Posts / Reviews / Photos).
- */
+/** Business Profile hub — shared header plus Profile/Overview sub-tabs. */
 export default function GbpScreen() {
-  const [tab, setTab] = useState<GbpTab>('overview');
+  const [tab, setTab] = useState<GbpTab>('profile');
   const { activeBusinessId } = useBusiness();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -48,7 +44,7 @@ export default function GbpScreen() {
 
   return (
     <Screen>
-      <AppHeader title="Google Business Profile" />
+      <AppHeader title="Business Profile" />
 
       {/* Top tab bar */}
       <View className="border-b border-surface-border">
@@ -96,12 +92,8 @@ export default function GbpScreen() {
           />
         }
       >
-        {tab === 'overview' && <OverviewTab />}
-        {tab === 'performance' && <PerformanceTab />}
-        {tab === 'posts' && <PostsTab />}
-        {tab === 'reviews' && <ReviewsTab />}
-        {tab === 'photos' && <BusinessAssets />}
         {tab === 'profile' && <GbpProfileTab />}
+        {tab === 'overview' && <OverviewTab />}
       </ScrollView>
     </Screen>
   );

@@ -96,6 +96,18 @@ function ChecklistRow({ field, status }: { field: string; status: string }) {
         <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1a4f8b" /><path d="M12 7v5M12 16h.01" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>
       </div>
     );
+  // Distinct from Missing: "we had no way to check" (needs GBP OAuth access
+  // we don't have), not "confirmed absent" — a neutral "?" rather than the
+  // red X Missing gets, so a lead's report doesn't visually read as more
+  // incomplete than we can actually prove. See calculateProfileCompletion()
+  // in seoAnalyzer.ts.
+  if (status === 'Unknown')
+    return (
+      <div className="flex items-center justify-between py-2 border-b border-outline-variant last:border-0">
+        <span className="text-sm text-on-surface">{field}</span>
+        <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#79747E" /><text x="12" y="16.5" textAnchor="middle" fontSize="13" fontWeight="700" fill="white">?</text></svg>
+      </div>
+    );
   return (
     <div className="flex items-center justify-between py-2 border-b border-outline-variant last:border-0">
       <span className="text-sm text-on-surface">{field}</span>
@@ -229,6 +241,13 @@ export default function AuditReportGrexa({
   // zeros/"High risk" that have nothing to do with the business, the report
   // shows a single "not enough data yet" placeholder in their place.
   const hasReviews   = !!reviews;
+  // Set by auditService.ts when reviewCount/averageRating came from a
+  // one-off Places API snapshot at report intake rather than synced Review
+  // documents — real numbers, but no per-review detail exists to back
+  // reviews/week, response rate, or sentiment split. Those specific
+  // sub-widgets are hidden below rather than shown as false zeros.
+  const estimatedFromPlaces = !!(reviews as any)?.estimatedFromPlaces;
+  const hasReviewDetail     = hasReviews && !estimatedFromPlaces;
   const rating       = reviews?.averageRating ?? 0;
   const reviewCount  = reviews?.reviewCount ?? 0;
   const rpw          = reviews?.reviewsPerWeek ?? 0;
@@ -634,7 +653,7 @@ export default function AuditReportGrexa({
             these derives from reviewCount, so with no reviews synced yet
             they'd all read as hollow zeros / false "High risk" rather than
             real findings. Show one honest placeholder instead. */}
-        {hasReviews ? (
+        {hasReviewDetail ? (
           <div className="grid grid-cols-3 gap-4">
 
             {/* Reviews Per Week */}
@@ -693,8 +712,9 @@ export default function AuditReportGrexa({
           <div className="border border-outline-variant rounded-2xl p-5 bg-surface/40 flex items-center gap-3">
             <div className="w-2 h-2 rounded-full bg-primary-container shrink-0" />
             <p className="text-sm text-on-surface-variant">
-              Review-based metrics (reviews/week, response rate, suspension risk) will appear once
-              reviews have synced from your newly-connected Google Business Profile.
+              {estimatedFromPlaces
+                ? `Reviews/week, response rate and suspension risk need a full review sync — this report's ${reviewCount} reviews / ${rating} rating are a live Google Places snapshot taken at intake, not synced yet.`
+                : 'Review-based metrics (reviews/week, response rate, suspension risk) will appear once reviews have synced from your newly-connected Google Business Profile.'}
             </p>
           </div>
         )}

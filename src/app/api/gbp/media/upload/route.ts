@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireBusinessContext } from '@/lib/tenant';
 import { uploadPublicObject, isStorageConfigured } from '@/lib/storage';
-import { uploadLocationPhoto, GBPAuthError, GbpMediaCategory } from '@/lib/gbpClient';
-import { gbpWritesEnabled } from '@/lib/gbpSafety';
+import { createOrReplaceStagedAsset } from '@/lib/gbpMediaService';
+import { GbpMediaCategory } from '@/lib/gbpClient';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -12,10 +12,11 @@ const ALLOWED = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 const CATEGORIES: GbpMediaCategory[] = ['PROFILE', 'COVER', 'ADDITIONAL', 'LOGO'];
 
 /**
- * Uploads a media file (logo / cover / additional photo):
- *  1. stores it publicly on DigitalOcean Spaces → public URL,
- *  2. pushes it to the live Google Business Profile (gated behind
- *     GBP_LIVE_WRITES_ENABLED — while off, the file is stored but not sent to Google).
+ * Uploads a media file and STAGES it (logo / cover / additional photo) — it
+ * does not push to Google here. Publishing is a separate, explicit step
+ * (POST /api/gbp/media/[id]/publish) so every upload gets a real preview/
+ * review moment before it goes live, rather than firing live the instant the
+ * gate happens to be on. See gbpMediaService.ts for the staging logic.
  */
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
@@ -58,23 +59,16 @@ export async function POST(req: Request) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const publicUrl = await uploadPublicObject(buffer, file.type, `gbp-media/${ctx.businessId}`);
 
-    // Push to the live profile — gated. Returns liveWriteApplied:false while off.
-    const { liveWriteApplied, mediaName } = await uploadLocationPhoto(ctx.businessId, category, publicUrl);
-
-    return NextResponse.json({
-      success: true,
-      url: publicUrl,
+    const asset = await createOrReplaceStagedAsset({
+      businessId: ctx.businessId,
+      organizationId: ctx.organizationId,
+      uploadedBy: ctx.userId,
       category,
-      liveWriteApplied,
-      mediaName,
-      ...(liveWriteApplied
-        ? {}
-        : { note: gbpWritesEnabled() ? undefined : 'Stored — live GBP publishing is currently disabled, so it was not pushed to Google yet.' }),
+      url: publicUrl,
     });
+
+    return NextResponse.json({ success: true, asset });
   } catch (err: any) {
-    if (err instanceof GBPAuthError) {
-      return NextResponse.json({ success: false, error: 'Google connection expired — please reconnect.' }, { status: 400 });
-    }
     console.error('[gbp/media/upload] failed:', err);
     return NextResponse.json({ success: false, error: err.message || 'Upload failed' }, { status: 500 });
   }

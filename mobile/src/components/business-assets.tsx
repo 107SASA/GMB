@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Alert, Linking, Pressable, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import {
@@ -11,10 +12,12 @@ import {
   GbpNotConnectedError,
   uploadGbpMedia,
   type GbpMediaCategory,
+  type GbpMediaItem,
 } from '@/api/endpoints/gbp';
 import { useBusiness } from '@/business/BusinessContext';
 import { EmptyState, Skeleton } from '@/components/ui';
 import { promptConnectGoogle } from '@/lib/connectGoogle';
+import { formatDateTime } from '@/lib/format';
 import { BRAND_GRADIENT, useTheme } from '@/lib/theme';
 
 const GUIDELINES_URL = 'https://support.google.com/business/answer/6103862';
@@ -32,7 +35,16 @@ const CATEGORY_LABEL: Record<GbpMediaCategory, string> = {
   ADDITIONAL: 'Photo',
 };
 
-/** Prompts for which slot a picked photo goes into, matching Google's categories. */
+/** "19 days ago" — full-word form, matching the reference app's copy (our
+ *  shared timeAgo() abbreviates to "19d", which read too clipped here). */
+function daysAgo(iso?: string): string {
+  if (!iso) return '';
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000));
+  if (days <= 0) return 'today';
+  if (days === 1) return '1 day ago';
+  return `${days} days ago`;
+}
+
 function pickCategory(onPick: (category: GbpMediaCategory) => void) {
   Alert.alert('Add to your profile', 'What kind of photo is this?', [
     { text: 'Cancel', style: 'cancel' },
@@ -42,17 +54,33 @@ function pickCategory(onPick: (category: GbpMediaCategory) => void) {
   ]);
 }
 
+function WhyPublishInfo() {
+  return (
+    <Pressable
+      onPress={() =>
+        Alert.alert(
+          'Why publish photos & videos?',
+          'Profiles with regular new photos are shown more often in local search and get more calls, direction requests, and website clicks — Google treats fresh media as a signal that a business is active. Aim for a few new photos every week.'
+        )
+      }
+    >
+      <Text className="font-sans-bold text-sm underline text-center" style={{ color: '#6ea8fe' }}>
+        Why Publish Photos &amp; Videos?
+      </Text>
+    </Pressable>
+  );
+}
+
 /**
- * "Business Assets — GBP Photos": the live Google Business Profile media
- * library (logo/cover/additional photos), shared by the Photos tab and the
- * Photos sub-tab inside GBP. Reads and writes the real profile via
- * /api/gbp/media{,/upload} — uploads always land in storage; whether they
- * also push live to Google depends on the server's GBP_LIVE_WRITES_ENABLED
- * gate (liveWritesEnabled below).
+ * Photos tab main screen — summary view (recent published strip, scheduled
+ * timeline) with a "View All" link into the full filterable gallery
+ * (photos/all.tsx). Previously this screen dumped every photo into one grid
+ * inline; that full grid + category filtering now lives in photos/all.tsx.
  */
 export function BusinessAssets() {
   const { activeBusinessId } = useBusiness();
   const t = useTheme();
+  const router = useRouter();
   const queryClient = useQueryClient();
 
   const media = useQuery({
@@ -64,13 +92,11 @@ export function BusinessAssets() {
 
   const upload = useMutation({
     mutationFn: uploadGbpMedia,
-    onSuccess: ({ liveWriteApplied, note }) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['gbp-media', activeBusinessId] });
-      if (!liveWriteApplied && note) Alert.alert('Photo saved', note);
+      Alert.alert('Photo saved', "It's staged — publish or schedule it from View All.");
     },
-    onError: (error) => {
-      Alert.alert('Upload failed', getApiErrorMessage(error, 'Please try again.'));
-    },
+    onError: (error) => Alert.alert('Upload failed', getApiErrorMessage(error, 'Please try again.')),
   });
 
   const notConnected = media.error instanceof GbpNotConnectedError;
@@ -81,10 +107,7 @@ export function BusinessAssets() {
       Alert.alert('Permission needed', 'Allow photo library access to add business media.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: 'images',
-      quality: 0.85,
-    });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 0.85 });
     if (result.canceled || result.assets.length === 0) return;
     const asset = result.assets[0];
     upload.mutate({
@@ -103,23 +126,28 @@ export function BusinessAssets() {
     pickCategory((category) => void startUpload(category));
   };
 
-  return (
-    <View className="px-4">
-      {media.isLoading ? (
-        <View className="mb-4 flex-row flex-wrap gap-2.5">
+  if (media.isLoading) {
+    return (
+      <View className="px-4">
+        <Skeleton className="mb-4 h-24 rounded-card" />
+        <View className="flex-row gap-2.5">
           <Skeleton className="h-28 w-28" />
           <Skeleton className="h-28 w-28" />
           <Skeleton className="h-28 w-28" />
         </View>
-      ) : notConnected ? (
+      </View>
+    );
+  }
+
+  if (notConnected) {
+    return (
+      <View className="px-4">
         <EmptyState
           title="Google Business Profile not connected"
           hint={media.error?.message}
           action={
             <Pressable
-              onPress={() =>
-                promptConnectGoogle(media.error?.message ?? 'Connect your Google Business Profile to add photos.')
-              }
+              onPress={() => promptConnectGoogle(media.error?.message ?? 'Connect your Google Business Profile to add photos.')}
               // No `className` — react-native-css-interop can swallow onPress
               // on styled Pressables (see components/ui.tsx).
               style={{ marginTop: 12, borderRadius: 999, backgroundColor: t.brand, paddingHorizontal: 20, paddingVertical: 10 }}
@@ -128,47 +156,74 @@ export function BusinessAssets() {
             </Pressable>
           }
         />
-      ) : media.isError ? (
-        <EmptyState
-          title="Couldn't load your photos"
-          hint={getApiErrorMessage(media.error, 'Pull down to retry.')}
-        />
-      ) : media.data && media.data.media.length > 0 ? (
-        <View className="mb-4">
-          {!media.data.liveWritesEnabled && (
-            <View className="mb-3 rounded-xl border border-amber-400/25 bg-amber-400/10 px-3.5 py-2.5">
-              <Text className="font-sans-semibold text-xs leading-4 text-amber-300">
-                New uploads are saved but won't appear on Google yet — live publishing is temporarily paused.
-              </Text>
-            </View>
-          )}
-          <View className="flex-row flex-wrap gap-2.5">
-            {media.data.media.map((item) => (
-              <View
-                key={item.name || item.url}
-                className="overflow-hidden rounded-card border border-surface-border bg-surface-raised"
-              >
-                <Image
-                  source={{ uri: item.thumbnailUrl || item.url }}
-                  style={{ width: 108, height: 108 }}
-                  contentFit="cover"
-                />
-                <View className="absolute bottom-0 left-0 right-0 bg-black/50 px-1.5 py-1">
-                  <Text className="font-sans-bold text-[10px] text-white" numberOfLines={1}>
-                    {CATEGORY_LABEL[item.category]}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
+      </View>
+    );
+  }
+
+  const all: GbpMediaItem[] = media.data?.media ?? [];
+  const published = all
+    .filter((m) => m.status === 'published')
+    .sort((a, b) => new Date(b.publishedAt ?? 0).getTime() - new Date(a.publishedAt ?? 0).getTime());
+  const recentPublished = published.slice(0, 8);
+  const scheduled = all
+    .filter((m) => m.status === 'staged' && m.scheduledFor)
+    .sort((a, b) => new Date(a.scheduledFor!).getTime() - new Date(b.scheduledFor!).getTime());
+
+  return (
+    <View className="px-4">
+      {/* Honest version of the reference app's banner — no "published by AI"
+          claim (nothing here auto-publishes without the owner's own
+          schedule or button tap; see logProfileActivity.ts). */}
+      <View
+        className="mb-6 flex-row items-center gap-4 overflow-hidden rounded-card p-5"
+        style={{ backgroundColor: t.card, borderWidth: 1, borderColor: t.border }}
+      >
+        <View className="flex-1">
+          <Text className="font-display-bold text-lg text-white">Keep your profile active</Text>
+          <Text className="mt-1 font-sans text-sm leading-5 text-zinc-400">
+            Regularly publishing fresh photos helps you rank higher and show up more on Google.
+          </Text>
         </View>
-      ) : (
+        <View className="h-14 w-14 items-center justify-center rounded-2xl" style={{ backgroundColor: `${t.brandBright}26` }}>
+          <Ionicons name="storefront" size={26} color={t.brandBright} />
+        </View>
+      </View>
+
+      <View className="mb-1 flex-row items-center justify-between">
+        <Text className="font-display-bold text-lg text-white">Your Photos &amp; Videos</Text>
+        <Pressable onPress={() => router.push('/photos/all' as never)} hitSlop={10}>
+          <View className="flex-row items-center gap-1">
+            <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>View All</Text>
+            <Ionicons name="chevron-forward" size={14} color={t.brandBright} />
+          </View>
+        </Pressable>
+      </View>
+      <Text className="mb-3 font-sans text-sm text-zinc-500">{published.length} published</Text>
+
+      {recentPublished.length === 0 ? (
         <View className="mb-4 items-center rounded-card border border-surface-border bg-surface-raised px-6 py-10">
           <View className="mb-3 h-16 w-16 items-center justify-center rounded-2xl bg-surface-overlay">
             <Ionicons name="image-outline" size={30} color={t.violet} />
           </View>
-          <Text className="mb-5 font-sans-semibold text-base text-zinc-300">No Assets Added</Text>
+          <Text className="font-sans-semibold text-base text-zinc-300">No photos published yet</Text>
         </View>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2.5 pb-1">
+          {recentPublished.map((item) => (
+            <Pressable
+              key={item._id}
+              onPress={() => router.push('/photos/all' as never)}
+              // No `className` — see note above.
+              style={{ width: 132, height: 132, borderRadius: 16, overflow: 'hidden' }}
+            >
+              <Image source={{ uri: item.url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+              <View className="absolute bottom-1.5 left-1.5 flex-row items-center gap-1 rounded-full bg-black/60 px-2 py-1">
+                <Ionicons name="location" size={10} color="#ffffff" />
+                <Text className="font-sans-bold text-[10px] text-white">{daysAgo(item.publishedAt)}</Text>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
       )}
 
       {!notConnected && (
@@ -176,21 +231,58 @@ export function BusinessAssets() {
           onPress={handleAddMedia}
           disabled={upload.isPending}
           // No `className` — see note above.
-          style={{ marginBottom: 8, alignSelf: 'flex-start', overflow: 'hidden', borderRadius: 999 }}
+          style={{ marginTop: 16, borderRadius: 16, overflow: 'hidden' }}
         >
           <LinearGradient
             colors={[...BRAND_GRADIENT]}
             start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 22, paddingVertical: 13 }}
+            end={{ x: 1, y: 0 }}
+            style={{ alignItems: 'center', paddingVertical: 16 }}
           >
-            <Ionicons name="add" size={18} color="#ffffff" />
             <Text className="font-sans-bold text-base text-on-brand">
-              {upload.isPending ? 'Uploading…' : 'Add your Business Media'}
+              {upload.isPending ? 'Uploading…' : 'Add Photos & Videos'}
             </Text>
           </LinearGradient>
         </Pressable>
       )}
+
+      <View className="mt-4 items-center">
+        <WhyPublishInfo />
+      </View>
+
+      {/* Scheduled Photos — real, from GbpMediaAsset.scheduledFor (see
+          gbpMediaService.scheduleAsset + publishScheduledMediaCron). */}
+      <View className="mt-8">
+        <Text className="mb-3 font-display-bold text-lg text-white">Scheduled Photos</Text>
+        {scheduled.length === 0 ? (
+          <View className="items-center rounded-card border border-surface-border bg-surface-raised px-6 py-8">
+            <Text className="font-sans-semibold text-base text-zinc-300">No Photos or Videos Scheduled</Text>
+            <Text className="mt-1.5 text-center font-sans text-sm leading-5 text-zinc-500">
+              Regular photos/videos keeps your Google Profile fresh and active.
+            </Text>
+          </View>
+        ) : (
+          <View>
+            {scheduled.map((item, i) => (
+              <View key={item._id} className="flex-row gap-3">
+                <View className="items-center">
+                  <View className="mt-1.5 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: t.brandBright }} />
+                  {i < scheduled.length - 1 && <View className="w-px flex-1" style={{ backgroundColor: t.border }} />}
+                </View>
+                <View className="mb-4 flex-1 flex-row items-center gap-3 rounded-card border border-surface-border bg-surface-raised p-3">
+                  <View className="h-14 w-14 overflow-hidden rounded-xl bg-surface-overlay">
+                    <Image source={{ uri: item.url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="font-sans-semibold text-sm text-white">{CATEGORY_LABEL[item.category]}</Text>
+                    <Text className="mt-0.5 font-sans text-xs text-zinc-500">{formatDateTime(item.scheduledFor)}</Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
 
       {/* Smart tips */}
       <View className="mb-2 mt-6 flex-row items-center justify-between">

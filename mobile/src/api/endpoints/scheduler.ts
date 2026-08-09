@@ -64,3 +64,9 @@ export async function updatePost(
 export async function deletePost(postId: string): Promise<void> {
   await api.delete(`/api/scheduler/posts/${postId}`);
 }
+
+/** GET /api/scheduler/posts/[id] — single post, for the post-detail screen. */
+export async function fetchPost(postId: string): Promise<ContentPost> {
+  const { data } = await api.get(`/api/scheduler/posts/${postId}`);
+  return z.object({ success: z.literal(true), post: contentPostSchema }).parse(data).post;
+}

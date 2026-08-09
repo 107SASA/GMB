@@ -2,11 +2,12 @@ import Link from "next/link";
 import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { BRAND_ATTRIBUTION } from "@/lib/companyInfo";
+import { SERVICES } from "@/lib/servicesData";
 
 export function Footer() {
   return (
     <footer className="py-20 px-6 border-t border-outline-variant bg-surface-container-low">
-      <div className="max-w-container-max mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
+      <div className="max-w-container-max mx-auto grid grid-cols-1 md:grid-cols-5 gap-12">
         <div className="col-span-1 md:col-span-1">
           <Link href="/" className="flex items-center gap-2 mb-6">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
@@ -22,16 +23,34 @@ export function Footer() {
         </div>
 
         <div>
+          <h4 className="font-heading font-bold text-on-surface mb-6">OnDemand Service</h4>
+          <ul className="space-y-4 text-sm text-on-surface-variant">
+            {SERVICES.map((service) => (
+              <li key={service.slug}>
+                <Link href={`/services/${service.slug}`} className="hover:text-primary transition-colors">
+                  {service.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div>
           <h4 className="font-heading font-bold text-on-surface mb-6">Product</h4>
           <ul className="space-y-4 text-sm text-on-surface-variant">
             <li>
-              <Link href="/#features" className="hover:text-primary transition-colors">
+              <Link href="/features" className="hover:text-primary transition-colors">
                 Features
               </Link>
             </li>
             <li>
               <Link href="/pricing" className="hover:text-primary transition-colors">
                 Pricing
+              </Link>
+            </li>
+            <li>
+              <Link href="/faq" className="hover:text-primary transition-colors">
+                FAQ
               </Link>
             </li>
             <li>

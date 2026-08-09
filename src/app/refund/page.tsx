@@ -4,9 +4,12 @@ import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 import { COMPANY } from "@/lib/companyInfo";
 
 export const metadata: Metadata = {
-  title: "Refund & Cancellation Policy | GrowwMatics AI",
+  // See contact/page.tsx — root layout's template appends " | GrowwMatics AI"
+  // already; don't repeat it here or the rendered <title> doubles it up.
+  title: "Refund & Cancellation Policy",
   description:
     "How subscription cancellations and refunds work for GrowwMatics AI.",
+  alternates: { canonical: "/refund" },
 };
 
 export default function RefundPage() {

@@ -81,6 +81,42 @@ export class GooglePlacesService {
     return process.env.GOOGLE_MAPS_API_KEY || '';
   }
 
+  /**
+   * Places API "New" (v1) primaryTypeDisplayName — Google's own human-
+   * readable category (e.g. "Software Company"), not derived from the
+   * coarse legacy `types` enum. A different REST surface from the legacy
+   * Details call above (places.googleapis.com, not maps.googleapis.com),
+   * gated on the same GOOGLE_MAPS_API_KEY but requires "Places API (New)"
+   * to be separately enabled on the Google Cloud project — if it isn't
+   * (or the call fails for any other reason), this returns undefined and
+   * callers fall back to deriveCategory(types) exactly as before this was
+   * added. Best-effort only; never throws.
+   */
+  private static async getPrimaryTypeDisplayName(placeId: string): Promise<string | undefined> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) return undefined;
+    try {
+      const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
+        headers: {
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': 'primaryTypeDisplayName',
+        },
+      });
+      if (!res.ok) {
+        // Most commonly: Places API (New) not enabled on this project (403)
+        // or an invalid placeId (404) — either way, silently defer to the
+        // legacy-types fallback rather than failing the whole details fetch.
+        console.warn(`[places] Places API (New) primaryTypeDisplayName lookup failed (HTTP ${res.status}) for placeId=${placeId} — falling back to legacy types[].`);
+        return undefined;
+      }
+      const data = await res.json();
+      return data?.primaryTypeDisplayName?.text || undefined;
+    } catch (e: any) {
+      console.warn(`[places] Places API (New) primaryTypeDisplayName lookup threw for placeId=${placeId}:`, e?.message);
+      return undefined;
+    }
+  }
+
   static async autocomplete(query: string): Promise<AutocompleteResult[]> {
     if (!query) return [];
     
@@ -129,6 +165,11 @@ export class GooglePlacesService {
       "name,formatted_address,address_components,formatted_phone_number,international_phone_number,website,url,rating,user_ratings_total,geometry,types,editorial_summary"
     );
 
+    // Run alongside the legacy Details call rather than after it — v1 is an
+    // independent REST surface (different host, different auth header), so
+    // there's nothing to wait on it for.
+    const primaryTypeDisplayNamePromise = this.getPrimaryTypeDisplayName(placeId);
+
     const response = await fetch(url.toString());
     const data = await response.json();
 
@@ -138,6 +179,7 @@ export class GooglePlacesService {
 
     const r = data.result;
     const components: AddressComponent[] = r.address_components || [];
+    const primaryTypeDisplayName = await primaryTypeDisplayNamePromise;
 
     return {
       placeId,
@@ -171,7 +213,9 @@ export class GooglePlacesService {
       state: pickComponent(components, ['administrative_area_level_1']),
       country: pickComponent(components, ['country']),
       postalCode: pickComponent(components, ['postal_code']),
-      primaryCategory: deriveCategory(r.types),
+      // Prefer Places API (New)'s real category name; fall back to guessing
+      // from the legacy `types` enum only if v1 was unavailable/unenabled.
+      primaryCategory: primaryTypeDisplayName || deriveCategory(r.types),
       editorialSummary: r.editorial_summary?.overview || undefined,
     };
   }

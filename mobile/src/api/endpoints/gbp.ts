@@ -2,15 +2,26 @@ import { z } from 'zod';
 import { api } from '../client';
 
 /**
- * Live Google Business Profile media (photos/logo/cover) for the active
- * workspace — mirrors src/app/api/gbp/media/{,upload/}route.ts on the web.
+ * Google Business Profile media (photos/logo/cover) for the active
+ * workspace — mirrors src/app/api/gbp/media/{,upload/,[id]/,[id]/publish}
+ * route.ts on the web. As of the Aug 2026 CRUD rebuild, this is backed by a
+ * local staged→published→failed record (GbpMediaAsset), not a direct live
+ * Google read — `status` tells you which. Uploading only ever stages a
+ * photo now; publishing to Google is the separate `publishGbpMedia` call
+ * below (previously upload could push live automatically).
  */
 
 export const gbpMediaItemSchema = z.object({
-  name: z.string().catch(''),
+  _id: z.string(),
   category: z.enum(['PROFILE', 'COVER', 'ADDITIONAL', 'LOGO']).catch('ADDITIONAL'),
   url: z.string().catch(''),
-  thumbnailUrl: z.string().catch(''),
+  status: z.enum(['staged', 'published', 'failed']).catch('staged'),
+  googleMediaName: z.string().optional(),
+  publishedAt: z.string().optional(),
+  failureReason: z.string().optional(),
+  createdAt: z.string().optional(),
+  /** Future auto-publish date — only meaningful while status is 'staged'. */
+  scheduledFor: z.string().nullable().optional(),
 });
 export type GbpMediaItem = z.infer<typeof gbpMediaItemSchema>;
 
@@ -25,7 +36,7 @@ const mediaResponseSchema = z.object({
   error: z.string().optional(),
 });
 
-/** GET /api/gbp/media — the profile's current live photos/logo/cover. */
+/** GET /api/gbp/media — every staged/published/failed photo for this business. */
 export async function fetchGbpMedia(): Promise<{ media: GbpMediaItem[]; liveWritesEnabled: boolean }> {
   const { data } = await api.get('/api/gbp/media');
   const parsed = mediaResponseSchema.parse(data);
@@ -37,18 +48,19 @@ export async function fetchGbpMedia(): Promise<{ media: GbpMediaItem[]; liveWrit
 
 export type GbpMediaCategory = 'PROFILE' | 'COVER' | 'ADDITIONAL' | 'LOGO';
 
+const assetResponseSchema = z.object({ success: z.literal(true), asset: gbpMediaItemSchema });
+
 /**
- * POST /api/gbp/media/upload — multipart upload. Stores the file on
- * DigitalOcean Spaces and, when GBP_LIVE_WRITES_ENABLED is on, pushes it to
- * the live profile; otherwise `liveWriteApplied` comes back false and `note`
- * explains it was only stored.
+ * POST /api/gbp/media/upload — multipart upload. Always just STAGES the
+ * photo (stores it, creates a local record) — it no longer pushes to Google
+ * here; call publishGbpMedia with the returned asset's _id when ready.
  */
 export async function uploadGbpMedia(params: {
   uri: string;
   mimeType: string;
   fileName: string;
   category: GbpMediaCategory;
-}): Promise<{ url: string; liveWriteApplied: boolean; note?: string }> {
+}): Promise<GbpMediaItem> {
   const form = new FormData();
   // React Native's FormData accepts this {uri,name,type} shape in place of a Blob.
   form.append('file', { uri: params.uri, name: params.fileName, type: params.mimeType } as unknown as Blob);
@@ -57,19 +69,57 @@ export async function uploadGbpMedia(params: {
   const { data } = await api.post('/api/gbp/media/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
+  return assetResponseSchema.parse(data).asset;
+}
+
+/** POST /api/gbp/media/[id]/publish — pushes a staged photo to the live profile. */
+export async function publishGbpMedia(assetId: string): Promise<{ asset: GbpMediaItem; liveWriteApplied: boolean }> {
+  const { data } = await api.post(`/api/gbp/media/${assetId}/publish`);
   return z
-    .object({
-      success: z.literal(true),
-      url: z.string(),
-      liveWriteApplied: z.boolean().catch(false),
-      note: z.string().optional(),
-    })
+    .object({ success: z.literal(true), asset: gbpMediaItemSchema, liveWriteApplied: z.boolean().catch(false), note: z.string().optional() })
     .parse(data);
+}
+
+/** DELETE /api/gbp/media/[id] — removes a photo (local-only if staged, real Google delete if published). */
+export async function deleteGbpMedia(assetId: string): Promise<void> {
+  await api.delete(`/api/gbp/media/${assetId}`);
+}
+
+/**
+ * POST /api/gbp/media/[id]/schedule — sets (date) or clears (null) a staged
+ * photo's future auto-publish date. Actually publishing it when that date
+ * arrives happens server-side (publishScheduledMediaCron), not from the app.
+ */
+export async function scheduleGbpMedia(assetId: string, date: Date | null): Promise<GbpMediaItem> {
+  const { data } = await api.post(`/api/gbp/media/${assetId}/schedule`, {
+    scheduledFor: date ? date.toISOString() : null,
+  });
+  return z.object({ success: z.literal(true), asset: gbpMediaItemSchema }).parse(data).asset;
 }
 
 /** POST /api/gbp/disconnect — removes the stored OAuth token for this workspace. */
 export async function disconnectGoogle(): Promise<void> {
   await api.post('/api/gbp/disconnect');
+}
+
+// --- Profile activity feed ---------------------------------------------------------
+
+export const profileActivitySchema = z.object({
+  _id: z.string(),
+  type: z.enum(['profile_updated', 'photo_published']),
+  title: z.string().catch(''),
+  detail: z.string().optional(),
+  updatedBy: z.string().catch('You'),
+  createdAt: z.string(),
+});
+export type ProfileActivity = z.infer<typeof profileActivitySchema>;
+
+/** GET /api/gbp/activity — recent real profile-change events (last 10). */
+export async function fetchProfileActivity(): Promise<ProfileActivity[]> {
+  const { data } = await api.get('/api/gbp/activity');
+  return z
+    .object({ success: z.literal(true), activity: z.array(profileActivitySchema).catch([]) })
+    .parse(data).activity;
 }
 
 // --- Live profile (name/description/phone/website) --------------------------------

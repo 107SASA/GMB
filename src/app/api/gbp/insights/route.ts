@@ -110,6 +110,64 @@ export async function GET(request: NextRequest) {
     directionRequests: r.directionRequests ?? 0,
   }));
 
+  // --- Last 6 months, monthly totals — the Performance tab's trend chart.
+  // Independent of the `range` selector above (that's 7/14/28/90 days for
+  // the summary cards; this is always "however many of the last 6 calendar
+  // months have data"), so it's computed unconditionally rather than only
+  // when range=180 was requested.
+  const sixMonthsAgo = new Date(now);
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  const monthRows = await GBPInsights.find({
+    businessId: ctx.businessId,
+    date: { $gte: sixMonthsAgo },
+  }).lean();
+  const monthBuckets = new Map<string, { views: number; callClicks: number; directionRequests: number }>();
+  for (const r of monthRows as any[]) {
+    const key = r.date.toISOString().slice(0, 7); // "2026-07"
+    const bucket = monthBuckets.get(key) ?? { views: 0, callClicks: 0, directionRequests: 0 };
+    bucket.views += r.views ?? 0;
+    bucket.callClicks += r.callClicks ?? 0;
+    bucket.directionRequests += r.directionRequests ?? 0;
+    monthBuckets.set(key, bucket);
+  }
+  const monthlyTrend = [...monthBuckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, totals]) => ({
+      month: new Date(`${key}-01T00:00:00Z`).toLocaleString('en-US', { month: 'short' }),
+      ...totals,
+    }));
+
+  // --- Before/After impact (split on the real GBP-connect date, not a
+  // fixed lookback window) — home-screen "Impact" card. Each side is
+  // averaged per-day-present, not summed, since the two periods are almost
+  // never the same length, then scaled to a monthly figure for a stable,
+  // comparable unit. Either side is null (not 0) when there's no data yet
+  // for it — a business connected 3 days ago genuinely has no "before"
+  // history, and that's a different fact than 0 average views.
+  const [beforeRows, afterRows] = await Promise.all([
+    GBPInsights.find({ businessId: ctx.businessId, date: { $lt: tokenDoc.connectedAt } }).lean(),
+    GBPInsights.find({ businessId: ctx.businessId, date: { $gte: tokenDoc.connectedAt } }).lean(),
+  ]);
+  const avgPerMonth = (rows: any[], field: string): number | null => {
+    if (rows.length === 0) return null;
+    return Math.round((sumField(rows, field) / rows.length) * 30);
+  };
+  const impact = {
+    connectedAt: tokenDoc.connectedAt,
+    before: {
+      views: avgPerMonth(beforeRows, 'views'),
+      callClicks: avgPerMonth(beforeRows, 'callClicks'),
+      directionRequests: avgPerMonth(beforeRows, 'directionRequests'),
+      days: beforeRows.length,
+    },
+    after: {
+      views: avgPerMonth(afterRows, 'views'),
+      callClicks: avgPerMonth(afterRows, 'callClicks'),
+      directionRequests: avgPerMonth(afterRows, 'directionRequests'),
+      days: afterRows.length,
+    },
+  };
+
   // --- Keywords (MONTHLY only) ---
   // Google's searchkeywords endpoint has no daily granularity, so this section
   // is inherently month-based and does NOT follow the 7/14/28/90-day range.
@@ -154,6 +212,8 @@ export async function GET(request: NextRequest) {
     googleEmail: tokenDoc?.googleEmail ?? null,
     summary,
     changes,
+    impact,
+    monthlyTrend,
     timeSeries,
     searchData: {
       totalSearchImpressions,

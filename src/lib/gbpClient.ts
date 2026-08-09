@@ -482,6 +482,31 @@ export async function uploadLocationPhoto(
   return { liveWriteApplied: true, mediaName: data.name };
 }
 
+/**
+ * Deletes a photo from the live GBP. Gated, same as uploadLocationPhoto.
+ * `mediaName` is the full v4 resource name returned by uploadLocationPhoto
+ * (e.g. "accounts/123/locations/456/media/789") — already fully-qualified,
+ * so this hits it directly rather than re-deriving the location path.
+ */
+export async function deleteLocationMedia(
+  businessId: string,
+  mediaName: string
+): Promise<{ liveWriteApplied: boolean }> {
+  if (!gbpWritesEnabled()) return { liveWriteApplied: false };
+  await dbConnect();
+
+  const accessToken = await getValidToken(businessId);
+  const res = await fetch(`${MYBUSINESS_V4_BASE}/${mediaName}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok && res.status !== 404) {
+    const err = await res.text();
+    throw new Error(`GBP deleteLocationMedia failed: ${res.status} ${err}`);
+  }
+  return { liveWriteApplied: true };
+}
+
 export interface GbpMediaItem {
   name: string;
   category: string;

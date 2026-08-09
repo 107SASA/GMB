@@ -73,6 +73,11 @@ export async function POST(req: Request) {
         googleMapsUrl: body.googleMapsUrl || undefined,
         coordinates:
           body.latitude && body.longitude ? { lat: body.latitude, lng: body.longitude } : undefined,
+        // Live Places snapshot — see ShadowBusinessData for why these exist
+        // separately from a synced rating/reviewCount.
+        placesRating: typeof body.placesRating === 'number' ? body.placesRating : undefined,
+        placesReviewCount: typeof body.placesReviewCount === 'number' ? body.placesReviewCount : undefined,
+        editorialSummary: body.editorialSummary || undefined,
       },
     });
 

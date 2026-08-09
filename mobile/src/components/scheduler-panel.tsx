@@ -120,7 +120,17 @@ function PostRow({
   );
 }
 
-export function SchedulerPanel({ scrollable = true }: { scrollable?: boolean }) {
+export function SchedulerPanel({
+  scrollable = true,
+  showUpcoming = true,
+}: {
+  scrollable?: boolean;
+  /** The Posts tab now has its own richer "Upcoming Posts" carousel above
+   *  this panel (see posts-tab.tsx) — pass false there to avoid showing the
+   *  same upcoming posts twice. The standalone Scheduler screen keeps the
+   *  default (true), where this is the only place they're shown. */
+  showUpcoming?: boolean;
+}) {
   const { activeBusinessId } = useBusiness();
   const queryClient = useQueryClient();
   const picker = useDateTimePicker();
@@ -205,26 +215,30 @@ export function SchedulerPanel({ scrollable = true }: { scrollable?: boolean }) 
       </View>
 
       <View className="px-5">
-        <SectionLabel>Upcoming posts</SectionLabel>
-        {upcoming.length === 0 ? (
-          <Text className="px-1 font-sans text-sm text-zinc-500">
-            Nothing scheduled. Generate posts or schedule drafts from the Content tab.
-          </Text>
-        ) : (
-          upcoming.map((post) => (
-            <PostRow
-              key={post._id}
-              post={post}
-              onPublish={() => confirmPublish(post)}
-              onReschedule={() =>
-                picker.open(
-                  post.scheduledDate ? new Date(post.scheduledDate) : new Date(),
-                  (date) => reschedule.mutate({ postId: post._id, date })
-                )
-              }
-              onDelete={() => confirmDelete(post)}
-            />
-          ))
+        {showUpcoming && (
+          <>
+            <SectionLabel>Upcoming posts</SectionLabel>
+            {upcoming.length === 0 ? (
+              <Text className="px-1 font-sans text-sm text-zinc-500">
+                Nothing scheduled. Generate posts or schedule drafts from the Content tab.
+              </Text>
+            ) : (
+              upcoming.map((post) => (
+                <PostRow
+                  key={post._id}
+                  post={post}
+                  onPublish={() => confirmPublish(post)}
+                  onReschedule={() =>
+                    picker.open(
+                      post.scheduledDate ? new Date(post.scheduledDate) : new Date(),
+                      (date) => reschedule.mutate({ postId: post._id, date })
+                    )
+                  }
+                  onDelete={() => confirmDelete(post)}
+                />
+              ))
+            )}
+          </>
         )}
 
         {drafts.length > 0 && (

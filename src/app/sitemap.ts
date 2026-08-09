@@ -1,4 +1,5 @@
 import { MetadataRoute } from "next";
+import { SERVICES } from "@/lib/servicesData";
 
 const BASE_URL = "https://growwmatics.com";
 
@@ -10,7 +11,12 @@ type Route = {
 
 const routes: Route[] = [
   { path: "/", changeFrequency: "weekly", priority: 1 },
+  { path: "/services", changeFrequency: "weekly", priority: 0.9 },
+  ...SERVICES.map((s): Route => ({ path: `/services/${s.slug}`, changeFrequency: "weekly", priority: 0.85 })),
+  { path: "/features", changeFrequency: "weekly", priority: 0.85 },
+  { path: "/free-report", changeFrequency: "weekly", priority: 0.9 },
   { path: "/pricing", changeFrequency: "weekly", priority: 0.9 },
+  { path: "/faq", changeFrequency: "monthly", priority: 0.7 },
   { path: "/contact", changeFrequency: "monthly", priority: 0.7 },
   { path: "/privacy", changeFrequency: "monthly", priority: 0.5 },
   { path: "/terms", changeFrequency: "monthly", priority: 0.5 },

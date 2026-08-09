@@ -51,10 +51,17 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
+    // Pre-existing bug found while wiring this up for the first real caller
+    // (mobile's manual "create post" form) — nothing on the web called this
+    // route before, so it went unnoticed: the Post schema's status enum is
+    // lowercase ('draft'|'pending_approval'|...), but this defaulted to the
+    // uppercase "PENDING_APPROVAL", which Mongoose's enum validator rejects.
+    // Every manual-create call that didn't explicitly pass a status would
+    // have thrown a ValidationError.
     const post = await Post.create({
       ...body,
       businessId: ctx.businessId,
-      status: body.status || "PENDING_APPROVAL",
+      status: body.status || "draft",
     });
 
     return NextResponse.json({ message: "Post created successfully", post }, { status: 201 });

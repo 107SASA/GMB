@@ -5,6 +5,35 @@ import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
 
+/** GET -> single post, for the mobile post-detail screen (view a post that
+ *  isn't necessarily still in the buffer's ±calendar-window `allPosts`). */
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const ctx = await requireBusinessContext();
+    if (!ctx.ok) return ctx.response;
+
+    const { id } = await params;
+    await dbConnect();
+
+    const post = await Post.findOne({
+      _id: new mongoose.Types.ObjectId(id),
+      businessId: new mongoose.Types.ObjectId(ctx.businessId),
+    }).lean();
+
+    if (!post) {
+      return NextResponse.json({ error: 'Post not found or access denied' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, post }, { status: 200 });
+  } catch (error: any) {
+    console.error('Failed to fetch post:', error);
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+  }
+}
+
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }

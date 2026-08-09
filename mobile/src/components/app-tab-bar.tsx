@@ -14,9 +14,10 @@ const ACTIVE_TINT = { light: '#0c7149', dark: '#9df5c3' } as const;
 
 const ICONS: Record<string, { outline: keyof typeof Ionicons.glyphMap; filled: keyof typeof Ionicons.glyphMap }> = {
   dashboard: { outline: 'home-outline', filled: 'home' },
-  gbp: { outline: 'storefront-outline', filled: 'storefront' },
+  performance: { outline: 'stats-chart-outline', filled: 'stats-chart' },
+  posts: { outline: 'newspaper-outline', filled: 'newspaper' },
   photos: { outline: 'folder-outline', filled: 'folder' },
-  leads: { outline: 'people-outline', filled: 'people' },
+  reviews: { outline: 'star-outline', filled: 'star' },
 };
 
 /**

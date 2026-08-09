@@ -7,12 +7,6 @@ import { useBusiness } from '@/business/BusinessContext';
 import { AppTabBar } from '@/components/app-tab-bar';
 import { BusinessSwitcher } from '@/components/business-switcher';
 import { LoadingScreen, Screen, ScreenTitle } from '@/components/ui';
-import {
-  HIDE_TAB_WHEN_LOCKED,
-  SURFACE_MODULES,
-  useEntitlements,
-  type SurfaceKey,
-} from '@/entitlements/entitlements';
 import { useTheme } from '@/lib/theme';
 
 /** Shown on first login when several businesses exist and none is chosen. */
@@ -35,7 +29,6 @@ function SelectBusinessScreen() {
 export default function AppLayout() {
   const { isAuthenticated } = useAuth();
   const { isLoading, needsSelection } = useBusiness();
-  const { modules } = useEntitlements();
   const t = useTheme();
   const router = useRouter();
 
@@ -51,13 +44,6 @@ export default function AppLayout() {
   if (isLoading) return <LoadingScreen />;
   if (needsSelection) return <SelectBusinessScreen />;
 
-  // Per-module config choice: hidden tab vs visible-but-locked screen.
-  // href: null removes the tab from the bar (expo-router).
-  const tabHref = (surface: SurfaceKey) => {
-    const moduleKey = SURFACE_MODULES[surface];
-    return HIDE_TAB_WHEN_LOCKED[moduleKey] && !modules[moduleKey] ? null : undefined;
-  };
-
   return (
     <Tabs
       // Android back returns to the previously visited tab/screen instead of
@@ -72,15 +58,25 @@ export default function AppLayout() {
         sceneStyle: { backgroundColor: t.bg },
       }}
     >
-      {/* Reference layout: Home · GBP · Photos · All Contacts */}
+      {/* Flat 5-tab layout (Aug 2026 restructure, matching the competitor
+          reference app): Home · Performance · Posts · Photos · Reviews.
+          Each screen gates its own entitlement lock now (see LockedScreen
+          usage inside them) rather than the tab bar hiding itself — same
+          convention Home/GBP always used. */}
       <Tabs.Screen name="dashboard" options={{ title: 'Home' }} />
-      <Tabs.Screen name="gbp" options={{ title: 'GBP' }} />
+      <Tabs.Screen name="performance" options={{ title: 'Performance' }} />
+      <Tabs.Screen name="posts" options={{ title: 'Posts' }} />
       <Tabs.Screen name="photos" options={{ title: 'Photos' }} />
-      <Tabs.Screen name="leads" options={{ title: 'All Contacts', href: tabHref('leads') }} />
-      {/* Hidden sections — reachable from the header (gear/More) and in-app links. */}
+      <Tabs.Screen name="reviews" options={{ title: 'Reviews' }} />
+      {/* Hidden sections — reachable from the header (gear/More) and in-app
+          links. `gbp` is now just Business Profile fields (see gbp/index.tsx)
+          — its Performance/Posts/Reviews/Photos sub-tabs moved to the flat
+          tabs above. `leads` (All Contacts) moved off the bar into More too,
+          matching the reference app, which doesn't show Contacts as a tab. */}
+      <Tabs.Screen name="gbp" options={{ href: null }} />
+      <Tabs.Screen name="leads" options={{ href: null }} />
       <Tabs.Screen name="audit" options={{ href: null }} />
       <Tabs.Screen name="inbox" options={{ href: null }} />
-      <Tabs.Screen name="reviews" options={{ href: null }} />
       <Tabs.Screen name="more" options={{ href: null }} />
       <Tabs.Screen name="content" options={{ href: null }} />
       <Tabs.Screen name="scheduler" options={{ href: null }} />

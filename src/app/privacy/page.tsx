@@ -4,9 +4,12 @@ import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 import { COMPANY } from "@/lib/companyInfo";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | GrowwMatics AI",
+  // See contact/page.tsx — root layout's template appends " | GrowwMatics AI"
+  // already; don't repeat it here or the rendered <title> doubles it up.
+  title: "Privacy Policy",
   description:
     "How GrowwMatics AI collects, uses, stores, and protects your data, including Google Business Profile data accessed through the Google APIs.",
+  alternates: { canonical: "/privacy" },
 };
 
 export default function PrivacyPolicyPage() {

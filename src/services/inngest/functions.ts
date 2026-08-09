@@ -1127,6 +1127,80 @@ export const processPublishPostJob = inngest.createFunction(
   }
 );
 
+// 6b. Scheduled GBP media publish — same mechanism as the posts cron above
+// (publishScheduledPostsCron / processPublishPostJob), but for photos
+// (GbpMediaAsset.scheduledFor). Reuses gbpMediaService.publishAsset — which
+// already contains the GBP_LIVE_WRITES_ENABLED gate, the LOGO/COVER
+// singleton swap-out, and activity logging — instead of duplicating any of
+// that here.
+export const publishScheduledMediaCron = inngest.createFunction(
+  { id: "publish-scheduled-media-cron", triggers: [{ cron: "*/15 * * * *" }] }, // Run every 15 minutes
+  async ({ step }) => {
+    const events = await step.run("fetch-media-to-publish", async () => {
+      await dbConnect();
+      const { default: GbpMediaAsset } = await import("@/models/GbpMediaAsset");
+      const now = new Date();
+      const ready = await GbpMediaAsset.find({
+        status: "staged",
+        scheduledFor: { $lte: now },
+      }).lean();
+
+      return ready.map((a: any) => ({
+        name: "gbp-media/publish-scheduled",
+        data: { assetId: a._id.toString(), businessId: a.businessId.toString() },
+      }));
+    });
+
+    if (events.length > 0) {
+      await step.sendEvent("dispatch-media-publish-jobs", events);
+    }
+    return { success: true, dispatched: events.length };
+  }
+);
+
+export const processScheduledMediaPublishJob = inngest.createFunction(
+  { id: "process-scheduled-media-publish-job", retries: 3, triggers: [{ event: "gbp-media/publish-scheduled" }] },
+  async ({ event, step }) => {
+    const { assetId, businessId } = event.data;
+
+    await step.run("publish-media", async () => {
+      await dbConnect();
+      const { publishAsset } = await import("@/lib/gbpMediaService");
+      const { default: GbpMediaAsset } = await import("@/models/GbpMediaAsset");
+
+      try {
+        // "Scheduled publish" — a real, honest label. This is the owner's
+        // own pre-set schedule firing, not an autonomous AI decision (see
+        // logProfileActivity.ts's doc comment on why that distinction is
+        // enforced everywhere in this codebase).
+        const { liveWriteApplied } = await publishAsset(businessId, assetId, {
+          name: "Scheduled publish",
+        });
+
+        if (!liveWriteApplied) {
+          // Live writes are platform-wide disabled — publishAsset correctly
+          // left the asset 'staged' rather than pretending it went live (see
+          // that function's own comment). Clear scheduledFor anyway so this
+          // cron doesn't keep reprocessing the exact same asset every 15
+          // minutes forever with no forward progress; the owner can publish
+          // it manually once live writes are enabled.
+          await GbpMediaAsset.updateOne(
+            { _id: assetId, businessId, status: "staged" },
+            { $unset: { scheduledFor: "" } }
+          );
+          console.log(`[gbp-media] Scheduled publish for asset ${assetId} skipped — live writes disabled; unscheduled.`);
+        }
+      } catch (err: any) {
+        // publishAsset already marks the asset 'failed' + failureReason
+        // internally on a real Google error — nothing further to persist here.
+        console.error(`[gbp-media] Scheduled publish failed for asset ${assetId}:`, err.message);
+      }
+    });
+
+    return { success: true };
+  }
+);
+
 // 7. Generate Audit Job
 export const generateAuditJob = inngest.createFunction(
   { id: 'generate-audit', triggers: [{ event: 'audit/generate.requested' }] },
@@ -1183,6 +1257,46 @@ export const generateAuditJob = inngest.createFunction(
     });
 
     return { success: true, auditId };
+  }
+);
+
+// 7b. Stale PENDING audit cleanup — an Audit sitting in PENDING is a
+// background job a user (often a free-report lead) is actively waiting on.
+// If dispatch ever silently stalls again (e.g. the Aug 2026 incident where a
+// long-running dev server's /api/inngest introspection hung, so queued
+// audit/generate.requested events were never picked up), the audit would
+// otherwise sit in PENDING forever with the report page showing stale/empty
+// data and no error. Runs every minute; deletes (not FAILs — the free-report
+// route creates a brand-new audit on retry, so a leftover doc serves no
+// purpose) any audit still PENDING more than 5 minutes after creation.
+//
+// Deleting rather than failing is also why this is safe for freeAuditUsed:
+// auditService.ts only flips that flag on COMPLETED, so a business whose
+// only audit gets swept here was never charged its free report and can
+// resubmit immediately.
+export const cleanupStalePendingAudits = inngest.createFunction(
+  { id: "cleanup-stale-pending-audits", triggers: [{ cron: "*/1 * * * *" }] },
+  async ({ step }) => {
+    const result = await step.run("delete-stale-pending", async () => {
+      await dbConnect();
+      const { default: Audit } = await import("@/models/Audit");
+      const cutoff = new Date(Date.now() - 5 * 60 * 1000);
+      const stale = await Audit.find({ status: "PENDING", createdAt: { $lte: cutoff } })
+        .select("_id businessId createdAt")
+        .lean();
+      if (stale.length === 0) return { deleted: 0 };
+
+      await Audit.deleteMany({ _id: { $in: stale.map((a: any) => a._id) } });
+      for (const a of stale as any[]) {
+        console.warn(
+          `[cleanup-stale-pending-audits] Deleted audit ${a._id} (businessId=${a.businessId}) — ` +
+          `still PENDING ${Math.round((Date.now() - new Date(a.createdAt).getTime()) / 60000)}min after creation.`
+        );
+      }
+      return { deleted: stale.length };
+    });
+
+    return { success: true, ...result };
   }
 );
 

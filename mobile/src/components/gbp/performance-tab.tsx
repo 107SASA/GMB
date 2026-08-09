@@ -5,16 +5,23 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { fetchDashboardStats, fetchGbpInsights } from '@/api/endpoints/dashboard';
-import { fetchReviews } from '@/api/endpoints/reviews';
 import type { AuditCompetitor, AuditKeywordRank } from '@/api/endpoints/audit';
 import { useBusiness } from '@/business/BusinessContext';
-import { WeeklyBars } from '@/components/charts';
+import { LineChart } from '@/components/charts';
 import { useLatestAudit } from '@/components/gbp/use-latest-audit';
+import { useKeywordChanges } from '@/components/gbp/use-keyword-changes';
+import { RankMap } from '@/components/gbp/rank-map';
+import { ReviewTrendsSection } from '@/components/gbp/review-trends-section';
 import { Skeleton } from '@/components/ui';
-import { computeReviewInsights } from '@/lib/review-insights';
 import { useTheme } from '@/lib/theme';
 
 const SHOW_LIMIT = 5;
+type TrendMetric = 'views' | 'callClicks' | 'directionRequests';
+const TREND_TABS: { key: TrendMetric; label: string }[] = [
+  { key: 'views', label: 'Views' },
+  { key: 'callClicks', label: 'Calls' },
+  { key: 'directionRequests', label: 'Directions' },
+];
 
 function fmtRank(rank: number | null): string {
   return rank == null ? '—' : rank.toFixed(1);
@@ -57,7 +64,37 @@ function ShowMore({ expanded, onPress }: { expanded: boolean; onPress: () => voi
   );
 }
 
-function KeywordRows({ keywords }: { keywords: AuditKeywordRank[] }) {
+/** Rank-change badge — green "+0.4" (improved) / red "-0.4" (dropped) / "~" (no previous data or unchanged). */
+function ChangeBadge({ change }: { change: number | null }) {
+  const t = useTheme();
+  if (change == null || Math.abs(change) < 0.05) {
+    return (
+      <View className="items-center justify-center rounded-lg bg-surface-overlay px-2 py-1">
+        <Text className="font-sans-bold text-xs text-zinc-500">~</Text>
+      </View>
+    );
+  }
+  const improved = change > 0;
+  return (
+    <View
+      className="items-center justify-center rounded-lg px-2 py-1"
+      style={{ backgroundColor: improved ? `${t.emerald}26` : `${t.rose}26` }}
+    >
+      <Text className="font-sans-bold text-xs" style={{ color: improved ? t.emerald : t.rose }}>
+        {improved ? '+' : '-'}
+        {Math.abs(change).toFixed(1)}
+      </Text>
+    </View>
+  );
+}
+
+function KeywordRows({
+  keywords,
+  previousRankByKeyword,
+}: {
+  keywords: AuditKeywordRank[];
+  previousRankByKeyword: Map<string, number>;
+}) {
   const [expanded, setExpanded] = useState(false);
   const rows = expanded ? keywords : keywords.slice(0, SHOW_LIMIT);
   return (
@@ -66,24 +103,35 @@ function KeywordRows({ keywords }: { keywords: AuditKeywordRank[] }) {
         <Text className="flex-1 font-sans-bold text-xs uppercase tracking-wide text-zinc-500">
           Keywords
         </Text>
-        <Text className="font-sans-bold text-xs uppercase tracking-wide text-zinc-500">
+        <Text className="w-14 text-right font-sans-bold text-xs uppercase tracking-wide text-zinc-500">
           Rank
         </Text>
+        <Text className="w-16 text-right font-sans-bold text-xs uppercase tracking-wide text-zinc-500">
+          Change
+        </Text>
       </View>
-      {rows.map((kw, i) => (
-        <View
-          key={kw.keyword + i}
-          className="flex-row items-center gap-3 border-b border-surface-border px-4 py-3.5 last:border-b-0"
-        >
-          <Text className="w-5 font-sans text-sm text-zinc-500">{i + 1}</Text>
-          <Text className="flex-1 font-sans text-base text-zinc-200" numberOfLines={1}>
-            {kw.keyword}
-          </Text>
-          <Text className="font-sans-bold text-base text-white">
-            {fmtRank(kw.rank ?? kw.avgRank)}
-          </Text>
-        </View>
-      ))}
+      {rows.map((kw, i) => {
+        const currentRank = kw.rank ?? kw.avgRank;
+        const prevRank = previousRankByKeyword.get(kw.keyword);
+        const change = prevRank != null && currentRank != null ? prevRank - currentRank : null;
+        return (
+          <View
+            key={kw.keyword + i}
+            className="flex-row items-center gap-3 border-b border-surface-border px-4 py-3.5 last:border-b-0"
+          >
+            <Text className="w-5 font-sans text-sm text-zinc-500">{i + 1}</Text>
+            <Text className="flex-1 font-sans text-base text-zinc-200" numberOfLines={1}>
+              {kw.keyword}
+            </Text>
+            <Text className="w-14 text-right font-sans-bold text-base text-white">
+              {fmtRank(currentRank)}
+            </Text>
+            <View className="w-16 items-end">
+              <ChangeBadge change={change} />
+            </View>
+          </View>
+        );
+      })}
       {keywords.length > SHOW_LIMIT && (
         <ShowMore expanded={expanded} onPress={() => setExpanded((v) => !v)} />
       )}
@@ -175,15 +223,12 @@ export function PerformanceTab() {
   const router = useRouter();
   const t = useTheme();
   const { audit, isLoading: auditLoading } = useLatestAudit();
+  const { previousRankByKeyword } = useKeywordChanges();
+  const [trendMetric, setTrendMetric] = useState<TrendMetric>('views');
 
   const gbp = useQuery({
     queryKey: ['gbp-insights', activeBusinessId],
     queryFn: () => fetchGbpInsights(28),
-    enabled: !!activeBusinessId,
-  });
-  const reviews = useQuery({
-    queryKey: ['reviews', activeBusinessId],
-    queryFn: fetchReviews,
     enabled: !!activeBusinessId,
   });
   // Rating / total reviews come from /api/dashboard/stats — the same numbers
@@ -206,12 +251,6 @@ export function PerformanceTab() {
     .filter((c, i, arr) => arr.findIndex((x) => x.name === c.name) === i)
     .sort((a, b) => (a.estimatedRank ?? a.avgRank ?? 99) - (b.estimatedRank ?? b.avgRank ?? 99));
   const geo = data?.geoGridRank ?? null;
-  const insights = reviews.data ? computeReviewInsights(reviews.data) : null;
-  const industryAvg = data?.reviewAnalysis?.industryAverage ?? null;
-  // The website's audit reports Google's true reviews/week; the client-side
-  // fallback counts synced docs (their createdAt is the sync date, which
-  // over-counts after a bulk import) — only used when no audit exists.
-  const avgPerWeek = data?.reviewAnalysis?.reviewsPerWeek ?? insights?.avgPerWeek ?? 0;
   const auditDate = audit?.createdAt
     ? new Date(audit.createdAt).toLocaleDateString(undefined, {
         month: 'short',
@@ -219,6 +258,11 @@ export function PerformanceTab() {
         year: 'numeric',
       })
     : null;
+  // Real, specific — not "AI is working on optimisations" (implies
+  // autonomous background work we don't do; see ai-agent-card.tsx /
+  // ProfileActivity.ts for why that distinction matters in this codebase).
+  const topPriorityFix = data?.priorityFixes?.[0] ?? null;
+  const monthlyTrend = gbp.data?.monthlyTrend ?? [];
 
   return (
     <View className="px-4">
@@ -230,6 +274,30 @@ export function PerformanceTab() {
           <Text className="font-sans text-xs text-zinc-500">Last 28 days</Text>
         </View>
       </View>
+
+      {/* Real, specific next step from your own audit — not a vague "AI is
+          optimizing" claim (see topPriorityFix comment above). */}
+      {topPriorityFix && (
+        <Pressable
+          onPress={() => router.push(`/audit/${audit!._id}?highlight=priorityFixes-0`)}
+          // No `className` — see note above.
+          style={{
+            marginTop: 12,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            borderRadius: 16,
+            backgroundColor: `${t.brandBright}1a`,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+          }}
+        >
+          <Ionicons name="sparkles" size={16} color={t.brandBright} />
+          <Text className="flex-1 font-sans text-sm leading-5" style={{ color: t.brandBright }}>
+            Next priority: <Text className="font-sans-bold">{topPriorityFix.title}</Text>
+          </Text>
+        </Pressable>
+      )}
 
       {gbp.isLoading ? (
         <Skeleton className="mt-3 h-24" />
@@ -264,55 +332,54 @@ export function PerformanceTab() {
         </Text>
       </View>
 
-      {/* Rank for targeted keywords */}
-      <SectionTitle hint>Rank for Targeted Keywords</SectionTitle>
-      {auditLoading ? (
-        <Skeleton className="h-48" />
-      ) : keywords.length > 0 ? (
-        <KeywordRows keywords={keywords} />
-      ) : (
-        <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-5">
-          <Text className="font-sans text-sm text-zinc-400">
-            No keyword ranks yet — run an audit to track where you rank for your target searches.
+      {!!avgRank && (
+        <View className="mt-3 flex-row items-center gap-2 rounded-full bg-surface-overlay px-4 py-2.5">
+          <Ionicons name="logo-google" size={14} color={t.textFaint} />
+          <Text className="flex-1 font-sans text-xs text-zinc-400">
+            Rankings may keep improving as Google processes your changes.
           </Text>
         </View>
       )}
 
-      {/* Rank by location (geo grid summary) */}
-      <SectionTitle>Rank by Location</SectionTitle>
-      {geo && (geo.overallAvgRank != null || (geo.keywords ?? []).length > 0) ? (
-        <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-4">
-          {geo.keywords?.[0]?.keyword ? (
-            <View className="mb-3 self-start rounded-full bg-surface-overlay px-3 py-2">
-              <Text className="font-sans text-sm text-zinc-300">Keyword: {geo.keywords[0].keyword}</Text>
-            </View>
-          ) : null}
-          <View className="flex-row items-center gap-4">
-            <View
-              className="h-16 w-16 items-center justify-center rounded-full"
-              style={{ backgroundColor: `${t.rose}33` }}
+      {/* Last 6 months trends */}
+      <SectionTitle>Last 6 Months Trends</SectionTitle>
+      <View className="flex-row gap-2">
+        {TREND_TABS.map((tab) => {
+          const active = trendMetric === tab.key;
+          return (
+            <Pressable
+              key={tab.key}
+              onPress={() => setTrendMetric(tab.key)}
+              // No `className` — see note above.
+              style={{
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: active ? t.brandBright : t.border,
+                backgroundColor: active ? `${t.brandBright}1a` : 'transparent',
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+              }}
             >
-              <Text className="font-display text-lg" style={{ color: t.rose }}>
-                {geo.overallAvgRank != null && geo.overallAvgRank > 20
-                  ? '20+'
-                  : fmtRank(geo.overallAvgRank)}
+              <Text className="font-sans-bold text-sm" style={{ color: active ? t.brandBright : t.textFaint }}>
+                {tab.label}
               </Text>
-            </View>
-            <Text className="flex-1 font-sans text-sm leading-5 text-zinc-400">
-              Average rank across the locations around you. Open the web dashboard for the full
-              map view.
-            </Text>
-          </View>
-        </View>
+            </Pressable>
+          );
+        })}
+      </View>
+      {gbp.isLoading ? (
+        <Skeleton className="mt-3 h-40" />
       ) : (
-        <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-5">
-          <Text className="font-sans text-sm text-zinc-400">
-            Location grid data appears after your next audit.
-          </Text>
+        <View className="mt-3 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
+          <LineChart
+            points={monthlyTrend.map((m) => ({ label: m.month, value: m[trendMetric] }))}
+            color={t.brandBright}
+          />
         </View>
       )}
 
-      {/* Competitors ahead of you */}
+      {/* Competitors ahead of you — moved above Keywords to match the
+          reference app's order. */}
       <SectionTitle>Competitors Ahead of You</SectionTitle>
       {auditLoading ? (
         <Skeleton className="h-56" />
@@ -321,8 +388,6 @@ export function PerformanceTab() {
           competitors={competitors}
           you={{
             name: activeBusiness?.name ?? 'Your business',
-            // Same numbers the website dashboard shows; audit snapshot only
-            // as fallback (it can lag behind the live review count).
             rating: stats.data?.metrics.avgRating ?? data?.reviewAnalysis?.averageRating ?? null,
             reviews:
               stats.data?.metrics.totalReviews ?? data?.reviewAnalysis?.reviewCount ?? null,
@@ -337,61 +402,42 @@ export function PerformanceTab() {
         </View>
       )}
 
-      {/* Review trends */}
-      <SectionTitle>Review Trends — last 8 weeks</SectionTitle>
-      {reviews.isLoading ? (
-        <Skeleton className="h-56" />
-      ) : insights ? (
+      {/* Rank for targeted keywords */}
+      <SectionTitle hint>Rank for Targeted Keywords</SectionTitle>
+      {auditLoading ? (
+        <Skeleton className="h-48" />
+      ) : keywords.length > 0 ? (
+        <KeywordRows keywords={keywords} previousRankByKeyword={previousRankByKeyword} />
+      ) : (
+        <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-5">
+          <Text className="font-sans text-sm text-zinc-400">
+            No keyword ranks yet — run an audit to track where you rank for your target searches.
+          </Text>
+        </View>
+      )}
+
+      {/* Rank by location — real geo-grid map image (see rank-map.tsx),
+          reusing the web dashboard's existing static-map endpoint. */}
+      <SectionTitle>Rank by Location</SectionTitle>
+      {geo?.keywords?.[0]?.keyword && audit ? (
         <>
-          <View className="mb-3 flex-row items-center justify-between rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
-            <Text className="font-sans text-base text-zinc-300">Your Avg. Reviews</Text>
-            <Text className="font-display text-xl text-white">
-              {avgPerWeek} <Text className="font-sans-semibold text-sm text-zinc-500">/ Week</Text>
-            </Text>
+          <View className="mb-3 self-start rounded-full bg-surface-overlay px-3 py-2">
+            <Text className="font-sans text-sm text-zinc-300">Keyword: {geo.keywords[0].keyword}</Text>
           </View>
-          <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-4">
-            <WeeklyBars data={insights.weekly} industryAvg={industryAvg} />
-          </View>
-          <View className="mb-4 mt-3 flex-row gap-3">
-            <View className="flex-1 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
-              <Text className="font-sans text-sm text-zinc-400">Rating</Text>
-              <View className="mt-1 flex-row items-center gap-1.5">
-                <Text className="font-display text-2xl text-white">
-                  {stats.data?.metrics.avgRating ?? insights.avgRating}
-                </Text>
-                <Ionicons name="star" size={18} color={t.amber} />
-              </View>
-            </View>
-            <View className="flex-1 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
-              <Text className="font-sans text-sm text-zinc-400">Reviews</Text>
-              <Text className="mt-1 font-display text-2xl text-white">
-                {stats.data?.metrics.totalReviews ?? insights.total}
-              </Text>
-              {insights.eightWeekChangePct != null && (
-                <View
-                  className="mt-1.5 flex-row items-center gap-1 self-start rounded-full px-2.5 py-1"
-                  style={{
-                    backgroundColor:
-                      insights.eightWeekChangePct >= 0 ? `${t.emerald}26` : `${t.rose}26`,
-                  }}
-                >
-                  <Ionicons
-                    name={insights.eightWeekChangePct >= 0 ? 'caret-up' : 'caret-down'}
-                    size={11}
-                    color={insights.eightWeekChangePct >= 0 ? t.emerald : t.rose}
-                  />
-                  <Text
-                    className="font-sans-bold text-xs"
-                    style={{ color: insights.eightWeekChangePct >= 0 ? t.emerald : t.rose }}
-                  >
-                    {Math.abs(insights.eightWeekChangePct)}% last 8 w…
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
+          <RankMap auditId={audit._id} kwIndex={0} />
         </>
-      ) : null}
+      ) : (
+        <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-5">
+          <Text className="font-sans text-sm text-zinc-400">
+            Location grid data appears after your next audit.
+          </Text>
+        </View>
+      )}
+
+      {/* Review trends — extracted to review-trends-section.tsx (Aug 2026),
+          now also shown on the Reviews tab, matching the reference app. */}
+      <SectionTitle>Review Trends — last 8 weeks</SectionTitle>
+      <ReviewTrendsSection />
     </View>
   );
 }

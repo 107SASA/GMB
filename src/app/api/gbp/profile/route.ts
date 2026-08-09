@@ -3,8 +3,17 @@ import { z } from 'zod';
 import { requireBusinessContext } from '@/lib/tenant';
 import { fetchLocationProfile, updateLocationProfile, GBPAuthError } from '@/lib/gbpClient';
 import { gbpWritesEnabled } from '@/lib/gbpSafety';
+import { logProfileActivity } from '@/lib/logProfileActivity';
 import dbConnect from '@/lib/mongodb';
 import GBPToken from '@/models/GBPToken';
+import User from '@/models/User';
+
+const FIELD_LABELS: Record<string, string> = {
+  title: 'business name',
+  description: 'description',
+  primaryPhone: 'phone number',
+  website: 'website',
+};
 
 export const dynamic = 'force-dynamic';
 
@@ -66,6 +75,20 @@ export async function PATCH(req: Request) {
 
   try {
     const { liveWriteApplied } = await updateLocationProfile(ctx.businessId, parsed.data);
+
+    const changedFields = Object.keys(parsed.data).map((f) => FIELD_LABELS[f] ?? f);
+    if (changedFields.length > 0) {
+      const user = await User.findById(ctx.userId).select('fullName').lean();
+      void logProfileActivity({
+        businessId: ctx.businessId,
+        organizationId: ctx.organizationId,
+        type: 'profile_updated',
+        title: 'Your Google Business Profile was updated',
+        detail: `Updated ${changedFields.join(', ')}`,
+        updatedBy: (user as any)?.fullName || 'You',
+      });
+    }
+
     return NextResponse.json({ success: true, liveWriteApplied });
   } catch (err: any) {
     if (err instanceof GBPAuthError) {

@@ -21,6 +21,20 @@ export interface IBusiness extends Document {
   website?: string;
   rating: number;
   reviewCount: number;
+  /**
+   * Point-in-time rating/review-count snapshot captured from the Google
+   * Places Details API at free-report intake (see src/lib/shadowAccount.ts).
+   * Distinct from `rating`/`reviewCount` above (which are meant to reflect a
+   * live-synced GBP value) — these are a one-off read taken when the visitor
+   * picked their listing from autocomplete, NOT kept in sync afterward.
+   * Used only as a display/report fallback for businesses that have no
+   * synced Review documents yet (e.g. every free-report lead, since fastMode
+   * audits skip review sync — see auditService.ts). Never used to feed
+   * per-review scoring (quality/keyword-coverage), which still requires
+   * real Review documents.
+   */
+  placesRating?: number;
+  placesReviewCount?: number;
   placeId?: string;
   serpApiDataId?: string;
   photoCount?: number;
@@ -170,6 +184,9 @@ const BusinessSchema: Schema = new Schema(
     website: { type: String },
     rating: { type: Number, default: 0 },
     reviewCount: { type: Number, default: 0 },
+    // ADDITIVE — see placesRating/placesReviewCount in IBusiness above.
+    placesRating: { type: Number },
+    placesReviewCount: { type: Number },
     // NOT globally unique — see the compound index at the bottom of this file.
     // A single Google Business Profile can legitimately be managed by more than
     // one tenant (the owner and their agency, for example).

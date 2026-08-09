@@ -7,8 +7,10 @@ import { fetchMapsLocalResultsBatch } from './dataForSeoClient';
 //
 // Status meanings:
 //   Complete  – field is present and populated
-//   Missing   – field is definitely absent
-//   Unknown   – requires GBP OAuth API access we don't have; scored as 0.5
+//   Missing   – field was checkable and confirmed absent
+//   Unknown   – we had no way to check (requires GBP OAuth access, or a
+//               SerpApi resolution that hasn't happened yet); scored as 0.5,
+//               benefit of the doubt rather than penalized like Missing
 //
 // Scoring: Complete=1, Unknown=0.5, Missing/Partial=0
 
@@ -26,12 +28,41 @@ export function calculateProfileCompletion(business: any) {
     }
   };
 
+  // Real GBP Business Profile Management API access (OAuth) — set only by
+  // the "Connect Google" flow (gbpConnect.ts / reportConnect.ts), never by
+  // /free-report's Places autocomplete (that only sets googlePlaceId/
+  // googleConnected, which just means "a listing was picked", not that we
+  // have owner-authorized access to it). Without this, Additional Keywords/
+  // Business Description/Services Listed/Social Links are genuinely
+  // unknowable from any API we call — Places doesn't expose them — so an
+  // empty value here means "never queryable", not "confirmed absent".
+  // INTENTIONAL: this is why those four checklist items below use
+  // addUnknown() instead of add() — do not "simplify" them back to add()
+  // to make the percentage math look more familiar; that's the exact bug
+  // this was fixed for (a free-report lead's profile completion penalized
+  // for fields we structurally never had a way to check). See
+  // PRODUCTION_READINESS / the free-report data-accuracy fix (Aug 2026).
+  const hasGbpConnection = !!business.googleLocationId;
+  const knownIf = (isKnown: boolean) => (isKnown ? true : undefined);
+
   // Fields we can definitively check from stored data
   add('Business Name',      !!business.name);
   add('Primary Category',   !!business.category || !!business.userDefinedCategory);
-  add('Additional Keywords', !!business.keywords && business.keywords.length > 0);
-  add('Business Description', !!business.description && business.description.length > 50);
-  add('Services Listed',    !!business.services && business.services.length > 0);
+  addUnknown(
+    'Additional Keywords',
+    knownIf(hasGbpConnection || (!!business.keywords && business.keywords.length > 0)),
+    !!business.keywords && business.keywords.length > 0,
+  );
+  addUnknown(
+    'Business Description',
+    knownIf(hasGbpConnection || (!!business.description && business.description.length > 0)),
+    !!business.description && business.description.length > 50,
+  );
+  addUnknown(
+    'Services Listed',
+    knownIf(hasGbpConnection || (!!business.services && business.services.length > 0)),
+    !!business.services && business.services.length > 0,
+  );
   add('Address',            !!business.address);
   add('Phone',              !!business.phone);
   add('Website',            !!business.website);
@@ -43,7 +74,7 @@ export function calculateProfileCompletion(business: any) {
     business.instagramUrl ||
     business.metaBusinessProfileUrl
   );
-  add('Social Links', hasSocial);
+  addUnknown('Social Links', knownIf(hasGbpConnection || hasSocial), hasSocial);
 
   // These two are populated from the SerpApi place-details response during data_id
   // resolution. If they've never been resolved, status is Unknown (benefit of the doubt).
@@ -66,7 +97,9 @@ export function calculateProfileCompletion(business: any) {
 
   return {
     data: { completionPercentage, checklist },
-    evidenceSource: 'Calculated from connected GBP data. Fields marked Unknown require GBP Management API access.'
+    evidenceSource: hasGbpConnection
+      ? 'Calculated from connected GBP data. Fields marked Unknown require GBP Management API access we don\'t have even when connected (Videos, Logo/Cover, Attributes, Booking Link).'
+      : 'Calculated from Google Places + intake data — this business is not yet connected via GBP OAuth, so keywords/description/services/social links marked Unknown could not be checked (Places API doesn\'t expose them), not confirmed absent.'
   };
 }
 

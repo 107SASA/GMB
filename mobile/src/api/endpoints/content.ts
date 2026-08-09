@@ -72,6 +72,10 @@ export const contentPostSchema = z.object({
   scheduledDate: z.string().nullable().catch(null),
   publishedAt: z.string().nullable().catch(null),
   createdAt: z.string().optional(),
+  // The backend's buffer/posts endpoints return raw .lean() Post docs, which
+  // already include imageUrl — this was just never declared here before, so
+  // zod silently stripped it on every parse.
+  imageUrl: z.string().nullable().optional().catch(null),
 });
 export type ContentPost = z.infer<typeof contentPostSchema>;
 
@@ -104,6 +108,41 @@ export async function fetchPostImages(ids: string[]): Promise<Record<string, str
   return z
     .object({ images: z.record(z.string(), z.string().nullable()).catch({}) })
     .parse(data).images;
+}
+
+/**
+ * GET /api/posts?status=published — paginated post history for "Recent
+ * Posts". Deliberately NOT /api/content/posts (that route hardcodes
+ * aiGenerated:true, which would hide manually-created posts — see
+ * createPost below). This route returns a bare array (two existing callers,
+ * web's history page and fetchScheduledPostsCount, already depend on that
+ * shape — not changing it), so there's no `total` here; pair this with
+ * fetchDashboardStats().metrics.postsPublished for the real total count.
+ */
+export async function fetchPublishedPosts(page: number, limit = 20): Promise<{ posts: ContentPost[]; hasMore: boolean }> {
+  const { data } = await api.get('/api/posts', { params: { status: 'published', page, limit } });
+  const posts = z
+    .array(contentPostSchema.nullable().catch(null))
+    .catch([])
+    .parse(data)
+    .filter((p): p is ContentPost => p !== null);
+  return { posts, hasMore: posts.length === limit };
+}
+
+export interface CreatePostInput {
+  title: string;
+  content: string;
+  postType?: string;
+  scheduledDate?: string;
+}
+
+/** POST /api/posts — manual post creation (not AI-generated). */
+export async function createPost(input: CreatePostInput): Promise<ContentPost> {
+  const { data } = await api.post('/api/posts', {
+    ...input,
+    status: input.scheduledDate ? 'scheduled' : 'draft',
+  });
+  return z.object({ message: z.string(), post: contentPostSchema }).parse(data).post;
 }
 
 /**

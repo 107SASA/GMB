@@ -16,6 +16,13 @@ import { useTheme } from '@/lib/theme';
  * layout. Same entitlement gate the GBP hub used ('dashboard' surface —
  * google_ranking_agent module), since this is the same capability, just
  * relocated.
+ *
+ * A FLAT file (not performance/index.tsx) — this has no sub-routes, and a
+ * folder with only an index.tsx and no _layout.tsx registers as route name
+ * "performance/index" instead of "performance" (confirmed via a runtime
+ * diagnostic, Aug 2026), which silently broke the AppTabBar icon lookup
+ * (ICONS["performance/index"] is undefined -> the tab renders nothing).
+ * dashboard.tsx uses this same flat-file pattern for the same reason.
  */
 export default function PerformanceScreen() {
   const locked = useSurfaceLocked('dashboard');

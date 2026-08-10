@@ -58,6 +58,13 @@ export interface IReviewAnalysis {
   negativePercent: number;
   mostCommonPraises: string[];
   mostCommonComplaints: string[];
+  /** True when reviewCount/averageRating came from a Google Places snapshot
+   *  rather than synced Review documents (no reviews synced yet, e.g. a
+   *  fastMode/free-report audit). See estimatedFields for which specific
+   *  sub-fields are the honest zero-defaults this implies, vs the real
+   *  reviewCount/averageRating alongside them. */
+  estimatedFromPlaces?: boolean;
+  estimatedFields?: string[];
 }
 
 export interface IChecklistItem {
@@ -66,8 +73,16 @@ export interface IChecklistItem {
 }
 
 export interface IProfileCompletion {
+  /** Complete / (Complete + Missing) — Unknown fields are excluded from the
+   *  ratio entirely, not scored as partial failures. See seoAnalyzer.ts. */
   completionPercentage: number;
   checklist: IChecklistItem[];
+  /** Fields checked and confirmed absent. */
+  missingCount?: number;
+  /** Fields we structurally couldn't verify (pre-OAuth) — surfaced
+   *  separately so the UI can say "N fields need verification" instead of
+   *  folding them into the percentage either way. */
+  unknownCount?: number;
 }
 
 export interface IKeywordGap {
@@ -138,11 +153,35 @@ export interface IAuditConfidence {
   confidenceScore: number; // e.g. 85 for 85%
 }
 
+/** Which real source powered the rank / review numbers shown in this
+ *  report — lets the frontend (and any future debugging) tell "reduced but
+ *  real" apart from "estimated from a Places snapshot" apart from
+ *  "genuinely unavailable" without reverse-engineering it from which fields
+ *  happen to be zero. See auditService.ts. */
+export interface IDataQualitySource {
+  /** 'error' = the DataForSEO call itself failed (account/rate-limit/
+   *  server) — distinct from 'unavailable' (not configured / genuinely
+   *  queried and found nothing). See DataForSeoApiError in
+   *  dataForSeoClient.ts and rankData.fetchError in seoAnalyzer.ts. */
+  rankSource: 'full-grid' | 'reduced-grid' | 'unavailable' | 'error';
+  reviewSource: 'live-sync' | 'places-snapshot' | 'unavailable';
+  /** True when this report reused another lead's data for the same
+   *  googlePlaceId (see PlaceInsightCache.ts) instead of re-querying
+   *  DataForSEO/Places or re-generating the AI narrative. Only ever true
+   *  for fastMode audits. */
+  rankCacheHit?: boolean;
+  narrativeCacheHit?: boolean;
+}
+
 export interface IBusinessIntelligence {
   competitivePosition: string;
   marketSaturation: string;
   reviewGap: number;
-  visibilityGap: string;
+  /** Renamed from visibilityGap (Aug 2026) — this is a review-count-gap
+   *  narrative, not a real search-visibility/rank finding; the old name
+   *  read as a ranking claim it wasn't. See calculateBusinessIntelligence
+   *  in seoAnalyzer.ts. */
+  reviewGapImpact: string;
   growthPotential: string;
 }
 
@@ -174,8 +213,13 @@ export interface IAuditData {
     areaSqKm: number;
     /** % of geo-grid keyword×point checks where the business appeared in the local pack */
     visibilityPct?: number;
+    /** 'reduced' = fastMode's cheaper check (1 keyword × ≤3 points) — real
+     *  data, just a smaller sample; UI should badge this "Quick check"
+     *  rather than hide the number. */
+    gridResolution?: 'full' | 'reduced';
   };
   localPackCompetitors?: ILocalPackCompetitor[];
+  dataQuality?: IDataQualitySource;
 }
 
 export interface IAudit extends Document {

@@ -174,8 +174,8 @@ export default function AuditReportV7({
           </div>
           
           <div className="mt-6 p-4 bg-surface rounded-xl border border-outline-variant text-sm text-on-surface leading-relaxed">
-            <span className="font-bold mr-2 text-on-surface">Visibility Note:</span> 
-            {bi.visibilityGap || 'Visibility gap analysis unavailable.'}
+            <span className="font-bold mr-2 text-on-surface">Review Gap Impact:</span>
+            {bi.reviewGapImpact || 'Review gap analysis unavailable.'}
           </div>
         </div>
 

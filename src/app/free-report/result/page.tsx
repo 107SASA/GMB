@@ -41,19 +41,6 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-function ScoreCard({ title, score, icon }: { title: string; score: number; icon: string }) {
-  const color = score >= 75 ? 'text-secondary' : score >= 50 ? 'text-primary-container' : 'text-error';
-  return (
-    <div className="bg-surface-container-lowest rounded-xl border border-outline-variant p-5 text-center card-shadow">
-      <div className="w-10 h-10 bg-surface-container rounded-xl flex items-center justify-center mx-auto mb-3">
-        <MaterialIcon name={icon} size={20} className="text-on-surface-variant" />
-      </div>
-      <div className={`font-heading text-2xl font-bold mb-0.5 ${color}`}>{score}</div>
-      <div className="text-xs text-on-surface-variant font-medium">{title}</div>
-    </div>
-  );
-}
-
 function SectionHeader({ title, icon }: { title: string; icon: string }) {
   return (
     <div className="flex items-center gap-3 mb-5">
@@ -74,6 +61,36 @@ function ChecklistIcon({ status }: { status: string }) {
 
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_ATTEMPTS = 60; // ~3 minutes
+
+// Mirrors NOT_FOUND_RANK in src/services/audit/seoAnalyzer.ts — a sentinel
+// meaning "not found in the local pack (typically top ~20)", not a real
+// Maps position. Rendered as "20+" here rather than the raw number.
+const RANK_NOT_FOUND = 21;
+
+function RankBadge({ rank }: { rank: number }) {
+  const found = rank < RANK_NOT_FOUND;
+  return (
+    <span className={`font-heading text-2xl font-bold ${found ? 'text-primary' : 'text-outline'}`}>
+      {found ? `#${Math.round(rank)}` : '20+'}
+    </span>
+  );
+}
+
+/** Small horizontal bar scaled inversely to rank (closer to #1 = fuller bar) —
+ *  the "mini ranking visual" acceptance criteria asks for, next to the exact
+ *  number rather than instead of it. */
+function RankBar({ rank }: { rank: number }) {
+  const found = rank < RANK_NOT_FOUND;
+  const pct = found ? Math.max(6, Math.round(((RANK_NOT_FOUND - rank) / (RANK_NOT_FOUND - 1)) * 100)) : 4;
+  return (
+    <div className="h-1.5 rounded-full bg-surface-container overflow-hidden w-full">
+      <div
+        className={`h-full rounded-full ${found ? 'bg-primary' : 'bg-outline-variant'}`}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
 
 export default function FreeReportResultPage() {
   return (
@@ -192,6 +209,20 @@ function FreeReportResultContent() {
     (d.keywordGapAnalysis || []).filter((k: any) => k.missing);
   const overallScore = audit!.overallScore ?? profile.overallScore ?? 0;
   const rank = d.googleSearchRank?.averageRank;
+  const topKeywordRanks: Array<{ keyword: string; rank: number }> = d.googleSearchRank?.topKeywords || [];
+  // Only the first keyword's points — for a reduced grid there's just one
+  // keyword anyway; for a full 5-keyword×9-point grid, plotting all 45
+  // points would make the map illegible, so one representative keyword's
+  // 9 points is what's shown instead.
+  const mapPoints: Array<{ lat: number; lng: number; rank: number }> = d.geoGridRank?.keywords?.[0]?.points || [];
+  // Used only to pick honest copy below (never rendered as raw text to the
+  // visitor — see the Aug 2026 decision not to surface dataQuality
+  // directly). "Losing customers... show up first" asserts these
+  // competitors actually outrank the business — only true when rank data
+  // is real. Without it (rankSource 'unavailable'/'error'/missing), all we
+  // actually know is "N similar businesses exist nearby," which is a
+  // different, weaker claim.
+  const hasRealRankData = d.dataQuality?.rankSource === 'full-grid' || d.dataQuality?.rankSource === 'reduced-grid';
 
   const localCompetitors: Array<{ name: string; avgRank?: number; rating?: number; reviewCount?: number }> =
     d.localPackCompetitors?.length
@@ -203,12 +234,20 @@ function FreeReportResultContent() {
           reviewCount: c.reviewCount,
         }));
   const competitorsAhead = localCompetitors.length;
-  const issuesCount = missingOrPartial.length + keywordGaps.length;
+  // Equal to what's actually listed below (Priority Action Items +
+  // Areas to Improve) — previously computed from a different, narrower
+  // source (checklist Missing/Partial + keyword gaps) that could read 0
+  // while real issues were listed right below it on the same page.
+  const issuesCount = priorityFixes.length + weaknesses.length;
   const profileCompletionPct = d.profileCompletion?.completionPercentage ?? profile.profileCompletionScore ?? 0;
+  const unverifiedFieldCount = d.profileCompletion?.unknownCount ?? unknownChecklistCount;
 
   // "Why {business} isn't ranking" — built from real audit data only.
   const issueLines: string[] = [];
-  if (reviews.reviewCount > 0 && reviews.responseRate) {
+  // estimatedFromPlaces reviews have a real reviewCount but a placeholder
+  // '0%' responseRate (Places doesn't expose per-review reply data) — don't
+  // read that as a genuine "reviews unanswered" finding.
+  if (reviews.reviewCount > 0 && reviews.responseRate && !reviews.estimatedFromPlaces) {
     const respPct = parseInt(reviews.responseRate, 10) || 0;
     if (respPct < 60) {
       const unanswered = Math.max(0, Math.round(reviews.reviewCount * (1 - respPct / 100)));
@@ -270,18 +309,67 @@ function FreeReportResultContent() {
             </div>
           </div>
 
+          {rank != null && (
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+              <SectionHeader title="Google Search Ranking" icon="leaderboard" />
+              <div className="flex items-center gap-6 mb-5">
+                <RankBadge rank={rank} />
+                <div>
+                  <div className="text-sm font-medium text-on-surface">Average position in local search</div>
+                  <div className="text-xs text-on-surface-variant mt-0.5">
+                    Where {audit!.businessName} shows up when people search near your business.
+                  </div>
+                </div>
+              </div>
+              {mapPoints.length > 0 && (
+                <div className="mb-5 rounded-lg overflow-hidden border border-outline-variant">
+                  <img
+                    src={`/api/google/static-map?points=${encodeURIComponent(JSON.stringify(mapPoints))}`}
+                    alt="Map of nearby search positions around your business"
+                    className="w-full h-auto block"
+                    loading="lazy"
+                  />
+                  <div className="flex items-center gap-4 px-3 py-2 text-[11px] text-on-surface-variant bg-surface-container">
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#1a7d46' }} /> Good — top 5</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#1a4f8b' }} /> Average — 6–20</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#ba1a1a' }} /> Poor — beyond 20</span>
+                  </div>
+                </div>
+              )}
+              {topKeywordRanks.length > 0 && (
+                <div className="space-y-3">
+                  {topKeywordRanks.slice(0, 5).map((k, i) => (
+                    <div key={i} className="flex items-center gap-3 text-sm">
+                      <span className="text-on-surface-variant flex-1 truncate">{k.keyword}</span>
+                      <div className="w-28"><RankBar rank={k.rank} /></div>
+                      <span className="text-xs font-bold text-on-surface w-8 text-right">
+                        {k.rank < RANK_NOT_FOUND ? Math.round(k.rank) : '20+'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {competitorsAhead > 0 && (
             <div className="bg-surface-container-lowest rounded-xl border border-error-container card-shadow p-8">
               <h2 className="font-heading text-2xl font-bold text-on-surface mb-2">
-                {audit!.businessName} is losing customers to {competitorsAhead} competitor{competitorsAhead > 1 ? 's' : ''} on Google.
+                {hasRealRankData
+                  ? <>{audit!.businessName} is losing customers to {competitorsAhead} competitor{competitorsAhead > 1 ? 's' : ''} on Google.</>
+                  : <>We found {competitorsAhead} similar business{competitorsAhead > 1 ? 'es' : ''} near {audit!.businessName} in {city}.</>}
               </h2>
               <p className="text-on-surface-variant text-sm mb-6">
-                Right now, when people search your business in {city}, your competitors show up first.
+                {hasRealRankData
+                  ? <>Right now, when people search your business in {city}, your competitors show up first.</>
+                  : <>Ranking data wasn't available for this check, so we can't yet confirm whether they outrank you — this list is who you're up against in {city}, not a confirmed ranking comparison.</>}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 <div className="bg-error-container rounded-xl p-4 text-center border border-error-container">
                   <div className="font-heading text-2xl font-bold text-error">{competitorsAhead}</div>
-                  <div className="text-xs text-on-surface-variant mt-1">Competitors ranking higher</div>
+                  <div className="text-xs text-on-surface-variant mt-1">
+                    {hasRealRankData ? 'Competitors ranking higher' : 'Similar businesses found'}
+                  </div>
                 </div>
                 <div className="bg-primary-fixed rounded-xl p-4 text-center border border-primary-fixed-dim">
                   <div className="font-heading text-2xl font-bold text-primary">{issuesCount}</div>
@@ -305,14 +393,24 @@ function FreeReportResultContent() {
                       <th className="px-2 py-2 font-medium">Business</th>
                       <th className="px-2 py-2 font-medium">Rating</th>
                       <th className="px-2 py-2 font-medium">Reviews</th>
+                      {/* Hidden entirely (not shown as "—") when we don't have
+                          real rank data — a per-row dash still implies we
+                          checked and found nothing, when the truth right now
+                          is we haven't been able to check at all. */}
+                      {hasRealRankData && <th className="px-2 py-2 font-medium">Rank</th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {localCompetitors.slice(0, 3).map((c, i) => (
+                    {localCompetitors.slice(0, 5).map((c, i) => (
                       <tr key={i} className="border-t border-outline-variant">
                         <td className="px-2 py-3 font-medium text-on-surface">{c.name}</td>
                         <td className="px-2 py-3 text-primary">{c.rating != null ? `★ ${c.rating.toFixed(1)}` : '—'}</td>
                         <td className="px-2 py-3 text-secondary">{c.reviewCount ?? '—'}</td>
+                        {hasRealRankData && (
+                          <td className="px-2 py-3 font-semibold text-on-surface">
+                            {c.avgRank != null ? (c.avgRank < RANK_NOT_FOUND ? c.avgRank.toFixed(1) : '20+') : '—'}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -335,29 +433,16 @@ function FreeReportResultContent() {
             </div>
           )}
 
-          {Object.keys(profile).length > 0 && (
-            <div>
-              <SectionHeader title="Profile Score Breakdown" icon="shield" />
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                {[
-                  { label: 'SEO Score', value: profile.seoScore ?? 0, icon: 'trending_up' },
-                  { label: 'Review Score', value: profile.reviewScore ?? 0, icon: 'star' },
-                  { label: 'Profile Complete', value: profile.profileCompletionScore ?? 0, icon: 'check_circle' },
-                  { label: 'Rating Score', value: profile.ratingScore ?? 0, icon: 'star' },
-                  { label: 'Content Score', value: profile.contentScore ?? 0, icon: 'apartment' },
-                ]
-                  .filter((s) => s.value > 0)
-                  .map((s) => (
-                    <ScoreCard key={s.label} title={s.label} score={s.value} icon={s.icon} />
-                  ))}
-              </div>
-            </div>
-          )}
-
           {reviews.reviewCount > 0 && (
             <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
               <SectionHeader title="Review Analytics" icon="star" />
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {/* Positive % and Response Rate need per-review data (sentiment,
+                  reply status) that a Places rating/count snapshot alone
+                  doesn't carry — rather than show a placeholder word next to
+                  the real numbers, those two stats are simply left out here
+                  when that's the situation, instead of shown as "Estimate"
+                  (which read as "we don't actually know" next to real data). */}
+              <div className={`grid grid-cols-2 ${reviews.estimatedFromPlaces ? '' : 'sm:grid-cols-4'} gap-4`}>
                 <div className="text-center">
                   <div className="font-heading text-3xl font-bold text-on-surface">{reviews.reviewCount}</div>
                   <div className="text-xs text-on-surface-variant mt-1">Total Reviews</div>
@@ -366,14 +451,18 @@ function FreeReportResultContent() {
                   <div className="font-heading text-3xl font-bold text-primary">{reviews.averageRating?.toFixed(1) ?? '—'}</div>
                   <div className="text-xs text-on-surface-variant mt-1">Avg Rating</div>
                 </div>
-                <div className="text-center">
-                  <div className="font-heading text-3xl font-bold text-secondary">{reviews.positivePercent ?? 0}%</div>
-                  <div className="text-xs text-on-surface-variant mt-1">Positive</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-heading text-3xl font-bold text-on-surface">{reviews.responseRate ?? '—'}</div>
-                  <div className="text-xs text-on-surface-variant mt-1">Response Rate</div>
-                </div>
+                {!reviews.estimatedFromPlaces && (
+                  <>
+                    <div className="text-center">
+                      <div className="font-heading text-3xl font-bold text-secondary">{reviews.positivePercent ?? 0}%</div>
+                      <div className="text-xs text-on-surface-variant mt-1">Positive</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="font-heading text-3xl font-bold text-on-surface">{reviews.responseRate ?? '—'}</div>
+                      <div className="text-xs text-on-surface-variant mt-1">Response Rate</div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -402,10 +491,10 @@ function FreeReportResultContent() {
                   </div>
                 ))}
               </div>
-              {unknownChecklistCount > 0 && (
+              {unverifiedFieldCount > 0 && (
                 <div className="mt-4 pt-4 border-t border-outline-variant flex items-center gap-2 text-xs text-outline">
                   <MaterialIcon name="help" size={16} className="shrink-0" />
-                  {unknownChecklistCount} more item{unknownChecklistCount > 1 ? 's' : ''} verified once you connect your Google account
+                  {unverifiedFieldCount} field{unverifiedFieldCount > 1 ? 's' : ''} need{unverifiedFieldCount > 1 ? '' : 's'} verification — connect your Google account to check
                 </div>
               )}
             </div>
@@ -468,6 +557,14 @@ function FreeReportResultContent() {
               )}
             </div>
           )}
+
+          {/* dataQuality (rankSource/reviewSource/cache-hit flags) stays in
+              the API response for internal/admin debugging — intentionally
+              not rendered here. A "quick check"/"partial estimate" badge on
+              real, honestly-computed numbers reads as "this is a lesser
+              report" to a lead, which undermines trust in the numbers
+              rather than earning it. See the Aug 2026 free-report parity
+              pass for the reasoning. */}
         </div>
 
         <div id="unlock">

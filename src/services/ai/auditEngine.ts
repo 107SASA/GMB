@@ -65,10 +65,26 @@ export async function generateAIAudit(
   const durationDays = options.actionPlanDurationDays ?? 30;
   const planSpec = ACTION_PLAN_SPECS[durationDays];
 
+  // A field the profile-completion checklist marked "Unknown" is
+  // structurally unverifiable pre-OAuth (Places doesn't expose it) — NOT
+  // confirmed absent. Telling the model flatly "DESCRIPTION: Missing" for
+  // an Unknown field made it invent "Missing Business Description" as a
+  // weakness for businesses we genuinely can't check, contradicting the
+  // checklist's own Unknown status shown elsewhere in the same report. Only
+  // a checklist status of 'Missing' gets described as missing to the model.
+  const checklist = businessData.nativeAnalytics?.profileCompletion?.checklist || [];
+  const checklistStatus = (field: string) => checklist.find((c: any) => c.field === field)?.status;
+  const describeField = (field: string, rawValue: string | undefined) => {
+    if (checklistStatus(field) === 'Unknown') {
+      return 'Unknown — not verifiable without a connected Google account (do NOT describe this as missing or absent)';
+    }
+    return rawValue || 'Missing';
+  };
+
   const prompt = `
 You are an elite Enterprise Business Intelligence Engine & Local SEO strategist.
 
-Your job is strictly to ANALYZE the explicit FACTS provided below. DO NOT invent competitors, DO NOT invent rankings, DO NOT invent metrics. DO NOT hallucinate Priority Fixes outside of the specific gaps identified.
+Your job is strictly to ANALYZE the explicit FACTS provided below. DO NOT invent competitors, DO NOT invent rankings, DO NOT invent metrics. DO NOT hallucinate Priority Fixes outside of the specific gaps identified. A fact marked "Unknown" is NOT the same as "Missing" — never describe an Unknown fact as missing, absent, or a gap in strengths/weaknesses.
 
 FACTS:
 BUSINESS NAME: ${businessData.businessName}
@@ -76,7 +92,7 @@ CATEGORY: ${businessData.category}
 TIER: ${businessData.tier || 'Unknown'}
 LOCATION: ${businessData.area || ''}, ${businessData.city || ''}, ${businessData.state || ''}
 WEBSITE: ${businessData.website || 'Missing'}
-DESCRIPTION: ${businessData.description || 'Missing'}
+DESCRIPTION: ${describeField('Business Description', businessData.description)}
 
 NATIVE ANALYTICS (Do not modify these numbers, only analyze them):
 Profile Completion Score: ${businessData.nativeAnalytics?.profileCompletion?.completionPercentage || 0}%
@@ -166,9 +182,9 @@ Generate "ninetyDayPlan" as exactly ONE item titled "${planSpec.extendedLabel}" 
 
 RULES:
 1. "strengths" MUST be generated from actual data (e.g., if Profile Score is 90%, make that a strength, list the evidence).
-2. "weaknesses" MUST be generated from actual gaps (e.g., use the Competitor Intelligence to find Review Gaps).
-3. Do NOT generate "Data Unavailable". Always provide minimum 3 strengths and 3 weaknesses.
-4. "priorityFixes" MUST perfectly match the items listed in IDENTIFIED NATIVE PRIORITY FIXES. Do not invent new fixes. Just add the Impact/Effort/expectedScoreGain scoring.
+2. "weaknesses" MUST be generated from actual gaps (e.g., use the Competitor Intelligence to find Review Gaps). Never generate a weakness/strength about a fact marked "Unknown" above (e.g. DESCRIPTION) — that means we couldn't verify it, not that it's missing.
+3. Do NOT generate "Data Unavailable". Provide as many genuine strengths and weaknesses as the real data actually supports (usually 3+, but never pad the count). Do NOT reframe a neutral or positive fact as a weakness just to hit a number — "low market saturation" (less competition) and a "Challenger" competitive position are NOT weaknesses; a business with genuinely few real weaknesses should show fewer than 3 rather than one being a spun positive.
+4. "priorityFixes" MUST perfectly match the items listed in IDENTIFIED NATIVE PRIORITY FIXES — including when that list is EMPTY: output priorityFixes as an empty array [] in that case. NEVER invent a placeholder entry (e.g. "No priority fixes identified") — an empty array is the correct, honest output when there is nothing to fix, and a placeholder entry gets counted as a real problem downstream. Do not invent new fixes beyond the list either. Just add the Impact/Effort/expectedScoreGain scoring to the real ones.
 5. "thirtyDayPlan" MUST specifically address the exact data gaps identified in "priorityFixes", respecting the duration-specific focus above. Tasks in a ${planSpec.cadenceNoun}-based plan must be realistic to complete within that ${planSpec.cadenceNoun}.
 6. "ninetyDayPlan" (the single "beyond the plan" item) MUST build on "thirtyDayPlan" and be tailored to the exact tier and review volume of this business. Do not hallucinate generic advice.
 7. The ${planSpec.periodCount} periods in "thirtyDayPlan" MUST be genuinely different from each other in substance (not the same tasks reworded) and MUST clearly differ from what a different duration selection would produce — do not fall back to generic, duration-agnostic advice.

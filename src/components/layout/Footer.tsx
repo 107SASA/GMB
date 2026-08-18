@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
-import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { BRAND_ATTRIBUTION } from "@/lib/companyInfo";
 import { SERVICES } from "@/lib/servicesData";
 
@@ -10,9 +9,7 @@ export function Footer() {
       <div className="max-w-container-max mx-auto grid grid-cols-1 md:grid-cols-5 gap-12">
         <div className="col-span-1 md:col-span-1">
           <Link href="/" className="flex items-center gap-2 mb-6">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <MaterialIcon name="rocket_launch" size={18} className="text-on-primary" />
-            </div>
+            <img src="/brand/icon.png" alt="GrowwMatics AI" className="w-8 h-8 object-contain" />
             <span className="text-xl font-heading font-bold tracking-tight text-on-surface">
               GrowwMatics AI
             </span>

@@ -51,9 +51,7 @@ export function Navbar() {
     >
       <nav className="max-w-container-max mx-auto w-full flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 group">
-          <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-            <MaterialIcon name="rocket_launch" size={22} className="text-on-primary" />
-          </div>
+          <img src="/brand/icon.png" alt="GrowwMatics AI" className="w-10 h-10 object-contain" />
           <span className="text-xl font-heading font-bold tracking-tight text-on-surface">
             GrowwMatics AI
           </span>

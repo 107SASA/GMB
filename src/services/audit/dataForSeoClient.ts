@@ -8,6 +8,59 @@ const MAX_TASKS_PER_REQUEST = 100;
 
 export const dataForSeoConfigured = !!(DATAFORSEO_LOGIN && DATAFORSEO_PASSWORD);
 
+/**
+ * Thrown instead of a plain Error so callers can tell "the API call itself
+ * failed" apart from "the API call succeeded and genuinely found nothing" —
+ * without this, both looked identical (empty results, rank stuck at the
+ * NOT_FOUND sentinel), which is exactly what happened Aug 2026: an
+ * unverified DataForSEO account (HTTP 403, status_code 40104) was
+ * indistinguishable from "not ranking nearby" until someone reproduced the
+ * raw request by hand. `category` lets a caller decide whether this is
+ * worth surfacing differently (an account/config problem is actionable and
+ * ongoing; a rate limit is transient; "not found" isn't an error at all).
+ */
+export class DataForSeoApiError extends Error {
+  category: 'account' | 'rate_limit' | 'server' | 'unknown';
+  constructor(message: string, category: 'account' | 'rate_limit' | 'server' | 'unknown') {
+    super(message);
+    this.name = 'DataForSeoApiError';
+    this.category = category;
+  }
+}
+
+function classifyDataForSeoFailure(err: any): DataForSeoApiError {
+  const httpStatus = err?.response?.status;
+  const body = err?.response?.data;
+  const statusMessage = body?.status_message || err?.message || 'DataForSEO request failed';
+
+  if (httpStatus === 401 || httpStatus === 403) {
+    return new DataForSeoApiError(statusMessage, 'account');
+  }
+  if (httpStatus === 429) {
+    return new DataForSeoApiError(statusMessage, 'rate_limit');
+  }
+  if (httpStatus != null && httpStatus >= 500) {
+    return new DataForSeoApiError(statusMessage, 'server');
+  }
+  return new DataForSeoApiError(statusMessage, 'unknown');
+}
+
+/** For the "HTTP 200 but body status_code != 20000" case (see comment at
+ *  the call site) — DataForSEO's 4xxxx range covers auth/account/
+ *  validation/client errors; 40104 (unverified account) is the one we've
+ *  confirmed live (Aug 2026), so the whole range defaults to 'account'
+ *  rather than guessing at sub-range boundaries we haven't verified. */
+function classifyDataForSeoStatusCode(statusCode: number | undefined, statusMessage: string | undefined): DataForSeoApiError {
+  const message = statusMessage || `DataForSEO status_code ${statusCode}`;
+  if (statusCode != null && statusCode >= 40000 && statusCode < 50000) {
+    return new DataForSeoApiError(message, 'account');
+  }
+  if (statusCode != null && statusCode >= 50000) {
+    return new DataForSeoApiError(message, 'server');
+  }
+  return new DataForSeoApiError(message, 'unknown');
+}
+
 /** Local-pack result item, normalized to the shape the rest of seoAnalyzer.ts
  *  already expects (findTargetRank / competitor harvesting read these fields). */
 export interface MapsLocalResult {
@@ -76,20 +129,29 @@ export async function fetchMapsLocalResultsBatch(
 
   const chunkResults = await Promise.all(
     chunks.map(async (chunk) => {
-      const res = await axios.post(MAPS_LIVE_URL, chunk.map(buildTask), {
-        auth: { username: DATAFORSEO_LOGIN!, password: DATAFORSEO_PASSWORD! },
-        // Live-batch responses only arrive once every task in the chunk has
-        // resolved server-side, so this needs real headroom over the
-        // single-task timeout, not just chunk-count * 15s.
-        timeout: opts.timeout ?? 60000,
-      });
+      let res;
+      try {
+        res = await axios.post(MAPS_LIVE_URL, chunk.map(buildTask), {
+          auth: { username: DATAFORSEO_LOGIN!, password: DATAFORSEO_PASSWORD! },
+          // Live-batch responses only arrive once every task in the chunk has
+          // resolved server-side, so this needs real headroom over the
+          // single-task timeout, not just chunk-count * 15s.
+          timeout: opts.timeout ?? 60000,
+        });
+      } catch (err: any) {
+        // A real non-2xx HTTP response (confirmed live, Aug 2026: an
+        // unverified DataForSEO account returns HTTP 403 here, not a 200
+        // with a bad status_code — DataForSEO's failure modes aren't
+        // consistent about which layer reports the error).
+        throw classifyDataForSeoFailure(err);
+      }
 
-      // DataForSEO returns HTTP 200 even for auth/balance/validation failures
-      // at the whole-request level — the real outcome is in status_code
-      // (20000 = ok). Without this check, bad creds would silently look like
-      // "business not found" on every grid point instead of erroring loudly.
+      // DataForSEO also returns HTTP 200 for some auth/balance/validation
+      // failures — the real outcome is in status_code (20000 = ok). Without
+      // this check, bad creds would silently look like "business not found"
+      // on every grid point instead of erroring loudly.
       if (res.data?.status_code !== 20000) {
-        throw new Error(`DataForSEO error ${res.data?.status_code}: ${res.data?.status_message}`);
+        throw classifyDataForSeoStatusCode(res.data?.status_code, res.data?.status_message);
       }
 
       const tasks: any[] = res.data.tasks || [];

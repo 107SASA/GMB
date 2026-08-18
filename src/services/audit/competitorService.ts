@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { resolveSearchCategory } from './seoAnalyzer';
 
 const GOOGLE_MAPS_KEY = process.env.GOOGLE_MAPS_API_KEY;
 const PLACES_BASE = 'https://maps.googleapis.com/maps/api/place/textsearch/json';
@@ -94,13 +95,20 @@ export async function findCompetitors(businessData: BusinessData): Promise<{
     return { accepted: [], rejected: [], targetTier, evidenceSource: 'No location data available' };
   }
 
+  // A stored category this generic ("Services", "Local Business", etc. —
+  // see resolveSearchCategory) searches on essentially every business in
+  // the city with equal weight — falls back to a name-derived keyword
+  // instead. See seoAnalyzer.ts for the full reasoning; same fix applied
+  // here since this query is independent of the DataForSEO one.
+  const effectiveCategory = resolveSearchCategory(businessData.category, businessData.businessName);
+
   // Build 2-3 queries from specific → broad
   const queries: string[] = [];
   if (businessData.area && businessData.city) {
-    queries.push(`${businessData.category} in ${businessData.area}, ${businessData.city}`);
+    queries.push(`${effectiveCategory} in ${businessData.area}, ${businessData.city}`);
   }
-  queries.push(`${businessData.category} in ${location}`);
-  queries.push(`best ${businessData.category} ${location}`);
+  queries.push(`${effectiveCategory} in ${location}`);
+  queries.push(`best ${effectiveCategory} ${location}`);
 
   // The 2-3 queries are independent — fire them concurrently instead of
   // sequentially (each has its own 15s timeout, so waiting on them one at a

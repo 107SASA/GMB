@@ -30,8 +30,8 @@ export function HeroIllustration() {
       <svg viewBox="0 0 600 300" className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
         <defs>
           <linearGradient id="heroLineFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#006c45" stopOpacity="0.22" />
-            <stop offset="100%" stopColor="#006c45" stopOpacity="0" />
+            <stop offset="0%" stopColor="#06b34c" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#06b34c" stopOpacity="0" />
           </linearGradient>
         </defs>
         <motion.path
@@ -45,7 +45,7 @@ export function HeroIllustration() {
         <motion.path
           d="M0,260 C80,240 120,180 180,190 C240,200 260,120 320,110 C380,100 400,60 460,50 C500,44 540,30 600,10"
           fill="none"
-          stroke="#006c45"
+          stroke="#06b34c"
           strokeWidth="3"
           strokeLinecap="round"
           initial={{ pathLength: 0 }}

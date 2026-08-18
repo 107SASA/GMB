@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 import { COMPANY } from "@/lib/companyInfo";
-import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
+import { bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { BookDemoButton } from "@/components/shared/BookDemoButton";
 
 export const metadata: Metadata = {
   // Root layout's title.template already appends " | GrowwMatics AI" — a
@@ -66,14 +67,9 @@ export default function ContactPage() {
           {bookDemoOpensWhatsApp && (
             <>
               {" "}You can also{" "}
-              <a
-                href={bookDemoLink()}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-whatsapp underline font-medium"
-              >
+              <BookDemoButton origin="contact-page" className="text-whatsapp underline font-medium">
                 book a demo on WhatsApp
-              </a>
+              </BookDemoButton>
               .
             </>
           )}

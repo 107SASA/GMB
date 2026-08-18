@@ -6,14 +6,14 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { FaqAccordion } from "@/components/shared/FaqAccordion";
-import { boostProfileLink, bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 import { SERVICES, type ServiceDefinition } from "@/lib/servicesData";
+import { BookDemoButton } from "@/components/shared/BookDemoButton";
 
 export function ServicePageTemplate({ service }: { service: ServiceDefinition }) {
   const otherServices = SERVICES.filter((s) => s.slug !== service.slug);
 
   return (
-    <main className="min-h-screen bg-background selection:bg-primary-fixed">
+    <main className="theme-marketing min-h-screen bg-background selection:bg-primary-fixed">
       <Navbar />
 
       {/* Breadcrumb */}
@@ -61,23 +61,15 @@ export function ServicePageTemplate({ service }: { service: ServiceDefinition })
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4"
+            className="flex items-center justify-center"
           >
-            <a
-              href={bookDemoLink()}
-              {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+            <BookDemoButton
+              origin={`service:${service.slug}`}
               className="w-full sm:w-auto px-8 py-4 bg-whatsapp text-white rounded-lg font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all card-shadow"
             >
               <MaterialIcon name="chat" size={20} className="text-white" />
-              Book Free Demo
-            </a>
-            <Link
-              href="/free-report"
-              className="w-full sm:w-auto px-8 py-4 bg-primary text-on-primary rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-primary-container transition-all card-shadow"
-            >
-              Get My Free Report
-              <MaterialIcon name="arrow_forward" size={20} className="text-on-primary" />
-            </Link>
+              Book a Free Consultant
+            </BookDemoButton>
           </motion.div>
         </div>
       </section>
@@ -211,22 +203,15 @@ export function ServicePageTemplate({ service }: { service: ServiceDefinition })
               Ready to get started with {service.name}?
             </h2>
             <p className="text-on-primary-container text-lg max-w-2xl mx-auto mb-10">
-              Run a free audit of your Google Business Profile, or book a free demo on WhatsApp — no credit card required.
+              Book a free consultant and we'll walk you through it on WhatsApp — no credit card required.
             </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link
-                href="/free-report"
+            <div className="flex items-center justify-center">
+              <BookDemoButton
+                origin={`service:${service.slug}:final-cta`}
                 className="w-full sm:w-auto px-10 py-5 bg-surface-container-lowest text-on-surface rounded-lg font-bold hover:bg-surface-container-low transition-all card-shadow"
               >
-                Get My Free Report
-              </Link>
-              <a
-                href={boostProfileLink()}
-                {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                className="w-full sm:w-auto px-10 py-5 bg-whatsapp text-white rounded-lg font-bold hover:opacity-90 transition-all card-shadow"
-              >
-                Book Free Demo on WhatsApp
-              </a>
+                Book a Free Consultant
+              </BookDemoButton>
             </div>
           </div>
         </div>

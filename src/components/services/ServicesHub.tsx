@@ -5,12 +5,12 @@ import { motion } from "framer-motion";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
-import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 import { SERVICES } from "@/lib/servicesData";
+import { BookDemoButton } from "@/components/shared/BookDemoButton";
 
 export function ServicesHub() {
   return (
-    <main className="min-h-screen bg-background selection:bg-primary-fixed">
+    <main className="theme-marketing min-h-screen bg-background selection:bg-primary-fixed">
       <Navbar />
 
       <div className="pt-24 md:pt-28 px-6">
@@ -99,22 +99,15 @@ export function ServicesHub() {
               Not sure which service you need?
             </h2>
             <p className="text-on-primary-container text-lg max-w-2xl mx-auto mb-10">
-              Run a free audit and we'll point you to the right one, or just book a free demo and ask.
+              Book a free consultant and we'll point you to the right one, on WhatsApp.
             </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link
-                href="/free-report"
+            <div className="flex items-center justify-center">
+              <BookDemoButton
+                origin="services-hub:final-cta"
                 className="w-full sm:w-auto px-10 py-5 bg-surface-container-lowest text-on-surface rounded-lg font-bold hover:bg-surface-container-low transition-all card-shadow"
               >
-                Get My Free Report
-              </Link>
-              <a
-                href={bookDemoLink()}
-                {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                className="w-full sm:w-auto px-10 py-5 bg-whatsapp text-white rounded-lg font-bold hover:opacity-90 transition-all card-shadow"
-              >
-                Book Free Demo on WhatsApp
-              </a>
+                Book a Free Consultant
+              </BookDemoButton>
             </div>
           </div>
         </div>

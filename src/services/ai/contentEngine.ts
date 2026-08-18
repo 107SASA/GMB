@@ -1,5 +1,6 @@
 import Groq from 'groq-sdk';
 import { POSTS_PER_WEEK } from '@/lib/contentConfig';
+import { GROQ_MODEL } from '@/lib/aiModel';
 
 export { POSTS_PER_WEEK };
 
@@ -92,7 +93,7 @@ REQUIRED JSON OUTPUT SCHEMA:
 
   try {
     const response = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: GROQ_MODEL,
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.7,

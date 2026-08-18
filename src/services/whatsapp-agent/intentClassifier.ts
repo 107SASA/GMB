@@ -1,5 +1,6 @@
 import { Groq } from 'groq-sdk';
 import { getBusinessNow } from './dateTimeUtils';
+import { GROQ_MODEL } from '@/lib/aiModel';
 
 export type AppointmentIntentType = 'book' | 'cancel' | 'reschedule' | 'none';
 
@@ -59,8 +60,8 @@ Respond with ONLY valid JSON, no other text, in exactly this shape:
   try {
     const resp = await groq.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'llama-3.3-70b-versatile',
-      max_tokens: 150,
+      model: GROQ_MODEL,
+      max_tokens: 250,
       temperature: 0,
       response_format: { type: 'json_object' },
     });
@@ -95,8 +96,8 @@ export async function classifyConfirmation(message: string): Promise<Confirmatio
           content: `A business's WhatsApp assistant just asked the customer to confirm an action (e.g. "Would you like me to confirm your appointment?"). The customer replied: "${message}"\nIs this a "yes", "no", or "unclear" (e.g. they asked a new question, changed the topic, or gave a new date instead of confirming)? Respond with ONLY valid JSON: {"decision": "yes" | "no" | "unclear"}`,
         },
       ],
-      model: 'llama-3.3-70b-versatile',
-      max_tokens: 30,
+      model: GROQ_MODEL,
+      max_tokens: 150,
       temperature: 0,
       response_format: { type: 'json_object' },
     });

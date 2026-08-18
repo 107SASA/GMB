@@ -1,5 +1,6 @@
 import Groq from "groq-sdk";
 import { ILead } from "@/models/Lead";
+import { GROQ_MODEL } from "@/lib/aiModel";
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
@@ -71,7 +72,7 @@ Only add ONE tag per reply, at the very end, nothing after it.`
   try {
     const chatCompletion = await groq.chat.completions.create({
       messages: messages,
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_MODEL,
       temperature: 0.7,
       max_tokens: 300,
     });
@@ -131,7 +132,7 @@ Current Insights: ${JSON.stringify(currentInsights)}
   try {
     const chatCompletion = await groq.chat.completions.create({
       messages: messages,
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_MODEL,
       temperature: 0.1, // Strict factual extraction
       response_format: { type: 'json_object' }
     });
@@ -205,7 +206,7 @@ Generate high-quality content now.
 `;
 
     const response = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_MODEL,
       messages: [
         {
           role: "system",
@@ -253,7 +254,7 @@ Return a JSON array like:
 Return ONLY the JSON array, no other text.`;
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_MODEL,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.8,
       max_tokens: 400,
@@ -281,10 +282,10 @@ Rules:
 Return only the message text.`;
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_MODEL,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
-      max_tokens: 150,
+      max_tokens: 250,
     });
 
     return completion.choices[0]?.message?.content?.trim() || null;
@@ -319,10 +320,10 @@ Guidelines:
 Reply:`;
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_MODEL,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
-      max_tokens: 150,
+      max_tokens: 250,
     });
 
     return completion.choices[0]?.message?.content?.trim() || `Thank you for your feedback, ${reviewerName}. We truly value your thoughts and will use them to improve our services.`;
@@ -351,10 +352,10 @@ critical
 Return ONLY the category word.`;
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_MODEL,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
-      max_tokens: 10,
+      max_tokens: 150,
     });
 
     const sentiment = completion.choices[0]?.message?.content?.trim().toLowerCase() || 'neutral';
@@ -404,7 +405,7 @@ ${excludeKeywords.length > 0 ? excludeKeywords.join(', ') : '(none yet)'}
 Example format: ["keyword one", "keyword two"]`;
 
     const completion = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: GROQ_MODEL,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.8,
       max_tokens: 300,

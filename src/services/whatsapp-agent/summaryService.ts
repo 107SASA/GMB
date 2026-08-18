@@ -1,6 +1,7 @@
 import { Groq } from 'groq-sdk';
 import WhatsAppConversationSummary from '@/models/WhatsAppConversationSummary';
 import { ChatHistoryEntry, formatHistoryForPrompt } from './chatHistoryService';
+import { GROQ_MODEL } from '@/lib/aiModel';
 
 export interface StructuredSummary {
   customerName?: string;
@@ -27,7 +28,7 @@ Keep each array short (max 5 items), concise, and free of duplicates.`;
   try {
     const resp = await groq.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'llama-3.3-70b-versatile',
+      model: GROQ_MODEL,
       max_tokens: 300,
       temperature: 0.2,
       response_format: { type: 'json_object' },

@@ -11,6 +11,7 @@ type Route = {
 
 const routes: Route[] = [
   { path: "/", changeFrequency: "weekly", priority: 1 },
+  { path: "/about", changeFrequency: "monthly", priority: 0.7 },
   { path: "/services", changeFrequency: "weekly", priority: 0.9 },
   ...SERVICES.map((s): Route => ({ path: `/services/${s.slug}`, changeFrequency: "weekly", priority: 0.85 })),
   { path: "/features", changeFrequency: "weekly", priority: 0.85 },

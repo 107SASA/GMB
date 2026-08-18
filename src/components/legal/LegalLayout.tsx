@@ -16,7 +16,7 @@ export function LegalLayout({
   children: React.ReactNode;
 }) {
   return (
-    <main className="min-h-screen bg-background">
+    <main className="theme-marketing min-h-screen bg-background">
       <Navbar />
 
       <section className="pt-32 pb-24 px-6">

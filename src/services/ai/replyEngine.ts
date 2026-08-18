@@ -1,4 +1,5 @@
 import { Groq } from "groq-sdk";
+import { GROQ_MODEL } from "@/lib/aiModel";
 
 export interface ReplyResult {
   reply: string;
@@ -34,9 +35,9 @@ Guidelines:
   try {
     const response = await groq.chat.completions.create({
       messages: [{ role: "user", content: prompt }],
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_MODEL,
       temperature: 0.6,
-      max_tokens: 150,
+      max_tokens: 250,
     });
 
     const reply = response.choices[0]?.message?.content?.trim() || "Thank you for your feedback.";

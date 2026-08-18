@@ -17,8 +17,8 @@ const MAX_POINTS = 12;
 const NOT_FOUND_RANK = 21;
 
 function colorForRank(rank: number): string {
-  if (rank <= 5) return '0x1a7d46';           // Good — top 5
-  if (rank < NOT_FOUND_RANK) return '0x1a4f8b'; // Average — 6-20
+  if (rank <= 5) return '0x62bd32';            // Good — top 5
+  if (rank < NOT_FOUND_RANK) return '0x0a8a3e'; // Average — 6-20
   return '0xba1a1a';                            // Poor — beyond 20
 }
 

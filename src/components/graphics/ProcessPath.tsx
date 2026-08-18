@@ -20,8 +20,8 @@ export function ProcessPath() {
     >
       <defs>
         <linearGradient id="processPathGradient" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#00386c" />
-          <stop offset="100%" stopColor="#006c45" />
+          <stop offset="0%" stopColor="#0a8a3e" />
+          <stop offset="100%" stopColor="#62bd32" />
         </linearGradient>
       </defs>
       <motion.line
@@ -44,7 +44,7 @@ export function ProcessPath() {
           cx={cx}
           cy={10}
           r={4}
-          fill="#006c45"
+          fill="#06b34c"
           initial={{ scale: 0, opacity: 0 }}
           whileInView={{ scale: 1, opacity: 1 }}
           viewport={{ once: true }}

@@ -4,9 +4,9 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
-import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 import { AnimatedCounter } from "@/components/ui/AnimatedCounter";
 import { HeroIllustration } from "@/components/graphics/HeroIllustration";
+import { BookDemoButton } from "@/components/shared/BookDemoButton";
 
 // tsParticles touches the DOM/canvas directly and has no reason to exist on
 // the server render — ssr:false keeps it fully off the SSR/LCP path.
@@ -74,14 +74,13 @@ export function Hero() {
             Get My Free Report
             <MaterialIcon name="arrow_forward" size={20} className="text-on-primary" />
           </Link>
-          <a
-            href={boostProfileLink()}
-            {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-            className="w-full sm:w-auto px-8 py-4 bg-whatsapp text-white rounded-lg font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all card-shadow"
+          <BookDemoButton
+            origin="hero"
+            className="w-full sm:w-auto px-8 py-4 bg-primary text-on-primary rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-primary-container transition-all card-shadow"
           >
-            <MaterialIcon name="chat" size={20} className="text-white" />
-            Get Report on WhatsApp
-          </a>
+            <MaterialIcon name="calendar_month" size={20} className="text-on-primary" />
+            Book a Demo
+          </BookDemoButton>
         </motion.div>
 
         <motion.div

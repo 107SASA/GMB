@@ -89,7 +89,6 @@ export async function POST(req: Request) {
       phone: normalizedPhone,
       source: 'Website',
       leadType: 'Platform Prospect',
-      businessType: body.budget || undefined,
       notes: 'Submitted the Free Business Report form',
     });
 

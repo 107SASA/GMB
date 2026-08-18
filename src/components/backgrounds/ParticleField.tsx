@@ -43,7 +43,7 @@ function useReducedMotion(): boolean {
  */
 export function ParticleField({
   id,
-  colors = ["#00386c", "#006c45"],
+  colors = ["#0a8a3e", "#62bd32"],
   density = 36,
   opacity = 0.35,
   className,

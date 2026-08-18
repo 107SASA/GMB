@@ -12,6 +12,7 @@ import Campaign from "@/models/Campaign";
 import AutomationLog from "@/models/AutomationLog";
 import { generateSalesResponse } from "@/services/ai";
 import { generateAIContent } from "@/services/ai/contentEngine";
+import { GROQ_MODEL } from "@/lib/aiModel";
 import twilio from "twilio";
 import mongoose from "mongoose";
 import { sendOutboundMessage } from "@/services/whatsapp/send";
@@ -230,9 +231,9 @@ export const processWhatsappMessage = inngest.createFunction(
       try {
         const response = await groq.chat.completions.create({
           messages: [systemMessage, ...messages] as any[],
-          model: "llama-3.3-70b-versatile",
+          model: GROQ_MODEL,
           temperature: 0.5,
-          max_tokens: 150,
+          max_tokens: 250,
         });
         return response.choices[0]?.message?.content?.trim();
       } catch (e) {
@@ -318,8 +319,8 @@ export const processWhatsappMessage = inngest.createFunction(
             role: 'user',
             content: `Given this AI sales reply: "${aiReply}" — does it confirm or propose a specific appointment or demo booking? Extract any details mentioned. Reply with valid JSON only:\n{"isBooking": boolean, "proposedDate": "ISO date string or null", "serviceInterest": "string or null", "email": "email string or null"}`
           }],
-          model: "llama-3.3-70b-versatile",
-          max_tokens: 100,
+          model: GROQ_MODEL,
+          max_tokens: 200,
           temperature: 0,
           response_format: { type: "json_object" }
         });
@@ -833,9 +834,9 @@ export const processReviewCampaign = inngest.createFunction(
           const prompt = `You are a customer success assistant. Write a short, warm, 2-sentence WhatsApp review request for ${templateVars.name} from ${businessName}. Mention they recently got ${templateVars.service}. Ask them to leave a review using this link: ${trackLink}. Include: Reply STOP to opt-out.`;
           const response = await groq.chat.completions.create({
             messages: [{ role: 'system', content: prompt }],
-            model: "llama-3.3-70b-versatile",
+            model: GROQ_MODEL,
             temperature: 0.7,
-            max_tokens: 150,
+            max_tokens: 250,
           });
           msg = response.choices[0]?.message?.content?.trim() || '';
         } catch (e) {
@@ -2047,7 +2048,7 @@ Return ONLY valid JSON in this exact shape:
         const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
         const response = await groq.chat.completions.create({
           messages: [{ role: "user", content: scoringPrompt }],
-          model: "llama-3.3-70b-versatile",
+          model: GROQ_MODEL,
           temperature: 0.3,
           max_tokens: 200,
           response_format: { type: "json_object" },
@@ -2142,9 +2143,9 @@ Output only the message text, no quotes, no formatting.`;
 
         const response = await groq.chat.completions.create({
           messages: [{ role: "user", content: prompt }],
-          model: "llama-3.3-70b-versatile",
+          model: GROQ_MODEL,
           temperature: 0.6,
-          max_tokens: 80,
+          max_tokens: 200,
         });
         return response.choices[0]?.message?.content?.trim() || fallbacks[templateType];
       } catch {

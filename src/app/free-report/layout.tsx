@@ -26,5 +26,5 @@ export const metadata: Metadata = {
 };
 
 export default function FreeReportLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  return <div className="theme-marketing">{children}</div>;
 }

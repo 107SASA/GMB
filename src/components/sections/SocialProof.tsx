@@ -17,8 +17,8 @@ export function FinalCTA() {
           three colors stacked) with a single deep-navy surface and one quiet
           particle field, matching the premium-minimal FinalCTA pattern
           instead of reading as generic "AI landing page" gradient soup. */}
-      <div className="max-w-5xl mx-auto p-12 md:p-20 rounded-xl bg-[#0a1626] relative overflow-hidden text-center card-shadow">
-        <ParticleField id="cta-particles" colors={["#1a4f8b", "#33db6d"]} density={22} opacity={0.25} />
+      <div className="max-w-5xl mx-auto p-12 md:p-20 rounded-xl bg-[#141a12] relative overflow-hidden text-center card-shadow">
+        <ParticleField id="cta-particles" colors={["#0a8a3e", "#62bd32"]} density={22} opacity={0.25} />
         <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-secondary/10 blur-[100px] rounded-full pointer-events-none" />
 
         <div className="relative z-10">

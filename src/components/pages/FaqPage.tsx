@@ -6,11 +6,11 @@ import { Footer } from "@/components/layout/Footer";
 import { FaqAccordion } from "@/components/shared/FaqAccordion";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { ALL_FAQS } from "@/lib/faqData";
-import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
+import { BookDemoButton } from "@/components/shared/BookDemoButton";
 
 export function FaqPage() {
   return (
-    <main className="min-h-screen bg-background selection:bg-primary-fixed">
+    <main className="theme-marketing min-h-screen bg-background selection:bg-primary-fixed">
       <Navbar />
 
       <div className="pt-24 md:pt-28 px-6">
@@ -53,13 +53,12 @@ export function FaqPage() {
               >
                 Contact Us
               </Link>
-              <a
-                href={bookDemoLink()}
-                {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              <BookDemoButton
+                origin="faq-page:final-cta"
                 className="w-full sm:w-auto px-10 py-5 bg-whatsapp text-white rounded-lg font-bold hover:opacity-90 transition-all card-shadow"
               >
                 Book Free Demo on WhatsApp
-              </a>
+              </BookDemoButton>
             </div>
           </div>
         </div>

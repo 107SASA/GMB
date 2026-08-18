@@ -65,6 +65,44 @@
   --foreground: #191c1e;
 }
 
+/*
+ * Marketing-site green rebrand — scoped to a wrapper class rather than
+ * changed in @theme above, because these are the same CSS variables the
+ * logged-in dashboard/admin/PDF-report surfaces use. Overriding them
+ * globally would rebrand the whole product, not just the public site.
+ * Apply `theme-marketing` to the outermost element of any public marketing
+ * page (homepage, About, services, free-report, legal pages) — everything
+ * inside inherits these instead of the navy/green @theme defaults.
+ *
+ * Brand colors: bottom green #62BD32, top green #06B34C (the logo's
+ * gradient), near-black #191919. Container/fixed/on-* variants are derived
+ * to stay a coherent Material-3-style tonal system, blending toward
+ * #191919 instead of the old navy blend.
+ */
+.theme-marketing {
+  --color-primary: #06b34c;
+  --color-primary-container: #0a8a3e;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #bdf0cf;
+  --color-primary-fixed: #e2f7ea;
+  --color-primary-fixed-dim: #b9ead0;
+
+  --color-secondary: #4da328;
+  --color-secondary-container: #eaf7dc;
+  --color-on-secondary: #ffffff;
+  --color-on-secondary-container: #2f5e1a;
+  --color-secondary-fixed: #cdf0a9;
+
+  --color-tertiary: #14210f;
+  --color-tertiary-container: #1f3a17;
+  --color-on-tertiary-container: #62bd32;
+
+  --color-on-surface: #191919;
+  --color-on-surface-variant: #47493f;
+  --color-outline: #7a7d70;
+  --color-outline-variant: #c9cdbd;
+}
+
 * {
   border-color: #c2c6d1;
 }
@@ -173,7 +211,7 @@ html {
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
-  background-image: linear-gradient(to right, #00386c, #006c45);
+  background-image: linear-gradient(to right, #62bd32, #06b34c);
 }
 
 .bg-glow {
@@ -188,8 +226,23 @@ html {
   left: -50%;
   width: 200%;
   height: 200%;
-  background: radial-gradient(circle at center, rgba(0, 56, 108, 0.08) 0%, transparent 50%);
+  background: radial-gradient(circle at center, rgba(6, 179, 76, 0.08) 0%, transparent 50%);
   pointer-events: none;
+}
+
+/* The literal two-stop brand gradient (not the solid --color-primary token)
+   — for large accent surfaces only: hero background wash, FinalCTA panel
+   accent. See the .theme-marketing block above for the solid tokens used
+   everywhere else (buttons/badges/borders). */
+.brand-gradient-text {
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  background-image: linear-gradient(135deg, #62bd32, #06b34c);
+}
+
+.brand-gradient-bg {
+  background-image: linear-gradient(135deg, #62bd32, #06b34c);
 }
 
 @media print {

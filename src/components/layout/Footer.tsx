@@ -2,6 +2,7 @@ import Link from "next/link";
 import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 import { BRAND_ATTRIBUTION } from "@/lib/companyInfo";
 import { SERVICES } from "@/lib/servicesData";
+import { FloatingWhatsAppButton } from "@/components/shared/FloatingWhatsAppButton";
 
 export function Footer() {
   return (
@@ -38,6 +39,11 @@ export function Footer() {
             <li>
               <Link href="/features" className="hover:text-primary transition-colors">
                 Features
+              </Link>
+            </li>
+            <li>
+              <Link href="/about" className="hover:text-primary transition-colors">
+                About Us
               </Link>
             </li>
             <li>
@@ -114,6 +120,8 @@ export function Footer() {
         <p>© {new Date().getFullYear()} GrowwMatics AI. All rights reserved. Built for the future of local SEO.</p>
         <p>{BRAND_ATTRIBUTION}</p>
       </div>
+
+      <FloatingWhatsAppButton />
     </footer>
   );
 }

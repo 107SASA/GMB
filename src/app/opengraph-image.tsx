@@ -30,7 +30,7 @@ export default function Image() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(135deg, #00386c 0%, #1a4f8b 55%, #006c45 100%)",
+          background: "linear-gradient(135deg, #141a12 0%, #0a8a3e 55%, #62bd32 100%)",
           fontFamily: "sans-serif",
         }}
       >
@@ -61,7 +61,7 @@ export default function Image() {
         <div
           style={{
             fontSize: 30,
-            color: "#d5e3ff",
+            color: "#d9f5e2",
             maxWidth: 900,
             textAlign: "center",
             lineHeight: 1.4,

@@ -5,13 +5,14 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
-import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 import { SERVICES } from "@/lib/servicesData";
+import { BookDemoButton } from "@/components/shared/BookDemoButton";
 
+// Pricing and FAQ stay live pages (linked from the footer, still indexable)
+// — just decluttered off the header per the Aug 2026 nav redesign.
 const navLinks = [
   { name: "Features", href: "/features" },
-  { name: "Pricing", href: "/pricing" },
-  { name: "FAQ", href: "/faq" },
+  { name: "About Us", href: "/about" },
 ];
 
 export function Navbar() {
@@ -85,31 +86,31 @@ export function Navbar() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 8 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute top-full left-1/2 -translate-x-1/2 pt-3 w-[560px]"
+                  className="absolute top-full left-1/2 -translate-x-1/2 pt-3 w-160"
                 >
-                  <div className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-4 grid grid-cols-2 gap-1">
+                  <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl card-shadow p-5 grid grid-cols-2 gap-2">
                     {SERVICES.map((service) => (
                       <Link
                         key={service.slug}
                         href={`/services/${service.slug}`}
                         onClick={() => setServicesMenuOpen(false)}
-                        className="flex items-start gap-3 p-3 rounded-lg hover:bg-surface-container-low transition-colors group"
+                        className="flex items-start gap-3.5 p-3.5 rounded-xl hover:bg-surface-container-low transition-colors group"
                       >
-                        <div className="w-9 h-9 rounded-lg bg-primary-fixed text-primary flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                          <MaterialIcon name={service.icon} size={18} />
+                        <div className="w-11 h-11 rounded-xl bg-linear-to-br from-primary-fixed to-primary-fixed-dim/60 border border-primary-fixed-dim text-primary flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                          <MaterialIcon name={service.icon} size={20} />
                         </div>
                         <div>
                           <div className="text-sm font-bold text-on-surface group-hover:text-primary transition-colors">
                             {service.name}
                           </div>
-                          <div className="text-xs text-on-surface-variant mt-0.5">{service.tagline}</div>
+                          <div className="text-xs text-on-surface-variant mt-1 leading-relaxed">{service.tagline}</div>
                         </div>
                       </Link>
                     ))}
                     <Link
                       href="/services"
                       onClick={() => setServicesMenuOpen(false)}
-                      className="col-span-2 flex items-center justify-center gap-1 mt-1 p-3 rounded-lg text-sm font-semibold text-primary hover:bg-surface-container-low transition-colors border-t border-outline-variant"
+                      className="col-span-2 flex items-center justify-center gap-1.5 mt-1 p-3 rounded-xl text-sm font-semibold text-primary hover:bg-primary-fixed transition-colors border-t border-outline-variant"
                     >
                       View all services
                       <MaterialIcon name="arrow_forward" size={16} className="text-primary" />
@@ -138,13 +139,12 @@ export function Navbar() {
           >
             Login
           </Link>
-          <a
-            href={bookDemoLink()}
-            {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+          <BookDemoButton
+            origin="navbar"
             className="px-5 py-2.5 bg-primary text-on-primary rounded-lg text-sm font-semibold hover:bg-primary-container transition-all active:scale-95"
           >
             Book Free Demo
-          </a>
+          </BookDemoButton>
         </div>
 
         <button
@@ -229,14 +229,13 @@ export function Navbar() {
               >
                 Login
               </Link>
-              <a
-                href={bookDemoLink()}
-                {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                onClick={() => setMobileMenuOpen(false)}
+              <BookDemoButton
+                origin="navbar-mobile"
+                onTriggerClick={() => setMobileMenuOpen(false)}
                 className="px-6 py-3 bg-primary text-on-primary rounded-lg text-center font-bold"
               >
                 Book Free Demo
-              </a>
+              </BookDemoButton>
             </div>
           </motion.div>
         )}

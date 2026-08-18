@@ -6,11 +6,11 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Features } from "@/components/sections/Features";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
-import { bookDemoLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
+import { BookDemoButton } from "@/components/shared/BookDemoButton";
 
 export function FeaturesPage() {
   return (
-    <main className="min-h-screen bg-background selection:bg-primary-fixed">
+    <main className="theme-marketing min-h-screen bg-background selection:bg-primary-fixed">
       <Navbar />
 
       <div className="pt-24 md:pt-28 px-6">
@@ -52,13 +52,12 @@ export function FeaturesPage() {
               >
                 Get My Free Report
               </Link>
-              <a
-                href={bookDemoLink()}
-                {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              <BookDemoButton
+                origin="features-page:final-cta"
                 className="w-full sm:w-auto px-10 py-5 bg-whatsapp text-white rounded-lg font-bold hover:opacity-90 transition-all card-shadow"
               >
                 Book Free Demo on WhatsApp
-              </a>
+              </BookDemoButton>
             </div>
           </div>
         </div>

@@ -34,13 +34,6 @@ interface SelectedBusiness {
   editorialSummary?: string;
 }
 
-const BUDGET_OPTIONS = [
-  { value: 'under-10k', label: 'Under ₹10,000/mo' },
-  { value: '10k-50k', label: '₹10,000 – ₹50,000/mo' },
-  { value: '50k-plus', label: '₹50,000+/mo' },
-  { value: 'not-sure', label: 'Not sure yet' },
-];
-
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -62,7 +55,6 @@ export default function FreeReportPage() {
 
   const [selected, setSelected] = useState<SelectedBusiness | null>(null);
   const [phone, setPhone] = useState('');
-  const [budget, setBudget] = useState(BUDGET_OPTIONS[0].value);
 
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -186,7 +178,6 @@ export default function FreeReportPage() {
           placesReviewCount: business.totalReviews,
           editorialSummary: business.editorialSummary,
           phone,
-          budget,
         }),
       });
       const json = await res.json();
@@ -267,21 +258,6 @@ export default function FreeReportPage() {
               className="w-full px-4 py-3.5 bg-surface border border-outline-variant rounded-lg focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none"
               placeholder="+91 98765 43210"
             />
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-on-surface mb-2">Monthly marketing budget</label>
-            <select
-              value={budget}
-              onChange={(e) => setBudget(e.target.value)}
-              className="w-full px-4 py-3.5 bg-surface border border-outline-variant rounded-lg focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none"
-            >
-              {BUDGET_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
           </div>
 
           {error && (

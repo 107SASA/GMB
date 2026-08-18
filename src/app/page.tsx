@@ -35,7 +35,7 @@ const softwareApplicationSchema = {
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-background selection:bg-primary-fixed">
+    <main className="theme-marketing min-h-screen bg-background selection:bg-primary-fixed">
       <JsonLd data={softwareApplicationSchema} />
       <Navbar />
 

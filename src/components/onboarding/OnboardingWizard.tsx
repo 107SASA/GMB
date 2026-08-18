@@ -8,14 +8,18 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import StepWelcome from './StepWelcome';
 import StepAccount from './StepAccount';
 import StepPassword from './StepPassword';
-import StepBusiness from './StepBusiness';
+import StepOrganization from './StepOrganization';
+import StepBusinessSearch from './StepBusinessSearch';
+import StepBusinessConfirm from './StepBusinessConfirm';
 import StepGoogle from './StepGoogle';
 import StepCompletion from './StepCompletion';
 
 const STEPPER_STEPS = [
   { id: 'account', label: 'Account' },
   { id: 'password', label: 'Password' },
+  { id: 'organization', label: 'Organization' },
   { id: 'business', label: 'Business' },
+  { id: 'confirm', label: 'Confirm' },
   { id: 'google', label: 'Google' },
 ];
 
@@ -47,7 +51,9 @@ export function OnboardingWizard() {
     { component: StepWelcome, id: 'welcome' },
     { component: StepAccount, id: 'account' },
     { component: StepPassword, id: 'password' },
-    { component: StepBusiness, id: 'business' },
+    { component: StepOrganization, id: 'organization' },
+    { component: StepBusinessSearch, id: 'business' },
+    { component: StepBusinessConfirm, id: 'confirm' },
     { component: StepGoogle, id: 'google' },
     { component: StepCompletion, id: 'complete' }
   ];
@@ -62,9 +68,7 @@ export function OnboardingWizard() {
       <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-secondary/8 rounded-full blur-[120px] pointer-events-none" />
 
       <div className="absolute top-8 left-8 flex items-center gap-2 z-10">
-        <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-          <MaterialIcon name="rocket_launch" size={16} className="text-on-primary" />
-        </div>
+        <img src="/brand/icon.png" alt="GrowwMatics AI" className="w-8 h-8 object-contain" />
         <span className="text-lg font-heading font-bold tracking-tight text-on-surface">
           Groww<span className="text-primary">Matics</span> AI
         </span>

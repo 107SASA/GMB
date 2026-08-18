@@ -3,7 +3,7 @@ import { GooglePlacesService } from '@/services/google/places';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 
 // Must stay unauthenticated: the public signup wizard (/onboarding →
-// StepBusiness) calls this before the account exists. So the quota is
+// StepBusinessSearch) calls this before the account exists. So the quota is
 // protected by an IP rate limit instead of a session check — without it,
 // anyone can drain GOOGLE_MAPS_API_KEY billing. Also restrict the key by
 // HTTP referrer + API in Google Cloud Console.

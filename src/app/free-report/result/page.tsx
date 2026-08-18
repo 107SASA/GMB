@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import AuditPaywallSidebar from '@/components/audit/AuditPaywallSidebar';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { ReportGeneratingAnimation } from '@/components/graphics/ReportGeneratingAnimation';
 
 interface AuditDoc {
   _id: string;
@@ -20,7 +21,7 @@ function ScoreRing({ score }: { score: number }) {
   const r = 54;
   const circ = 2 * Math.PI * r;
   const offset = circ - (score / 100) * circ;
-  const color = score >= 75 ? '#006c45' : score >= 50 ? '#1a4f8b' : '#ba1a1a';
+  const color = score >= 75 ? '#06b34c' : score >= 50 ? '#0a8a3e' : '#ba1a1a';
   return (
     <div className="relative flex items-center justify-center" style={{ width: 130, height: 130 }}>
       <svg width={130} height={130} viewBox="0 0 130 130" className="-rotate-90">
@@ -163,19 +164,10 @@ function FreeReportResultContent() {
 
   const generating = !audit || audit.status === 'PENDING' || audit.status === 'PROCESSING';
 
+  // No pricing card here on purpose — it only mounts once the report is
+  // actually COMPLETED, alongside the report itself, further down.
   if (generating) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="w-full max-w-md flex flex-col items-center gap-8">
-          <div className="text-center">
-            <MaterialIcon name="progress_activity" size={40} className="animate-spin text-primary mx-auto mb-4" />
-            <h1 className="font-heading text-xl font-bold text-on-surface mb-2">Generating your report…</h1>
-            <p className="text-on-surface-variant text-sm">This usually takes about 20–30 seconds.</p>
-          </div>
-          <AuditPaywallSidebar generating />
-        </div>
-      </div>
-    );
+    return <ReportGeneratingAnimation />;
   }
 
   if (audit!.status === 'FAILED') {
@@ -330,8 +322,8 @@ function FreeReportResultContent() {
                     loading="lazy"
                   />
                   <div className="flex items-center gap-4 px-3 py-2 text-[11px] text-on-surface-variant bg-surface-container">
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#1a7d46' }} /> Good — top 5</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#1a4f8b' }} /> Average — 6–20</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#62bd32' }} /> Good — top 5</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#0a8a3e' }} /> Average — 6–20</span>
                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#ba1a1a' }} /> Poor — beyond 20</span>
                   </div>
                 </div>

@@ -83,7 +83,7 @@ export async function POST(req: Request) {
       }
 
       // The user's OWN contact number (StepAccount) — deliberately separate
-      // from `body.phone`, which is the BUSINESS's phone from StepBusiness
+      // from `body.phone`, which is the BUSINESS's phone from StepBusinessSearch/StepBusinessConfirm
       // (used below for Business.create only). These used to be the same
       // field, so autofilling a business's Google-listed phone number
       // silently became the user's personal account phone too.

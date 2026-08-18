@@ -1,4 +1,6 @@
 import { ImageResponse } from "next/og";
+import fs from "node:fs";
+import path from "node:path";
 
 // Default share/search-preview image for the whole site — every route that
 // doesn't define its own opengraph-image.tsx falls back to this one.
@@ -9,6 +11,13 @@ import { ImageResponse } from "next/og";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
+
+// Satori (the renderer behind ImageResponse) can't fetch local /public files
+// by URL at request time, so the brand mark is inlined as a data URI —
+// read once at module load rather than on every request.
+const iconDataUri = `data:image/png;base64,${fs
+  .readFileSync(path.join(process.cwd(), "public/brand/icon.png"))
+  .toString("base64")}`;
 
 export default function Image() {
   return new ImageResponse(
@@ -44,16 +53,8 @@ export default function Image() {
               justifyContent: "center",
             }}
           >
-            {/* Plain Unicode emoji here previously — Satori resolves those via
-                a remote emoji-image fetch per render, which is slow (or hangs
-                outright without outbound access) instead of an inline SVG. */}
-            <svg width="38" height="38" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 2c3 2 5 6 5 10 0 2-.5 4-1.5 5.5L12 22l-3.5-4.5C7.5 16 7 14 7 12c0-4 2-8 5-10z"
-                fill="#ffffff"
-              />
-              <circle cx="12" cy="10" r="2" fill="#00386c" />
-            </svg>
+            {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text -- ImageResponse (Satori) requires a plain <img>, not next/image; this renders to a static raster image, not real DOM */}
+            <img src={iconDataUri} alt="" width={44} height={44} style={{ objectFit: "contain" }} />
           </div>
           <div style={{ fontSize: 56, fontWeight: 800, color: "#ffffff" }}>GrowwMatics AI</div>
         </div>

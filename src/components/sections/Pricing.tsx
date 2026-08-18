@@ -1,28 +1,29 @@
 "use client";
 
 import { PricingCards } from "./pricing/PricingCards";
+import { SectionHeading, Accent } from "@/components/ui/SectionHeading";
 
 export function Pricing() {
   return (
     <section id="pricing" className="py-32 relative bg-surface-container-lowest overflow-hidden">
-      {/* Soft trust blue / growth green atmosphere */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[800px] max-w-[1200px] opacity-40 pointer-events-none">
-        <div className="absolute top-20 left-20 w-[400px] h-[400px] bg-primary-fixed rounded-full mix-blend-multiply filter blur-[100px] opacity-70 animate-blob" />
-        <div className="absolute top-40 right-20 w-[400px] h-[400px] bg-secondary-container/60 rounded-full mix-blend-multiply filter blur-[100px] opacity-70 animate-blob animation-delay-2000" />
-        <div className="absolute -bottom-20 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-primary-fixed-dim/40 rounded-full mix-blend-multiply filter blur-[100px] opacity-70 animate-blob animation-delay-4000" />
+      {/* Soft trust blue / growth green atmosphere — two static glows, no
+          dead "animate-blob" classes (those had no matching @keyframes
+          anywhere in the project, so they were never actually animating). */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[800px] max-w-[1200px] pointer-events-none">
+        <div className="absolute top-20 left-20 w-[400px] h-[400px] bg-primary-fixed rounded-full blur-[100px] opacity-40" />
+        <div className="absolute top-40 right-20 w-[400px] h-[400px] bg-secondary-container/60 rounded-full blur-[100px] opacity-40" />
       </div>
 
-      <div className="text-center mb-20 relative z-10 px-4">
-        <h2 className="font-heading text-4xl md:text-5xl lg:text-6xl font-extrabold text-on-surface tracking-tight mb-6">
-          Choose Your{" "}
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary-container">
-            Growth Plan
-          </span>
-        </h2>
-        <p className="text-on-surface-variant max-w-2xl mx-auto text-lg md:text-xl font-medium">
-          Start small and scale your local business with AI-powered Google Business Profile optimization and lead conversion.
-        </p>
-      </div>
+      <SectionHeading
+        eyebrow="Pricing"
+        title={
+          <>
+            Choose Your <Accent>Growth Plan</Accent>
+          </>
+        }
+        description="Start small and scale your local business with AI-powered Google Business Profile optimization and lead conversion."
+        className="relative z-10 mb-20 px-4"
+      />
 
       <PricingCards />
     </section>

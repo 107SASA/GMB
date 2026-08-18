@@ -3,18 +3,20 @@
 import Link from "next/link";
 import { FaqAccordion } from "@/components/shared/FaqAccordion";
 import { HOMEPAGE_FAQS } from "@/lib/faqData";
+import { SectionHeading, Accent } from "@/components/ui/SectionHeading";
 
 export function FAQ() {
   return (
     <section id="faq" className="py-24 px-6 max-w-3xl mx-auto">
-      <div className="text-center mb-16">
-        <h2 className="font-heading text-3xl md:text-5xl font-bold text-on-surface mb-6">
-          Frequently Asked{" "}
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
-            Questions
-          </span>
-        </h2>
-      </div>
+      <SectionHeading
+        eyebrow="FAQ"
+        title={
+          <>
+            Frequently Asked <Accent>Questions</Accent>
+          </>
+        }
+        className="mb-16"
+      />
 
       <FaqAccordion faqs={HOMEPAGE_FAQS} />
 

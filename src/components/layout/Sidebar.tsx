@@ -236,9 +236,7 @@ export function Sidebar() {
       <aside className="w-64 border-r border-outline-variant bg-surface-container-low flex-col hidden lg:flex h-screen fixed top-0 left-0 z-50 overflow-y-auto custom-scrollbar">
         <div className="p-6">
           <Link href="/dashboard" className="flex items-center gap-2 mb-6 group">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <MaterialIcon name="rocket_launch" size={18} className="text-on-primary" />
-            </div>
+            <img src="/brand/icon.png" alt="GrowwMatics AI" className="w-8 h-8 object-contain" />
             <span className="text-lg font-heading font-bold tracking-tight text-on-surface">
               Groww<span className="text-primary">Matics</span> AI
             </span>
@@ -412,9 +410,7 @@ export function Sidebar() {
       >
         <div className="p-6">
           <Link href="/dashboard" className="flex items-center gap-2 mb-6" onClick={close}>
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <MaterialIcon name="rocket_launch" size={18} className="text-on-primary" />
-            </div>
+            <img src="/brand/icon.png" alt="GrowwMatics AI" className="w-8 h-8 object-contain" />
             <span className="text-lg font-heading font-bold tracking-tight text-on-surface">
               Groww<span className="text-primary">Matics</span> AI
             </span>

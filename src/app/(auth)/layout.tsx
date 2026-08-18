@@ -1,4 +1,3 @@
-import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { BRAND_ATTRIBUTION } from "@/lib/companyInfo";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -9,9 +8,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-primary mb-4">
-            <MaterialIcon name="rocket_launch" size={24} className="text-on-primary" />
-          </div>
+          <img src="/brand/icon.png" alt="GrowwMatics AI" className="inline-block w-12 h-12 object-contain mb-4" />
           <h1 className="text-headline-md font-heading text-on-surface tracking-tight">
             Groww<span className="text-primary">Matics</span> AI
           </h1>

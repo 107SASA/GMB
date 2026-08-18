@@ -8,6 +8,7 @@ import { requireModule } from '@/lib/moduleGating';
 import { logAIUsage } from '@/lib/logAIUsage';
 import { checkUsageLimit } from '@/lib/featureGating';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { GROQ_MODEL } from '@/lib/aiModel';
 
 // Burst guard (per account, short window), independent of the plan's
 // aiGenerations quota.
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
       userId: ctx.userId,
       businessId: ctx.businessId,
       promptType: 'review_reply',
-      aiModel: 'llama-3.3-70b-versatile',
+      aiModel: GROQ_MODEL,
       promptTokens,
       completionTokens,
       status: 'success',

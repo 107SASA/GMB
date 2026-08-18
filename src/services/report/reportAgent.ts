@@ -1,5 +1,6 @@
 import Groq from 'groq-sdk';
 import dbConnect from '@/lib/mongodb';
+import { GROQ_MODEL } from '@/lib/aiModel';
 import ReportAgentConfig from '@/models/ReportAgentConfig';
 import type { IReportConversation } from '@/models/ReportConversation';
 import {
@@ -53,7 +54,7 @@ export async function composeAgentReply(
 
   try {
     const res = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: GROQ_MODEL,
       messages: [
         { role: 'system', content: config.agentSystemPrompt },
         { role: 'user', content: context },

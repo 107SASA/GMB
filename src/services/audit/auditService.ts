@@ -6,6 +6,7 @@ import Review from '../../models/Review';
 import PlaceInsightCache, { claimInsightRefresh, waitForInsightRefresh, IPlaceInsightCache } from '../../models/PlaceInsightCache';
 import { generateAIAudit } from '../ai/auditEngine';
 import { logAIUsage } from '../../lib/logAIUsage';
+import { GROQ_MODEL } from '../../lib/aiModel';
 
 // googlePlaceId-keyed cache for fastMode (free-report / lead-gen) audits —
 // see PlaceInsightCache.ts for why this is keyed by the real Google listing
@@ -560,7 +561,7 @@ export async function processAuditJob(auditId: string) {
         userId:      audit.userId,
         businessId:  audit.businessId?.toString(),
         promptType:  'audit_generation',
-        aiModel:     'llama-3.3-70b-versatile',
+        aiModel:     GROQ_MODEL,
         promptTokens:     aiResult._usage?.promptTokens    ?? 0,
         completionTokens: aiResult._usage?.completionTokens ?? 0,
         status:      'success',

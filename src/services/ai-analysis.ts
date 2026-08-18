@@ -1,4 +1,5 @@
 import Groq from "groq-sdk";
+import { GROQ_MODEL } from "@/lib/aiModel";
 
 let groq: Groq | null = null;
 
@@ -53,7 +54,7 @@ export async function analyzeBusinessData(
 
   try {
     const response = await getGroq().chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_MODEL,
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
     });

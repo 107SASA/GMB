@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import { requireBusinessContext } from '@/lib/tenant';
+import { GROQ_MODEL } from '@/lib/aiModel';
 
 const TYPE_INSTRUCTIONS: Record<string, string> = {
   initial: 'a first-time review request sent right after their service',
@@ -39,7 +40,7 @@ STRICT rules:
 
     const response = await groq.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'llama-3.3-70b-versatile',
+      model: GROQ_MODEL,
       temperature: 0.8,
       max_tokens: 200,
     });

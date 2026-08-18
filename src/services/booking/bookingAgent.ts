@@ -1,5 +1,6 @@
 import Groq from 'groq-sdk';
 import dbConnect from '@/lib/mongodb';
+import { GROQ_MODEL } from '@/lib/aiModel';
 import BookingAgentConfig from '@/models/BookingAgentConfig';
 import type { IBookingConversation, IBookingDetails } from '@/models/BookingConversation';
 import {
@@ -113,7 +114,7 @@ export async function composeAgentReply(
   let parsed: ReturnType<typeof parseModelJson> = null;
   try {
     const res = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: GROQ_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Conversation so far:\n${history}\n\nProduce the next JSON response.` },

@@ -8,6 +8,7 @@ import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
 import { logAIUsage } from '@/lib/logAIUsage';
 import { checkUsageLimit } from '@/lib/featureGating';
+import { GROQ_MODEL } from '@/lib/aiModel';
 import { checkRateLimit } from '@/lib/rateLimit';
 
 // Allow up to 2 minutes — sequential thumbnail generation adds time
@@ -96,7 +97,7 @@ export async function POST(req: Request) {
       userId: ctx.userId,
       businessId: ctx.businessId,
       promptType: 'content_generation',
-      aiModel: 'llama-3.3-70b-versatile',
+      aiModel: GROQ_MODEL,
       promptTokens:    aiResult._usage?.promptTokens    ?? 0,
       completionTokens: aiResult._usage?.completionTokens ?? 0,
       status: 'success',

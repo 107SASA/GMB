@@ -1,5 +1,6 @@
 import Groq from 'groq-sdk';
 import dbConnect from '@/lib/mongodb';
+import { GROQ_MODEL } from '@/lib/aiModel';
 import SalesAgentConfig from '@/models/SalesAgentConfig';
 import type { ISalesConversation, ISalesScores } from '@/models/SalesConversation';
 import {
@@ -80,7 +81,7 @@ function buildVars(scores: ISalesScores, leadName: string, config: SalesAgentCon
 async function aiMessage(systemPrompt: string, context: string): Promise<string | null> {
   try {
     const res = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: GROQ_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: context },

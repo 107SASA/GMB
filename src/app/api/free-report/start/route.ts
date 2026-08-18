@@ -17,11 +17,16 @@ import { isQaTestingMode } from '@/lib/testingMode';
  */
 export async function POST(req: Request) {
   try {
-    // Tightened from 5/10min: each successful call provisions a real
-    // User+Organization+Business+Subscription+Lead and dispatches an audit
-    // job, so this is rate-limited more like a signup than a read endpoint.
+    // Each successful call provisions a real User+Organization+Business+
+    // Subscription+Lead and dispatches an audit job, so this is rate-limited
+    // more like a signup than a read endpoint. Was tightened to 3/15min
+    // during the Aug 2026 security pass, then raised to 8/15min a few days
+    // later — 3 was tripping legitimate testing/demo sessions (a real person
+    // retrying after a typo, or someone showing the form to a colleague,
+    // easily hits 3 attempts) well before any actual abuser would notice a
+    // limit exists. Still tight enough to block a scripted hammering loop.
     const ip = getClientIp(req);
-    const ipRate = checkRateLimit(`free-report-ip:${ip}`, 3, 15 * 60 * 1000);
+    const ipRate = checkRateLimit(`free-report-ip:${ip}`, 8, 15 * 60 * 1000);
     if (!ipRate.allowed && !isQaTestingMode()) {
       return NextResponse.json(
         { error: 'Too many requests. Please try again in a few minutes.' },

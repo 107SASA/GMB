@@ -38,7 +38,7 @@ function StarRating({ rating }: { rating: number }) {
 }
 
 /* ─── Circular Gauge ────────────────────────────────────────────────────────── */
-function CircularGauge({ value, size = 96, color = '#00386c' }: { value: number; size?: number; color?: string }) {
+function CircularGauge({ value, size = 96, color = '#06b34c' }: { value: number; size?: number; color?: string }) {
   const strokeWidth = Math.round(size * 0.1);
   const r = (size - strokeWidth) / 2;
   const circ = 2 * Math.PI * r;
@@ -68,10 +68,10 @@ function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     Good:    'bg-secondary text-on-secondary',
     Poor:    'bg-error text-on-error',
-    Average: 'bg-primary-container text-on-primary',
+    Average: 'bg-warning text-on-warning',
     Low:     'bg-secondary text-on-secondary',
     High:    'bg-error text-on-error',
-    Medium:  'bg-primary-container text-on-primary',
+    Medium:  'bg-warning text-on-warning',
   };
   return (
     <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${styles[status] ?? 'bg-outline text-on-primary'}`}>
@@ -86,14 +86,14 @@ function ChecklistRow({ field, status }: { field: string; status: string }) {
     return (
       <div className="flex items-center justify-between py-2 border-b border-outline-variant last:border-0">
         <span className="text-sm text-on-surface">{field}</span>
-        <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#006c45" /><path d="M8 12l3 3 5-5" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>
+        <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#0a8a3e" /><path d="M8 12l3 3 5-5" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>
       </div>
     );
   if (status === 'Partial')
     return (
       <div className="flex items-center justify-between py-2 border-b border-outline-variant last:border-0">
         <span className="text-sm text-on-surface">{field}</span>
-        <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1a4f8b" /><path d="M12 7v5M12 16h.01" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>
+        <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#fab219" /><path d="M12 7v5M12 16h.01" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>
       </div>
     );
   // Distinct from Missing: "we had no way to check" (needs GBP OAuth access
@@ -121,7 +121,7 @@ function rankTextClass(rank: number | null | undefined) {
   const bucket = rankBucket(rank);
   if (bucket === 'unranked') return 'text-outline';
   if (bucket === 'good') return 'text-secondary';
-  if (bucket === 'ok') return 'text-primary';
+  if (bucket === 'ok') return 'text-warning-text';
   return 'text-error';
 }
 
@@ -178,8 +178,8 @@ function GeoGridMap({
       <div className="px-4 py-2.5 bg-surface-container-lowest border-t border-outline-variant flex items-center gap-4 flex-wrap">
         {[
           { bg: '#1d4ed8', label: 'You' },
-          { bg: '#006c45', label: '1–5' },
-          { bg: '#1a4f8b', label: '6–10' },
+          { bg: '#0a8a3e', label: '1–5' },
+          { bg: '#fab219', label: '6–10' },
           { bg: '#ba1a1a', label: '20+' },
         ].map(({ bg, label }) => (
           <div key={label} className="flex items-center gap-1.5">
@@ -307,7 +307,7 @@ export default function AuditReportGrexa({
 
   /* ── Suspension risk ──────────────────────────────────────────────── */
   const { level: suspLevel, pct: suspPct } = computeSuspensionRisk(completionPct, reviewCount);
-  const suspColor = suspLevel === 'Low' ? '#006c45' : suspLevel === 'Medium' ? '#1a4f8b' : '#ba1a1a';
+  const suspColor = suspLevel === 'Low' ? '#0a8a3e' : suspLevel === 'Medium' ? '#fab219' : '#ba1a1a';
 
   /* ── Checklist display — never invent fake Complete/Missing rows ─── */
   const displayChecklist = checklist;
@@ -316,8 +316,8 @@ export default function AuditReportGrexa({
   const rightCL = displayChecklist.slice(half);
 
   /* ── Colors ───────────────────────────────────────────────────────── */
-  const profileColor = profilePct >= 80 ? '#006c45' : profilePct >= 60 ? '#1a4f8b' : '#ba1a1a';
-  const seoColor     = seoPct    >= 80 ? '#006c45' : seoPct    >= 50 ? '#1a4f8b' : '#ba1a1a';
+  const profileColor = profilePct >= 80 ? '#0a8a3e' : profilePct >= 60 ? '#fab219' : '#ba1a1a';
+  const seoColor     = seoPct    >= 80 ? '#0a8a3e' : seoPct    >= 50 ? '#fab219' : '#ba1a1a';
   const hasRankData  = overallRank > 0 || keywords.length > 0;
   const rankDisplay  = hasRankData ? formatRank(overallRank) : '—';
   const rankClass    = rankTextClass(overallRank);
@@ -393,7 +393,7 @@ export default function AuditReportGrexa({
         {/* Google Search Rank */}
         <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant shadow-sm p-6 flex flex-col overflow-hidden relative">
           <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-5"
-            style={{ background: 'radial-gradient(circle, #00386c, transparent)', transform: 'translate(30%,-30%)' }} />
+            style={{ background: 'radial-gradient(circle, #06b34c, transparent)', transform: 'translate(30%,-30%)' }} />
           <div className="flex items-center gap-2 mb-5">
             <GoogleLogo size={18} />
             <span className="text-sm font-bold text-on-surface">Google Search Rank</span>
@@ -449,7 +449,7 @@ export default function AuditReportGrexa({
         {/* Google Profile Score */}
         <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant shadow-sm p-6 flex flex-col overflow-hidden relative">
           <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-5"
-            style={{ background: 'radial-gradient(circle, #00386c, transparent)', transform: 'translate(30%,-30%)' }} />
+            style={{ background: 'radial-gradient(circle, #06b34c, transparent)', transform: 'translate(30%,-30%)' }} />
           <div className="flex items-center gap-2 mb-5">
             <GoogleLogo size={18} />
             <span className="text-sm font-bold text-on-surface">Google Profile Score</span>
@@ -669,7 +669,7 @@ export default function AuditReportGrexa({
               <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden mb-2">
                 <div
                   className="h-full rounded-full"
-                  style={{ width: `${Math.min(100, (rpw / (industryAvg * 1.5)) * 100)}%`, background: rpw >= industryAvg ? '#006c45' : '#ba1a1a' }}
+                  style={{ width: `${Math.min(100, (rpw / (industryAvg * 1.5)) * 100)}%`, background: rpw >= industryAvg ? '#0a8a3e' : '#ba1a1a' }}
                 />
               </div>
               <p className="text-[10px] text-outline">
@@ -687,7 +687,7 @@ export default function AuditReportGrexa({
                 <CircularGauge
                   value={responsePct}
                   size={80}
-                  color={responsePct >= 80 ? '#006c45' : '#ba1a1a'}
+                  color={responsePct >= 80 ? '#0a8a3e' : '#ba1a1a'}
                 />
               </div>
               <p className="text-[10px] text-outline text-center mt-1">
@@ -731,15 +731,15 @@ export default function AuditReportGrexa({
             <div className="mt-2 h-2 rounded-full bg-surface-container overflow-hidden w-40">
               <div
                 className="h-full rounded-full transition-all"
-                style={{ width: `${completionPct}%`, background: completionPct >= 90 ? '#006c45' : completionPct >= 70 ? '#1a4f8b' : '#ba1a1a' }}
+                style={{ width: `${completionPct}%`, background: completionPct >= 90 ? '#0a8a3e' : completionPct >= 70 ? '#fab219' : '#ba1a1a' }}
               />
             </div>
           </div>
           <div className="flex items-center gap-4 text-[11px] text-on-surface-variant flex-wrap">
             <span className="text-outline font-medium">Should be 100%</span>
             {[
-              { color: '#006c45', icon: <svg className="w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#006c45" /><path d="M8 12l3 3 5-5" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>, label: 'Complete' },
-              { color: '#1a4f8b', icon: <svg className="w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1a4f8b" /><path d="M12 7v5M12 16h.01" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>, label: 'Partial' },
+              { color: '#0a8a3e', icon: <svg className="w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#0a8a3e" /><path d="M8 12l3 3 5-5" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>, label: 'Complete' },
+              { color: '#fab219', icon: <svg className="w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#fab219" /><path d="M12 7v5M12 16h.01" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>, label: 'Partial' },
               { color: '#ba1a1a', icon: <svg className="w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#ba1a1a" /><path d="M15 9l-6 6M9 9l6 6" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>, label: 'Incomplete' },
             ].map(({ icon, label }) => (
               <div key={label} className="flex items-center gap-1.5">{icon}<span>{label}</span></div>
@@ -820,7 +820,7 @@ export default function AuditReportGrexa({
       {/* ══ 8. CTA BANNER ══════════════════════════════════════════════ */}
       <div
         className="rounded-2xl overflow-hidden card-shadow"
-        style={{ background: 'linear-gradient(135deg, #00386c 0%, #00386c 60%, #006c45 100%)' }}
+        style={{ background: 'linear-gradient(135deg, #62bd32 0%, #06b34c 100%)' }}
       >
         <div className="px-8 py-8 flex items-center justify-between gap-6 flex-wrap">
           <div>

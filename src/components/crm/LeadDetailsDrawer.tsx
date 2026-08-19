@@ -6,7 +6,7 @@ function ScoreRing({ score }: { score: number }) {
   const radius = 28;
   const circumference = 2 * Math.PI * radius;
   const filled = circumference * (score / 100);
-  const color = score >= 80 ? '#006c45' : score >= 50 ? '#004119' : '#ba1a1a';
+  const color = score >= 80 ? '#0a8a3e' : score >= 50 ? '#fab219' : '#ba1a1a';
 
   return (
     <div className="relative w-16 h-16 flex items-center justify-center">

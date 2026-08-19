@@ -3,7 +3,10 @@ import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { requireClient } from '@/lib/auth';
 
-const SAFE_FIELDS = 'fullName email phone companyName isEmailVerified subscriptionPlan lastLoginAt createdAt businessIds';
+const SAFE_FIELDS =
+  'fullName email phone companyName isEmailVerified isShadowAccount subscriptionPlan lastLoginAt createdAt businessIds';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function GET() {
   const auth = await requireClient();
@@ -23,7 +26,7 @@ export async function PATCH(req: Request) {
   await dbConnect();
 
   const body = await req.json();
-  const { fullName, phone, companyName } = body;
+  const { fullName, phone, companyName, email } = body;
 
   const update: Record<string, string> = {};
 
@@ -35,6 +38,34 @@ export async function PATCH(req: Request) {
 
   if (companyName !== undefined) {
     update.companyName = String(companyName).trim();
+  }
+
+  // Real accounts keep email immutable here (see the profile page's
+  // "Contact support" copy) — but a shadow account (see shadowAccount.ts)
+  // was provisioned with a fake `<phone>@shadow.growwmatics.internal`
+  // placeholder and hasn't set a real one yet, so it's fine — expected,
+  // even — to let it through here. /api/onboarding/claim still runs the
+  // full claim (password + OTP verification) afterward; this only fixes the
+  // placeholder being shown/used (e.g. as the Razorpay receipt address) in
+  // the meantime.
+  if (email !== undefined) {
+    const current = await User.findById(auth.userId, 'isShadowAccount').lean<{ isShadowAccount?: boolean }>();
+    if (!current) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (!current.isShadowAccount) {
+      return NextResponse.json(
+        { error: 'Email cannot be changed here. Contact support if you need to change your email.' },
+        { status: 400 }
+      );
+    }
+    const emailStr = String(email).trim().toLowerCase();
+    if (!emailStr || !EMAIL_REGEX.test(emailStr)) {
+      return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
+    }
+    const existing = await User.findOne({ email: emailStr, _id: { $ne: auth.userId } }).lean();
+    if (existing) {
+      return NextResponse.json({ error: 'An account with this email already exists.' }, { status: 400 });
+    }
+    update.email = emailStr;
   }
 
   if (phone !== undefined) {

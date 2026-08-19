@@ -286,10 +286,13 @@ export default function GBPSection() {
                       fontSize: '11px',
                     }}
                   />
-                  <Line type="monotone" dataKey="views"             name="Views"          stroke="#00386c" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="callClicks"        name="Call Clicks"    stroke="#006c45" strokeWidth={2}   dot={false} activeDot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="websiteClicks"     name="Website Clicks" stroke="#00386c" strokeWidth={2}   dot={false} activeDot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="directionRequests" name="Directions"     stroke="#004119" strokeWidth={2}   dot={false} activeDot={{ r: 4 }} />
+                  {/* Fixed categorical order, genuinely distinct hues — Views and
+                      Website Clicks previously shared the same navy (#00386c),
+                      making them indistinguishable on the chart. */}
+                  <Line type="monotone" dataKey="views"             name="Views"          stroke="#0a8a3e" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="callClicks"        name="Call Clicks"    stroke="#2563a8" strokeWidth={2}   dot={false} activeDot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="websiteClicks"     name="Website Clicks" stroke="#c2760a" strokeWidth={2}   dot={false} activeDot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="directionRequests" name="Directions"     stroke="#7c3aed" strokeWidth={2}   dot={false} activeDot={{ r: 4 }} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
@@ -307,10 +310,10 @@ export default function GBPSection() {
           </div>
           <div className="flex flex-wrap gap-4 mt-4">
             {[
-              { color: '#00386c', label: 'Views' },
-              { color: '#006c45', label: 'Call Clicks' },
-              { color: '#00386c', label: 'Website Clicks' },
-              { color: '#004119', label: 'Directions' },
+              { color: '#0a8a3e', label: 'Views' },
+              { color: '#2563a8', label: 'Call Clicks' },
+              { color: '#c2760a', label: 'Website Clicks' },
+              { color: '#7c3aed', label: 'Directions' },
             ].map((l) => (
               <div key={l.label} className="flex items-center gap-1.5 text-xs text-on-surface-variant">
                 <span className="w-3 h-0.5 inline-block rounded" style={{ backgroundColor: l.color }} />

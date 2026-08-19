@@ -74,7 +74,7 @@ export function buildReportCardHtml(ctx: ReportCardContext): string {
 </head>
 <body>
   <div style="text-align:center;margin-bottom:8px;">
-    <span style="font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#00386c;">GrowwMatics AI · Free Report</span>
+    <span style="font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#0a8a3e;">GrowwMatics AI · Free Report</span>
   </div>
   <h1 style="text-align:center;font-size:24px;font-weight:900;color:#0f172a;margin:4px 0 8px;">${h(ctx.businessName)}</h1>
   ${

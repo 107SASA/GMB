@@ -13,6 +13,7 @@ import { pickDuration, setPreferredCycle } from '@/components/billing/DurationPi
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 
 const LAUNCH_WINDOW_SECONDS = 30 * 60; // cosmetic — see the countdown note below.
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function formatCountdown(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -51,6 +52,11 @@ function CheckoutForm() {
   const [phone, setPhone] = useState('+91');
   const [originalName, setOriginalName] = useState('');
   const [originalPhone, setOriginalPhone] = useState('');
+  // Shadow accounts (see shadowAccount.ts) are provisioned with a fake
+  // "<phone>@shadow.growwmatics.internal" placeholder — never show or
+  // prefill that; the email field starts blank and editable instead of
+  // read-only until the visitor sets a real one.
+  const [isShadowAccount, setIsShadowAccount] = useState(false);
   const [formError, setFormError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
 
@@ -86,7 +92,8 @@ function CheckoutForm() {
       .then((json) => {
         if (cancelled || !json?.user) return;
         setName(json.user.fullName || '');
-        setEmail(json.user.email || '');
+        setIsShadowAccount(!!json.user.isShadowAccount);
+        setEmail(json.user.isShadowAccount ? '' : json.user.email || '');
         setPhone(json.user.phone || '+91');
         setOriginalName(json.user.fullName || '');
         setOriginalPhone(json.user.phone || '');
@@ -110,6 +117,10 @@ function CheckoutForm() {
       setFormError('Please enter your name.');
       return;
     }
+    if (isShadowAccount && !EMAIL_REGEX.test(email.trim())) {
+      setFormError('Please enter a valid email address.');
+      return;
+    }
     if (!phone || phone.replace(/\D/g, '').length < 8) {
       setFormError('Please enter a valid phone number.');
       return;
@@ -118,13 +129,17 @@ function CheckoutForm() {
     // Persist any edits to the account before opening the payment widget, so
     // the Razorpay prefill (read fresh from the User doc server-side) and
     // the invoice reflect what the visitor just typed here.
-    if (name.trim() !== originalName || phone !== originalPhone) {
+    if (name.trim() !== originalName || phone !== originalPhone || isShadowAccount) {
       setSavingProfile(true);
       try {
         const res = await fetch('/api/user/profile', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fullName: name.trim(), phone }),
+          body: JSON.stringify({
+            fullName: name.trim(),
+            phone,
+            ...(isShadowAccount ? { email: email.trim() } : {}),
+          }),
         });
         const json = await res.json();
         if (!res.ok) {
@@ -260,12 +275,23 @@ function CheckoutForm() {
               </div>
               <div>
                 <label className="block text-sm font-bold text-on-surface mb-1.5">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  disabled
-                  className="w-full px-4 py-3 bg-surface-container border border-outline-variant rounded-lg text-on-surface-variant outline-none cursor-not-allowed"
-                />
+                {isShadowAccount ? (
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={profileLoading}
+                    className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-lg text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all disabled:opacity-60"
+                    placeholder="you@example.com"
+                  />
+                ) : (
+                  <input
+                    type="email"
+                    value={email}
+                    disabled
+                    className="w-full px-4 py-3 bg-surface-container border border-outline-variant rounded-lg text-on-surface-variant outline-none cursor-not-allowed"
+                  />
+                )}
               </div>
               <div>
                 <label className="block text-sm font-bold text-on-surface mb-1.5">Phone number</label>

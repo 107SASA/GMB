@@ -114,7 +114,7 @@ export default function CRMMonitorPage() {
                   cursor={{ fill: '#f1f5f9' }}
                   contentStyle={{ border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 12 }}
                 />
-                <Bar dataKey="count" radius={[0, 6, 6, 0]} fill="#00386c" />
+                <Bar dataKey="count" radius={[0, 6, 6, 0]} fill="#0a8a3e" />
               </BarChart>
             </ResponsiveContainer>
           )}

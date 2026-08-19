@@ -1,33 +1,61 @@
 @import "tailwindcss";
 
-/* GrowwMatics AI design tokens — Trust Blue / Growth Green */
+/*
+ * GrowwMatics AI design tokens — Growth Green.
+ *
+ * Aug 2026: what started as the marketing-site-only ".theme-marketing"
+ * green rebrand (see the git history on this file) is now the color scheme
+ * for the whole product — dashboard, admin panel, and auth pages included,
+ * not just the public site. These are the same values that block used to
+ * override; they're the defaults now, so `.theme-marketing` below is kept
+ * only as a harmless no-op for the page wrappers that still apply the class.
+ */
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
 
   /* Brand */
-  --color-primary: #00386c;
-  --color-primary-container: #1a4f8b;
+  --color-primary: #06b34c;
+  --color-primary-container: #0a8a3e;
   --color-on-primary: #ffffff;
-  --color-on-primary-container: #9bc2ff;
-  --color-primary-fixed: #d5e3ff;
-  --color-primary-fixed-dim: #a6c8ff;
+  --color-on-primary-container: #bdf0cf;
+  --color-primary-fixed: #e2f7ea;
+  --color-primary-fixed-dim: #b9ead0;
 
-  --color-secondary: #006c45;
-  --color-secondary-container: #80f6b8;
+  --color-secondary: #4da328;
+  --color-secondary-container: #eaf7dc;
   --color-on-secondary: #ffffff;
-  --color-on-secondary-container: #007148;
-  --color-secondary-fixed: #83f9bb;
+  --color-on-secondary-container: #2f5e1a;
+  --color-secondary-fixed: #cdf0a9;
 
-  --color-tertiary: #004119;
-  --color-tertiary-container: #005b26;
-  --color-on-tertiary-container: #33db6d;
+  --color-tertiary: #14210f;
+  --color-tertiary-container: #1f3a17;
+  --color-on-tertiary-container: #62bd32;
   --color-whatsapp: #25d366;
 
   --color-error: #ba1a1a;
   --color-error-container: #ffdad6;
   --color-on-error: #ffffff;
   --color-on-error-container: #93000a;
+
+  /*
+   * Status-only amber — NOT a brand/button color, never used for buttons,
+   * links, or badges. Now that primary AND secondary are both greens, a few
+   * spots that used to lean on "blue vs green" to tell a good/medium/bad
+   * severity apart (audit rank buckets, lead/suspicion scores, review
+   * sentiment) needed a real third hue instead — see ScoreRing.tsx,
+   * AuditReportGrexa.tsx, lib/pdf/reportHtml.ts. Validated against the
+   * brand green and --color-error with the dataviz skill's CVD/contrast
+   * checks (scripts/validate_palette.js) so good/medium/bad stay
+   * distinguishable, including for color-blind readers.
+   */
+  --color-warning: #fab219;
+  --color-on-warning: #191919;
+  /* Same amber hue, stepped darker — #fab219 itself is a badge/chip fill
+     (paired with --color-on-warning dark text), not readable as bare text
+     on a light surface (~1.8:1). Use this one for standalone colored text/
+     numerals, e.g. rankTextClass's "ok" bucket. */
+  --color-warning-text: #a16207;
 
   /* Surfaces */
   --color-background: #f7f9fb;
@@ -38,10 +66,10 @@
   --color-surface-container-high: #e6e8ea;
   --color-surface-container-highest: #e0e3e5;
 
-  --color-on-surface: #191c1e;
-  --color-on-surface-variant: #424750;
-  --color-outline: #737781;
-  --color-outline-variant: #c2c6d1;
+  --color-on-surface: #191919;
+  --color-on-surface-variant: #47493f;
+  --color-outline: #7a7d70;
+  --color-outline-variant: #c9cdbd;
 
   /*
    * Spacing: do NOT name tokens sm/md/lg/xl/xs — in Tailwind v4 those collide
@@ -66,41 +94,14 @@
 }
 
 /*
- * Marketing-site green rebrand — scoped to a wrapper class rather than
- * changed in @theme above, because these are the same CSS variables the
- * logged-in dashboard/admin/PDF-report surfaces use. Overriding them
- * globally would rebrand the whole product, not just the public site.
- * Apply `theme-marketing` to the outermost element of any public marketing
- * page (homepage, About, services, free-report, legal pages) — everything
- * inside inherits these instead of the navy/green @theme defaults.
- *
- * Brand colors: bottom green #62BD32, top green #06B34C (the logo's
- * gradient), near-black #191919. Container/fixed/on-* variants are derived
- * to stay a coherent Material-3-style tonal system, blending toward
- * #191919 instead of the old navy blend.
+ * `.theme-marketing` used to hold its own green overrides, back when the
+ * rest of the product (dashboard/admin/PDF reports) was still on the old
+ * Trust Blue @theme defaults above. Those green values ARE the @theme
+ * defaults now (see the comment on @theme), so this class has nothing left
+ * to override — kept as an empty, harmless no-op rather than stripping the
+ * className off every public-page wrapper that still applies it.
  */
 .theme-marketing {
-  --color-primary: #06b34c;
-  --color-primary-container: #0a8a3e;
-  --color-on-primary: #ffffff;
-  --color-on-primary-container: #bdf0cf;
-  --color-primary-fixed: #e2f7ea;
-  --color-primary-fixed-dim: #b9ead0;
-
-  --color-secondary: #4da328;
-  --color-secondary-container: #eaf7dc;
-  --color-on-secondary: #ffffff;
-  --color-on-secondary-container: #2f5e1a;
-  --color-secondary-fixed: #cdf0a9;
-
-  --color-tertiary: #14210f;
-  --color-tertiary-container: #1f3a17;
-  --color-on-tertiary-container: #62bd32;
-
-  --color-on-surface: #191919;
-  --color-on-surface-variant: #47493f;
-  --color-outline: #7a7d70;
-  --color-outline-variant: #c9cdbd;
 }
 
 * {

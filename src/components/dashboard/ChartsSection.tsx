@@ -11,7 +11,11 @@ interface ChartsSectionProps {
   rangeDays: number;
 }
 
-const COLORS = ['#00386c', '#006c45', '#004119', '#00386c', '#006c45', '#004119'];
+// Fixed categorical order (never cycled per-series) — validated for
+// colorblind-safe separation and contrast with the dataviz skill's
+// scripts/validate_palette.js. Brand green leads, then genuinely distinct
+// hues for the remaining lead-source slots.
+const COLORS = ['#0a8a3e', '#2563a8', '#c2760a', '#7c3aed', '#c2410c', '#0891b2'];
 
 export default function ChartsSection({ charts, rangeDays }: ChartsSectionProps) {
   const hasLeads = charts.leadsOverTime.length > 0;
@@ -37,8 +41,8 @@ export default function ChartsSection({ charts, rangeDays }: ChartsSectionProps)
             <LineChart data={hasLeads ? charts.leadsOverTime : [{ date: '', leads: 0 }]}>
               <defs>
                 <linearGradient id="leadsGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#00386c" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#00386c" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#0a8a3e" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#0a8a3e" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e0e3e5" />
@@ -57,10 +61,10 @@ export default function ChartsSection({ charts, rangeDays }: ChartsSectionProps)
               <Line
                 type="monotone"
                 dataKey="leads"
-                stroke="#00386c"
+                stroke="#0a8a3e"
                 strokeWidth={3}
                 dot={false}
-                activeDot={{ r: 6, fill: '#00386c', strokeWidth: 0 }}
+                activeDot={{ r: 6, fill: '#0a8a3e', strokeWidth: 0 }}
               />
             </LineChart>
           </ResponsiveContainer>

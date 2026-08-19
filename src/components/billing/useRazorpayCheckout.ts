@@ -176,7 +176,7 @@ export function useRazorpayCheckout(opts?: {
         name: json.checkout.name,
         description: json.checkout.description,
         prefill: json.checkout.prefill,
-        theme: { color: '#00386c' },
+        theme: { color: '#06b34c' },
         handler: () => {
           setCheckout({ phase: 'confirming' });
           confirmActivation();

@@ -15,8 +15,8 @@ export default function ScoreRing({ score, size = 200, strokeWidth = 16 }: Score
   const strokeDashoffset = circumference - (score / 100) * circumference;
 
   let color = '#ba1a1a'; // red for < 50
-  if (score >= 80) color = '#006c45'; // green
-  else if (score >= 50) color = '#004119'; // yellow
+  if (score >= 80) color = '#0a8a3e'; // green
+  else if (score >= 50) color = '#fab219'; // amber
 
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>

@@ -110,7 +110,7 @@ export default function WhatsAppMonitorPage() {
                 contentStyle={{ border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 12 }}
               />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="Inbound" fill="#00386c" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Inbound" fill="#0a8a3e" radius={[4, 4, 0, 0]} />
               <Bar dataKey="Outbound" fill="#a78bfa" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

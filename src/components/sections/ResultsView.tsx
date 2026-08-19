@@ -35,8 +35,8 @@ export function ResultsView({ audit }: { audit: any }) {
   }
 
   const sentimentData = [
-    { name: "Positive", value: posPercent, color: "#006c45" },
-    { name: "Neutral", value: neuPercent, color: "#00386c" },
+    { name: "Positive", value: posPercent, color: "#0a8a3e" },
+    { name: "Neutral", value: neuPercent, color: "#fab219" },
     { name: "Negative", value: negPercent, color: "#ba1a1a" },
   ];
 
@@ -82,7 +82,7 @@ export function ResultsView({ audit }: { audit: any }) {
                   endAngle={450}
                   dataKey="value"
                 >
-                  <Cell fill="#00386c" stroke="none" />
+                  <Cell fill="#06b34c" stroke="none" />
                   <Cell fill="#eceef0" stroke="none" />
                 </Pie>
               </PieChart>

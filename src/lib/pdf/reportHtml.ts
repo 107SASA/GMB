@@ -7,10 +7,10 @@ import { formatRank, rankBucket, computeSuspensionRisk } from '@/services/audit/
 // --color-error) — the same three colors the on-screen report uses for
 // rank/score/risk indicators, so a PDF and its matching screen report never
 // show different colors for the same number.
-const BRAND_GOOD = '#006c45';
-const BRAND_MID  = '#1a4f8b';
+const BRAND_GOOD = '#0a8a3e';
+const BRAND_MID  = '#fab219'; // --color-warning — primary and secondary are both greens post-rebrand, so "medium" needs a real third hue to stay distinguishable from BRAND_GOOD; see globals.css's --color-warning comment.
 const BRAND_BAD  = '#ba1a1a';
-const BRAND_RANK_OK = '#00386c'; // text-primary — used specifically for the 6-10 rank bucket, matching AuditReportGrexa's rankTextClass
+const BRAND_RANK_OK = BRAND_MID; // text-warning-text — used specifically for the 6-10 rank bucket, matching AuditReportGrexa's rankTextClass
 
 export interface ReportContext {
   audit: IAudit;
@@ -345,7 +345,7 @@ export function buildReportHtml(ctx: ReportContext): string {
       ${googleSvg(18)}
       <span style="font-size:13px;font-weight:600;color:#374151;">Google Search Rank Report for Your Business Profile</span>
     </div>
-    <div style="background:linear-gradient(135deg,#00386c,#00386c);border-radius:6px;padding:4px 10px;">
+    <div style="background:linear-gradient(135deg,#62bd32,#06b34c);border-radius:6px;padding:4px 10px;">
       <span style="font-size:11px;font-weight:700;color:#fff;letter-spacing:0.5px;">GrowwMatics AI</span>
     </div>
   </div>
@@ -672,7 +672,7 @@ export function buildReportHtml(ctx: ReportContext): string {
   if (thirtyDayPlan.length > 0 || ninetyDayPlan.length > 0) {
     const periodsHtml = thirtyDayPlan.map((period: any, i: number) => `
     <div style="padding:14px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;margin-bottom:12px;break-inside:avoid;">
-      <h3 style="font-size:12px;font-weight:700;color:#00386c;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px;">
+      <h3 style="font-size:12px;font-weight:700;color:#0a8a3e;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px;">
         ${h(period.week || period.month || `Period ${i + 1}`)}
       </h3>
       <ul style="list-style:none;margin:0;padding:0;">
@@ -687,7 +687,7 @@ export function buildReportHtml(ctx: ReportContext): string {
 
     const ninetyHtml = ninetyDayPlan.length > 0 ? `
     <div style="padding-top:14px;border-top:1px solid #e2e8f0;">
-      <h3 style="font-size:12px;font-weight:700;color:#00386c;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;">${h(extendedLabel)}</h3>
+      <h3 style="font-size:12px;font-weight:700;color:#0a8a3e;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;">${h(extendedLabel)}</h3>
       ${ninetyDayPlan.map((phase: any) => `
       <div style="margin-bottom:10px;break-inside:avoid;">
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
@@ -698,7 +698,7 @@ export function buildReportHtml(ctx: ReportContext): string {
         <ul style="list-style:none;margin:0;padding:0;">
           ${(phase.tasks || []).map((t: string) => `
           <li style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#374151;margin-bottom:5px;">
-            <span style="width:5px;height:5px;border-radius:50%;background:#00386c;margin-top:5px;flex-shrink:0;display:inline-block;"></span>
+            <span style="width:5px;height:5px;border-radius:50%;background:${BRAND_MID};margin-top:5px;flex-shrink:0;display:inline-block;"></span>
             <span>${h(t)}</span>
           </li>`).join('')}
         </ul>
@@ -718,7 +718,7 @@ export function buildReportHtml(ctx: ReportContext): string {
 
   // ── 8. CTA BANNER ─────────────────────────────────────────────────────────────
   const ctaHtml = `
-<div style="border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#00386c 0%,#00386c 100%);break-inside:avoid;">
+<div style="border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#62bd32 0%,#06b34c 100%);break-inside:avoid;">
   <div style="padding:26px 30px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;">
     <div>
       <h3 style="font-size:20px;font-weight:900;color:#fff;margin-bottom:5px;line-height:1.3;">

@@ -19,7 +19,7 @@ function ScoreRing({ score, size = 'lg' }: { score: number; size?: 'sm' | 'lg' }
   const r = size === 'lg' ? 54 : 36;
   const circ = 2 * Math.PI * r;
   const offset = circ - (score / 100) * circ;
-  const color = score >= 75 ? '#006c45' : score >= 50 ? '#00386c' : '#ba1a1a';
+  const color = score >= 75 ? '#0a8a3e' : score >= 50 ? '#fab219' : '#ba1a1a';
   const dim = size === 'lg' ? 130 : 88;
   const font = size === 'lg' ? 'text-3xl' : 'text-xl';
 

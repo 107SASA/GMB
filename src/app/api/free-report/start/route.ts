@@ -83,6 +83,20 @@ export async function POST(req: Request) {
         placesRating: typeof body.placesRating === 'number' ? body.placesRating : undefined,
         placesReviewCount: typeof body.placesReviewCount === 'number' ? body.placesReviewCount : undefined,
         editorialSummary: body.editorialSummary || undefined,
+        // Closes 2 of the free-report checklist's "Unknown" fields (Business
+        // Photos, Business Hours) — see calculateProfileCompletion in
+        // seoAnalyzer.ts — at zero marginal Google API cost (photos = Basic
+        // Data, opening_hours = Contact Data, a tier already paid for on
+        // this same Details call).
+        photoCount: typeof body.photoCount === 'number' ? body.photoCount : undefined,
+        hasHours: typeof body.hasHours === 'boolean' ? body.hasHours : undefined,
+        // Real Places types[] for this listing — powers the competitor
+        // relevance filter in competitorService.ts (type-to-type overlap
+        // instead of guessing from a label string). Same "already fetched
+        // at intake, just persist it" pattern as photoCount/hasHours above.
+        googleTypes: Array.isArray(body.googleTypes)
+          ? body.googleTypes.filter((t: unknown) => typeof t === 'string')
+          : undefined,
       },
     });
 

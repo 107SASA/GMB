@@ -430,7 +430,7 @@ export default function AuditReportGrexa({
                   <span>Top 5</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-primary-container flex-shrink-0" />
+                  <div className="w-3 h-3 rounded-full bg-warning flex-shrink-0" />
                   <span>Under 10</span>
                 </div>
                 <div className="flex items-center gap-1.5">

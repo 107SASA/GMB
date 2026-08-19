@@ -7,28 +7,17 @@ import {
   MODULE_LABELS,
   usePublicPlan,
   useRazorpayCheckout,
-  type PlanDuration,
 } from '@/components/billing/useRazorpayCheckout';
-import { pickDuration, setPreferredCycle } from '@/components/billing/DurationPicker';
+import {
+  pickDuration,
+  setPreferredCycle,
+  computeSavings,
+  LAUNCH_WINDOW_SECONDS,
+  formatCountdown,
+} from '@/components/billing/DurationPicker';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 
-const LAUNCH_WINDOW_SECONDS = 30 * 60; // cosmetic — see the countdown note below.
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function formatCountdown(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-/** Genuine "you save ₹X vs paying monthly" — never a fabricated original price. */
-function computeSavings(durations: PlanDuration[] | undefined, selected: PlanDuration | undefined): number | null {
-  if (!durations || !selected || selected.months <= 1) return null;
-  const monthly = durations.find((d) => d.months === 1);
-  if (!monthly) return null;
-  const savings = monthly.priceInr * selected.months - selected.priceInr;
-  return savings > 0 ? savings : null;
-}
 
 export default function CheckoutPage() {
   return (

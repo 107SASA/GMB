@@ -49,6 +49,20 @@ export interface ShadowBusinessData {
    * this is commonly absent even for a fully "live" fetch.
    */
   editorialSummary?: string;
+  /**
+   * Also read live from Places Details — closes the "Business Photos" /
+   * "Business Hours" checklist items (calculateProfileCompletion in
+   * seoAnalyzer.ts) without needing GBP OAuth. Stored on Business.photoCount/
+   * hasHours, the same fields the SerpApi review-sync path (fuller audits)
+   * already populates — this just also populates them for the fastMode
+   * free-report path, which skips that sync.
+   */
+  photoCount?: number;
+  hasHours?: boolean;
+  /** Raw Places `types[]` — stored on Business.googleTypes (a field that
+   *  already existed on the model but was never actually populated).
+   *  Powers the competitor-relevance filter in competitorService.ts. */
+  googleTypes?: string[];
 }
 
 export interface ProvisionShadowAccountInput {
@@ -210,6 +224,9 @@ export async function provisionShadowAccount(
       googleConnected: !!input.businessData.googlePlaceId,
       placesRating: input.businessData.placesRating,
       placesReviewCount: input.businessData.placesReviewCount,
+      photoCount: input.businessData.photoCount,
+      hasHours: input.businessData.hasHours,
+      googleTypes: input.businessData.googleTypes,
       organizationId: organization._id,
       userId: user._id,
       provisionedVia: input.source,

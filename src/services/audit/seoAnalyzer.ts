@@ -349,6 +349,12 @@ const GENERIC_CATEGORY_VALUES = new Set([
 // word of context (e.g. "Tech Solutions" rather than bare "Solutions").
 const WEAK_TRAILING_WORDS = new Set(['solutions', 'enterprises', 'group', 'industries', 'services', 'ventures']);
 
+// Left dangling after stripping a location mention out of the name (e.g.
+// "...Institute in Kolkata" → strip "Kolkata" → "...Institute in" — this
+// still needs the trailing "in" dropped too). Also filters bare 1-2 letter
+// junk tokens that survive punctuation stripping.
+const TRAILING_FILLER_WORDS = new Set(['in', 'at', 'near', 'on', 'of', 'for', 'the']);
+
 /**
  * A stored `category` this generic isn't worth searching on alone — falls
  * back to a keyword derived from the business's own NAME instead (stripped
@@ -363,17 +369,41 @@ const WEAK_TRAILING_WORDS = new Set(['solutions', 'enterprises', 'group', 'indus
  * significant words. Won't be right for every business name, but is a
  * meaningfully better search term than a bucket word matching every local
  * business in the city.
+ *
+ * `location` (city/area/state) is stripped from the name FIRST — confirmed
+ * live (Aug 2026) that without this, a name like "Desun Academy - Top IT
+ * Training Institute in Kolkata" derives "Kolkata" as its keyword (the
+ * name's actual last word), producing a search query ("Kolkata company")
+ * with zero topical signal — it matches literally any company in the city,
+ * which is exactly what was showing up as "competitors." Extremely common
+ * failure shape: Indian SMB listings routinely end their GBP title with
+ * "... in {City}".
  */
-export function resolveSearchCategory(category: string | undefined, businessName: string | undefined): string {
+export function resolveSearchCategory(
+  category: string | undefined,
+  businessName: string | undefined,
+  location?: Array<string | undefined>,
+): string {
   const cat = (category || '').trim();
   if (cat && !GENERIC_CATEGORY_VALUES.has(cat.toLowerCase())) return cat;
 
-  const cleanedName = (businessName || '')
+  let cleanedName = (businessName || '')
     .replace(/\b(pvt\.?|private|ltd\.?|limited|llp|inc\.?|llc|co\.?|company|plc|corp\.?|corporation)\b/gi, '')
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  const words = cleanedName.split(' ').filter(Boolean);
+
+  for (const loc of location || []) {
+    const trimmed = (loc || '').trim();
+    if (!trimmed) continue;
+    cleanedName = cleanedName.replace(new RegExp(`\\b${escapeRegExp(trimmed)}\\b`, 'gi'), ' ');
+  }
+  cleanedName = cleanedName.replace(/\s+/g, ' ').trim();
+
+  let words = cleanedName.split(' ').filter(Boolean);
+  while (words.length > 1 && TRAILING_FILLER_WORDS.has(words[words.length - 1].toLowerCase())) {
+    words = words.slice(0, -1);
+  }
   if (words.length === 0) return cat || 'business';
 
   const last = words[words.length - 1];
@@ -399,7 +429,11 @@ export function resolveSearchCategory(category: string | undefined, businessName
 }
 
 function buildKeywords(business: any): string[] {
-  const effectiveCategory = resolveSearchCategory(business.category, business.name || business.businessName);
+  const effectiveCategory = resolveSearchCategory(
+    business.category,
+    business.name || business.businessName,
+    [business.city, business.area, business.state],
+  );
   const categoryLower = effectiveCategory.toLowerCase();
   const cityLower = (business.city || '').toLowerCase();
 
@@ -694,9 +728,16 @@ export async function fetchGeoGridRankings(
     const rank = findTargetRank(localResults, business);
     const rankIdx = rank - 1; // 0-based index of target, or -1 if not found
 
-    // Collect results ranked above the target (or top 5 when target not found)
+    // Collect results ranked above the target (or top 10 when target not
+    // found at this specific point — raised from 5, Aug 2026: with 2 of 3
+    // reduced-grid points often landing "not found," the old cap of 5 could
+    // leave the competitor table showing only a handful of real names next
+    // to a rank number (an average across points, including the not-found
+    // ones) that implied many more businesses ahead — a real data-
+    // completeness gap, not a fabrication; this doesn't invent anything,
+    // just keeps more of what the same already-paid-for query returned).
     const aboveCount = rank === NOT_FOUND_RANK
-      ? Math.min(5, localResults.length)
+      ? Math.min(10, localResults.length)
       : rankIdx;
 
     const competitors = localResults.slice(0, aboveCount)
@@ -800,6 +841,65 @@ export async function fetchGeoGridRankings(
 
 // ── V7 Native Analyzers ────────────────────────────────────────────────────────
 
+// Terms Google's Business Profile naming guidelines discourage in a listing
+// title (promotional/superlative language) — checked as whole words so
+// "top" doesn't false-positive inside "laptop", "desktop", etc.
+const SELF_PRAISE_TERMS = [
+  'best', 'top', 'no.1', 'no1', 'number 1', '#1', 'leading', 'premier',
+  'finest', 'trusted', 'award-winning', 'award winning',
+];
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function findSelfPraiseTerm(nameLower: string): string | undefined {
+  return SELF_PRAISE_TERMS.find((term) => new RegExp(`\\b${escapeRegExp(term)}\\b`, 'i').test(nameLower));
+}
+
+/**
+ * Native (no AI call) title-level SEO checks — the same kind of forensic,
+ * deterministic findings a rival product's free report leads with (word
+ * count, self-praise language, primary keyword placement). All computed
+ * directly from the stored business name/category, nothing invented.
+ *
+ * Deliberately does NOT attempt a "category not in top N by keyword search
+ * volume" check — that needs real keyword-volume data (Keyword Planner/
+ * DataForSEO volume endpoints) this codebase has no integration for. Faking
+ * that specific a claim without the data behind it would be the same kind
+ * of overclaiming the Unknown-vs-Missing checklist distinction exists to
+ * avoid elsewhere in this file — so it's just not included until there's a
+ * real data source for it.
+ */
+export function analyzeTitleSeo(business: any): string[] {
+  const name = String(business.name || business.businessName || '').trim();
+  if (!name) return [];
+
+  const issues: string[] = [];
+  const words = name.split(/\s+/).filter(Boolean);
+  if (words.length > 8) {
+    issues.push(`Title has ${words.length} words — Google Business Profile titles read best under 8 words`);
+  }
+
+  const nameLower = name.toLowerCase();
+  const praiseTerm = findSelfPraiseTerm(nameLower);
+  if (praiseTerm) {
+    issues.push(`Title contains a self-praise keyword ("${praiseTerm}") — against Google's Business Profile naming guidelines`);
+  }
+
+  // The same name-derived keyword root buildKeywords() uses for rank
+  // tracking, so "primary keyword" here means the literal term the report
+  // is checking rank against, not a separately invented one.
+  const primaryKeyword = resolveSearchCategory(business.category, name, [business.city, business.area, business.state])
+    .replace(/\s+company$/i, '')
+    .trim();
+  if (primaryKeyword && primaryKeyword.toLowerCase() !== 'business' && !nameLower.includes(primaryKeyword.toLowerCase())) {
+    issues.push(`Primary keyword "${primaryKeyword}" not found in your business title`);
+  }
+
+  return issues;
+}
+
 export function calculateNativeSeoScore(business: any, profileCompletion: IProfileCompletion) {
   let score = 0;
   const opps: string[] = [];
@@ -815,6 +915,11 @@ export function calculateNativeSeoScore(business: any, profileCompletion: IProfi
   add(!!business.services && business.services.length > 0,          15, 'Populate Service Catalog');
   add(!!business.website,                                            15, 'Link a Website for local authority');
   add(profileCompletion.completionPercentage >= 80,                  10, 'Improve overall Profile Completion to >80%');
+
+  // Title checks don't earn/lose score points (word count and self-praise
+  // language aren't in the weighted rubric above) — they're surfaced
+  // alongside the other opportunities purely as findings.
+  opps.push(...analyzeTitleSeo(business));
 
   return {
     score,

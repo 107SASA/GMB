@@ -35,7 +35,33 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // a "company" qualifier — see seoAnalyzer.ts. Without this bump, the
 // "technology kolkata" cache entries from v1 (which surfaced colleges
 // instead of IT companies) would keep serving for up to 7 more days.
-const CACHE_LOGIC_VERSION = 2;
+// v3 (Aug 2026): competitorService.ts's findCompetitors now real-derives
+// each candidate's category from its own Places types (was: hardcoded to
+// copy the target's own category onto every row) and applies an actual
+// relevance filter (type-to-type, or label-word when the target's types
+// aren't known) instead of accepting whatever Places textsearch returned
+// unfiltered. Confirmed live: exactly the same failure this comment already
+// describes — a real free-report ("Desun Academy") kept showing unrelated
+// competitors (Urban Company, TCS, a Kolkata immigration consultancy) after
+// the fix shipped, because the pre-fix cache entry was still inside its
+// 7-day TTL and this version bump was missed at the time.
+// v4 (Aug 2026): found the actual root cause of that same Desun Academy
+// case — resolveSearchCategory's name-derived fallback picked "Kolkata"
+// (the trailing word in "...Institute in Kolkata") as the search keyword,
+// since it only ever looked at the raw trailing word(s) of the name with no
+// awareness that one of them was the business's own city. Search query was
+// literally "kolkata company" — zero topical signal, matches any company in
+// the city, which is why v3's relevance filter had nothing real to compare
+// against and silently fell back to "no filter" for every candidate.
+// resolveSearchCategory now strips the business's own city/area/state out
+// of the name before deriving a keyword from what's left.
+// v5 (Aug 2026): the geo-grid competitor harvest's "target not found at
+// this point" fallback raised from top-5 to top-10 (seoAnalyzer.ts) — a
+// real business with an averaged rank in the teens (found at one grid
+// point, not-found at the other two) was only showing ~4 named competitors
+// in the table, visibly out of proportion with what the rank number
+// implied. More of the same real, already-fetched data, not new data.
+const CACHE_LOGIC_VERSION = 5;
 
 export async function processAuditJob(auditId: string) {
   await dbConnect();
@@ -223,6 +249,7 @@ export async function processAuditJob(auditId: string) {
           country:      business.country || '',
           website:      business.website || '',
           reviewCount:  reviewsData.length,
+          googleTypes:  business.googleTypes,
         });
 
     const [syncedReviewsData, rankData, competitorsResult] = await Promise.all([
@@ -576,6 +603,21 @@ export async function processAuditJob(auditId: string) {
       aiResult.seoScore            = nativeSeoScore;
       aiResult.auditConfidence     = auditConfidence;
       aiResult.businessIntelligence = businessIntelligence;
+
+      // Native cross-check that needs the AI's keywordGapAnalysis, so it
+      // can't run inside calculateNativeSeoScore (which runs before the AI
+      // call) — for each keyword the AI already flagged missing from the
+      // profile, also check the raw services string directly rather than
+      // trusting the AI's own judgment on that specific field.
+      const servicesLower = String(business.services || '').toLowerCase();
+      const missingFromServices = (aiResult.keywordGapAnalysis || [])
+        .filter((k: any) => k?.missing && k.keyword && !servicesLower.includes(String(k.keyword).toLowerCase()))
+        .slice(0, 3)
+        .map((k: any) => `Keyword "${k.keyword}" not found in your services list`);
+      aiResult.seoScore.optimizationOpportunities = [
+        ...(aiResult.seoScore.optimizationOpportunities || []),
+        ...missingFromServices,
+      ];
 
       // No real reviews synced AND no live Places snapshot — omit the
       // section entirely rather than merging in a hollow "0 reviews, 0

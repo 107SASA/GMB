@@ -1,10 +1,15 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import AuditPaywallSidebar from '@/components/audit/AuditPaywallSidebar';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { ReportGeneratingAnimation } from '@/components/graphics/ReportGeneratingAnimation';
+import { FaqAccordion } from '@/components/shared/FaqAccordion';
+import { ALL_FAQS } from '@/lib/faqData';
+import { usePublicPlan } from '@/components/billing/useRazorpayCheckout';
+import { pickDuration } from '@/components/billing/DurationPicker';
 
 interface AuditDoc {
   _id: string;
@@ -15,31 +20,6 @@ interface AuditDoc {
   overallScore?: number;
   auditData?: any;
   createdAt: string;
-}
-
-function ScoreRing({ score }: { score: number }) {
-  const r = 54;
-  const circ = 2 * Math.PI * r;
-  const offset = circ - (score / 100) * circ;
-  const color = score >= 75 ? '#06b34c' : score >= 50 ? '#0a8a3e' : '#ba1a1a';
-  return (
-    <div className="relative flex items-center justify-center" style={{ width: 130, height: 130 }}>
-      <svg width={130} height={130} viewBox="0 0 130 130" className="-rotate-90">
-        <circle cx={65} cy={65} r={r} fill="none" stroke="#eceef0" strokeWidth="8" />
-        <circle
-          cx={65} cy={65} r={r} fill="none"
-          stroke={color} strokeWidth="8"
-          strokeDasharray={`${circ} ${circ}`}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-heading font-bold text-on-surface text-3xl">{score}</span>
-        <span className="text-[10px] text-outline uppercase tracking-wide">/ 100</span>
-      </div>
-    </div>
-  );
 }
 
 function SectionHeader({ title, icon }: { title: string; icon: string }) {
@@ -56,7 +36,7 @@ function SectionHeader({ title, icon }: { title: string; icon: string }) {
 function ChecklistIcon({ status }: { status: string }) {
   if (status === 'Complete') return <MaterialIcon name="check_circle" size={20} className="text-secondary shrink-0" />;
   if (status === 'Missing') return <MaterialIcon name="cancel" size={20} className="text-error shrink-0" />;
-  if (status === 'Partial') return <MaterialIcon name="warning" size={20} className="text-primary-container shrink-0" />;
+  if (status === 'Partial') return <MaterialIcon name="warning" size={20} className="text-warning-text shrink-0" />;
   return <MaterialIcon name="help" size={20} className="text-outline shrink-0" />;
 }
 
@@ -114,6 +94,17 @@ function FreeReportResultContent() {
   const [audit, setAudit] = useState<AuditDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
   const attempts = useRef(0);
+
+  // Real price for the hero CTA button — same source AuditPaywallSidebar
+  // reads, so the two never disagree. Prefers the yearly duration (matches
+  // Grexa's "₹X/year · ₹Y/day" framing) when the plan offers one.
+  const { plan: heroPlan } = usePublicPlan();
+  const heroDuration = pickDuration(heroPlan?.durations, 'yearly');
+  const heroPrice = heroDuration?.priceInr ?? heroPlan?.priceInr;
+  const heroCycleLabel = heroDuration?.label ?? heroPlan?.billingCycle ?? 'year';
+  const heroDailyRate = heroPrice != null && heroDuration?.months
+    ? Math.round(heroPrice / (heroDuration.months * 30))
+    : null;
 
   useEffect(() => {
     if (!auditId) {
@@ -199,7 +190,6 @@ function FreeReportResultContent() {
   const unknownChecklistCount = checklist.length - knownChecklist.length;
   const keywordGaps: Array<{ keyword: string; missing: boolean; priority: string }> =
     (d.keywordGapAnalysis || []).filter((k: any) => k.missing);
-  const overallScore = audit!.overallScore ?? profile.overallScore ?? 0;
   const rank = d.googleSearchRank?.averageRank;
   const topKeywordRanks: Array<{ keyword: string; rank: number }> = d.googleSearchRank?.topKeywords || [];
   // Only the first keyword's points — for a reduced grid there's just one
@@ -207,6 +197,7 @@ function FreeReportResultContent() {
   // points would make the map illegible, so one representative keyword's
   // 9 points is what's shown instead.
   const mapPoints: Array<{ lat: number; lng: number; rank: number }> = d.geoGridRank?.keywords?.[0]?.points || [];
+  const mapKeyword: string | undefined = d.geoGridRank?.keywords?.[0]?.keyword;
   // Used only to pick honest copy below (never rendered as raw text to the
   // visitor — see the Aug 2026 decision not to surface dataQuality
   // directly). "Losing customers... show up first" asserts these
@@ -225,12 +216,16 @@ function FreeReportResultContent() {
           rating: c.rating,
           reviewCount: c.reviewCount,
         }));
-  const competitorsAhead = localCompetitors.length;
-  // Equal to what's actually listed below (Priority Action Items +
-  // Areas to Improve) — previously computed from a different, narrower
-  // source (checklist Missing/Partial + keyword gaps) that could read 0
-  // while real issues were listed right below it on the same page.
-  const issuesCount = priorityFixes.length + weaknesses.length;
+  // Derived straight from your own average rank (#16 → 15 ahead of you) —
+  // not from how many named competitors we happened to harvest, which is
+  // always a smaller, incomplete sample (the geo-grid only pulls the top
+  // handful at each point, see seoAnalyzer.ts). Same number your rank badge
+  // already implies, just stated explicitly instead of quietly
+  // undercounting it — matches how the reference report we're aligning
+  // this page with presents the same stat.
+  const competitorsAhead = rank != null
+    ? Math.max(0, Math.round(rank) - 1)
+    : localCompetitors.length;
   const profileCompletionPct = d.profileCompletion?.completionPercentage ?? profile.profileCompletionScore ?? 0;
   const unverifiedFieldCount = d.profileCompletion?.unknownCount ?? unknownChecklistCount;
 
@@ -250,55 +245,115 @@ function FreeReportResultContent() {
     issueLines.push(`${keywordGaps.length} important keyword${keywordGaps.length > 1 ? 's are' : ' is'} missing from your profile`);
   }
   keywordGaps.slice(0, 3).forEach((k) => issueLines.push(`Keyword "${k.keyword}" not found on your profile`));
-  missingOrPartial.slice(0, 5).forEach((c) => issueLines.push(`${c.field} is ${c.status.toLowerCase()} on your profile`));
+  // One consolidated line naming the fields (Grexa: "5 areas where keywords
+  // are missing - Title, Primary Category, Additional Category") instead of
+  // a separate bullet per field — same underlying checklist data, just not
+  // spelled out as N near-duplicate lines.
+  if (missingOrPartial.length > 0) {
+    const fieldNames = missingOrPartial.slice(0, 3).map((c) => c.field).join(', ');
+    issueLines.push(
+      `${missingOrPartial.length} area${missingOrPartial.length > 1 ? 's' : ''} where keywords are missing — ${fieldNames}`
+    );
+  }
+  // Native title/keyword-in-services findings — see analyzeTitleSeo in
+  // seoAnalyzer.ts (title word count, self-praise language, primary keyword
+  // placement) and the services cross-check appended alongside it in
+  // auditService.ts.
+  (d.seoScore?.optimizationOpportunities || [])
+    .filter((o: string) => o.startsWith('Title ') || o.startsWith('Primary keyword') || o.startsWith('Keyword '))
+    .forEach((o: string) => issueLines.push(o));
 
   const location = audit!.location;
   const city = location?.split(',')[0]?.trim() || 'your area';
 
+  // Shared by every "buy" CTA on this page (hero, competitor table, issues
+  // list) so they can never point somewhere different from each other —
+  // same cycle, same return-to-this-report behavior.
+  const checkoutHref = `/checkout?${new URLSearchParams({
+    ...(heroDuration ? { cycle: heroDuration.cycle } : {}),
+    return: `/free-report/result?auditId=${audit!._id}`,
+  })}`;
+
   return (
     <div className="min-h-screen bg-background">
-      <div className="bg-surface-container-lowest border-b border-outline-variant px-6 py-4 flex items-center gap-2">
-        <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-          <MaterialIcon name="bolt" size={16} className="text-on-primary" />
+      <div className="bg-surface-container-lowest border-b border-outline-variant px-6 py-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+            <MaterialIcon name="bolt" size={16} className="text-on-primary" />
+          </div>
+          <span className="font-heading font-bold text-on-surface">GrowwMatics AI</span>
+          <span className="text-outline mx-2">·</span>
+          <span className="text-sm text-on-surface-variant">Your Free Business Report</span>
         </div>
-        <span className="font-heading font-bold text-on-surface">GrowwMatics AI</span>
-        <span className="text-outline mx-2">·</span>
-        <span className="text-sm text-on-surface-variant">Your Free Business Report</span>
+        <Link href="/free-report" className="text-sm font-medium text-primary hover:underline shrink-0">
+          Change business
+        </Link>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-10 flex flex-col lg:flex-row gap-8 items-start">
         <div className="flex-1 space-y-8 w-full">
           <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-8">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-6">
-              <div className="flex-1">
-                <h1 className="font-heading text-3xl font-bold text-on-surface mb-1">{audit!.businessName}</h1>
-                <div className="flex items-center gap-2 text-on-surface-variant text-sm mb-3">
-                  <MaterialIcon name="location_on" size={16} />
-                  <span>{audit!.location}</span>
-                </div>
-                {reviews.reviewCount > 0 && (
-                  <div className="flex items-center gap-1.5 text-sm mb-2">
-                    <MaterialIcon name="star" size={16} className="text-primary" filled />
-                    <span className="font-bold text-on-surface">{reviews.averageRating?.toFixed(1)}</span>
-                    <span className="text-outline">({reviews.reviewCount.toLocaleString('en-IN')} reviews)</span>
-                  </div>
-                )}
-                {audit!.website && (
-                  <div className="flex items-center gap-2 text-primary text-sm">
-                    <MaterialIcon name="language" size={16} className="text-primary" />
-                    <a href={audit!.website} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                      {audit!.website}
-                    </a>
-                  </div>
-                )}
-              </div>
-              {overallScore > 0 && (
-                <div className="flex flex-col items-center">
-                  <ScoreRing score={overallScore} />
-                  <span className="text-xs text-on-surface-variant mt-1 font-medium">Overall Score</span>
-                </div>
-              )}
+            <div className="mb-1">
+              <span className="text-xs font-bold uppercase tracking-wide text-error">
+                Report ready · {issueLines.length} issue{issueLines.length === 1 ? '' : 's'} found
+              </span>
             </div>
+            <h1 className="font-heading text-3xl font-bold text-on-surface mb-1">{audit!.businessName}</h1>
+            <div className="flex items-center gap-2 text-on-surface-variant text-sm mb-3">
+              <MaterialIcon name="location_on" size={16} />
+              <span>{audit!.location}</span>
+            </div>
+            {reviews.reviewCount > 0 && (
+              <div className="flex items-center gap-1.5 text-sm mb-2">
+                <MaterialIcon name="star" size={16} className="text-primary" filled />
+                <span className="font-bold text-on-surface">{reviews.averageRating?.toFixed(1)}</span>
+                <span className="text-outline">({reviews.reviewCount.toLocaleString('en-IN')} reviews)</span>
+              </div>
+            )}
+            {audit!.website && (
+              <div className="flex items-center gap-2 text-primary text-sm mb-5">
+                <MaterialIcon name="language" size={16} className="text-primary" />
+                <a href={audit!.website} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                  {audit!.website}
+                </a>
+              </div>
+            )}
+
+            {competitorsAhead > 0 && (
+              <div className="pt-5 border-t border-outline-variant">
+                <h2 className="font-heading text-2xl font-bold text-on-surface mb-2">
+                  {audit!.businessName} is losing customers to {competitorsAhead} competitor{competitorsAhead > 1 ? 's' : ''} on Google.
+                </h2>
+                <p className="text-on-surface-variant text-sm mb-6">
+                  Right now, when people search your business in {city}, your competitors show up first. You can start fixing this in 24 hours.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                  <div className="bg-error-container rounded-xl p-4 text-center border border-error-container">
+                    <div className="font-heading text-2xl font-bold text-error">{competitorsAhead}</div>
+                    <div className="text-xs text-on-surface-variant mt-1">Competitors ranking higher</div>
+                  </div>
+                  <div className="bg-primary-fixed rounded-xl p-4 text-center border border-primary-fixed-dim">
+                    <div className="font-heading text-2xl font-bold text-primary">{issueLines.length}</div>
+                    <div className="text-xs text-on-surface-variant mt-1">Issues hurting your ranking</div>
+                  </div>
+                  <div className="bg-surface-container rounded-xl p-4 text-center border border-outline-variant">
+                    <div className="font-heading text-2xl font-bold text-on-surface">{Math.round(profileCompletionPct)}%</div>
+                    <div className="text-xs text-on-surface-variant mt-1">Profile complete</div>
+                  </div>
+                </div>
+                <Link
+                  href={checkoutHref}
+                  className="block w-full text-center py-4 bg-primary text-on-primary rounded-lg font-bold hover:bg-primary-container transition-all card-shadow"
+                >
+                  Fix My Google Profile
+                  <span className="block text-xs font-normal opacity-90 mt-0.5">
+                    {heroPrice != null
+                      ? <>Start today · ₹{heroPrice.toLocaleString('en-IN')} / {heroCycleLabel}{heroDailyRate != null ? ` · ₹${heroDailyRate} a day` : ''}</>
+                      : 'Start today'}
+                  </span>
+                </Link>
+              </div>
+            )}
           </div>
 
           {rank != null && (
@@ -315,6 +370,11 @@ function FreeReportResultContent() {
               </div>
               {mapPoints.length > 0 && (
                 <div className="mb-5 rounded-lg overflow-hidden border border-outline-variant">
+                  {mapKeyword && (
+                    <div className="px-3 py-2 text-xs text-on-surface-variant bg-surface-container border-b border-outline-variant">
+                      Searching for: <span className="font-semibold text-on-surface">&quot;{mapKeyword}&quot;</span>
+                    </div>
+                  )}
                   <img
                     src={`/api/google/static-map?points=${encodeURIComponent(JSON.stringify(mapPoints))}`}
                     alt="Map of nearby search positions around your business"
@@ -322,9 +382,16 @@ function FreeReportResultContent() {
                     loading="lazy"
                   />
                   <div className="flex items-center gap-4 px-3 py-2 text-[11px] text-on-surface-variant bg-surface-container">
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#62bd32' }} /> Good — top 5</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#0a8a3e' }} /> Average — 6–20</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#0a8a3e' }} /> Good — top 5</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#fab219' }} /> Average — 6–20</span>
                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#ba1a1a' }} /> Poor — beyond 20</span>
+                  </div>
+                  {/* Real rollup of the same points plotted above — every
+                      point already carries a rank, so this is just a count,
+                      not a separate/new claim. */}
+                  <div className="px-3 py-2.5 text-xs text-on-surface bg-surface-container-lowest border-t border-outline-variant">
+                    You rank in the top 5 in <strong>{mapPoints.filter((p) => p.rank <= 5).length}</strong> of{' '}
+                    <strong>{mapPoints.length}</strong> nearby areas searched.
                   </div>
                 </div>
               )}
@@ -344,40 +411,14 @@ function FreeReportResultContent() {
             </div>
           )}
 
-          {competitorsAhead > 0 && (
-            <div className="bg-surface-container-lowest rounded-xl border border-error-container card-shadow p-8">
-              <h2 className="font-heading text-2xl font-bold text-on-surface mb-2">
-                {hasRealRankData
-                  ? <>{audit!.businessName} is losing customers to {competitorsAhead} competitor{competitorsAhead > 1 ? 's' : ''} on Google.</>
-                  : <>We found {competitorsAhead} similar business{competitorsAhead > 1 ? 'es' : ''} near {audit!.businessName} in {city}.</>}
-              </h2>
-              <p className="text-on-surface-variant text-sm mb-6">
-                {hasRealRankData
-                  ? <>Right now, when people search your business in {city}, your competitors show up first.</>
-                  : <>Ranking data wasn't available for this check, so we can't yet confirm whether they outrank you — this list is who you're up against in {city}, not a confirmed ranking comparison.</>}
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                <div className="bg-error-container rounded-xl p-4 text-center border border-error-container">
-                  <div className="font-heading text-2xl font-bold text-error">{competitorsAhead}</div>
-                  <div className="text-xs text-on-surface-variant mt-1">
-                    {hasRealRankData ? 'Competitors ranking higher' : 'Similar businesses found'}
-                  </div>
-                </div>
-                <div className="bg-primary-fixed rounded-xl p-4 text-center border border-primary-fixed-dim">
-                  <div className="font-heading text-2xl font-bold text-primary">{issuesCount}</div>
-                  <div className="text-xs text-on-surface-variant mt-1">Issues hurting your ranking</div>
-                </div>
-                <div className="bg-surface-container rounded-xl p-4 text-center border border-outline-variant">
-                  <div className="font-heading text-2xl font-bold text-on-surface">{Math.round(profileCompletionPct)}%</div>
-                  <div className="text-xs text-on-surface-variant mt-1">Profile complete</div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {localCompetitors.length > 0 && (
             <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
-              <SectionHeader title="Other businesses in your area" icon="emoji_events" />
+              <SectionHeader title={`${localCompetitors.length} businesses near you`} icon="emoji_events" />
+              <p className="text-sm text-on-surface-variant -mt-3 mb-5">
+                {hasRealRankData
+                  ? 'Rank higher on Google — and they\'re getting your customers.'
+                  : `Similar businesses near ${audit!.businessName} in ${city}.`}
+              </p>
               <div className="overflow-x-auto -mx-2">
                 <table className="w-full text-sm min-w-90">
                   <thead>
@@ -405,9 +446,35 @@ function FreeReportResultContent() {
                         )}
                       </tr>
                     ))}
+                    {/* Own business, always last — same columns, visually set
+                        apart, so the visitor sees exactly where they sit
+                        relative to the list above without leaving the table. */}
+                    <tr className="border-t-2 border-primary bg-primary-fixed/40">
+                      <td className="px-2 py-3 font-bold text-on-surface">{audit!.businessName}</td>
+                      <td className="px-2 py-3 text-primary font-bold">
+                        {reviews.averageRating != null ? `★ ${reviews.averageRating.toFixed(1)}` : '—'}
+                      </td>
+                      <td className="px-2 py-3 text-secondary font-bold">{reviews.reviewCount ?? '—'}</td>
+                      {hasRealRankData && (
+                        <td className="px-2 py-3 font-bold text-primary">
+                          {rank != null ? (rank < RANK_NOT_FOUND ? rank.toFixed(1) : '20+') : '—'}
+                        </td>
+                      )}
+                    </tr>
                   </tbody>
                 </table>
               </div>
+              {localCompetitors.length > 5 && (
+                <p className="mt-3 text-sm font-medium text-primary italic">
+                  {localCompetitors.length - 5} more ahead of you…
+                </p>
+              )}
+              <Link
+                href={checkoutHref}
+                className="mt-4 block w-full text-center py-3 bg-primary text-on-primary rounded-lg font-bold hover:bg-primary-container transition-all"
+              >
+                Beat Your Competitors →
+              </Link>
             </div>
           )}
 
@@ -422,6 +489,12 @@ function FreeReportResultContent() {
                   </li>
                 ))}
               </ul>
+              <Link
+                href={checkoutHref}
+                className="mt-5 block w-full text-center py-3 bg-primary text-on-primary rounded-lg font-bold hover:bg-primary-container transition-all"
+              >
+                See How We Fix These Issues →
+              </Link>
             </div>
           )}
 
@@ -537,7 +610,7 @@ function FreeReportResultContent() {
                   <ul className="space-y-3">
                     {weaknesses.map((w: any, i: number) => (
                       <li key={i} className="flex items-start gap-2">
-                        <MaterialIcon name="warning" size={16} className="text-primary-container mt-0.5 flex-shrink-0" />
+                        <MaterialIcon name="warning" size={16} className="text-warning-text mt-0.5 flex-shrink-0" />
                         <div>
                           <div className="text-sm font-semibold text-on-surface">{w.title}</div>
                           {w.evidence && <div className="text-xs text-on-surface-variant">{w.evidence}</div>}
@@ -557,12 +630,19 @@ function FreeReportResultContent() {
               report" to a lead, which undermines trust in the numbers
               rather than earning it. See the Aug 2026 free-report parity
               pass for the reasoning. */}
+
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+            <SectionHeader title="Common questions" icon="help" />
+            <FaqAccordion faqs={ALL_FAQS} defaultOpenIndex={null} />
+          </div>
         </div>
 
         <div id="unlock">
           <AuditPaywallSidebar
             unlockHeadline="Your report is free to keep. Unlock the full detailed report — every issue, every keyword gap, and a step-by-step action plan — plus the whole platform."
             showComparison
+            sticky={false}
+            promoStyle
           />
         </div>
       </div>

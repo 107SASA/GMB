@@ -49,6 +49,9 @@ export default function FreeReportPage() {
           placesRating: business.rating,
           placesReviewCount: business.totalReviews,
           editorialSummary: business.editorialSummary,
+          photoCount: business.photoCount,
+          hasHours: business.hasHours,
+          googleTypes: business.googleTypes,
           phone,
         }),
       });

@@ -8,6 +8,34 @@ export function pickDuration(durations: PlanDuration[] | undefined, cycle: strin
   return durations.find((d) => d.cycle === cycle) ?? durations[0];
 }
 
+/**
+ * Genuine "you save ₹X vs paying monthly" — never a fabricated original
+ * price. Shared by /checkout and every duration-picker-carrying pricing
+ * surface (AuditPaywallSidebar, WorkspaceLockGate) so the savings math is
+ * computed exactly once.
+ */
+export function computeSavings(durations: PlanDuration[] | undefined, selected: PlanDuration | undefined): number | null {
+  if (!durations || !selected || selected.months <= 1) return null;
+  const monthly = durations.find((d) => d.months === 1);
+  if (!monthly) return null;
+  const savings = monthly.priceInr * selected.months - selected.priceInr;
+  return savings > 0 ? savings : null;
+}
+
+// Cosmetic urgency countdown — shared by /checkout and any pricing surface
+// that opts into the same "Launch price" badge (AuditPaywallSidebar's
+// `promoStyle`). Resets every visit; there's no real fixed deadline behind
+// it (no separate "launch ends at" field exists in the billing config) — the
+// actual price/savings shown alongside it are always real, computed values,
+// never fabricated to match. See computeSavings above.
+export const LAUNCH_WINDOW_SECONDS = 30 * 60;
+
+export function formatCountdown(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 const PREFERRED_CYCLE_KEY = 'gm_preferred_billing_cycle';
 
 /**

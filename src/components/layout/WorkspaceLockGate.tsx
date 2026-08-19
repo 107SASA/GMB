@@ -8,7 +8,7 @@ import {
   MODULE_LABELS,
   WORKSPACE_UNLOCKED_EVENT,
 } from '@/components/billing/useRazorpayCheckout';
-import { DurationPicker, pickDuration, getPreferredCycle, setPreferredCycle } from '@/components/billing/DurationPicker';
+import { DurationPicker, pickDuration, getPreferredCycle, setPreferredCycle, computeSavings } from '@/components/billing/DurationPicker';
 
 /**
  * Client-side lock for unsubscribed workspaces.
@@ -78,6 +78,7 @@ function LockOverlay() {
   const selected = pickDuration(plan?.durations, cycle);
   const price = selected?.priceInr ?? plan?.priceInr;
   const cycleLabel = selected?.label ?? 'month';
+  const savings = computeSavings(plan?.durations, selected);
   const features = plan?.features?.length ? plan.features : (plan?.modules ?? []).map((m) => MODULE_LABELS[m] ?? m);
 
   return (
@@ -114,6 +115,9 @@ function LockOverlay() {
                   <span className="text-base font-medium text-on-surface-variant"> / {cycleLabel}</span>
                 </div>
                 <div className="mt-1 text-sm font-bold text-on-surface">{plan.displayName}</div>
+                {savings != null && (
+                  <div className="mt-1 text-xs font-bold text-secondary">You save ₹{savings.toLocaleString('en-IN')} vs paying monthly</div>
+                )}
               </>
             ) : (
               <div className="text-sm text-on-surface-variant">Pricing unavailable right now.</div>

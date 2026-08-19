@@ -26,6 +26,14 @@ export interface SelectedBusiness {
   rating?: number;
   totalReviews?: number;
   editorialSummary?: string;
+  photoCount?: number;
+  hasHours?: boolean;
+  /** Raw Google Places `types[]` for this listing — e.g.
+   *  ['point_of_interest','establishment','school']. Distinct from
+   *  `category` (a single human-readable label) — kept as the full list so
+   *  competitor-relevance filtering can do real type-to-type comparison
+   *  instead of guessing from a label string. See competitorService.ts. */
+  googleTypes?: string[];
 }
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -129,6 +137,9 @@ export function BusinessAutocomplete({
           rating: d.rating,
           totalReviews: d.totalReviews,
           editorialSummary: d.editorialSummary,
+          photoCount: d.photoCount,
+          hasHours: d.hasHours,
+          googleTypes: d.categories,
         });
       } else {
         throw new Error();

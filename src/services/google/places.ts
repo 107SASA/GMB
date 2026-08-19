@@ -31,6 +31,16 @@ export interface PlaceDetailsResult {
    * well-known places — so treat it as a bonus, not something to rely on.
    */
   editorialSummary?: string;
+  /**
+   * `photos`/`opening_hours` — added to close 2 of the free-report's
+   * "Unknown" profile-completion fields (Business Photos, Business Hours)
+   * at zero marginal Google API cost: `photos` is Basic Data (no per-request
+   * surcharge) and `opening_hours` is Contact Data, a tier this call already
+   * pays for via phoneNumber/website. See calculateProfileCompletion in
+   * seoAnalyzer.ts for how these feed the checklist.
+   */
+  photoCount?: number;
+  hasHours?: boolean;
 }
 
 interface AddressComponent {
@@ -52,8 +62,10 @@ function pickComponent(
 }
 
 // Container types that describe *what kind of thing a place is* too vaguely to
-// show a user as their business category.
-const GENERIC_PLACE_TYPES = new Set([
+// show a user as their business category. Exported so competitorService.ts
+// can reuse the same generic-type exclusion when deriving a candidate's
+// category from its own Places `types[]`.
+export const GENERIC_PLACE_TYPES = new Set([
   'point_of_interest',
   'establishment',
   'premise',
@@ -67,7 +79,7 @@ const GENERIC_PLACE_TYPES = new Set([
 ]);
 
 /** "dental_clinic" -> "Dental Clinic". Returns undefined if only generic types. */
-function deriveCategory(types: string[] = []): string | undefined {
+export function deriveCategory(types: string[] = []): string | undefined {
   const specific = types.find((t) => !GENERIC_PLACE_TYPES.has(t));
   if (!specific) return undefined;
   return specific
@@ -117,9 +129,42 @@ export class GooglePlacesService {
     }
   }
 
+  /**
+   * Text Search fallback for when Autocomplete comes up empty — confirmed
+   * (Aug 2026, live test against a brand-new GBP listing) that Autocomplete
+   * and Text Search are NOT the same index: Autocomplete's predictive
+   * ranking weights prominence (review count, click history, verification
+   * age) heavily and has no location bias here, so a genuinely OPERATIONAL,
+   * just-created listing can return ZERO_RESULTS from Autocomplete while
+   * Text Search finds it immediately. Only called when the primary
+   * Autocomplete call found nothing, so it doesn't add cost/latency to the
+   * common case where Autocomplete already works.
+   */
+  private static async textSearchFallback(query: string, apiKey: string): Promise<AutocompleteResult[]> {
+    try {
+      const url = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
+      url.searchParams.append("query", query);
+      url.searchParams.append("key", apiKey);
+
+      const response = await fetch(url.toString());
+      const data = await response.json();
+      if (data.status !== "OK") return [];
+
+      return (data.results || []).slice(0, 5).map((r: any) => ({
+        placeId: r.place_id,
+        description: `${r.name}, ${r.formatted_address || ''}`.trim(),
+        mainText: r.name,
+        secondaryText: r.formatted_address || "",
+      }));
+    } catch (e: any) {
+      console.warn('[places] Text Search fallback failed:', e?.message);
+      return [];
+    }
+  }
+
   static async autocomplete(query: string): Promise<AutocompleteResult[]> {
     if (!query) return [];
-    
+
     const apiKey = this.getApiKey();
     if (!apiKey) {
       console.warn("GOOGLE_MAPS_API_KEY is not set.");
@@ -138,12 +183,15 @@ export class GooglePlacesService {
       throw new Error(`Google Places API error (${data.status}): ${data.error_message || 'no additional details'}`);
     }
 
-    return (data.predictions || []).map((p: any) => ({
+    const predictions = (data.predictions || []).map((p: any) => ({
       placeId: p.place_id,
       description: p.description,
       mainText: p.structured_formatting?.main_text || p.description,
       secondaryText: p.structured_formatting?.secondary_text || ""
     }));
+
+    if (predictions.length > 0) return predictions;
+    return this.textSearchFallback(query, apiKey);
   }
 
   static async getDetails(placeId: string): Promise<PlaceDetailsResult | null> {
@@ -162,7 +210,7 @@ export class GooglePlacesService {
     // Without it the onboarding form could only ever get one flat address string.
     url.searchParams.append(
       "fields",
-      "name,formatted_address,address_components,formatted_phone_number,international_phone_number,website,url,rating,user_ratings_total,geometry,types,editorial_summary"
+      "name,formatted_address,address_components,formatted_phone_number,international_phone_number,website,url,rating,user_ratings_total,geometry,types,editorial_summary,photos,opening_hours"
     );
 
     // Run alongside the legacy Details call rather than after it — v1 is an
@@ -217,6 +265,8 @@ export class GooglePlacesService {
       // from the legacy `types` enum only if v1 was unavailable/unenabled.
       primaryCategory: primaryTypeDisplayName || deriveCategory(r.types),
       editorialSummary: r.editorial_summary?.overview || undefined,
+      photoCount: Array.isArray(r.photos) ? r.photos.length : 0,
+      hasHours: !!(r.opening_hours?.weekday_text?.length || r.opening_hours?.periods?.length),
     };
   }
 }

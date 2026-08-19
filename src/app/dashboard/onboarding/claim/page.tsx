@@ -34,6 +34,8 @@ function ClaimAccountForm() {
   const [email, setEmail] = useState(initialStep === 'verify' ? searchParams.get('email') || '' : '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -191,12 +193,44 @@ function ClaimAccountForm() {
         </div>
         <div className="space-y-2">
           <label className="text-label-md text-on-surface">Password</label>
-          <input type="password" className={inputCls} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" />
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              className={`${inputCls} pr-12`}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(v => !v)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="absolute inset-y-0 right-0 flex items-center pr-4 text-outline hover:text-on-surface transition-colors"
+            >
+              <MaterialIcon name={showPassword ? 'visibility_off' : 'visibility'} size={20} />
+            </button>
+          </div>
           <p className="text-xs text-outline">Needs an uppercase letter, a lowercase letter, a number, and a special character.</p>
         </div>
         <div className="space-y-2">
           <label className="text-label-md text-on-surface">Confirm password</label>
-          <input type="password" className={inputCls} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter your password" />
+          <div className="relative">
+            <input
+              type={showConfirmPassword ? 'text' : 'password'}
+              className={`${inputCls} pr-12`}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Re-enter your password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword(v => !v)}
+              aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+              className="absolute inset-y-0 right-0 flex items-center pr-4 text-outline hover:text-on-surface transition-colors"
+            >
+              <MaterialIcon name={showConfirmPassword ? 'visibility_off' : 'visibility'} size={20} />
+            </button>
+          </div>
         </div>
 
         <button

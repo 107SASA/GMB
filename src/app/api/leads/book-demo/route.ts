@@ -6,12 +6,12 @@ import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
 
 /**
- * Entry point for the shared `BookDemoFlow` modal — the name+WhatsApp form
+ * Entry point for the /book-demo page — the business/phone/budget form
  * behind every "Book a Demo" / "Book a Free Consultant" CTA sitewide
- * (Navbar, Hero, every service page). Lighter than /api/free-report/start:
- * this only files a CRM Lead, it doesn't provision a shadow
- * User/Organization/Business — the visitor is about to leave for WhatsApp,
- * not land in the dashboard.
+ * (Navbar, Hero, every service page — see BookDemoButton). Lighter than
+ * /api/free-report/start: this only files a CRM Lead, it doesn't provision a
+ * shadow User/Organization/Business — the visitor is about to leave for
+ * WhatsApp, not land in the dashboard.
  */
 export async function POST(req: Request) {
   try {
@@ -48,18 +48,31 @@ export async function POST(req: Request) {
       );
     }
 
+    // Free-text business name the visitor typed/selected on the /book-demo
+    // page — not run through Google Places (unlike /free-report), since this
+    // flow only needs enough context for a human follow-up, not an audit.
+    const businessName = body.businessName ? String(body.businessName).trim() : undefined;
+    // One of the three radio choices on /book-demo ("More than ₹5000" etc) —
+    // free-text rather than an enum since the CRM's Lead.budget field is
+    // already a plain string used elsewhere for AI-qualified leads too.
+    const budget = body.budget ? String(body.budget).trim() : undefined;
+
     // `source: 'Website'` from /free-report and 'Demo Booking' from this
     // route are already both in the Lead schema — keeping them distinct so
     // the CRM can tell which funnel each lead came from.
+    const notesParts = [
+      body.origin ? `Requested a demo via the "${body.origin}" CTA` : 'Requested a demo',
+      businessName ? `Business: ${businessName}` : null,
+    ].filter(Boolean);
+
     await Lead.create({
       tenantId: 'gmbboost-internal',
       name,
       phone: normalizedPhone,
       source: 'Demo Booking',
       leadType: 'Platform Prospect',
-      // Which page/CTA triggered this — e.g. "navbar", "hero",
-      // "service:seo" — passed by the BookDemoButton call site.
-      notes: body.origin ? `Requested a demo via the "${body.origin}" CTA` : 'Requested a demo',
+      budget,
+      notes: notesParts.join(' — '),
     });
 
     return NextResponse.json({ success: true }, { status: 201 });

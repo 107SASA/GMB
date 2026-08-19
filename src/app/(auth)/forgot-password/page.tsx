@@ -33,6 +33,8 @@ function ForgotPasswordForm() {
   const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -283,26 +285,46 @@ function ForgotPasswordForm() {
           <form onSubmit={handleResetPassword} className="space-y-5">
             <div>
               <label className="block text-label-md text-on-surface mb-2">New Password</label>
-              <input
-                type="password"
-                required
-                autoFocus
-                value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                className={inputCls}
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  type={showNewPassword ? 'text' : 'password'}
+                  required
+                  autoFocus
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  className={`${inputCls} pr-12`}
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(v => !v)}
+                  aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                  className="absolute inset-y-0 right-0 flex items-center pr-4 text-outline hover:text-on-surface transition-colors"
+                >
+                  <MaterialIcon name={showNewPassword ? 'visibility_off' : 'visibility'} size={20} />
+                </button>
+              </div>
             </div>
             <div>
               <label className="block text-label-md text-on-surface mb-2">Confirm Password</label>
-              <input
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                className={inputCls}
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  required
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  className={`${inputCls} pr-12`}
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(v => !v)}
+                  aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  className="absolute inset-y-0 right-0 flex items-center pr-4 text-outline hover:text-on-surface transition-colors"
+                >
+                  <MaterialIcon name={showConfirmPassword ? 'visibility_off' : 'visibility'} size={20} />
+                </button>
+              </div>
             </div>
             <p className="text-xs text-outline">
               Must be at least 8 characters, with an uppercase letter, a lowercase letter, a number, and a special character.

@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Check, Loader2, Lock, ShieldCheck, Sparkles } from 'lucide-react';
+import { Check, Lock, ShieldCheck, Sparkles } from 'lucide-react';
 import {
   usePublicPlan,
-  useRazorpayCheckout,
   MODULE_LABELS,
   WORKSPACE_UNLOCKED_EVENT,
 } from '@/components/billing/useRazorpayCheckout';
@@ -76,11 +75,6 @@ function LockOverlay() {
   const router = useRouter();
   const { plan, loading } = usePublicPlan();
   const [cycle, setCycle] = useState(() => getPreferredCycle() ?? 'monthly');
-  const { checkout, subscribe } = useRazorpayCheckout({
-    onUnauthenticated: () => router.push('/login'),
-    onActivated: () => { router.push('/dashboard'); router.refresh(); },
-  });
-  const busy = checkout.phase === 'starting' || checkout.phase === 'confirming';
   const selected = pickDuration(plan?.durations, cycle);
   const price = selected?.priceInr ?? plan?.priceInr;
   const cycleLabel = selected?.label ?? 'month';
@@ -137,21 +131,12 @@ function LockOverlay() {
             ))}
           </ul>
 
-          {checkout.phase === 'error' && (
-            <div role="alert" className="mb-4 rounded-xl border border-error-container bg-error-container p-3 text-sm font-medium text-on-error-container">
-              {checkout.message}
-            </div>
-          )}
-
           <button
-            onClick={() => subscribe(cycle)}
-            disabled={busy || !plan?.available}
+            onClick={() => { setPreferredCycle(cycle); router.push(`/checkout?cycle=${cycle}`); }}
+            disabled={!plan?.available}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 py-3.5 font-bold text-on-primary transition-all hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {checkout.phase === 'starting' && (<><Loader2 className="h-4 w-4 animate-spin" /> Opening checkout…</>)}
-            {checkout.phase === 'confirming' && (<><Loader2 className="h-4 w-4 animate-spin" /> Activating…</>)}
-            {checkout.phase === 'success' && (<><Check className="h-4 w-4" /> Activated</>)}
-            {(checkout.phase === 'idle' || checkout.phase === 'error') && (<><Lock className="h-4 w-4" /> Unlock full dashboard</>)}
+            <Lock className="h-4 w-4" /> Unlock full dashboard
           </button>
 
           <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-outline">

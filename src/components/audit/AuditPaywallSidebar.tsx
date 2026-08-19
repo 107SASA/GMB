@@ -1,10 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, Lock, ShieldCheck, Sparkles } from 'lucide-react';
+import { Check, Lock, ShieldCheck, Sparkles, Zap } from 'lucide-react';
 import { usePublicPlan, MODULE_LABELS } from '@/components/billing/useRazorpayCheckout';
-import { DurationPicker, pickDuration, getPreferredCycle, setPreferredCycle } from '@/components/billing/DurationPicker';
+import {
+  DurationPicker,
+  pickDuration,
+  getPreferredCycle,
+  setPreferredCycle,
+  computeSavings,
+  LAUNCH_WINDOW_SECONDS,
+  formatCountdown,
+} from '@/components/billing/DurationPicker';
 
 /** Generic, non-numeric comparisons — deliberately no invented rupee figures. */
 const COMPARISON_ROWS = [
@@ -32,29 +40,63 @@ export default function AuditPaywallSidebar({
    *  labels only, no invented competitor pricing. Off by default so the
    *  existing (dashboard) callers of this component are unaffected. */
   showComparison = false,
+  /** Follows the viewport as the report scrolls (default, matches every
+   *  other caller). Set false to keep it in normal document flow instead —
+   *  scrolls away with the page like everything else, doesn't track the
+   *  viewport. Free-report specific: per an explicit ask (Aug 2026) not to
+   *  have the pricing card chase the visitor down the page. */
+  sticky = true,
+  /** Bundles three free-report-specific presentation choices decided
+   *  together (Aug 2026): a cosmetic "Launch price" countdown badge (same
+   *  pattern as /checkout — real price underneath, no fabricated numbers),
+   *  the real price shown inline in the button text, and a plain-text
+   *  payment-methods line at the point of purchase. Off by default so
+   *  existing (dashboard) callers keep their current plain presentation. */
+  promoStyle = false,
 }: {
   generating?: boolean;
   unlockHeadline?: string;
   showComparison?: boolean;
+  sticky?: boolean;
+  promoStyle?: boolean;
 }) {
   const router = useRouter();
   const { plan, loading } = usePublicPlan();
   const [cycle, setCycle] = useState(() => getPreferredCycle() ?? 'monthly');
 
+  // Resets every visit — no real fixed deadline exists in the billing
+  // config to count down to. See the LAUNCH_WINDOW_SECONDS comment.
+  const [secondsLeft, setSecondsLeft] = useState(LAUNCH_WINDOW_SECONDS);
+  useEffect(() => {
+    if (!promoStyle) return;
+    const t = setInterval(() => setSecondsLeft((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [promoStyle]);
+
   const selected = pickDuration(plan?.durations, cycle);
   const price = selected?.priceInr ?? plan?.priceInr;
   const cycleLabel = selected?.label ?? 'month';
+  const savings = computeSavings(plan?.durations, selected);
   const features = plan?.features?.length ? plan.features : (plan?.modules ?? []).map((m) => MODULE_LABELS[m] ?? m);
 
   return (
-    <aside className="lg:sticky lg:top-6 w-full lg:w-[340px] shrink-0">
+    <aside className={`${sticky ? 'lg:sticky lg:top-6' : ''} w-full lg:w-[340px] shrink-0`}>
       <div className="rounded-xl border-2 border-primary bg-surface-container-lowest card-shadow overflow-hidden">
-        <div className="bg-gradient-to-r from-primary to-primary-container px-5 py-3 text-white">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest">
-            <Sparkles className="h-3.5 w-3.5" />
-            Unlock everything
+        {promoStyle ? (
+          <div className="flex items-center justify-between gap-2 bg-gradient-to-r from-primary to-primary-container px-5 py-3 text-white text-xs font-bold uppercase tracking-widest">
+            <span className="flex items-center gap-1.5">
+              <Zap className="h-3.5 w-3.5" /> Launch price
+            </span>
+            <span className="tabular-nums normal-case font-semibold">Ends in {formatCountdown(secondsLeft)}</span>
           </div>
-        </div>
+        ) : (
+          <div className="bg-gradient-to-r from-primary to-primary-container px-5 py-3 text-white">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest">
+              <Sparkles className="h-3.5 w-3.5" />
+              Unlock everything
+            </div>
+          </div>
+        )}
 
         <div className="p-5">
           <p className="text-sm text-on-surface-variant mb-4">
@@ -82,6 +124,9 @@ export default function AuditPaywallSidebar({
                   <span className="text-base font-medium text-on-surface-variant"> / {cycleLabel}</span>
                 </div>
                 <div className="mt-1 text-sm font-bold text-on-surface">{plan.displayName}</div>
+                {savings != null && (
+                  <div className="mt-1 text-xs font-bold text-secondary">You save ₹{savings.toLocaleString('en-IN')} vs paying monthly</div>
+                )}
               </>
             ) : (
               <div className="text-sm text-on-surface-variant">Pricing unavailable right now.</div>
@@ -126,13 +171,19 @@ export default function AuditPaywallSidebar({
             disabled={!plan?.available}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3.5 font-bold text-white transition-all hover:bg-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Lock className="h-4 w-4" /> Unlock full dashboard
+            <Lock className="h-4 w-4" />
+            {promoStyle && price != null ? `Pay ₹${price.toLocaleString('en-IN')} · Start today` : 'Unlock full dashboard'}
           </button>
 
           <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-outline">
             <ShieldCheck className="h-3.5 w-3.5" />
             Secure payment via Razorpay · Cancel anytime
           </div>
+          {promoStyle && (
+            <div className="mt-2 text-center text-[11px] text-outline">
+              Pay via UPI · Cards · Netbanking · Wallets
+            </div>
+          )}
         </div>
       </div>
     </aside>

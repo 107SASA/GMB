@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 interface AuditPublic {
   _id: string;
@@ -94,7 +95,7 @@ export default function PublicReportPage() {
         setAudit(json.audit);
         setExpires(json.expiresAt);
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => setError(friendlyClientMessage(err)))
       .finally(() => setLoading(false));
   }, [token]);
 

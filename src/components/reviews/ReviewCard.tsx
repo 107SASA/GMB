@@ -99,6 +99,9 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
             <div className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded inline-block max-w-max ${getStatusBadgeColor(replyStatus)}`}>
               {replyStatus}
             </div>
+            {replyStatus === 'FAILED' && review.replyFailureReason && (
+              <p className="text-[11px] text-error leading-snug max-w-40">{review.replyFailureReason}</p>
+            )}
           </div>
         </div>
 

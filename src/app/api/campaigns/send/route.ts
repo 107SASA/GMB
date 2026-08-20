@@ -3,6 +3,7 @@ import { inngest } from '@/services/inngest/client';
 import dbConnect from '@/lib/mongodb';
 import Customer from '@/models/Customer';
 import { requireBusinessContext } from '@/lib/tenant';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
@@ -41,6 +42,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, message: 'Review campaign started' });
   } catch (error: any) {
     console.error('Send Campaign Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

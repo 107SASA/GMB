@@ -5,6 +5,7 @@ import Activity from '@/models/Activity';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { inferLifeCycleStage } from '@/lib/crm/lifecycleStage';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function PATCH(
   req: NextRequest,
@@ -67,6 +68,6 @@ export async function PATCH(
 
     return NextResponse.json({ success: true, lead });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

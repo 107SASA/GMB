@@ -5,6 +5,7 @@ import { GeneratedPost } from '@/services/ai/contentEngine';
 import PostCard from './PostCard';
 import { Zap, Calendar, CheckCircle, AlertCircle } from 'lucide-react';
 import { defaultScheduleDateTimeLocal, nowDateTimeLocal } from '@/lib/scheduleTime';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 interface WeeklyPostsTabProps {
   posts: GeneratedPost[];
@@ -32,6 +33,13 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
   // Auto state
   const [autoResult, setAutoResult] = useState<{ count: number; firstDate: string; lastDate: string } | null>(null);
   const [autoError, setAutoError] = useState('');
+
+  // Per-post scheduled date/time once a batch action (auto or manual) has
+  // scheduled it, keyed the same way each PostCard is keyed below
+  // (post._id, falling back to its index for not-yet-saved posts). Passed
+  // down so each card's own "Schedule" button reflects reality instead of
+  // staying active after the whole batch was already scheduled.
+  const [scheduledMap, setScheduledMap] = useState<Record<string, string>>({});
 
   // Thumbnails are generated in the background after generation returns, so poll
   // for them and merge the URLs in as they land. Stops once every post that
@@ -91,8 +99,15 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Auto-schedule failed.');
       setAutoResult({ count: data.count, firstDate: data.firstDate, lastDate: data.lastDate });
+      // Server returns scheduledDates in the same order as postIds — zip them
+      // back into a per-post map.
+      const map: Record<string, string> = {};
+      postIds.forEach((id, i) => {
+        if (data.scheduledDates?.[i]) map[id] = data.scheduledDates[i];
+      });
+      setScheduledMap(prev => ({ ...prev, ...map }));
     } catch (err: any) {
-      setAutoError(err.message);
+      setAutoError(friendlyClientMessage(err));
     } finally {
       setIsScheduling(false);
     }
@@ -104,6 +119,7 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
     setBatchError('');
 
     const baseDate = new Date(startDate);
+    const map: Record<string, string> = {};
 
     try {
       if (posts.length > 0 && posts[0]._id) {
@@ -111,6 +127,7 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
           posts.map((post, i) => {
             const scheduled = new Date(baseDate);
             scheduled.setDate(scheduled.getDate() + i);
+            map[post._id ?? String(i)] = scheduled.toISOString();
             return fetch('/api/scheduler/schedule', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -124,6 +141,7 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
         const postsPayload = posts.map((post, i) => {
           const scheduled = new Date(baseDate);
           scheduled.setDate(scheduled.getDate() + i);
+          map[String(i)] = scheduled.toISOString();
           return {
             title: post.title,
             content: post.body,
@@ -142,10 +160,11 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
         if (!res.ok) throw new Error(data.error || 'Failed to schedule posts');
       }
 
+      setScheduledMap(prev => ({ ...prev, ...map }));
       setBatchResult({ count: posts.length, startLabel: formatShortDate(startDate) });
       setMode('none');
     } catch (err: any) {
-      setBatchError(err.message);
+      setBatchError(friendlyClientMessage(err));
     } finally {
       setIsScheduling(false);
     }
@@ -291,6 +310,7 @@ export default function WeeklyPostsTab({ posts }: WeeklyPostsTabProps) {
           <PostCard
             key={post._id ?? index}
             post={post._id && imageMap[post._id] && !post.imageUrl ? { ...post, imageUrl: imageMap[post._id] } : post}
+            scheduledAt={scheduledMap[post._id ?? String(index)]}
           />
         ))}
       </div>

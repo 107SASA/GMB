@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useBusiness } from '@/context/BusinessContext';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 interface SEOTabProps {
   description: string;
@@ -34,7 +35,7 @@ export default function SEOTab({ description: initialDescription, score }: SEOTa
       if (!res.ok) throw new Error(data.error || 'Failed to save');
       setSaveResult('saved');
     } catch (err: any) {
-      setSaveError(err.message);
+      setSaveError(friendlyClientMessage(err));
       setSaveResult('error');
     } finally {
       setIsSaving(false);

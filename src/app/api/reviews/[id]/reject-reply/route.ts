@@ -3,6 +3,7 @@ import dbConnect from "@/lib/mongodb";
 import Review from "@/models/Review";
 import { requireBusinessContext } from "@/lib/tenant";
 import { requireModule } from "@/lib/moduleGating";
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -28,6 +29,6 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
     return NextResponse.json({ success: true, review });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

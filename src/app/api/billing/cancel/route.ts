@@ -4,6 +4,7 @@ import Subscription from '@/models/Subscription';
 import Business from '@/models/Business';
 import { requireClient } from '@/lib/auth';
 import { getRazorpay } from '@/lib/billing/razorpay';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 /**
  * Cancels the user's Razorpay subscription AT THE END OF THE CURRENT CYCLE
@@ -62,7 +63,7 @@ export async function POST() {
   } catch (error: any) {
     console.error('Cancel subscription error:', error);
     return NextResponse.json(
-      { error: error?.error?.description || error.message || 'Cancellation failed' },
+      { error: error?.error?.description || toFriendlyMessage(error) },
       { status: 500 }
     );
   }

@@ -4,7 +4,9 @@ import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
 import AutomationLog from '@/models/AutomationLog';
 import { requireBusinessContext } from '@/lib/tenant';
+import { createLocalPost } from '@/lib/gbpClient';
 import mongoose from 'mongoose';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 const publishSchema = z.object({
   postId: z.string().min(1),
@@ -33,10 +35,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Post not found or access denied' }, { status: 404 });
     }
 
-    // SAFETY: this only marks the post published in our own DB. Pushing to a real
-    // Google Business Profile is gated behind GBP_LIVE_WRITES_ENABLED (off by
-    // default) — see src/lib/gbpSafety.ts. Do not add a live Google write here
-    // without guarding it, or the shared publish path (inngest processPublishPostJob).
+    // Pushes the post to the real Google Business Profile. createLocalPost
+    // itself is gated behind GBP_LIVE_WRITES_ENABLED (see src/lib/gbpSafety.ts)
+    // — it no-ops (liveWriteApplied:false) while live writes are disabled, so
+    // this stays a DB-only mock in that case, same as before. Once live writes
+    // are on, this now actually reaches Google — matching the photo-publish
+    // path (gbpMediaService.ts) and the scheduled-publish cron
+    // (processPublishPostJob in services/inngest/functions.ts), which this
+    // route had drifted from by never calling createLocalPost at all.
+    let liveWriteApplied = false;
+    try {
+      const summary = [post.title, post.content].filter(Boolean).join('\n\n').slice(0, 1500);
+      const result = await createLocalPost(ctx.businessId, {
+        summary,
+        mediaUrl: post.imageUrl || undefined,
+      });
+      liveWriteApplied = result.liveWriteApplied;
+    } catch (err: any) {
+      post.status = 'failed';
+      post.failureReason = err.message || 'Failed to publish to Google Business Profile.';
+      await post.save();
+      return NextResponse.json({ error: post.failureReason }, { status: 502 });
+    }
+
     post.status = 'published';
     post.publishedAt = new Date();
     // The calendar (and other views) place a post using `scheduledDate`, not
@@ -44,6 +65,7 @@ export async function POST(req: Request) {
     // day would still show up under that future date after being published
     // immediately. Publishing now should supersede any prior schedule.
     post.scheduledDate = post.publishedAt;
+    post.failureReason = undefined;
     await post.save();
 
     await AutomationLog.create({
@@ -56,9 +78,9 @@ export async function POST(req: Request) {
       message: `Manually published post: ${post.title}`,
     });
 
-    return NextResponse.json({ success: true, post }, { status: 200 });
+    return NextResponse.json({ success: true, post, liveWriteApplied }, { status: 200 });
   } catch (error: any) {
     console.error('Failed to publish post:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

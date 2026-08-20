@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 // Same pattern as /api/google/autocomplete and /api/google/place-details:
 // unauthenticated (the free-report page's rank visual needs this before any
@@ -87,6 +88,6 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     console.error('Static Map API Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

@@ -3,6 +3,7 @@ import { requireBusinessContext } from '@/lib/tenant';
 import { listMediaAssets } from '@/lib/gbpMediaService';
 import { GBPAuthError } from '@/lib/gbpClient';
 import { gbpWritesEnabled } from '@/lib/gbpSafety';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,6 @@ export async function GET() {
     if (err instanceof GBPAuthError) {
       return NextResponse.json({ success: false, connected: false, error: 'Google connection expired — please reconnect.' });
     }
-    return NextResponse.json({ success: false, error: err.message || 'Failed to load media' }, { status: 500 });
+    return NextResponse.json({ success: false, error: toFriendlyMessage(err) }, { status: 500 });
   }
 }

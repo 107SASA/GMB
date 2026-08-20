@@ -4,6 +4,7 @@ import User from '@/models/User';
 import { finalizeLogin } from '@/lib/authSession';
 import { checkRateLimit, resetRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
@@ -108,6 +109,6 @@ export async function POST(req: Request) {
     return await finalizeLogin(user, req);
   } catch (error: any) {
     console.error('Login Error:', error);
-    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ success: false, error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

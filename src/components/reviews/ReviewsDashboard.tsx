@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import ReviewAnalyticsCards from './ReviewAnalyticsCards';
 import ReviewFilterBar from './ReviewFilterBar';
 import ReviewCard from './ReviewCard';
+import ReplyModeSettings from './ReplyModeSettings';
 import { useBusiness } from '@/context/BusinessContext';
 import UpgradeLimitModal from '@/components/ui/UpgradeLimitModal';
 
@@ -261,6 +262,8 @@ export default function ReviewsDashboard() {
           {syncing ? 'Syncing...' : 'Sync Reviews'}
         </button>
       </div>
+
+      <ReplyModeSettings onModeChanged={refreshReviewList} />
 
       {syncError && (
         <div className="bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container flex items-start gap-2">

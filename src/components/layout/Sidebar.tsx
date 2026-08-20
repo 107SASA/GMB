@@ -9,6 +9,7 @@ import { useMobileNav } from "@/context/MobileNavContext";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { AddWorkspaceModal } from "./AddWorkspaceModal";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 const AVATAR_COLORS = [
   "bg-primary",
@@ -181,7 +182,7 @@ export function Sidebar() {
       await refreshBusinesses();
       router.refresh();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete workspace");
+      alert(friendlyClientMessage(err, "Failed to delete workspace"));
     } finally {
       setDeletingId(null);
     }

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import { requireBusinessContext } from '@/lib/tenant';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 const faqsSchema = z.object({
   faqs: z.array(
@@ -32,6 +33,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Failed to save FAQs:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

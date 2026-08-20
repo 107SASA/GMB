@@ -5,6 +5,7 @@ import FollowUp from '@/models/FollowUp';
 import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function GET(
   _req: Request,
@@ -42,6 +43,6 @@ export async function GET(
 
     return NextResponse.json({ success: true, timeline });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

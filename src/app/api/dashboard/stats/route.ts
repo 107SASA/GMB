@@ -7,6 +7,7 @@ import AIUsageLog from '@/models/AIUsageLog';
 import { requireBusinessContext } from '@/lib/tenant';
 import { computeReviewMetrics } from '@/services/reviews/reviewMetrics';
 import mongoose from 'mongoose';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function GET(req: NextRequest) {
   try {
@@ -148,6 +149,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: true, data: payload });
   } catch (error: any) {
     console.error('Dashboard Stats Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { X, Search, Loader2, Store, CheckCircle2, Building2 } from "lucide-react";
 import { useBusiness } from "@/context/BusinessContext";
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 interface Props {
   onClose: () => void;
@@ -141,7 +142,16 @@ export function AddWorkspaceModal({ onClose }: Props) {
           // by the required "Category" field — the friction that made it look
           // like the same business couldn't be added again.
           category: d.primaryCategory || d.category || "",
+          // Google's own one-line summary of the place — a genuinely useful
+          // starting description when it exists (most listings don't have
+          // one; the field just stays blank then, same as before).
+          description: d.editorialSummary || prev.description,
           address: d.formattedAddress || "",
+          // Was already being fetched (services/google/places.ts derives it
+          // from address_components) but never actually wired into the form,
+          // despite "Area / Locality" being a real field below — silently
+          // dropped data, not a deliberate omission.
+          area: d.area || "",
           phone: d.phoneNumber || "",
           website: d.website || "",
           googlePlaceId: placeId,
@@ -195,7 +205,7 @@ export function AddWorkspaceModal({ onClose }: Props) {
       await switchBusiness(json.businessId);
       onClose();
     } catch (err: any) {
-      setError(err.message || "Something went wrong.");
+      setError(friendlyClientMessage(err, "Something went wrong."));
     } finally {
       setSubmitting(false);
     }

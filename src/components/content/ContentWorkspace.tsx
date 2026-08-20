@@ -9,6 +9,7 @@ import SEOTab from './SEOTab';
 import FAQTab from './FAQTab';
 import ContentHistoryTab from './ContentHistoryTab';
 import UpgradeLimitModal from '@/components/ui/UpgradeLimitModal';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 type TabId = 'posts' | 'seo' | 'faq' | 'history';
 
@@ -105,7 +106,7 @@ export default function ContentWorkspace() {
       setContentData(result.data);
       setActiveTab('posts');
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Generation failed');
+      alert(friendlyClientMessage(error, 'Generation failed'));
     } finally {
       setIsLoading(false);
     }
@@ -149,14 +150,16 @@ export default function ContentWorkspace() {
             View Content History &rarr;
           </button>
         </div>
-        <ContentGeneratorForm
-          onGenerate={handleGenerate}
-          isLoading={isLoading}
-          keywords={keywords}
-          setKeywords={setKeywords}
-          keywordInput={keywordInput}
-          setKeywordInput={setKeywordInput}
-        />
+        <div data-tour="generate-content">
+          <ContentGeneratorForm
+            onGenerate={handleGenerate}
+            isLoading={isLoading}
+            keywords={keywords}
+            setKeywords={setKeywords}
+            keywordInput={keywordInput}
+            setKeywordInput={setKeywordInput}
+          />
+        </div>
         {upgradeMsg && (
           <UpgradeLimitModal message={upgradeMsg} onClose={() => setUpgradeMsg(null)} />
         )}

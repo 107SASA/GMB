@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useBusiness } from '@/context/BusinessContext';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 interface HistoryPost {
   _id: string;
@@ -110,7 +111,7 @@ export default function ContentHistoryTab() {
       setHasMore(data.hasMore);
       setPage(pg);
     } catch (err: any) {
-      setError(err.message);
+      setError(friendlyClientMessage(err));
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -171,7 +172,7 @@ export default function ContentHistoryTab() {
       );
       setEditingId(null);
     } catch (err: any) {
-      setEditError(err.message);
+      setEditError(friendlyClientMessage(err));
     } finally {
       setSavingEdit(false);
     }
@@ -209,7 +210,7 @@ export default function ContentHistoryTab() {
       );
       setSchedulingId(null);
     } catch (err: any) {
-      setScheduleError(err.message);
+      setScheduleError(friendlyClientMessage(err));
     } finally {
       setSavingSchedule(false);
     }
@@ -227,7 +228,7 @@ export default function ContentHistoryTab() {
       setTotal((t) => Math.max(0, t - 1));
       setConfirmDeleteId(null);
     } catch (err: any) {
-      setRowError({ id, message: err.message });
+      setRowError({ id, message: friendlyClientMessage(err) });
     } finally {
       setDeletingId(null);
     }

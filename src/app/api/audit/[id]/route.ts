@@ -33,6 +33,6 @@ export async function GET(
     return NextResponse.json({ success: true, audit }, { status: 200 });
   } catch (error) {
     console.error('Failed to fetch audit:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Something went wrong on our end. Please try again, and contact support if this keeps happening.' }, { status: 500 });
   }
 }

@@ -4,6 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 const scheduleSchema = z.object({
   postId: z.string().min(1),
@@ -60,6 +61,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, post }, { status: 200 });
   } catch (error: any) {
     console.error('Failed to schedule post:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

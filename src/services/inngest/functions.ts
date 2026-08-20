@@ -1070,11 +1070,38 @@ export const processPublishPostJob = inngest.createFunction(
         // base64 data-URL thumbnail is skipped (post still publishes, text-only).
         const { createLocalPost } = await import("@/lib/gbpClient");
         const summary = [post.title, post.content].filter(Boolean).join('\n\n').slice(0, 1500);
-        await createLocalPost(post.businessId.toString(), {
-          summary,
-          mediaUrl: (post as any).imageUrl || undefined,
-        });
-        console.log(`[GBP] Published live post for business ${post.businessId}: ${post.title}`);
+        try {
+          await createLocalPost(post.businessId.toString(), {
+            summary,
+            mediaUrl: (post as any).imageUrl || undefined,
+          });
+          console.log(`[GBP] Published live post for business ${post.businessId}: ${post.title}`);
+        } catch (err: any) {
+          // Caught here (rather than left to throw and let Inngest's own step
+          // retry kick in) because a rejected post — bad content, an expired
+          // OAuth token, an unverified location — will fail identically on
+          // every retry. Left uncaught, the post would stay status:"scheduled"
+          // forever with scheduledDate in the past: publishScheduledPostsCron
+          // (every 15 min) would keep re-matching and re-dispatching it
+          // indefinitely, retrying silently forever with no visible failure
+          // anywhere. Marking it "failed" here stops that loop and surfaces
+          // the real reason (failureReason, shown as a red chip on the
+          // calendar — same status the manual "Publish" button already uses).
+          post.status = "failed";
+          post.failureReason = err.message || "Failed to publish to Google Business Profile.";
+          await post.save();
+          await AutomationLog.create({
+            tenantId: post.tenantId?.toString(),
+            businessId: post.businessId?.toString(),
+            type: 'inngest_job',
+            workflow: 'publish-cron',
+            action: 'publish_post',
+            status: 'failed',
+            message: post.failureReason,
+          });
+          console.error(`[GBP] Scheduled publish failed for post ${post._id}:`, post.failureReason);
+          return;
+        }
       } else {
         console.log(`[MOCK] GBP live writes disabled — marking post published locally only for business ${post.businessId}: ${post.title}`);
       }
@@ -1916,6 +1943,39 @@ export const processReviewSyncJob = inngest.createFunction(
   }
 );
 
+// 8b. Auto-reply batch — fired two ways: (1) right after a sync, for any
+// newly-fetched reviews, when the business has reviewReplySettings.mode ===
+// 'auto' (see processReviewSyncJob above / syncReviews.ts), and (2) once,
+// covering the FULL existing backlog of unreplied reviews, the moment an
+// owner switches the mode to 'auto' (see reviews/reply-settings/route.ts) —
+// so turning auto-reply on genuinely means "all reviews get a reply", not
+// just ones that happen to arrive afterward.
+//
+// Runs sequentially (not Promise.all) deliberately: each review is one Groq
+// call + one Google API call, and a single AI usage burst across a large
+// backlog is friendlier to rate limits than firing them all at once.
+export const processAutoReplyBatchJob = inngest.createFunction(
+  { id: "process-auto-reply-batch-job", retries: 2, triggers: [{ event: "reviews/auto-reply-batch" }] },
+  async ({ event, step }) => {
+    const { businessId, reviewIds } = event.data as { businessId: string; reviewIds: string[] };
+
+    await step.run("auto-reply-reviews", async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: Review } = await import('@/models/Review');
+      const { autoReplyToReview } = await import('@/services/reviews/autoReply');
+
+      for (const reviewId of reviewIds) {
+        const review = await Review.findOne({ _id: reviewId, businessId });
+        if (!review) continue;
+        await autoReplyToReview(businessId, review);
+      }
+    });
+
+    return { success: true, count: reviewIds.length };
+  }
+);
+
 export const criticalAlertWorker = inngest.createFunction(
   { id: "critical-review-alert-worker", triggers: [{ event: "reviews/critical-alert" }] },
   async ({ event, step }) => {
@@ -2403,6 +2463,50 @@ export const gbpSyncWorker = inngest.createFunction(
         await syncReviewsForBusiness(businessId, tenantId);
       } catch (err: any) {
         console.error(`[GBP Sync] Review sync failed for ${businessId}:`, err.message);
+      }
+    });
+
+    // Corrects Business.category (and fills in a few other fields if still
+    // empty) from the AUTHORITATIVE Google Business Profile. Before a
+    // workspace connects Google, its category is only ever a guess from the
+    // Places API (services/google/places.ts) — a different, coarser taxonomy
+    // than GBP's own category list, and the two can genuinely disagree (e.g.
+    // Places guessing generic "Services" for a listing GBP itself classifies
+    // as "Software company"). Once connected, GBP's own category is the real
+    // answer, so it always overwrites the earlier guess here — unlike
+    // description/phone/website/address below, which only fill gaps rather
+    // than clobber something the owner deliberately entered in our dashboard.
+    // Runs on every gbp/sync.requested firing (a fresh connect AND every
+    // nightly re-sync), so it also self-heals a workspace whose category was
+    // already wrong before this existed, not just newly-connected ones.
+    await step.run("sync-gbp-profile", async () => {
+      const { default: BusinessModel } = await import("@/models/Business");
+      const { fetchLocationProfile, GBPAuthError } = await import("@/lib/gbpClient");
+      try {
+        const profile = await fetchLocationProfile(businessId);
+        const business = await BusinessModel.findById(businessId)
+          .select('category description phone website address')
+          .lean() as any;
+        if (!business) return;
+
+        const update: Record<string, unknown> = {};
+        if (profile.primaryCategory && profile.primaryCategory !== business.category) {
+          update.category = profile.primaryCategory;
+        }
+        if (!business.description && profile.description) update.description = profile.description;
+        if (!business.phone && profile.primaryPhone) update.phone = profile.primaryPhone;
+        if (!business.website && profile.website) update.website = profile.website;
+        if (!business.address && profile.address) update.address = profile.address;
+
+        if (Object.keys(update).length > 0) {
+          await BusinessModel.findByIdAndUpdate(businessId, { $set: update });
+        }
+      } catch (err: any) {
+        // GBPAuthError (expired/revoked token) is already handled by the
+        // daily-metrics step above — nothing more to do for it here.
+        if (!(err instanceof GBPAuthError)) {
+          console.error(`[GBP Sync] Profile sync failed for ${businessId}:`, err.message);
+        }
       }
     });
   }

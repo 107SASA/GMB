@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import Review from '@/models/Review';
 import ReviewAnalytics from '@/models/ReviewAnalytics';
 import GBPToken from '@/models/GBPToken';
+import Business from '@/models/Business';
 import { getReviewProvider } from './providers/index';
 import { GbpApiReviewProvider } from './providers/GbpApiReviewProvider';
 import { SerpApiGoogleProvider } from './providers/SerpApiGoogleProvider';
@@ -148,6 +149,30 @@ export async function syncReviewsForBusiness(
       });
     } catch (e) {
       console.warn('[syncReviews] Failed to send critical-alert event:', e);
+    }
+  }
+
+  // Auto-reply — only for businesses that opted into it (Review Management
+  // screen). Every review just upserted that still needs a reply (no
+  // existing response, not already posted) gets queued for the background
+  // auto-reply job; see processAutoReplyBatchJob in inngest/functions.ts.
+  const business = await Business.findById(bid).select('reviewReplySettings').lean<{
+    reviewReplySettings?: { mode?: string };
+  }>();
+  if (business?.reviewReplySettings?.mode === 'auto') {
+    const pendingIds = upsertResults
+      .filter(({ saved }) => saved && !saved.response && saved.replyStatus !== 'POSTED')
+      .map(({ saved }) => saved!._id.toString());
+    if (pendingIds.length > 0) {
+      try {
+        const { inngest } = await import('@/services/inngest/client');
+        await inngest.send({
+          name: 'reviews/auto-reply-batch',
+          data: { businessId, reviewIds: pendingIds },
+        });
+      } catch (e) {
+        console.warn('[syncReviews] Failed to send auto-reply-batch event:', e);
+      }
     }
   }
 

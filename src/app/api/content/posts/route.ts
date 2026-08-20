@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function GET(req: Request) {
   try {
@@ -36,6 +37,6 @@ export async function GET(req: Request) {
     });
   } catch (error: any) {
     console.error('Failed to fetch posts:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

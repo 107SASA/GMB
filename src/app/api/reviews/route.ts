@@ -4,6 +4,7 @@ import Review from "@/models/Review";
 import { requireBusinessContext } from "@/lib/tenant";
 import { requireModule } from "@/lib/moduleGating";
 import { computeReviewMetrics } from "@/services/reviews/reviewMetrics";
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export async function GET(req: Request) {
     const analytics = await computeReviewMetrics(ctx.businessId);
     return NextResponse.json({ reviews, analytics });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }
 
@@ -54,6 +55,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(review, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 400 });
   }
 }

@@ -4,6 +4,7 @@ import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import { POSTS_PER_WEEK } from '@/lib/contentConfig';
 import mongoose from 'mongoose';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function GET() {
   try {
@@ -72,6 +73,6 @@ export async function GET() {
     }, { status: 200 });
   } catch (error: any) {
     console.error('Failed to fetch scheduler buffer:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

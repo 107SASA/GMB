@@ -3,9 +3,16 @@
 import { useState, useEffect } from 'react';
 import { GeneratedPost } from '@/services/ai/contentEngine';
 import { defaultScheduleDateTimeLocal, nowDateTimeLocal } from '@/lib/scheduleTime';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 interface PostCardProps {
   post: GeneratedPost;
+  // Set by the parent when this post was just scheduled as part of a batch
+  // action (Auto Schedule / Manual Schedule all) rather than through this
+  // card's own inline date picker — without it, a card scheduled in bulk
+  // would keep showing an active "Schedule" button (and let you schedule it
+  // again) since its own local confirmedDate state never gets set.
+  scheduledAt?: string;
 }
 
 function formatScheduledDate(isoLocal: string): string {
@@ -15,7 +22,7 @@ function formatScheduledDate(isoLocal: string): string {
   return `${day} · ${time}`;
 }
 
-export default function PostCard({ post: initialPost }: PostCardProps) {
+export default function PostCard({ post: initialPost, scheduledAt }: PostCardProps) {
   const [post, setPost] = useState(initialPost);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -24,6 +31,11 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
   const [isScheduling, setIsScheduling] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
   const [confirmedDate, setConfirmedDate] = useState<string | null>(null);
+
+  // Either this card was scheduled through its own inline picker, or the
+  // parent just batch-scheduled it (Auto Schedule / Manual Schedule all) —
+  // either way the Schedule button must not stay active.
+  const effectiveScheduledDate = confirmedDate ?? scheduledAt ?? null;
 
   const [imgError, setImgError] = useState(false);
 
@@ -78,7 +90,7 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
       setConfirmedDate(scheduledDate);
       setShowDatePicker(false);
     } catch (err: any) {
-      setScheduleError(err.message);
+      setScheduleError(friendlyClientMessage(err));
     } finally {
       setIsScheduling(false);
     }
@@ -195,7 +207,7 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
         </div>
 
         {/* Inline date picker */}
-        {showDatePicker && !confirmedDate && (
+        {showDatePicker && !effectiveScheduledDate && (
           <div className="mb-4 p-3 bg-surface border border-outline-variant rounded-lg space-y-2">
             <p className="text-xs font-semibold text-on-surface-variant">Pick a date &amp; time:</p>
             <input
@@ -227,13 +239,13 @@ export default function PostCard({ post: initialPost }: PostCardProps) {
         )}
 
         <div className="grid grid-cols-2 gap-2 mt-auto">
-          {confirmedDate ? (
+          {effectiveScheduledDate ? (
             <div className="col-span-2 py-2 px-3 bg-secondary-container/40 border border-secondary-fixed rounded-lg flex items-center gap-2">
               <svg className="w-4 h-4 text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
               <span className="text-xs font-medium text-on-secondary-container">
-                Scheduled for {formatScheduledDate(confirmedDate)}
+                Scheduled for {formatScheduledDate(effectiveScheduledDate)}
               </span>
             </div>
           ) : (

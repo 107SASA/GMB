@@ -14,6 +14,8 @@ export interface IReview extends Document {
   response: string;
   aiSuggestedReply?: string;
   replyStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'POSTED' | 'FAILED';
+  /** Only set when replyStatus is 'FAILED' — cleared on the next successful attempt. */
+  replyFailureReason?: string;
   replyTone?: string;
   sourcePlatform?: string;
   /**
@@ -51,6 +53,7 @@ const ReviewSchema: Schema = new Schema(
     response: { type: String },
     aiSuggestedReply: { type: String },
     replyStatus: { type: String, enum: ['PENDING', 'APPROVED', 'REJECTED', 'POSTED', 'FAILED'], default: 'PENDING' },
+    replyFailureReason: { type: String },
     replyTone: { type: String },
     sourcePlatform: { type: String, default: 'Google' },
     source: { type: String, enum: ['gbp_api', 'serpapi', 'mock'] },

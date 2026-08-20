@@ -3,6 +3,7 @@ import { requireBusinessContext } from '@/lib/tenant';
 import { uploadPublicObject, isStorageConfigured } from '@/lib/storage';
 import { createOrReplaceStagedAsset } from '@/lib/gbpMediaService';
 import { GbpMediaCategory } from '@/lib/gbpClient';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -70,6 +71,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, asset });
   } catch (err: any) {
     console.error('[gbp/media/upload] failed:', err);
-    return NextResponse.json({ success: false, error: err.message || 'Upload failed' }, { status: 500 });
+    return NextResponse.json({ success: false, error: toFriendlyMessage(err) }, { status: 500 });
   }
 }

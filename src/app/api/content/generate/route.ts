@@ -10,6 +10,7 @@ import { logAIUsage } from '@/lib/logAIUsage';
 import { checkUsageLimit } from '@/lib/featureGating';
 import { GROQ_MODEL } from '@/lib/aiModel';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 // Allow up to 2 minutes — sequential thumbnail generation adds time
 export const maxDuration = 120;
@@ -168,6 +169,6 @@ export async function POST(req: Request) {
     );
   } catch (error: any) {
     console.error('Failed to generate content:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

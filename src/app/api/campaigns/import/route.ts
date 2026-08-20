@@ -4,6 +4,7 @@ import Customer from '@/models/Customer';
 import Lead from '@/models/Lead';
 import mongoose from 'mongoose';
 import { requireBusinessContext } from '@/lib/tenant';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
 
@@ -72,6 +73,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, imported, leadsCreated });
   } catch (error: any) {
     console.error('Import Customers Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

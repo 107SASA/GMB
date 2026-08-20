@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 import {
   UserPlus,
   Copy,
@@ -57,7 +58,7 @@ export default function InvitesPage() {
       if (!json.success) throw new Error(json.error);
       setInvites(json.data);
     } catch (err: any) {
-      setError(err.message);
+      setError(friendlyClientMessage(err));
     } finally {
       setLoading(false);
     }
@@ -85,7 +86,7 @@ export default function InvitesPage() {
       setEmail('');
       fetchInvites();
     } catch (err: any) {
-      setFormError(err.message);
+      setFormError(friendlyClientMessage(err));
     } finally {
       setSubmitting(false);
     }

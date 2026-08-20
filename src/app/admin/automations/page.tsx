@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 import {
   Zap,
   RefreshCw,
@@ -194,7 +195,7 @@ export default function AutomationsPage() {
       if (!json.success) throw new Error(json.error);
       setData(json.data);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch automations data');
+      setError(friendlyClientMessage(err, 'Failed to fetch automations data'));
     } finally {
       setLoading(false);
     }

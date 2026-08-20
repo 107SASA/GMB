@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 import {
   Database,
   BriefcaseBusiness,
@@ -155,7 +156,7 @@ export default function SystemHealthPage() {
       setData(json.data);
       setLastRefreshed(new Date());
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch system health');
+      setError(friendlyClientMessage(err, 'Failed to fetch system health'));
     } finally {
       setLoading(false);
     }
@@ -290,7 +291,7 @@ export default function SystemHealthPage() {
                       <tr key={err._id} className="border-b border-outline-variant hover:bg-surface">
                         <td className="p-4 font-medium text-on-surface">{err.workflow || '—'}</td>
                         <td className="p-4 text-on-surface-variant">{err.action || '—'}</td>
-                        <td className="p-4 text-error max-w-xs truncate">{err.error || err.message || '—'}</td>
+                        <td className="p-4 text-error max-w-xs truncate">{err.error || friendlyClientMessage(err, '—')}</td>
                         <td className="p-4 text-outline">
                           {new Date(err.createdAt).toLocaleString()}
                         </td>

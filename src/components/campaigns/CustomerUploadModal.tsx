@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react';
 import Papa from 'papaparse';
 import { UploadCloud, CheckCircle2, AlertCircle, Loader2, X, AlertTriangle } from 'lucide-react';
 import { makeColumnGetter, COLUMN_ALIASES } from '@/lib/csvColumns';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 interface CustomerUploadModalProps {
   onClose: () => void;
@@ -107,7 +108,7 @@ export default function CustomerUploadModal({ onClose, onSuccess }: CustomerUplo
         setError(json.error || 'Import failed');
       }
     } catch (e: any) {
-      setError(e.message);
+      setError(friendlyClientMessage(e));
     } finally {
       setLoading(false);
     }

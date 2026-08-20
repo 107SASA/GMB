@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 import {
   IndianRupee,
   TrendingUp,
@@ -65,7 +66,7 @@ export default function RevenuePage() {
       if (!json.success) throw new Error(json.error);
       setData(json.data);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch revenue data');
+      setError(friendlyClientMessage(err, 'Failed to fetch revenue data'));
     } finally {
       setLoading(false);
     }

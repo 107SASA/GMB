@@ -6,6 +6,7 @@ import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
 import { inngest } from '@/services/inngest/client';
 import mongoose from 'mongoose';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 const VALID_SOURCES = ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking', 'Google Business Profile'];
 const VALID_STAGES = ['initial', 'active', 'closed', 'converted'];
@@ -148,6 +149,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, created, skipped, errors });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

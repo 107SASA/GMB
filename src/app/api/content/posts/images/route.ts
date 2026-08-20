@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 /**
  * Lightweight poll endpoint for freshly-generated post thumbnails.
@@ -45,6 +46,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: true, images });
   } catch (error: any) {
     console.error('Failed to fetch post images:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

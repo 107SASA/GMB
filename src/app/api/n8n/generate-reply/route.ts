@@ -4,6 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import Review from '@/models/Review';
 import Business from '@/models/Business';
 import { generateReviewReply } from '@/services/ai/replyEngine';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function POST(req: Request) {
   const auth = validateApiKey(req);
@@ -47,6 +48,6 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error('[n8n/generate-reply]', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

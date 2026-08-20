@@ -7,6 +7,7 @@ import { logProfileActivity } from '@/lib/logProfileActivity';
 import dbConnect from '@/lib/mongodb';
 import GBPToken from '@/models/GBPToken';
 import User from '@/models/User';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 const FIELD_LABELS: Record<string, string> = {
   title: 'business name',
@@ -46,7 +47,7 @@ export async function GET() {
     if (err instanceof GBPAuthError) {
       return NextResponse.json({ success: false, connected: false, error: 'Google connection expired — please reconnect.' });
     }
-    return NextResponse.json({ success: false, connected: true, error: err.message || 'Failed to load profile' }, { status: 500 });
+    return NextResponse.json({ success: false, connected: true, error: toFriendlyMessage(err) }, { status: 500 });
   }
 }
 
@@ -94,6 +95,6 @@ export async function PATCH(req: Request) {
     if (err instanceof GBPAuthError) {
       return NextResponse.json({ success: false, error: 'Google connection expired — please reconnect.' }, { status: 400 });
     }
-    return NextResponse.json({ success: false, error: err.message || 'Failed to save profile' }, { status: 500 });
+    return NextResponse.json({ success: false, error: toFriendlyMessage(err) }, { status: 500 });
   }
 }

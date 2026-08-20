@@ -6,6 +6,7 @@ import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 import { requireModule } from '@/lib/moduleGating';
 import { inngest } from '@/services/inngest/client';
 import mongoose from 'mongoose';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 const ALLOWED_SOURCES = ['Manual', 'Phone Call', 'Contacts Import'] as const;
 
@@ -64,6 +65,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, existing: false, lead }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

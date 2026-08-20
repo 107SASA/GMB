@@ -9,6 +9,7 @@ import { inngest } from '@/services/inngest/client';
 import { checkUsageLimit, incrementUsage } from '@/lib/featureGating';
 import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 // Each run does a live SerpApi geo-grid check (45 calls) plus Groq calls —
 // real, per-request cost on top of the plan's audit-count quota. This is a
@@ -171,7 +172,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, auditId: audit._id }, { status: 201 });
   } catch (error: any) {
     console.error('Failed to create audit request:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }
 

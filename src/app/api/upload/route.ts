@@ -3,6 +3,7 @@ import { parse } from "csv-parse/sync";
 import dbConnect from "@/lib/mongodb";
 import Customer from "@/models/Customer";
 import { requireBusinessContext } from "@/lib/tenant";
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function POST(req: NextRequest) {
   try {
@@ -78,6 +79,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("Upload API error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

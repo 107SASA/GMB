@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, MapPin, ShieldCheck, ExternalLink, Info, Unplug } from 'lucide-react';
 import { useBusiness } from '@/context/BusinessContext';
 import GbpMediaManager from '@/components/gbp/GbpMediaManager';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 interface Profile {
   locationName: string;
@@ -73,7 +74,7 @@ export default function GbpProfilePage() {
       setConnected(false);
       setProfile(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not disconnect.');
+      setError(friendlyClientMessage(err, 'Could not disconnect.'));
     } finally {
       setDisconnecting(false);
     }
@@ -97,7 +98,7 @@ export default function GbpProfilePage() {
           : 'Saved. Changes publish to Google automatically once profile verification is enabled.'
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save.');
+      setError(friendlyClientMessage(err, 'Could not save.'));
     } finally {
       setSaving(false);
     }
@@ -141,6 +142,7 @@ export default function GbpProfilePage() {
           {error && <p className="text-sm text-error mt-3">{error}</p>}
           <a
             href="/api/auth/google"
+            data-tour="connect-google"
             className="inline-flex items-center gap-2 mt-6 px-6 py-3 bg-primary hover:bg-primary text-white rounded-xl font-semibold transition-colors"
           >
             <ExternalLink className="w-4 h-4" /> Connect Google Business Profile

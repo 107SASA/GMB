@@ -32,6 +32,10 @@ export interface IUser extends Document {
   emailOtpExpiry?: Date;
   passwordResetOtp?: string;
   passwordResetExpiry?: Date;
+  passwordResetAttempts?: number;
+  passwordResetLastSentAt?: Date;
+  passwordResetTokenHash?: string;
+  passwordResetTokenExpiry?: Date;
   failedOtpAttempts: number;
   emailVerifiedAt?: Date;
 
@@ -51,6 +55,13 @@ export interface IUser extends Document {
   pushTokens: string[];
 
   notificationPreferences?: INotificationPreferences;
+
+  // Dashboard product tour (see components/tour/) — set the moment the user
+  // finishes the last step OR explicitly skips it, whichever comes first.
+  // Missing/undefined means "hasn't seen it yet, show it" — matches the
+  // freemiumAuditGate pattern below of pre-existing accounts just not having
+  // the field rather than needing a backfill.
+  productTourCompletedAt?: Date;
 
   // Soft delete
   isDeleted?: boolean;
@@ -133,6 +144,10 @@ const UserSchema: Schema = new Schema(
     emailOtpExpiry: { type: Date },
     passwordResetOtp: { type: String },
     passwordResetExpiry: { type: Date },
+    passwordResetAttempts: { type: Number, default: 0 },
+    passwordResetLastSentAt: { type: Date },
+    passwordResetTokenHash: { type: String },
+    passwordResetTokenExpiry: { type: Date },
     phoneOtpHash: { type: String },
     phoneOtpExpiry: { type: Date },
 
@@ -150,6 +165,8 @@ const UserSchema: Schema = new Schema(
     pushTokens: [{ type: String }],
 
     notificationPreferences: { type: NotificationPreferencesSchema, default: () => ({}) },
+
+    productTourCompletedAt: { type: Date },
 
     // Soft delete
     isDeleted: { type: Boolean, default: false },

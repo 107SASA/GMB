@@ -4,6 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import Subscription from '@/models/Subscription';
 import Business from '@/models/Business';
 import ProcessedWebhookEvent from '@/models/ProcessedWebhookEvent';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import {
   activatePlan,
   cancelPlan,
@@ -181,6 +182,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Razorpay webhook error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

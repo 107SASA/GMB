@@ -4,6 +4,7 @@ import { publishAsset } from '@/lib/gbpMediaService';
 import { GBPAuthError } from '@/lib/gbpClient';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,6 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     if (err instanceof GBPAuthError) {
       return NextResponse.json({ success: false, error: 'Google connection expired — please reconnect.' }, { status: 400 });
     }
-    return NextResponse.json({ success: false, error: err.message || 'Failed to publish photo' }, { status: 500 });
+    return NextResponse.json({ success: false, error: toFriendlyMessage(err) }, { status: 500 });
   }
 }

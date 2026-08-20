@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 const inputCls =
   'w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all';
@@ -64,7 +65,7 @@ function ClaimAccountForm() {
       setStep('verify');
       setResendCooldown(60);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save.');
+      setError(friendlyClientMessage(err, 'Could not save.'));
     } finally {
       setSaving(false);
     }
@@ -89,7 +90,7 @@ function ClaimAccountForm() {
       // dashboard if intake is already done) without us duplicating that logic here.
       router.push('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Verification failed.');
+      setError(friendlyClientMessage(err, 'Verification failed.'));
       setVerifying(false);
     }
   };

@@ -4,6 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 const batchPostSchema = z.object({
   posts: z
@@ -76,6 +77,6 @@ export async function POST(req: Request) {
     );
   } catch (error: any) {
     console.error('Failed to batch schedule posts:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

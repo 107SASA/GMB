@@ -26,6 +26,22 @@ export interface PlaceDetailsResult {
   /** Best-guess human-readable business category derived from `types`. */
   primaryCategory?: string;
   /**
+   * DIAGNOSTIC — which lookup actually produced `primaryCategory`, and (for
+   * 'places_new') Google's own full New-API classification for this place.
+   * Not used anywhere in the UI logic; visible in this endpoint's raw JSON
+   * response (Network tab) so a category mismatch can be diagnosed without
+   * needing server log access — see getPrimaryTypeDisplayName above for the
+   * full reasoning. Safe to remove once category-accuracy investigation
+   * (Aug 2026) is done.
+   */
+  categoryDebug?: {
+    source: 'places_new' | 'places_new_failed' | 'legacy_types';
+    placesNewPrimaryType?: string;
+    placesNewPrimaryTypeDisplayName?: string;
+    placesNewAllTypes?: string[];
+    legacyTypes?: string[];
+  };
+  /**
    * Google's own one-line summary of the place (`editorial_summary.overview`).
    * Only a minority of listings have one — Google writes these mostly for
    * well-known places — so treat it as a bonus, not something to rely on.
@@ -104,28 +120,43 @@ export class GooglePlacesService {
    * callers fall back to deriveCategory(types) exactly as before this was
    * added. Best-effort only; never throws.
    */
-  private static async getPrimaryTypeDisplayName(placeId: string): Promise<string | undefined> {
+  private static async getPrimaryTypeDisplayName(
+    placeId: string
+  ): Promise<{ name: string | undefined; source: 'places_new' | 'places_new_failed'; raw?: any }> {
     const apiKey = this.getApiKey();
-    if (!apiKey) return undefined;
+    if (!apiKey) return { name: undefined, source: 'places_new_failed' };
     try {
       const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
         headers: {
           'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask': 'primaryTypeDisplayName',
+          // types is the New API's FULL classification list (can hold several
+          // types, most-to-least specific) — fetched alongside
+          // primaryTypeDisplayName so a diagnostic log can show whether Google
+          // itself just has no specific type for this place, vs. something
+          // more specific existing in `types` that primaryType didn't pick.
+          'X-Goog-FieldMask': 'primaryTypeDisplayName,primaryType,types,displayName',
         },
       });
       if (!res.ok) {
-        // Most commonly: Places API (New) not enabled on this project (403)
-        // or an invalid placeId (404) — either way, silently defer to the
+        // Most commonly: the API key itself is restricted to a different set
+        // of APIs than the ones enabled on the project (a key can be
+        // enabled-on-project but still blocked per-key), or an invalid
+        // placeId — either way, log the REAL body (not just the status) so
+        // this is diagnosable from server logs, then defer to the
         // legacy-types fallback rather than failing the whole details fetch.
-        console.warn(`[places] Places API (New) primaryTypeDisplayName lookup failed (HTTP ${res.status}) for placeId=${placeId} — falling back to legacy types[].`);
-        return undefined;
+        const body = await res.text().catch(() => '');
+        console.warn(`[places] Places API (New) lookup failed (HTTP ${res.status}) for placeId=${placeId} — falling back to legacy types[]. Response: ${body}`);
+        return { name: undefined, source: 'places_new_failed', raw: { status: res.status, body } };
       }
       const data = await res.json();
-      return data?.primaryTypeDisplayName?.text || undefined;
+      console.log(
+        `[places] Places API (New) for placeId=${placeId} ("${data?.displayName?.text}"): ` +
+        `primaryType=${data?.primaryType} primaryTypeDisplayName="${data?.primaryTypeDisplayName?.text}" types=${JSON.stringify(data?.types)}`
+      );
+      return { name: data?.primaryTypeDisplayName?.text || undefined, source: 'places_new', raw: data };
     } catch (e: any) {
-      console.warn(`[places] Places API (New) primaryTypeDisplayName lookup threw for placeId=${placeId}:`, e?.message);
-      return undefined;
+      console.warn(`[places] Places API (New) lookup threw for placeId=${placeId}:`, e?.message);
+      return { name: undefined, source: 'places_new_failed' };
     }
   }
 
@@ -227,7 +258,7 @@ export class GooglePlacesService {
 
     const r = data.result;
     const components: AddressComponent[] = r.address_components || [];
-    const primaryTypeDisplayName = await primaryTypeDisplayNamePromise;
+    const placesNew = await primaryTypeDisplayNamePromise;
 
     return {
       placeId,
@@ -263,7 +294,14 @@ export class GooglePlacesService {
       postalCode: pickComponent(components, ['postal_code']),
       // Prefer Places API (New)'s real category name; fall back to guessing
       // from the legacy `types` enum only if v1 was unavailable/unenabled.
-      primaryCategory: primaryTypeDisplayName || deriveCategory(r.types),
+      primaryCategory: placesNew.name || deriveCategory(r.types),
+      categoryDebug: {
+        source: placesNew.name ? 'places_new' : placesNew.source === 'places_new_failed' ? 'places_new_failed' : 'legacy_types',
+        placesNewPrimaryType: placesNew.raw?.primaryType,
+        placesNewPrimaryTypeDisplayName: placesNew.raw?.primaryTypeDisplayName?.text,
+        placesNewAllTypes: placesNew.raw?.types,
+        legacyTypes: r.types,
+      },
       editorialSummary: r.editorial_summary?.overview || undefined,
       photoCount: Array.isArray(r.photos) ? r.photos.length : 0,
       hasHours: !!(r.opening_hours?.weekday_text?.length || r.opening_hours?.periods?.length),

@@ -76,6 +76,17 @@ export interface IBusiness extends Document {
     reminderDays: number;
     messageTemplate?: string;
   };
+  // How incoming reviews get replied to (Review Management screen) —
+  // 'manual' (default): AI drafts a reply, the owner reviews/edits/approves
+  // before it posts. 'auto': the AI agent drafts AND posts on its own, no
+  // human step. Read by syncReviewsForBusiness (see services/reviews/) right
+  // after new reviews are upserted, and by the reply-settings route when the
+  // owner switches modes (to catch up the existing backlog of unreplied
+  // reviews, not just future ones).
+  reviewReplySettings: {
+    mode: 'manual' | 'auto';
+    tone: string;
+  };
   kanbanColumns: string[];
   // ADDITIVE — configurable Lead Stages (sales pipeline). Main stages are
   // fixed (initial/active/converted/closed, matching Lead.lifeCycleStage);
@@ -228,6 +239,10 @@ const BusinessSchema: Schema = new Schema(
       enabled: { type: Boolean, default: false },
       reminderDays: { type: Number, default: 3 },
       messageTemplate: { type: String }
+    },
+    reviewReplySettings: {
+      mode: { type: String, enum: ['manual', 'auto'], default: 'manual' },
+      tone: { type: String, default: 'Professional' },
     },
     kanbanColumns: [{ type: String }],
     // ADDITIVE — see leadStages in IBusiness above. No default object is

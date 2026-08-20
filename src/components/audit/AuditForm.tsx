@@ -7,6 +7,7 @@ import { useBusiness } from '@/context/BusinessContext';
 import { Zap, AlertTriangle, CheckCircle2, Building2, MapPin, Tag, Globe, Phone, Map as MapIcon, Edit3 } from 'lucide-react';
 import UpgradeLimitModal from '@/components/ui/UpgradeLimitModal';
 import ConnectGoogleModal from '@/components/audit/ConnectGoogleModal';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 export default function AuditForm() {
   const router = useRouter();
@@ -88,7 +89,7 @@ export default function AuditForm() {
 
       router.push(`/dashboard/audit/${data.auditId}`);
     } catch (err: any) {
-      setError(err.message);
+      setError(friendlyClientMessage(err));
     } finally {
       // Always clear the loading state, regardless of which path above was
       // taken — previously the UPGRADE_REQUIRED branch returned early without

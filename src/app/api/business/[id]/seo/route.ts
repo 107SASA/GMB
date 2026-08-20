@@ -48,6 +48,6 @@ export async function PATCH(
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Failed to save SEO description:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Something went wrong on our end. Please try again, and contact support if this keeps happening.' }, { status: 500 });
   }
 }

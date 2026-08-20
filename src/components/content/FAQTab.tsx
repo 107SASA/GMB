@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { GeneratedFAQ } from '@/services/ai/contentEngine';
 import { motion, AnimatePresence } from 'framer-motion';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 interface FAQTabProps {
   faqs: GeneratedFAQ[];
@@ -39,7 +40,7 @@ export default function FAQTab({ faqs: initialFaqs }: FAQTabProps) {
       if (!res.ok) throw new Error(data.error || 'Failed to save FAQs');
       setSaveResult('saved');
     } catch (err: any) {
-      setSaveError(err.message);
+      setSaveError(friendlyClientMessage(err));
       setSaveResult('error');
     } finally {
       setIsSaving(false);

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import DemoBooking from '@/models/DemoBooking';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 const connectDB = async () => {
   if (mongoose.connections[0].readyState) return;
@@ -23,7 +24,7 @@ export async function GET() {
     
     return NextResponse.json({ success: true, bookings });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }
 
@@ -65,6 +66,6 @@ export async function PATCH(req: Request) {
 
     return NextResponse.json({ success: true, booking });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

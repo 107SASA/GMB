@@ -9,6 +9,7 @@ import { sendOutboundMessage } from '@/services/whatsapp/send';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function GET(req: Request) {
   try {
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, messages });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }
 
@@ -106,6 +107,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, message: msg });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

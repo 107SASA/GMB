@@ -9,6 +9,7 @@ import { logAIUsage } from '@/lib/logAIUsage';
 import { checkUsageLimit } from '@/lib/featureGating';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { GROQ_MODEL } from '@/lib/aiModel';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 // Burst guard (per account, short window), independent of the plan's
 // aiGenerations quota.
@@ -79,6 +80,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, reply: aiReply });
   } catch (error: any) {
     console.error('Failed to generate AI reply:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

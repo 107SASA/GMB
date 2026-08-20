@@ -4,6 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 /** GET -> single post, for the mobile post-detail screen (view a post that
  *  isn't necessarily still in the buffer's ±calendar-window `allPosts`). */
@@ -30,7 +31,7 @@ export async function GET(
     return NextResponse.json({ success: true, post }, { status: 200 });
   } catch (error: any) {
     console.error('Failed to fetch post:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }
 
@@ -62,7 +63,7 @@ export async function DELETE(
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error: any) {
     console.error('Failed to delete post:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }
 
@@ -110,6 +111,6 @@ export async function PATCH(
     return NextResponse.json({ success: true, post }, { status: 200 });
   } catch (error: any) {
     console.error('Failed to update post:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

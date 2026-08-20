@@ -6,6 +6,7 @@ import Business from '@/models/Business';
 import GBPToken from '@/models/GBPToken';
 import User from '@/models/User';
 import { requireClient } from '@/lib/auth';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 /**
  * Soft-deletes one of the signed-in user's workspaces (Business). The workspace
@@ -70,6 +71,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, nextActiveBusinessId: nextActive });
   } catch (error: any) {
     console.error('Delete workspace error:', error);
-    return NextResponse.json({ success: false, error: error.message || 'Failed to delete workspace' }, { status: 500 });
+    return NextResponse.json({ success: false, error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

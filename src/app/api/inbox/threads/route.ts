@@ -6,6 +6,7 @@ import '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function GET(req: Request) {
   try {
@@ -29,7 +30,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, threads });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }
 
@@ -63,6 +64,6 @@ export async function PATCH(req: Request) {
 
     return NextResponse.json({ success: true, thread });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

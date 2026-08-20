@@ -53,7 +53,7 @@ export async function GET(
     });
   } catch (err: any) {
     console.error('[usage-limits GET]', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Something went wrong on our end. Please try again, and contact support if this keeps happening.' }, { status: 500 });
   }
 }
 
@@ -124,6 +124,6 @@ export async function PATCH(
     return NextResponse.json({ success: true, effective });
   } catch (err: any) {
     console.error('[usage-limits PATCH]', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Something went wrong on our end. Please try again, and contact support if this keeps happening.' }, { status: 500 });
   }
 }

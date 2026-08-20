@@ -4,6 +4,7 @@ import Customer from '@/models/Customer';
 import { requireBusinessContext } from '@/lib/tenant';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { inngest } from '@/services/inngest/client';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 /**
  * Mobile "Add Customer" quick-add: create (or reuse) a Customer from just a
@@ -86,6 +87,6 @@ export async function POST(req: Request) {
       { status: existing ? 200 : 201 }
     );
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

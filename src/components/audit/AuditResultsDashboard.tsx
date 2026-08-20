@@ -6,6 +6,7 @@ import { Download, Sparkles, Building2, Globe, MapPin, Zap, TrendingUp, Search, 
 import AuditDebugPanel from './AuditDebugPanel';
 import AuditReportV6 from './AuditReportV6';
 import AuditReportGrexa from './AuditReportGrexa';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 /* ─── Main dashboard ──────────────────────────────────────── */
 
@@ -49,7 +50,7 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
           );
         }
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to load');
+        setError(friendlyClientMessage(err, 'Failed to load'));
         clearInterval(interval);
       }
     };

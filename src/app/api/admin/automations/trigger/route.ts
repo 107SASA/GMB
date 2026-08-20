@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import { inngest } from '@/services/inngest/client';
 import dbConnect from '@/lib/mongodb';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function POST(req: Request) {
   const auth = await requireSuperAdmin();
@@ -107,6 +108,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, triggered: true, workflow, eventsSent });
   } catch (error: any) {
     console.error('[admin/automations/trigger] error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { GooglePlacesService } from '@/services/google/places';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 // Resolves a Google Maps / GBP URL to the same place-details shape that
 // /api/google/place-details returns, enabling the "paste a URL" onboarding path.
@@ -159,6 +160,6 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error('[resolve-gbp-url]', error);
-    return NextResponse.json({ success: false, error: error.message || 'Internal error' }, { status: 500 });
+    return NextResponse.json({ success: false, error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

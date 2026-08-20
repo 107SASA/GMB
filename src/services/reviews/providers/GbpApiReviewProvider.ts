@@ -2,6 +2,7 @@ import { getValidToken } from '@/lib/gbpClient';
 import dbConnect from '@/lib/mongodb';
 import GBPToken from '@/models/GBPToken';
 import { ProviderReview, FetchReviewsOptions } from './MockGoogleProvider';
+import { describeGoogleApiError } from '@/lib/googleApiError';
 
 /**
  * Reviews sourced from the OFFICIAL Google Business Profile API (My Business v4
@@ -55,7 +56,7 @@ export class GbpApiReviewProvider {
       });
       if (!res.ok) {
         const err = await res.text();
-        throw new Error(`GBP reviews.list failed: ${res.status} ${err}`);
+        throw describeGoogleApiError('reviews.list', res.status, err);
       }
       const data = await res.json();
       const page: any[] = data.reviews ?? [];

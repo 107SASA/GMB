@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 interface IntakeData {
   category: string;
@@ -187,7 +188,7 @@ export default function IntakePage() {
       // redundant round-trip was what made "Save" feel slow.
       router.push('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save.');
+      setError(friendlyClientMessage(err, 'Could not save.'));
       setSaving(false);
     }
   };

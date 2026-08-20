@@ -5,6 +5,7 @@ import BufferHealthBar from './BufferHealthBar';
 import LowBufferBanner from './LowBufferBanner';
 import WeeklyCalendar from './WeeklyCalendar';
 import { useBusiness } from '@/context/BusinessContext';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 export default function SchedulerDashboard() {
   const { activeBusiness } = useBusiness();
@@ -60,7 +61,7 @@ export default function SchedulerDashboard() {
       }
       await fetchBuffer();
     } catch (err: any) {
-      alert(err.message ?? 'Failed to publish');
+      alert(friendlyClientMessage(err, 'Failed to publish'));
     }
   };
 

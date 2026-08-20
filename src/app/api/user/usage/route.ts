@@ -94,6 +94,6 @@ export async function GET() {
     });
   } catch (err: any) {
     console.error('[user/usage GET]', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Something went wrong on our end. Please try again, and contact support if this keeps happening.' }, { status: 500 });
   }
 }

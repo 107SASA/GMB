@@ -6,6 +6,7 @@ import User from '@/models/User';
 import { requireBusinessContext } from '@/lib/tenant';
 import { getRazorpay, getRazorpayKeyId } from '@/lib/billing/razorpay';
 import { ensureRazorpayPlanIdForCycle, getActivePlan, isBillingCycle, CYCLES, type BillingCycle } from '@/lib/billing/planCatalog';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 /**
  * Creates a Razorpay Subscription for THE plan (there is only one), scoped to
@@ -91,8 +92,12 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error('Checkout error:', error);
+    // Razorpay's own error.error.description is already a clean, human
+    // sentence when present ("The id provided does not exist", etc.) — only
+    // fall back to the generic translator for everything else (Mongo,
+    // network, unexpected shapes) rather than ever showing raw error.message.
     return NextResponse.json(
-      { error: error?.error?.description || error.message || 'Checkout failed' },
+      { error: error?.error?.description || toFriendlyMessage(error) },
       { status: 500 }
     );
   }

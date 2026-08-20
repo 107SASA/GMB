@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireBusinessContext } from '@/lib/tenant';
 import { scheduleAsset } from '@/lib/gbpMediaService';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const asset = await scheduleAsset(ctx.businessId, id, date);
     return NextResponse.json({ success: true, asset });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message || 'Failed to schedule photo' }, { status: 400 });
+    return NextResponse.json({ success: false, error: toFriendlyMessage(err) }, { status: 400 });
   }
 }

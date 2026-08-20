@@ -4,7 +4,8 @@ import { requireBusinessContext } from '@/lib/tenant';
 import GBPToken from '@/models/GBPToken';
 import GBPInsights from '@/models/GBPInsights';
 import GBPKeyword from '@/models/GBPKeyword';
-import { fetchDailyMetrics, fetchSearchKeywords } from '@/lib/gbpClient';
+import Business from '@/models/Business';
+import { fetchDailyMetrics, fetchSearchKeywords, fetchLocationProfile } from '@/lib/gbpClient';
 
 export async function POST() {
   const ctx = await requireBusinessContext();
@@ -98,6 +99,34 @@ export async function POST() {
     { businessId: ctx.businessId },
     { $set: { lastSyncAt: now } }
   );
+
+  // Corrects Business.category (and fills a few other fields if still empty)
+  // from the authoritative Google Business Profile — see the matching step
+  // in gbpSyncWorker (services/inngest/functions.ts) for the full reasoning.
+  // Duplicated here (rather than this route dispatching that background job)
+  // so a manual sync click shows the corrected category immediately instead
+  // of waiting for the next nightly run. Best-effort — never fails the sync.
+  try {
+    const profile = await fetchLocationProfile(ctx.businessId);
+    const business = await Business.findById(ctx.businessId)
+      .select('category description phone website address')
+      .lean() as any;
+    if (business) {
+      const update: Record<string, unknown> = {};
+      if (profile.primaryCategory && profile.primaryCategory !== business.category) {
+        update.category = profile.primaryCategory;
+      }
+      if (!business.description && profile.description) update.description = profile.description;
+      if (!business.phone && profile.primaryPhone) update.phone = profile.primaryPhone;
+      if (!business.website && profile.website) update.website = profile.website;
+      if (!business.address && profile.address) update.address = profile.address;
+      if (Object.keys(update).length > 0) {
+        await Business.findByIdAndUpdate(ctx.businessId, { $set: update });
+      }
+    }
+  } catch (err: any) {
+    console.error(`[gbp/sync] Profile sync failed for ${ctx.businessId}:`, err.message);
+  }
 
   return NextResponse.json({
     success: true,

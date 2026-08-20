@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 import {
   Loader2,
   ImagePlus,
@@ -13,6 +14,7 @@ import {
   X,
   Clock,
 } from 'lucide-react';
+import { cropAndResizeImage, COVER_TARGET, LOGO_TARGET } from '@/lib/imageResize';
 
 type MediaCategory = 'LOGO' | 'COVER' | 'ADDITIONAL' | 'PROFILE';
 type MediaStatus = 'staged' | 'published' | 'failed';
@@ -26,6 +28,19 @@ interface MediaAsset {
   publishedAt?: string;
   failureReason?: string;
   createdAt: string;
+}
+
+/**
+ * Only Google-hosted photos (lh*.googleusercontent.com, reconciled straight
+ * from the live profile) need routing through /api/gbp/media/proxy — that
+ * endpoint's allowlist only accepts those hosts (see proxy/route.ts). Photos
+ * this app published itself keep their original, already-public DigitalOcean
+ * Spaces URL and must be rendered directly — sending them to the proxy just
+ * gets a 400 and a broken image.
+ */
+const GOOGLE_MEDIA_HOST = /^https:\/\/lh\d\.googleusercontent\.com\//;
+function mediaSrc(url: string): string {
+  return GOOGLE_MEDIA_HOST.test(url) ? `/api/gbp/media/proxy?url=${encodeURIComponent(url)}` : url;
 }
 
 const GALLERY_CATEGORIES: MediaCategory[] = ['ADDITIONAL', 'PROFILE'];
@@ -108,8 +123,21 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
     setUploadingSlot(slotKey);
     setMsg(null);
     try {
+      // Google enforces a strict aspect ratio/dimension window for the cover
+      // banner and logo — a mismatched photo would otherwise upload fine here
+      // and only fail with a raw API error at publish time. Auto-crop/resize
+      // to Google's recommended dimensions so every upload is compliant.
+      // Best-effort: if the browser can't process it, fall back to the
+      // original file rather than blocking the upload.
+      let toUpload = file;
+      if (category === 'COVER') {
+        toUpload = await cropAndResizeImage(file, COVER_TARGET.width, COVER_TARGET.height).catch(() => file);
+      } else if (category === 'LOGO') {
+        toUpload = await cropAndResizeImage(file, LOGO_TARGET.width, LOGO_TARGET.height).catch(() => file);
+      }
+
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('file', toUpload);
       fd.append('category', category);
       const res = await fetch('/api/gbp/media/upload', { method: 'POST', body: fd });
       const json = await res.json();
@@ -117,7 +145,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
       setMsg({ ok: true, text: 'Uploaded — review it below, then publish when ready.' });
       await loadMedia();
     } catch (err) {
-      setMsg({ ok: false, text: err instanceof Error ? err.message : 'Upload failed.' });
+      setMsg({ ok: false, text: friendlyClientMessage(err, 'Upload failed.') });
     } finally {
       setUploadingSlot(null);
     }
@@ -136,7 +164,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
       });
       await loadMedia();
     } catch (err) {
-      setMsg({ ok: false, text: err instanceof Error ? err.message : 'Publish failed.' });
+      setMsg({ ok: false, text: friendlyClientMessage(err, 'Publish failed.') });
     } finally {
       setBusyId(null);
     }
@@ -154,7 +182,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
       if (previewAsset?._id === asset._id) setPreviewAsset(null);
       await loadMedia();
     } catch (err) {
-      setMsg({ ok: false, text: err instanceof Error ? err.message : 'Delete failed.' });
+      setMsg({ ok: false, text: friendlyClientMessage(err, 'Delete failed.') });
     } finally {
       setBusyId(null);
     }
@@ -173,7 +201,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
       if (!res.ok || !json.success) throw new Error(json.error || 'Could not change category.');
       await loadMedia();
     } catch (err) {
-      setMsg({ ok: false, text: err instanceof Error ? err.message : 'Could not change category.' });
+      setMsg({ ok: false, text: friendlyClientMessage(err, 'Could not change category.') });
     } finally {
       setBusyId(null);
     }
@@ -197,7 +225,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
           <div className="relative rounded-lg overflow-hidden border border-outline-variant aspect-video bg-surface">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={`/api/gbp/media/proxy?url=${encodeURIComponent(live.url)}`}
+              src={mediaSrc(live.url)}
               alt={`Current ${label.toLowerCase()}`}
               className="w-full h-full object-cover"
             />
@@ -261,7 +289,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
   );
 
   return (
-    <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 shadow-sm space-y-5">
+    <div data-tour="upload-photo" className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 shadow-sm space-y-5">
       <div className="flex items-center gap-2">
         <ImagePlus className="w-5 h-5 text-primary" />
         <h2 className="text-base font-bold text-on-surface">Photos &amp; Media</h2>
@@ -292,7 +320,14 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
           {/* Logo / Cover — singleton slots */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {renderSingletonSlot('Logo', 'Square, your brand mark', 'LOGO', logoLive, logoPending, logoInput)}
-            {renderSingletonSlot('Cover photo', 'Wide banner at the top of your profile', 'COVER', coverLive, coverPending, coverInput)}
+            {renderSingletonSlot(
+              'Cover photo',
+              'Wide, landscape banner — ideally 1024×576px (16:9 ratio). JPG, PNG or WebP, up to 10MB. A different shape will be auto-cropped to fit, so a landscape photo works best.',
+              'COVER',
+              coverLive,
+              coverPending,
+              coverInput
+            )}
           </div>
 
           {/* Additional photos — gallery with CRUD + category */}
@@ -336,7 +371,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={item.status === 'published' ? `/api/gbp/media/proxy?url=${encodeURIComponent(item.url)}` : item.url}
+                        src={mediaSrc(item.url)}
                         alt={item.category}
                         className="w-full h-full object-cover"
                       />
@@ -409,7 +444,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
             <div className="bg-surface aspect-video">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={previewAsset.status === 'published' ? `/api/gbp/media/proxy?url=${encodeURIComponent(previewAsset.url)}` : previewAsset.url}
+                src={mediaSrc(previewAsset.url)}
                 alt={previewAsset.category}
                 className="w-full h-full object-contain"
               />

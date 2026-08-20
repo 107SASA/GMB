@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 import {
   DndContext,
   DragEndEvent,
@@ -326,7 +327,7 @@ function PostDetailModal({
       onEditSave(post._id, { title: editTitle, content: editContent });
       setMode('view');
     } catch (err: any) {
-      alert(err.message ?? 'Failed to save');
+      alert(friendlyClientMessage(err, 'Failed to save'));
     } finally {
       setSaving(false);
     }
@@ -338,7 +339,7 @@ function PostDetailModal({
       await onDelete(post._id);
       onClose();
     } catch (err: any) {
-      alert(err.message ?? 'Failed to delete');
+      alert(friendlyClientMessage(err, 'Failed to delete'));
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -353,7 +354,7 @@ function PostDetailModal({
       await onReschedule(post._id, d);
       onClose();
     } catch (err: any) {
-      alert(err.message ?? 'Reschedule failed');
+      alert(friendlyClientMessage(err, 'Reschedule failed'));
     } finally {
       setRescheduling(false);
     }
@@ -401,6 +402,14 @@ function PostDetailModal({
                   <p className="text-sm text-primary font-medium mt-1">{scheduledLabel}</p>
                 )}
               </div>
+              {post.status === 'failed' && post.failureReason && (
+                <div className="bg-error-container border border-error-container rounded-xl px-4 py-3">
+                  <p className="text-xs font-semibold text-on-error-container uppercase tracking-wider mb-1">
+                    Publish failed
+                  </p>
+                  <p className="text-sm text-on-error-container">{post.failureReason}</p>
+                </div>
+              )}
               <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
                 {post.content}
               </p>
@@ -529,12 +538,12 @@ function PostDetailModal({
                   Reschedule
                 </button>
               )}
-              {post.status === 'scheduled' && (
+              {(post.status === 'scheduled' || post.status === 'failed') && (
                 <button
                   onClick={() => { onPublish(post._id); onClose(); }}
                   className="px-4 py-2.5 text-sm font-semibold text-white bg-secondary hover:bg-secondary rounded-xl transition-colors"
                 >
-                  Publish Now
+                  {post.status === 'failed' ? 'Retry Publish' : 'Publish Now'}
                 </button>
               )}
             </>
@@ -610,7 +619,7 @@ function DraftRow({
     try {
       await onDelete();
     } catch (err: any) {
-      setError(err.message ?? 'Delete failed');
+      setError(friendlyClientMessage(err, 'Delete failed'));
       setDeleting(false);
     }
   };

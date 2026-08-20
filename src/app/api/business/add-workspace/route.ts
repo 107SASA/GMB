@@ -5,6 +5,7 @@ import Business from '@/models/Business';
 import Organization from '@/models/Organization';
 import User from '@/models/User';
 import { requireClient } from '@/lib/auth';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function POST(req: Request) {
   try {
@@ -94,7 +95,7 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error('Add Workspace Error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Failed to create workspace' },
+      { success: false, error: toFriendlyMessage(error) },
       { status: 500 }
     );
   }

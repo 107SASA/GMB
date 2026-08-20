@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 const SERPAPI_BASE = 'https://serpapi.com/search.json';
 const PLACES_BASE  = 'https://maps.googleapis.com/maps/api/place/textsearch/json';
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
       placesResult = {
         ok:        false,
         elapsedMs: Date.now() - t0,
-        error:     err.message,
+        error: toFriendlyMessage(err),
         status:    err.response?.status,
       };
     }
@@ -80,7 +81,7 @@ export async function GET(req: Request) {
       serpResult = {
         ok:              false,
         elapsedMs:       Date.now() - t1,
-        error:           err.message,
+        error: toFriendlyMessage(err),
         status:          err.response?.status,
         serpApiMessage:  err.response?.data?.error,
       };

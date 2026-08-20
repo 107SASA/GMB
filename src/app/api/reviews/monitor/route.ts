@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { syncReviewsForBusiness } from "@/services/reviews/syncReviews";
 import { requireBusinessContext } from "@/lib/tenant";
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 // Triggered by a cron job or n8n webhook — requires a valid session.
 //
@@ -32,6 +33,6 @@ export async function POST(request: Request) {
       stats: { fetched: result.synced, total: result.analytics?.totalReviews ?? result.reviews.length },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

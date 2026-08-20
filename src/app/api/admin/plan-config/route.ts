@@ -47,7 +47,7 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json({ success: true, data: result });
   } catch (err: any) {
     console.error('[plan-config GET]', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Something went wrong on our end. Please try again, and contact support if this keeps happening.' }, { status: 500 });
   }
 }
 
@@ -96,7 +96,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true, data: config });
   } catch (err: any) {
     console.error('[plan-config PATCH]', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Something went wrong on our end. Please try again, and contact support if this keeps happening.' }, { status: 500 });
   }
 }
 
@@ -117,6 +117,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error('[plan-config DELETE]', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Something went wrong on our end. Please try again, and contact support if this keeps happening.' }, { status: 500 });
   }
 }

@@ -4,6 +4,7 @@ import GBPInsights from '@/models/GBPInsights';
 import Business from '@/models/Business';
 import { encrypt, decrypt } from '@/lib/crypto';
 import { gbpWritesEnabled } from '@/lib/gbpSafety';
+import { describeGoogleApiError } from '@/lib/googleApiError';
 
 const BIZINFO_BASE = 'https://mybusinessbusinessinformation.googleapis.com/v1';
 // Local posts, media and review replies still live only on the legacy My
@@ -125,7 +126,7 @@ export async function fetchDailyMetrics(
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`GBP fetchDailyMetrics failed: ${res.status} ${err}`);
+    throw describeGoogleApiError('fetchDailyMetrics', res.status, err);
   }
 
   const data = await res.json();
@@ -216,7 +217,7 @@ export async function fetchSearchKeywords(
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`GBP fetchSearchKeywords failed: ${res.status} ${err}`);
+    throw describeGoogleApiError('fetchSearchKeywords', res.status, err);
   }
 
   const data = await res.json();
@@ -268,7 +269,7 @@ export async function fetchLocationProfile(businessId: string): Promise<GbpLocat
   const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`GBP fetchLocationProfile failed: ${res.status} ${err}`);
+    throw describeGoogleApiError('fetchLocationProfile', res.status, err);
   }
 
   const d = await res.json();
@@ -337,7 +338,7 @@ export async function updateLocationProfile(
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`GBP updateLocationProfile failed: ${res.status} ${err}`);
+    throw describeGoogleApiError('updateLocationProfile', res.status, err);
   }
   return { liveWriteApplied: true };
 }
@@ -409,7 +410,7 @@ export async function createLocalPost(
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`GBP createLocalPost failed: ${res.status} ${err}`);
+    throw describeGoogleApiError('createLocalPost', res.status, err);
   }
   const data = await res.json();
   return { liveWriteApplied: true, postName: data.name };
@@ -441,7 +442,7 @@ export async function replyToReview(
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`GBP replyToReview failed: ${res.status} ${err}`);
+    throw describeGoogleApiError('replyToReview', res.status, err);
   }
   return { liveWriteApplied: true };
 }
@@ -476,7 +477,7 @@ export async function uploadLocationPhoto(
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`GBP uploadLocationPhoto failed: ${res.status} ${err}`);
+    throw describeGoogleApiError('uploadLocationPhoto', res.status, err);
   }
   const data = await res.json();
   return { liveWriteApplied: true, mediaName: data.name };
@@ -502,7 +503,7 @@ export async function deleteLocationMedia(
   });
   if (!res.ok && res.status !== 404) {
     const err = await res.text();
-    throw new Error(`GBP deleteLocationMedia failed: ${res.status} ${err}`);
+    throw describeGoogleApiError('deleteLocationMedia', res.status, err);
   }
   return { liveWriteApplied: true };
 }
@@ -522,7 +523,7 @@ export async function listLocationMedia(businessId: string): Promise<GbpMediaIte
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`GBP listLocationMedia failed: ${res.status} ${err}`);
+    throw describeGoogleApiError('listLocationMedia', res.status, err);
   }
   const data = await res.json();
   return (data.mediaItems ?? []).map((m: any) => ({

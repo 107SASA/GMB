@@ -96,7 +96,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, maskedPhone: maskPhone(user.phone) });
   } catch (error: any) {
     console.error('Phone login (request) error:', error);
-    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Something went wrong on our end. Please try again, and contact support if this keeps happening.' }, { status: 500 });
   }
 }
 

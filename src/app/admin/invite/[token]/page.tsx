@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ShieldCheck, Loader2, Eye, EyeOff } from 'lucide-react';
+import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 export default function AcceptInvitePage() {
   const params = useParams();
@@ -52,7 +53,7 @@ export default function AcceptInvitePage() {
       setSuccess(true);
       setTimeout(() => router.push('/admin/login'), 3000);
     } catch (err: any) {
-      setError(err.message);
+      setError(friendlyClientMessage(err));
     } finally {
       setSubmitting(false);
     }

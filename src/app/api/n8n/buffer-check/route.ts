@@ -4,6 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import Post from '@/models/Post';
 import mongoose from 'mongoose';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function GET(req: Request) {
   const auth = validateApiKey(req);
@@ -56,6 +57,6 @@ export async function GET(req: Request) {
     });
   } catch (error: any) {
     console.error('[n8n/buffer-check]', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { GooglePlacesService } from '@/services/google/places';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 // Unauthenticated by necessity — the public signup wizard calls this before the
 // account exists. IP rate limit protects GOOGLE_MAPS_API_KEY billing.
@@ -33,6 +34,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: true, data: details });
   } catch (error: any) {
     console.error("Place Details API Error:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

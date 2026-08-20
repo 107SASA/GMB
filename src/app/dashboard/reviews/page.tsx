@@ -33,6 +33,7 @@ export default function ReviewManagementPage() {
             return (
               <button
                 key={tab.id}
+                data-tour={tab.id === 'campaigns' ? 'review-campaigns-tab' : undefined}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all -mb-px ${
                   active

@@ -154,18 +154,18 @@ export function BusinessAutocomplete({
 
   if (selected) {
     return (
-      <div className="border border-primary/40 bg-primary-fixed/40 rounded-lg px-4 py-3.5 flex items-start gap-3">
+      <div className="border border-primary/40 bg-primary-fixed/40 rounded-lg px-3 sm:px-4 py-3 flex items-start gap-2.5 sm:gap-3">
         <div className="bg-surface-container-lowest p-2 rounded-lg shrink-0 mt-0.5">
           <MaterialIcon name="storefront" size={18} className="text-primary" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="font-bold text-on-surface truncate">{selected.name}</div>
+          <div className="font-bold text-on-surface text-sm sm:text-base break-words">{selected.name}</div>
           {selected.address && (
-            <div className="text-xs text-on-surface-variant mt-0.5 truncate">{selected.address}</div>
+            <div className="text-xs text-on-surface-variant mt-0.5 line-clamp-2">{selected.address}</div>
           )}
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-xs font-bold text-primary">Selected</span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="hidden sm:inline text-xs font-bold text-primary">Selected</span>
           <button
             type="button"
             onClick={() => {
@@ -174,7 +174,7 @@ export function BusinessAutocomplete({
               setFetchError('');
             }}
             aria-label="Change business"
-            className="text-on-surface-variant hover:text-on-surface transition-colors"
+            className="text-on-surface-variant hover:text-on-surface transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
           >
             <MaterialIcon name="close" size={18} />
           </button>
@@ -186,7 +186,7 @@ export function BusinessAutocomplete({
   return (
     <div className="relative">
       <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+        <div className="absolute inset-y-0 left-0 pl-3.5 sm:pl-4 flex items-center pointer-events-none">
           {isSearching || isFetchingDetails ? (
             <MaterialIcon name="progress_activity" size={20} className="text-primary animate-spin" />
           ) : (
@@ -200,25 +200,27 @@ export function BusinessAutocomplete({
             setQuery(e.target.value);
             if (e.target.value.length < 3) setShowDropdown(false);
           }}
-          className="w-full pl-12 pr-4 py-3.5 bg-surface border border-outline-variant rounded-lg focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none"
+          className="w-full pl-11 sm:pl-12 pr-3 sm:pr-4 py-3.5 bg-surface border border-outline-variant rounded-lg focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none text-base"
           placeholder={placeholder}
+          autoComplete="off"
+          enterKeyHint="search"
         />
       </div>
       {showDropdown && suggestions.length > 0 && (
-        <div className="absolute w-full mt-2 bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow z-50 max-h-[280px] overflow-y-auto">
+        <div className="absolute w-full mt-2 bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow z-50 max-h-[min(280px,45vh)] overflow-y-auto overscroll-contain">
           {suggestions.map((item, idx) => (
             <button
               key={idx}
               type="button"
               onClick={() => handlePick(item.placeId, item.mainText)}
-              className="w-full text-left px-5 py-4 hover:bg-surface-container-low border-b border-outline-variant last:border-b-0 flex items-start gap-4 transition-colors group"
+              className="w-full text-left px-3.5 sm:px-5 py-3.5 sm:py-4 hover:bg-surface-container-low border-b border-outline-variant last:border-b-0 flex items-start gap-3 sm:gap-4 transition-colors group min-h-[52px]"
             >
-              <div className="bg-surface-container p-2 rounded-lg group-hover:bg-surface-container-lowest transition-colors">
+              <div className="bg-surface-container p-2 rounded-lg group-hover:bg-surface-container-lowest transition-colors shrink-0">
                 <MaterialIcon name="storefront" size={20} className="text-on-surface-variant" />
               </div>
               <div className="min-w-0">
-                <div className="font-bold text-on-surface truncate">{item.mainText}</div>
-                <div className="text-sm text-on-surface-variant mt-0.5 truncate">{item.secondaryText}</div>
+                <div className="font-bold text-on-surface text-sm sm:text-base break-words">{item.mainText}</div>
+                <div className="text-xs sm:text-sm text-on-surface-variant mt-0.5 line-clamp-2">{item.secondaryText}</div>
               </div>
             </button>
           ))}

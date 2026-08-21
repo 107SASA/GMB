@@ -27,14 +27,22 @@ const SINGLETON_CATEGORIES: GbpMediaCategory[] = ['LOGO', 'COVER'];
  * only exist locally by definition.
  *
  * Reconciliation is best-effort: if the live read fails (token expired,
- * transient API error), it's skipped and local state is returned as-is
- * rather than failing the whole request.
+ * transient API error, deprecated/unauthorized endpoint), it's skipped and
+ * local state is returned as-is rather than failing the whole request — but
+ * the failure reason is now returned as `liveSyncError` instead of only a
+ * server console.warn. Previously this was swallowed silently: a business
+ * whose Google reconciliation was failing on *every* request (e.g. an
+ * expired scope) would see the same unchanging local photo count forever,
+ * with literally no signal anywhere — pull-to-refresh, re-login, reinstall,
+ * nothing would ever help, and nothing said why (Aug 2026 bug report:
+ * "still only 4 photos after refresh").
  */
 export async function listMediaAssets(
   businessId: string,
   isConnected: boolean
-): Promise<IGbpMediaAsset[]> {
+): Promise<{ media: IGbpMediaAsset[]; liveSyncError: string | null }> {
   await dbConnect();
+  let liveSyncError: string | null = null;
 
   if (isConnected) {
     try {
@@ -47,7 +55,10 @@ export async function listMediaAssets(
         if (!exists) {
           await GbpMediaAsset.create({
             businessId,
-            category: (item.category as GbpMediaCategory) || 'ADDITIONAL',
+            // item.category is already translated to our schema's
+            // GbpMediaCategory (LOGO for Google's real "PROFILE" singleton,
+            // etc.) — see fromGoogleCategory in gbpClient.ts.
+            category: item.category,
             url: item.url || item.thumbnailUrl,
             status: 'published',
             googleMediaName: item.name,
@@ -64,14 +75,16 @@ export async function listMediaAssets(
         googleMediaName: { $exists: true, $nin: [...liveNames] },
       });
     } catch (err) {
+      liveSyncError = (err as Error).message;
       console.warn(
         `[gbpMediaService] Live reconciliation failed for business ${businessId}, showing local state only:`,
-        (err as Error).message
+        liveSyncError
       );
     }
   }
 
-  return GbpMediaAsset.find({ businessId }).sort({ category: 1, createdAt: -1 }).lean();
+  const media = await GbpMediaAsset.find({ businessId }).sort({ category: 1, createdAt: -1 }).lean();
+  return { media, liveSyncError };
 }
 
 /**

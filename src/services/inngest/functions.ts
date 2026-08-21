@@ -2509,6 +2509,22 @@ export const gbpSyncWorker = inngest.createFunction(
         }
       }
     });
+
+    // One-time 6-month GBPInsights history backfill — see
+    // services/gbpInsightsBackfill.ts and GBPToken.historyBackfilledAt for
+    // the full reasoning. No-ops instantly (one indexed read, no API calls)
+    // for any business already backfilled, so safe to run on every sync.
+    await step.run("backfill-gbp-history", async () => {
+      const { default: BusinessModel } = await import("@/models/Business");
+      const { backfillGbpInsightsIfNeeded } = await import("@/services/gbpInsightsBackfill");
+      const business = await BusinessModel.findById(businessId).select('organizationId').lean() as any;
+      const tenantId = business?.organizationId?.toString() ?? businessId;
+      try {
+        await backfillGbpInsightsIfNeeded(businessId, tenantId);
+      } catch (err: any) {
+        console.error(`[GBP Sync] History backfill failed for ${businessId}:`, err.message);
+      }
+    });
   }
 );
 

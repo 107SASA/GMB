@@ -9,6 +9,7 @@ import { fetchReviews } from '@/api/endpoints/reviews';
 import { useBusiness } from '@/business/BusinessContext';
 import { useLatestAudit } from '@/components/gbp/use-latest-audit';
 import { Skeleton } from '@/components/ui';
+import { computeReviewInsights } from '@/lib/review-insights';
 import { useTheme } from '@/lib/theme';
 import type { Palette } from '@/lib/theme';
 
@@ -132,12 +133,13 @@ export function HomeStatList() {
   const stagedPhotos = (media.data?.media ?? []).filter((m) => m.status === 'staged').length;
 
   // --- Reviews — this week's count + reply rate from raw review docs ---
+  // "This week" reuses the exact same rolling-7-day calculation the
+  // Performance/Reviews tabs' chart uses (lib/review-insights.ts) instead of
+  // a second hand-rolled copy of the same math — the two were previously
+  // computed identically-but-separately, a maintenance risk (one could be
+  // edited without the other) rather than a live discrepancy.
   const reviewList = reviews.data ?? [];
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const newThisWeek = reviewList.filter((r) => {
-    const at = r.postedAt ?? r.createdAt;
-    return at && new Date(at).getTime() >= weekAgo;
-  }).length;
+  const newThisWeek = computeReviewInsights(reviewList).thisWeek;
   const repliedPct = reviewList.length
     ? Math.round((reviewList.filter((r) => r.replyStatus === 'POSTED').length / reviewList.length) * 100)
     : null;

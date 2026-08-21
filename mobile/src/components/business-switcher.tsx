@@ -77,6 +77,7 @@ export function BusinessSwitcher() {
               name={business.name}
               size={40}
               colors={active ? undefined : t.inactiveAvatar}
+              imageUrl={business.logoUrl}
             />
             <View className="flex-1">
               <Text className="font-sans-semibold text-base text-white" numberOfLines={1}>

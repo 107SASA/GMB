@@ -10,6 +10,16 @@ export const businessSchema = z.object({
   name: z.string().catch('Unnamed business'),
   category: z.string().nullable().optional(),
   address: z.string().nullable().optional(),
+  // Google Places id — powers the direct-to-review-page QR code (see
+  // components/review-qr-modal.tsx). googlePlaceId is set once GBP is
+  // properly connected; placeId is the earlier, pre-connection value from
+  // onboarding's Places search. Either is usable for the review-page link.
+  googlePlaceId: z.string().nullable().optional(),
+  placeId: z.string().nullable().optional(),
+  // The business's published Google Business Profile logo, when one exists
+  // (see GbpMediaAsset on the backend) — the header/avatar shows this
+  // instead of initials whenever it's present.
+  logoUrl: z.string().nullable().optional(),
 });
 export type Business = z.infer<typeof businessSchema>;
 

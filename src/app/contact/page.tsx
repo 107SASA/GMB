@@ -67,8 +67,8 @@ export default function ContactPage() {
           {bookDemoOpensWhatsApp && (
             <>
               {" "}You can also{" "}
-              <BookDemoButton origin="contact-page" className="text-whatsapp underline font-medium">
-                book a demo on WhatsApp
+              <BookDemoButton origin="contact-page" showIcon={false} className="text-[#006e2c] underline font-medium">
+                book a free demo
               </BookDemoButton>
               .
             </>

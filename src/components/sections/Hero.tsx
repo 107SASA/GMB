@@ -1,114 +1,59 @@
 "use client";
 
-import Link from "next/link";
-import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
-import { AnimatedCounter } from "@/components/ui/AnimatedCounter";
-import { HeroIllustration } from "@/components/graphics/HeroIllustration";
 import { BookDemoButton } from "@/components/shared/BookDemoButton";
-
-// tsParticles touches the DOM/canvas directly and has no reason to exist on
-// the server render — ssr:false keeps it fully off the SSR/LCP path.
-const ParticleField = dynamic(
-  () => import("@/components/backgrounds/ParticleField").then((m) => m.ParticleField),
-  { ssr: false }
-);
-
-const STATS = [
-  { value: 60, prefix: "<", suffix: "s", label: "AI Audit Turnaround" },
-  { value: 24, suffix: "/7", label: "Automated Review Replies" },
-  { value: 7, suffix: "-Day", label: "Content Calendar, Auto-Scheduled" },
-];
+import { FreeReportButton } from "@/components/shared/FreeReportButton";
 
 export function Hero() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center pt-28 md:pt-32 lg:pt-36 pb-20 overflow-hidden bg-background">
-      <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary/10 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-secondary/10 blur-[120px] rounded-full" />
-        <ParticleField id="hero-particles" density={30} opacity={0.3} />
-      </div>
-
-      <div className="relative z-10 max-w-7xl mx-auto px-6 text-center">
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-fixed border border-primary-fixed-dim text-sm font-medium text-primary mb-8"
-        >
-          <MaterialIcon name="auto_awesome" size={16} className="text-primary" />
-          <span>AI-Powered Google Business Growth Platform</span>
-        </motion.p>
-
-        <motion.h1
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
-          className="font-heading text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight text-on-surface mb-6 leading-[1.1]"
-        >
-          Scale Your Local Business
-          <br />
-          <span className="text-primary">With AI Intelligence</span>
-        </motion.h1>
-
-        <motion.p
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="text-lg md:text-xl text-on-surface-variant max-w-2xl mx-auto mb-10 leading-relaxed"
-        >
-          Automate your Google Business Profile, generate more reviews, convert leads faster, and grow your local visibility with AI.
-        </motion.p>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-          className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16"
-        >
-          <Link
-            href="/free-report"
-            className="w-full sm:w-auto px-8 py-4 bg-primary text-on-primary rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-primary-container transition-all card-shadow"
+    <section className="relative pt-24 sm:pt-28 md:pt-32 pb-12 sm:pb-16 md:pb-24 overflow-hidden bg-[#f7faf8]">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-6 md:px-12">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55 }}
+            className="lg:col-span-6 order-1"
           >
-            Get My Free Report
-            <MaterialIcon name="arrow_forward" size={20} className="text-on-primary" />
-          </Link>
-          <BookDemoButton
-            origin="hero"
-            className="w-full sm:w-auto px-8 py-4 bg-primary text-on-primary rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-primary-container transition-all card-shadow"
-          >
-            <MaterialIcon name="calendar_month" size={20} className="text-on-primary" />
-            Book a Demo
-          </BookDemoButton>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="flex items-center justify-center gap-8 md:gap-16 mb-16 flex-wrap"
-        >
-          {STATS.map((stat) => (
-            <div key={stat.label} className="text-center">
-              <div className="font-heading text-3xl md:text-4xl font-extrabold text-on-surface">
-                <AnimatedCounter value={stat.value} prefix={stat.prefix} suffix={stat.suffix} />
-              </div>
-              <div className="text-xs md:text-sm text-on-surface-variant font-medium mt-1 max-w-[10rem]">
-                {stat.label}
-              </div>
+            <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[rgba(7,176,76,0.1)] text-[#006e2c] text-xs sm:text-sm font-semibold mb-4 sm:mb-6">
+              <MaterialIcon name="auto_awesome" size={14} className="text-[#006e2c]" />
+              Marketing Platform
             </div>
-          ))}
-        </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 60 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-        >
-          <HeroIllustration />
-        </motion.div>
+            <h1 className="font-heading text-[1.75rem] leading-[1.15] sm:text-4xl md:text-5xl lg:text-[56px] xl:text-[64px] font-extrabold tracking-tight text-[#181c1c] sm:leading-[1.1] mb-4 sm:mb-6">
+              Scale Your Local Business{" "}
+              <span className="text-[#006e2c]">With AI Intelligence</span>
+            </h1>
+
+            <p className="text-base sm:text-lg text-[#3d4a3d] max-w-xl leading-relaxed mb-6 sm:mb-8">
+              Automate your Google Business Profile, generate more reviews, convert leads faster,
+              and grow your local visibility with AI.
+            </p>
+
+            <div className="flex flex-col xs:flex-row sm:flex-row flex-wrap gap-3 sm:gap-4">
+              <FreeReportButton className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 rounded-lg bg-[#006e2c] text-white font-semibold hover:bg-[#005a24] transition-colors shadow-md min-h-[48px] text-sm sm:text-base" />
+              <BookDemoButton
+                origin="hero"
+                className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 rounded-lg bg-[#f7faf8] border-2 border-[#006e2c] text-[#006e2c] font-semibold hover:bg-white transition-colors min-h-[48px] text-sm sm:text-base"
+              />
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+            className="lg:col-span-6 order-2 relative max-w-md mx-auto lg:max-w-none w-full"
+          >
+            <div className="absolute inset-[-8%] bg-[rgba(7,176,76,0.05)] blur-[32px] rounded-full pointer-events-none" />
+            <img
+              src="/marketing/home/hero-agents.png"
+              alt="GrowwMatics AI agents for Google Business Profile, WhatsApp, and marketing"
+              className="relative w-full h-auto drop-shadow-xl"
+            />
+          </motion.div>
+        </div>
       </div>
     </section>
   );

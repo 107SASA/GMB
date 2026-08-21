@@ -14,7 +14,16 @@ import { API_BASE_URL, getAuthToken } from '@/api/client';
  * see src/lib/session.ts on the backend) — axios's interceptor doesn't run
  * for <Image>, so the header is attached manually here.
  */
-export function RankMap({ auditId, kwIndex = 0 }: { auditId: string; kwIndex?: number }) {
+export function RankMap({
+  auditId,
+  kwIndex = 0,
+  lastUpdated,
+}: {
+  auditId: string;
+  kwIndex?: number;
+  /** Pre-formatted audit date, e.g. "Aug 7, 2026" — shown as an overlay badge. */
+  lastUpdated?: string | null;
+}) {
   const [failed, setFailed] = useState(false);
   const token = getAuthToken();
 
@@ -39,6 +48,14 @@ export function RankMap({ auditId, kwIndex = 0 }: { auditId: string; kwIndex?: n
         contentFit="cover"
         onError={() => setFailed(true)}
       />
+      {!!lastUpdated && (
+        <View
+          className="absolute left-3 top-3 rounded-md px-2.5 py-1.5"
+          style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
+        >
+          <Text className="font-sans-semibold text-xs text-white">Last updated on {lastUpdated}</Text>
+        </View>
+      )}
     </View>
   );
 }

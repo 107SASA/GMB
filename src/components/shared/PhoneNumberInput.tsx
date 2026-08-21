@@ -2,11 +2,6 @@
 
 import { COUNTRY_CODES, splitPhone } from '@/lib/countryCodes';
 
-const selectCls =
-  'w-24 shrink-0 px-2 py-3.5 bg-surface border border-outline-variant rounded-lg text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-sm';
-const inputCls =
-  'flex-1 min-w-0 px-4 py-3.5 bg-surface border border-outline-variant rounded-lg text-on-surface placeholder:text-outline focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all';
-
 /**
  * Dial-code select + local-number input, backed by the same COUNTRY_CODES /
  * splitPhone helpers StepAccount (onboarding) uses. `value` and `onChange`
@@ -27,12 +22,14 @@ export function PhoneNumberInput({
   const { dialCode, localNumber } = splitPhone(value);
 
   return (
-    <div className={`flex gap-2 ${className}`}>
+    <div
+      className={`flex items-stretch rounded-lg border border-outline-variant bg-surface overflow-hidden focus-within:ring-2 focus-within:ring-primary focus-within:border-transparent ${className}`}
+    >
       <select
         value={dialCode}
         onChange={(e) => onChange(`${e.target.value}${localNumber}`)}
         aria-label="Country code"
-        className={selectCls}
+        className="w-[5.5rem] sm:w-24 shrink-0 pl-2.5 pr-1 py-3.5 bg-transparent text-on-surface outline-none text-sm border-r border-outline-variant"
       >
         {COUNTRY_CODES.map((c) => (
           <option key={`${c.iso2}-${c.dialCode}`} value={c.dialCode}>
@@ -42,12 +39,14 @@ export function PhoneNumberInput({
       </select>
       <input
         type="tel"
+        inputMode="tel"
+        autoComplete="tel-national"
         value={localNumber}
         onChange={(e) => {
           const digitsOnly = e.target.value.replace(/[^\d]/g, '');
           onChange(digitsOnly ? `${dialCode}${digitsOnly}` : '');
         }}
-        className={inputCls}
+        className="flex-1 min-w-0 px-3 sm:px-4 py-3.5 bg-transparent text-on-surface placeholder:text-outline outline-none text-base"
         placeholder={placeholder}
       />
     </div>

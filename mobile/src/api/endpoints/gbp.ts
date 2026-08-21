@@ -34,16 +34,25 @@ const mediaResponseSchema = z.object({
   liveWritesEnabled: z.boolean().catch(false),
   media: z.array(gbpMediaItemSchema).catch([]),
   error: z.string().optional(),
+  // Previously this failure was only a server console.warn — invisible to
+  // the app, so a business whose Google reconciliation was failing on every
+  // single request saw the same unchanging photo list forever with no way
+  // to tell why (Aug 2026 bug report: "still only 4 photos after refresh").
+  liveSyncError: z.string().nullable().catch(null),
 });
 
 /** GET /api/gbp/media — every staged/published/failed photo for this business. */
-export async function fetchGbpMedia(): Promise<{ media: GbpMediaItem[]; liveWritesEnabled: boolean }> {
+export async function fetchGbpMedia(): Promise<{
+  media: GbpMediaItem[];
+  liveWritesEnabled: boolean;
+  liveSyncError: string | null;
+}> {
   const { data } = await api.get('/api/gbp/media');
   const parsed = mediaResponseSchema.parse(data);
   if (!parsed.connected) {
     throw new GbpNotConnectedError(parsed.error ?? 'Connect your Google Business Profile to manage media.');
   }
-  return { media: parsed.media, liveWritesEnabled: parsed.liveWritesEnabled };
+  return { media: parsed.media, liveWritesEnabled: parsed.liveWritesEnabled, liveSyncError: parsed.liveSyncError };
 }
 
 export type GbpMediaCategory = 'PROFILE' | 'COVER' | 'ADDITIONAL' | 'LOGO';

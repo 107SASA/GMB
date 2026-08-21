@@ -450,6 +450,30 @@ export async function replyToReview(
 export type GbpMediaCategory = 'PROFILE' | 'COVER' | 'ADDITIONAL' | 'LOGO';
 
 /**
+ * Google's real My Business v4 `LocationAssociation.Category` enum has no
+ * "LOGO" value — the business logo/icon is what Google itself calls the
+ * "PROFILE" photo (a strict singleton: "There can be only one media item
+ * with this category for a location"). This app's own schema invented a
+ * separate "LOGO" category (GbpMediaAsset.ts, GbpMediaCategory) for the
+ * user-facing "Logo" slot, distinct from the "PROFILE" tag it also exposes
+ * as an ordinary multi-item gallery category — so "LOGO" was going out to
+ * Google's API as-is, an enum value Google doesn't recognize, and any photo
+ * Google itself reports as "PROFILE" was reconciled in under a category our
+ * Logo slot never looks for. Net effect: the current logo/cover slots never
+ * showed what was actually live on Google (Aug 2026 bug report). These two
+ * helpers are the only place that translation needs to happen — every other
+ * function in this file already deals in our own GbpMediaCategory.
+ */
+function toGoogleCategory(category: GbpMediaCategory): string {
+  return category === 'LOGO' ? 'PROFILE' : category;
+}
+function fromGoogleCategory(category: string | undefined): GbpMediaCategory {
+  if (category === 'PROFILE') return 'LOGO';
+  if (category === 'COVER' || category === 'ADDITIONAL') return category;
+  return 'ADDITIONAL';
+}
+
+/**
  * Uploads a photo to the live GBP (logo / cover / additional). Gated. `sourceUrl`
  * MUST be a public http(s) URL that Google can fetch (see hosting note in the
  * media route — user-uploaded files need a public URL before this can be used).
@@ -471,7 +495,7 @@ export async function uploadLocationPhoto(
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       mediaFormat: 'PHOTO',
-      locationAssociation: { category },
+      locationAssociation: { category: toGoogleCategory(category) },
       sourceUrl,
     }),
   });
@@ -510,26 +534,48 @@ export async function deleteLocationMedia(
 
 export interface GbpMediaItem {
   name: string;
-  category: string;
+  /** Already translated to our own GbpMediaCategory (see fromGoogleCategory) — never a raw Google enum value. */
+  category: GbpMediaCategory;
   url: string;
   thumbnailUrl: string;
 }
 
-/** Reads the location's existing media (photos/logo/cover) for display. Read-only. */
+/**
+ * Reads the location's existing media (photos/logo/cover) for display.
+ * Read-only. Follows Google's nextPageToken until exhausted — a single
+ * request only returns the first page (up to pageSize items), so without
+ * this loop any profile with more photos than fit on page one silently lost
+ * the rest on every sync (Aug 2026 bug: "only 4 photos" showing for
+ * businesses with many more live on Google).
+ */
 export async function listLocationMedia(businessId: string): Promise<GbpMediaItem[]> {
   const { name, accessToken } = await v4LocationName(businessId);
-  const res = await fetch(`${MYBUSINESS_V4_BASE}/${name}/media`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw describeGoogleApiError('listLocationMedia', res.status, err);
-  }
-  const data = await res.json();
-  return (data.mediaItems ?? []).map((m: any) => ({
-    name: m.name ?? '',
-    category: m.locationAssociation?.category ?? 'ADDITIONAL',
-    url: m.googleUrl ?? m.sourceUrl ?? '',
-    thumbnailUrl: m.thumbnailUrl ?? m.googleUrl ?? '',
-  }));
+  const items: GbpMediaItem[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const url = new URL(`${MYBUSINESS_V4_BASE}/${name}/media`);
+    url.searchParams.set('pageSize', '100');
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw describeGoogleApiError('listLocationMedia', res.status, err);
+    }
+    const data = await res.json();
+    items.push(
+      ...(data.mediaItems ?? []).map((m: any) => ({
+        name: m.name ?? '',
+        category: fromGoogleCategory(m.locationAssociation?.category),
+        url: m.googleUrl ?? m.sourceUrl ?? '',
+        thumbnailUrl: m.thumbnailUrl ?? m.googleUrl ?? '',
+      }))
+    );
+    pageToken = data.nextPageToken || undefined;
+  } while (pageToken);
+
+  return items;
 }

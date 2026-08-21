@@ -79,8 +79,9 @@ async function main() {
     check('Exactly 2 ADDITIONAL records exist', addCount === 2, addCount);
 
     // 3. listMediaAssets with isConnected=false — no live call attempted, returns local state
-    const listed = await listMediaAssets(businessId, false);
+    const { media: listed, liveSyncError } = await listMediaAssets(businessId, false);
     check('listMediaAssets(isConnected=false) returns all 3 local records', listed.length === 3, listed.length);
+    check('listMediaAssets(isConnected=false) reports no live sync error', liveSyncError === null, liveSyncError);
 
     // 4. Category change while staged
     const recat = await updateAssetCategory(businessId, add1._id.toString(), 'PROFILE');

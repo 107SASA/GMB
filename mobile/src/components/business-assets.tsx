@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
@@ -15,7 +16,7 @@ import {
   type GbpMediaItem,
 } from '@/api/endpoints/gbp';
 import { useBusiness } from '@/business/BusinessContext';
-import { EmptyState, Skeleton } from '@/components/ui';
+import { EmptyState, InfoSheet, Skeleton } from '@/components/ui';
 import { promptConnectGoogle } from '@/lib/connectGoogle';
 import { formatDateTime } from '@/lib/format';
 import { BRAND_GRADIENT, useTheme } from '@/lib/theme';
@@ -45,29 +46,93 @@ function daysAgo(iso?: string): string {
   return `${days} days ago`;
 }
 
-function pickCategory(onPick: (category: GbpMediaCategory) => void) {
-  Alert.alert('Add to your profile', 'What kind of photo is this?', [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Logo', onPress: () => onPick('LOGO') },
-    { text: 'Cover photo', onPress: () => onPick('COVER') },
-    { text: 'Additional photo', onPress: () => onPick('ADDITIONAL') },
-  ]);
-}
-
-function WhyPublishInfo() {
+function WhyPublishInfo({ onPress }: { onPress: () => void }) {
   return (
-    <Pressable
-      onPress={() =>
-        Alert.alert(
-          'Why publish photos & videos?',
-          'Profiles with regular new photos are shown more often in local search and get more calls, direction requests, and website clicks — Google treats fresh media as a signal that a business is active. Aim for a few new photos every week.'
-        )
-      }
-    >
+    <Pressable onPress={onPress}>
       <Text className="font-sans-bold text-sm underline text-center" style={{ color: '#6ea8fe' }}>
         Why Publish Photos &amp; Videos?
       </Text>
     </Pressable>
+  );
+}
+
+/**
+ * Logo / Cover photo — singleton slot matching the website's GbpMediaManager
+ * (renderSingletonSlot): shows the CURRENT live image before you replace it,
+ * not a blind "pick a category" prompt. A pending (staged/failed) upload is
+ * flagged but not re-actioned here — publishing/discarding it stays in View
+ * All's full preview (this screen is deliberately summary-only, see the
+ * BusinessAssets doc comment below).
+ */
+function MediaSlot({
+  label,
+  hint,
+  aspectRatio,
+  live,
+  pending,
+  uploading,
+  onUpload,
+}: {
+  label: string;
+  hint: string;
+  aspectRatio: number;
+  live: GbpMediaItem | undefined;
+  pending: GbpMediaItem | undefined;
+  uploading: boolean;
+  onUpload: () => void;
+}) {
+  const t = useTheme();
+  return (
+    <View className="flex-1 rounded-card border border-surface-border bg-surface-raised p-3.5">
+      <Text className="font-sans-bold text-sm text-white">{label}</Text>
+      <Text className="mt-0.5 font-sans text-xs leading-4 text-zinc-500">{hint}</Text>
+
+      <View
+        className="mt-3 overflow-hidden rounded-xl bg-surface-overlay"
+        style={{ aspectRatio, width: '100%' }}
+      >
+        {live ? (
+          <Image source={{ uri: live.url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+        ) : (
+          <View className="flex-1 items-center justify-center">
+            <Ionicons name="image-outline" size={22} color={t.textFaint} />
+          </View>
+        )}
+      </View>
+
+      {pending && (
+        <View className="mt-2 flex-row items-center gap-1.5 self-start rounded-full bg-surface-overlay px-2.5 py-1">
+          <Ionicons name="time-outline" size={11} color={t.amber} />
+          <Text className="font-sans-bold text-[10px]" style={{ color: t.amber }}>
+            {pending.status === 'failed' ? 'Replacement failed — see View All' : 'Replacement pending — see View All'}
+          </Text>
+        </View>
+      )}
+
+      <Pressable
+        onPress={onUpload}
+        disabled={uploading}
+        // No `className` — react-native-css-interop can swallow onPress on
+        // styled Pressables (see components/ui.tsx PrimaryButton).
+        style={{
+          marginTop: 10,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          borderRadius: 999,
+          borderWidth: 1,
+          borderColor: t.border,
+          paddingVertical: 9,
+          opacity: uploading ? 0.6 : 1,
+        }}
+      >
+        <Ionicons name="camera-outline" size={14} color={t.text} />
+        <Text className="font-sans-bold text-xs" style={{ color: t.text }}>
+          {uploading ? 'Uploading…' : live ? `Replace ${label.toLowerCase()}` : `Upload ${label.toLowerCase()}`}
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -82,6 +147,10 @@ export function BusinessAssets() {
   const t = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [whyInfoVisible, setWhyInfoVisible] = useState(false);
+  // Tracks which slot's upload is in flight — `upload.isPending` alone can't
+  // tell the Logo card from the Cover card from the gallery button.
+  const [uploadingCategory, setUploadingCategory] = useState<GbpMediaCategory | null>(null);
 
   const media = useQuery({
     queryKey: ['gbp-media', activeBusinessId],
@@ -97,11 +166,22 @@ export function BusinessAssets() {
       Alert.alert('Photo saved', "It's staged — publish or schedule it from View All.");
     },
     onError: (error) => Alert.alert('Upload failed', getApiErrorMessage(error, 'Please try again.')),
+    onSettled: () => setUploadingCategory(null),
   });
 
   const notConnected = media.error instanceof GbpNotConnectedError;
 
-  const startUpload = async (category: GbpMediaCategory) => {
+  /**
+   * Category is now fixed by whichever entry point was tapped (the Logo
+   * slot, the Cover slot, or the gallery's Add button) — no more "what kind
+   * of photo is this?" prompt in between. Matches the website's
+   * GbpMediaManager, which has the same three fixed upload entry points.
+   */
+  const pickAndUpload = async (category: GbpMediaCategory) => {
+    if (notConnected) {
+      promptConnectGoogle(media.error?.message ?? 'Connect your Google Business Profile to add photos.');
+      return;
+    }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert('Permission needed', 'Allow photo library access to add business media.');
@@ -110,6 +190,7 @@ export function BusinessAssets() {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 0.85 });
     if (result.canceled || result.assets.length === 0) return;
     const asset = result.assets[0];
+    setUploadingCategory(category);
     upload.mutate({
       uri: asset.uri,
       mimeType: asset.mimeType ?? 'image/jpeg',
@@ -118,18 +199,14 @@ export function BusinessAssets() {
     });
   };
 
-  const handleAddMedia = () => {
-    if (notConnected) {
-      promptConnectGoogle(media.error?.message ?? 'Connect your Google Business Profile to add photos.');
-      return;
-    }
-    pickCategory((category) => void startUpload(category));
-  };
-
   if (media.isLoading) {
     return (
       <View className="px-4">
         <Skeleton className="mb-4 h-24 rounded-card" />
+        <View className="mb-4 flex-row gap-3">
+          <Skeleton className="h-40 flex-1 rounded-card" />
+          <Skeleton className="h-40 flex-1 rounded-card" />
+        </View>
         <View className="flex-row gap-2.5">
           <Skeleton className="h-28 w-28" />
           <Skeleton className="h-28 w-28" />
@@ -169,8 +246,32 @@ export function BusinessAssets() {
     .filter((m) => m.status === 'staged' && m.scheduledFor)
     .sort((a, b) => new Date(a.scheduledFor!).getTime() - new Date(b.scheduledFor!).getTime());
 
+  // Logo/Cover are singleton slots — same "current live image + one pending
+  // replacement" model as the website's GbpMediaManager.
+  const findSlot = (category: GbpMediaCategory, statuses: GbpMediaItem['status'][]) =>
+    all.find((m) => m.category === category && statuses.includes(m.status));
+  const logoLive = findSlot('LOGO', ['published']);
+  const logoPending = findSlot('LOGO', ['staged', 'failed']);
+  const coverLive = findSlot('COVER', ['published']);
+  const coverPending = findSlot('COVER', ['staged', 'failed']);
+
   return (
     <View className="px-4">
+      {/* Previously this failure was swallowed server-side with only a
+          console.warn — nothing ever told you *why* the photo list wasn't
+          changing. Now the API reports it and we show it. */}
+      {media.data?.liveSyncError && (
+        <View
+          className="mb-4 flex-row items-start gap-2.5 rounded-card px-4 py-3"
+          style={{ backgroundColor: `${t.amber}1a`, borderWidth: 1, borderColor: `${t.amber}40` }}
+        >
+          <Ionicons name="warning-outline" size={16} color={t.amber} style={{ marginTop: 1 }} />
+          <Text className="flex-1 font-sans text-xs leading-4" style={{ color: t.amber }}>
+            Couldn't refresh from Google — showing saved photos only. {media.data.liveSyncError}
+          </Text>
+        </View>
+      )}
+
       {/* Honest version of the reference app's banner — no "published by AI"
           claim (nothing here auto-publishes without the owner's own
           schedule or button tap; see logProfileActivity.ts). */}
@@ -187,6 +288,30 @@ export function BusinessAssets() {
         <View className="h-14 w-14 items-center justify-center rounded-2xl" style={{ backgroundColor: `${t.brandBright}26` }}>
           <Ionicons name="storefront" size={26} color={t.brandBright} />
         </View>
+      </View>
+
+      {/* Logo / Cover — dedicated slots showing what's currently live,
+          matching the website's GbpMediaManager instead of a blind "what
+          kind of photo is this?" prompt. */}
+      <View className="mb-6 flex-row gap-3">
+        <MediaSlot
+          label="Logo"
+          hint="Square, your brand mark"
+          aspectRatio={1}
+          live={logoLive}
+          pending={logoPending}
+          uploading={uploadingCategory === 'LOGO'}
+          onUpload={() => void pickAndUpload('LOGO')}
+        />
+        <MediaSlot
+          label="Cover photo"
+          hint="Wide, landscape banner"
+          aspectRatio={16 / 9}
+          live={coverLive}
+          pending={coverPending}
+          uploading={uploadingCategory === 'COVER'}
+          onUpload={() => void pickAndUpload('COVER')}
+        />
       </View>
 
       <View className="mb-1 flex-row items-center justify-between">
@@ -226,10 +351,13 @@ export function BusinessAssets() {
         </ScrollView>
       )}
 
+      {/* Fixed to ADDITIONAL now that Logo/Cover have their own slots above
+          — this button only ever adds to the gallery, matching the
+          website's separate "Add photo" button for the gallery section. */}
       {!notConnected && (
         <Pressable
-          onPress={handleAddMedia}
-          disabled={upload.isPending}
+          onPress={() => void pickAndUpload('ADDITIONAL')}
+          disabled={uploadingCategory === 'ADDITIONAL'}
           // No `className` — see note above.
           style={{ marginTop: 16, borderRadius: 16, overflow: 'hidden' }}
         >
@@ -240,15 +368,21 @@ export function BusinessAssets() {
             style={{ alignItems: 'center', paddingVertical: 16 }}
           >
             <Text className="font-sans-bold text-base text-on-brand">
-              {upload.isPending ? 'Uploading…' : 'Add Photos & Videos'}
+              {uploadingCategory === 'ADDITIONAL' ? 'Uploading…' : 'Add Gallery Photo'}
             </Text>
           </LinearGradient>
         </Pressable>
       )}
 
       <View className="mt-4 items-center">
-        <WhyPublishInfo />
+        <WhyPublishInfo onPress={() => setWhyInfoVisible(true)} />
       </View>
+      <InfoSheet
+        visible={whyInfoVisible}
+        onClose={() => setWhyInfoVisible(false)}
+        title="Why publish photos & videos?"
+        message="Profiles with regular new photos are shown more often in local search and get more calls, direction requests, and website clicks — Google treats fresh media as a signal that a business is active. Aim for a few new photos every week."
+      />
 
       {/* Scheduled Photos — real, from GbpMediaAsset.scheduledFor (see
           gbpMediaService.scheduleAsset + publishScheduledMediaCron). */}

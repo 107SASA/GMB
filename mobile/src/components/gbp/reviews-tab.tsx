@@ -8,7 +8,6 @@ import { fetchDashboardStats } from '@/api/endpoints/dashboard';
 import { fetchReviews, type Review } from '@/api/endpoints/reviews';
 import { useBusiness } from '@/business/BusinessContext';
 import { WeeklyBars } from '@/components/charts';
-import { useLatestAudit } from '@/components/gbp/use-latest-audit';
 import { replyStatusBadge, sentimentTone, Stars } from '@/components/review-bits';
 import { Badge, Skeleton } from '@/components/ui';
 import { timeAgo } from '@/lib/format';
@@ -71,7 +70,6 @@ export function ReviewsTab() {
   const t = useTheme();
   const [rating, setRating] = useState<RatingFilter>('all');
   const [filterOpen, setFilterOpen] = useState(false);
-  const { audit } = useLatestAudit();
 
   const reviews = useQuery({
     queryKey: ['reviews', activeBusinessId],
@@ -86,11 +84,12 @@ export function ReviewsTab() {
   });
 
   const insights = reviews.data ? computeReviewInsights(reviews.data) : null;
-  const industryAvg = audit?.auditData?.reviewAnalysis?.industryAverage ?? null;
-  // Google's true reviews/week from the website's audit; the synced-doc
-  // fallback over-counts after bulk imports (createdAt = sync date).
-  const avgPerWeek =
-    audit?.auditData?.reviewAnalysis?.reviewsPerWeek ?? insights?.avgPerWeek ?? 0;
+  // Deliberately NOT audit?.auditData?.reviewAnalysis?.reviewsPerWeek — see
+  // the identical fix in review-trends-section.tsx for the full reasoning:
+  // that figure is a lifetime average, a different number from what the 8
+  // bars below actually show, which made this screen contradict itself.
+  // industryAvg (hardcoded 4.2 for every business) was removed the same way.
+  const avgPerWeek = insights?.avgPerWeek ?? 0;
 
   const filtered = useMemo(() => {
     const list = reviews.data ?? [];
@@ -113,7 +112,7 @@ export function ReviewsTab() {
             </Text>
           </View>
           <View className="mt-3 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
-            <WeeklyBars data={insights.weekly} industryAvg={industryAvg} />
+            <WeeklyBars data={insights.weekly} />
           </View>
           <View className="mt-3 flex-row gap-3">
             <View className="flex-1 rounded-card border border-surface-border bg-surface-raised px-4 py-4">

@@ -4,9 +4,11 @@
 
 /*
  * GrowwMatics Precision — mobile design tokens (RGB triplets for Tailwind
- * opacity). Distinct from the web app: darker navy primary, Growth Green
- * secondary, hairline borders (no shadow) at every card tier, pill shapes
- * everywhere. Keep in sync with src/lib/theme.ts.
+ * opacity). Matches the web app's Growth Green brand color (see
+ * src/app/globals.css --color-primary) — Aug 2026 re-theme; this used to be
+ * a separate deep-navy scheme. Hairline borders (no shadow) at every card
+ * tier and pill shapes everywhere are still mobile-specific. Keep in sync
+ * with src/lib/theme.ts.
  */
 :root {
   --surface: 247 249 251;
@@ -17,11 +19,11 @@
 
   --fg: 25 28 30; /* on-surface */
 
-  /* Deep Navy primary */
-  --brand: 0 35 71; /* primary */
-  --brand-bright: 26 71 124; /* on-primary-fixed-variant — links/active tint */
-  --brand-muted: 0 56 108; /* primary-container — pressed/disabled fill */
-  --on-primary-container: 118 163 228;
+  /* Growth Green primary — matches web's --color-primary (#06b34c) */
+  --brand: 6 179 76; /* primary */
+  --brand-bright: 10 138 62; /* primary-container-ish — icons / active tint */
+  --brand-muted: 10 138 62; /* primary-container — pressed / disabled fill */
+  --on-primary-container: 189 240 207; /* matches web's --color-on-primary-container */
 
   /* Growth Green secondary */
   --secondary: 1 108 69;
@@ -67,9 +69,9 @@
   --rose-300: 147 0 10;
   --rose-400: 186 26 26;
   --rose-500: 186 26 26;
-  --indigo-300: 26 71 124;
-  --indigo-400: 0 35 71;
-  --indigo-500: 0 35 71;
+  --indigo-300: 10 138 62; /* was a plain brand-color alias, not a distinct hue — kept in sync */
+  --indigo-400: 6 179 76;
+  --indigo-500: 6 179 76;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -82,10 +84,10 @@
 
     --fg: 239 241 243;
 
-    --brand: 166 200 255;
-    --brand-bright: 213 227 255;
-    --brand-muted: 26 71 124;
-    --on-primary-container: 213 227 255;
+    --brand: 31 157 92;
+    --brand-bright: 154 242 192;
+    --brand-muted: 1 108 69;
+    --on-primary-container: 154 242 192;
 
     --secondary: 129 216 168;
     --secondary-container: 0 82 51;
@@ -126,9 +128,9 @@
     --rose-300: 255 218 214;
     --rose-400: 255 180 171;
     --rose-500: 255 180 171;
-    --indigo-300: 213 227 255;
-    --indigo-400: 166 200 255;
-    --indigo-500: 166 200 255;
+    --indigo-300: 154 242 192;
+    --indigo-400: 31 157 92;
+    --indigo-500: 31 157 92;
   }
 }
 

@@ -1,27 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { getApiErrorMessage } from '@/api/client';
-import { quickAddCustomer } from '@/api/endpoints/customers';
 import { fetchReviews } from '@/api/endpoints/reviews';
 import { fetchBuffer } from '@/api/endpoints/scheduler';
 import { useAuth } from '@/auth/AuthContext';
 import { useBusiness } from '@/business/BusinessContext';
 import { AppHeader } from '@/components/app-header';
 import { AiActionsCard } from '@/components/gbp/ai-actions';
+import { AddCustomerCard } from '@/components/home/add-customer-card';
 import { AiAgentCard } from '@/components/home/ai-agent-card';
 import { BrandingFooter } from '@/components/home/branding-footer';
 import { ImpactCard } from '@/components/home/impact-card';
 import { HomeStatList } from '@/components/home/stat-list';
 import { BillingBanner, LockedScreen } from '@/components/locked';
-import { Field, PrimaryButton, Screen, Skeleton } from '@/components/ui';
+import { Screen, Skeleton } from '@/components/ui';
 import { useSurfaceLocked } from '@/entitlements/entitlements';
 import { computeReviewInsights, WEEKLY_REVIEW_GOAL } from '@/lib/review-insights';
-import { AMBER_GRADIENT, useTheme } from '@/lib/theme';
+import { AMBER_GRADIENT, CRITICAL_GRADIENT, GOAL_MET_CARD_GRADIENT, useTheme } from '@/lib/theme';
 
 /** One step of the "More Customers → More Reviews → Better Ranking" strip. */
 function FunnelStep({
@@ -78,19 +77,28 @@ function WeeklyReviewsCard() {
   const insights = computeReviewInsights(reviews.data ?? []);
   const goalMet = insights.thisWeek >= WEEKLY_REVIEW_GOAL;
   const pct = Math.min(100, Math.round((insights.thisWeek / WEEKLY_REVIEW_GOAL) * 100));
-  // Deep tonal container so white body copy stays legible everywhere on the
-  // card — the diagonal gradients are reserved for headers/CTAs and would
-  // wash out against this much running text.
-  const cardBg = goalMet ? '#005233' : '#93000a';
+  // Both gradients stay dark-to-moderately-dark end to end (never a light/
+  // pastel stop) specifically so the white body copy below stays legible
+  // everywhere on the card, not just at one end of it.
+  const gradient = goalMet ? GOAL_MET_CARD_GRADIENT : CRITICAL_GRADIENT;
   const accent = goalMet ? '#9af2c0' : '#ffdad6';
 
   return (
-    <View className="mx-4 rounded-card p-4" style={{ backgroundColor: cardBg }}>
+    <LinearGradient
+      colors={[...gradient]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      // No `className` — LinearGradient is a third-party native component;
+      // NativeWind's layout classes silently fail to apply to it (see
+      // app-header.tsx). rounded-card's radius value (see tailwind config)
+      // ported over as a literal borderRadius for the same reason.
+      style={{ marginHorizontal: 16, borderRadius: 20, padding: 16 }}
+    >
       {/* Every text/overlay color in this card is a fixed literal (never the
-          theme-relative text-white/bg-white classes) because cardBg above is
-          a hardcoded hex, not a theme token — text-white resolves to
-          near-black in light mode, which was invisible against this fixed
-          dark card. */}
+          theme-relative text-white/bg-white classes) because the gradient
+          above is a fixed pair of hex values, not a theme token —
+          text-white resolves to near-black in light mode, which would be
+          invisible against this always-dark card. */}
       <Text className="font-sans text-sm" style={{ color: 'rgba(255,255,255,0.8)' }}>
         This Week's Reviews
       </Text>
@@ -143,80 +151,7 @@ function WeeklyReviewsCard() {
         <FunnelStep icon="star-outline" label="More Reviews" showArrow />
         <FunnelStep icon="trending-up-outline" label="Better Ranking" showArrow={false} />
       </View>
-    </View>
-  );
-}
-
-/**
- * Phone input + "Add Customer" — the intended flow: enter a customer's
- * number, the app immediately sends them a WhatsApp review request (same
- * one-off send the "Send Review Request" button on the website's Customers
- * page uses, via POST /api/customers/quick-add → the processReviewCampaign
- * Inngest job). This used to call the CRM lead endpoint instead, which only
- * filed a sales-pipeline contact and queued a generic 24h-later "thanks for
- * your interest" WhatsApp drip — no review request was ever sent.
- */
-function AddCustomerCard() {
-  const router = useRouter();
-  const t = useTheme();
-  const [phone, setPhone] = useState('');
-
-  const add = useMutation({
-    mutationFn: () => quickAddCustomer({ phone: phone.trim() }),
-    onSuccess: (result) => {
-      setPhone('');
-      if (!result.reviewRequestSent) {
-        Alert.alert('Customer saved', result.reason ?? 'No review request was sent.');
-        return;
-      }
-      Alert.alert(
-        'Review request sent',
-        result.existing
-          ? `${result.customer.name} was already a customer — sent them another WhatsApp review request.`
-          : `We've texted ${result.customer.name} on WhatsApp asking for a Google review.`
-      );
-    },
-    onError: (error) =>
-      Alert.alert('Could not add customer', getApiErrorMessage(error, 'Please try again.')),
-  });
-
-  return (
-    <View className="mx-4 mt-4">
-      <View className="flex-row gap-3">
-        <View className="flex-1">
-          <Field
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="Customer Phone Number"
-            keyboardType="phone-pad"
-          />
-        </View>
-        <Pressable
-          onPress={() => router.push('/leads/import-contacts')}
-          // No `className` — see app-header.tsx note.
-          style={{
-            height: 52,
-            width: 52,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 16,
-            borderWidth: 1,
-            borderColor: t.border,
-            backgroundColor: t.card,
-          }}
-        >
-          <Ionicons name="people-outline" size={22} color={t.brandBright} />
-        </Pressable>
-      </View>
-      <View className="mt-3">
-        <PrimaryButton
-          title="Add Customer"
-          onPress={() => add.mutate()}
-          loading={add.isPending}
-          disabled={phone.trim().length < 7}
-        />
-      </View>
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -255,6 +190,9 @@ export default function HomeScreen() {
 
   return (
     <Screen>
+      {/* Rendered above the ScrollView (not as its first child) so it stays
+          pinned in place while everything below scrolls underneath it. */}
+      <AppHeader title={activeBusiness?.name ?? 'Home'} />
       <ScrollView
         className="flex-1"
         contentContainerClassName="pb-6"
@@ -267,11 +205,12 @@ export default function HomeScreen() {
         }
         keyboardShouldPersistTaps="handled"
       >
-        <AppHeader title={activeBusiness?.name ?? 'Home'} />
         <BillingBanner />
 
         <WeeklyReviewsCard />
-        <AddCustomerCard />
+        <View className="mx-4 mt-4">
+          <AddCustomerCard />
+        </View>
         <AiAgentCard />
 
         <HomeStatList />

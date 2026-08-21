@@ -102,6 +102,30 @@
  * className off every public-page wrapper that still applies it.
  */
 .theme-marketing {
+  overflow-x: clip;
+  /* Clearance for Grexa-style full-width GBP sticky bar (~97px + safe area) */
+  padding-bottom: calc(6.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 640px) {
+  .theme-marketing {
+    padding-bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Prevent iOS zoom on form inputs (<16px triggers zoom) */
+.theme-marketing input,
+.theme-marketing select,
+.theme-marketing textarea {
+  font-size: 16px;
+}
+
+@media (min-width: 768px) {
+  .theme-marketing input,
+  .theme-marketing select,
+  .theme-marketing textarea {
+    font-size: inherit;
+  }
 }
 
 * {

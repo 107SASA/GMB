@@ -23,6 +23,12 @@ export interface ReviewInsights {
   avgPerWeek: number;
   /** % change of the last 8 weeks vs the 8 weeks before (null = no baseline). */
   eightWeekChangePct: number | null;
+  /**
+   * Avg rating this 8-week window minus avg rating the 8 weeks before,
+   * 1 decimal. Null when there's no prior-window data to compare against
+   * (not a fabricated "no change" — genuinely no baseline yet).
+   */
+  ratingChange: number | null;
 }
 
 export function computeReviewInsights(reviews: Review[]): ReviewInsights {
@@ -41,14 +47,25 @@ export function computeReviewInsights(reviews: Review[]): ReviewInsights {
     value: 0,
   }));
   let previousWindow = 0;
+  let currentWindowRatingSum = 0;
+  let previousWindowRatingSum = 0;
 
   for (const r of dated) {
     const weeksAgo = Math.floor((now - r.at) / WEEK_MS); // 0 = current week
-    if (weeksAgo >= 0 && weeksAgo < 8) weekly[7 - weeksAgo].value += 1;
-    else if (weeksAgo >= 8 && weeksAgo < 16) previousWindow += 1;
+    if (weeksAgo >= 0 && weeksAgo < 8) {
+      weekly[7 - weeksAgo].value += 1;
+      currentWindowRatingSum += r.rating || 0;
+    } else if (weeksAgo >= 8 && weeksAgo < 16) {
+      previousWindow += 1;
+      previousWindowRatingSum += r.rating || 0;
+    }
   }
 
   const currentWindow = weekly.reduce((acc, w) => acc + w.value, 0);
+  const ratingChange =
+    previousWindow > 0 && currentWindow > 0
+      ? Math.round((currentWindowRatingSum / currentWindow - previousWindowRatingSum / previousWindow) * 10) / 10
+      : null;
   const newest = dated.reduce((acc, r) => Math.max(acc, r.at), 0);
   const totalRating = reviews.reduce((acc, r) => acc + (r.rating || 0), 0);
 
@@ -63,5 +80,14 @@ export function computeReviewInsights(reviews: Review[]): ReviewInsights {
       previousWindow > 0
         ? Math.round(((currentWindow - previousWindow) / previousWindow) * 100)
         : null,
+    ratingChange,
   };
+}
+
+/** Count of reviews at each star rating, 5★ → 1★, for the "Rating Distribution" bars. */
+export function computeRatingDistribution(reviews: Review[]): { star: number; count: number }[] {
+  return [5, 4, 3, 2, 1].map((star) => ({
+    star,
+    count: reviews.filter((r) => r.rating === star).length,
+  }));
 }

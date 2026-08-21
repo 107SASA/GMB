@@ -62,8 +62,18 @@ const meResponseSchema = z.object({
  * axios instance) makes the backend return the JWT in the body.
  */
 export async function login(email: string, password: string): Promise<LoginResponse> {
-  const { data } = await api.post('/api/auth/login', { email, password });
-  return loginResponseSchema.parse(data);
+  const res = await api.post('/api/auth/login', { email, password });
+  if (typeof res.data === 'string') {
+    // TEMP DIAGNOSTIC — the server responded with something that isn't JSON.
+    // Logging the actual content (not just "it's a string") so the real
+    // cause is visible instead of guessed at again.
+    console.error(
+      '[login] non-JSON response — status:', res.status,
+      'content-type:', res.headers?.['content-type'],
+      'body (first 500 chars):', res.data.slice(0, 500)
+    );
+  }
+  return loginResponseSchema.parse(res.data);
 }
 
 const requestPhoneOtpResponseSchema = z.object({

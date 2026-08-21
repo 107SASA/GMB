@@ -6,6 +6,8 @@ export interface ProviderReview {
   postedAt: string;
   /** Existing owner reply on the review, if any (GBP API provides this). */
   ownerReply?: string;
+  /** Reviewer's Google profile photo, when the provider exposes one. */
+  reviewerPhotoUrl?: string;
 }
 
 export interface FetchReviewsOptions {

@@ -149,6 +149,9 @@ export class SerpApiGoogleProvider {
             rating: typeof r.rating === 'number' ? r.rating : parseInt(r.rating, 10) || 0,
             text: r.snippet ?? r.text ?? '',
             postedAt: r.iso_date ?? new Date().toISOString(),
+            // SerpApi's google_maps_reviews engine exposes this as
+            // user.thumbnail — best-effort, not documented as guaranteed.
+            reviewerPhotoUrl: r.user?.thumbnail ?? undefined,
           });
         }
 

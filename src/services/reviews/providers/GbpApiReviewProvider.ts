@@ -79,6 +79,7 @@ export class GbpApiReviewProvider {
           text: r.comment ?? '',
           postedAt: r.createTime ?? new Date().toISOString(),
           ownerReply: r.reviewReply?.comment ?? undefined,
+          reviewerPhotoUrl: r.reviewer?.profilePhotoUrl ?? undefined,
         });
       }
 

@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Modal,
   Pressable,
   Text,
   TextInput,
@@ -41,15 +43,25 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
   );
 }
 
-/** Text input that glows with the brand color while focused. */
+/**
+ * Text input that glows with the brand color while focused. Any field
+ * passed `secureTextEntry` automatically gets a show/hide eye toggle —
+ * every password field in the app goes through this component (or
+ * LabeledField below, which wraps it), so this is the one place that
+ * needs the toggle, not each screen individually.
+ */
 export function Field(props: TextInputProps) {
   const [focused, setFocused] = useState(false);
+  const [visible, setVisible] = useState(false);
   const t = useTheme();
-  return (
+  const isPassword = !!props.secureTextEntry;
+
+  const input = (
     <TextInput
       placeholderTextColor={t.textFaint}
       selectionColor={t.brandBright}
       {...props}
+      secureTextEntry={isPassword ? !visible : props.secureTextEntry}
       onFocus={(e) => {
         setFocused(true);
         props.onFocus?.(e);
@@ -60,8 +72,27 @@ export function Field(props: TextInputProps) {
       }}
       className={`rounded-xl border px-4 py-3.5 font-sans text-base text-white ${
         focused ? 'border-brand bg-surface-raised' : 'border-surface-border bg-surface-raised'
-      } ${props.className ?? ''}`}
+      } ${isPassword ? 'pr-12' : ''} ${props.className ?? ''}`}
     />
+  );
+
+  if (!isPassword) return input;
+
+  return (
+    <View className="relative justify-center">
+      {input}
+      <Pressable
+        onPress={() => setVisible((v) => !v)}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={visible ? 'Hide password' : 'Show password'}
+        // No `className` — see PrimaryButton below: react-native-css-interop
+        // can swallow onPress on styled Pressables (nativewind 4.2.6 + SDK 57).
+        style={{ position: 'absolute', right: 12, top: 0, bottom: 0, justifyContent: 'center' }}
+      >
+        <Ionicons name={visible ? 'eye-off' : 'eye'} size={20} color={t.textFaint} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -329,23 +360,56 @@ export function LabeledField({
 
 /**
  * Circle with the entity's initials on the brand gradient — used anywhere a
- * business/user/lead needs a visual anchor (lists, switcher, profile).
+ * business/user/lead needs a visual anchor (lists, switcher, profile). Pass
+ * `imageUrl` (a business's published GBP logo — see the `logoUrl` field
+ * from api/endpoints/businesses.ts) to show the real logo instead; falls
+ * back to initials automatically if there's no URL, or the image fails to
+ * load (private/expired Spaces URL, offline, etc.).
  */
 export function InitialsAvatar({
   name,
   size = 40,
   colors,
+  imageUrl,
 }: {
   name: string | null | undefined;
   size?: number;
   colors?: readonly [string, string, ...string[]];
+  imageUrl?: string | null;
 }) {
+  const [imageFailed, setImageFailed] = useState(false);
   const initials = (name ?? '?')
     .trim()
     .split(/\s+/)
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase() ?? '')
     .join('');
+
+  if (imageUrl && !imageFailed) {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          overflow: 'hidden',
+          // Faint ring so a white/near-white logo still reads as a distinct
+          // circle against a white card or the header's green background.
+          borderWidth: 1,
+          borderColor: 'rgba(255,255,255,0.35)',
+          backgroundColor: '#ffffff',
+        }}
+      >
+        <Image
+          source={{ uri: imageUrl }}
+          style={{ width: '100%', height: '100%' }}
+          contentFit="cover"
+          onError={() => setImageFailed(true)}
+        />
+      </View>
+    );
+  }
+
   return (
     <LinearGradient
       colors={colors ?? [...BRAND_GRADIENT]}
@@ -363,6 +427,46 @@ export function InitialsAvatar({
         {initials || '?'}
       </Text>
     </LinearGradient>
+  );
+}
+
+/**
+ * Themed bottom sheet for a one-off explanation + "Got it" dismiss — the
+ * app's own dark card style instead of the OS's native `Alert.alert`, which
+ * renders as a plain system dialog (default font, no theme awareness) that
+ * clashed with the rest of the UI (Aug 2026 feedback). Same backdrop-as-
+ * sibling idiom as the business-switcher sheet in app-header.tsx: a
+ * full-bleed Pressable behind a separate content View, so a tap anywhere
+ * outside the card dismisses it without needing stopPropagation tricks.
+ */
+export function InfoSheet({
+  visible,
+  onClose,
+  title,
+  message,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  message: string;
+}) {
+  const t = useTheme();
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={onClose} />
+      <View className="rounded-t-3xl border border-surface-border bg-surface-raised px-6 pb-10 pt-6">
+        <Text className="font-display-bold text-lg text-white">{title}</Text>
+        <Text className="mt-2 font-sans text-sm leading-5 text-zinc-400">{message}</Text>
+        <Pressable
+          onPress={onClose}
+          // No `className` — react-native-css-interop can swallow onPress
+          // on styled Pressables (see PrimaryButton above).
+          style={{ marginTop: 20, alignItems: 'center', borderRadius: 999, backgroundColor: t.brand, paddingVertical: 14 }}
+        >
+          <Text className="font-sans-bold text-base text-on-brand">Got it</Text>
+        </Pressable>
+      </View>
+    </Modal>
   );
 }
 

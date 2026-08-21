@@ -18,12 +18,16 @@ export async function GET() {
   if (!ctx.ok) return ctx.response;
 
   try {
-    const media = await listMediaAssets(ctx.businessId, !!ctx.business.googleConnected);
+    const { media, liveSyncError } = await listMediaAssets(ctx.businessId, !!ctx.business.googleConnected);
     return NextResponse.json({
       success: true,
       connected: !!ctx.business.googleConnected,
       liveWritesEnabled: gbpWritesEnabled(),
       media,
+      // Previously swallowed into a server-only console.warn — a business
+      // whose live sync was failing on every request had no way to ever
+      // find out why the photo list never changed. See listMediaAssets.
+      liveSyncError,
     });
   } catch (err: any) {
     if (err instanceof GBPAuthError) {

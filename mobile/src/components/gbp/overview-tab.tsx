@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { Text, View } from 'react-native';
 
@@ -6,8 +5,8 @@ import { fetchGbpInsights } from '@/api/endpoints/dashboard';
 import { useBusiness } from '@/business/BusinessContext';
 import { ImpactBars } from '@/components/charts';
 import { AiActionsCard } from '@/components/gbp/ai-actions';
+import { GoogleG } from '@/components/google-g';
 import { Skeleton } from '@/components/ui';
-import { useTheme } from '@/lib/theme';
 
 /**
  * GBP → Overview: the "AI Impact" before/after card plus the AI Actions feed.
@@ -16,7 +15,6 @@ import { useTheme } from '@/lib/theme';
  */
 export function OverviewTab() {
   const { activeBusinessId } = useBusiness();
-  const t = useTheme();
 
   const gbp = useQuery({
     queryKey: ['gbp-insights', activeBusinessId],
@@ -27,7 +25,7 @@ export function OverviewTab() {
   return (
     <View className="px-4">
       <View className="mb-1 flex-row items-center gap-2 pt-2">
-        <Ionicons name="logo-google" size={18} color={t.brandBright} />
+        <GoogleG size={18} />
         <Text className="font-display-bold text-lg text-white">GBP — AI Impact</Text>
       </View>
 

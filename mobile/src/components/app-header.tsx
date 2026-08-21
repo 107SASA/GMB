@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
@@ -9,11 +8,10 @@ import { fetchNotifications } from '@/api/endpoints/notifications';
 import { useBusiness } from '@/business/BusinessContext';
 import { BusinessSwitcher } from '@/components/business-switcher';
 import { InitialsAvatar } from '@/components/ui';
-import { BRAND_GRADIENT, useTheme } from '@/lib/theme';
+import { useTheme } from '@/lib/theme';
 
 /**
- * Global screen header used by every top-level tab, on the signature
- * diagonal gradient with white text/icons:
+ * Global screen header used by every top-level tab:
  *   [business logo]  Title            [bell]  [gear]  [More]
  *                    Location ⌄
  * Tapping the location line opens the business switcher; the gear goes to
@@ -21,6 +19,14 @@ import { BRAND_GRADIENT, useTheme } from '@/lib/theme';
  * Labeled "More", not "Help" — it isn't a help center, it's the account/
  * workspace/settings hub (see more.tsx), and calling it "Help" was
  * misleading users into expecting FAQ/support content that doesn't exist.
+ *
+ * Deliberately sits on the plain screen background (t.bg), not the brand
+ * gradient — the green diagonal band read as loud/dated next to the rest of
+ * the UI (Aug 2026 feedback). Text/icon colors below are theme-aware (t.text
+ * etc.), NOT the `on-brand` token (always-white, meant for the brand-colored
+ * surfaces this header no longer is) — on a light background that white
+ * would go invisible in light mode. Brand green is kept only as small
+ * accents (see BRAND_GRADIENT in theme.ts, still used by buttons/login).
  */
 export function AppHeader({
   title,
@@ -49,13 +55,7 @@ export function AppHeader({
     : (activeBusiness?.category ?? '');
 
   return (
-    <LinearGradient
-      colors={[...BRAND_GRADIENT]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      // No `className` — LinearGradient is a third-party native component;
-      // NativeWind's layout classes (flex-row here) silently fail to apply
-      // to it in this project's setup, leaving it at RN's column default.
+    <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -63,16 +63,21 @@ export function AppHeader({
         paddingHorizontal: 16,
         paddingBottom: 12,
         paddingTop: 8,
-        // Gap before whatever content follows the header on every screen —
-        // without this, the header's colored background touched the next
-        // section directly with no breathing room.
+        backgroundColor: t.bg,
+        // Gap before whatever content follows the header on every screen.
         marginBottom: 14,
       }}
     >
-      <InitialsAvatar name={activeBusiness?.name} size={44} colors={['#ffffff33', '#ffffff1a']} />
+      {/* No `colors` override — falls back to InitialsAvatar's own
+          BRAND_GRADIENT default, which is the validated white-text-safe
+          pairing. A theme-color pairing here would put white initials text
+          on a near-white circle in light mode. This also keeps one small
+          brand-green accent in the header, matching the "green only as
+          small accents" direction. */}
+      <InitialsAvatar name={activeBusiness?.name} size={44} imageUrl={activeBusiness?.logoUrl} />
 
       <View className="flex-1">
-        <Text className="font-display text-xl tracking-tight text-on-brand" numberOfLines={1}>
+        <Text className="font-display text-xl tracking-tight" style={{ color: t.text }} numberOfLines={1}>
           {title}
         </Text>
         <Pressable
@@ -81,10 +86,10 @@ export function AppHeader({
           // swallow onPress on styled Pressables (see ui.tsx PrimaryButton).
           style={{ marginTop: 2, flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' }}
         >
-          <Text className="font-sans-semibold text-sm text-on-brand/80" numberOfLines={1}>
+          <Text className="font-sans-semibold text-sm" style={{ color: t.textDim }} numberOfLines={1}>
             {location || activeBusiness?.name || 'Select business'}
           </Text>
-          <Ionicons name="chevron-down" size={14} color="#ffffffcc" />
+          <Ionicons name="chevron-down" size={14} color={t.textFaint} />
         </Pressable>
       </View>
 
@@ -94,7 +99,7 @@ export function AppHeader({
         style={{ height: 40, width: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 999 }}
       >
         <View>
-          <Ionicons name="notifications-outline" size={22} color="#ffffff" />
+          <Ionicons name="notifications-outline" size={22} color={t.text} />
           {unread > 0 && (
             <View className="absolute -right-0.5 -top-0.5 h-4 min-w-4 items-center justify-center rounded-full bg-error px-1">
               <Text className="font-sans-bold text-[9px] text-on-brand">
@@ -111,7 +116,7 @@ export function AppHeader({
           // No `className` — see note above.
           style={{ height: 40, width: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 999 }}
         >
-          <Ionicons name="settings-outline" size={22} color="#ffffff" />
+          <Ionicons name="settings-outline" size={22} color={t.text} />
         </Pressable>
       )}
 
@@ -121,12 +126,12 @@ export function AppHeader({
         style={{
           borderRadius: 999,
           borderWidth: 1,
-          borderColor: 'rgba(255,255,255,0.4)',
+          borderColor: t.border,
           paddingHorizontal: 16,
           paddingVertical: 8,
         }}
       >
-        <Text className="font-sans-bold text-base text-on-brand">More</Text>
+        <Text className="font-sans-bold text-base" style={{ color: t.text }}>More</Text>
       </Pressable>
 
       {/* Business / location switcher */}
@@ -156,6 +161,6 @@ export function AppHeader({
           </ScrollView>
         </View>
       </Modal>
-    </LinearGradient>
+    </View>
   );
 }

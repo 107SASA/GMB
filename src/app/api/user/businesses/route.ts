@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import Business from '@/models/Business';
+import GbpMediaAsset from '@/models/GbpMediaAsset';
 import { requireClient } from '@/lib/auth';
 
 export async function GET(req: Request) {
@@ -39,7 +40,25 @@ export async function GET(req: Request) {
       $and: [{ $or: ownershipConditions }, { isDeleted: { $ne: true } }],
     }).lean();
 
-    return NextResponse.json(businesses, { status: 200 });
+    // Attach each business's published logo (if any) — read by the mobile
+    // app's header/avatar. Lives in GbpMediaAsset, not on Business itself
+    // (see models/GbpMediaAsset.ts), so it's a separate lookup rather than
+    // a field already on the documents above.
+    const logos = await GbpMediaAsset.find({
+      businessId: { $in: businesses.map((b) => b._id) },
+      category: 'LOGO',
+      status: 'published',
+    })
+      .select('businessId url')
+      .lean();
+    const logoByBusinessId = new Map(logos.map((l) => [l.businessId.toString(), l.url]));
+
+    const businessesWithLogo = businesses.map((b) => ({
+      ...b,
+      logoUrl: logoByBusinessId.get((b._id as any).toString()) ?? null,
+    }));
+
+    return NextResponse.json(businessesWithLogo, { status: 200 });
 
   } catch (error: any) {
     console.error('Fetch Businesses Error:', error);

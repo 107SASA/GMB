@@ -6,6 +6,7 @@ import GBPInsights from '@/models/GBPInsights';
 import GBPKeyword from '@/models/GBPKeyword';
 import Business from '@/models/Business';
 import { fetchDailyMetrics, fetchSearchKeywords, fetchLocationProfile } from '@/lib/gbpClient';
+import { backfillGbpInsightsIfNeeded } from '@/services/gbpInsightsBackfill';
 
 export async function POST() {
   const ctx = await requireBusinessContext();
@@ -126,6 +127,15 @@ export async function POST() {
     }
   } catch (err: any) {
     console.error(`[gbp/sync] Profile sync failed for ${ctx.businessId}:`, err.message);
+  }
+
+  // One-time 6-month GBPInsights history backfill — see
+  // services/gbpInsightsBackfill.ts and GBPToken.historyBackfilledAt. No-op
+  // (one indexed read, no API calls) once already done for this business.
+  try {
+    await backfillGbpInsightsIfNeeded(ctx.businessId, ctx.organizationId);
+  } catch (err: any) {
+    console.error(`[gbp/sync] History backfill failed for ${ctx.businessId}:`, err.message);
   }
 
   return NextResponse.json({

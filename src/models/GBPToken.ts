@@ -13,6 +13,15 @@ export interface IGBPToken extends Document {
   scopes: string[];
   connectedAt: Date;
   lastSyncAt: Date | null;
+  /**
+   * Set once the one-time 6-month GBPInsights history backfill has run for
+   * this business (see services/gbpInsightsBackfill.ts) — the regular sync
+   * only ever pulls a rolling 28-day window, so without a real backfill the
+   * Performance tab's "Last 6 Months" chart would otherwise only grow by
+   * ~1 day of real history per calendar day since connecting. Checked (not
+   * re-run) on every sync once set, so this never repeats for a business.
+   */
+  historyBackfilledAt?: Date | null;
 }
 
 const GBPTokenSchema = new Schema<IGBPToken>(
@@ -29,6 +38,7 @@ const GBPTokenSchema = new Schema<IGBPToken>(
     scopes: [{ type: String }],
     connectedAt: { type: Date, default: Date.now },
     lastSyncAt: { type: Date, default: null },
+    historyBackfilledAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

@@ -82,6 +82,7 @@ export async function syncReviewsForBusiness(
         businessId: bid,
         providerReviewId: raw.providerReviewId,
         reviewer: raw.reviewerName,
+        reviewerPhotoUrl: raw.reviewerPhotoUrl,
         rating: raw.rating,
         reviewText: raw.text,
         sentiment: sentimentResult.label,

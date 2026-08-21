@@ -123,6 +123,18 @@ export async function fetchGbpInsights(rangeDays: 7 | 14 | 28 | 90 = 28): Promis
 }
 
 /**
+ * POST /api/gbp/sync — triggers a fresh pull from Google right now (views/
+ * calls/directions, keywords, profile fields, and the one-time 6-month
+ * history backfill — see services/gbpInsightsBackfill.ts) instead of
+ * waiting for the nightly cron. The website's Insights page already has
+ * this as a "Sync" button; the Performance tab previously had no way to
+ * trigger it at all, only ever reading whatever the last sync left behind.
+ */
+export async function syncGbpInsights(): Promise<void> {
+  await api.post('/api/gbp/sync');
+}
+
+/**
  * GET /api/posts?status=scheduled — the posts API returns a bare page of
  * posts (no total), so the dashboard shows the count of the first page,
  * capped at 99.

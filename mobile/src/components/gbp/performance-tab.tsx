@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Alert, Pressable, Text, View } from 'react-native';
 
-import { fetchDashboardStats, fetchGbpInsights } from '@/api/endpoints/dashboard';
+import { getApiErrorMessage } from '@/api/client';
+import { fetchDashboardStats, fetchGbpInsights, syncGbpInsights } from '@/api/endpoints/dashboard';
 import type { AuditCompetitor, AuditKeywordRank } from '@/api/endpoints/audit';
 import { useBusiness } from '@/business/BusinessContext';
 import { LineChart } from '@/components/charts';
@@ -12,7 +13,8 @@ import { useLatestAudit } from '@/components/gbp/use-latest-audit';
 import { useKeywordChanges } from '@/components/gbp/use-keyword-changes';
 import { RankMap } from '@/components/gbp/rank-map';
 import { ReviewTrendsSection } from '@/components/gbp/review-trends-section';
-import { Skeleton } from '@/components/ui';
+import { GoogleG } from '@/components/google-g';
+import { InfoSheet, Skeleton } from '@/components/ui';
 import { useTheme } from '@/lib/theme';
 
 const SHOW_LIMIT = 5;
@@ -222,14 +224,28 @@ export function PerformanceTab() {
   const { activeBusiness, activeBusinessId } = useBusiness();
   const router = useRouter();
   const t = useTheme();
+  const queryClient = useQueryClient();
   const { audit, isLoading: auditLoading } = useLatestAudit();
   const { previousRankByKeyword } = useKeywordChanges();
   const [trendMetric, setTrendMetric] = useState<TrendMetric>('views');
+  const [infoVisible, setInfoVisible] = useState(false);
 
   const gbp = useQuery({
     queryKey: ['gbp-insights', activeBusinessId],
     queryFn: () => fetchGbpInsights(28),
     enabled: !!activeBusinessId,
+  });
+
+  // Pulls fresh data from Google right now — views/calls/directions,
+  // keywords, profile fields, and (once, ever, per business) the 6-month
+  // history backfill — instead of waiting for the nightly cron. Previously
+  // this tab had no way to trigger a fresh pull at all.
+  const sync = useMutation({
+    mutationFn: syncGbpInsights,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['gbp-insights', activeBusinessId] });
+    },
+    onError: (error) => Alert.alert('Sync failed', getApiErrorMessage(error, 'Please try again.')),
   });
   // Rating / total reviews come from /api/dashboard/stats — the same numbers
   // the web dashboard shows, so the app never disagrees with the site.
@@ -246,10 +262,17 @@ export function PerformanceTab() {
   const keywords = (data?.googleSearchRank?.topKeywords ?? []).filter(
     (k): k is AuditKeywordRank => !!k && !!k.keyword
   );
-  const competitors = [...(data?.competitors ?? []), ...(data?.localPackCompetitors ?? [])]
+  const allCompetitors = [...(data?.competitors ?? []), ...(data?.localPackCompetitors ?? [])]
     .filter((c): c is AuditCompetitor => c !== null)
     .filter((c, i, arr) => arr.findIndex((x) => x.name === c.name) === i)
     .sort((a, b) => (a.estimatedRank ?? a.avgRank ?? 99) - (b.estimatedRank ?? b.avgRank ?? 99));
+  // "Ahead of You" should mean it — only competitors who actually outrank you
+  // (lower number = better). When we don't have your own rank yet, fall back
+  // to the full list rather than hiding everything.
+  const competitors =
+    avgRank != null
+      ? allCompetitors.filter((c) => (c.estimatedRank ?? c.avgRank ?? Infinity) < avgRank)
+      : allCompetitors;
   const geo = data?.geoGridRank ?? null;
   const auditDate = audit?.createdAt
     ? new Date(audit.createdAt).toLocaleDateString(undefined, {
@@ -267,12 +290,31 @@ export function PerformanceTab() {
   return (
     <View className="px-4">
       {/* GBP Performance — last 30 days */}
-      <View className="flex-row items-center gap-2 pt-2">
-        <Ionicons name="logo-google" size={18} color={t.brandBright} />
-        <View>
-          <Text className="font-display-bold text-lg text-white">GBP Performance</Text>
-          <Text className="font-sans text-xs text-zinc-500">Last 28 days</Text>
+      <View className="flex-row items-center justify-between gap-2 pt-2">
+        <View className="flex-row items-center gap-2">
+          <GoogleG size={18} />
+          <View>
+            <View className="flex-row items-center gap-1">
+              <Text className="font-display-bold text-lg text-white">GBP Performance</Text>
+              <Pressable onPress={() => setInfoVisible(true)} hitSlop={8}>
+                <Ionicons name="information-circle-outline" size={16} color={t.textFaint} />
+              </Pressable>
+            </View>
+            <Text className="font-sans text-xs text-zinc-500">Last 28 days</Text>
+          </View>
         </View>
+        <Pressable
+          onPress={() => sync.mutate()}
+          disabled={sync.isPending}
+          // No `className` — react-native-css-interop can swallow onPress
+          // on styled Pressables (see components/ui.tsx).
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, opacity: sync.isPending ? 0.5 : 1 }}
+        >
+          <Ionicons name="refresh" size={16} color={t.brandBright} />
+          <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
+            {sync.isPending ? 'Syncing…' : 'Sync'}
+          </Text>
+        </Pressable>
       </View>
 
       {/* Real, specific next step from your own audit — not a vague "AI is
@@ -334,7 +376,7 @@ export function PerformanceTab() {
 
       {!!avgRank && (
         <View className="mt-3 flex-row items-center gap-2 rounded-full bg-surface-overlay px-4 py-2.5">
-          <Ionicons name="logo-google" size={14} color={t.textFaint} />
+          <GoogleG size={14} />
           <Text className="flex-1 font-sans text-xs text-zinc-400">
             Rankings may keep improving as Google processes your changes.
           </Text>
@@ -394,6 +436,12 @@ export function PerformanceTab() {
             rank: avgRank,
           }}
         />
+      ) : allCompetitors.length > 0 ? (
+        <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-5">
+          <Text className="font-sans text-sm text-zinc-400">
+            🎉 None of your tracked competitors currently outrank you — nice work!
+          </Text>
+        </View>
       ) : (
         <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-5">
           <Text className="font-sans text-sm text-zinc-400">
@@ -424,7 +472,7 @@ export function PerformanceTab() {
           <View className="mb-3 self-start rounded-full bg-surface-overlay px-3 py-2">
             <Text className="font-sans text-sm text-zinc-300">Keyword: {geo.keywords[0].keyword}</Text>
           </View>
-          <RankMap auditId={audit._id} kwIndex={0} />
+          <RankMap auditId={audit._id} kwIndex={0} lastUpdated={auditDate} />
         </>
       ) : (
         <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-5">
@@ -438,6 +486,13 @@ export function PerformanceTab() {
           now also shown on the Reviews tab, matching the reference app. */}
       <SectionTitle>Review Trends — last 8 weeks</SectionTitle>
       <ReviewTrendsSection />
+
+      <InfoSheet
+        visible={infoVisible}
+        onClose={() => setInfoVisible(false)}
+        title="GBP Performance"
+        message="Views, calls and direction requests are pulled from your Google Business Profile for the selected period. Latest Google Rank is your average position across the keywords tracked in your last audit — lower is better."
+      />
     </View>
   );
 }

@@ -6,14 +6,14 @@ import { Pressable, Text, View } from 'react-native';
 import { fetchGbpInsights } from '@/api/endpoints/dashboard';
 import { useBusiness } from '@/business/BusinessContext';
 import { BeforeAfterBars } from '@/components/charts';
+import { GoogleG } from '@/components/google-g';
 import { Skeleton } from '@/components/ui';
 import { useTheme } from '@/lib/theme';
 
 function SectionHeader() {
-  const t = useTheme();
   return (
     <View className="mb-3 flex-row items-center gap-2">
-      <Ionicons name="logo-google" size={18} color={t.brandBright} />
+      <GoogleG size={18} />
       <Text className="font-display-bold text-lg text-white">GBP — AI Impact</Text>
     </View>
   );

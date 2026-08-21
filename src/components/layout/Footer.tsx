@@ -2,27 +2,27 @@ import Link from "next/link";
 import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 import { BRAND_ATTRIBUTION } from "@/lib/companyInfo";
 import { SERVICES } from "@/lib/servicesData";
-import { FloatingWhatsAppButton } from "@/components/shared/FloatingWhatsAppButton";
+import { GbpBoosterPromo } from "@/components/sections/GbpBoosterPromo";
 
 export function Footer() {
   return (
-    <footer className="py-20 px-6 border-t border-outline-variant bg-surface-container-low">
-      <div className="max-w-container-max mx-auto grid grid-cols-1 md:grid-cols-5 gap-12">
-        <div className="col-span-1 md:col-span-1">
-          <Link href="/" className="flex items-center gap-2 mb-6">
+    <footer className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 border-t border-outline-variant bg-surface-container-low">
+      <div className="max-w-container-max mx-auto grid grid-cols-2 sm:grid-cols-2 md:grid-cols-5 gap-8 sm:gap-10 md:gap-12">
+        <div className="col-span-2 md:col-span-1">
+          <Link href="/" className="flex items-center gap-2 mb-4 sm:mb-6">
             <img src="/brand/icon.png" alt="GrowwMatics AI" className="w-8 h-8 object-contain" />
-            <span className="text-xl font-heading font-bold tracking-tight text-on-surface">
+            <span className="text-lg sm:text-xl font-heading font-bold tracking-tight text-on-surface">
               GrowwMatics AI
             </span>
           </Link>
-          <p className="text-on-surface-variant text-sm leading-relaxed mb-6">
+          <p className="text-on-surface-variant text-sm leading-relaxed mb-4 sm:mb-6 max-w-sm">
             The #1 AI-powered platform for local business growth and Google Business Profile automation.
           </p>
         </div>
 
         <div>
-          <h4 className="font-heading font-bold text-on-surface mb-6">OnDemand Service</h4>
-          <ul className="space-y-4 text-sm text-on-surface-variant">
+          <h4 className="font-heading font-bold text-on-surface mb-4 sm:mb-6 text-sm sm:text-base">OnDemand Service</h4>
+          <ul className="space-y-3 sm:space-y-4 text-sm text-on-surface-variant">
             {SERVICES.map((service) => (
               <li key={service.slug}>
                 <Link href={`/services/${service.slug}`} className="hover:text-primary transition-colors">
@@ -34,11 +34,16 @@ export function Footer() {
         </div>
 
         <div>
-          <h4 className="font-heading font-bold text-on-surface mb-6">Product</h4>
-          <ul className="space-y-4 text-sm text-on-surface-variant">
+          <h4 className="font-heading font-bold text-on-surface mb-4 sm:mb-6 text-sm sm:text-base">Product</h4>
+          <ul className="space-y-3 sm:space-y-4 text-sm text-on-surface-variant">
             <li>
               <Link href="/features" className="hover:text-primary transition-colors">
                 Features
+              </Link>
+            </li>
+            <li>
+              <Link href="/gbp-booster" className="hover:text-primary transition-colors">
+                GBP Booster
               </Link>
             </li>
             <li>
@@ -69,8 +74,8 @@ export function Footer() {
         </div>
 
         <div>
-          <h4 className="font-heading font-bold text-on-surface mb-6">Get Started</h4>
-          <ul className="space-y-4 text-sm text-on-surface-variant">
+          <h4 className="font-heading font-bold text-on-surface mb-4 sm:mb-6 text-sm sm:text-base">Get Started</h4>
+          <ul className="space-y-3 sm:space-y-4 text-sm text-on-surface-variant">
             <li>
               <Link href="/free-report" className="hover:text-primary transition-colors">
                 Get Free Report
@@ -90,8 +95,8 @@ export function Footer() {
         </div>
 
         <div>
-          <h4 className="font-heading font-bold text-on-surface mb-6">Legal</h4>
-          <ul className="space-y-4 text-sm text-on-surface-variant">
+          <h4 className="font-heading font-bold text-on-surface mb-4 sm:mb-6 text-sm sm:text-base">Legal</h4>
+          <ul className="space-y-3 sm:space-y-4 text-sm text-on-surface-variant">
             <li>
               <Link href="/privacy" className="hover:text-primary transition-colors">
                 Privacy Policy
@@ -116,12 +121,12 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="max-w-container-max mx-auto mt-20 pt-8 border-t border-outline-variant text-center text-outline text-xs space-y-1">
+      <div className="max-w-container-max mx-auto mt-12 sm:mt-16 md:mt-20 pt-6 sm:pt-8 border-t border-outline-variant text-center text-outline text-xs space-y-1 px-2">
         <p>© {new Date().getFullYear()} GrowwMatics AI. All rights reserved. Built for the future of local SEO.</p>
         <p>{BRAND_ATTRIBUTION}</p>
       </div>
 
-      <FloatingWhatsAppButton />
+      <GbpBoosterPromo />
     </footer>
   );
 }

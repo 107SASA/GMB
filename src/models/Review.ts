@@ -7,6 +7,8 @@ export interface IReview extends Document {
   businessId: mongoose.Types.ObjectId;
   requestId?: mongoose.Types.ObjectId;
   reviewer: string;
+  /** Reviewer's Google profile photo, when the source provider exposed one. */
+  reviewerPhotoUrl?: string;
   rating: number;
   reviewText: string;
   sentiment: string;
@@ -46,6 +48,7 @@ const ReviewSchema: Schema = new Schema(
     businessId: { type: Schema.Types.ObjectId, ref: 'Business', required: true, index: true },
     requestId: { type: Schema.Types.ObjectId, ref: 'ReviewRequest', index: true, unique: true, sparse: true },
     reviewer: { type: String, required: true },
+    reviewerPhotoUrl: { type: String },
     rating: { type: Number, required: true },
     reviewText: { type: String },
     sentiment: { type: String, enum: ['positive', 'neutral', 'negative', 'critical'] },

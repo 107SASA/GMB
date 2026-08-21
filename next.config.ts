@@ -29,6 +29,19 @@ const noStoreHeaders = [
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
+  // `next dev`'s built-in cross-origin protection only trusts localhost by
+  // default — any request arriving with a different Host header (e.g. a
+  // phone on the LAN hitting this machine's IP directly, which the mobile
+  // app does for local testing — see mobile/.env) gets a warning response
+  // instead of reaching the actual route. That response isn't JSON, which
+  // is why it showed up client-side as a Zod "expected object, received
+  // string" error rather than anything login-specific.
+  //
+  // NOT used in production — that config comes from .env.production /
+  // whatever domain the app is actually deployed behind, this only affects
+  // `next dev`. Update this IP if it changes (DHCP can reassign it — same
+  // caveat as mobile/.env, check with `ipconfig`).
+  allowedDevOrigins: ['192.168.1.34'],
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

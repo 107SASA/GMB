@@ -114,6 +114,14 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
     const data = error.response?.data as { error?: string } | undefined;
     if (data?.error) return data.error;
     if (!error.response) return 'Cannot reach the server. Check your connection and API URL.';
+  } else {
+    // Not an axios error at all — the request itself likely succeeded but
+    // something AFTER it threw (a zod schema mismatch on the response shape,
+    // a SecureStore write failure, etc.). The UI only ever shows `fallback`
+    // in this case, which hides exactly the detail needed to diagnose it —
+    // log the real error so it's visible in the Metro/dev console instead of
+    // silently disappearing behind a generic "failed, try again" message.
+    console.error('[getApiErrorMessage] non-network error:', error);
   }
   return fallback;
 }

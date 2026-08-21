@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import {
@@ -216,14 +216,10 @@ export default function AllPhotosScreen() {
     });
   };
 
-  const handleAdd = () => {
-    Alert.alert('Add to your profile', 'What kind of photo is this?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Logo', onPress: () => void startUpload('LOGO') },
-      { text: 'Cover photo', onPress: () => void startUpload('COVER') },
-      { text: 'Additional photo', onPress: () => void startUpload('ADDITIONAL') },
-    ]);
-  };
+  // Logo/Cover are set from their own dedicated slots on the Photos summary
+  // screen (business-assets.tsx) now, so this gallery's "+" only ever adds
+  // an additional photo — no more "what kind of photo is this?" prompt.
+  const handleAdd = () => void startUpload('ADDITIONAL');
 
   if (media.isLoading) return <LoadingScreen />;
 
@@ -248,7 +244,31 @@ export default function AllPhotosScreen() {
         </View>
       ) : (
         <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 px-4 pb-3">
+          {media.data?.liveSyncError && (
+            <View
+              className="mx-4 mb-3 flex-row items-start gap-2.5 rounded-card px-4 py-3"
+              style={{ backgroundColor: `${t.amber}1a`, borderWidth: 1, borderColor: `${t.amber}40` }}
+            >
+              <Ionicons name="warning-outline" size={16} color={t.amber} style={{ marginTop: 1 }} />
+              <Text className="flex-1 font-sans text-xs leading-4" style={{ color: t.amber }}>
+                Couldn't refresh from Google — showing saved photos only. {media.data.liveSyncError}
+              </Text>
+            </View>
+          )}
+
+          {/* flexGrow: 0 — a bare ScrollView defaults to flexGrow: 1, and as
+              a direct flex-column sibling of the grid ScrollView below (no
+              wrapping View wrapping either), both were stretching to fill
+              the remaining screen height: this row of pills ballooned into
+              tall columns, and the grid gained a large empty gap under the
+              actual photos. Pinning this one to its content height fixes
+              both at once. */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ flexGrow: 0 }}
+            contentContainerClassName="gap-2 px-4 pb-3"
+          >
             {FILTERS.map((f) => {
               const active = filter === f.tag;
               return (
@@ -273,7 +293,12 @@ export default function AllPhotosScreen() {
             })}
           </ScrollView>
 
-          <ScrollView contentContainerClassName="px-4 pb-10">
+          <ScrollView
+            contentContainerClassName="px-4 pb-10"
+            refreshControl={
+              <RefreshControl refreshing={media.isFetching} onRefresh={() => void media.refetch()} tintColor={t.brandBright} />
+            }
+          >
             {media.isError ? (
               <EmptyState title="Couldn't load your photos" hint={getApiErrorMessage(media.error, 'Pull down to retry.')} />
             ) : items.length === 0 ? (

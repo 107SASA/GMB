@@ -12,7 +12,7 @@ export function BrandingFooter() {
       <Text className="mt-3 text-center font-display-bold text-2xl leading-8 text-zinc-500">
         Powering{'\n'}Your Growth
       </Text>
-      <Text className="mt-3 font-sans text-xs text-zinc-600">Made with ❤️ in Kolkata</Text>
+      <Text className="mt-3 font-sans text-xs text-zinc-600">Made with ❤️ in India</Text>
     </View>
   );
 }

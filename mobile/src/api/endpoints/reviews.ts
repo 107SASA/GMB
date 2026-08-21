@@ -11,6 +11,7 @@ import { api } from '../client';
 export const reviewSchema = z.object({
   _id: z.string(),
   reviewer: z.string().catch('Anonymous'),
+  reviewerPhotoUrl: z.string().nullable().optional(),
   rating: z.number().catch(0),
   reviewText: z.string().nullable().catch(null),
   sentiment: z.string().nullable().catch(null),

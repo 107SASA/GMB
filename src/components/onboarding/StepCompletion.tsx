@@ -27,13 +27,18 @@ export default function StepCompletion({ data }: Props) {
       const body = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        setError(body.error || `Server error (${res.status}) — check the terminal for details.`);
+        if (body.existingAccount) {
+          setError(body.error);
+          setTimeout(() => router.push('/login'), 2000);
+        } else {
+          setError(body.error || `Server error (${res.status}) — check the terminal for details.`);
+        }
         setLoading(false);
         return;
       }
 
       if (body.requiresVerification) {
-        router.push(`/verify?email=${encodeURIComponent(body.email)}`);
+        router.push(`/verify-phone?phone=${encodeURIComponent(body.phone)}`);
         return;
       }
 
@@ -73,7 +78,7 @@ export default function StepCompletion({ data }: Props) {
         transition={{ delay: 0.4 }}
         className="text-lg text-on-surface-variant mb-10 max-w-md"
       >
-        We&apos;ll provision the <strong>{data.businessName || 'Acme'}</strong> organization and spin up your AI services. We&apos;ll also email you a code to confirm your address before your workspace unlocks.
+        We&apos;ll provision the <strong>{data.businessName || 'Acme'}</strong> organization and spin up your AI services. We&apos;ll also send a code on WhatsApp to confirm your number before your workspace unlocks.
       </motion.p>
 
       {error && (

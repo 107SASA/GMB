@@ -20,6 +20,11 @@ export interface IUser extends Document {
 
   // Verification states
   isEmailVerified: boolean;
+  // Signup identity verification for phone/WhatsApp-OTP-only accounts — see
+  // POST /api/onboarding and /api/auth/verify-phone-otp. isEmailVerified stays
+  // false for these accounts (never gates anything for them); this is the
+  // real gate instead.
+  isPhoneVerified?: boolean;
   onboardingCompleted: boolean;
 
   // Platform context
@@ -38,6 +43,7 @@ export interface IUser extends Document {
   passwordResetTokenExpiry?: Date;
   failedOtpAttempts: number;
   emailVerifiedAt?: Date;
+  phoneVerifiedAt?: Date;
 
   // Phone + OTP login (WhatsApp-delivered) — separate from the email-based
   // OTP fields above since a user can attempt both flows independently.
@@ -132,6 +138,7 @@ const UserSchema: Schema = new Schema(
     companyName: { type: String },
 
     isEmailVerified: { type: Boolean, default: false },
+    isPhoneVerified: { type: Boolean, default: false },
     onboardingCompleted: { type: Boolean, default: false },
 
     // Platform context
@@ -154,6 +161,7 @@ const UserSchema: Schema = new Schema(
     // Verification timestamps and rate limiting
     failedOtpAttempts: { type: Number, default: 0 },
     emailVerifiedAt: { type: Date },
+    phoneVerifiedAt: { type: Date },
 
     // Security
     failedLoginAttempts: { type: Number, default: 0 },

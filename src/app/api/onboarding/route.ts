@@ -1,39 +1,23 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import User from '@/models/User';
 import Organization from '@/models/Organization';
 import Subscription from '@/models/Subscription';
-import { createSession, signSessionToken, SESSION_MAX_AGE_SECONDS } from '@/lib/session';
-import { validatePasswordStrength } from '@/services/auth/security';
 import { generateOTP, hashOTP } from '@/services/auth/otp';
-import { sendEmailOtp } from '@/services/email';
-import { checkRateLimit, resetRateLimit, getClientIp } from '@/lib/rateLimit';
+import { sendOutboundMessage } from '@/services/whatsapp/send';
+import { normalizePhoneE164 } from '@/lib/phone';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
-import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
-// Existing-account branch below is functionally a login (see the block that
-// uses these) — same thresholds as /api/auth/login/route.ts, kept in sync
-// deliberately rather than imported, since these two routes should be free
-// to diverge later without one silently changing the other's behavior.
-const ONBOARDING_AUTH_MAX_ATTEMPTS = 8;
-const ONBOARDING_AUTH_WINDOW_MS = 15 * 60 * 1000;
-const ONBOARDING_ACCOUNT_LOCK_THRESHOLD = 10;
-const ONBOARDING_ACCOUNT_LOCK_DURATION_MS = 15 * 60 * 1000;
+const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes — matches phone-login/request
 // Reserved for shadow accounts (see src/lib/shadowAccount.ts) — must never be
 // registerable through normal signup. Without this block, an attacker could
 // pre-register a specific phone number's future shadow email, permanently
 // denying that phone the /free-report flow (targeted DoS via unique-index
 // collision) — see shadowAccount.ts's shadowEmailFor().
 const SHADOW_EMAIL_DOMAIN = '@shadow.growwmatics.internal';
-
-function normalizePhone(phone: string): string {
-  return phone.replace(/[^\d+]/g, '');
-}
 
 export async function POST(req: Request) {
   // Track only what THIS request creates, so a failure part-way can be rolled
@@ -55,61 +39,61 @@ export async function POST(req: Request) {
     await dbConnect();
     const body = await req.json();
 
-    // Normalize the email the SAME way the schema stores it (lowercase + trim)
-    // and the same way login/verify look it up. Previously the lookup used the
-    // raw `body.email`, so a user who typed a different case than they signed up
-    // with (e.g. "Test@x.com" vs the stored "test@x.com") was not recognised as
-    // existing — onboarding fell into the "new account" branch and then died on
-    // the unique-email index with "these details already exist", even though the
-    // account was right there and just couldn't be matched.
+    // Normalize the email the same way the schema stores it (lowercase + trim).
+    // No longer the login identity, but still stored as a contact record and
+    // still unique-indexed, so a typo'd-case duplicate should still resolve
+    // to the same account rather than a confusing E11000 error.
     const email = String(body.email || '').trim().toLowerCase();
 
     if (email.endsWith(SHADOW_EMAIL_DOMAIN)) {
       return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
     }
+    if (!email || !EMAIL_REGEX.test(email)) {
+      return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
+    }
 
-    let newUser = await User.findOne({ email });
+    // The user's OWN contact number (StepAccount) — deliberately separate
+    // from `body.phone`, which is the BUSINESS's phone from StepBusinessSearch/
+    // StepBusinessConfirm (used below for Business.create only). These used to
+    // be the same field, so autofilling a business's Google-listed phone
+    // number silently became the user's personal account phone too.
+    const personalPhone = normalizePhoneE164(String(body.personalPhone || ''));
+    if (!personalPhone) {
+      return NextResponse.json(
+        { error: 'Please enter your phone number in international format, e.g. +14155550100.' },
+        { status: 400 }
+      );
+    }
 
-    // Only validate email/password/phone when actually creating a new account —
-    // an existing user resuming onboarding keeps their existing credentials.
+    // Phone is the login identity now (WhatsApp-OTP-only), so it's the
+    // resume-detection key too — not email.
+    let newUser = await User.findOne({ phone: personalPhone });
+
+    if (newUser && newUser.isPhoneVerified) {
+      // A real, already-verified account already owns this phone number —
+      // this is someone re-submitting the signup form, not a fresh signup or
+      // a legitimate resume. There's no password here to prove they're the
+      // owner, so the only safe answer is "go log in" rather than silently
+      // attaching a new business to an existing stranger's account.
+      return NextResponse.json(
+        { error: 'An account already exists for this phone number. Please log in instead.', existingAccount: true },
+        { status: 409 }
+      );
+    }
+
     if (!newUser) {
-      if (!email || !EMAIL_REGEX.test(email)) {
-        return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
-      }
-
-      const passwordCheck = validatePasswordStrength(body.password || '');
-      if (!passwordCheck.isValid) {
-        return NextResponse.json({ error: passwordCheck.error }, { status: 400 });
-      }
-
-      // The user's OWN contact number (StepAccount) — deliberately separate
-      // from `body.phone`, which is the BUSINESS's phone from StepBusinessSearch/StepBusinessConfirm
-      // (used below for Business.create only). These used to be the same
-      // field, so autofilling a business's Google-listed phone number
-      // silently became the user's personal account phone too.
-      const normalizedPhone = normalizePhone(body.personalPhone || '');
-      if (!PHONE_REGEX.test(normalizedPhone)) {
-        return NextResponse.json(
-          { error: 'Please enter your phone number in international format, e.g. +14155550100.' },
-          { status: 400 }
-        );
-      }
-
-      // Hash the password before any DB writes — no plain-text bypass
-      const passwordHash = await bcrypt.hash(body.password, 12);
-
       const otp = generateOTP();
       newUser = await User.create({
         fullName: body.fullName || 'Test User',
         email,
-        phone: normalizedPhone,
+        phone: personalPhone,
         companyName: body.companyName || undefined,
-        passwordHash,
         role: 'CLIENT',
         isEmailVerified: false,
+        isPhoneVerified: false,
         onboardingCompleted: true,
-        emailOtpHash: hashOTP(otp),
-        emailOtpExpiry: new Date(Date.now() + 15 * 60 * 1000),
+        phoneOtpHash: hashOTP(otp),
+        phoneOtpExpiry: new Date(Date.now() + OTP_TTL_MS),
         // Freemium gate: brand-new signups only get the GMB Audit module
         // (one report) until they upgrade. Existing/resuming accounts
         // (the `newUser` branch above is skipped for them) never get this
@@ -134,83 +118,35 @@ export async function POST(req: Request) {
         trialStatus: { isActive: false },
       });
 
-      const otpResult = await sendEmailOtp(newUser.email, otp, 'verify');
+      const otpResult = await sendOutboundMessage(
+        newUser.phone,
+        `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`
+      );
       if (!otpResult.success) {
-        console.error('Failed to send onboarding OTP email:', otpResult.error);
+        console.error('Failed to send onboarding OTP over WhatsApp:', otpResult.error);
       }
     } else {
-      // Existing account (verified or not) resuming onboarding. This branch
-      // used to skip password validation entirely — the only remaining gate
-      // was `isEmailVerified` below, which is true for every real customer —
-      // so submitting nothing but a known email here silently returned a
-      // valid session for that account. Treat it exactly like a login
-      // attempt: same rate limit + DB-backed lockout + bcrypt/legacy-plaintext
-      // compare as /api/auth/login/route.ts, because that's what this is.
-      const authRlKey = `onboarding-auth:${ip}:${email}`;
-      const authRl = checkRateLimit(authRlKey, ONBOARDING_AUTH_MAX_ATTEMPTS, ONBOARDING_AUTH_WINDOW_MS);
-      if (!authRl.allowed && !isQaTestingMode()) {
-        return NextResponse.json(
-          { success: false, error: `Too many attempts. Try again in ${Math.ceil(authRl.retryAfterSeconds / 60)} minute(s).` },
-          { status: 429, headers: { 'Retry-After': String(authRl.retryAfterSeconds) } }
-        );
-      }
-
-      if (
-        newUser.accountLockedUntil &&
-        newUser.accountLockedUntil.getTime() > Date.now() &&
-        !isQaTestingMode()
-      ) {
-        const retryAfterSeconds = Math.ceil((newUser.accountLockedUntil.getTime() - Date.now()) / 1000);
-        return NextResponse.json(
-          {
-            success: false,
-            error: `Account temporarily locked due to repeated failed attempts. Try again in ${Math.ceil(retryAfterSeconds / 60)} minute(s).`,
-          },
-          { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
-        );
-      }
-
-      const submittedPassword = String(body.password || '');
-      let isValid = false;
-      const isBcrypt = newUser.passwordHash?.startsWith('$2b$') || newUser.passwordHash?.startsWith('$2a$');
-      if (isBcrypt) {
-        isValid = await bcrypt.compare(submittedPassword, newUser.passwordHash!);
-      } else if (newUser.passwordHash) {
-        // Legacy plain-text password — constant-time compare, and upgrade to
-        // bcrypt on success, matching /api/auth/login/route.ts exactly.
-        const a = Buffer.from(newUser.passwordHash);
-        const b = Buffer.from(submittedPassword);
-        isValid = a.length === b.length && crypto.timingSafeEqual(a, b);
-        if (isValid) {
-          newUser.passwordHash = await bcrypt.hash(submittedPassword, 12);
-        }
-      }
-
-      if (!isValid) {
-        if (!isQaTestingMode()) {
-          const attempts = (newUser.failedLoginAttempts || 0) + 1;
-          const update: Record<string, unknown> = { failedLoginAttempts: attempts };
-          if (attempts >= ONBOARDING_ACCOUNT_LOCK_THRESHOLD) {
-            update.accountLockedUntil = new Date(Date.now() + ONBOARDING_ACCOUNT_LOCK_DURATION_MS);
-          }
-          await User.updateOne({ _id: newUser._id }, { $set: update });
-        }
-        // Same generic message /login uses — never reveal whether the email
-        // exists, whether it's verified, or which check failed.
-        return NextResponse.json({ success: false, error: 'Invalid credentials' }, { status: 401 });
-      }
-
-      // Correct password — this really is the account owner. Clear the
-      // throttle and any accumulated lockout state, and backfill the company
-      // name they just typed in StepOrganization (never overwrites one
-      // already saved, e.g. edited later from the Profile page).
-      resetRateLimit(authRlKey);
-      newUser.failedLoginAttempts = 0;
-      newUser.accountLockedUntil = undefined;
+      // Existing but not-yet-verified account resuming onboarding (e.g. they
+      // closed the tab before entering the code). No password to check here
+      // — they haven't proven phone ownership yet either way — so a fresh
+      // OTP is sent below and verification is the gate, same as a first-time
+      // signup. Backfill the company name they just typed in StepOrganization
+      // (never overwrites one already saved).
       if (body.companyName && !newUser.companyName) {
         newUser.companyName = body.companyName;
       }
+      const otp = generateOTP();
+      newUser.phoneOtpHash = hashOTP(otp);
+      newUser.phoneOtpExpiry = new Date(Date.now() + OTP_TTL_MS);
       await newUser.save();
+
+      const otpResult = await sendOutboundMessage(
+        newUser.phone,
+        `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`
+      );
+      if (!otpResult.success) {
+        console.error('Failed to send onboarding OTP over WhatsApp:', otpResult.error);
+      }
     }
 
     // 2 & 3. Create Organization + Business — UNLESS this (possibly resuming)
@@ -309,39 +245,15 @@ export async function POST(req: Request) {
       });
     }
 
-    // 5. Unverified accounts don't get a session until they confirm their email —
-    //    an existing, already-verified user resuming onboarding does.
-    if (!newUser.isEmailVerified) {
-      return NextResponse.json(
-        { success: true, requiresVerification: true, email: newUser.email, businessId: newBusiness._id },
-        { status: 200 }
-      );
-    }
-
-    // Issue a signed session for the verified user — overwrites any stale session
-    // that was in the browser from a previous account.
-    await createSession(newUser._id.toString(), newUser.role);
-
-    const cookieStore = await cookies();
-    cookieStore.set('activeBusinessId', newBusiness._id.toString(), {
-      path: '/',
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 30,
-    });
-
-    // Mobile clients get the JWT in the body (no cookie support); web never does.
-    if (req.headers.get('x-client') === 'mobile') {
-      const token = await signSessionToken(newUser._id.toString(), newUser.role);
-      const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
-      return NextResponse.json(
-        { success: true, businessId: newBusiness._id, token, expiresAt },
-        { status: 200 }
-      );
-    }
-
-    return NextResponse.json({ success: true, businessId: newBusiness._id }, { status: 200 });
+    // 5. Every account reaching this point is unverified — a brand-new signup
+    //    always starts that way, and the 409 branch above already sent back
+    //    anyone whose phone belongs to an already-verified account. So this
+    //    handler never issues a session itself; verifying the WhatsApp OTP
+    //    just sent (via /api/auth/verify-phone-otp) is what does that.
+    return NextResponse.json(
+      { success: true, requiresVerification: true, phone: newUser.phone, businessId: newBusiness._id },
+      { status: 200 }
+    );
   } catch (error: any) {
     // Full detail to the server log, never to the browser. This used to return
     // `error.message` straight through, which is how raw driver text like
@@ -395,6 +307,9 @@ function friendlyOnboardingError(error: any): string {
     }
     if (key.includes('email')) {
       return 'An account with this email already exists. Try signing in instead, or use a different email address.';
+    }
+    if (key.includes('phone')) {
+      return 'An account with this phone number already exists. Please log in instead.';
     }
     return 'Some of these details are already registered. Please review your entries and try again.';
   }

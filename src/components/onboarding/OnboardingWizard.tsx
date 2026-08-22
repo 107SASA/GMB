@@ -7,7 +7,6 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 
 import StepWelcome from './StepWelcome';
 import StepAccount from './StepAccount';
-import StepPassword from './StepPassword';
 import StepOrganization from './StepOrganization';
 import StepBusinessSearch from './StepBusinessSearch';
 import StepBusinessConfirm from './StepBusinessConfirm';
@@ -16,7 +15,6 @@ import StepCompletion from './StepCompletion';
 
 const STEPPER_STEPS = [
   { id: 'account', label: 'Account' },
-  { id: 'password', label: 'Password' },
   { id: 'organization', label: 'Organization' },
   { id: 'business', label: 'Business' },
   { id: 'confirm', label: 'Confirm' },
@@ -50,7 +48,6 @@ export function OnboardingWizard() {
   const steps = [
     { component: StepWelcome, id: 'welcome' },
     { component: StepAccount, id: 'account' },
-    { component: StepPassword, id: 'password' },
     { component: StepOrganization, id: 'organization' },
     { component: StepBusinessSearch, id: 'business' },
     { component: StepBusinessConfirm, id: 'confirm' },

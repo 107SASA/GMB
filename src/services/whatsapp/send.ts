@@ -123,27 +123,30 @@ export async function sendOutboundMessage(
 }
 
 /**
- * Sends an OTP code (login, signup, resend) — always via the approved
- * growwmatics_notification Content Template rather than free text.
+ * Sends an OTP code (login, signup, resend).
  *
- * Why: OTP requests are cold, business-initiated sends almost by definition
- * (a user asking to log in or sign up has usually never messaged the
- * platform's WhatsApp number, so there's no open 24h session). Twilio can
- * accept a free-text send at the API level and only reject it *later*,
- * asynchronously, once it reaches the carrier (error 63016) — by which point
- * the synchronous outsideWindow fallback in sendOutboundMessage() above has
- * already returned "success" to the caller, since no delivery-status webhook
- * is configured to report that later failure back. Sending the template
- * directly sidesteps the window check entirely instead of gambling on it.
+ * REVERTED 2026-08-22: this used to try growwmatics_notification first and
+ * fall back to free text — the opposite of what it does now. That was meant
+ * to sidestep the 24h-session-window problem (free text silently fails for a
+ * cold recipient), but growwmatics_notification turned out to fail via this
+ * direct-number send path ~100% of the time itself (Twilio error 63027,
+ * "template does not exist for a language and locale") — confirmed by
+ * checking the FINAL async status of "successful" test sends, not just the
+ * synchronous API response, which had been masking it. So template-first
+ * was strictly worse: it broke OTPs for everyone, including recipients with
+ * an open session who worked fine before.
  *
- * Falls back to a plain-text send only if the template SID isn't configured,
- * so OTPs still go out (best-effort) in an environment where it's unset.
+ * This now just calls sendOutboundMessage() directly, which already has the
+ * right fallback shape (free text first, template retry only on a
+ * *synchronous* rejection — see its comment above). Recipients with an open
+ * session (have messaged the platform's number recently) get their code
+ * reliably. Recipients without one remain a known, unresolved gap — TODO:
+ * either get growwmatics_notification actually working via this send path
+ * (may need Twilio support — see scripts/debug-content-send.mjs, which
+ * reproduces the failure outside the app), or add a real delivery-status
+ * webhook so an async failure (this one, or 63016) can trigger a genuine
+ * retry instead of the caller believing "success" from the sync response.
  */
 export async function sendOtpMessage(phone: string, message: string): Promise<SendResult> {
-  if (WA_TEMPLATES.notification) {
-    const result = await sendTemplateMessage(phone, WA_TEMPLATES.notification, { '1': 'there', '2': message });
-    if (result.success) return result;
-    console.warn('[whatsapp] OTP template send failed, falling back to free text:', result.error);
-  }
   return sendOutboundMessage(phone, message);
 }

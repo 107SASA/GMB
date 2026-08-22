@@ -7,6 +7,56 @@ export interface SendResult {
   success: boolean;
   sid?: string;
   error?: string;
+  /**
+   * True when the failure is Twilio error 63016 — "Failed to send freeform
+   * message because you are outside the allowed window. Please use a
+   * Message Template." Callers use this to decide whether a Content
+   * Template retry is the right recovery, as opposed to a real failure.
+   */
+  outsideWindow?: boolean;
+  /**
+   * False when a business has its own Twilio credentials configured
+   * (business.integrations.twilioSid/twilioAuthToken) — in that case the
+   * send went out on THEIR number, not GrowwMatics' own. Content Template
+   * SIDs registered on GrowwMatics' WABA are only valid to send from
+   * GrowwMatics' own number, so callers must check this before retrying
+   * with one.
+   */
+  isPlatformDefault?: boolean;
+}
+
+interface TwilioCredentials {
+  sid: string;
+  authToken: string;
+  fromNumber: string;
+  isPlatformDefault: boolean;
+}
+
+/**
+ * Resolves which Twilio account/number a send should use: a business's own
+ * credentials if configured, otherwise GrowwMatics' shared platform number.
+ * `integrations.twilioSid`/`twilioAuthToken` aren't in the current Business
+ * schema (no tenant has ever been able to set them), so isPlatformDefault is
+ * effectively always true today — this stays defensive for when that lands.
+ */
+async function resolveTwilioCredentials(businessId?: string): Promise<TwilioCredentials | null> {
+  let sid = process.env.TWILIO_ACCOUNT_SID;
+  let authToken = process.env.TWILIO_AUTH_TOKEN;
+  let fromNumber = process.env.TWILIO_WHATSAPP_NUMBER;
+  let isPlatformDefault = true;
+
+  if (businessId) {
+    const business = await Business.findById(businessId);
+    if ((business?.integrations as any)?.twilioSid && (business?.integrations as any)?.twilioAuthToken) {
+      sid = (business.integrations as any).twilioSid;
+      authToken = (business.integrations as any).twilioAuthToken;
+      fromNumber = business.integrations?.whatsappNumber || fromNumber;
+      isPlatformDefault = false;
+    }
+  }
+
+  if (!sid || !authToken || !fromNumber) return null;
+  return { sid, authToken, fromNumber, isPlatformDefault };
 }
 
 export async function sendOutboundMessage(
@@ -18,18 +68,7 @@ export async function sendOutboundMessage(
 ): Promise<SendResult> {
   await dbConnect();
 
-  let twilioSid = process.env.TWILIO_ACCOUNT_SID;
-  let twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-  let fromNumber = process.env.TWILIO_WHATSAPP_NUMBER;
-
-  if (businessId) {
-    const business = await Business.findById(businessId);
-    if (business?.integrations?.twilioSid && business?.integrations?.twilioAuthToken) {
-      twilioSid = business.integrations.twilioSid;
-      twilioAuthToken = business.integrations.twilioAuthToken;
-      fromNumber = business.integrations.whatsappNumber || fromNumber;
-    }
-  }
+  const creds = await resolveTwilioCredentials(businessId);
 
   const msgLog = await MessageQueue.create({
     leadId,
@@ -38,7 +77,7 @@ export async function sendOutboundMessage(
     payload: { phone, body },
   });
 
-  if (!twilioSid || !twilioAuthToken || !fromNumber) {
+  if (!creds) {
     const error = 'WhatsApp is not configured (missing Twilio credentials)';
     msgLog.status = 'FAILED';
     msgLog.error = error;
@@ -47,14 +86,87 @@ export async function sendOutboundMessage(
     return { success: false, error };
   }
 
-  const client = twilio(twilioSid, twilioAuthToken);
+  const client = twilio(creds.sid, creds.authToken);
 
   try {
     const message = await client.messages.create({
       body,
-      from: `whatsapp:${fromNumber}`,
+      from: `whatsapp:${creds.fromNumber}`,
       to: `whatsapp:${phone}`,
       ...(mediaUrl ? { mediaUrl: [mediaUrl] } : {}),
+    });
+    msgLog.status = 'SENT';
+    msgLog.sentAt = new Date();
+    await msgLog.save();
+    return { success: true, sid: message.sid };
+  } catch (e: any) {
+    msgLog.status = 'FAILED';
+    msgLog.error = e.message;
+    await msgLog.save();
+    console.error('Twilio Error:', e);
+    return {
+      success: false,
+      error: e.message,
+      outsideWindow: e.code === 63016,
+      isPlatformDefault: creds.isPlatformDefault,
+    };
+  }
+}
+
+/**
+ * Sends an approved Twilio Content Template (a `growwmatics_*` template —
+ * see src/lib/whatsappTemplates.ts) instead of free-form text. Required for
+ * any business-initiated first touch, since Twilio/Meta reject free-form
+ * sends once 24h have passed since the customer last messaged in.
+ *
+ * `variables` keys are the template's numbered placeholders as strings,
+ * e.g. { '1': leadName, '2': businessName } for a template whose body reads
+ * "Hi {{1}}, ... {{2}} ...".
+ */
+export async function sendTemplateMessage(
+  phone: string,
+  contentSid: string,
+  variables: Record<string, string>,
+  businessId?: string
+): Promise<SendResult> {
+  await dbConnect();
+
+  const creds = await resolveTwilioCredentials(businessId);
+
+  const msgLog = await MessageQueue.create({
+    direction: 'OUTBOUND',
+    status: 'PENDING',
+    payload: { phone, contentSid, variables },
+  });
+
+  if (!creds) {
+    const error = 'WhatsApp is not configured (missing Twilio credentials)';
+    msgLog.status = 'FAILED';
+    msgLog.error = error;
+    await msgLog.save();
+    console.error('Twilio Error:', error);
+    return { success: false, error };
+  }
+
+  // Content Template SIDs are scoped to the WABA they were approved under —
+  // only valid to send from GrowwMatics' own number.
+  if (!creds.isPlatformDefault) {
+    const error = 'Cannot send a GrowwMatics-approved template from a business-owned Twilio number';
+    msgLog.status = 'FAILED';
+    msgLog.error = error;
+    await msgLog.save();
+    console.error('Twilio Error:', error);
+    return { success: false, error };
+  }
+
+  const client = twilio(creds.sid, creds.authToken);
+
+  try {
+    const message = await client.messages.create({
+      from: `whatsapp:${creds.fromNumber}`,
+      to: `whatsapp:${phone}`,
+      contentSid,
+      contentVariables: JSON.stringify(variables),
     });
     msgLog.status = 'SENT';
     msgLog.sentAt = new Date();

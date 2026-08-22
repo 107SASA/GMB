@@ -21,8 +21,9 @@
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import MessageQueue from '@/models/MessageQueue';
-import { sendOutboundMessage as sendViaTwilio, SendResult } from '@/services/twilio/client';
+import { sendOutboundMessage as sendViaTwilio, sendTemplateMessage, SendResult } from '@/services/twilio/client';
 import { getMetaConfig, isReengagementError, sendMetaTemplate, sendMetaText, sendMetaImage } from './meta';
+import { WA_TEMPLATES } from '@/lib/whatsappTemplates';
 
 export type { SendResult };
 
@@ -61,7 +62,22 @@ export async function sendOutboundMessage(
 
   const provider = await resolveProvider(businessId);
   if (provider === 'twilio') {
-    return sendViaTwilio(phone, body, leadId, businessId, media?.url);
+    const result = await sendViaTwilio(phone, body, leadId, businessId, media?.url);
+
+    // Twilio 63016 = business-initiated send rejected because we're outside
+    // the 24h customer-session window. growwmatics_notification is the
+    // generic approved-template fallback for exactly this case — same idea
+    // as the Meta branch's META_UTILITY_TEMPLATE_NAME retry below, but only
+    // usable when the send went out on GrowwMatics' own number (a business's
+    // own Twilio number can't use a GrowwMatics-scoped Content Template) and
+    // never for media (no header-media template configured).
+    if (!result.success && result.outsideWindow && result.isPlatformDefault && !media && WA_TEMPLATES.notification) {
+      const retry = await sendTemplateMessage(phone, WA_TEMPLATES.notification, { '1': 'there', '2': body }, businessId);
+      if (retry.success) return retry;
+      return { ...result, error: `${result.error} (template fallback also failed: ${retry.error})` };
+    }
+
+    return result;
   }
 
   const msgLog = await MessageQueue.create({

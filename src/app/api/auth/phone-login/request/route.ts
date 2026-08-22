@@ -3,7 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 import { generateOTP, hashOTP } from '@/services/auth/otp';
-import { sendOutboundMessage } from '@/services/whatsapp/send';
+import { sendOtpMessage } from '@/services/whatsapp/send';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
 
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
     // No businessId — this is a platform-level auth message, not tied to any
     // one workspace, so it routes through the platform's own WhatsApp number
     // (see services/whatsapp/send.ts's resolveProvider).
-    const result = await sendOutboundMessage(
+    const result = await sendOtpMessage(
       user.phone,
       `Your GrowwMatics AI login code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`
     );

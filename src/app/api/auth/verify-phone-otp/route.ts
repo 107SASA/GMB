@@ -3,7 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 import { generateOTP, hashOTP, verifyOTP } from '@/services/auth/otp';
-import { sendOutboundMessage } from '@/services/whatsapp/send';
+import { sendOtpMessage } from '@/services/whatsapp/send';
 import { finalizeLogin } from '@/lib/authSession';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
@@ -135,7 +135,7 @@ export async function PUT(req: Request) {
     user.phoneOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    const result = await sendOutboundMessage(
+    const result = await sendOtpMessage(
       user.phone,
       `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`
     );

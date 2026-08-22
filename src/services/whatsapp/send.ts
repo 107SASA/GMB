@@ -121,3 +121,29 @@ export async function sendOutboundMessage(
 
   return { success: result.success, sid: result.sid, error: result.error };
 }
+
+/**
+ * Sends an OTP code (login, signup, resend) — always via the approved
+ * growwmatics_notification Content Template rather than free text.
+ *
+ * Why: OTP requests are cold, business-initiated sends almost by definition
+ * (a user asking to log in or sign up has usually never messaged the
+ * platform's WhatsApp number, so there's no open 24h session). Twilio can
+ * accept a free-text send at the API level and only reject it *later*,
+ * asynchronously, once it reaches the carrier (error 63016) — by which point
+ * the synchronous outsideWindow fallback in sendOutboundMessage() above has
+ * already returned "success" to the caller, since no delivery-status webhook
+ * is configured to report that later failure back. Sending the template
+ * directly sidesteps the window check entirely instead of gambling on it.
+ *
+ * Falls back to a plain-text send only if the template SID isn't configured,
+ * so OTPs still go out (best-effort) in an environment where it's unset.
+ */
+export async function sendOtpMessage(phone: string, message: string): Promise<SendResult> {
+  if (WA_TEMPLATES.notification) {
+    const result = await sendTemplateMessage(phone, WA_TEMPLATES.notification, { '1': 'there', '2': message });
+    if (result.success) return result;
+    console.warn('[whatsapp] OTP template send failed, falling back to free text:', result.error);
+  }
+  return sendOutboundMessage(phone, message);
+}

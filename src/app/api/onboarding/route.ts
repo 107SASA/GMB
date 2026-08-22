@@ -5,7 +5,7 @@ import User from '@/models/User';
 import Organization from '@/models/Organization';
 import Subscription from '@/models/Subscription';
 import { generateOTP, hashOTP } from '@/services/auth/otp';
-import { sendOutboundMessage } from '@/services/whatsapp/send';
+import { sendOtpMessage } from '@/services/whatsapp/send';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
         trialStatus: { isActive: false },
       });
 
-      const otpResult = await sendOutboundMessage(
+      const otpResult = await sendOtpMessage(
         newUser.phone,
         `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`
       );
@@ -140,7 +140,7 @@ export async function POST(req: Request) {
       newUser.phoneOtpExpiry = new Date(Date.now() + OTP_TTL_MS);
       await newUser.save();
 
-      const otpResult = await sendOutboundMessage(
+      const otpResult = await sendOtpMessage(
         newUser.phone,
         `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`
       );

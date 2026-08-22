@@ -30,6 +30,15 @@ interface TwilioCredentials {
   authToken: string;
   fromNumber: string;
   isPlatformDefault: boolean;
+  /**
+   * Set only for the platform default (never for a business's own number —
+   * a Messaging Service groups senders on GrowwMatics' own Twilio account,
+   * not a tenant's). When present, Content Template sends use this instead
+   * of a raw `from` number — Twilio's own recommended fix for error 63027
+   * ("template does not exist for a language and locale"), which a raw
+   * direct-number send hit consistently (see scripts/debug-content-send.mjs).
+   */
+  messagingServiceSid?: string;
 }
 
 /**
@@ -56,7 +65,13 @@ async function resolveTwilioCredentials(businessId?: string): Promise<TwilioCred
   }
 
   if (!sid || !authToken || !fromNumber) return null;
-  return { sid, authToken, fromNumber, isPlatformDefault };
+  return {
+    sid,
+    authToken,
+    fromNumber,
+    isPlatformDefault,
+    messagingServiceSid: isPlatformDefault ? process.env.TWILIO_MESSAGING_SERVICE_SID : undefined,
+  };
 }
 
 export async function sendOutboundMessage(
@@ -162,11 +177,17 @@ export async function sendTemplateMessage(
   const client = twilio(creds.sid, creds.authToken);
 
   try {
+    // Prefer the Messaging Service over a raw `from` number when configured
+    // — Twilio's own fix for error 63027 (see the messagingServiceSid
+    // comment on TwilioCredentials above). Twilio's convention is to send
+    // one or the other, not both, when a Messaging Service is in play.
     const message = await client.messages.create({
-      from: `whatsapp:${creds.fromNumber}`,
       to: `whatsapp:${phone}`,
       contentSid,
       contentVariables: JSON.stringify(variables),
+      ...(creds.messagingServiceSid
+        ? { messagingServiceSid: creds.messagingServiceSid }
+        : { from: `whatsapp:${creds.fromNumber}` }),
     });
     msgLog.status = 'SENT';
     msgLog.sentAt = new Date();

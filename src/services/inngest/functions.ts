@@ -743,6 +743,48 @@ function fillTemplate(tpl: string, vars: TemplateVars): string {
   return msg;
 }
 
+/**
+ * Sends a review-campaign message as free text, but falls back to the
+ * approved growwmatics_review_request Content Template (fixed copy, but a
+ * real "Leave Review" button) when Twilio rejects the free-text send for
+ * being outside the 24h session window — which every cold review request is,
+ * by definition, the first time it's sent. Only usable when the business is
+ * on GrowwMatics' shared Twilio number and has a Google Place ID on file;
+ * otherwise the original failure is returned untouched — the owner's custom
+ * message stays the primary send, this is a last-resort recovery, not a
+ * replacement for it.
+ *
+ * Calls the Twilio client directly rather than the provider-agnostic
+ * sendOutboundMessage() so this more relevant template wins over the
+ * generic growwmatics_notification fallback that wrapper applies to every
+ * other flow (see src/services/whatsapp/send.ts). If review campaigns ever
+ * need to run over Meta instead of Twilio, this needs revisiting.
+ */
+async function sendReviewRequest(
+  phone: string,
+  freeTextMsg: string,
+  businessId: string,
+  vars: { name: string; business: string; placeId: string }
+): Promise<{ success: boolean; error?: string }> {
+  const { sendOutboundMessage: sendViaTwilio, sendTemplateMessage } = await import('@/services/twilio/client');
+  const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
+
+  const result = await sendViaTwilio(phone, freeTextMsg, undefined, businessId);
+  if (result.success) return result;
+
+  if (result.outsideWindow && result.isPlatformDefault && vars.placeId && WA_TEMPLATES.reviewRequest) {
+    const retry = await sendTemplateMessage(phone, WA_TEMPLATES.reviewRequest, {
+      '1': vars.name,
+      '2': vars.business,
+      '3': vars.placeId,
+    }, businessId);
+    if (retry.success) return retry;
+    return { success: false, error: `${result.error} (review-template fallback also failed: ${retry.error})` };
+  }
+
+  return result;
+}
+
 // ISO date of the next moment inside the business-hours window, or null if already inside it.
 function nextBizHourDate(startHour: number, endHour: number): string | null {
   const now = new Date();
@@ -790,11 +832,11 @@ export const processReviewCampaign = inngest.createFunction(
     // 2. Fetch customer + business name; WhatsApp-only so a phone is required
     const target = await step.run("fetch-customer", async () => {
       const customer: any = await Customer.findById(customerId).lean();
-      const business: any = await Business.findById(businessId).select('name').lean();
-      return { customer, businessName: business?.name || 'our business' };
+      const business: any = await Business.findById(businessId).select('name placeId').lean();
+      return { customer, businessName: business?.name || 'our business', placeId: business?.placeId || '' };
     });
 
-    const { customer, businessName } = target as any;
+    const { customer, businessName, placeId } = target as any;
     if (!customer || customer.optedOut) return { skipped: true, reason: 'Customer opted out or not found' };
     if (!customer.phone) return { skipped: true, reason: 'Customer has no phone number (WhatsApp required)' };
 
@@ -859,7 +901,9 @@ export const processReviewCampaign = inngest.createFunction(
     // 6. Send the initial WhatsApp message. On a Twilio rejection the request
     //    is marked Failed (never "Sent") and the reminder sequence is skipped.
     const initialSend = await step.run("send-initial-message", async () => {
-      const result = await sendOutboundMessage(customer.phone, initialMessage, undefined, businessId);
+      const result = await sendReviewRequest(customer.phone, initialMessage, businessId, {
+        name: templateVars.name, business: businessName, placeId,
+      });
 
       if (!result.success) {
         await ReviewRequest.findByIdAndUpdate(reviewRequest._id, {
@@ -918,7 +962,9 @@ export const processReviewCampaign = inngest.createFunction(
             if (camp) tpl = camp.reminder1Message || '';
           }
           const msg = fillTemplate(tpl.trim() || DEFAULT_REMINDER_1, templateVars);
-          const result = await sendOutboundMessage(customer.phone, msg, undefined, businessId);
+          const result = await sendReviewRequest(customer.phone, msg, businessId, {
+            name: templateVars.name, business: businessName, placeId,
+          });
           if (!result.success) {
             console.warn(`[reviewCampaign] Reminder 1 failed for request ${reviewRequest._id}: ${result.error}`);
             return;
@@ -947,7 +993,9 @@ export const processReviewCampaign = inngest.createFunction(
             if (camp) tpl = camp.reminder2Message || '';
           }
           const msg = fillTemplate(tpl.trim() || DEFAULT_REMINDER_2, templateVars);
-          const result = await sendOutboundMessage(customer.phone, msg, undefined, businessId);
+          const result = await sendReviewRequest(customer.phone, msg, businessId, {
+            name: templateVars.name, business: businessName, placeId,
+          });
           if (!result.success) {
             console.warn(`[reviewCampaign] Final reminder failed for request ${reviewRequest._id}: ${result.error}`);
             return;
@@ -1284,7 +1332,72 @@ export const generateAuditJob = inngest.createFunction(
       data: { auditId },
     });
 
+    // "Your report is ready" WhatsApp ping (see sendReportReadyNotification
+    // below) — separate event so a failure/skip there can't affect the
+    // sales-nurture dispatch above.
+    await step.sendEvent('start-report-ready', {
+      name: 'report/ready.requested',
+      data: { auditId },
+    });
+
     return { success: true, auditId };
+  }
+);
+
+// 7a. "Your free report is ready" WhatsApp ping — fires once per audit right
+// after it finishes generating. Scoped to fastMode audits only (the
+// lead-gen entry points — /free-report, WhatsApp report-connect — see
+// src/lib/startAudit.ts): a logged-in dashboard user re-running their own
+// audit already has the report open and doesn't need "your FREE report is
+// ready" copy. Uses growwmatics_report_ready (Content Template, since this
+// is a cold business-initiated first touch, same reasoning as the sales
+// nurture consent request above) — a no-op if that SID isn't configured.
+export const sendReportReadyNotification = inngest.createFunction(
+  { id: 'report-ready-notification', triggers: [{ event: 'report/ready.requested' }] },
+  async ({ event, step }) => {
+    const { auditId } = event.data;
+
+    await step.run('send-report-ready', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: Audit } = await import('@/models/Audit');
+      const { default: Business } = await import('@/models/Business');
+      const { default: User } = await import('@/models/User');
+      const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
+
+      if (!WA_TEMPLATES.reportReady) return { skip: 'template not configured' as const };
+
+      const audit: any = await Audit.findById(auditId).lean();
+      if (!audit || audit.status !== 'COMPLETED') return { skip: 'audit not completed' as const };
+      if (!audit.fastMode) return { skip: 'not a lead-gen audit' as const };
+
+      const business: any = await Business.findById(audit.businessId).lean();
+      if (!business) return { skip: 'no business' as const };
+      if (business.reportReadySentAt) return { skip: 'already sent' as const };
+
+      const owner: any = business.userId
+        ? await User.findById(business.userId).select('fullName phone').lean()
+        : null;
+      const phone = owner?.phone || business.phone;
+      if (!phone) return { skip: 'no phone' as const };
+
+      const { sendTemplateMessage } = await import('@/services/twilio/client');
+      const res = await sendTemplateMessage(phone, WA_TEMPLATES.reportReady, {
+        '1': owner?.fullName || business.name || 'there',
+        '2': business.name || 'your business',
+        '3': String(audit._id),
+      }, business._id.toString());
+
+      if (res.success) {
+        // Send-once guard so a retried event doesn't double-message.
+        await Business.updateOne({ _id: business._id }, { $set: { reportReadySentAt: new Date() } });
+      } else {
+        console.warn(`[report-ready] send failed for audit ${auditId}: ${res.error}`);
+      }
+      return { sent: res.success };
+    });
+
+    return { success: true };
   }
 );
 
@@ -1467,14 +1580,36 @@ export const salesNurtureRequested = inngest.createFunction(
         const dbConnect = (await import('@/lib/mongodb')).default;
         await dbConnect();
         const { default: SalesConversation } = await import('@/models/SalesConversation');
+        const { default: Business } = await import('@/models/Business');
         const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+        const { sendTemplateMessage } = await import('@/services/twilio/client');
         const { CONSENT_REQUEST_MESSAGE } = await import('@/lib/whatsappConsent');
+        const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
 
         const convo: any = await SalesConversation.findById(prep.conversationId);
         if (!convo || convo.status !== 'active' || convo.consentStatus !== 'pending') return;
-        const res = await sendOutboundMessage(convo.leadPhone, CONSENT_REQUEST_MESSAGE, undefined, convo.businessId.toString());
+
+        // This is a cold, business-initiated first touch — never inside a
+        // 24h session window — so it must go out as an approved template,
+        // not free text. growwmatics_sales_intro (short teaser + "YES"
+        // quick-reply) is that template; it opens the session the same way
+        // CONSENT_REQUEST_MESSAGE used to, so the isAffirmativeReply() gate
+        // below is unchanged. Falls back to the old free-text message only
+        // if the template SID isn't configured (keeps local/dev working).
+        let sentText = CONSENT_REQUEST_MESSAGE;
+        let res;
+        if (WA_TEMPLATES.salesIntro) {
+          const business: any = await Business.findById(convo.businessId).select('name').lean();
+          sentText = `Hi ${convo.leadName || 'there'}, this is GrowwMatics AI 👋 We just completed your free Google Business Profile audit for ${business?.name || 'your business'}. Reply YES and I'll share the key findings right here on WhatsApp.`;
+          res = await sendTemplateMessage(convo.leadPhone, WA_TEMPLATES.salesIntro, {
+            '1': convo.leadName || 'there',
+            '2': business?.name || 'your business',
+          }, convo.businessId.toString());
+        } else {
+          res = await sendOutboundMessage(convo.leadPhone, CONSENT_REQUEST_MESSAGE, undefined, convo.businessId.toString());
+        }
         if (res.success) {
-          convo.messages.push({ role: 'agent', text: CONSENT_REQUEST_MESSAGE, at: new Date() });
+          convo.messages.push({ role: 'agent', text: sentText, at: new Date() });
           convo.lastAgentAt = new Date();
           await convo.save();
         }

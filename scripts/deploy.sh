@@ -22,11 +22,20 @@ set -euo pipefail
 
 APP_NAME="growwmatics"
 APP_URL="https://growwmatics.com"
+# The build has OOM'd twice on this droplet's 1.9GB RAM with the default
+# heap limit — pm2 stop (below) frees what the running app was using, and
+# this raises Node's ceiling to make use of the 4GB swap already configured.
+# Combined with --dns-result-order=ipv4first, already set globally via
+# ~/.bashrc + `pm2 save` (see the IPv6/Inngest fix from earlier).
+export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=3072"
 
-echo "==> 1/5  Removing .next (full clean rebuild — see comment above for why)"
+echo "==> 1/6  Stopping the app to free RAM for the build (1.9GB total on this droplet — cutting it close otherwise)"
+pm2 stop "${APP_NAME}" || true
+
+echo "==> 2/6  Removing .next (full clean rebuild — see comment above for why)"
 rm -rf .next
 
-echo "==> 2/5  Installing dependencies (safe no-op if package.json didn't change)"
+echo "==> 3/6  Installing dependencies (safe no-op if package.json didn't change)"
 # --legacy-peer-deps: next-auth declares a nodemailer@^7 peer, but next-auth
 # isn't actually imported anywhere in this codebase (rolls its own session
 # auth) — the conflict is cosmetic. Real dependency mismatches would still
@@ -34,13 +43,13 @@ echo "==> 2/5  Installing dependencies (safe no-op if package.json didn't change
 # an unused package's peer preference.
 npm install --legacy-peer-deps
 
-echo "==> 3/5  Building"
+echo "==> 4/6  Building (NODE_OPTIONS=${NODE_OPTIONS})"
 npm run build
 
-echo "==> 4/5  Restarting PM2 process: ${APP_NAME}"
+echo "==> 5/6  Restarting PM2 process: ${APP_NAME}"
 pm2 restart "${APP_NAME}"
 
-echo "==> 5/5  Re-syncing Inngest Cloud (required whenever any Inngest function changed)"
+echo "==> 6/6  Re-syncing Inngest Cloud (required whenever any Inngest function changed)"
 sleep 2  # give the app a moment to finish coming up before hitting its own API
 RESYNC_RESPONSE=$(curl -s -X PUT "${APP_URL}/api/inngest")
 echo "    ${RESYNC_RESPONSE}"

@@ -55,8 +55,10 @@ export async function POST(req: Request) {
       // this flow just means "you haven't signed up yet, or typed it wrong",
       // not a credential being tested; the OTP itself is still required to
       // actually get in, so this doesn't materially help an attacker.
+      // `noAccount: true` lets the login page render a "Create an account"
+      // link instead of just plain error text.
       return NextResponse.json(
-        { success: false, error: 'No account found for this phone number.' },
+        { success: false, error: "No account found for this number. Please create an account first.", noAccount: true },
         { status: 404 }
       );
     }

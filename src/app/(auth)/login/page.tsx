@@ -12,12 +12,14 @@ export default function LoginPage() {
   const [otp, setOtp] = useState('');
   const [maskedPhone, setMaskedPhone] = useState('');
   const [phoneError, setPhoneError] = useState('');
+  const [noAccount, setNoAccount] = useState(false);
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [resending, setResending] = useState(false);
 
   const requestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setPhoneError('');
+    setNoAccount(false);
     setPhoneLoading(true);
     try {
       const res = await fetch('/api/auth/phone-login/request', {
@@ -28,6 +30,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!data.success) {
         setPhoneError(data.error || 'Could not send code.');
+        setNoAccount(!!data.noAccount);
         return;
       }
       setMaskedPhone(data.maskedPhone || phone);
@@ -108,7 +111,14 @@ export default function LoginPage() {
                   the user just clicked, not scrolled out of view above the form. */}
               {phoneError && (
                 <div role="alert" className="p-4 bg-error-container border border-outline-variant text-on-error-container text-sm font-medium rounded-lg text-center">
-                  {phoneError}
+                  {noAccount ? (
+                    <>
+                      No account found for this number.{' '}
+                      <a href="/onboarding" className="underline hover:text-primary">Create an account</a> to get started.
+                    </>
+                  ) : (
+                    phoneError
+                  )}
                 </div>
               )}
 

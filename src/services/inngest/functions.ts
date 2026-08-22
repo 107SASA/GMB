@@ -1971,7 +1971,10 @@ export const reportCardDeliver = inngest.createFunction(
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       const cardUrl = `${baseUrl}/print/report-card/${shareToken}`;
 
-      let imageUrl: string | null = null;
+      // A real PDF (not a screenshot) — same launchBrowser()+page.pdf() pattern
+      // already proven in src/app/api/audit/[id]/pdf/route.ts, applied to the
+      // same public /print/report-card/[token] page this used to screenshot.
+      let pdfUrl: string | null = null;
       let browser: any = null;
       try {
         browser = await launchBrowser();
@@ -1980,23 +1983,27 @@ export const reportCardDeliver = inngest.createFunction(
         const response = await page.goto(cardUrl, { waitUntil: 'networkidle2', timeout: 30_000 });
         if (!response?.ok()) throw new Error(`Report card page returned ${response?.status()}`);
         await new Promise((resolve) => setTimeout(resolve, 400)); // web-font settle
-        const buffer = await page.screenshot({ type: 'png', fullPage: true });
-        imageUrl = await uploadPublicObject(buffer as Buffer, 'image/png', 'report-cards');
+        const buffer = await page.pdf({
+          format: 'A4',
+          printBackground: true,
+          margin: { top: '10mm', right: '12mm', bottom: '10mm', left: '12mm' },
+        });
+        pdfUrl = await uploadPublicObject(buffer as Buffer, 'application/pdf', 'report-cards');
       } catch (err: any) {
-        console.error('[reportCardDeliver] image render failed:', err?.message);
+        console.error('[reportCardDeliver] PDF render failed:', err?.message);
       } finally {
         await browser?.close().catch(() => {});
       }
 
       const scores = extractReportScores(audit, business);
 
-      if (imageUrl) {
+      if (pdfUrl) {
         await sendOutboundMessage(
           convo.leadPhone,
           `Your free report for ${scores.businessName} 📊`,
           undefined,
           convo.businessId?.toString(),
-          { url: imageUrl, type: 'image' }
+          { url: pdfUrl, type: 'document' }
         );
       }
 

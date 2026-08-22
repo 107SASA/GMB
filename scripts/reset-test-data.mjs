@@ -1,28 +1,24 @@
 /**
- * Wipes CUSTOMER data while preserving platform configuration.
+ * One-time "go live" reset: wipes all test/customer data while leaving the
+ * platform itself fully functional — SUPER_ADMIN login and every admin-
+ * configured setting (agent personas, pricing, FAQs, etc.) are untouched.
  *
- * Written for the 2026-07-22 pre-production reset: the cluster had accumulated
- * ~1,560 documents of test/demo data that must not follow us into production.
+ * Deletes ALL DOCUMENTS from every collection except:
+ *   - User: keeps only role === 'SUPER_ADMIN' documents (deletes CLIENT users)
+ *   - Platform config collections (never touched): SalesAgentConfig,
+ *     ReportAgentConfig, BookingAgentConfig, PlatformSettings, PlanConfig,
+ *     Plan, BillingPlan, FAQ, ContentTemplate, AdminInvite
  *
- * DELETES: every document in every collection listed in WIPE_COLLECTIONS, plus
- *          every user EXCEPT the super admin(s) named in KEEP_USER_EMAILS.
+ * Uses the live list of collections from the database itself (via
+ * listCollections) rather than a hardcoded/guessed name list, so nothing is
+ * silently skipped because of a naming mismatch.
  *
- * PRESERVES (deleting these would break the live install):
- *   - users            the SUPER_ADMIN account — without it you cannot log in
- *                      to /admin at all and must re-run seed-superadmin.mjs
- *   - billingplans     the configured price + razorpayPlanId. Deleting it drops
- *                      you back to the PLAN_FALLBACK price in code and orphans
- *                      the Razorpay plan that customers would subscribe to.
- *   - platformsettings platformName / supportEmail set via Admin -> Settings
- *   - planconfigs      per-plan module limits
+ * SAFETY: defaults to a DRY RUN — prints what WOULD be deleted, deletes
+ * nothing. Pass --confirm to actually perform the deletion.
  *
- * Collections are only emptied — never dropped — so all indexes and schema
- * remain intact, exactly as required.
- *
- * Usage (dry run — prints the plan, changes nothing):
+ * Run (dry run first):
  *   MONGODB_URI="mongodb://..." node scripts/reset-test-data.mjs
- *
- * Usage (actually delete):
+ * Then for real:
  *   MONGODB_URI="mongodb://..." node scripts/reset-test-data.mjs --confirm
  */
 import mongoose from 'mongoose';
@@ -33,96 +29,71 @@ if (!MONGODB_URI) {
   process.exit(1);
 }
 
-/** Accounts that survive the wipe. Everything else in `users` is removed. */
-const KEEP_USER_EMAILS = ['studysphere654@gmail.com'];
+const CONFIRMED = process.argv.includes('--confirm');
 
-/** Config collections that are never touched. */
-const PRESERVE_COLLECTIONS = new Set([
-  'billingplans',
+// Collection names as they actually exist in MongoDB (lowercase, Mongoose's
+// default pluralization) for every model that must NOT be touched.
+const KEEP_COLLECTIONS = new Set([
+  'salesagentconfigs',
+  'reportagentconfigs',
+  'bookingagentconfigs',
   'platformsettings',
   'planconfigs',
+  'plans',
+  'billingplans',
+  'faqs',
+  'contenttemplates',
+  'admininvites',
 ]);
-
-/** Emptied completely. */
-const WIPE_COLLECTIONS = [
-  'businesses', 'organizations', 'subscriptions', 'subscriptionusages',
-  'usagetrackings', 'userlimitoverrides', 'admininvites',
-  'audits', 'reportshares',
-  'reviews', 'reviewreplies', 'reviewrequests', 'reviewanalytics', 'reviewmonitorlogs',
-  'posts', 'contenttemplates', 'contentgenerationlogs', 'seocontents', 'faqs',
-  'campaigns', 'customers', 'leads', 'activities', 'followups', 'appointments',
-  'conversations', 'conversationthreads', 'messagequeues',
-  'whatsappappointments', 'whatsappconversationsummaries', 'businessaiconfigs',
-  'gbptokens', 'gbpinsights', 'gbpkeywords',
-  'notifications', 'automationlogs', 'aiusagelogs', 'jobqueues',
-  'processedwebhookevents', 'demobookings',
-];
-
-const isConfirmed = process.argv.includes('--confirm');
 
 async function main() {
   await mongoose.connect(MONGODB_URI);
   const db = mongoose.connection.db;
-  console.log(`Connected to database: "${db.databaseName}"\n`);
+  console.log(`Connected to database: ${db.databaseName}`);
+  console.log(CONFIRMED ? '*** LIVE RUN — data will be deleted ***' : 'DRY RUN — nothing will be deleted (pass --confirm to actually run)');
+  console.log('');
 
-  const existing = new Set((await db.listCollections().toArray()).map((c) => c.name));
-  const plan = [];
+  const collections = await db.listCollections().toArray();
+  let totalDeleted = 0;
 
-  for (const name of WIPE_COLLECTIONS) {
-    if (!existing.has(name)) continue;
+  for (const { name } of collections.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (name.startsWith('system.')) continue;
+
+    if (KEEP_COLLECTIONS.has(name.toLowerCase())) {
+      const count = await db.collection(name).countDocuments();
+      console.log(`  KEEP    ${name} (${count} docs untouched — platform config)`);
+      continue;
+    }
+
+    if (name.toLowerCase() === 'users') {
+      const clientCount = await db.collection(name).countDocuments({ role: { $ne: 'SUPER_ADMIN' } });
+      const adminCount = await db.collection(name).countDocuments({ role: 'SUPER_ADMIN' });
+      console.log(`  ${CONFIRMED ? 'DELETE ' : 'WOULD DELETE'} ${name}: ${clientCount} client user(s) (keeping ${adminCount} SUPER_ADMIN)`);
+      if (CONFIRMED && clientCount > 0) {
+        await db.collection(name).deleteMany({ role: { $ne: 'SUPER_ADMIN' } });
+      }
+      totalDeleted += clientCount;
+      continue;
+    }
+
     const count = await db.collection(name).countDocuments();
-    if (count > 0) plan.push({ name, count, keep: 0 });
+    if (count === 0) continue;
+    console.log(`  ${CONFIRMED ? 'DELETE ' : 'WOULD DELETE'} ${name}: ${count} doc(s)`);
+    if (CONFIRMED) {
+      await db.collection(name).deleteMany({});
+    }
+    totalDeleted += count;
   }
 
-  // users: keep only the super admin(s)
-  const usersTotal = await db.collection('users').countDocuments();
-  const usersKeep = await db.collection('users').countDocuments({ email: { $in: KEEP_USER_EMAILS } });
-  if (usersKeep === 0) {
-    console.error(
-      `REFUSING TO RUN: none of ${KEEP_USER_EMAILS.join(', ')} exist in this database.\n` +
-        'Deleting every user would lock you out of /admin permanently.'
-    );
-    await mongoose.disconnect();
-    process.exit(1);
-  }
+  console.log('');
+  console.log(CONFIRMED
+    ? `Done — deleted ${totalDeleted} document(s) total.`
+    : `Dry run complete — would delete ${totalDeleted} document(s) total. Re-run with --confirm to actually delete.`);
 
-  console.log(isConfirmed ? '=== DELETING ===' : '=== DRY RUN (pass --confirm to apply) ===');
-  console.log('collection'.padEnd(34) + 'delete'.padStart(8) + 'keep'.padStart(8));
-  console.log('-'.repeat(50));
-  for (const p of plan) console.log(p.name.padEnd(34) + String(p.count).padStart(8) + '0'.padStart(8));
-  console.log('users'.padEnd(34) + String(usersTotal - usersKeep).padStart(8) + String(usersKeep).padStart(8));
-
-  console.log('\nPRESERVED (untouched):');
-  for (const name of PRESERVE_COLLECTIONS) {
-    if (!existing.has(name)) continue;
-    console.log(`  ${name.padEnd(24)} ${await db.collection(name).countDocuments()} docs`);
-  }
-
-  const totalDelete = plan.reduce((s, p) => s + p.count, 0) + (usersTotal - usersKeep);
-  console.log(`\nTotal documents to delete: ${totalDelete}`);
-
-  if (!isConfirmed) {
-    console.log('\nDry run only — nothing was changed. Re-run with --confirm to apply.');
-    await mongoose.disconnect();
-    return;
-  }
-
-  let deleted = 0;
-  for (const p of plan) {
-    const res = await db.collection(p.name).deleteMany({});
-    deleted += res.deletedCount;
-    console.log(`  cleared ${p.name} (${res.deletedCount})`);
-  }
-  const uRes = await db.collection('users').deleteMany({ email: { $nin: KEEP_USER_EMAILS } });
-  deleted += uRes.deletedCount;
-  console.log(`  cleared users (${uRes.deletedCount}, kept ${usersKeep})`);
-
-  console.log(`\nDone. ${deleted} documents deleted. Collections and indexes left intact.`);
   await mongoose.disconnect();
 }
 
-main().catch(async (err) => {
+main().catch((err) => {
   console.error(err);
-  await mongoose.disconnect();
   process.exit(1);
 });

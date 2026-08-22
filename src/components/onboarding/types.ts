@@ -6,10 +6,8 @@ export interface OnboardingData {
   // business's phone from a Google Places search silently became the user's
   // own account/profile phone too.
   personalPhone: string;
-  // Step 2
+  // Step 2 (contact record only — not used for login; see StepAccount)
   email: string;
-  password: string;
-  confirmPassword: string;
   // Step 3
   companyName: string;
   // Step 4
@@ -47,8 +45,6 @@ export const initialOnboardingData: OnboardingData = {
   fullName: '',
   personalPhone: '',
   email: '',
-  password: '',
-  confirmPassword: '',
   companyName: '',
   businessName: '',
   category: '',

@@ -1,58 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 
-type Method = 'email' | 'phone';
 type PhoneStep = 'enter-phone' | 'enter-otp';
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [method, setMethod] = useState<Method>('email');
-
-  // ── Email + password ────────────────────────────────────────────────────
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [emailError, setEmailError] = useState('');
-  const [emailLoading, setEmailLoading] = useState(false);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setEmailLoading(true);
-    setEmailError('');
-
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        // Hard navigation (full reload) — NOT router.push — so the just-set
-        // session cookie is guaranteed to be sent and the dashboard renders
-        // authenticated. A soft client navigation can race the cookie or serve
-        // a cached/prefetched (logged-out) dashboard RSC, which bounces the user
-        // straight back to /login in production.
-        window.location.href = '/dashboard';
-        return;
-      } else if (data.requiresVerification) {
-        router.push(`/verify?email=${encodeURIComponent(data.email)}`);
-      } else {
-        setEmailError(data.error || 'Invalid credentials');
-        setEmailLoading(false);
-      }
-    } catch (err) {
-      setEmailError('An error occurred during login');
-      setEmailLoading(false);
-    }
-  };
-
-  // ── Phone + WhatsApp OTP ────────────────────────────────────────────────
+  // ── Phone + WhatsApp OTP (the only login method) ────────────────────────
   const [phoneStep, setPhoneStep] = useState<PhoneStep>('enter-phone');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -127,102 +81,14 @@ export default function LoginPage() {
     }
   };
 
-  const switchMethod = (m: Method) => {
-    setMethod(m);
-    setEmailError('');
-    setPhoneError('');
-    setPhoneStep('enter-phone');
-    setOtp('');
-  };
-
   return (
     <div className="w-full bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant p-8 sm:p-10">
       <div className="text-center mb-8">
         <h1 className="text-headline-md font-heading text-on-surface mb-2">Welcome Back</h1>
-        <p className="text-sm text-on-surface-variant">Sign in to your GrowwMatics AI account.</p>
+        <p className="text-sm text-on-surface-variant">Sign in with your phone number — we&apos;ll send a one-time code on WhatsApp.</p>
       </div>
 
-      {/* Method toggle */}
-      <div className="flex gap-1 p-1 bg-surface-container rounded-lg mb-6">
-        <button
-          type="button"
-          onClick={() => switchMethod('email')}
-          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
-            method === 'email' ? 'bg-surface-container-lowest text-on-surface card-shadow' : 'text-on-surface-variant hover:text-on-surface'
-          }`}
-        >
-          Email
-        </button>
-        <button
-          type="button"
-          onClick={() => switchMethod('phone')}
-          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
-            method === 'phone' ? 'bg-surface-container-lowest text-on-surface card-shadow' : 'text-on-surface-variant hover:text-on-surface'
-          }`}
-        >
-          Phone (WhatsApp)
-        </button>
-      </div>
-
-      {method === 'email' ? (
-        <>
-          {emailError && (
-            <div className="mb-6 p-4 bg-error-container border border-outline-variant text-on-error-container text-sm font-medium rounded-lg text-center">
-              {emailError}
-            </div>
-          )}
-
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div>
-              <label className="block text-label-md text-on-surface mb-2">Email Address</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
-                placeholder="you@company.com"
-              />
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-label-md text-on-surface">Password</label>
-                <a href="/forgot-password" className="text-sm font-medium text-primary hover:text-primary-container">
-                  Forgot password?
-                </a>
-              </div>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 pr-12 bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(v => !v)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute inset-y-0 right-0 flex items-center pr-4 text-outline hover:text-on-surface transition-colors"
-                >
-                  <MaterialIcon name={showPassword ? 'visibility_off' : 'visibility'} size={20} />
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={emailLoading}
-              className="w-full flex items-center justify-center py-3 bg-primary hover:bg-primary-container text-on-primary font-bold rounded-lg transition-all disabled:opacity-70"
-            >
-              {emailLoading ? <MaterialIcon name="progress_activity" size={20} className="animate-spin" /> : 'Sign In'}
-            </button>
-          </form>
-        </>
-      ) : (
-        <>
-          {phoneStep === 'enter-phone' ? (
+      {phoneStep === 'enter-phone' ? (
             <form onSubmit={requestOtp} className="space-y-5">
               <div>
                 <label className="block text-label-md text-on-surface mb-2">Phone Number</label>
@@ -304,8 +170,6 @@ export default function LoginPage() {
               </button>
             </form>
           )}
-        </>
-      )}
 
       <p className="text-center text-sm font-medium text-on-surface-variant mt-8">
         Don&apos;t have an account? <a href="/onboarding" className="text-primary hover:text-primary-container">Get Started</a>

@@ -32,7 +32,21 @@ export async function validateTwilioSignature(
     params[key] = value.toString();
   });
 
-  const isValid = twilio.validateRequest(token, signature, req.url, params);
+  // Twilio signs the PUBLIC URL it called (https://growwmatics.com/...).
+  // Behind the nginx reverse proxy, req.url reflects whatever nginx forwards
+  // internally (typically plain http:// on localhost/127.0.0.1) — comparing
+  // the signature against that reconstructs a different URL than the one
+  // Twilio signed, so validateRequest() always fails here even with a
+  // correct auth token. Rebuild the original public URL from the
+  // X-Forwarded-* headers nginx sets, falling back to https/env if absent.
+  const forwardedProto = req.headers.get('x-forwarded-proto');
+  const forwardedHost = req.headers.get('x-forwarded-host') || req.headers.get('host');
+  const parsed = new URL(req.url);
+  const proto = forwardedProto || (process.env.NODE_ENV === 'production' ? 'https' : parsed.protocol.replace(':', ''));
+  const host = forwardedHost || parsed.host;
+  const publicUrl = `${proto}://${host}${parsed.pathname}${parsed.search}`;
+
+  const isValid = twilio.validateRequest(token, signature, publicUrl, params);
   if (!isValid) {
     return {
       ok: false,

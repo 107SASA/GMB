@@ -5,6 +5,7 @@ import Audit from '@/models/Audit';
 import Business from '@/models/Business';
 import GBPToken from '@/models/GBPToken';
 import { requireClient } from '@/lib/auth';
+import { requireBusinessContext } from '@/lib/tenant';
 import { inngest } from '@/services/inngest/client';
 import { checkUsageLimit, incrementUsage } from '@/lib/featureGating';
 import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
@@ -115,6 +116,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Business Category is required. Enter it in the audit form.' }, { status: 400 });
     }
 
+    // Duplicate-request guard: a double-click, a second browser tab, or a
+    // retry after a slow response could otherwise create two PENDING audits
+    // for the same business — burning the usage quota and the rate limit
+    // twice for one intent. If one's already in flight, hand back that audit
+    // instead of starting another. 5 minutes matches cleanupStalePendingAudits
+    // (services/inngest/functions.ts) — anything older than that is already
+    // considered stale/abandoned by that cron, not "in flight".
+    const inFlight = await Audit.findOne({
+      businessId: business._id,
+      status: 'PENDING',
+      createdAt: { $gte: new Date(Date.now() - 5 * 60 * 1000) },
+    }).sort({ createdAt: -1 });
+    if (inFlight) {
+      return NextResponse.json({ success: true, auditId: inFlight._id }, { status: 200 });
+    }
+
     // Check feature gating limits — set AUDIT_BYPASS_MODE=true in .env.local to skip
     const bypassMode = process.env.AUDIT_BYPASS_MODE === 'true';
     if (!bypassMode) {
@@ -178,14 +195,17 @@ export async function POST(req: Request) {
 
 export async function GET(request: Request) {
   try {
-    const authResult = await requireClient();
-    if (!authResult.ok) return authResult.response;
+    const { searchParams } = new URL(request.url);
+    const ctx = await requireBusinessContext({
+      businessIdFromBody: searchParams.get('businessId') || undefined,
+    });
+    if (!ctx.ok) return ctx.response;
 
     await dbConnect();
-    
-    // Return audits for the active tenant
-    const tenantId = authResult.user.organizationId?.toString() || authResult.userId;
-    const audits = await Audit.find({ tenantId }).sort({ createdAt: -1 });
+
+    // Workspace-scoped, not org-wide — an org member with multiple
+    // businesses must only see the active workspace's audit history.
+    const audits = await Audit.find({ businessId: ctx.businessId }).sort({ createdAt: -1 });
 
     return NextResponse.json(audits);
   } catch (error: any) {

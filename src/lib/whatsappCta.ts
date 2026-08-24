@@ -50,5 +50,27 @@ export function boostProfileLink(message: string = BOOST_PROFILE_MESSAGE): strin
   return `https://wa.me/${SALES_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
 }
 
+/**
+ * Prefilled text for the "get help" CTA — an existing customer reaching out
+ * for product support (mobile app's Help button; a future web equivalent
+ * could reuse this too). Exported as a constant for the same reason as
+ * BOOST_PROFILE_MESSAGE: the webhook's first-touch routing exact-matches
+ * this string to tell a fresh "support" thread apart from "report"/"demo"
+ * (see classifyIntent in api/whatsapp/webhook/route.ts).
+ */
+export const SUPPORT_MESSAGE = "Hi, I need help with my GrowwMatics account";
+
+/**
+ * Builds the "get help" link — same platform WhatsApp number, distinct
+ * prefilled text so first-touch routing can tell it apart from the other
+ * two. Falls back to /contact (no WhatsApp-only assumption here — support
+ * should always have *some* reachable fallback) if the number isn't
+ * configured yet.
+ */
+export function getSupportLink(message: string = SUPPORT_MESSAGE): string {
+  if (!SALES_WHATSAPP_NUMBER) return "/contact";
+  return `https://wa.me/${SALES_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+}
+
 /** True when the CTA opens WhatsApp (vs. the internal fallback form/page). */
 export const bookDemoOpensWhatsApp = SALES_WHATSAPP_NUMBER.length > 0;

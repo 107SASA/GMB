@@ -156,11 +156,23 @@ export default function IntakePage() {
       try {
         const res = await fetch('/api/onboarding/intake');
         const json = await res.json();
+        // GET already tells us whether this workspace finished intake — the
+        // proxy.ts gate only forces new-enough workspaces here on an
+        // incomplete profile, so anyone reaching this URL after already
+        // completing it (stale link, back button) was previously shown the
+        // same form again with a "Save" button that looked unactioned, even
+        // though the dashboard was already unlocked. Bounce them onward
+        // instead of re-prompting for info already saved.
+        if (json.success && json.intakeCompleted) {
+          router.replace('/dashboard');
+          return;
+        }
         if (json.success) setData({ ...EMPTY, ...json.data });
       } catch {
         /* keep defaults */
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const set = <K extends keyof IntakeData>(k: K, v: IntakeData[K]) => setData((p) => ({ ...p, [k]: v }));
@@ -174,11 +186,19 @@ export default function IntakePage() {
     if (data.keywords.length === 0) return setError('Add at least one target keyword — these drive your audits and content.');
 
     setSaving(true);
+    // Without a timeout, a stalled request (dead connection, backend hang)
+    // left `saving` true forever — the button just spun with no way out and
+    // no way for the user to retry. 20s is generous for this endpoint (a
+    // single Business.updateOne, no AI/external calls) while still bounding
+    // the wait.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
     try {
       const res = await fetch('/api/onboarding/intake', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
+        signal: controller.signal,
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) throw new Error(json?.error || 'Could not save. Please try again.');
@@ -190,6 +210,8 @@ export default function IntakePage() {
     } catch (err) {
       setError(friendlyClientMessage(err, 'Could not save.'));
       setSaving(false);
+    } finally {
+      clearTimeout(timeout);
     }
   };
 

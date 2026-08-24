@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Bell, AlertTriangle, MessageSquare, Star, Loader2, CheckCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useBusiness } from "@/context/BusinessContext";
 
 interface NotificationItem {
   _id: string;
@@ -39,6 +40,7 @@ function timeAgo(iso: string): string {
 
 export function NotificationBell() {
   const router = useRouter();
+  const { activeBusiness } = useBusiness();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unread, setUnread] = useState(0);
@@ -59,12 +61,17 @@ export function NotificationBell() {
     }
   }, []);
 
-  // Initial load + refresh every 60s
+  // Initial load + refresh every 60s. Also re-fetch (and clear stale data
+  // immediately) whenever the active workspace changes — the backend scopes
+  // notifications to the active business, so a stale list would otherwise
+  // flash the previous workspace's items until the next 60s tick.
   useEffect(() => {
+    setItems([]);
+    setUnread(0);
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 60000);
     return () => clearInterval(interval);
-  }, [fetchNotifications]);
+  }, [fetchNotifications, activeBusiness?._id]);
 
   // Close on outside click
   useEffect(() => {

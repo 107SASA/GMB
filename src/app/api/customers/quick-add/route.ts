@@ -5,6 +5,7 @@ import { requireBusinessContext } from '@/lib/tenant';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { inngest } from '@/services/inngest/client';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { requirePlaceIdForReviews } from '@/lib/reviewCampaignGuard';
 
 /**
  * Mobile "Add Customer" quick-add: create (or reuse) a Customer from just a
@@ -67,6 +68,14 @@ export async function POST(req: Request) {
       // with /api/campaigns/send's own guard.
       return NextResponse.json(
         { success: true, existing, customer, reviewRequestSent: false, reason: 'No phone number on file.' },
+        { status: 200 }
+      );
+    }
+
+    const placeIdError = await requirePlaceIdForReviews(ctx.businessId);
+    if (placeIdError) {
+      return NextResponse.json(
+        { success: true, existing, customer, reviewRequestSent: false, reason: placeIdError },
         { status: 200 }
       );
     }

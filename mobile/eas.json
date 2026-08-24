@@ -8,7 +8,8 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://localhost:3000"
+        "EXPO_PUBLIC_API_URL": "http://localhost:3000",
+        "EXPO_PUBLIC_WHATSAPP_NUMBER": "919405070323"
       }
     },
     "preview": {
@@ -18,14 +19,16 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://growwmatics.com"
+        "EXPO_PUBLIC_API_URL": "https://growwmatics.com",
+        "EXPO_PUBLIC_WHATSAPP_NUMBER": "919405070323"
       }
     },
     "production": {
       "channel": "production",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://growwmatics.com"
+        "EXPO_PUBLIC_API_URL": "https://growwmatics.com",
+        "EXPO_PUBLIC_WHATSAPP_NUMBER": "919405070323"
       }
     }
   },

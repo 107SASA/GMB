@@ -5,6 +5,7 @@ import Customer from '@/models/Customer';
 import ReviewRequest from '@/models/ReviewRequest';
 import { inngest } from '@/services/inngest/client';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requirePlaceIdForReviews } from '@/lib/reviewCampaignGuard';
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireBusinessContext();
@@ -32,6 +33,11 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
         { success: false, message: 'This campaign has already completed and cannot be relaunched.' },
         { status: 400 }
       );
+    }
+
+    const placeIdError = await requirePlaceIdForReviews(ctx.businessId);
+    if (placeIdError) {
+      return NextResponse.json({ success: false, message: placeIdError }, { status: 400 });
     }
 
     // Eligible customers: not opted out, has a phone (WhatsApp-only), and —

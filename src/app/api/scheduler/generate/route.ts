@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { inngest } from '@/services/inngest/client';
 import { requireBusinessContext } from '@/lib/tenant';
-import { checkRateLimit } from '@/lib/rateLimit';
+import { checkRateLimit, getRateLimitConfig } from '@/lib/rateLimit';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 // Burst guard — each dispatch fans out into an AI content-generation job.
-const RATE_LIMIT = 10;
-const RATE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+// Overridable via SCHEDULER_GENERATE_RATE_LIMIT / SCHEDULER_GENERATE_RATE_WINDOW_MS.
+const { limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS } = getRateLimitConfig('SCHEDULER_GENERATE', 10, 10 * 60 * 1000);
 
 export async function POST(req: Request) {
   try {

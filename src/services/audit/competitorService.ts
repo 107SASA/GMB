@@ -198,6 +198,14 @@ export async function findCompetitors(businessData: BusinessData): Promise<{
   // time could add up to several seconds of pure network latency for no
   // reason). Results are still processed in the original specific→broad
   // order below, so priority/dedup behavior is unchanged.
+  // Track per-query success separately from "returned zero results" — a
+  // thrown request error and a genuinely empty ZERO_RESULTS response both
+  // used to just become `[]` here, indistinguishable by the time
+  // evidenceSource was built below. That meant "Google Places is down/
+  // erroring" and "there really are no competitors nearby" rendered as the
+  // exact same report ("Google Places API: <queries>", 0 competitors) —
+  // silently swallowing the failure instead of surfacing it.
+  let queryErrors = 0;
   const queryResults: any[][] = await Promise.all(
     queries.map(async (query) => {
       try {
@@ -215,14 +223,17 @@ export async function findCompetitors(businessData: BusinessData): Promise<{
 
         if (response.data.status && response.data.status !== 'OK' && response.data.status !== 'ZERO_RESULTS') {
           console.error(`[findCompetitors] Google Places API error: ${response.data.status} — ${response.data.error_message || ''}`);
+          queryErrors += 1;
         }
         return results;
       } catch (error: any) {
         console.error(`[findCompetitors] Error for query "${query}":`, error.message);
+        queryErrors += 1;
         return [];
       }
     }),
   );
+  const allQueriesFailed = queryErrors > 0 && queryErrors === queries.length;
 
   // Collect every deduped candidate first (no early cap here) so relevance
   // filtering below has the full pool to choose from — capping at 10 before
@@ -290,6 +301,8 @@ export async function findCompetitors(businessData: BusinessData): Promise<{
     accepted,
     rejected: [],
     targetTier,
-    evidenceSource: `Google Places API: ${queries.slice(0, 2).join(' | ')}`,
+    evidenceSource: allQueriesFailed
+      ? `Google Places API failed on all ${queries.length} queries — see server logs`
+      : `Google Places API: ${queries.slice(0, 2).join(' | ')}`,
   };
 }

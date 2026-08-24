@@ -114,7 +114,14 @@ const METRIC_CONFIG = [
   { key: 'totalConversations',     label: 'Conversations',    Icon: MessageCircle, color: 'text-primary',  bg: 'bg-primary-fixed',  ring: 'ring-primary',  changeKey: 'conversations'     },
 ] as const;
 
-export default function GBPSection() {
+export default function GBPSection({
+  onConnectionChange,
+}: {
+  /** Lets the dashboard page show a page-level "Connect Profile" CTA without
+   * a second, duplicate fetch of /api/gbp/insights — called once real data
+   * is in (never during the loading flash, and never with a stale guess). */
+  onConnectionChange?: (connected: boolean) => void;
+} = {}) {
   const { activeBusiness } = useBusiness();
   const [data, setData]       = useState<InsightsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -142,6 +149,12 @@ export default function GBPSection() {
     if (!activeBusiness?._id) return;
     fetchInsights();
   }, [fetchInsights, activeBusiness?._id]);
+
+  useEffect(() => {
+    if (loading) return; // don't report the data?.connected ?? false default guess mid-fetch
+    onConnectionChange?.(data?.connected ?? false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, data?.connected]);
 
   const handleRangeChange = (r: GBPRange) => {
     setRange(r);
@@ -206,8 +219,13 @@ export default function GBPSection() {
             ))}
           </div>
 
-          {/* Sync / Connect button */}
-          {connected ? (
+          {/* Sync / Connect button — hidden until the real connection state
+              is known, instead of flashing "Connect Account" for an already-
+              connected business for the instant before data?.connected's
+              `?? false` default resolves to the truth. */}
+          {loading ? (
+            <div className="w-24 h-8 rounded-xl bg-surface-container animate-pulse" />
+          ) : connected ? (
             <button
               onClick={handleSync}
               disabled={syncing}

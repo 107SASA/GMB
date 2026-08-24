@@ -116,7 +116,7 @@ export default async function proxy(request: NextRequest) {
     await dbConnect();
 
     const user = await User.findById(session.userId)
-      .select('role subscriptionPlan isShadowAccount isEmailVerified shadowSource email')
+      .select('role subscriptionPlan isShadowAccount isEmailVerified shadowSource email claimSkipped')
       .lean<{
         role?: string;
         subscriptionPlan?: string;
@@ -124,6 +124,7 @@ export default async function proxy(request: NextRequest) {
         isEmailVerified?: boolean;
         shadowSource?: string;
         email?: string;
+        claimSkipped?: boolean;
       }>();
     if (!user) return NextResponse.next();
     // Owner keeps full access to every workspace (incl. their WhatsApp AI).
@@ -149,7 +150,7 @@ export default async function proxy(request: NextRequest) {
         businessCreatedAt: business.createdAt,
       })
     ) {
-      // Paid + still a shadow account -> must set a real email/password
+      // Paid + still a shadow account -> nudged to set a real email/password
       // before anything else, including intake. Checked as one combined
       // "claim still outstanding" condition (rather than two independent
       // early-return checks) so the intake gate below can never redirect a
@@ -158,17 +159,27 @@ export default async function proxy(request: NextRequest) {
       // (post-2026-07-23) shadow-account workspace landing on /claim got
       // bounced to /intake, which immediately bounced back to /claim
       // (isShadowAccount still true there) — an infinite redirect loop.
+      //
+      // NOT a hard block: gated on !claimSkipped (POST /api/onboarding/claim/skip).
+      // Every shadow account has a phone number by construction (see
+      // provisionShadowAccount) and /api/auth/phone-login already gives it a
+      // durable way back in regardless of email/password state — the
+      // "no way back in" risk this gate was built to prevent doesn't actually
+      // apply once phone+OTP login exists, so this only nudges once and lets
+      // the user dismiss it rather than trapping the dashboard behind it.
       const needsClaim =
-        user.isShadowAccount ||
-        // Claimed (isShadowAccount just flipped false) but the OTP step was
-        // never completed -> the pre-existing session would otherwise let
-        // this straight through, silently defeating the whole point of the
-        // claim step (POST /api/auth/login refuses unverified accounts, so
-        // this person would have no way back in once this session expires).
-        // Scoped to former shadow accounts only via shadowSource, so normal
-        // /onboarding signups (which never get a session before verifying)
-        // are untouched.
-        (!!user.shadowSource && !user.isEmailVerified);
+        !user.claimSkipped &&
+        (
+          user.isShadowAccount ||
+          // Claimed (isShadowAccount just flipped false) but the OTP step was
+          // never completed -> the pre-existing session would otherwise let
+          // this straight through, silently defeating the whole point of the
+          // claim step for anyone relying on POST /api/auth/login (email/password),
+          // which refuses unverified accounts. Scoped to former shadow accounts
+          // only via shadowSource, so normal /onboarding signups (which never
+          // get a session before verifying) are untouched.
+          (!!user.shadowSource && !user.isEmailVerified)
+        );
 
       if (needsClaim) {
         if (isAllowedBeforeClaim(pathname)) return NextResponse.next();

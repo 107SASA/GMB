@@ -16,6 +16,7 @@ import { GROQ_MODEL } from "@/lib/aiModel";
 import twilio from "twilio";
 import mongoose from "mongoose";
 import { sendOutboundMessage } from "@/services/whatsapp/send";
+import { AGENT_SCOPE_GUARDRAIL } from "@/lib/agentGuardrails";
 
 const FALLBACK_MESSAGE = "I'm having a little trouble connecting to my brain right now. Please hold on or call our main line!";
 
@@ -223,9 +224,13 @@ export const processWhatsappMessage = inngest.createFunction(
 
       const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
       const contextBlock = appointmentOutcome?.contextBlock;
+      // AGENT_SCOPE_GUARDRAIL prepended in code — this whole PROMPT/TONE/RULES
+      // string is otherwise 100% business-owner/admin-editable (BusinessAIConfig)
+      // with no other floor underneath it, and this agent talks to real
+      // end-customers of every business on the platform. See agentGuardrails.ts.
       const systemMessage = {
         role: 'system',
-        content: `PROMPT: ${config.systemPrompt}\nTONE: ${config.aiTone}\nRULES: ${config.salesRules}${contextBlock ? `\n\nCUSTOMER CONTEXT (use naturally to personalize your reply, don't just repeat it verbatim):\n${contextBlock}` : ''}`
+        content: `${AGENT_SCOPE_GUARDRAIL}\n\nPROMPT: ${config.systemPrompt}\nTONE: ${config.aiTone}\nRULES: ${config.salesRules}${contextBlock ? `\n\nCUSTOMER CONTEXT (use naturally to personalize your reply, don't just repeat it verbatim):\n${contextBlock}` : ''}`
       };
 
       try {
@@ -765,7 +770,7 @@ async function sendReviewRequest(
   freeTextMsg: string,
   businessId: string,
   vars: { name: string; business: string; placeId: string }
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; sid?: string }> {
   const { sendOutboundMessage: sendViaTwilio, sendTemplateMessage } = await import('@/services/twilio/client');
   const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
 
@@ -914,7 +919,7 @@ export const processReviewCampaign = inngest.createFunction(
         return { sent: false, error: result.error };
       }
 
-      await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { status: 'Sent', sentAt: new Date(), followUpStage: 0 });
+      await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { status: 'Sent', sentAt: new Date(), followUpStage: 0, lastMessageSid: result.sid });
       await Customer.findByIdAndUpdate(customerId, {
         reviewStatus: 'Requested',
         lastMessageAt: new Date(),
@@ -931,11 +936,14 @@ export const processReviewCampaign = inngest.createFunction(
     }
 
     // Reminder gate: no reminder once the customer opted out, clicked the
-    // link, left a review (when stopOnReview), or the campaign was paused.
+    // link, left a review (when stopOnReview), the campaign was paused, or
+    // (via the Twilio status webhook) we've since learned the last message
+    // genuinely failed to deliver — no point re-sending to a dead number.
     const shouldRemind = async () => {
       const req: any = await ReviewRequest.findById(reviewRequest._id).lean();
       const cust: any = await Customer.findById(customerId).lean();
       if (!req || !cust || cust.optedOut || req.clicked) return false;
+      if (req.status === 'Failed') return false;
       if (config.stopOnReview && req.reviewReceived) return false;
       if (campaignId) {
         const camp: any = await Campaign.findById(campaignId).select('status').lean();
@@ -969,7 +977,7 @@ export const processReviewCampaign = inngest.createFunction(
             console.warn(`[reviewCampaign] Reminder 1 failed for request ${reviewRequest._id}: ${result.error}`);
             return;
           }
-          await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { followUpStage: 1 });
+          await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { followUpStage: 1, status: 'Sent', lastMessageSid: result.sid });
           await Customer.findByIdAndUpdate(customerId, { lastMessageAt: new Date(), $inc: { totalMessagesSent: 1 } });
         });
       }
@@ -1000,7 +1008,7 @@ export const processReviewCampaign = inngest.createFunction(
             console.warn(`[reviewCampaign] Final reminder failed for request ${reviewRequest._id}: ${result.error}`);
             return;
           }
-          await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { followUpStage: 2 });
+          await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { followUpStage: 2, status: 'Sent', lastMessageSid: result.sid });
           await Customer.findByIdAndUpdate(customerId, { lastMessageAt: new Date(), $inc: { totalMessagesSent: 1 } });
         });
       }
@@ -1192,7 +1200,7 @@ export const processPublishPostJob = inngest.createFunction(
           type: 'post_published',
           title: 'Post published',
           body: `"${post.title || 'Your post'}" is now live on your Google Business Profile.`,
-          link: '/dashboard/scheduler',
+          link: '/dashboard/content?tab=schedule',
         });
       } catch (e: any) {
         console.error('[notifications] post-published notify failed:', e.message);
@@ -1838,6 +1846,41 @@ export const bookingAgentReply = inngest.createFunction(
         convo.messages.push({ role: 'agent', text: outboundText, at: new Date() });
       }
       await convo.save();
+    });
+
+    return { success: true };
+  }
+);
+
+// 7d. Live inbound support request (existing customer, or a message matching
+// the support keywords/CTA text) → one-shot AI acknowledgment, then a human
+// takes over via WhatsApp/Twilio/Meta Business Suite directly — see
+// SupportConversation's own doc comment for why this isn't a multi-turn
+// agent like sales/booking. No enabled/disabled config for this one (no
+// admin page), so there's no AGENT_DISABLED_FALLBACK_MESSAGE branch here —
+// composeSupportReply already falls back to a static message internally on
+// any AI failure.
+export const supportAgentReply = inngest.createFunction(
+  { id: 'support-agent-reply', retries: 2, triggers: [{ event: 'support/agent.reply' }] },
+  async ({ event, step }) => {
+    const { conversationId } = event.data;
+
+    await step.run('reply', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: SupportConversation } = await import('@/models/SupportConversation');
+      const { composeSupportReply } = await import('@/services/support/supportAgent');
+      const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+
+      const convo: any = await SupportConversation.findById(conversationId);
+      if (!convo || convo.status !== 'active') return;
+
+      const reply = await composeSupportReply(convo);
+      const res = await sendOutboundMessage(convo.leadPhone, reply, undefined);
+      if (res.success) {
+        convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+        await convo.save();
+      }
     });
 
     return { success: true };
@@ -2701,7 +2744,16 @@ export const cleanupAbandonedSignups = inngest.createFunction(
     await dbConnect();
 
     const now = Date.now();
-    const UNVERIFIED_AFTER = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    // Was 7 days keyed on isEmailVerified — but email verification is dead
+    // for phone-OTP accounts (see User.ts: isPhoneVerified is the real gate,
+    // isEmailVerified stays false forever for every phone-only signup,
+    // verified or not). That meant this branch matched EVERY free-tier
+    // phone-OTP account older than 7 days regardless of verification status,
+    // relying entirely on the paid/hasAudit guards below to save real users.
+    // Fixed to key off isPhoneVerified, and shortened to 24h since its actual
+    // job is just freeing up a squatted phone number from a truly-abandoned
+    // signup, not a broader inactivity sweep.
+    const UNVERIFIED_AFTER = new Date(now - 24 * 60 * 60 * 1000);
     const NO_AUDIT_AFTER = new Date(now - 30 * 24 * 60 * 60 * 1000);
 
     const candidates = await step.run("find-abandoned", async () => {
@@ -2711,13 +2763,17 @@ export const cleanupAbandonedSignups = inngest.createFunction(
       };
 
       const unverified = await User.find(
-        { ...base, isEmailVerified: false, createdAt: { $lt: UNVERIFIED_AFTER } },
+        { ...base, isPhoneVerified: false, createdAt: { $lt: UNVERIFIED_AFTER } },
         { _id: 1, email: 1 }
       ).lean();
 
       const neverAudited = await User.find(
         {
           ...base,
+          // NOTE: kept as isEmailVerified (not isPhoneVerified) on purpose —
+          // out of scope for this fix. This branch is effectively dead code
+          // for phone-OTP accounts (isEmailVerified never becomes true for
+          // them), which is inert rather than dangerous, so it's left as-is.
           isEmailVerified: true,
           "freemiumAuditGate.auditUsed": { $ne: true },
           createdAt: { $lt: NO_AUDIT_AFTER },

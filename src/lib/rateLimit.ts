@@ -73,3 +73,28 @@ export function getClientIp(req: Request): string {
   if (xff) return xff.split(',')[0].trim();
   return req.headers.get('x-real-ip') || 'unknown';
 }
+
+/**
+ * Reads a burst-guard limit/window pair from env vars, falling back to the
+ * caller's hardcoded defaults — so ops can tune a route's rate limit without
+ * a code change/redeploy, without touching checkRateLimit's storage at all.
+ * Invalid/non-positive env values fall back to the default rather than
+ * silently disabling the limit (e.g. a blank or "0" env var).
+ *
+ * @param envPrefix   e.g. "CONTENT_GENERATE" reads CONTENT_GENERATE_RATE_LIMIT
+ *                    and CONTENT_GENERATE_RATE_WINDOW_MS
+ */
+export function getRateLimitConfig(
+  envPrefix: string,
+  defaultLimit: number,
+  defaultWindowMs: number
+): { limit: number; windowMs: number } {
+  const parsePositiveInt = (raw: string | undefined, fallback: number): number => {
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
+  return {
+    limit: parsePositiveInt(process.env[`${envPrefix}_RATE_LIMIT`], defaultLimit),
+    windowMs: parsePositiveInt(process.env[`${envPrefix}_RATE_WINDOW_MS`], defaultWindowMs),
+  };
+}

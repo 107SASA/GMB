@@ -258,6 +258,12 @@ export default function AuditReportGrexa({
   const completion    = data.profileCompletion;
   const completionPct = completion?.completionPercentage ?? 0;
   const checklist     = (completion?.checklist ?? []) as IChecklistItem[];
+  // Unknown fields (need a live Google connection to check — see
+  // seoAnalyzer.ts's calculateProfileCompletion) are excluded from the ratio
+  // itself on purpose, but that means this percentage is "of what we could
+  // verify," not "of everything" — surfaced so a high number pre-connection
+  // isn't read as a fully complete profile.
+  const unverifiedCount = completion?.unknownCount ?? 0;
 
   // Prefer SerpApi local-pack competitors (have real avgRank). Fall back to
   // Places competitors — including ones without a rank (show "—").
@@ -302,6 +308,17 @@ export default function AuditReportGrexa({
   const servicesOk     = servicesItem?.status === 'Complete';
   const categoriesOk   = !(categoriesItem?.status === 'Missing' || categoriesItem?.status === 'Unknown');
   const evidence: Record<string, any> = (data as any).evidence ?? {};
+  // Turns competitorService.ts's internal diagnostic strings (never meant
+  // for direct display — see its evidenceSource comments) into a specific,
+  // user-facing reason instead of the same generic "No competitor data
+  // available" for every cause (missing config, no location, an API outage,
+  // or genuinely zero nearby competitors all used to render identically).
+  const competitorEvidence: string = evidence.competitors || '';
+  const competitorEmptyReason: string = /No GOOGLE_MAPS_API_KEY|No location data/.test(competitorEvidence)
+    ? "We don't have enough location data on file yet to search for nearby competitors — add a city/area in your business profile and re-run the audit."
+    : /failed on all .* queries/.test(competitorEvidence)
+    ? "We couldn't reach Google's competitor data just now — try regenerating this audit in a few minutes."
+    : 'No directly comparable competitors were found nearby for your category.';
   const servicesCnt    = evidence.servicesCount    ?? null;
   const categoriesCnt  = evidence.categoriesCount  ?? null;
 
@@ -555,8 +572,8 @@ export default function AuditReportGrexa({
                   </tbody>
                 </table>
               ) : (
-                <div className="py-6 text-center text-sm text-outline bg-surface rounded-xl border border-outline-variant">
-                  No competitor data available
+                <div className="py-6 text-center text-sm text-outline bg-surface rounded-xl border border-outline-variant px-4">
+                  {competitorEmptyReason}
                 </div>
               )}
             </div>
@@ -734,6 +751,11 @@ export default function AuditReportGrexa({
                 style={{ width: `${completionPct}%`, background: completionPct >= 90 ? '#0a8a3e' : completionPct >= 70 ? '#fab219' : '#ba1a1a' }}
               />
             </div>
+            {unverifiedCount > 0 && (
+              <p className="mt-2 text-xs text-on-surface-variant max-w-sm">
+                {completionPct}% of what we can verify right now — {unverifiedCount} more field{unverifiedCount === 1 ? '' : 's'} need{unverifiedCount === 1 ? 's' : ''} a live Google connection to check.
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-4 text-[11px] text-on-surface-variant flex-wrap">
             <span className="text-outline font-medium">Should be 100%</span>

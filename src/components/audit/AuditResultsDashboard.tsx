@@ -10,9 +10,26 @@ import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 /* ─── Main dashboard ──────────────────────────────────────── */
 
+// Generation is a real async pipeline (Inngest job, ~15-30s typical): review
+// sync, then geo-grid rank + competitor discovery, then profile/SEO scoring,
+// then the AI narrative call, then save. There's no per-step progress written
+// to the DB, so these stages are elapsed-time-based rather than polled from
+// the backend — but they mirror the pipeline's real order, and the 3s status
+// poll below (not this timer) is what actually decides when to stop showing
+// them, so it can never claim "done" before the backend says so.
+const PROGRESS_STAGES = [
+  { atSeconds: 0,  label: 'Starting audit…' },
+  { atSeconds: 3,  label: 'Analyzing your Business Profile…' },
+  { atSeconds: 8,  label: 'Checking SEO signals…' },
+  { atSeconds: 14, label: 'Analyzing competitors nearby…' },
+  { atSeconds: 20, label: 'Generating your report…' },
+  { atSeconds: 27, label: 'Finalizing results…' },
+];
+
 export default function AuditResultsDashboard({ auditId }: { auditId: string }) {
   const [audit, setAudit] = useState<IAudit | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [downloading, setDownloading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [shareUrl, setShareUrl]   = useState<string | null>(null);
@@ -58,6 +75,15 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
     interval = setInterval(fetchAudit, 3000);
     return () => clearInterval(interval);
   }, [auditId]);
+
+  // Drives the staged progress label while PENDING — separate from the poll
+  // above so the messages advance smoothly every second instead of jumping
+  // only on 3s ticks.
+  useEffect(() => {
+    if (audit && audit.status !== 'PENDING') return;
+    const tick = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+    return () => clearInterval(tick);
+  }, [audit?.status]);
 
   async function handleResync() {
     if (!audit || isSyncing) return;
@@ -124,7 +150,7 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
     }
   }
 
-  /* Loading */
+  /* Loading / failure states */
   if (error) return (
     <div className="max-w-xl mx-auto mt-20 text-center bg-error-container border border-error-container rounded-2xl p-10">
       <AlertCircle className="w-12 h-12 text-error mx-auto mb-4" />
@@ -132,18 +158,37 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
       <p className="text-error">{error}</p>
     </div>
   );
-  if (!audit || audit.status === 'PENDING') return (
-    <div className="max-w-xl mx-auto mt-20 flex flex-col items-center gap-6 text-center">
-      <div className="w-16 h-16 border-4 border-primary-fixed-dim border-t-primary rounded-full animate-spin" />
-      <div>
-        <h2 className="text-2xl font-bold text-on-surface mb-2">Analyzing your Business Profile…</h2>
-        <p className="text-on-surface-variant">
-          Fetching local data and analyzing with AI.<br />
-          <small className="text-outline">This usually takes 15–30 seconds.</small>
-        </p>
-      </div>
+  // Was previously unhandled — a FAILED audit fell through to the normal
+  // render below with an empty auditData, showing a blank/zeroed report
+  // instead of telling the user anything went wrong.
+  if (audit && audit.status === 'FAILED') return (
+    <div className="max-w-xl mx-auto mt-20 text-center bg-error-container border border-error-container rounded-2xl p-10">
+      <AlertCircle className="w-12 h-12 text-error mx-auto mb-4" />
+      <h2 className="text-xl font-bold text-on-error-container mb-2">Audit Failed</h2>
+      {/* audit.metadata.error is the raw backend exception message (logged
+          server-side by auditService.ts) — never rendered to the user, same
+          reasoning as friendlyMessage.ts on the server side. */}
+      <p className="text-error">
+        We couldn&apos;t finish generating this report. Please try running a new audit — if this keeps
+        happening, contact support.
+      </p>
     </div>
   );
+  if (!audit || audit.status === 'PENDING') {
+    const stage = [...PROGRESS_STAGES].reverse().find((s) => elapsedSeconds >= s.atSeconds) ?? PROGRESS_STAGES[0];
+    return (
+      <div className="max-w-xl mx-auto mt-20 flex flex-col items-center gap-6 text-center">
+        <div className="w-16 h-16 border-4 border-primary-fixed-dim border-t-primary rounded-full animate-spin" />
+        <div>
+          <h2 className="text-2xl font-bold text-on-surface mb-2">{stage.label}</h2>
+          <p className="text-on-surface-variant">
+            Fetching local data and analyzing with AI.<br />
+            <small className="text-outline">This usually takes 15–30 seconds.</small>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const data = audit.auditData || {} as any;
 

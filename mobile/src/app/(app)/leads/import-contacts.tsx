@@ -1,6 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import * as Contacts from 'expo-contacts';
+// SDK 57: `import * as Contacts` + Contacts.getContactsAsync()/Contacts.Fields/
+// Contacts.PermissionStatus is the OLD, now-deprecated surface —
+// getContactsAsync throws at runtime if called (confirmed against this
+// version's actual installed type defs, node_modules/expo-contacts/build/
+// ContactsModule.d.ts — this was exactly the "could not fetch contacts"
+// bug, same root cause as contact-picker-modal.tsx). requestPermissionsAsync
+// is now a top-level named export (not on a `Contacts` namespace object —
+// that name doesn't exist in this package's exports at all);
+// Contact.getAllDetails() replaces getContactsAsync(); permission status is
+// a plain string ('granted'), not the old enum.
+import { Contact, ContactField, requestPermissionsAsync } from 'expo-contacts';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Linking, Pressable, Text, View } from 'react-native';
@@ -19,7 +29,7 @@ const MAX_SELECTION = 200; // matches the bulk-import API cap
 
 type PickerContact = { key: string; name: string; phone: string };
 
-type PermissionState = 'pending' | 'granted' | 'denied' | 'declined-consent';
+type PermissionState = 'pending' | 'granted' | 'denied' | 'declined-consent' | 'error';
 
 /**
  * Store-policy notes (Play "User Data" / App Store 5.1.1):
@@ -46,34 +56,51 @@ export default function ImportContactsScreen() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      if (!(await ensureConsent())) {
+      // Was unguarded — any failure here (ensureConsent, the permission
+      // request, or getContactsAsync itself throwing — e.g. a native/
+      // provider error, not just a permission denial) surfaced as an
+      // unhandled promise rejection: a hard crash instead of a graceful
+      // fallback, and `loading` stuck true forever if it didn't crash the
+      // app outright (see the same fix in contact-picker-modal.tsx).
+      try {
+        if (!(await ensureConsent())) {
+          if (!cancelled) {
+            setPermission('declined-consent');
+            setLoading(false);
+          }
+          return;
+        }
+        const perm = await requestPermissionsAsync();
+        if (cancelled) return;
+        if (perm.status !== 'granted') {
+          setPermission('denied');
+          setLoading(false);
+          return;
+        }
+        setPermission('granted');
+        // limit is required here (unlike the old getContactsAsync, this
+        // doesn't implicitly return "everything") — set generously high
+        // since this screen searches the full list, not just a first page.
+        const data = await Contact.getAllDetails([ContactField.FULL_NAME, ContactField.PHONES], {
+          limit: 10000,
+        });
+        if (cancelled) return;
+        const rows: PickerContact[] = [];
+        for (const c of data) {
+          const phone = parsePhoneCandidate(c.phones?.[0]?.number);
+          if (!phone || !c.fullName) continue;
+          rows.push({ key: c.id ?? `${c.fullName}-${phone}`, name: c.fullName, phone });
+        }
+        rows.sort((a, b) => a.name.localeCompare(b.name));
+        setContacts(rows);
+        setLoading(false);
+      } catch (err) {
+        console.warn('[ImportContactsScreen] failed to load contacts:', err);
         if (!cancelled) {
-          setPermission('declined-consent');
+          setPermission('error');
           setLoading(false);
         }
-        return;
       }
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (cancelled) return;
-      if (status !== Contacts.PermissionStatus.GRANTED) {
-        setPermission('denied');
-        setLoading(false);
-        return;
-      }
-      setPermission('granted');
-      const { data } = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.PhoneNumbers],
-      });
-      if (cancelled) return;
-      const rows: PickerContact[] = [];
-      for (const c of data) {
-        const phone = parsePhoneCandidate(c.phoneNumbers?.[0]?.number);
-        if (!phone || !c.name) continue;
-        rows.push({ key: c.id ?? `${c.name}-${phone}`, name: c.name, phone });
-      }
-      rows.sort((a, b) => a.name.localeCompare(b.name));
-      setContacts(rows);
-      setLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -143,6 +170,11 @@ export default function ImportContactsScreen() {
         <EmptyState
           title="Import cancelled"
           hint="Contacts are only imported after you agree to save selected entries to your CRM."
+        />
+      ) : permission === 'error' ? (
+        <EmptyState
+          title="Couldn't load contacts"
+          hint="Something went wrong reading your contacts. Please try again."
         />
       ) : permission === 'denied' ? (
         <EmptyState

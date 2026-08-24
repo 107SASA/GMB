@@ -1,44 +1,25 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
-import { ErrorText, Field, PrimaryButton, Screen, SegmentedControl } from '@/components/ui';
+import { ErrorText, Field, PrimaryButton, Screen } from '@/components/ui';
 import { BRAND_GRADIENT } from '@/lib/theme';
 
-type Method = 'email' | 'phone';
 type PhoneStep = 'enter-phone' | 'enter-otp';
 
+// Phone + WhatsApp OTP is the only login method — matches the web app's
+// /login exactly (Aug 2026: web dropped email/password from its
+// customer-facing login the same way). This used to also offer an Email tab
+// (a SegmentedControl toggle, defaulting to Email) — removed per that same
+// decision. The backend's email/password endpoint (AuthContext's `login`)
+// is untouched and still used elsewhere (e.g. admin login on the website) —
+// this only removes the customer-facing mobile UI for it.
 export default function LoginScreen() {
-  const router = useRouter();
-  const { login, requestPhoneOtp, loginWithPhone } = useAuth();
-  const [method, setMethod] = useState<Method>('email');
+  const { requestPhoneOtp, loginWithPhone } = useAuth();
 
-  // ── Email + password ────────────────────────────────────────────────────
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const canSubmit = email.trim().length > 0 && password.length > 0;
-
-  async function handleSubmit() {
-    if (!canSubmit || submitting) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await login(email.trim(), password);
-      // Success: (auth)/_layout redirects to the tabs once isAuthenticated flips.
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Login failed. Please try again.'));
-      setSubmitting(false);
-    }
-  }
-
-  // ── Phone + WhatsApp OTP ────────────────────────────────────────────────
   const [phoneStep, setPhoneStep] = useState<PhoneStep>('enter-phone');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -67,19 +48,11 @@ export default function LoginScreen() {
     setPhoneError(null);
     try {
       await loginWithPhone(phone.trim(), otp);
-      // Success: (auth)/_layout redirects to the tabs, same as email login.
+      // Success: (auth)/_layout redirects to the tabs once isAuthenticated flips.
     } catch (err) {
       setPhoneError(getApiErrorMessage(err, 'Incorrect or expired code.'));
       setPhoneSubmitting(false);
     }
-  }
-
-  function switchMethod(m: Method) {
-    setMethod(m);
-    setError(null);
-    setPhoneError(null);
-    setPhoneStep('enter-phone');
-    setOtp('');
   }
 
   return (
@@ -118,58 +91,10 @@ export default function LoginScreen() {
             </View>
           </View>
 
-          <SegmentedControl
-            segments={[
-              { id: 'email', label: 'Email' },
-              { id: 'phone', label: 'Phone (WhatsApp)' },
-            ]}
-            value={method}
-            onChange={switchMethod}
-          />
-
-          {method === 'email' ? (
+          {phoneStep === 'enter-phone' ? (
             <View className="gap-4 px-5">
               <Field
-                placeholder="Email"
-                autoCapitalize="none"
-                autoComplete="email"
-                keyboardType="email-address"
-                value={email}
-                onChangeText={setEmail}
-                editable={!submitting}
-              />
-              <Field
-                placeholder="Password"
-                secureTextEntry
-                autoComplete="password"
-                value={password}
-                onChangeText={setPassword}
-                editable={!submitting}
-                onSubmitEditing={handleSubmit}
-                returnKeyType="go"
-              />
-              <ErrorText>{error}</ErrorText>
-              <PrimaryButton
-                title="Sign in"
-                onPress={handleSubmit}
-                loading={submitting}
-                disabled={!canSubmit}
-              />
-              <Pressable
-                onPress={() => router.push('/forgot-password')}
-                disabled={submitting}
-                // No `className` on this Pressable — see ui.tsx PrimaryButton:
-                // react-native-css-interop can swallow onPress on styled
-                // Pressables (confirmed by direct device testing).
-                style={{ alignItems: 'center', paddingVertical: 4 }}
-              >
-                <Text className="font-sans-semibold text-sm text-brand-bright">Forgot password?</Text>
-              </Pressable>
-            </View>
-          ) : phoneStep === 'enter-phone' ? (
-            <View className="gap-4 px-5">
-              <Field
-                placeholder="+14155550100"
+                placeholder="+919876543210"
                 autoCapitalize="none"
                 autoComplete="tel"
                 keyboardType="phone-pad"

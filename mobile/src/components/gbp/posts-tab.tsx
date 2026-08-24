@@ -190,11 +190,16 @@ export function PostsTab() {
             <Text className="mb-4 text-center font-sans text-sm text-zinc-500">
               Write one yourself, or let AI generate a week of content.
             </Text>
-            <PrimaryButton
-              title={generate.isPending ? 'Generating…' : 'Generate Posts'}
-              onPress={() => generate.mutate()}
-              loading={generate.isPending}
-            />
+            {/* Full-width — this card is items-center, which otherwise
+                shrink-wraps PrimaryButton to its own content width instead
+                of reading as the card's main CTA. */}
+            <View className="w-full">
+              <PrimaryButton
+                title={generate.isPending ? 'Generating…' : 'Generate Posts'}
+                onPress={() => generate.mutate()}
+                loading={generate.isPending}
+              />
+            </View>
           </View>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="pr-1">

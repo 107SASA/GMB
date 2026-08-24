@@ -96,11 +96,24 @@ export function AppTabBar({ state, descriptors, navigation, insets }: BottomTabB
               />
             </View>
             <Text
+              // numberOfLines + adjustsFontSizeToFit — without these, this
+              // Text had no width constraint of its own (RN's default
+              // behavior wraps overflowing text rather than shrinking it),
+              // so on narrower phones the longest label ("Performance")
+              // could overflow its flex:1 tab slot and wrap its last
+              // character onto a second line. Shrinks to fit instead of
+              // wrapping, on any screen width — not a fix specific to one
+              // label.
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
               style={{
                 fontSize: 11,
                 fontFamily: 'Inter_700Bold',
                 letterSpacing: 0.5,
                 color: focused ? ACTIVE_TINT[scheme] : t.textFaint,
+                textAlign: 'center',
+                maxWidth: '100%',
               }}
             >
               {label}

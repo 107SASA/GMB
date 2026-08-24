@@ -909,16 +909,24 @@ export function calculateNativeSeoScore(business: any, profileCompletion: IProfi
     else opps.push(opp);
   };
 
-  add(!!business.description && business.description.length > 100, 25, 'Expand Business Description to 100+ characters');
-  add(!!business.category || !!business.userDefinedCategory,        20, 'Set a Primary Category');
+  // Title Present was a real gap: word-count/self-praise/keyword-in-title
+  // checks (analyzeTitleSeo, below) were always unweighted findings, but a
+  // completely missing business name earned/lost nothing either — a blank
+  // title could still score 100. Weights rebalanced (still sum to 100) to
+  // make room for it rather than just bolting 15 more points onto the top.
+  const name = String(business.name || business.businessName || '').trim();
+  add(!!name,                                                        15, 'Add a Business Name/Title — this is required for any SEO visibility');
+  add(!!business.description && business.description.length > 100, 20, 'Expand Business Description to 100+ characters');
+  add(!!business.category || !!business.userDefinedCategory,        15, 'Set a Primary Category');
   add(!!business.keywords && business.keywords.length > 0,          15, 'Add Keywords / Additional Categories');
-  add(!!business.services && business.services.length > 0,          15, 'Populate Service Catalog');
+  add(!!business.services && business.services.length > 0,          10, 'Populate Service Catalog');
   add(!!business.website,                                            15, 'Link a Website for local authority');
   add(profileCompletion.completionPercentage >= 80,                  10, 'Improve overall Profile Completion to >80%');
 
-  // Title checks don't earn/lose score points (word count and self-praise
-  // language aren't in the weighted rubric above) — they're surfaced
-  // alongside the other opportunities purely as findings.
+  // Word-count/self-praise/keyword-in-title checks stay unweighted findings
+  // (title *presence* is scored above; title *quality* is advisory, same as
+  // before) — analyzeTitleSeo() already no-ops when name is empty, so this
+  // never double-reports the missing-title case handled by add() above.
   opps.push(...analyzeTitleSeo(business));
 
   return {

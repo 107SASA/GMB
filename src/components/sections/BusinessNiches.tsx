@@ -7,8 +7,10 @@ import { BookDemoButton } from "@/components/shared/BookDemoButton";
  * Restructured (Aug 2026) from a static 4-column card grid into a
  * continuously auto-scrolling marquee strip — a distinct, more dynamic
  * composition rather than another stacked card grid matching the rest of
- * the page. Pauses on hover/focus; disabled entirely under
- * prefers-reduced-motion (see .mkt-marquee-track in globals.css).
+ * the page. Pauses on hover/focus. Deliberately does NOT stop under
+ * prefers-reduced-motion (see .mkt-marquee-track in globals.css) — the one
+ * exception on this site, by explicit user request, since it's purely
+ * decorative.
  */
 
 const NICHES = [

@@ -262,7 +262,7 @@ export function Navbar() {
               <Link
                 href={isLoggedIn ? '/dashboard' : '/login'}
                 onClick={() => setMobileMenuOpen(false)}
-                className="text-base font-medium text-[#3d4a3d] hover:text-[#006e2c] min-h-[48px] flex items-center"
+                className="w-full justify-center px-6 py-3.5 rounded-md border border-(--mkt-line) text-[#101613] font-semibold text-base flex items-center min-h-[48px] hover:border-[#006e2c] hover:text-[#006e2c] transition-colors"
               >
                 {isLoggedIn ? 'Dashboard' : 'Login'}
               </Link>

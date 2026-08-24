@@ -103,13 +103,48 @@
  */
 .theme-marketing {
   overflow-x: clip;
-  /* Clearance for Grexa-style full-width GBP sticky bar (~97px + safe area) */
+  /* Clearance for the mobile-only full-width GBP sticky bar (~97px + safe
+     area). Desktop (sm+) now shows a small collapsed launcher pill instead
+     of a full-width bar (Aug 2026 GbpBoosterPromo redesign) and doesn't
+     need this reserved space — see the sm: override below, which used to
+     make this *larger* for a bar that no longer exists at that width and
+     was leaving a visible empty band below the footer on every page. */
   padding-bottom: calc(6.75rem + env(safe-area-inset-bottom, 0px));
+
+  /*
+   * "Data-Forward Command Center" redesign tokens (Aug 2026). Scoped to
+   * .theme-marketing only — dashboard/admin/auth read --color-primary etc.
+   * from the unscoped @theme block above and must NOT shift when the
+   * marketing site's visual system changes. See layout.tsx for why the
+   * fonts these reference are separate variables from --font-heading.
+   */
+  --mkt-display: var(--font-space-grotesk), var(--font-heading);
+  --mkt-mono: var(--font-jetbrains-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* Ink surface — the dark "command center" panel background used in the
+     hero engine panel and closing CTA. Slight green undertone, not a flat
+     black, so it stays inside the brand rather than reading as generic dark
+     mode. */
+  --mkt-ink: #0a120e;
+  --mkt-ink-elevated: #101c15;
+  --mkt-ink-border: #1f3226;
+  --mkt-ink-text: #eafbf1;
+  --mkt-ink-text-dim: #93ab9d;
+
+  /* Hairline border for light-surface systematic cards (replaces the
+     heavier #e0e3e1 borders used elsewhere in the product). */
+  --mkt-line: #dde5e0;
+
+  /* Page canvas tint — deliberately visible sage rather than near-white
+     (#f7faf8 read as plain white at normal viewing distance/zoom). Also
+     makes white cards (niche chips, report-preview card, FAQ accordion)
+     pop against the canvas instead of blending into it. */
+  --mkt-surface: #eaf3ee;
 }
 
 @media (min-width: 640px) {
   .theme-marketing {
-    padding-bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 
@@ -125,6 +160,56 @@
   .theme-marketing select,
   .theme-marketing textarea {
     font-size: inherit;
+  }
+}
+
+/* Marketing redesign type + surface utilities */
+.theme-marketing .font-mkt-display {
+  font-family: var(--mkt-display);
+}
+
+.theme-marketing .font-mkt-mono {
+  font-family: var(--mkt-mono);
+}
+
+/* Uppercase mono micro-label — section eyebrows, badges, data-panel field
+   labels. The one recurring "systematic" tell of this design language. */
+.theme-marketing .mkt-label {
+  font-family: var(--mkt-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Ink panel — dark command-center surface (hero engine panel, closing CTA).
+   Faint fixed-position grid line texture, not a glow/blob. */
+.theme-marketing .mkt-ink-panel {
+  background-color: var(--mkt-ink);
+  background-image:
+    linear-gradient(rgba(234, 251, 241, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(234, 251, 241, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+  color: var(--mkt-ink-text);
+}
+
+/* Business-niches marquee — continuous auto-scroll strip, replaces the old
+   static 4-column card grid. Track renders its chip list twice back to
+   back; animating exactly -50% loops seamlessly regardless of chip count/
+   width, no JS measurement needed. */
+@keyframes mkt-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.theme-marketing .mkt-marquee-track {
+  animation: mkt-marquee 36s linear infinite;
+}
+.theme-marketing .mkt-marquee-track:hover {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-marketing .mkt-marquee-track {
+    animation: none;
   }
 }
 

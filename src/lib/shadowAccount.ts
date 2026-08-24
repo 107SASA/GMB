@@ -118,6 +118,10 @@ export async function provisionShadowAccount(
   let user = await User.findOne({ phone: normalizedPhone });
   let organization: any = null;
   let business: any = null;
+  // Set inside the `if (user)` branch below; stays false for a brand-new
+  // user (nothing "established" yet — the create-from-scratch branch always
+  // needs to set activeBusinessId, same as before).
+  let isEstablishedAccount = false;
 
   if (user) {
     // A returning phone number doesn't always mean the same business — an
@@ -139,18 +143,28 @@ export async function provisionShadowAccount(
     // before its real owner claims it. Reusing an unclaimed, never-paid
     // shadow account is fine (nothing of value to steal) and is what makes
     // "recognize a returning visitor" work safely.
-    if (!input.phoneVerified && !isQaTestingMode()) {
-      const isClaimed = !user.isShadowAccount;
-      const hasUnclaimedPaidWorkspace = candidates.some((c: any) =>
+    // Same "claimed, or already has a paid workspace" check the security
+    // guard below uses — also drives whether this call is allowed to move
+    // the user's activeBusinessId. An established account's active dashboard
+    // workspace must never be silently swapped out just because their phone
+    // number showed up on another report request (see the activeBusinessId
+    // reassignment bug this replaced: a claimed/paid user's dashboard kept
+    // jumping to whatever business was most recently free-reported — through
+    // the WhatsApp report agent's phoneVerified:true path in production, or
+    // through the QA_TESTING_MODE bypass below in local testing — landing
+    // them back on an unconfigured workspace's subscription/intake gate).
+    isEstablishedAccount =
+      !user.isShadowAccount ||
+      candidates.some((c: any) =>
         isWorkspaceUnlocked({
           subscriptionStatus: c.subscriptionStatus,
           userSubscriptionPlan: user.subscriptionPlan,
           businessCreatedAt: c.createdAt,
         }),
       );
-      if (isClaimed || hasUnclaimedPaidWorkspace) {
-        throw new Error(CLAIMED_OR_PAID_REUSE_ERROR);
-      }
+
+    if (!input.phoneVerified && !isQaTestingMode() && isEstablishedAccount) {
+      throw new Error(CLAIMED_OR_PAID_REUSE_ERROR);
     }
 
     if (user.organizationId) organization = await Organization.findById(user.organizationId);
@@ -162,7 +176,13 @@ export async function provisionShadowAccount(
       return !c.googlePlaceId && c.name?.trim().toLowerCase() === incomingName;
     }) || null;
 
-    if (business) {
+    // Only move the user's active workspace for a still-unestablished shadow
+    // account (the "recognize a returning visitor" case this was built for).
+    // An established account keeps its current activeBusinessId regardless —
+    // the caller (free-report, WhatsApp report agent) already returns the
+    // resolved `business` directly and doesn't need the cookie/session to
+    // point at it.
+    if (business && !isEstablishedAccount) {
       await User.findByIdAndUpdate(user._id, { $set: { activeBusinessId: business._id } });
       user.activeBusinessId = business._id;
     }
@@ -233,12 +253,18 @@ export async function provisionShadowAccount(
       onboardingCompleted: false,
     });
 
+    // Same rule as the reuse branch above: an established account gets this
+    // new business linked (businessIds) so it's reachable from the workspace
+    // switcher, but doesn't get silently switched onto it as the active one.
     await User.findByIdAndUpdate(user._id, {
-      $set: { organizationId: organization._id, activeBusinessId: business._id },
+      $set: {
+        organizationId: organization._id,
+        ...(isEstablishedAccount ? {} : { activeBusinessId: business._id }),
+      },
       $addToSet: { businessIds: business._id },
     });
     user.organizationId = organization._id;
-    user.activeBusinessId = business._id;
+    if (!isEstablishedAccount) user.activeBusinessId = business._id;
 
     // Mirrors the freemium module entitlement a real new signup gets (see
     // /api/onboarding) so usage gating behaves the same for a shadow account.
@@ -256,8 +282,14 @@ export async function provisionShadowAccount(
   // Real session, same as a normal login/signup — this is what makes
   // requireClient()/requireBusinessContext() succeed transparently below.
   await createSession(user._id.toString(), user.role);
+  // Cookie must agree with whatever we decided user.activeBusinessId is
+  // above — an established account keeps pointing at ITS existing active
+  // workspace (falling back to the new `business` only in the unexpected
+  // case it somehow has none yet), never at the just-resolved `business`.
+  const cookieBusinessId =
+    isEstablishedAccount && user.activeBusinessId ? user.activeBusinessId.toString() : business._id.toString();
   const cookieStore = await cookies();
-  cookieStore.set('activeBusinessId', business._id.toString(), {
+  cookieStore.set('activeBusinessId', cookieBusinessId, {
     path: '/',
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

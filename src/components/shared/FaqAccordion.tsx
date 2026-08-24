@@ -36,7 +36,7 @@ export function FaqAccordion({
             className="w-full p-6 flex items-center justify-between text-left hover:bg-surface-container-low transition-colors text-on-surface"
             aria-expanded={openIndex === idx}
           >
-            <span className="font-heading font-bold pr-4">{faq.question}</span>
+            <span className="font-mkt-display font-semibold pr-4">{faq.question}</span>
             {openIndex === idx ? (
               <MaterialIcon name="remove" size={24} className="text-primary shrink-0" />
             ) : (

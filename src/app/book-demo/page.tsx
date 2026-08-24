@@ -10,11 +10,13 @@ import { BusinessAutocomplete, type SelectedBusiness } from '@/components/shared
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { bookDemoLink, bookDemoOpensWhatsApp } from '@/lib/whatsappCta';
 
-const BENEFITS = [
-  { title: 'Rank #1 on Google', copy: 'More calls & walk-ins from local search' },
-  { title: 'Never miss a lead', copy: 'AI replies to every WhatsApp message instantly' },
-  { title: 'Close more sales', copy: 'Qualify leads and book appointments automatically' },
-  { title: 'Bring customers back', copy: 'Auto-scheduled content and repeat booking prompts' },
+// "On this call" agenda — replaces the old plain checkmark benefit list
+// with the same coded ink-panel device used on Free Report, so the two
+// lead-gen forms share one visual language (Aug 2026 redesign).
+const AGENDA = [
+  { title: 'Your profile score', detail: 'See exactly where your Google Business Profile stands today' },
+  { title: 'Live agent demo', detail: 'Watch the AI post, reply to reviews, and qualify a WhatsApp lead' },
+  { title: 'Pricing & next steps', detail: 'No pressure — decide anything after you’ve seen it working' },
 ] as const;
 
 const BUDGET_OPTIONS = ['More than ₹5000', '₹3000 - ₹5000', 'Less than ₹3000'] as const;
@@ -81,41 +83,58 @@ function BookDemoForm() {
   };
 
   return (
-    <main className="theme-marketing min-h-screen bg-[#f7faf8] selection:bg-primary-fixed">
+    <main className="theme-marketing min-h-screen bg-(--mkt-surface) selection:bg-primary-fixed">
       <Navbar />
 
-      <section className="pt-24 sm:pt-28 md:pt-32 pb-14 sm:pb-20 px-4 sm:px-6 md:px-12">
+      <section className="relative pt-24 sm:pt-28 md:pt-32 pb-14 sm:pb-20 px-4 sm:px-6 md:px-12">
         <div className="max-w-[1280px] mx-auto grid lg:grid-cols-2 gap-8 lg:gap-16 items-start">
           {/* Left: value props */}
           <div className="lg:pt-8 order-2 lg:order-1">
-            <p className="flex items-center gap-3 text-sm font-medium text-[#3d4a3d] mb-4 sm:mb-5">
-              <span className="w-6 h-px bg-[#06b34c]" />
+            <p className="mkt-label flex items-center gap-3 text-[#6b756f] mb-4 sm:mb-5">
+              <span className="w-6 h-px bg-[#006e2c]" />
               Built for local businesses across India
             </p>
-            <h1 className="font-heading text-[1.75rem] sm:text-4xl md:text-5xl font-bold text-[#181c1c] mb-6 sm:mb-10 leading-[1.15] tracking-tight">
-              What can <span className="text-[#006e2c]">GrowwMatics AI</span> do for you?
+            <h1 className="font-mkt-display text-[1.75rem] sm:text-4xl md:text-5xl font-semibold text-[#101613] mb-6 sm:mb-10 leading-[1.15] tracking-tight">
+              What can <span className="text-[#006e2c]">Growwmatics</span> do for you?
             </h1>
-            <ul className="space-y-4 sm:space-y-6">
-              {BENEFITS.map((b) => (
-                <li key={b.title} className="flex items-start gap-3">
-                  <span className="text-[#06b34c] font-bold text-lg leading-none mt-0.5">✓</span>
-                  <div>
-                    <span className="font-bold text-[#181c1c]">{b.title}</span>
-                    <span className="text-[#3d4a3d] text-sm sm:text-base"> — {b.copy}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <div className="mkt-ink-panel rounded-xl border border-(--mkt-ink-border) overflow-hidden max-w-md">
+              <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-(--mkt-ink-border)">
+                <span className="mkt-label text-(--mkt-ink-text-dim)">On this call</span>
+                <span className="mkt-label flex items-center gap-1 px-2 py-0.5 rounded bg-(--mkt-ink-elevated) text-(--mkt-ink-text-dim)">
+                  <MaterialIcon name="schedule" size={12} />
+                  ~15 min
+                </span>
+              </div>
+              <ul className="p-4 sm:p-5 flex flex-col gap-2.5">
+                {AGENDA.map((item, i) => (
+                  <li
+                    key={item.title}
+                    className="flex items-start gap-3 rounded-lg bg-(--mkt-ink-elevated) border border-(--mkt-ink-border) px-3 py-2.5"
+                  >
+                    <span className="font-mkt-mono text-[10px] text-[#4ade80] shrink-0 mt-0.5">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-(--mkt-ink-text)">{item.title}</p>
+                      <p className="text-xs text-(--mkt-ink-text-dim) leading-relaxed">{item.detail}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-(--mkt-ink-text-dim) text-center pb-4 px-4">
+                Free — no credit card needed
+              </p>
+            </div>
           </div>
 
           {/* Right: form card — first on mobile */}
-          <div className="bg-white rounded-2xl shadow-lg border border-[#e0e3e1] p-5 sm:p-8 md:p-10 order-1 lg:order-2">
+          <div className="bg-white rounded-xl shadow-card border border-(--mkt-line) p-5 sm:p-8 md:p-10 order-1 lg:order-2">
             {submitted ? (
               <div className="text-center py-4">
-                <div className="w-16 h-16 rounded-full bg-[#e8f8ee] flex items-center justify-center mx-auto mb-5">
+                <div className="w-16 h-16 rounded-xl bg-[#e8f8ee] flex items-center justify-center mx-auto mb-5">
                   <MaterialIcon name="check" size={32} className="text-[#006e2c]" />
                 </div>
-                <h2 className="font-heading text-xl font-bold text-[#181c1c] mb-2">Thank you!</h2>
+                <h2 className="font-mkt-display text-xl font-semibold text-[#101613] mb-2">Thank you!</h2>
                 <p className="text-[#3d4a3d] text-sm mb-6">
                   Taking you to WhatsApp to finish booking your demo…
                 </p>
@@ -130,23 +149,23 @@ function BookDemoForm() {
               </div>
             ) : (
               <>
-                <h2 className="font-heading text-xl md:text-2xl font-bold text-[#181c1c] mb-8">
+                <h2 className="font-mkt-display text-xl md:text-2xl font-semibold text-[#101613] mb-8">
                   Ready to see it in action? Book a free demo!
                 </h2>
 
                 <div className="space-y-5">
                   <div>
-                    <label className="block text-sm font-bold text-[#181c1c] mb-2">Business Details *</label>
+                    <label className="mkt-label block text-[#101613] mb-2">Business Details *</label>
                     <BusinessAutocomplete selected={business} onSelect={setBusiness} onClear={() => setBusiness(null)} />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-bold text-[#181c1c] mb-2">Phone Number *</label>
+                    <label className="mkt-label block text-[#101613] mb-2">Phone Number *</label>
                     <PhoneNumberInput value={phone} onChange={setPhone} />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-bold text-[#181c1c] mb-2">Monthly Budget *</label>
+                    <label className="mkt-label block text-[#101613] mb-2">Monthly Budget *</label>
                     <p className="text-xs text-[#3d4a3d] mb-3">
                       How much are you willing to spend on digital marketing?
                     </p>
@@ -156,8 +175,8 @@ function BookDemoForm() {
                           key={opt}
                           className={`flex items-center gap-3 px-4 py-3.5 border rounded-lg cursor-pointer transition-colors ${
                             budget === opt
-                              ? 'border-[#06b34c] bg-[#f0fff5]'
-                              : 'border-[#e0e3e1] hover:bg-[#f7faf8]'
+                              ? 'border-[#006e2c] bg-[#f0fff5]'
+                              : 'border-(--mkt-line) hover:bg-(--mkt-surface)'
                           }`}
                         >
                           <input
@@ -166,9 +185,9 @@ function BookDemoForm() {
                             value={opt}
                             checked={budget === opt}
                             onChange={() => setBudget(opt)}
-                            className="w-4 h-4 accent-[#06b34c]"
+                            className="w-4 h-4 accent-[#006e2c]"
                           />
-                          <span className="text-sm text-[#181c1c]">{opt}</span>
+                          <span className="text-sm text-[#101613]">{opt}</span>
                         </label>
                       ))}
                     </div>
@@ -177,7 +196,7 @@ function BookDemoForm() {
                   {error && (
                     <div
                       role="alert"
-                      className="p-4 bg-error-container text-on-error-container rounded-xl text-sm font-medium border border-error-container flex items-start gap-3"
+                      className="p-4 bg-error-container text-on-error-container rounded-lg text-sm font-medium border border-error-container flex items-start gap-3"
                     >
                       <MaterialIcon name="error" size={20} className="shrink-0 mt-0.5 text-on-error-container" />
                       <span>{error}</span>
@@ -188,7 +207,7 @@ function BookDemoForm() {
                     type="button"
                     onClick={handleSubmit}
                     disabled={submitting}
-                  className="w-full flex items-center justify-center gap-2 py-4 bg-[#06b34c] text-white rounded-lg font-bold hover:bg-[#059640] transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
+                  className="w-full flex items-center justify-center gap-2 py-4 bg-[#006e2c] text-white rounded-lg font-bold hover:bg-[#005a24] transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
                 >
                     {submitting ? (
                       <MaterialIcon name="progress_activity" size={16} className="animate-spin text-white" />

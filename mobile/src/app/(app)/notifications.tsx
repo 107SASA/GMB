@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { Alert, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import {
@@ -11,7 +11,7 @@ import {
   type AppNotification,
 } from '@/api/endpoints/notifications';
 import { useAuth } from '@/auth/AuthContext';
-import { EmptyState, Screen, ScreenTitle, Skeleton } from '@/components/ui';
+import { EmptyState, Screen, ScreenTitle, Skeleton, useInfoSheet } from '@/components/ui';
 import { timeAgo } from '@/lib/format';
 import { useTheme, withAlpha } from '@/lib/theme';
 
@@ -107,6 +107,7 @@ export default function NotificationsScreen() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const info = useInfoSheet();
 
   const notifications = useQuery({
     queryKey: ['notifications'],
@@ -118,7 +119,7 @@ export default function NotificationsScreen() {
     mutationFn: markAllNotificationsRead,
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['notifications'] }),
     onError: (err) =>
-      Alert.alert('Could not mark all read', getApiErrorMessage(err, 'Please try again.')),
+      info.show('Could not mark all read', getApiErrorMessage(err, 'Please try again.')),
   });
 
   function handlePress(item: AppNotification) {
@@ -175,6 +176,7 @@ export default function NotificationsScreen() {
           }
         />
       )}
+      {info.node}
     </Screen>
   );
 }

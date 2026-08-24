@@ -21,6 +21,10 @@ export default function CommandCenter() {
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [range, setRange]           = useState<RangeValue>(30);
   const [connectedBanner, setConnectedBanner] = useState(false);
+  // null = not known yet (GBPSection is still loading its own data) — only
+  // render the CTA once we actually know the business isn't connected, never
+  // as a guess.
+  const [gbpConnected, setGbpConnected] = useState<boolean | null>(null);
 
   // Show success banner when redirected back from GBP OAuth
   useEffect(() => {
@@ -57,6 +61,13 @@ export default function CommandCenter() {
     const interval = setInterval(() => fetchStats(), 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [fetchStats, activeBusiness]);
+
+  // Clear the connect-CTA's known state on workspace switch — otherwise the
+  // PREVIOUS business's connection status would briefly show for the newly
+  // active one until GBPSection's own re-fetch reports back.
+  useEffect(() => {
+    setGbpConnected(null);
+  }, [activeBusiness?._id]);
 
   const handleRangeChange = (newRange: RangeValue) => {
     setRange(newRange);
@@ -96,6 +107,32 @@ export default function CommandCenter() {
           </div>
         )}
 
+        {/* Primary "Connect Profile" CTA — a fresh signup's dashboard is
+            mostly/all zeros until Google is connected, which otherwise looks
+            broken rather than "not set up yet." This is the unmissable,
+            page-level version; GBPSection's own header button below still
+            exists too for someone already scrolled past this. */}
+        {gbpConnected === false && !connectedBanner && (
+          <div className="mb-6 bg-primary-fixed border border-primary-fixed-dim rounded-xl px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl leading-none">👋</span>
+              <div>
+                <p className="font-bold text-on-surface">Connect your Google Business Profile to get started</p>
+                <p className="text-sm text-on-surface-variant mt-0.5">
+                  The metrics below are showing zero because there's no live data source connected yet — not because
+                  nothing's happening. Connecting takes under a minute.
+                </p>
+              </div>
+            </div>
+            <a
+              href="/api/auth/google"
+              className="shrink-0 flex items-center justify-center gap-2 bg-primary hover:bg-primary-container text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors"
+            >
+              Connect Profile
+            </a>
+          </div>
+        )}
+
         <DashboardHeader
           businessName={activeBusiness?.name || 'Your Business'}
           onRefresh={() => fetchStats(true)}
@@ -107,7 +144,7 @@ export default function CommandCenter() {
 
         {/* GBP Section — self-contained, manages its own data fetch.
             Shown first: this is the headline metric set for the product. */}
-        <GBPSection />
+        <GBPSection onConnectionChange={setGbpConnected} />
 
         <div className="border-t border-outline-variant pt-8 mt-2 mb-2">
           <SectionLabel>CRM & AI Activity</SectionLabel>

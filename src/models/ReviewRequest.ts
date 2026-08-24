@@ -17,6 +17,17 @@ export interface IReviewRequest extends Document {
   automationStatus: 'Active' | 'Completed' | 'Stopped';
   inngestEventId?: string;
   campaignId?: mongoose.Types.ObjectId;
+  /**
+   * Twilio SID (or Meta wamid) of the most recently sent message for this
+   * request — initial send, then overwritten by each reminder. Lets the
+   * delivery-status webhook (src/app/api/webhook/twilio/status/route.ts)
+   * match an async delivered/failed receipt back to this document, since
+   * "status: Sent" only ever meant "the provider's API accepted the send",
+   * never "WhatsApp actually delivered it".
+   */
+  lastMessageSid?: string;
+  /** Why status is 'Failed' — set by the sync send path or the async status webhook. */
+  failedReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -46,7 +57,9 @@ const ReviewRequestSchema = new Schema(
       default: 'Active'
     },
     inngestEventId: { type: String },
-    campaignId: { type: Schema.Types.ObjectId, ref: 'Campaign', index: true }
+    campaignId: { type: Schema.Types.ObjectId, ref: 'Campaign', index: true },
+    lastMessageSid: { type: String, index: true },
+    failedReason: { type: String }
   },
   { timestamps: true }
 );

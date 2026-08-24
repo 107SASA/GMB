@@ -21,6 +21,21 @@ export function Navbar() {
   const [servicesMenuOpen, setServicesMenuOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // "Login" always pointed a returning, already-authenticated visitor back
+  // through the WhatsApp OTP flow (real per-message cost) instead of
+  // straight to their dashboard. Defaults to false (shows "Login") until
+  // this resolves — a brief flash is fine here since most marketing-page
+  // visitors aren't logged in anyway, and getting it wrong the other way
+  // (briefly claiming "Dashboard" for a logged-out visitor) would be worse.
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/me')
+      .then((res) => { if (!cancelled) setIsLoggedIn(res.ok); })
+      .catch(() => { /* stay logged-out-looking on error */ });
+    return () => { cancelled = true; };
+  }, []);
+
   const openServicesMenu = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
     setServicesMenuOpen(true);
@@ -153,10 +168,10 @@ export function Navbar() {
 
         <div className="hidden lg:flex items-center gap-4 shrink-0">
           <Link
-            href="/login"
+            href={isLoggedIn ? '/dashboard' : '/login'}
             className="text-sm font-medium text-[#3d4a3d] hover:text-[#006e2c] transition-colors min-h-[44px] inline-flex items-center"
           >
-            Login
+            {isLoggedIn ? 'Dashboard' : 'Login'}
           </Link>
           <BookDemoButton
             origin="navbar"
@@ -245,11 +260,11 @@ export function Navbar() {
             ))}
             <div className="flex flex-col gap-3 pt-4 mt-2 border-t border-[#e0e3e1]">
               <Link
-                href="/login"
+                href={isLoggedIn ? '/dashboard' : '/login'}
                 onClick={() => setMobileMenuOpen(false)}
                 className="text-base font-medium text-[#3d4a3d] hover:text-[#006e2c] min-h-[48px] flex items-center"
               >
-                Login
+                {isLoggedIn ? 'Dashboard' : 'Login'}
               </Link>
               <BookDemoButton
                 origin="navbar-mobile"

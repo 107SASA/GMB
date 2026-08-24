@@ -81,6 +81,12 @@ export interface IUser extends Document {
   isShadowAccount?: boolean;
   shadowSource?: string;
   claimedAt?: Date;
+  // ADDITIVE — set when the shadow-account owner explicitly dismisses the
+  // claim (set email/password) prompt. Phone+OTP login (added after the
+  // claim gate existed) is already a durable way back into the account, so
+  // this lets proxy.ts stop hard-blocking the dashboard behind claiming once
+  // the user has said "not now" — see proxy.ts's needsClaim.
+  claimSkipped?: boolean;
 
   // Freemium onboarding gate — ONLY ever set for brand-new signups (see
   // /api/onboarding). Existing accounts never get this field, and the
@@ -184,6 +190,7 @@ const UserSchema: Schema = new Schema(
     isShadowAccount: { type: Boolean, default: false },
     shadowSource: { type: String },
     claimedAt: { type: Date },
+    claimSkipped: { type: Boolean, default: false },
 
     // Freemium onboarding gate — see IUser.freemiumAuditGate above.
     // No top-level default on purpose: only /api/onboarding sets this,

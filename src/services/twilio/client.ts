@@ -102,6 +102,7 @@ export async function sendOutboundMessage(
   }
 
   const client = twilio(creds.sid, creds.authToken);
+  const statusCallback = statusCallbackUrl();
 
   try {
     const message = await client.messages.create({
@@ -109,14 +110,17 @@ export async function sendOutboundMessage(
       from: `whatsapp:${creds.fromNumber}`,
       to: `whatsapp:${phone}`,
       ...(mediaUrl ? { mediaUrl: [mediaUrl] } : {}),
+      ...(statusCallback ? { statusCallback } : {}),
     });
     msgLog.status = 'SENT';
     msgLog.sentAt = new Date();
+    msgLog.payload = { ...msgLog.payload, sid: message.sid };
+    msgLog.markModified('payload');
     await msgLog.save();
     return { success: true, sid: message.sid };
   } catch (e: any) {
     msgLog.status = 'FAILED';
-    msgLog.error = e.message;
+    msgLog.failedReason = e.message;
     await msgLog.save();
     console.error('Twilio Error:', e);
     return {
@@ -126,6 +130,23 @@ export async function sendOutboundMessage(
       isPlatformDefault: creds.isPlatformDefault,
     };
   }
+}
+
+/**
+ * Twilio needs a publicly reachable URL to POST delivery receipts
+ * (queued/sent/delivered/undelivered/failed) to — without this, a message
+ * that Twilio *accepted* synchronously but WhatsApp later failed to deliver
+ * (throttling, unreachable number, cold-recipient template rejected, etc.)
+ * is indistinguishable from one that actually arrived. Handled by
+ * src/app/api/webhook/twilio/status/route.ts. Requires NEXT_PUBLIC_BASE_URL
+ * to be the real HTTPS domain (already required elsewhere — see
+ * .env.production.example); returns undefined (omit statusCallback rather
+ * than point Twilio at localhost) if it isn't set.
+ */
+function statusCallbackUrl(): string | undefined {
+  const base = process.env.NEXT_PUBLIC_BASE_URL;
+  if (!base || base.includes('localhost')) return undefined;
+  return `${base.replace(/\/$/, '')}/api/webhook/twilio/status`;
 }
 
 /**
@@ -175,6 +196,7 @@ export async function sendTemplateMessage(
   }
 
   const client = twilio(creds.sid, creds.authToken);
+  const statusCallback = statusCallbackUrl();
 
   try {
     // Prefer the Messaging Service over a raw `from` number when configured
@@ -188,14 +210,17 @@ export async function sendTemplateMessage(
       ...(creds.messagingServiceSid
         ? { messagingServiceSid: creds.messagingServiceSid }
         : { from: `whatsapp:${creds.fromNumber}` }),
+      ...(statusCallback ? { statusCallback } : {}),
     });
     msgLog.status = 'SENT';
     msgLog.sentAt = new Date();
+    msgLog.payload = { ...msgLog.payload, sid: message.sid };
+    msgLog.markModified('payload');
     await msgLog.save();
     return { success: true, sid: message.sid };
   } catch (e: any) {
     msgLog.status = 'FAILED';
-    msgLog.error = e.message;
+    msgLog.failedReason = e.message;
     await msgLog.save();
     console.error('Twilio Error:', e);
     return { success: false, error: e.message };

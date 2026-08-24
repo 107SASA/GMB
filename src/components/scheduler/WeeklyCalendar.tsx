@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { toast } from 'sonner';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 import {
   DndContext,
@@ -327,7 +328,7 @@ function PostDetailModal({
       onEditSave(post._id, { title: editTitle, content: editContent });
       setMode('view');
     } catch (err: any) {
-      alert(friendlyClientMessage(err, 'Failed to save'));
+      toast.error(friendlyClientMessage(err, 'Failed to save'));
     } finally {
       setSaving(false);
     }
@@ -339,7 +340,7 @@ function PostDetailModal({
       await onDelete(post._id);
       onClose();
     } catch (err: any) {
-      alert(friendlyClientMessage(err, 'Failed to delete'));
+      toast.error(friendlyClientMessage(err, 'Failed to delete'));
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -354,7 +355,7 @@ function PostDetailModal({
       await onReschedule(post._id, d);
       onClose();
     } catch (err: any) {
-      alert(friendlyClientMessage(err, 'Reschedule failed'));
+      toast.error(friendlyClientMessage(err, 'Reschedule failed'));
     } finally {
       setRescheduling(false);
     }

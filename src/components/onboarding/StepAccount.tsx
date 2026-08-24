@@ -120,11 +120,12 @@ export default function StepAccount({ data, updateData, onNext, onBack }: Props)
         </div>
       )}
 
-      <div className="flex justify-between items-center pt-6 border-t border-outline-variant">
-        <button onClick={onBack} className="text-on-surface-variant font-bold hover:text-on-surface transition-colors px-4 py-2">
-          Back
-        </button>
-        <button 
+      {/* No Back button here — this is now the wizard's first step (the old
+          Welcome step ahead of it was removed), so there's nowhere to go
+          back to. onBack is still accepted for prop-shape consistency with
+          every other step, just unused. */}
+      <div className="flex justify-end items-center pt-6 border-t border-outline-variant">
+        <button
           onClick={handleContinue}
           className="flex items-center gap-2 px-8 py-3 bg-primary hover:bg-primary-container text-on-primary rounded-lg font-bold transition-all"
         >

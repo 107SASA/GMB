@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { toast } from 'sonner';
 import ReviewAnalyticsCards from './ReviewAnalyticsCards';
 import ReviewFilterBar from './ReviewFilterBar';
 import ReviewCard from './ReviewCard';
@@ -160,7 +161,7 @@ export default function ReviewsDashboard() {
           r._id === reviewId ? { ...r, aiSuggestedReply: data.reply, replyTone: tone } : r
         ));
       } else {
-        alert(data.error || 'Failed to generate reply');
+        toast.error(data.error || 'Failed to generate reply');
       }
     } catch (error) {
       console.error(error);
@@ -181,7 +182,7 @@ export default function ReviewsDashboard() {
         ));
         await refreshReviewList();
       } else {
-        alert(data.error || 'Failed to approve reply');
+        toast.error(data.error || 'Failed to approve reply');
       }
     } catch (error) {
       console.error(error);
@@ -203,7 +204,7 @@ export default function ReviewsDashboard() {
         ));
         await refreshReviewList();
       } else {
-        alert(data.error || 'Failed to post reply');
+        toast.error(data.error || 'Failed to post reply');
       }
     } catch (error) {
       console.error(error);

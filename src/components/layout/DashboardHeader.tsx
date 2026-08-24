@@ -6,6 +6,13 @@ import { useMobileNav } from "@/context/MobileNavContext";
 import { BusinessSwitcher } from "./BusinessSwitcher";
 import { NotificationBell } from "./NotificationBell";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { getSupportLink } from "@/lib/whatsappCta";
+
+// WhatsApp's own darker brand teal (their app bar color), not this app's own
+// brand green — same reasoning/value as the mobile header's Help button
+// (Aug 2026): reads as "opens WhatsApp" at a glance instead of blending in
+// with the theme-colored controls next to it.
+const WHATSAPP_GREEN = "#128C7E";
 
 interface HeaderUser {
   fullName?: string;
@@ -101,6 +108,15 @@ export function DashboardHeader() {
       </div>
 
       <div className="flex items-center gap-3 shrink-0">
+        <a
+          href={getSupportLink()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center px-4 h-9 rounded-full text-sm font-bold text-white transition-opacity hover:opacity-90 shrink-0"
+          style={{ backgroundColor: WHATSAPP_GREEN }}
+        >
+          Help
+        </a>
         <NotificationBell />
         <div className="hidden sm:flex items-center gap-3 pl-3 lg:pl-6 border-l border-outline-variant">
           <div className="text-right">

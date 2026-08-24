@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, RefreshControl, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, RefreshControl, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { fetchReviews, ReviewsNotConnectedError, syncReviews, type Review } from '@/api/endpoints/reviews';
@@ -12,7 +12,7 @@ import { AddCustomerCard } from '@/components/home/add-customer-card';
 import { ReviewStatCards, ReviewTrendsChart } from '@/components/gbp/review-trends-section';
 import { GoogleG } from '@/components/google-g';
 import { replyStatusBadge, RatingPill, sentimentTone } from '@/components/review-bits';
-import { Badge, Chip, EmptyState, InitialsAvatar, Screen, SegmentedControl, Skeleton } from '@/components/ui';
+import { Badge, Chip, EmptyState, InitialsAvatar, Screen, SegmentedControl, Skeleton, useInfoSheet } from '@/components/ui';
 import { LockedScreen } from '@/components/locked';
 import { useSurfaceLocked } from '@/entitlements/entitlements';
 import { promptConnectGoogle } from '@/lib/connectGoogle';
@@ -355,6 +355,7 @@ export default function ReviewsScreen() {
   const [tab, setTab] = useState<ScreenTab>('overview');
   const [filter, setFilter] = useState<Filter>('all');
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all');
+  const info = useInfoSheet();
 
   const reviews = useQuery({
     queryKey: ['reviews', activeBusinessId],
@@ -372,7 +373,7 @@ export default function ReviewsScreen() {
         promptConnectGoogle(error.message);
         return;
       }
-      Alert.alert('Sync failed', getApiErrorMessage(error, 'Please try again.'));
+      info.show('Sync failed', getApiErrorMessage(error, 'Please try again.'));
     },
   });
 
@@ -415,6 +416,7 @@ export default function ReviewsScreen() {
           syncing={sync.isPending}
         />
       )}
+      {info.node}
     </Screen>
   );
 }

@@ -1,16 +1,9 @@
-import SchedulerDashboard from '@/components/scheduler/SchedulerDashboard';
+import { redirect } from 'next/navigation';
 
-export const metadata = {
-  title: 'AI Marketing Automation',
-  description: 'Manage your automated 7-day content buffer.',
-};
-
-export default function SchedulerPage() {
-  return (
-    <div className="min-h-screen bg-surface/50 p-4 pt-10">
-      <div className="max-w-[1400px] mx-auto">
-        <SchedulerDashboard />
-      </div>
-    </div>
-  );
+// Content Scheduler was folded into the unified /dashboard/content page as
+// the "Schedule" tab (Bug 14 — combining Content Generator and Content
+// Scheduler into one workflow instead of two separate nav items). This route
+// stays only so old links/bookmarks land somewhere useful.
+export default function SchedulerRedirect() {
+  redirect('/dashboard/content?tab=schedule');
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import {
   Users,
@@ -980,10 +981,10 @@ function CustomersTab() {
       if (json.success) {
         router.push('/dashboard');
       } else {
-        alert(json.error || 'Impersonation failed');
+        toast.error(json.error || 'Impersonation failed');
       }
     } catch {
-      alert('Network error during impersonation');
+      toast.error('Network error during impersonation');
     } finally {
       setImpersonatingId(null);
     }

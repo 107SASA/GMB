@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { initialOnboardingData, OnboardingData } from './types';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 
-import StepWelcome from './StepWelcome';
 import StepAccount from './StepAccount';
 import StepOrganization from './StepOrganization';
 import StepBusinessSearch from './StepBusinessSearch';
@@ -46,7 +45,6 @@ export function OnboardingWizard() {
    * are collected later from Settings → Business Profile instead.
    */
   const steps = [
-    { component: StepWelcome, id: 'welcome' },
     { component: StepAccount, id: 'account' },
     { component: StepOrganization, id: 'organization' },
     { component: StepBusinessSearch, id: 'business' },
@@ -56,8 +54,10 @@ export function OnboardingWizard() {
   ];
 
   const CurrentStepComponent = steps[currentStep].component;
-  const showStepper = currentStep > 0 && currentStep < steps.length - 1;
-  const activeStepperIndex = currentStep - 1;
+  // No more Welcome step ahead of these, so currentStep now lines up 1:1
+  // with STEPPER_STEPS (used to be offset by -1 to skip that step).
+  const showStepper = currentStep < steps.length - 1;
+  const activeStepperIndex = currentStep;
 
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">

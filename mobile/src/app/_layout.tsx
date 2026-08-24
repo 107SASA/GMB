@@ -21,6 +21,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { BusinessProvider } from '@/business/BusinessContext';
 import { OfflineBanner } from '@/components/offline-banner';
+import { ConnectGooglePromptHost } from '@/lib/connectGoogle';
 import { palettes, useTheme } from '@/lib/theme';
 import { useLastNotificationResponse } from '@/notifications/push';
 
@@ -133,6 +134,7 @@ function RootNavigator() {
         }}
       />
       <OfflineBanner />
+      <ConnectGooglePromptHost />
     </View>
   );
 }

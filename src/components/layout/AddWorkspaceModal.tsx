@@ -292,16 +292,6 @@ export function AddWorkspaceModal({ onClose }: Props) {
                   ))}
                 </div>
               )}
-
-              <div className="mt-3 text-center">
-                <button
-                  type="button"
-                  onClick={() => setPlaceSelected(true)}
-                  className="text-xs text-primary hover:underline font-medium"
-                >
-                  Skip search — enter details manually
-                </button>
-              </div>
             </div>
           )}
 

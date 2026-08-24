@@ -44,6 +44,31 @@ function ClaimAccountForm() {
   const [verifying, setVerifying] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [skipping, setSkipping] = useState(false);
+
+  // "Not now" — you already have a durable way back in via phone+OTP login,
+  // so this isn't mandatory. Reachable again later from account settings.
+  //
+  // Used to fire-and-forget: navigated to /dashboard in a `finally` with no
+  // res.ok check, so a transient failure (network blip, session race, a
+  // 500) still looked like success — claimSkipped never actually got
+  // written, and the user was silently bounced right back here on their
+  // next login with no idea "Not now" hadn't actually worked. Now mirrors
+  // submit()/verify() above: only navigates away on confirmed success,
+  // shows an error and lets them retry otherwise.
+  const skip = async () => {
+    setSkipping(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/onboarding/claim/skip', { method: 'POST' });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(json?.error || 'Could not save. Please try again.');
+      router.push('/dashboard');
+    } catch (err) {
+      setError(friendlyClientMessage(err, 'Could not save. Please try again.'));
+      setSkipping(false);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -248,6 +273,15 @@ function ClaimAccountForm() {
               <MaterialIcon name="key" size={16} /> Save and continue
             </>
           )}
+        </button>
+
+        <button
+          type="button"
+          onClick={skip}
+          disabled={skipping || saving}
+          className="w-full text-sm text-on-surface-variant hover:text-on-surface disabled:opacity-50"
+        >
+          {skipping ? 'One moment…' : "Not now — I'll log back in with WhatsApp OTP"}
         </button>
       </form>
     </div>

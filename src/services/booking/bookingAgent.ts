@@ -9,8 +9,35 @@ import {
   BOOKING_BRAND_NAME,
   type BookingAgentConfigShape,
 } from '@/lib/bookingAgentDefaults';
+import { AGENT_SCOPE_GUARDRAIL } from '@/lib/agentGuardrails';
+import { getBusinessNow } from '@/services/whatsapp-agent/dateTimeUtils';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+// GrowwMatics itself operates on IST — same default every other platform-side
+// cron/agent in this codebase uses (see Business.ts's timezone default,
+// businessHours.ts). Prospects booking a demo have no business record of
+// their own yet, so there's no per-lead timezone to read instead.
+const PLATFORM_TIMEZONE = 'Asia/Kolkata';
+
+const WEEKDAY_FULL: Record<string, string> = {
+  Sun: 'Sunday', Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday',
+  Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday',
+};
+
+/** "Thursday, 21 Aug 2026, 11:42 PM IST" — grounds the model in the actual current moment. */
+function currentTimeLine(): string {
+  const now = getBusinessNow(PLATFORM_TIMEZONE);
+  const weekday = WEEKDAY_FULL[now.weekday];
+  const month = new Date(Date.UTC(now.year, now.month - 1, now.day))
+    .toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short' });
+  const h24 = now.hour;
+  const period = h24 >= 12 ? 'PM' : 'AM';
+  let h12 = h24 % 12;
+  if (h12 === 0) h12 = 12;
+  const time = `${h12}:${String(now.minute).padStart(2, '0')} ${period}`;
+  return `${weekday}, ${now.day} ${month} ${now.year}, ${time} IST.`;
+}
 
 export function firstName(name?: string): string {
   const n = (name || '').trim().split(/\s+/)[0];
@@ -55,6 +82,9 @@ Rules:
 - Set "status" to "ready" ONLY when you have, at minimum: name, businessName, a specific preferredDate AND preferredTime. Otherwise "collecting".
 - When status is "ready", "reply" MUST clearly confirm the booking and restate the day and time.
 - "preferredDate" should be human-readable (e.g. "Tomorrow", "Mon 28 Jul"), "preferredTime" like "3:00 PM".
+- You are told the real current date/time below — use it. Never propose or accept a time that has already passed
+  today; if the prospect asks for a time earlier than right now, point that out and offer later today or another day.
+  Resolve relative words ("today", "tomorrow", "Friday") against that real current date, not a guess.
 - Never include text outside the JSON object.`;
 
 export interface BookingReply {
@@ -103,7 +133,9 @@ export async function composeAgentReply(
   const priorDetails = mergeDetails(EMPTY_DETAILS, convo.details as Partial<IBookingDetails>);
 
   const systemPrompt =
-    `${CONTRACT}\n\nPersona and tone to use for "reply":\n${config.agentSystemPrompt}\n\n` +
+    `${AGENT_SCOPE_GUARDRAIL}\n(Apply the rules above through the "reply" field's text — never break the JSON-only output format required below.)\n\n` +
+    `${CONTRACT}\n\nCurrent date/time: ${currentTimeLine()}\n\n` +
+    `Persona and tone to use for "reply":\n${config.agentSystemPrompt}\n\n` +
     `Details known so far (JSON): ${JSON.stringify(priorDetails)}`;
 
   const history = (convo.messages || [])

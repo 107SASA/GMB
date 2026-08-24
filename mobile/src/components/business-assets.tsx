@@ -5,7 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import {
@@ -16,7 +16,7 @@ import {
   type GbpMediaItem,
 } from '@/api/endpoints/gbp';
 import { useBusiness } from '@/business/BusinessContext';
-import { EmptyState, InfoSheet, Skeleton } from '@/components/ui';
+import { EmptyState, InfoSheet, Skeleton, useInfoSheet } from '@/components/ui';
 import { promptConnectGoogle } from '@/lib/connectGoogle';
 import { formatDateTime } from '@/lib/format';
 import { BRAND_GRADIENT, useTheme } from '@/lib/theme';
@@ -151,6 +151,7 @@ export function BusinessAssets() {
   // Tracks which slot's upload is in flight — `upload.isPending` alone can't
   // tell the Logo card from the Cover card from the gallery button.
   const [uploadingCategory, setUploadingCategory] = useState<GbpMediaCategory | null>(null);
+  const info = useInfoSheet();
 
   const media = useQuery({
     queryKey: ['gbp-media', activeBusinessId],
@@ -163,9 +164,9 @@ export function BusinessAssets() {
     mutationFn: uploadGbpMedia,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['gbp-media', activeBusinessId] });
-      Alert.alert('Photo saved', "It's staged — publish or schedule it from View All.");
+      info.show('Photo saved', "It's staged — publish or schedule it from View All.");
     },
-    onError: (error) => Alert.alert('Upload failed', getApiErrorMessage(error, 'Please try again.')),
+    onError: (error) => info.show('Upload failed', getApiErrorMessage(error, 'Please try again.')),
     onSettled: () => setUploadingCategory(null),
   });
 
@@ -184,7 +185,7 @@ export function BusinessAssets() {
     }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert('Permission needed', 'Allow photo library access to add business media.');
+      info.show('Permission needed', 'Allow photo library access to add business media.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 0.85 });
@@ -383,6 +384,7 @@ export function BusinessAssets() {
         title="Why publish photos & videos?"
         message="Profiles with regular new photos are shown more often in local search and get more calls, direction requests, and website clicks — Google treats fresh media as a signal that a business is active. Aim for a few new photos every week."
       />
+      {info.node}
 
       {/* Scheduled Photos — real, from GbpMediaAsset.scheduledFor (see
           gbpMediaService.scheduleAsset + publishScheduledMediaCron). */}

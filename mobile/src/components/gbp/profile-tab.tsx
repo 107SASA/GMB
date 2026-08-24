@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { fetchGbpProfile, GbpNotConnectedError, updateGbpProfile } from '@/api/endpoints/gbp';
 import { useBusiness } from '@/business/BusinessContext';
-import { EmptyState, LabeledField, PrimaryButton, Skeleton } from '@/components/ui';
+import { EmptyState, LabeledField, PrimaryButton, Skeleton, useInfoSheet } from '@/components/ui';
 import { promptConnectGoogle } from '@/lib/connectGoogle';
 
 /**
@@ -26,6 +26,7 @@ export function GbpProfileTab() {
   });
 
   const [form, setForm] = useState({ title: '', description: '', primaryPhone: '', website: '' });
+  const info = useInfoSheet();
 
   useEffect(() => {
     if (profile.data) {
@@ -42,14 +43,14 @@ export function GbpProfileTab() {
     mutationFn: () => updateGbpProfile(form),
     onSuccess: ({ liveWriteApplied }) => {
       void queryClient.invalidateQueries({ queryKey: ['gbp-profile', activeBusinessId] });
-      Alert.alert(
+      info.show(
         'Saved',
         liveWriteApplied
           ? 'Saved and published to Google.'
           : "Saved. Changes publish to Google automatically once profile verification is enabled."
       );
     },
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not save your profile.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not save your profile.')),
   });
 
   const notConnected = profile.error instanceof GbpNotConnectedError;
@@ -153,6 +154,7 @@ export function GbpProfileTab() {
           disabled={!form.title.trim()}
         />
       </View>
+      {info.node}
     </View>
   );
 }

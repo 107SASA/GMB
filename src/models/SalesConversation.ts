@@ -22,7 +22,12 @@ export interface ISalesConversation extends Document {
   leadPhone: string;                    // E.164 with '+'
   phoneKey: string;                     // last-10-digits key for robust matching
   leadName: string;
-  status: 'active' | 'subscribed' | 'stopped' | 'completed';
+  // 'handed_off' — the lead expressed booking intent mid-nurture and was
+  // moved to a BookingConversation instead (see handleActiveSalesConversation
+  // in app/api/whatsapp/webhook/route.ts). Distinct from 'stopped' (opted
+  // out) and 'completed' so the follow-up drip halts (checks status ===
+  // 'active') without reading as a lost/unsubscribed lead in the CRM.
+  status: 'active' | 'subscribed' | 'stopped' | 'completed' | 'handed_off';
   /**
    * 'not_required' — this phone has messaged the platform before, so no
    *   separate opt-in is needed.
@@ -50,7 +55,7 @@ const SalesConversationSchema: Schema = new Schema(
     leadPhone: { type: String, required: true, index: true },
     phoneKey: { type: String, index: true },
     leadName: { type: String, default: '' },
-    status: { type: String, enum: ['active', 'subscribed', 'stopped', 'completed'], default: 'active', index: true },
+    status: { type: String, enum: ['active', 'subscribed', 'stopped', 'completed', 'handed_off'], default: 'active', index: true },
     consentStatus: { type: String, enum: ['not_required', 'pending', 'granted'], default: 'not_required' },
     scores: {
       businessName: { type: String, default: '' },

@@ -1,13 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { generateBufferPosts } from '@/api/endpoints/scheduler';
 import { useBusiness } from '@/business/BusinessContext';
 import { SchedulerPanel } from '@/components/scheduler-panel';
-import { Screen, ScreenTitle } from '@/components/ui';
+import { Screen, ScreenTitle, useInfoSheet } from '@/components/ui';
 import { useTheme } from '@/lib/theme';
 
 export default function SchedulerScreen() {
@@ -16,6 +16,7 @@ export default function SchedulerScreen() {
   const queryClient = useQueryClient();
   const [generating, setGenerating] = useState(false);
   const generateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const info = useInfoSheet();
 
   // The ref above exists specifically so this timer can be cancelled — it
   // previously wasn't, so navigating away from this screen within the 6s
@@ -39,7 +40,7 @@ export default function SchedulerScreen() {
         void queryClient.invalidateQueries({ queryKey: ['content-posts', activeBusinessId] });
       }, 6000);
     },
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not start generation.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not start generation.')),
   });
 
   return (
@@ -74,6 +75,7 @@ export default function SchedulerScreen() {
       </View>
 
       <SchedulerPanel />
+      {info.node}
     </Screen>
   );
 }

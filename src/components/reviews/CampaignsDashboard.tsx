@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, Fragment } from 'react';
+import { toast } from 'sonner';
 import {
   UploadCloud, Users, Send, TrendingUp, MessageSquare, Search, X,
   Loader2, Star, Pause, Play, Trash2, Plus, AlertTriangle, Mail,
@@ -141,6 +142,7 @@ export default function CampaignsDashboard() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [suggestingId, setSuggestingId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<{ customerId: string; customerName: string; items: Suggestion[] } | null>(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -255,6 +257,24 @@ export default function CampaignsDashboard() {
       console.error(e);
     } finally {
       setSendingId(null);
+    }
+  };
+
+  const handleDeleteCustomer = async (customer: Customer) => {
+    if (!confirm(`Delete ${customer.name}? This removes them and their review-request history — you'll be able to add them again and send a fresh request (e.g. to re-test the same phone number).`)) return;
+    setDeletingId(customer._id);
+    try {
+      const res = await fetch(`/api/customers/${customer._id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        fetchCustomers();
+      } else {
+        toast.error(json.message || 'Could not delete customer');
+      }
+    } catch {
+      toast.error('Could not delete customer — please try again');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -732,6 +752,14 @@ export default function CampaignsDashboard() {
                               >
                                 {suggestingId === c._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                                 AI Suggest
+                              </button>
+                              <button
+                                onClick={() => handleDeleteCustomer(c)}
+                                disabled={deletingId === c._id}
+                                title="Delete customer (lets you re-add and retry review requests for the same number)"
+                                className="p-1.5 text-outline hover:text-error hover:bg-error-container rounded-lg transition-colors disabled:opacity-50"
+                              >
+                                {deletingId === c._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                               </button>
                             </div>
                           </td>

@@ -9,7 +9,7 @@ import Post from '@/models/Post';
 import { logAIUsage } from '@/lib/logAIUsage';
 import { checkUsageLimit } from '@/lib/featureGating';
 import { GROQ_MODEL } from '@/lib/aiModel';
-import { checkRateLimit } from '@/lib/rateLimit';
+import { checkRateLimit, getRateLimitConfig } from '@/lib/rateLimit';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 // Allow up to 2 minutes — sequential thumbnail generation adds time
@@ -17,9 +17,10 @@ export const maxDuration = 120;
 
 // Burst guard (per account, short window), independent of the plan's
 // aiGenerations quota — each call is a Groq content generation plus up to
-// several sequential Gemini thumbnail calls.
-const RATE_LIMIT = 10;
-const RATE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+// several sequential Gemini thumbnail calls. Overridable via
+// CONTENT_GENERATE_RATE_LIMIT / CONTENT_GENERATE_RATE_WINDOW_MS without a
+// redeploy.
+const { limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS } = getRateLimitConfig('CONTENT_GENERATE', 10, 10 * 60 * 1000);
 
 const generateContentSchema = z.object({
   businessName: z.string().min(2).optional(),

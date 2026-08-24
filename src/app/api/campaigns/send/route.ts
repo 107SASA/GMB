@@ -4,6 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import Customer from '@/models/Customer';
 import { requireBusinessContext } from '@/lib/tenant';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { requirePlaceIdForReviews } from '@/lib/reviewCampaignGuard';
 
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
@@ -25,6 +26,11 @@ export async function POST(req: Request) {
 
     if (!customer.phone) {
       return NextResponse.json({ error: 'Customer has no phone number (WhatsApp required)' }, { status: 400 });
+    }
+
+    const placeIdError = await requirePlaceIdForReviews(ctx.businessId);
+    if (placeIdError) {
+      return NextResponse.json({ error: placeIdError }, { status: 400 });
     }
 
     await inngest.send({

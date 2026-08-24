@@ -97,6 +97,13 @@ export default function RootLayout({
       </head>
       <body
         className={`${inter.variable} ${publicSans.variable} ${inter.className} antialiased bg-background text-on-surface`}
+        // Grammarly (and similar extensions) inject data-gr-ext-installed /
+        // data-new-gr-c-s-check-loaded onto <body> before React hydrates —
+        // a real client-vs-server mismatch, but caused by the browser, not
+        // this app. suppressHydrationWarning only silences the warning for
+        // this element's own attributes; it doesn't hide real mismatches in
+        // children. See https://nextjs.org/docs/messages/react-hydration-error
+        suppressHydrationWarning
       >
         {children}
         <Toaster />

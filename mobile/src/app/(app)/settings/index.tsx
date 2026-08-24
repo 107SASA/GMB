@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import {
@@ -26,6 +26,8 @@ import {
   ScreenTitle,
   SectionLabel,
   Skeleton,
+  useConfirmSheet,
+  useInfoSheet,
 } from '@/components/ui';
 import { promptConnectGoogle } from '@/lib/connectGoogle';
 import { useTheme } from '@/lib/theme';
@@ -48,6 +50,7 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
   });
   const [keywords, setKeywords] = useState<string[]>(initial.keywords);
   const [keywordInput, setKeywordInput] = useState('');
+  const info = useInfoSheet();
 
   const save = useMutation({
     mutationFn: () =>
@@ -62,12 +65,12 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
         'integrations.whatsappNumber': form.whatsappNumber,
       }),
     onSuccess: () => {
-      Alert.alert('Saved', 'Business profile updated.');
+      info.show('Saved', 'Business profile updated.');
       void queryClient.invalidateQueries({ queryKey: ['business-detail', activeBusinessId] });
       // The switcher list shows name/category — keep it in sync.
       void queryClient.invalidateQueries({ queryKey: ['businesses'] });
     },
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not save the profile.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not save the profile.')),
   });
 
   const set = (field: keyof typeof form) => (value: string) =>
@@ -77,7 +80,7 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
     const value = keywordInput.trim();
     if (!value || keywords.includes(value)) return;
     if (keywords.length >= 20) {
-      Alert.alert('Limit reached', 'You can save up to 20 keywords.');
+      info.show('Limit reached', 'You can save up to 20 keywords.');
       return;
     }
     setKeywords([...keywords, value]);
@@ -160,6 +163,7 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
         loading={save.isPending}
         disabled={!form.name.trim()}
       />
+      {info.node}
     </View>
   );
 }
@@ -169,6 +173,7 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
 function NotificationsSection({ initial }: { initial: NotificationPrefs }) {
   const t = useTheme();
   const [prefs, setPrefs] = useState(initial);
+  const info = useInfoSheet();
 
   const save = useMutation({
     mutationFn: ({ next }: { next: NotificationPrefs; key: keyof NotificationPrefs }) =>
@@ -176,7 +181,7 @@ function NotificationsSection({ initial }: { initial: NotificationPrefs }) {
     onError: (err, { key, next }) => {
       // Auto-save per toggle: roll just this switch back on failure.
       setPrefs((current) => ({ ...current, [key]: !next[key] }));
-      Alert.alert('Error', getApiErrorMessage(err, 'Could not update preferences.'));
+      info.show('Error', getApiErrorMessage(err, 'Could not update preferences.'));
     },
   });
 
@@ -204,6 +209,7 @@ function NotificationsSection({ initial }: { initial: NotificationPrefs }) {
           />
         </View>
       ))}
+      {info.node}
     </View>
   );
 }
@@ -215,13 +221,15 @@ function NotificationsSection({ initial }: { initial: NotificationPrefs }) {
 function GoogleConnectionRow({ connected }: { connected: boolean }) {
   const queryClient = useQueryClient();
   const { activeBusinessId } = useBusiness();
+  const info = useInfoSheet();
+  const confirmSheet = useConfirmSheet();
 
   const disconnect = useMutation({
     mutationFn: disconnectGoogle,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['business-detail', activeBusinessId] });
     },
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not disconnect Google.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not disconnect Google.')),
   });
 
   const handlePress = () => {
@@ -230,24 +238,20 @@ function GoogleConnectionRow({ connected }: { connected: boolean }) {
       promptConnectGoogle('Connect your Google Business Profile to sync reviews, posts, and photos.');
       return;
     }
-    Alert.alert(
-      'Disconnect Google Business Profile?',
-      'Reviews, posts, and photos will stop syncing until you reconnect.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Disconnect',
-          style: 'destructive',
-          onPress: () => {
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            disconnect.mutate();
-          },
-        },
-      ]
-    );
+    confirmSheet.confirm({
+      title: 'Disconnect Google Business Profile?',
+      message: 'Reviews, posts, and photos will stop syncing until you reconnect.',
+      confirmLabel: 'Disconnect',
+      destructive: true,
+      onConfirm: () => {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        disconnect.mutate();
+      },
+    });
   };
 
   return (
+    <>
     <Pressable
       onPress={handlePress}
       // No `className` — react-native-css-interop can swallow onPress on
@@ -262,6 +266,9 @@ function GoogleConnectionRow({ connected }: { connected: boolean }) {
         </Text>
       </View>
     </Pressable>
+    {info.node}
+    {confirmSheet.node}
+    </>
   );
 }
 

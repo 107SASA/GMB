@@ -29,8 +29,16 @@ function useDebounce<T>(value: T, delay: number): T {
  * an inline "manualMode" review form) — this half is just the search/paste
  * step. `handleSelectBusiness` autofills `data` from Google Places exactly
  * as before, then advances to StepBusinessConfirm to review/edit it,
- * instead of flipping in-place. "Enter details manually" advances the same
- * way with whatever's already in `data` (usually nothing yet).
+ * instead of flipping in-place.
+ *
+ * There is deliberately no "enter details manually" / "skip search" bypass
+ * here — every workspace must be matched to a real Google Places result, so
+ * googlePlaceId is always set (rank-tracking cache, SEO analyzer, and GBP
+ * insights all key off it; a manually-entered business silently lost those).
+ * StepBusinessConfirm's manual Google Place ID field still exists as a
+ * genuine error-recovery path for when handleSelectBusiness's own fetch
+ * fails after a real selection — that's a different case from "I don't want
+ * to search."
  */
 export default function StepBusinessSearch({ data, updateData, onNext, onBack }: Props) {
   const [searchQuery, setSearchQuery] = useState(data.businessName || '');
@@ -263,13 +271,6 @@ export default function StepBusinessSearch({ data, updateData, onNext, onBack }:
             </button>
           </>
         )}
-
-        <div className="mt-6 text-center">
-          <span className="text-outline text-sm">Can't find your business? </span>
-          <button onClick={onNext} className="text-primary font-bold hover:underline text-sm">
-            Enter details manually
-          </button>
-        </div>
       </div>
 
       {error && (

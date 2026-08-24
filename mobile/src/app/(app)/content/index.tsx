@@ -4,7 +4,6 @@ import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -40,6 +39,8 @@ import {
   SectionLabel,
   SegmentedControl,
   Skeleton,
+  useConfirmSheet,
+  useInfoSheet,
 } from '@/components/ui';
 import { useTheme, withAlpha } from '@/lib/theme';
 import { formatDateTime } from '@/lib/format';
@@ -99,6 +100,7 @@ function GenerateSegment() {
   // Background-generated thumbnails, filled in by polling (postId -> url).
   const [imageMap, setImageMap] = useState<Record<string, string>>({});
   const pollAttempts = useRef(0);
+  const info = useInfoSheet();
 
   const generate = useMutation({
     mutationFn: () =>
@@ -127,11 +129,11 @@ function GenerateSegment() {
   const autoSchedule = useMutation({
     mutationFn: (postIds: string[]) => autoSchedulePosts(postIds),
     onSuccess: ({ count }) => {
-      Alert.alert('Scheduled', `${count} post${count === 1 ? '' : 's'} scheduled, one per day at 9 AM.`);
+      info.show('Scheduled', `${count} post${count === 1 ? '' : 's'} scheduled, one per day at 9 AM.`);
       void queryClient.invalidateQueries({ queryKey: ['content-posts', activeBusinessId] });
       void queryClient.invalidateQueries({ queryKey: ['scheduler-buffer', activeBusinessId] });
     },
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not schedule the posts.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not schedule the posts.')),
   });
 
   function addKeyword() {
@@ -184,6 +186,7 @@ function GenerateSegment() {
     .map((p) => p._id as string);
 
   return (
+    <>
     <ScrollView contentContainerClassName="px-5 pb-12" keyboardShouldPersistTaps="handled">
       <LabeledField
         label="Topic or theme (optional)"
@@ -358,6 +361,8 @@ function GenerateSegment() {
         </View>
       )}
     </ScrollView>
+    {info.node}
+    </>
   );
 }
 
@@ -443,6 +448,7 @@ function EditPostModal({
 }) {
   const [title, setTitle] = useState(post.title);
   const [content, setContent] = useState(post.content);
+  const info = useInfoSheet();
 
   const save = useMutation({
     mutationFn: () => updatePost(post._id, { title, content }),
@@ -450,10 +456,11 @@ function EditPostModal({
       onSaved();
       onClose();
     },
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not save the post.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not save the post.')),
   });
 
   return (
+    <>
     <Modal transparent animationType="slide" onRequestClose={onClose}>
       <View className="flex-1 justify-end bg-black/60">
         <View className="max-h-[85%] rounded-t-2xl border-t border-surface-border bg-surface px-5 pb-8 pt-4">
@@ -481,6 +488,8 @@ function EditPostModal({
         </View>
       </View>
     </Modal>
+    {info.node}
+    </>
   );
 }
 
@@ -490,6 +499,8 @@ function HistorySegment() {
   const picker = useDateTimePicker();
   const t = useTheme();
   const [editing, setEditing] = useState<ContentPost | null>(null);
+  const info = useInfoSheet();
+  const confirmSheet = useConfirmSheet();
 
   const history = useInfiniteQuery({
     queryKey: ['content-posts', activeBusinessId],
@@ -507,22 +518,25 @@ function HistorySegment() {
   const schedule = useMutation({
     mutationFn: ({ postId, date }: { postId: string; date: Date }) => schedulePost(postId, date),
     onSuccess: invalidate,
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not schedule the post.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not schedule the post.')),
   });
 
   const remove = useMutation({
     mutationFn: (postId: string) => deletePost(postId),
     onSuccess: invalidate,
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not delete the post.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not delete the post.')),
   });
 
   const posts = history.data?.pages.flatMap((page) => page.posts) ?? [];
 
   function confirmDelete(post: ContentPost) {
-    Alert.alert('Delete post?', 'This removes the draft permanently.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => remove.mutate(post._id) },
-    ]);
+    confirmSheet.confirm({
+      title: 'Delete post?',
+      message: 'This removes the draft permanently.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => remove.mutate(post._id),
+    });
   }
 
   if (history.isLoading) {
@@ -581,6 +595,8 @@ function HistorySegment() {
       {editing && (
         <EditPostModal post={editing} onClose={() => setEditing(null)} onSaved={invalidate} />
       )}
+      {info.node}
+      {confirmSheet.node}
     </>
   );
 }

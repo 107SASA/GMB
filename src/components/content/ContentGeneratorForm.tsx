@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import { useBusiness } from '@/context/BusinessContext';
 import { POSTS_PER_WEEK } from '@/lib/contentConfig';
@@ -96,11 +97,11 @@ export default function ContentGeneratorForm({
     }
 
     if (finalKeywords.length === 0) {
-      alert('Please add at least one keyword.');
+      toast.error('Please add at least one keyword.');
       return;
     }
     if (contentTypes.length === 0) {
-      alert('Please select at least one content type.');
+      toast.error('Please select at least one content type.');
       return;
     }
     onGenerate({ ...formData, keywords: finalKeywords, contentTypes });

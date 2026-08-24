@@ -1,5 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Contacts from 'expo-contacts';
+// SDK 57: `import * as Contacts` + Contacts.getContactsAsync()/Contacts.Fields/
+// Contacts.PermissionStatus is the OLD, now-deprecated surface —
+// getContactsAsync throws at runtime if called (confirmed against this
+// version's actual installed type defs, node_modules/expo-contacts/build/
+// ContactsModule.d.ts — this was exactly the "could not fetch contacts"
+// bug). requestPermissionsAsync is now a top-level named export (not on a
+// `Contacts` namespace object — that name doesn't exist in this package's
+// exports at all); Contact.getAllDetails() replaces getContactsAsync();
+// permission status is a plain string ('granted'), not the old enum.
+import { Contact, ContactField, requestPermissionsAsync } from 'expo-contacts';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Linking, Modal, Pressable, Text, View } from 'react-native';
 
@@ -8,7 +17,7 @@ import { parsePhoneCandidate } from '@/lib/phone';
 import { useTheme } from '@/lib/theme';
 
 type PickerContact = { key: string; name: string; phone: string };
-type Status = 'loading' | 'granted' | 'denied';
+type Status = 'loading' | 'granted' | 'denied' | 'error';
 
 /**
  * Single-contact picker — opens the device's contact list, tapping one
@@ -39,24 +48,39 @@ export function ContactPickerModal({
     setStatus('loading');
     setSearch('');
     void (async () => {
-      const { status: perm } = await Contacts.requestPermissionsAsync();
-      if (cancelled) return;
-      if (perm !== Contacts.PermissionStatus.GRANTED) {
-        setStatus('denied');
-        return;
-      }
-      const { data } = await Contacts.getContactsAsync({ fields: [Contacts.Fields.PhoneNumbers] });
-      if (cancelled) return;
-      const rows: PickerContact[] = [];
-      for (const c of data) {
-        const phone = parsePhoneCandidate(c.phoneNumbers?.[0]?.number);
-        if (!phone || !c.name) continue;
-        rows.push({ key: c.id ?? `${c.name}-${phone}`, name: c.name, phone });
-      }
-      rows.sort((a, b) => a.name.localeCompare(b.name));
-      if (!cancelled) {
-        setContacts(rows);
-        setStatus('granted');
+      // Was unguarded — any failure here (a native/provider error, not just
+      // a permission denial, e.g. no contacts provider available on some
+      // Android builds) surfaced as an unhandled promise rejection: a hard
+      // crash screen instead of a graceful fallback, and `status` stuck on
+      // 'loading' forever if it happened to not crash the app outright.
+      try {
+        const perm = await requestPermissionsAsync();
+        if (cancelled) return;
+        if (perm.status !== 'granted') {
+          setStatus('denied');
+          return;
+        }
+        // limit is required here (unlike the old getContactsAsync, this
+        // doesn't implicitly return "everything") — set generously high
+        // since this picker searches the full list, not just a first page.
+        const data = await Contact.getAllDetails([ContactField.FULL_NAME, ContactField.PHONES], {
+          limit: 10000,
+        });
+        if (cancelled) return;
+        const rows: PickerContact[] = [];
+        for (const c of data) {
+          const phone = parsePhoneCandidate(c.phones?.[0]?.number);
+          if (!phone || !c.fullName) continue;
+          rows.push({ key: c.id ?? `${c.fullName}-${phone}`, name: c.fullName, phone });
+        }
+        rows.sort((a, b) => a.name.localeCompare(b.name));
+        if (!cancelled) {
+          setContacts(rows);
+          setStatus('granted');
+        }
+      } catch (err) {
+        console.warn('[ContactPickerModal] failed to load contacts:', err);
+        if (!cancelled) setStatus('error');
       }
     })();
     return () => {
@@ -98,6 +122,11 @@ export function ContactPickerModal({
                 <Text className="font-sans-bold text-sm text-on-brand">Open settings</Text>
               </Pressable>
             }
+          />
+        ) : status === 'error' ? (
+          <EmptyState
+            title="Couldn't load contacts"
+            hint="Something went wrong reading your contacts. You can still enter the number by hand."
           />
         ) : (
           <>

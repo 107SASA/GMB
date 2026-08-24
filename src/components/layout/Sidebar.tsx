@@ -9,6 +9,7 @@ import { useMobileNav } from "@/context/MobileNavContext";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { AddWorkspaceModal } from "./AddWorkspaceModal";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { toast } from 'sonner';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 const AVATAR_COLORS = [
@@ -41,8 +42,9 @@ const sidebarLinks = [
   { name: "Google Profile", icon: "location_on", href: "/dashboard/gbp-profile" },
   { name: "Review Management", icon: "star", href: "/dashboard/reviews" },
   { name: "CRM", icon: "forum", href: "/dashboard/crm" },
-  { name: "Content Generator", icon: "campaign", href: "/dashboard/content" },
-  { name: "Content Scheduler", icon: "calendar_month", href: "/dashboard/scheduler" },
+  // Content Generator + Content Scheduler were combined into one page (Bug
+  // 14) — Existing Posts / Generate / Schedule are now tabs inside /dashboard/content.
+  { name: "Content", icon: "campaign", href: "/dashboard/content" },
   { name: "WhatsApp AI Agent", icon: "chat", href: "/dashboard/whatsapp", superAdminOnly: true },
   { name: "Settings", icon: "settings", href: "/dashboard/settings" },
   { name: "Billing", icon: "bar_chart", href: "/dashboard/billing" },
@@ -182,7 +184,7 @@ export function Sidebar() {
       await refreshBusinesses();
       router.refresh();
     } catch (err) {
-      alert(friendlyClientMessage(err, "Failed to delete workspace"));
+      toast.error(friendlyClientMessage(err, "Failed to delete workspace"));
     } finally {
       setDeletingId(null);
     }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import BufferHealthBar from './BufferHealthBar';
 import LowBufferBanner from './LowBufferBanner';
 import WeeklyCalendar from './WeeklyCalendar';
@@ -41,10 +42,10 @@ export default function SchedulerDashboard() {
         body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error('Generation failed to dispatch');
-      alert('AI Generation job dispatched to Inngest! The calendar will update shortly.');
+      toast.success('AI Generation job dispatched to Inngest! The calendar will update shortly.');
       setTimeout(fetchBuffer, 5000);
     } catch {
-      alert('Failed to dispatch generation.');
+      toast.error('Failed to dispatch generation.');
     }
   };
 
@@ -61,7 +62,7 @@ export default function SchedulerDashboard() {
       }
       await fetchBuffer();
     } catch (err: any) {
-      alert(friendlyClientMessage(err, 'Failed to publish'));
+      toast.error(friendlyClientMessage(err, 'Failed to publish'));
     }
   };
 

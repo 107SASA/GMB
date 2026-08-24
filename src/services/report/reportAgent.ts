@@ -8,6 +8,7 @@ import {
   renderTemplate,
   type ReportAgentConfigShape,
 } from '@/lib/reportAgentDefaults';
+import { AGENT_SCOPE_GUARDRAIL } from '@/lib/agentGuardrails';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -56,7 +57,7 @@ export async function composeAgentReply(
     const res = await groq.chat.completions.create({
       model: GROQ_MODEL,
       messages: [
-        { role: 'system', content: config.agentSystemPrompt },
+        { role: 'system', content: `${AGENT_SCOPE_GUARDRAIL}\n\n${config.agentSystemPrompt}` },
         { role: 'user', content: context },
       ],
       temperature: 0.7,

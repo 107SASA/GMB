@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import {
   DndContext,
   DragOverlay,
@@ -50,7 +51,7 @@ export default function KanbanBoard({
     const trimmed = newColumnName.trim();
     if (!trimmed) return;
     if (columns.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
-      alert('A column with this name already exists.');
+      toast.error('A column with this name already exists.');
       return;
     }
     setColumns(prev => [...prev, trimmed]);

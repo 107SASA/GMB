@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Pencil, X, Check } from 'lucide-react';
+import { toast } from 'sonner';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 type StopProp = { stopPropagation(): void };
@@ -67,7 +68,7 @@ export default function PostPill({ post, onPublish, onEditSave, onEditingChange 
       setIsEditing(false);
       onEditingChange(post._id, false);
     } catch (err: any) {
-      alert(friendlyClientMessage(err, 'Failed to save changes'));
+      toast.error(friendlyClientMessage(err, 'Failed to save changes'));
     } finally {
       setSaving(false);
     }

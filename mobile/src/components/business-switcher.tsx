@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import { useBusiness } from '@/business/BusinessContext';
-import { InitialsAvatar } from '@/components/ui';
+import { InitialsAvatar, useConfirmSheet, useInfoSheet } from '@/components/ui';
 import { useTheme, withAlpha } from '@/lib/theme';
 
 /**
@@ -20,32 +20,29 @@ export function BusinessSwitcher() {
   const { businesses, activeBusinessId, selectBusiness, deleteBusiness } = useBusiness();
   const t = useTheme();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const info = useInfoSheet();
+  const confirmSheet = useConfirmSheet();
 
   const canDelete = businesses.length > 1;
 
   const confirmDelete = (id: string, name: string) => {
-    Alert.alert(
-      'Delete workspace?',
-      `"${name}" and its Google connection will be removed from your account. This can't be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            setDeletingId(id);
-            try {
-              await deleteBusiness(id);
-            } catch {
-              Alert.alert('Could not delete workspace', 'Something went wrong. Please try again.');
-            } finally {
-              setDeletingId(null);
-            }
-          },
-        },
-      ]
-    );
+    confirmSheet.confirm({
+      title: 'Delete workspace?',
+      message: `"${name}" and its Google connection will be removed from your account. This can't be undone.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: async () => {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        setDeletingId(id);
+        try {
+          await deleteBusiness(id);
+        } catch {
+          info.show('Could not delete workspace', 'Something went wrong. Please try again.');
+        } finally {
+          setDeletingId(null);
+        }
+      },
+    });
   };
 
   return (
@@ -117,6 +114,8 @@ export function BusinessSwitcher() {
           </Pressable>
         );
       })}
+      {info.node}
+      {confirmSheet.node}
     </View>
   );
 }

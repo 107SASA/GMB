@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useAuth } from '@/auth/AuthContext';
 import { BusinessSwitcher } from '@/components/business-switcher';
-import { InitialsAvatar, Screen, ScreenTitle, SectionLabel } from '@/components/ui';
+import { ConfirmSheet, InitialsAvatar, Screen, ScreenTitle, SectionLabel } from '@/components/ui';
 import {
   SURFACE_MODULES,
   useEntitlements,
@@ -106,25 +106,25 @@ export default function MoreScreen() {
   const router = useRouter();
   const t = useTheme();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
+  // Every other quasi-destructive action in the app (disconnect Google,
+  // delete workspace, delete post, cancel appointment, reject reply)
+  // confirms first — logout previously fired immediately on tap, so a
+  // single mis-tap logged the user out with no "are you sure." Uses the
+  // app's own ConfirmSheet (components/ui.tsx) rather than the OS's native
+  // Alert.alert, which rendered as a plain system dialog that clashed with
+  // the rest of the UI (Aug 2026 feedback).
   function handleLogout() {
     if (loggingOut) return;
-    // Every other quasi-destructive action in the app (disconnect Google,
-    // delete workspace, delete post, cancel appointment, reject reply)
-    // confirms first — logout previously fired immediately on tap, so a
-    // single mis-tap logged the user out with no "are you sure."
-    Alert.alert('Log out?', 'You’ll need to sign in again to access your account.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Log out',
-        style: 'destructive',
-        onPress: async () => {
-          setLoggingOut(true);
-          await logout();
-          // (app)/_layout redirects to /login once isAuthenticated flips.
-        },
-      },
-    ]);
+    setConfirmingLogout(true);
+  }
+
+  async function confirmLogout() {
+    setConfirmingLogout(false);
+    setLoggingOut(true);
+    await logout();
+    // (app)/_layout redirects to /login once isAuthenticated flips.
   }
 
   return (
@@ -204,6 +204,16 @@ export default function MoreScreen() {
           </Text>
         </Pressable>
       </ScrollView>
+
+      <ConfirmSheet
+        visible={confirmingLogout}
+        onCancel={() => setConfirmingLogout(false)}
+        onConfirm={confirmLogout}
+        title="Log out?"
+        message="You’ll need to sign in again to access your account."
+        confirmLabel="Log out"
+        destructive
+      />
     </Screen>
   );
 }

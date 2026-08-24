@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { changePassword, fetchProfile, updateProfile, type Profile } from '@/api/endpoints/account';
@@ -17,6 +17,7 @@ import {
   ScreenTitle,
   SectionLabel,
   Skeleton,
+  useInfoSheet,
 } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
 
@@ -27,16 +28,17 @@ function ProfileForm({ initial }: { initial: Profile }) {
   const [fullName, setFullName] = useState(initial.fullName);
   const [phone, setPhone] = useState(initial.phone ?? '');
   const [companyName, setCompanyName] = useState(initial.companyName ?? '');
+  const info = useInfoSheet();
 
   const save = useMutation({
     mutationFn: () => updateProfile({ fullName: fullName.trim(), phone: phone.trim(), companyName: companyName.trim() }),
     onSuccess: () => {
-      Alert.alert('Saved', 'Profile updated.');
+      info.show('Saved', 'Profile updated.');
       void queryClient.invalidateQueries({ queryKey: ['profile'] });
       // The More tab shows the auth user's name — keep it in sync.
       void refreshUser();
     },
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not save your profile.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not save your profile.')),
   });
 
   return (
@@ -56,6 +58,7 @@ function ProfileForm({ initial }: { initial: Profile }) {
         loading={save.isPending}
         disabled={!fullName.trim()}
       />
+      {info.node}
     </View>
   );
 }
@@ -65,12 +68,13 @@ function PasswordForm() {
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
+  const info = useInfoSheet();
 
   const change = useMutation({
     mutationFn: () =>
       changePassword({ currentPassword: current, newPassword: next, confirmPassword: confirm }),
     onSuccess: () => {
-      Alert.alert('Done', 'Your password has been changed.');
+      info.show('Done', 'Your password has been changed.');
       setCurrent('');
       setNext('');
       setConfirm('');
@@ -129,6 +133,7 @@ function PasswordForm() {
         loading={change.isPending}
         disabled={!current || !next || !confirm}
       />
+      {info.node}
     </View>
   );
 }

@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Modal, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Modal, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import {
@@ -19,7 +19,7 @@ import {
 } from '@/api/endpoints/gbp';
 import { useBusiness } from '@/business/BusinessContext';
 import { useDateTimePicker } from '@/components/datetime-picker';
-import { EmptyState, LoadingScreen, Screen, Skeleton } from '@/components/ui';
+import { EmptyState, LoadingScreen, Screen, Skeleton, useConfirmSheet, useInfoSheet } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
@@ -60,6 +60,8 @@ function PreviewModal({ item, onClose }: { item: GbpMediaItem; onClose: () => vo
   const queryClient = useQueryClient();
   const picker = useDateTimePicker();
   const { activeBusinessId } = useBusiness();
+  const info = useInfoSheet();
+  const confirmSheet = useConfirmSheet();
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['gbp-media', activeBusinessId] });
 
@@ -67,16 +69,16 @@ function PreviewModal({ item, onClose }: { item: GbpMediaItem; onClose: () => vo
     mutationFn: () => publishGbpMedia(item._id),
     onSuccess: ({ liveWriteApplied }) => {
       invalidate();
-      if (!liveWriteApplied) Alert.alert('Still staged', 'Live GBP publishing is currently disabled — this photo will publish automatically once it\'s enabled.');
+      if (!liveWriteApplied) info.show('Still staged', 'Live GBP publishing is currently disabled — this photo will publish automatically once it\'s enabled.');
       else onClose();
     },
-    onError: (err) => Alert.alert('Publish failed', getApiErrorMessage(err, 'Please try again.')),
+    onError: (err) => info.show('Publish failed', getApiErrorMessage(err, 'Please try again.')),
   });
 
   const schedule = useMutation({
     mutationFn: (date: Date | null) => scheduleGbpMedia(item._id, date),
     onSuccess: invalidate,
-    onError: (err) => Alert.alert('Could not schedule', getApiErrorMessage(err, 'Please try again.')),
+    onError: (err) => info.show('Could not schedule', getApiErrorMessage(err, 'Please try again.')),
   });
 
   const remove = useMutation({
@@ -85,7 +87,7 @@ function PreviewModal({ item, onClose }: { item: GbpMediaItem; onClose: () => vo
       invalidate();
       onClose();
     },
-    onError: (err) => Alert.alert('Delete failed', getApiErrorMessage(err, 'Please try again.')),
+    onError: (err) => info.show('Delete failed', getApiErrorMessage(err, 'Please try again.')),
   });
 
   const confirmDelete = () => {
@@ -93,10 +95,13 @@ function PreviewModal({ item, onClose }: { item: GbpMediaItem; onClose: () => vo
       item.status === 'published'
         ? 'This photo is live on Google. Remove it from your profile?'
         : 'This removes the staged photo permanently.';
-    Alert.alert('Delete photo?', msg, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => remove.mutate() },
-    ]);
+    confirmSheet.confirm({
+      title: 'Delete photo?',
+      message: msg,
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => remove.mutate(),
+    });
   };
 
   const isStaged = item.status === 'staged';
@@ -167,6 +172,8 @@ function PreviewModal({ item, onClose }: { item: GbpMediaItem; onClose: () => vo
         </View>
       </View>
       {picker.element}
+      {info.node}
+      {confirmSheet.node}
     </Modal>
   );
 }
@@ -182,6 +189,7 @@ export default function AllPhotosScreen() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<FilterTag>('ALL');
   const [preview, setPreview] = useState<GbpMediaItem | null>(null);
+  const info = useInfoSheet();
 
   const media = useQuery({
     queryKey: ['gbp-media', activeBusinessId],
@@ -194,15 +202,15 @@ export default function AllPhotosScreen() {
     mutationFn: uploadGbpMedia,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['gbp-media', activeBusinessId] });
-      Alert.alert('Photo saved', "It's staged — publish or schedule it from the photo's preview.");
+      info.show('Photo saved', "It's staged — publish or schedule it from the photo's preview.");
     },
-    onError: (err) => Alert.alert('Upload failed', getApiErrorMessage(err, 'Please try again.')),
+    onError: (err) => info.show('Upload failed', getApiErrorMessage(err, 'Please try again.')),
   });
 
   const startUpload = async (category: GbpMediaCategory) => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert('Permission needed', 'Allow photo library access to add business media.');
+      info.show('Permission needed', 'Allow photo library access to add business media.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 0.85 });
@@ -333,6 +341,7 @@ export default function AllPhotosScreen() {
       )}
 
       {preview && <PreviewModal item={preview} onClose={() => setPreview(null)} />}
+      {info.node}
     </Screen>
   );
 }

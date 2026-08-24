@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -42,6 +41,7 @@ import {
   SectionLabel,
   SegmentedControl,
   Skeleton,
+  useInfoSheet,
 } from '@/components/ui';
 import { useTheme, withAlpha } from '@/lib/theme';
 
@@ -77,14 +77,15 @@ function AiSettingsForm({ initial }: { initial: InboxConfig }) {
   const queryClient = useQueryClient();
   const { activeBusinessId } = useBusiness();
   const [config, setConfig] = useState(initial);
+  const info = useInfoSheet();
 
   const save = useMutation({
     mutationFn: () => saveInboxConfig(config),
     onSuccess: () => {
-      Alert.alert('Saved', 'AI agent settings updated.');
+      info.show('Saved', 'AI agent settings updated.');
       void queryClient.invalidateQueries({ queryKey: ['inbox-config', activeBusinessId] });
     },
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not save settings.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not save settings.')),
   });
 
   return (
@@ -151,6 +152,7 @@ function AiSettingsForm({ initial }: { initial: InboxConfig }) {
       />
 
       <PrimaryButton title="Save settings" onPress={() => save.mutate()} loading={save.isPending} />
+      {info.node}
     </ScrollView>
   );
 }
@@ -186,14 +188,15 @@ function BookingForm({ initial }: { initial: BusinessHours }) {
   const queryClient = useQueryClient();
   const { activeBusinessId } = useBusiness();
   const [settings, setSettings] = useState(initial);
+  const info = useInfoSheet();
 
   const save = useMutation({
     mutationFn: () => saveBusinessHours(settings),
     onSuccess: () => {
-      Alert.alert('Saved', 'Booking settings updated.');
+      info.show('Saved', 'Booking settings updated.');
       void queryClient.invalidateQueries({ queryKey: ['business-hours', activeBusinessId] });
     },
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not save settings.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not save settings.')),
   });
 
   return (
@@ -254,6 +257,7 @@ function BookingForm({ initial }: { initial: BusinessHours }) {
       />
 
       <PrimaryButton title="Save booking settings" onPress={() => save.mutate()} loading={save.isPending} />
+      {info.node}
     </ScrollView>
   );
 }
@@ -303,6 +307,7 @@ function CancelModal({
 }) {
   const [reason, setReason] = useState('');
   const t = useTheme();
+  const info = useInfoSheet();
   const cancel = useMutation({
     mutationFn: () => cancelAppointment(appointment._id, reason.trim() || 'Cancelled by business'),
     onSuccess: () => {
@@ -310,10 +315,11 @@ function CancelModal({
       onClose();
     },
     onError: (err) =>
-      Alert.alert('Error', getApiErrorMessage(err, 'Could not cancel the appointment.')),
+      info.show('Error', getApiErrorMessage(err, 'Could not cancel the appointment.')),
   });
 
   return (
+    <>
     <Modal transparent animationType="fade" onRequestClose={onClose}>
       <View className="flex-1 items-center justify-center bg-black/60 px-6">
         <View className="w-full rounded-card border border-surface-border bg-surface px-5 py-5">
@@ -346,6 +352,8 @@ function CancelModal({
         </View>
       </View>
     </Modal>
+    {info.node}
+    </>
   );
 }
 

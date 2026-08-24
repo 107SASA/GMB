@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Alert, Modal, Pressable, Share, Text, View } from 'react-native';
+import { Modal, Pressable, Share, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import Svg, { Circle } from 'react-native-svg';
 
-import { EmptyState } from '@/components/ui';
+import { EmptyState, useInfoSheet } from '@/components/ui';
 import { GoogleG } from '@/components/google-g';
 import { useTheme } from '@/lib/theme';
 
@@ -176,6 +176,7 @@ export function ReviewQrModal({
   placeId?: string | null;
 }) {
   const t = useTheme();
+  const info = useInfoSheet();
   const reviewUrl = placeId ? buildReviewUrl(placeId) : null;
 
   async function handleShare() {
@@ -186,7 +187,7 @@ export function ReviewQrModal({
         url: reviewUrl, // iOS uses this as the shared link; Android falls back to `message`.
       });
     } catch {
-      Alert.alert('Could not share', 'Please try again.');
+      info.show('Could not share', 'Please try again.');
     }
   }
 
@@ -240,6 +241,7 @@ export function ReviewQrModal({
           )}
         </View>
       </View>
+      {info.node}
     </Modal>
   );
 }

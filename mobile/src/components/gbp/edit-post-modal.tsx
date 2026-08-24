@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert, Modal, Pressable, Text, View } from 'react-native';
+import { Modal, Pressable, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import type { ContentPost } from '@/api/endpoints/content';
 import { updatePost } from '@/api/endpoints/scheduler';
-import { Field, PrimaryButton, SecondaryButton } from '@/components/ui';
+import { Field, PrimaryButton, SecondaryButton, useInfoSheet } from '@/components/ui';
 
 /**
  * Modal form for editing a scheduled/draft post's title/content — shared by
@@ -17,6 +17,7 @@ export function EditPostModal({ post, onClose }: { post: ContentPost; onClose: (
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(post.title);
   const [content, setContent] = useState(post.content);
+  const info = useInfoSheet();
 
   const save = useMutation({
     mutationFn: () => updatePost(post._id, { title: title.trim(), content: content.trim() }),
@@ -27,10 +28,11 @@ export function EditPostModal({ post, onClose }: { post: ContentPost; onClose: (
       onClose();
     },
     onError: (error) =>
-      Alert.alert('Could not save', getApiErrorMessage(error, 'Please try again.')),
+      info.show('Could not save', getApiErrorMessage(error, 'Please try again.')),
   });
 
   return (
+    <>
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={onClose} />
       <View className="rounded-t-3xl border-t border-surface-border bg-surface p-5 pb-8">
@@ -58,5 +60,7 @@ export function EditPostModal({ post, onClose }: { post: ContentPost; onClose: (
         </View>
       </View>
     </Modal>
+    {info.node}
+    </>
   );
 }

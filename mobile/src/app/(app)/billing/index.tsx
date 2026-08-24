@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
-import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { cancelSubscription, fetchBillingStatus, fetchUsage } from '@/api/endpoints/account';
@@ -16,6 +16,8 @@ import {
   ScreenTitle,
   SectionLabel,
   Skeleton,
+  useConfirmSheet,
+  useInfoSheet,
 } from '@/components/ui';
 import { ALL_MODULE_KEYS, MODULE_NAMES } from '@/entitlements/entitlements';
 import { formatDateTime } from '@/lib/format';
@@ -47,6 +49,8 @@ export default function BillingScreen() {
   const { activeBusinessId } = useBusiness();
   const queryClient = useQueryClient();
   const t = useTheme();
+  const info = useInfoSheet();
+  const confirmSheet = useConfirmSheet();
 
   const subscription = useQuery({ queryKey: ['billing-status'], queryFn: fetchBillingStatus });
   const usage = useQuery({
@@ -58,7 +62,7 @@ export default function BillingScreen() {
   const cancel = useMutation({
     mutationFn: cancelSubscription,
     onSuccess: ({ message }) => {
-      Alert.alert('Subscription cancelled', message);
+      info.show('Subscription cancelled', message);
       // The webhook applies the downgrade at cycle end — give the server a
       // moment before refetching so cancelAtPeriodEnd is already flipped.
       setTimeout(() => {
@@ -66,25 +70,21 @@ export default function BillingScreen() {
       }, 1500);
     },
     onError: (err) =>
-      Alert.alert('Error', getApiErrorMessage(err, 'Could not cancel the subscription.')),
+      info.show('Error', getApiErrorMessage(err, 'Could not cancel the subscription.')),
   });
 
   function confirmCancel() {
-    Alert.alert(
-      'Cancel subscription?',
-      'You will keep full access until the end of your current billing period. It just won\'t renew after that.',
-      [
-        { text: 'Keep plan', style: 'cancel' },
-        {
-          text: 'Cancel subscription',
-          style: 'destructive',
-          onPress: () => {
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            cancel.mutate();
-          },
-        },
-      ]
-    );
+    confirmSheet.confirm({
+      title: 'Cancel subscription?',
+      message: "You will keep full access until the end of your current billing period. It just won't renew after that.",
+      confirmLabel: 'Cancel subscription',
+      cancelLabel: 'Keep plan',
+      destructive: true,
+      onConfirm: () => {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        cancel.mutate();
+      },
+    });
   }
 
   const sub = subscription.data?.subscription;
@@ -231,6 +231,8 @@ export default function BillingScreen() {
           </View>
         )}
       </ScrollView>
+      {info.node}
+      {confirmSheet.node}
     </Screen>
   );
 }

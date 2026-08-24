@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { fetchDashboardStats, fetchGbpInsights, syncGbpInsights } from '@/api/endpoints/dashboard';
@@ -14,7 +14,7 @@ import { useKeywordChanges } from '@/components/gbp/use-keyword-changes';
 import { RankMap } from '@/components/gbp/rank-map';
 import { ReviewTrendsSection } from '@/components/gbp/review-trends-section';
 import { GoogleG } from '@/components/google-g';
-import { InfoSheet, Skeleton } from '@/components/ui';
+import { InfoSheet, Skeleton, useInfoSheet } from '@/components/ui';
 import { useTheme } from '@/lib/theme';
 
 const SHOW_LIMIT = 5;
@@ -240,12 +240,13 @@ export function PerformanceTab() {
   // keywords, profile fields, and (once, ever, per business) the 6-month
   // history backfill — instead of waiting for the nightly cron. Previously
   // this tab had no way to trigger a fresh pull at all.
+  const syncError = useInfoSheet();
   const sync = useMutation({
     mutationFn: syncGbpInsights,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['gbp-insights', activeBusinessId] });
     },
-    onError: (error) => Alert.alert('Sync failed', getApiErrorMessage(error, 'Please try again.')),
+    onError: (error) => syncError.show('Sync failed', getApiErrorMessage(error, 'Please try again.')),
   });
   // Rating / total reviews come from /api/dashboard/stats — the same numbers
   // the web dashboard shows, so the app never disagrees with the site.
@@ -493,6 +494,7 @@ export function PerformanceTab() {
         title="GBP Performance"
         message="Views, calls and direction requests are pulled from your Google Business Profile for the selected period. Latest Google Rank is your average position across the keywords tracked in your last audit — lower is better."
       />
+      {syncError.node}
     </View>
   );
 }

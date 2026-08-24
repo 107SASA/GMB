@@ -1,13 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { type ContentPost } from '@/api/endpoints/content';
 import { deletePost, fetchBuffer, publishPost, schedulePost } from '@/api/endpoints/scheduler';
 import { useBusiness } from '@/business/BusinessContext';
 import { useDateTimePicker } from '@/components/datetime-picker';
-import { Badge, EmptyState, SectionLabel, Skeleton } from '@/components/ui';
+import { Badge, EmptyState, SectionLabel, Skeleton, useConfirmSheet, useInfoSheet } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
 import { useTheme, withAlpha } from '@/lib/theme';
 
@@ -135,6 +135,8 @@ export function SchedulerPanel({
   const queryClient = useQueryClient();
   const picker = useDateTimePicker();
   const t = useTheme();
+  const info = useInfoSheet();
+  const confirmSheet = useConfirmSheet();
 
   const buffer = useQuery({
     queryKey: ['scheduler-buffer', activeBusinessId],
@@ -150,33 +152,38 @@ export function SchedulerPanel({
   const publish = useMutation({
     mutationFn: (postId: string) => publishPost(postId),
     onSuccess: invalidate,
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not publish the post.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not publish the post.')),
   });
 
   const reschedule = useMutation({
     mutationFn: ({ postId, date }: { postId: string; date: Date }) => schedulePost(postId, date),
     onSuccess: invalidate,
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not reschedule.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not reschedule.')),
   });
 
   const remove = useMutation({
     mutationFn: (postId: string) => deletePost(postId),
     onSuccess: invalidate,
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not delete the post.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not delete the post.')),
   });
 
   function confirmPublish(post: ContentPost) {
-    Alert.alert('Publish now?', `"${post.title || 'This post'}" will go live immediately.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Publish', onPress: () => publish.mutate(post._id) },
-    ]);
+    confirmSheet.confirm({
+      title: 'Publish now?',
+      message: `"${post.title || 'This post'}" will go live immediately.`,
+      confirmLabel: 'Publish',
+      onConfirm: () => publish.mutate(post._id),
+    });
   }
 
   function confirmDelete(post: ContentPost) {
-    Alert.alert('Delete post?', 'This removes the post permanently.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => remove.mutate(post._id) },
-    ]);
+    confirmSheet.confirm({
+      title: 'Delete post?',
+      message: 'This removes the post permanently.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => remove.mutate(post._id),
+    });
   }
 
   const data = buffer.data;
@@ -261,6 +268,8 @@ export function SchedulerPanel({
         )}
       </View>
       {picker.element}
+      {info.node}
+      {confirmSheet.node}
     </>
   );
 

@@ -3,13 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { deletePost, fetchPost, publishPost, schedulePost } from '@/api/endpoints/scheduler';
 import { useDateTimePicker } from '@/components/datetime-picker';
 import { EditPostModal } from '@/components/gbp/edit-post-modal';
-import { Badge, LoadingScreen, Screen, Skeleton } from '@/components/ui';
+import { Badge, LoadingScreen, Screen, Skeleton, useConfirmSheet, useInfoSheet } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
@@ -78,6 +78,8 @@ export default function PostDetailScreen() {
   const picker = useDateTimePicker();
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const info = useInfoSheet();
+  const confirmSheet = useConfirmSheet();
 
   const post = useQuery({
     queryKey: ['post', id],
@@ -94,12 +96,12 @@ export default function PostDetailScreen() {
   const publish = useMutation({
     mutationFn: () => publishPost(id!),
     onSuccess: invalidate,
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not publish the post.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not publish the post.')),
   });
   const reschedule = useMutation({
     mutationFn: (date: Date) => schedulePost(id!, date),
     onSuccess: invalidate,
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not reschedule.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not reschedule.')),
   });
   const remove = useMutation({
     mutationFn: () => deletePost(id!),
@@ -107,7 +109,7 @@ export default function PostDetailScreen() {
       invalidate();
       router.back();
     },
-    onError: (err) => Alert.alert('Error', getApiErrorMessage(err, 'Could not delete the post.')),
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not delete the post.')),
   });
 
   if (post.isLoading) return <LoadingScreen />;
@@ -176,20 +178,27 @@ export default function PostDetailScreen() {
           )
         }
         onPublishNow={() =>
-          Alert.alert('Publish now?', `"${p.title || 'This post'}" will go live immediately.`, [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Publish', onPress: () => publish.mutate() },
-          ])
+          confirmSheet.confirm({
+            title: 'Publish now?',
+            message: `"${p.title || 'This post'}" will go live immediately.`,
+            confirmLabel: 'Publish',
+            onConfirm: () => publish.mutate(),
+          })
         }
         onDelete={() =>
-          Alert.alert('Delete post?', 'This removes the post permanently.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete', style: 'destructive', onPress: () => remove.mutate() },
-          ])
+          confirmSheet.confirm({
+            title: 'Delete post?',
+            message: 'This removes the post permanently.',
+            confirmLabel: 'Delete',
+            destructive: true,
+            onConfirm: () => remove.mutate(),
+          })
         }
       />
       {picker.element}
       {editing && <EditPostModal post={p} onClose={() => setEditing(false)} />}
+      {info.node}
+      {confirmSheet.node}
     </Screen>
   );
 }

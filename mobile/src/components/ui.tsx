@@ -127,7 +127,13 @@ export function PrimaryButton({
         colors={[...BRAND_GRADIENT]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={{ alignItems: 'center', paddingVertical: 15 }}
+        // paddingHorizontal was missing entirely — fine when a parent
+        // stretches this button full-width (RN's default column
+        // alignItems:'stretch'), but any parent using items-center (e.g.
+        // an empty-state card) instead shrink-wraps it to just the text
+        // width, with no breathing room — reads as a cramped sliver of
+        // color rather than a proper pill CTA.
+        style={{ alignItems: 'center', paddingVertical: 15, paddingHorizontal: 32 }}
       >
         {loading ? (
           <ActivityIndicator color="#ffffff" />
@@ -468,6 +474,145 @@ export function InfoSheet({
       </View>
     </Modal>
   );
+}
+
+/**
+ * Themed two-button confirmation sheet — the Cancel/Confirm counterpart to
+ * InfoSheet above, for the same reason: the OS's native `Alert.alert(title,
+ * message, [Cancel, destructive])` two-button confirm renders as a plain
+ * system dialog (default font, no theme awareness) that clashes with the
+ * rest of the UI. Same backdrop-as-sibling dismiss idiom as InfoSheet.
+ */
+export function ConfirmSheet({
+  visible,
+  onCancel,
+  onConfirm,
+  title,
+  message,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  destructive = false,
+  loading = false,
+}: {
+  visible: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /** Tints the confirm button with the error-container pair (Badge's "negative" tone) instead of brand. */
+  destructive?: boolean;
+  loading?: boolean;
+}) {
+  const t = useTheme();
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={onCancel} />
+      <View className="rounded-t-3xl border border-surface-border bg-surface-raised px-6 pb-10 pt-6">
+        <Text className="font-display-bold text-lg text-white">{title}</Text>
+        <Text className="mt-2 font-sans text-sm leading-5 text-zinc-400">{message}</Text>
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+          <Pressable
+            onPress={onCancel}
+            disabled={loading}
+            // No `className` — see PrimaryButton above: react-native-css-interop
+            // can swallow onPress on styled Pressables.
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: t.textDim,
+              paddingVertical: 14,
+              opacity: loading ? 0.5 : 1,
+            }}
+          >
+            <Text className="font-sans-bold text-base text-white">{cancelLabel}</Text>
+          </Pressable>
+          <Pressable
+            onPress={onConfirm}
+            disabled={loading}
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              borderRadius: 999,
+              backgroundColor: destructive ? t.errorContainer : t.brand,
+              paddingVertical: 14,
+              opacity: loading ? 0.5 : 1,
+            }}
+          >
+            {loading ? (
+              <ActivityIndicator color={destructive ? t.onErrorContainer : '#ffffff'} />
+            ) : (
+              <Text
+                className="font-sans-bold text-base"
+                // Fixed #FFFFFF for the non-destructive case — same as the
+                // `on-brand` Tailwind token (tailwind.config.js), which isn't
+                // exposed on the theme.ts Palette object to read here.
+                style={{ color: destructive ? t.onErrorContainer : '#ffffff' }}
+              >
+                {confirmLabel}
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/**
+ * Local per-screen state + ready-to-render JSX for a single InfoSheet,
+ * cutting the boilerplate every one-button-alert call site would otherwise
+ * repeat (useState + the JSX block) down to two lines:
+ *   const info = useInfoSheet();
+ *   ...
+ *   info.show('Saved', 'Profile updated.');
+ *   ...
+ *   return <Screen>...{info.node}</Screen>;
+ */
+export function useInfoSheet() {
+  const [state, setState] = useState<{ title: string; message: string } | null>(null);
+  const show = (title: string, message: string) => setState({ title, message });
+  const node = (
+    <InfoSheet
+      visible={!!state}
+      onClose={() => setState(null)}
+      title={state?.title ?? ''}
+      message={state?.message ?? ''}
+    />
+  );
+  return { show, node };
+}
+
+/** ConfirmSheet counterpart of useInfoSheet — bundles the onConfirm callback with the prompt itself. */
+export function useConfirmSheet() {
+  const [state, setState] = useState<{
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    destructive?: boolean;
+    onConfirm: () => void;
+  } | null>(null);
+  const node = (
+    <ConfirmSheet
+      visible={!!state}
+      onCancel={() => setState(null)}
+      onConfirm={() => {
+        const onConfirm = state?.onConfirm;
+        setState(null);
+        onConfirm?.();
+      }}
+      title={state?.title ?? ''}
+      message={state?.message ?? ''}
+      confirmLabel={state?.confirmLabel}
+      cancelLabel={state?.cancelLabel}
+      destructive={state?.destructive}
+    />
+  );
+  return { confirm: setState, node };
 }
 
 /** Theme-aware back arrow used in custom screen headers. */

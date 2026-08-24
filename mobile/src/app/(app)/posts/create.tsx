@@ -2,13 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { createPost } from '@/api/endpoints/content';
 import { useBusiness } from '@/business/BusinessContext';
 import { useDateTimePicker } from '@/components/datetime-picker';
-import { Field, PrimaryButton, Screen } from '@/components/ui';
+import { Field, PrimaryButton, Screen, useInfoSheet } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
@@ -31,6 +31,7 @@ export default function CreatePostScreen() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [scheduledDate, setScheduledDate] = useState<Date | null>(null);
+  const info = useInfoSheet();
 
   const create = useMutation({
     mutationFn: () =>
@@ -45,7 +46,7 @@ export default function CreatePostScreen() {
       router.back();
     },
     onError: (error) =>
-      Alert.alert('Could not create post', getApiErrorMessage(error, 'Please try again.')),
+      info.show('Could not create post', getApiErrorMessage(error, 'Please try again.')),
   });
 
   return (
@@ -112,6 +113,7 @@ export default function CreatePostScreen() {
         </View>
       </ScrollView>
       {picker.element}
+      {info.node}
     </Screen>
   );
 }

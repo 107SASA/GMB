@@ -1,14 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { quickAddCustomer } from '@/api/endpoints/customers';
 import { useBusiness } from '@/business/BusinessContext';
 import { ContactPickerModal } from '@/components/contact-picker-modal';
 import { ReviewQrModal } from '@/components/review-qr-modal';
-import { Field, PrimaryButton } from '@/components/ui';
+import { Field, PrimaryButton, useInfoSheet } from '@/components/ui';
 import { useTheme } from '@/lib/theme';
 
 /**
@@ -30,16 +30,17 @@ export function AddCustomerCard() {
   const [phone, setPhone] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+  const info = useInfoSheet();
 
   const add = useMutation({
     mutationFn: () => quickAddCustomer({ phone: phone.trim() }),
     onSuccess: (result) => {
       setPhone('');
       if (!result.reviewRequestSent) {
-        Alert.alert('Customer saved', result.reason ?? 'No review request was sent.');
+        info.show('Customer saved', result.reason ?? 'No review request was sent.');
         return;
       }
-      Alert.alert(
+      info.show(
         'Review request sent',
         result.existing
           ? `${result.customer.name} was already a customer — sent them another WhatsApp review request.`
@@ -47,7 +48,7 @@ export function AddCustomerCard() {
       );
     },
     onError: (error) =>
-      Alert.alert('Could not add customer', getApiErrorMessage(error, 'Please try again.')),
+      info.show('Could not add customer', getApiErrorMessage(error, 'Please try again.')),
   });
 
   return (
@@ -118,6 +119,7 @@ export function AddCustomerCard() {
         businessName={activeBusiness?.name ?? 'your business'}
         placeId={activeBusiness?.googlePlaceId ?? activeBusiness?.placeId}
       />
+      {info.node}
     </View>
   );
 }

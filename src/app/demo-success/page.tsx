@@ -6,18 +6,19 @@ import { BookDemoButton } from '@/components/shared/BookDemoButton';
 
 export default function DemoSuccessPage() {
   return (
-    <main className="theme-marketing min-h-screen bg-[#f7faf8]">
+    <main className="theme-marketing min-h-screen bg-(--mkt-surface)">
       <Navbar />
-      <div className="pt-28 pb-20 px-4 flex flex-col items-center justify-center">
-        <div className="bg-white rounded-2xl shadow-lg border border-[#e0e3e1] p-10 max-w-md w-full text-center">
-          <div className="w-20 h-20 bg-[#e8f8ee] rounded-full flex items-center justify-center mx-auto mb-6">
-            <MaterialIcon name="check_circle" size={40} className="text-[#06b34c]" />
+      <div className="relative pt-28 pb-20 px-4 flex flex-col items-center justify-center">
+        <div className="bg-white rounded-xl shadow-card border border-(--mkt-line) p-10 max-w-md w-full text-center">
+          <div className="w-16 h-16 bg-[#e8f8ee] rounded-xl flex items-center justify-center mx-auto mb-6">
+            <MaterialIcon name="check_circle" size={32} className="text-[#006e2c]" />
           </div>
-          <h1 className="font-heading text-3xl font-extrabold text-[#181c1c] mb-3">Demo Booked!</h1>
+          <p className="mkt-label text-[#006e2c] mb-2">Confirmed</p>
+          <h1 className="font-mkt-display text-3xl font-semibold text-[#101613] mb-3">Demo booked!</h1>
           <p className="text-[#3d4a3d] mb-6 text-lg">
             Thank you for your interest. A confirmation email has been sent to you.
           </p>
-          <div className="bg-[#f7faf8] rounded-xl p-5 mb-8 border border-[#e0e3e1] text-left">
+          <div className="bg-(--mkt-surface) rounded-lg p-5 mb-8 border border-(--mkt-line) text-left">
             <p className="text-sm text-[#3d4a3d]">
               Our team will review your request and a platform expert will reach out shortly to coordinate your demo session.
             </p>
@@ -25,14 +26,14 @@ export default function DemoSuccessPage() {
           <div className="flex flex-col gap-3">
             <Link
               href="/"
-              className="inline-flex items-center justify-center gap-2 w-full bg-[#06b34c] text-white font-bold py-3.5 rounded-lg hover:bg-[#059640] transition-colors"
+              className="inline-flex items-center justify-center gap-2 w-full bg-[#006e2c] text-white font-bold py-3.5 rounded-lg hover:bg-[#005a24] transition-colors"
             >
               Return to Homepage
               <MaterialIcon name="arrow_forward" size={18} />
             </Link>
             <BookDemoButton
               origin="demo-success"
-              className="w-full px-6 py-3 rounded-lg border-2 border-[#006e2c] text-[#006e2c] font-semibold hover:bg-white transition-colors"
+              className="w-full px-6 py-3 rounded-lg border border-(--mkt-line) text-[#101613] font-semibold hover:border-[#006e2c] hover:text-[#006e2c] transition-colors"
             />
           </div>
         </div>

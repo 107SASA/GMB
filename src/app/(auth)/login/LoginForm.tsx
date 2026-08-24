@@ -181,7 +181,7 @@ export default function LoginForm() {
           )}
 
       <p className="text-center text-sm font-medium text-on-surface-variant mt-8">
-        Don&apos;t have an account? <a href="/onboarding" className="text-primary hover:text-primary-container">Get Started</a>
+        Don&apos;t have an account? <a href="/free-report" className="text-primary hover:text-primary-container">Get your free report</a>
       </p>
     </div>
   );

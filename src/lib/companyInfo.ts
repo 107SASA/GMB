@@ -1,10 +1,6 @@
 /**
  * Single source of truth for the public company / contact identity used across
  * the legal pages (privacy, terms, refund, contact) and the footer.
- *
- * NOTE: `address` is a placeholder — replace it with the real registered
- * business address before relying on these pages for Razorpay / Google
- * verification.
  */
 export const COMPANY = {
   name: 'GrowwMatics AI',
@@ -16,8 +12,7 @@ export const COMPANY = {
   domain: 'growwmatics.com',
   siteUrl: 'https://growwmatics.com',
   supportEmail: 'support@growwmatics.com',
-  // TODO: replace with the real registered business address.
-  address: '[REGISTERED BUSINESS ADDRESS — replace before launch]',
+  address: '11th Floor, Room No - 1104, Ambuja Neotia Eco Station, BP Block, Sector V, Bidhannagar, Kolkata, West Bengal 700091',
 } as const;
 
 /** "GrowwMatics AI is a product of Desun Technology Pvt. Ltd." — the one

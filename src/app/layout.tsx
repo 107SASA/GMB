@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Public_Sans } from "next/font/google";
+import { Inter, Public_Sans, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
 import { JsonLd } from "@/components/seo/JsonLd";
@@ -35,6 +35,23 @@ const publicSans = Public_Sans({
   subsets: ["latin"],
   weight: ["400", "600", "700", "800"],
   variable: "--font-public-sans",
+});
+
+// Marketing-site-only typographic voice (redesign, Aug 2026). Kept as
+// separate variables rather than repointing --font-heading so the
+// dashboard/admin/auth surfaces — which also read --font-heading — are
+// unaffected; only components that opt in via .font-mkt-display /
+// .font-mkt-mono (scoped under .theme-marketing, see globals.css) use these.
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-space-grotesk",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-jetbrains-mono",
 });
 
 export const metadata: Metadata = {
@@ -96,7 +113,7 @@ export default function RootLayout({
         <JsonLd data={websiteSchema} />
       </head>
       <body
-        className={`${inter.variable} ${publicSans.variable} ${inter.className} antialiased bg-background text-on-surface`}
+        className={`${inter.variable} ${publicSans.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} ${inter.className} antialiased bg-background text-on-surface`}
         // Grammarly (and similar extensions) inject data-gr-ext-installed /
         // data-new-gr-c-s-check-loaded onto <body> before React hydrates —
         // a real client-vs-server mismatch, but caused by the browser, not

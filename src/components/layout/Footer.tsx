@@ -1,27 +1,31 @@
 import Link from "next/link";
 import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
-import { BRAND_ATTRIBUTION } from "@/lib/companyInfo";
+import { BRAND_ATTRIBUTION, COMPANY } from "@/lib/companyInfo";
 import { SERVICES } from "@/lib/servicesData";
 import { GbpBoosterPromo } from "@/components/sections/GbpBoosterPromo";
+import { BookDemoButton } from "@/components/shared/BookDemoButton";
 
 export function Footer() {
   return (
-    <footer className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 border-t border-outline-variant bg-surface-container-low">
+    <footer className="theme-marketing py-10 sm:py-12 md:py-16 px-4 sm:px-6 border-t border-(--mkt-line) bg-white">
       <div className="max-w-container-max mx-auto grid grid-cols-2 sm:grid-cols-2 md:grid-cols-5 gap-8 sm:gap-10 md:gap-12">
         <div className="col-span-2 md:col-span-1">
           <Link href="/" className="flex items-center gap-2 mb-4 sm:mb-6">
             <img src="/brand/icon.png" alt="GrowwMatics AI" className="w-8 h-8 object-contain" />
-            <span className="text-lg sm:text-xl font-heading font-bold tracking-tight text-on-surface">
-              GrowwMatics AI
+            <span className="font-mkt-display text-lg sm:text-xl font-semibold tracking-tight text-[#101613]">
+              Growwmatics
             </span>
           </Link>
           <p className="text-on-surface-variant text-sm leading-relaxed mb-4 sm:mb-6 max-w-sm">
-            The #1 AI-powered platform for local business growth and Google Business Profile automation.
+            The AI-powered platform for local business growth and Google Business Profile automation.
+          </p>
+          <p className="text-on-surface-variant text-xs leading-relaxed max-w-sm">
+            {COMPANY.address}
           </p>
         </div>
 
         <div>
-          <h4 className="font-heading font-bold text-on-surface mb-4 sm:mb-6 text-sm sm:text-base">OnDemand Service</h4>
+          <h4 className="mkt-label text-[#6b756f] mb-4 sm:mb-6">OnDemand Service</h4>
           <ul className="space-y-3 sm:space-y-4 text-sm text-on-surface-variant">
             {SERVICES.map((service) => (
               <li key={service.slug}>
@@ -34,7 +38,7 @@ export function Footer() {
         </div>
 
         <div>
-          <h4 className="font-heading font-bold text-on-surface mb-4 sm:mb-6 text-sm sm:text-base">Product</h4>
+          <h4 className="mkt-label text-[#6b756f] mb-4 sm:mb-6">Product</h4>
           <ul className="space-y-3 sm:space-y-4 text-sm text-on-surface-variant">
             <li>
               <Link href="/features" className="hover:text-primary transition-colors">
@@ -74,7 +78,7 @@ export function Footer() {
         </div>
 
         <div>
-          <h4 className="font-heading font-bold text-on-surface mb-4 sm:mb-6 text-sm sm:text-base">Get Started</h4>
+          <h4 className="mkt-label text-[#6b756f] mb-4 sm:mb-6">Get Started</h4>
           <ul className="space-y-3 sm:space-y-4 text-sm text-on-surface-variant">
             <li>
               <Link href="/free-report" className="hover:text-primary transition-colors">
@@ -82,9 +86,7 @@ export function Footer() {
               </Link>
             </li>
             <li>
-              <Link href="/login" className="hover:text-primary transition-colors">
-                Sign In
-              </Link>
+              <BookDemoButton origin="footer" showIcon={false} className="hover:text-primary transition-colors" />
             </li>
             <li>
               <Link href="/contact" className="hover:text-primary transition-colors">
@@ -95,7 +97,7 @@ export function Footer() {
         </div>
 
         <div>
-          <h4 className="font-heading font-bold text-on-surface mb-4 sm:mb-6 text-sm sm:text-base">Legal</h4>
+          <h4 className="mkt-label text-[#6b756f] mb-4 sm:mb-6">Legal</h4>
           <ul className="space-y-3 sm:space-y-4 text-sm text-on-surface-variant">
             <li>
               <Link href="/privacy" className="hover:text-primary transition-colors">
@@ -121,7 +123,7 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="max-w-container-max mx-auto mt-12 sm:mt-16 md:mt-20 pt-6 sm:pt-8 border-t border-outline-variant text-center text-outline text-xs space-y-1 px-2">
+      <div className="max-w-container-max mx-auto mt-8 sm:mt-10 md:mt-12 pt-6 sm:pt-8 pb-3 sm:pb-4 border-t border-(--mkt-line) text-center text-outline text-xs space-y-1.5 px-2">
         <p>© {new Date().getFullYear()} GrowwMatics AI. All rights reserved. Built for the future of local SEO.</p>
         <p>{BRAND_ATTRIBUTION}</p>
       </div>

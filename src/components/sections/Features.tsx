@@ -46,11 +46,11 @@ const features = [
 ];
 
 function IconBadge({ icon, size = "md" }: { icon: string; size?: "md" | "lg" }) {
-  const dims = size === "lg" ? "w-14 h-14" : "w-12 h-12";
-  const iconSize = size === "lg" ? 28 : 22;
+  const dims = size === "lg" ? "w-14 h-14" : "w-11 h-11";
+  const iconSize = size === "lg" ? 28 : 20;
   return (
     <div
-      className={`${dims} rounded-xl bg-[#e8f8ee] border border-[#c8ebd4] flex items-center justify-center shrink-0`}
+      className={`${dims} rounded-lg bg-[#e8f8ee] border border-[#c8ebd4] flex items-center justify-center shrink-0`}
     >
       <MaterialIcon name={icon} size={iconSize} className="text-[#006e2c]" />
     </div>
@@ -59,12 +59,12 @@ function IconBadge({ icon, size = "md" }: { icon: string; size?: "md" | "lg" }) 
 
 export function Features() {
   return (
-    <section id="product-features" className="py-20 md:py-24 px-6 max-w-7xl mx-auto">
-      <div className="text-center mb-16">
-        <p className="text-sm font-semibold uppercase tracking-wider text-[#006e2c] mb-3">Features</p>
-        <h2 className="font-heading text-3xl md:text-5xl font-bold text-[#181c1c] tracking-tight mb-4">
-          Everything You Need to{" "}
-          <span className="text-[#006e2c]">Dominate Local Search</span>
+    <section id="product-features" className="py-16 sm:py-20 md:py-24 px-6 max-w-7xl mx-auto">
+      <div className="text-center mb-14 sm:mb-16">
+        <p className="mkt-label text-[#006e2c] mb-3">Features</p>
+        <h2 className="font-mkt-display text-2xl sm:text-3xl md:text-5xl font-semibold text-[#101613] tracking-tight mb-4">
+          Everything you need to{" "}
+          <span className="text-[#006e2c]">dominate local search</span>
         </h2>
         <p className="text-lg text-[#3d4a3d] max-w-2xl mx-auto leading-relaxed">
           Our AI engine handles the heavy lifting, so you can focus on running your business.
@@ -76,11 +76,12 @@ export function Features() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.5 }}
-        className="grid grid-cols-1 md:grid-cols-5 gap-8 items-center p-8 md:p-10 rounded-2xl bg-white shadow-sm border border-[#e0e3e1] mb-6"
+        className="grid grid-cols-1 md:grid-cols-5 gap-8 items-center p-8 md:p-10 rounded-xl bg-white shadow-card border border-(--mkt-line) mb-6"
       >
         <div className="md:col-span-3">
           <IconBadge icon={FEATURED.icon} size="lg" />
-          <h3 className="font-heading text-2xl font-bold text-[#181c1c] mt-6 mb-3">{FEATURED.title}</h3>
+          <p className="mkt-label text-[#006e2c] mt-6 mb-2">Featured</p>
+          <h3 className="font-mkt-display text-xl sm:text-2xl font-semibold text-[#101613] mb-3">{FEATURED.title}</h3>
           <p className="text-[#3d4a3d] leading-relaxed">{FEATURED.description}</p>
         </div>
         <div className="md:col-span-2 h-32 flex items-end gap-2">
@@ -91,13 +92,13 @@ export function Features() {
               whileInView={{ height: `${h}%` }}
               viewport={{ once: true }}
               transition={{ duration: 0.6, delay: 0.2 + i * 0.08, ease: "easeOut" }}
-              className="flex-1 rounded-t-sm bg-linear-to-t from-[#006e2c] to-[#06b34c]"
+              className="flex-1 rounded-t-sm bg-linear-to-t from-[#006e2c] to-[#4ade80]"
             />
           ))}
         </div>
       </motion.div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {features.map((feature, idx) => (
           <motion.div
             key={idx}
@@ -106,10 +107,13 @@ export function Features() {
             transition={{ duration: 0.5, delay: idx * 0.08 }}
             viewport={{ once: true }}
             whileHover={{ y: -4, transition: { duration: 0.2 } }}
-            className="group p-8 rounded-2xl bg-white shadow-sm border border-[#e0e3e1] hover:border-[#06b34c]/40 transition-colors"
+            className="group p-6 sm:p-7 rounded-xl bg-white shadow-sm border border-(--mkt-line) hover:border-[#006e2c]/40 transition-colors"
           >
-            <IconBadge icon={feature.icon} />
-            <h3 className="font-heading text-xl font-bold text-[#181c1c] mt-6 mb-3 group-hover:text-[#006e2c] transition-colors">
+            <div className="flex items-start justify-between mb-5">
+              <IconBadge icon={feature.icon} />
+              <span className="font-mkt-mono text-xs text-[#9aa59c]">{String(idx + 1).padStart(2, "0")}</span>
+            </div>
+            <h3 className="font-mkt-display text-lg font-semibold text-[#101613] mb-2 group-hover:text-[#006e2c] transition-colors">
               {feature.title}
             </h3>
             <p className="text-[#3d4a3d] text-sm leading-relaxed">{feature.description}</p>

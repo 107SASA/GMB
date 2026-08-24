@@ -103,13 +103,12 @@
  */
 .theme-marketing {
   overflow-x: clip;
-  /* Clearance for the mobile-only full-width GBP sticky bar (~97px + safe
-     area). Desktop (sm+) now shows a small collapsed launcher pill instead
-     of a full-width bar (Aug 2026 GbpBoosterPromo redesign) and doesn't
-     need this reserved space — see the sm: override below, which used to
-     make this *larger* for a bar that no longer exists at that width and
-     was leaving a visible empty band below the footer on every page. */
-  padding-bottom: calc(6.75rem + env(safe-area-inset-bottom, 0px));
+  /* GbpBoosterPromo is a small floating pill at every breakpoint now (Aug
+     2026 redesign — mobile used to have an always-expanded full-width bar
+     permanently docked at the bottom, which needed this much bottom
+     clearance reserved on every page; it doesn't float over content the
+     same way a pill does, so nothing needs reserving anymore). */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 
   /*
    * "Data-Forward Command Center" redesign tokens (Aug 2026). Scoped to
@@ -140,12 +139,6 @@
      makes white cards (niche chips, report-preview card, FAQ accordion)
      pop against the canvas instead of blending into it. */
   --mkt-surface: #eaf3ee;
-}
-
-@media (min-width: 640px) {
-  .theme-marketing {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
 }
 
 /* Prevent iOS zoom on form inputs (<16px triggers zoom) */
@@ -207,11 +200,10 @@
 .theme-marketing .mkt-marquee-track:hover {
   animation-play-state: paused;
 }
-@media (prefers-reduced-motion: reduce) {
-  .theme-marketing .mkt-marquee-track {
-    animation: none;
-  }
-}
+/* Deliberately NOT disabled under prefers-reduced-motion (25 Aug 2026, user
+   request) — every other motion on this site still respects that setting;
+   this one purely-decorative strip is the sole exception, kept always
+   running so it's never dependent on a visitor's OS-level toggle. */
 
 * {
   border-color: #c2c6d1;

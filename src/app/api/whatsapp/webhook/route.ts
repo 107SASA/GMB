@@ -9,29 +9,77 @@ import Conversation from '@/models/Conversation';
 import MessageQueue from '@/models/MessageQueue';
 import { inngest } from '@/services/inngest/client';
 import Customer from '@/models/Customer';
+import SupportConversation from '@/models/SupportConversation';
+import User from '@/models/User';
 import { validateTwilioSignature } from '@/lib/twilioSignature';
 import { sendOutboundMessage } from '@/services/whatsapp/send';
 import { checkRateLimit } from '@/lib/rateLimit';
 import ProcessedWebhookEvent from '@/models/ProcessedWebhookEvent';
+import { SUPPORT_MESSAGE } from '@/lib/whatsappCta';
 
 export const dynamic = 'force-dynamic';
 
 const EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
 const twimlOk = () => new NextResponse(EMPTY_TWIML, { status: 200, headers: { 'Content-Type': 'text/xml' } });
 
+// Keyword signal that a lead mid-sales-chat now wants an actual demo booked
+// rather than more nurture — same booking keywords classifyIntent() below
+// uses for a brand-new thread, so a lead reads as consistent whichever path
+// they came in through. Deliberately keyword-based (not an extra AI call) so
+// the handoff is instant and free; a bare "yes"/"2pm" reply to the agent's
+// own offer of a demo isn't caught by this and still gets answered by the
+// sales agent's (now link/time-fabrication-proof) prompt instead — see
+// composeAgentReply in services/sales/salesAgent.ts.
+const BOOKING_HANDOFF_RE = /\b(demo|book|schedule|walkthrough|screen.?share)\b/i;
+
 /**
  * Shared by both inbound pipelines below (tenant and platform) so the STOP
  * handling and the consent gate can't drift between the two copies the way
  * the legacy Twilio route drifted from the unified handler.
  *
+ * `allowBookingHandoff` — only true on the platform pipeline (see
+ * processPlatformInbound), where a demo booking is a real, meaningful thing
+ * to hand off to (BookingConversation/DemoBooking). The tenant pipeline has
+ * no such concept for a business's own customers, so it's left false there
+ * and behaves exactly as before.
+ *
  * Returns true if this phone had an active SalesConversation and the message
  * was fully handled here (caller should stop processing it any further).
  */
-async function handleActiveSalesConversation(salesConvo: any, body: string): Promise<boolean> {
+async function handleActiveSalesConversation(
+  salesConvo: any,
+  body: string,
+  opts: { allowBookingHandoff?: boolean } = {}
+): Promise<boolean> {
   const normalized = body.trim().toUpperCase();
   if (['STOP', 'UNSUBSCRIBE', 'CANCEL'].includes(normalized)) {
     salesConvo.status = 'stopped';
     await salesConvo.save();
+    return true;
+  }
+
+  // Booking intent wins over more nurture: a lead who explicitly asks to
+  // book/schedule a demo gets moved to the real Booking Agent (grounded
+  // date/time handling, files a DemoBooking + CRM lead on completion)
+  // instead of the Sales Agent improvising a meeting it can't actually keep
+  // — see PRODUCTION_READINESS / Aug 2026 fix notes for the incident this
+  // closes (fabricated /demo-call link, a "2 PM" offered at 11:42 PM, and no
+  // booking record ever created).
+  if (opts.allowBookingHandoff && salesConvo.consentStatus !== 'pending' && BOOKING_HANDOFF_RE.test(body)) {
+    salesConvo.status = 'handed_off';
+    salesConvo.messages.push({ role: 'lead', text: body, at: new Date() });
+    await salesConvo.save();
+
+    const { phoneDedupeKey } = await import('@/lib/phone');
+    const { default: BookingConversation } = await import('@/models/BookingConversation');
+    const convo = await BookingConversation.create({
+      leadPhone: salesConvo.leadPhone,
+      phoneKey: phoneDedupeKey(salesConvo.leadPhone),
+      leadName: salesConvo.leadName,
+      status: 'active',
+      messages: [{ role: 'lead', text: body, at: new Date() }],
+    });
+    await inngest.send({ name: 'booking/agent.reply', data: { conversationId: convo._id.toString(), body } });
     return true;
   }
 
@@ -228,11 +276,17 @@ async function processInboundMessage({ business, phone, profileName, body, messa
 }
 
 // ---------------------------------------------------------------------------
-// Platform (GrowwMatics-owned) inbound pipeline. The public "Book a Demo" CTA
-// and the post-audit sales nurture both run on ONE GrowwMatics WhatsApp number
-// (owner-only line — never a tenant's). Any message to it routes here:
-//   • active post-audit sales conversation → SALES agent
-//   • otherwise                            → BOOKING agent (demo bookings)
+// Platform (GrowwMatics-owned) inbound pipeline. The public "Book a Demo" CTA,
+// the post-audit sales nurture, the free-report flow, and the mobile app's
+// "Help" button all run on ONE GrowwMatics WhatsApp number (owner-only line —
+// never a tenant's). Any message to it routes here:
+//   • active post-audit sales conversation      → SALES agent
+//   • active booking/report/support thread      → that agent (or, for
+//     support, just logged for a human — see SupportConversation)
+//   • an existing, verified GrowwMatics customer → SUPPORT agent, always
+//     (never the prospect report/demo menu below)
+//   • otherwise, brand-new thread                → classified by keyword/CTA
+//     text into report / booking / support / unknown (menu)
 // ---------------------------------------------------------------------------
 
 /** True when an inbound message hit the GrowwMatics platform number. */
@@ -260,9 +314,15 @@ interface PlatformInbound {
  * src/lib/whatsappCta.ts), then falls back to loose keyword matching so a
  * reply to the menu (e.g. "1", "report") still routes correctly.
  */
-function classifyIntent(body: string): 'report' | 'booking' | 'unknown' {
+function classifyIntent(body: string): 'report' | 'booking' | 'support' | 'unknown' {
   const text = (body || '').trim().toLowerCase();
   if (!text) return 'unknown';
+  // Exact-match first (SUPPORT_MESSAGE/BOOST_PROFILE_MESSAGE from
+  // lib/whatsappCta.ts — the mobile Help button and marketing CTAs send
+  // these verbatim), then loose keywords for a reply typed by hand.
+  if (text === SUPPORT_MESSAGE.toLowerCase() || /\b(help|support|issue|problem)\b/.test(text) || text.includes('not working')) {
+    return 'support';
+  }
   if (text === '1' || /\b(report|profile|boost|rank)\b/.test(text)) return 'report';
   if (text === '2' || /\b(demo|book)\b/.test(text)) return 'booking';
   return 'unknown';
@@ -280,7 +340,7 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
   // 1. Post-audit SALES nurture takes priority while active.
   const salesConvo = await SalesConversation.findOne({ phoneKey: key, status: 'active' });
   if (salesConvo) {
-    await handleActiveSalesConversation(salesConvo, body);
+    await handleActiveSalesConversation(salesConvo, body, { allowBookingHandoff: true });
     return;
   }
 
@@ -316,11 +376,50 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     return;
   }
 
+  // 3.5. An active support thread — append and wait for a human, don't
+  // re-fire the AI acknowledgment on every follow-up message (this is a
+  // one-shot "we've got it" reply, not a multi-turn conversation like sales/
+  // booking/report — repeating it on each message would read as the bot
+  // ignoring them).
+  const activeSupport = await SupportConversation.findOne({ phoneKey: key, status: 'active' });
+  if (activeSupport) {
+    if (isOptOut) {
+      activeSupport.status = 'closed';
+      await activeSupport.save();
+      return;
+    }
+    activeSupport.messages.push({ role: 'lead', text: body, at: new Date() });
+    await activeSupport.save();
+    return;
+  }
+
   if (isOptOut) return; // Nothing active to stop.
+
+  // 3.7. An existing, verified GrowwMatics customer messaging this line —
+  // always route to support, even if their wording doesn't match the
+  // support keywords below (a real customer should never see the "want a
+  // free report or a demo?" menu meant for prospects).
+  const existingUser = await User.findOne({ phone: normalizePhoneE164(phone) || phone, isPhoneVerified: true })
+    .select('_id activeBusinessId')
+    .lean() as any;
 
   // 4. Brand-new thread — classify by the CTA's prefilled text (or a reply to
   // the menu below), rather than defaulting to one agent over the other.
-  const intent = classifyIntent(body);
+  const intent = existingUser ? 'support' : classifyIntent(body);
+
+  if (intent === 'support') {
+    const convo = await SupportConversation.create({
+      leadPhone: normalizePhoneE164(phone) || phone,
+      phoneKey: key,
+      leadName: profileName || '',
+      status: 'active',
+      messages: [{ role: 'lead', text: body, at: new Date() }],
+      userId: existingUser?._id,
+      businessId: existingUser?.activeBusinessId,
+    });
+    await inngest.send({ name: 'support/agent.reply', data: { conversationId: convo._id.toString() } });
+    return;
+  }
 
   if (intent === 'report') {
     const convo = await ReportConversation.create({

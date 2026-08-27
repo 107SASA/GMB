@@ -4,6 +4,7 @@ import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import User from '@/models/User';
 import Business from '@/models/Business';
 import ContentGenerationLog from '@/models/ContentGenerationLog';
+import Lead from '@/models/Lead';
 
 export async function GET() {
   const auth = await requireSuperAdmin();
@@ -24,6 +25,10 @@ export async function GET() {
     // (/free-report) doesn't inflate real-signup numbers.
     const notShadow = { isShadowAccount: { $ne: true } };
 
+    // Real tenant CRM leads only — excludes leadType:'Platform Prospect'
+    // (GrowwMatics' own acquisition funnel), same scoping as /admin/crm.
+    const clientLeads = { leadType: 'Client Prospect' };
+
     const [
       totalUsers,
       totalBusinesses,
@@ -31,6 +36,8 @@ export async function GET() {
       recentSignups,
       newUsersLast7Days,
       newBusinessesLast7Days,
+      totalLeads,
+      newLeadsLast7Days,
     ] = await Promise.all([
       User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, ...notShadow }),
       Business.countDocuments(),
@@ -47,6 +54,8 @@ export async function GET() {
         createdAt: { $gte: sevenDaysAgo },
       }),
       Business.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
+      Lead.countDocuments(clientLeads),
+      Lead.countDocuments({ ...clientLeads, createdAt: { $gte: sevenDaysAgo } }),
     ]);
 
     return NextResponse.json({
@@ -58,6 +67,8 @@ export async function GET() {
           totalContentGenerated,
           newUsersLast7Days,
           newBusinessesLast7Days,
+          totalLeads,
+          newLeadsLast7Days,
         },
         recentSignups,
       },

@@ -5,6 +5,7 @@ import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { inngest } from '@/services/inngest/client';
 
 const batchPostSchema = z.object({
   posts: z
@@ -70,6 +71,18 @@ export async function POST(req: Request) {
     }
 
     const savedPosts = await Post.insertMany(postsToInsert);
+
+    const scheduledEvents = savedPosts
+      .filter((p) => p.status === 'scheduled' && p.scheduledDate)
+      .map((p) => ({
+        name: 'scheduler/post-scheduled' as const,
+        data: { postId: p._id.toString(), scheduledDate: p.scheduledDate!.toISOString() },
+      }));
+    if (scheduledEvents.length > 0) {
+      void inngest.send(scheduledEvents).catch((err) =>
+        console.error('[content/schedule/batch] post-scheduled events failed:', err)
+      );
+    }
 
     return NextResponse.json(
       { success: true, count: savedPosts.length, postIds: savedPosts.map((p) => p._id) },

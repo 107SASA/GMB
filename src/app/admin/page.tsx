@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Users, Building2, DollarSign, BrainCircuit, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import Link from 'next/link';
+import { Users, Building2, DollarSign, BrainCircuit, UserPlus, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 
 interface DashboardData {
   totalUsers: number;
   totalBusinesses: number;
   mrr: number;
   aiRequestsToday: number;
+  newLeadsLast7Days: number;
   dbStatus: 'healthy' | 'down';
   failedJobs24h: number;
   messageBacklog: number;
@@ -66,6 +68,7 @@ export default function AdminRootPage() {
           totalBusinesses: stats.data?.stats?.totalBusinesses ?? 0,
           mrr: revenue.data?.mrr ?? 0,
           aiRequestsToday: ai.data?.period?.generations ?? 0,
+          newLeadsLast7Days: stats.data?.stats?.newLeadsLast7Days ?? 0,
           dbStatus: health.data?.database?.status ?? 'down',
           failedJobs24h: health.data?.jobs?.failedJobs24h ?? 0,
           messageBacklog: health.data?.messages?.messageBacklog ?? 0,
@@ -106,6 +109,13 @@ export default function AdminRootPage() {
       icon: BrainCircuit,
       color: 'text-primary bg-primary-fixed',
     },
+    {
+      label: 'New Leads (7d)',
+      value: loading ? null : (data?.newLeadsLast7Days ?? 0).toLocaleString(),
+      icon: UserPlus,
+      color: 'text-secondary bg-secondary-container/40',
+      href: '/admin/crm',
+    },
   ];
 
   return (
@@ -116,20 +126,27 @@ export default function AdminRootPage() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         {loading
-          ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
-          : statCards.map((card) => (
-              <div key={card.label} className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-medium text-on-surface-variant">{card.label}</h3>
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${card.color}`}>
-                    <card.icon className="w-5 h-5" />
+          ? Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)
+          : statCards.map((card) => {
+              const Card = (
+                <div className={`bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow h-full ${card.href ? 'hover:border-primary-fixed-dim transition-colors' : ''}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium text-on-surface-variant">{card.label}</h3>
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${card.color}`}>
+                      <card.icon className="w-5 h-5" />
+                    </div>
                   </div>
+                  <p className="text-2xl font-bold text-on-surface">{card.value}</p>
                 </div>
-                <p className="text-2xl font-bold text-on-surface">{card.value}</p>
-              </div>
-            ))}
+              );
+              return card.href ? (
+                <Link key={card.label} href={card.href}>{Card}</Link>
+              ) : (
+                <div key={card.label}>{Card}</div>
+              );
+            })}
       </div>
 
       {/* Bottom two columns */}

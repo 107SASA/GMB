@@ -67,7 +67,11 @@ export async function POST(req: Request) {
         name: callerName?.trim() || from,
         phone: from,
         source: 'Google Business Profile',
-        pipelineStage: 'New',
+        // See webhook/route.ts's WhatsApp lead-creation for why pipelineStage
+        // is left null rather than 'New' — keeps this consistent with every
+        // other lead-creation path and with admin CRM Monitor's conversion stats.
+        pipelineStage: null,
+        lifeCycleStage: 'initial',
         status: 'active',
       });
 

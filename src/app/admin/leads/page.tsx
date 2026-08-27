@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import Link from 'next/link';
 import { Users, UserCheck, Percent, X, Mail, Phone, Calendar, Columns } from 'lucide-react';
 import KanbanBoard from '@/components/crm/KanbanBoard';
 
@@ -165,9 +166,11 @@ export default function AdminLeadsPage() {
             <Users className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="font-heading text-2xl font-bold text-on-surface">Sales Leads</h1>
+            <h1 className="font-heading text-2xl font-bold text-on-surface">GrowwMatics Pipeline</h1>
             <p className="text-sm text-on-surface-variant">
-              Every workspace that's tried the free audit, tracked through to paying customer.
+              Our own sales funnel — every workspace that's tried the free audit, tracked through to paying customer.{' '}
+              Looking for your customers' own leads instead? See{' '}
+              <Link href="/admin/crm" className="underline font-semibold hover:text-primary">Customer Leads</Link>.
             </p>
           </div>
         </div>

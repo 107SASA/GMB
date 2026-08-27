@@ -68,6 +68,21 @@ type Events = {
   "crm/dispatch-whatsapp": {
     data: { leadId: string; templateType: string; scheduledDate: string };
   };
+  // Fired whenever a Post is set to status:'scheduled' (first-time schedule
+  // OR reschedule — both hit the same endpoint). scheduleSinglePostPublish
+  // sleeps until scheduledDate then dispatches scheduler/publish-post.
+  // Firing this again for the same postId cancels the prior sleeping
+  // instance (see cancelOn on scheduleSinglePostPublish).
+  "scheduler/post-scheduled": {
+    data: { postId: string; scheduledDate: string };
+  };
+  // Fired whenever a Post leaves 'scheduled' WITHOUT going through a
+  // reschedule (deleted, manually published early, or edited to another
+  // status) — cancels the sleeping scheduleSinglePostPublish instance so it
+  // never fires a stale publish later.
+  "scheduler/post-unscheduled": {
+    data: { postId: string };
+  };
 };
 
 export const inngest = new Inngest({ 

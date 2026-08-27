@@ -45,6 +45,7 @@ const sidebarLinks = [
   // Content Generator + Content Scheduler were combined into one page (Bug
   // 14) — Existing Posts / Generate / Schedule are now tabs inside /dashboard/content.
   { name: "Content", icon: "campaign", href: "/dashboard/content" },
+  { name: "Success Stories", icon: "auto_awesome", href: "/dashboard/success-stories" },
   { name: "WhatsApp AI Agent", icon: "chat", href: "/dashboard/whatsapp", superAdminOnly: true },
   { name: "Settings", icon: "settings", href: "/dashboard/settings" },
   { name: "Billing", icon: "bar_chart", href: "/dashboard/billing" },

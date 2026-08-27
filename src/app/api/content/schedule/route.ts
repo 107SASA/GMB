@@ -5,6 +5,7 @@ import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { inngest } from '@/services/inngest/client';
 
 const schedulePostSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -59,6 +60,13 @@ export async function POST(req: Request) {
       aiGenerated: true,
       platform: 'gmb',
     });
+
+    if (parsedScheduledDate) {
+      void inngest.send({
+        name: 'scheduler/post-scheduled',
+        data: { postId: newPost._id.toString(), scheduledDate: parsedScheduledDate.toISOString() },
+      }).catch((err) => console.error('[content/schedule] post-scheduled event failed:', err));
+    }
 
     return NextResponse.json({ success: true, postId: newPost._id }, { status: 201 });
   } catch (error: any) {

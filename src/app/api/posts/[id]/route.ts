@@ -4,6 +4,7 @@ import { z } from "zod";
 import dbConnect from "@/lib/mongodb";
 import Post from "@/models/Post";
 import { requireBusinessContext } from "@/lib/tenant";
+import { inngest } from "@/services/inngest/client";
 
 /**
  * Fields a client is allowed to change on a post.
@@ -75,8 +76,23 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       );
     }
 
+    const wasScheduled = post.status === "scheduled";
     Object.assign(post, parsed.data);
     await post.save();
+
+    // Keep scheduleSinglePostPublish's sleeping instance in sync with
+    // whatever this edit just did to status/scheduledDate.
+    if (post.status === "scheduled" && post.scheduledDate) {
+      void inngest.send({
+        name: "scheduler/post-scheduled",
+        data: { postId: post._id.toString(), scheduledDate: post.scheduledDate.toISOString() },
+      }).catch((err) => console.error("[posts/id PUT] post-scheduled event failed:", err));
+    } else if (wasScheduled && post.status !== "scheduled") {
+      void inngest.send({
+        name: "scheduler/post-unscheduled",
+        data: { postId: post._id.toString() },
+      }).catch((err) => console.error("[posts/id PUT] post-unscheduled event failed:", err));
+    }
 
     return NextResponse.json({ message: "Post updated", post });
   } catch (error) {
@@ -113,7 +129,15 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       );
     }
 
+    const wasScheduled = post.status === "scheduled";
     await post.deleteOne();
+
+    if (wasScheduled) {
+      void inngest.send({
+        name: "scheduler/post-unscheduled",
+        data: { postId: id },
+      }).catch((err) => console.error("[posts/id DELETE] post-unscheduled event failed:", err));
+    }
 
     return NextResponse.json({ message: "Post deleted" });
   } catch (error) {

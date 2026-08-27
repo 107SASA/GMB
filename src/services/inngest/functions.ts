@@ -654,7 +654,7 @@ export const processContentJob = inngest.createFunction(
         return { skipped: true, reason: 'missing organizationId' };
       }
 
-      await step.run(`generate-and-save-buffer`, async () => {
+      const createdScheduled = await step.run(`generate-and-save-buffer`, async () => {
         const { default: Post } = await import("@/models/Post");
 
         const aiResponse = await generateAIContent({
@@ -672,12 +672,17 @@ export const processContentJob = inngest.createFunction(
           ? new Date(futurePosts[futurePosts.length - 1].scheduledDate || new Date())
           : new Date();
 
+        // Collected so scheduleSinglePostPublish can be triggered for each
+        // one after this step returns — step.sendEvent can't be called from
+        // inside another step.
+        const created: { postId: string; scheduledDate: string }[] = [];
+
         for (const generatedPost of aiResponse.posts) {
            const nextDate = new Date(lastScheduledDate);
            nextDate.setDate(nextDate.getDate() + 1);
            lastScheduledDate = nextDate;
 
-           await Post.create({
+           const newPost = await Post.create({
              tenantId,
              title: generatedPost.title,
              content: generatedPost.body,
@@ -693,6 +698,7 @@ export const processContentJob = inngest.createFunction(
                generatedVia: force ? 'manual' : 'cron',
              }
            });
+           created.push({ postId: newPost._id.toString(), scheduledDate: nextDate.toISOString() });
         }
 
         await AutomationLog.create({
@@ -703,7 +709,19 @@ export const processContentJob = inngest.createFunction(
           action: 'generate_post_batch',
           status: 'success',
         });
+
+        return created;
       });
+
+      if (createdScheduled.length > 0) {
+        await step.sendEvent(
+          "dispatch-buffer-scheduled-posts",
+          createdScheduled.map((p) => ({
+            name: "scheduler/post-scheduled" as const,
+            data: p,
+          }))
+        );
+      }
     } catch (error: any) {
       await step.run("alert-admin-generation-failed", async () => {
         const msg = `❌ *Marketing Alert*\nFailed to generate content for ${business.name}. Please check the dashboard.`;
@@ -1079,8 +1097,51 @@ export const processReviewAutopollJob = inngest.createFunction(
 );
 
 // 6. Post Publishing Worker
+/**
+ * Fires exactly at a single post's scheduledDate instead of waiting for the
+ * next polling tick — sleeps (durably, via Inngest, not a blocked thread)
+ * until the exact moment, then hands off to the existing publish pipeline
+ * (scheduler/publish-post -> processPublishPostJob) completely unchanged.
+ *
+ * cancelOn handles both ways a sleeping instance can go stale:
+ *  - scheduler/post-scheduled fires again for the same postId on a
+ *    reschedule (the schedule endpoint is the same for first-time-schedule
+ *    and reschedule) -> the new event supersedes the old sleep.
+ *  - scheduler/post-unscheduled fires when the post is deleted, manually
+ *    published early, or edited to another status -> nothing left to wait for.
+ *
+ * processPublishPostJob's own `post.status !== "scheduled"` guard is the
+ * defensive backstop for any race cancelOn doesn't win in time — this
+ * function never needs to duplicate that check itself.
+ */
+export const scheduleSinglePostPublish = inngest.createFunction(
+  {
+    id: "schedule-single-post-publish",
+    triggers: [{ event: "scheduler/post-scheduled" }],
+    cancelOn: [
+      { event: "scheduler/post-scheduled", if: "async.data.postId == event.data.postId" },
+      { event: "scheduler/post-unscheduled", if: "async.data.postId == event.data.postId" },
+    ],
+  },
+  async ({ event, step }) => {
+    await step.sleepUntil("wait-for-scheduled-time", event.data.scheduledDate);
+    await step.sendEvent("dispatch-publish-job", {
+      name: "scheduler/publish-post",
+      data: { postId: event.data.postId },
+    });
+    return { success: true };
+  }
+);
+
+// Safety net only — scheduleSinglePostPublish (above) is the primary path
+// now, firing at the exact scheduled moment. This still runs, just far less
+// often, to catch anything whose triggering event failed to send (e.g. a
+// transient error between post.save() and the event dispatch) so nothing
+// silently sits at status:'scheduled' forever. Body deliberately untouched:
+// a post scheduleSinglePostPublish already published no longer matches this
+// query, so the two paths can never double-publish the same post.
 export const publishScheduledPostsCron = inngest.createFunction(
-  { id: "publish-scheduled-posts-cron", triggers: [{ cron: "*/15 * * * *" }] }, // Run every 15 minutes
+  { id: "publish-scheduled-posts-cron", triggers: [{ cron: "0 * * * *" }] }, // Safety net — hourly
   async ({ step }) => {
     const events = await step.run("fetch-posts-to-publish", async () => {
       await dbConnect();

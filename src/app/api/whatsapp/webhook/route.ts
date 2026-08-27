@@ -217,7 +217,13 @@ async function processInboundMessage({ business, phone, profileName, body, messa
       name: profileName || phone,
       phone,
       source: 'WhatsApp',
-      pipelineStage: 'New',
+      // pipelineStage is the legacy free-Kanban field (business.kanbanColumns);
+      // lifeCycleStage/subStage is the current stage system every other lead
+      // -creation path (quick-add, bulk-import, CSV import) uses. Leaving
+      // pipelineStage unset here keeps this lead consistent with those, and
+      // with the admin CRM Monitor's conversion stats which read lifeCycleStage.
+      pipelineStage: null,
+      lifeCycleStage: 'initial',
       status: 'active'
     });
 

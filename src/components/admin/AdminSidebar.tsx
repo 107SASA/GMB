@@ -10,7 +10,12 @@ const adminGroups = [
     label: null as string | null,
     links: [
       { name: 'Dashboard', icon: 'dashboard', href: '/admin' },
-      { name: 'Sales Leads', icon: 'view_kanban', href: '/admin/leads' },
+      // Real per-tenant customer leads (the Lead model businesses build their
+      // own CRM from) — kept right under Dashboard since this is what
+      // "leads" means to most people looking at this sidebar. Do not confuse
+      // with "GrowwMatics Pipeline" below, which is our own signup funnel.
+      { name: 'Customer Leads', icon: 'contacts', href: '/admin/crm' },
+      { name: 'GrowwMatics Pipeline', icon: 'view_kanban', href: '/admin/leads' },
       { name: 'Customers', icon: 'group', href: '/admin/customers' },
       { name: 'Businesses', icon: 'storefront', href: '/admin/businesses' },
       { name: 'Subscriptions', icon: 'credit_card', href: '/admin/subscriptions' },
@@ -30,15 +35,23 @@ const adminGroups = [
     links: [
       { name: 'Audit Monitor', icon: 'analytics', href: '/admin/audits' },
       { name: 'Content Monitor', icon: 'campaign', href: '/admin/content' },
-      { name: 'CRM Monitor', icon: 'view_kanban', href: '/admin/crm' },
       { name: 'Review Monitor', icon: 'star', href: '/admin/reviews' },
       { name: 'WhatsApp Monitor', icon: 'chat', href: '/admin/whatsapp' },
       { name: 'WhatsApp Inbox', icon: 'forum', href: '/admin/whatsapp-agent' },
       { name: 'Demo Bookings', icon: 'event_note', href: '/admin/demo-bookings' },
     ],
   },
-  // Separate from ACTIVITY MONITOR on purpose — these edit live WhatsApp
-  // message templates (config), the group above is read-only observation.
+  // Separate from ACTIVITY MONITOR on purpose — that group is read-only
+  // observation, these two actually approve/reject client submissions
+  // before they go public on growwmatics.com/showcase (photo/video uploads
+  // and client testimonials about GrowwMatics itself).
+  {
+    label: 'MODERATION QUEUE',
+    links: [
+      { name: 'Showcase Approvals', icon: 'photo_camera', href: '/admin/showcase' },
+      { name: 'Testimonial Approvals', icon: 'rate_review', href: '/admin/testimonials' },
+    ],
+  },
   {
     label: 'WHATSAPP AGENTS',
     links: [

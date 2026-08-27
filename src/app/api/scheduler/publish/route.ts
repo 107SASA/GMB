@@ -7,6 +7,7 @@ import { requireBusinessContext } from '@/lib/tenant';
 import { createLocalPost } from '@/lib/gbpClient';
 import mongoose from 'mongoose';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { inngest } from '@/services/inngest/client';
 
 const publishSchema = z.object({
   postId: z.string().min(1),
@@ -35,6 +36,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Post not found or access denied' }, { status: 404 });
     }
 
+    // Captured before this route moves status away from 'scheduled' below —
+    // either branch (published or failed) needs to cancel any sleeping
+    // scheduleSinglePostPublish instance so it never fires a late,
+    // now-redundant (or worse, doubled) publish at the original time.
+    const wasScheduled = post.status === 'scheduled';
+    const cancelSleep = () => {
+      if (!wasScheduled) return;
+      void inngest.send({
+        name: 'scheduler/post-unscheduled',
+        data: { postId: post._id.toString() },
+      }).catch((err) => console.error('[scheduler/publish] post-unscheduled event failed:', err));
+    };
+
     // Pushes the post to the real Google Business Profile. createLocalPost
     // itself is gated behind GBP_LIVE_WRITES_ENABLED (see src/lib/gbpSafety.ts)
     // — it no-ops (liveWriteApplied:false) while live writes are disabled, so
@@ -55,6 +69,7 @@ export async function POST(req: Request) {
       post.status = 'failed';
       post.failureReason = err.message || 'Failed to publish to Google Business Profile.';
       await post.save();
+      cancelSleep();
       return NextResponse.json({ error: post.failureReason }, { status: 502 });
     }
 
@@ -67,6 +82,7 @@ export async function POST(req: Request) {
     post.scheduledDate = post.publishedAt;
     post.failureReason = undefined;
     await post.save();
+    cancelSleep();
 
     await AutomationLog.create({
       tenantId: ctx.organizationId,

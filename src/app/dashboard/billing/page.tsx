@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   Zap, CheckCircle2, ArrowRight, RefreshCw,
   BarChart3, FileText, Bot, Clock,
-  TrendingUp, Crown,
+  TrendingUp, Crown, Download, Receipt,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { planDisplayLabel, isPaidPlanLabel } from '@/lib/billing/planLabel';
@@ -282,6 +282,89 @@ function SubscriptionCard() {
   );
 }
 
+interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  amount: number;
+  currency: string;
+  paidAt: string | null;
+  downloadUrl: string | null;
+}
+
+function InvoicesCard() {
+  const { activeBusiness } = useBusiness();
+  const [invoices, setInvoices] = useState<Invoice[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/billing/invoices');
+      const json = await res.json();
+      setInvoices(json.success ? json.invoices : []);
+    } catch {
+      setInvoices([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!activeBusiness?._id) return;
+    load();
+  }, [activeBusiness?._id]);
+
+  // No payment has ever gone through for this workspace — nothing to show,
+  // and no point rendering an empty card above the fold.
+  if (!loading && invoices && invoices.length === 0) return null;
+
+  return (
+    <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <Receipt className="w-4 h-4 text-on-surface-variant" />
+        <h2 className="text-base font-bold text-on-surface">Invoices</h2>
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-11 bg-surface-container rounded-lg animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <div className="divide-y divide-outline-variant">
+          {invoices!.map((inv) => (
+            <div key={inv.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+              <div>
+                <p className="text-sm font-semibold text-on-surface">
+                  {inv.paidAt
+                    ? new Date(inv.paidAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+                    : inv.invoiceNumber}
+                </p>
+                <p className="text-xs text-on-surface-variant mt-0.5">
+                  ₹{inv.amount.toLocaleString('en-IN')} · {inv.invoiceNumber}
+                </p>
+              </div>
+              {inv.downloadUrl ? (
+                <a
+                  href={inv.downloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-primary bg-primary-fixed hover:bg-primary-fixed-dim rounded-lg transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" /> Download
+                </a>
+              ) : (
+                <span className="text-xs text-outline">Unavailable</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BillingPage() {
   const router = useRouter();
   const { activeBusiness } = useBusiness();
@@ -355,6 +438,9 @@ export default function BillingPage() {
         <>
           {/* Subscription (Razorpay) */}
           <SubscriptionCard />
+
+          {/* Downloadable invoices — Razorpay-hosted, one per successful charge */}
+          <InvoicesCard />
 
           {/* Plan card */}
           <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5 flex items-center gap-4">

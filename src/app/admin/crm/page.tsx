@@ -65,8 +65,8 @@ export default function CRMMonitorPage() {
           <Users className="w-5 h-5 text-white" />
         </div>
         <div>
-          <h1 className="font-heading text-2xl font-bold text-on-surface">CRM Monitor</h1>
-          <p className="text-sm text-on-surface-variant">All leads and pipeline stages across every tenant.</p>
+          <h1 className="font-heading text-2xl font-bold text-on-surface">Customer Leads</h1>
+          <p className="text-sm text-on-surface-variant">Every lead your customers have generated in their own CRM, across all businesses.</p>
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { inngest } from '@/services/inngest/client';
 
 const scheduleSchema = z.object({
   postId: z.string().min(1),
@@ -57,6 +58,16 @@ export async function POST(req: Request) {
     post.status = 'scheduled';
     post.scheduledDate = targetDate;
     await post.save();
+
+    // Fires scheduleSinglePostPublish, which sleeps until targetDate then
+    // publishes — covers both first-time scheduling and rescheduling (this
+    // endpoint handles both; cancelOn on the receiving function supersedes
+    // any prior sleep for this postId automatically). Best-effort: a failed
+    // send here is caught by the hourly safety-net cron, never a lost post.
+    void inngest.send({
+      name: 'scheduler/post-scheduled',
+      data: { postId: post._id.toString(), scheduledDate: targetDate.toISOString() },
+    }).catch((err) => console.error('[scheduler/schedule] post-scheduled event failed:', err));
 
     return NextResponse.json({ success: true, post }, { status: 200 });
   } catch (error: any) {

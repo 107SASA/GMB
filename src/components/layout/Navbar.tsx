@@ -10,6 +10,7 @@ import { SERVICES } from "@/lib/servicesData";
 
 const navLinks = [
   { name: "How it Works", href: "/#features" },
+  { name: "Showcase", href: "/showcase" },
   { name: "About Us", href: "/about" },
   { name: "Free GBP Report", href: "/free-report" },
 ];

@@ -5,6 +5,7 @@ import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { inngest } from '@/services/inngest/client';
 
 const schema = z.object({
   postIds: z.array(z.string().min(1)).min(1),
@@ -55,6 +56,7 @@ export async function POST(req: Request) {
     // content stays spread out — e.g. Mon, Wed, Fri, Sun — keeping the profile
     // active throughout the week instead of bunched on consecutive days.
     const scheduledDates: string[] = [];
+    const scheduledEvents: { name: 'scheduler/post-scheduled'; data: { postId: string; scheduledDate: string } }[] = [];
     for (let i = 0; i < postIds.length; i++) {
       const scheduledDate = new Date(startDate);
       scheduledDate.setDate(startDate.getDate() + i * 2);
@@ -65,6 +67,17 @@ export async function POST(req: Request) {
       );
 
       scheduledDates.push(scheduledDate.toISOString());
+      // updateOne (not .save()) so there's no model hook to piggyback on —
+      // fire the event explicitly here, same scheduledDate just written.
+      scheduledEvents.push({
+        name: 'scheduler/post-scheduled',
+        data: { postId: postIds[i], scheduledDate: scheduledDate.toISOString() },
+      });
+    }
+    if (scheduledEvents.length > 0) {
+      void inngest.send(scheduledEvents).catch((err) =>
+        console.error('[content/auto-schedule] post-scheduled events failed:', err)
+      );
     }
 
     return NextResponse.json({

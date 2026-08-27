@@ -5,6 +5,7 @@ import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { inngest } from '@/services/inngest/client';
 
 /** GET -> single post, for the mobile post-detail screen (view a post that
  *  isn't necessarily still in the buffer's ±calendar-window `allPosts`). */
@@ -59,7 +60,16 @@ export async function DELETE(
       return NextResponse.json({ error: 'Published posts cannot be deleted' }, { status: 400 });
     }
 
+    const wasScheduled = post.status === 'scheduled';
     await post.deleteOne();
+
+    if (wasScheduled) {
+      void inngest.send({
+        name: 'scheduler/post-unscheduled',
+        data: { postId: id },
+      }).catch((err) => console.error('[scheduler/posts/id DELETE] post-unscheduled event failed:', err));
+    }
+
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error: any) {
     console.error('Failed to delete post:', error);

@@ -14,6 +14,12 @@ export async function GET() {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
+    // Scope every query to real tenant CRM leads only. leadType:'Platform
+    // Prospect' is GrowwMatics' own acquisition funnel (free-report/book-demo
+    // signups, see /admin/leads "GrowwMatics Pipeline") — mixing it in here
+    // would inflate/distort what's meant to be customer-lead activity.
+    const clientLeads = { leadType: 'Client Prospect' };
+
     const [
       totalLeads,
       newLeadsToday,
@@ -22,22 +28,28 @@ export async function GET() {
       recentLeadsRaw,
       topBusinessesRaw,
     ] = await Promise.all([
-      Lead.countDocuments(),
-      Lead.countDocuments({ createdAt: { $gte: todayStart } }),
-      Lead.countDocuments({ pipelineStage: 'Converted' }),
+      Lead.countDocuments(clientLeads),
+      Lead.countDocuments({ ...clientLeads, createdAt: { $gte: todayStart } }),
+      // Conversion lives in lifeCycleStage ('initial'|'active'|'converted'|
+      // 'closed'), the fixed field every lead-creation path sets. pipelineStage
+      // is a legacy/optional per-business free-Kanban field — most leads have
+      // it null, so counting 'Converted' there undercounts almost to zero.
+      Lead.countDocuments({ ...clientLeads, lifeCycleStage: 'converted' }),
 
       Lead.aggregate([
-        { $group: { _id: '$pipelineStage', count: { $sum: 1 } } },
+        { $match: clientLeads },
+        { $group: { _id: '$lifeCycleStage', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ]),
 
-      Lead.find()
+      Lead.find(clientLeads)
         .sort({ createdAt: -1 })
         .limit(20)
-        .select('businessId name source pipelineStage aiLeadScore createdAt')
+        .select('businessId name source lifeCycleStage aiLeadScore createdAt')
         .lean(),
 
       Lead.aggregate([
+        { $match: clientLeads },
         { $group: { _id: '$businessId', totalLeads: { $sum: 1 } } },
         { $sort: { totalLeads: -1 } },
         { $limit: 5 },
@@ -58,12 +70,19 @@ export async function GET() {
     const bizMap: Record<string, string> = {};
     businesses.forEach((b: any) => { bizMap[b._id.toString()] = b.businessName; });
 
+    const LIFECYCLE_LABELS: Record<string, string> = {
+      initial: 'Open',
+      active: 'Active',
+      converted: 'Converted',
+      closed: 'Closed',
+    };
+
     const recentLeads = recentLeadsRaw.map((l: any) => ({
       _id: l._id,
       businessName: bizMap[l.businessId?.toString()] ?? 'Unknown',
       name: l.name,
       source: l.source,
-      pipelineStage: l.pipelineStage ?? 'None',
+      pipelineStage: LIFECYCLE_LABELS[l.lifeCycleStage] ?? 'Open',
       aiLeadScore: l.aiLeadScore ?? null,
       createdAt: l.createdAt,
     }));
@@ -74,8 +93,11 @@ export async function GET() {
       totalLeads: r.totalLeads,
     }));
 
+    // Grouped by lifeCycleStage (fixed 4-value enum) rather than the
+    // business-customizable subStage/pipelineStage labels, so this chart
+    // stays meaningful across tenants that name their own stages differently.
     const pipelineBreakdown = pipelineBreakdownRaw.map((r: any) => ({
-      stage: r._id ?? 'None',
+      stage: LIFECYCLE_LABELS[r._id] ?? 'Open',
       count: r.count,
     }));
 

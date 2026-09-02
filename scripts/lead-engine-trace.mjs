@@ -18,22 +18,27 @@
  *
  * NOTHING is written. Safe to run against production.
  *
+ * DATABASE: with NO env override this auto-connects to the dedicated local
+ * test database (growwmatics_local_test) via scripts/lib/localTestEnv.mjs —
+ * the SAME resolution lead-engine-testkit.mjs uses, with the same hard
+ * refusal to connect to any DB whose name contains "prod". No need to paste
+ * credentials. To point it elsewhere (e.g. the droplet's shared test DB or,
+ * deliberately, prod for a read-only look) set TEST_MONGODB_URI or
+ * MONGODB_URI explicitly — an explicit value wins and is still subject to
+ * the prod-name guard unless ALLOW_PROD_DB=iunderstand.
+ *
  * Run:
- *   MONGODB_URI="mongodb+srv://..." node scripts/lead-engine-trace.mjs "+919876543210"
- *   MONGODB_URI="..." node scripts/lead-engine-trace.mjs "+919876543210" --limit 80
- *   MONGODB_URI="..." node scripts/lead-engine-trace.mjs 64f0c...   (a Lead _id also works)
+ *   node scripts/lead-engine-trace.mjs "+919876543210"
+ *   node scripts/lead-engine-trace.mjs "+919876543210" --limit 80
+ *   node scripts/lead-engine-trace.mjs 64f0c...            (a Lead _id also works)
+ *   TEST_MONGODB_URI="mongodb+srv://..." node scripts/lead-engine-trace.mjs "+91..."
  */
 import mongoose from 'mongoose';
-
-const MONGODB_URI = process.env.MONGODB_URI;
-if (!MONGODB_URI) {
-  console.error('MONGODB_URI is not set. Prefix the command with MONGODB_URI="..."');
-  process.exit(1);
-}
+import { resolveTestMongoUri } from './lib/localTestEnv.mjs';
 
 const arg = process.argv[2];
 if (!arg) {
-  console.error('Usage: MONGODB_URI="..." node scripts/lead-engine-trace.mjs "<phone or leadId>" [--limit N]');
+  console.error('Usage: node scripts/lead-engine-trace.mjs "<phone or leadId>" [--limit N]');
   process.exit(1);
 }
 const limitIdx = process.argv.indexOf('--limit');
@@ -55,7 +60,13 @@ function short(v, n = 120) {
 }
 
 async function main() {
-  await mongoose.connect(MONGODB_URI);
+  // resolveTestMongoUri() loads .env.local for the cluster creds, forces the
+  // dedicated test DB name (growwmatics_local_test unless TEST_DB_NAME set),
+  // honours an explicit TEST_MONGODB_URI / MONGODB_URI, and throws before
+  // ever returning a URI whose DB name contains "prod". Prints the target DB
+  // name only — never the credentials.
+  const uri = resolveTestMongoUri();
+  await mongoose.connect(uri);
   const db = mongoose.connection.db;
 
   const leads = db.collection('leads');

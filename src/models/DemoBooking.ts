@@ -18,6 +18,17 @@ const DemoBookingSchema = new mongoose.Schema({
   status:       { type: String, default: 'Pending', enum: ['Pending', 'Confirmed', 'Completed', 'Cancelled', 'No Show', 'Rescheduled'] },
   // How the booking came in — website form vs the WhatsApp booking agent.
   channel:      { type: String, default: 'form', enum: ['form', 'whatsapp'] },
+
+  // --- Google Calendar integration (Phase 6) --------------------------------
+  // Set once createDemoEvent() succeeds (services/calendar/googleCalendar.ts)
+  // — absent for any booking made before this phase, or one whose calendar
+  // creation failed and fell back to human handoff (see bookingAgent.ts).
+  calendarEventId: { type: String },
+  meetingLink:     { type: String },
+  // The 24h-before/1h-before reminder ScheduledActions created alongside
+  // this booking, so they can be found and cancelled together on
+  // reschedule/cancel without a separate lookup query.
+  reminderActionIds: { type: [mongoose.Schema.Types.ObjectId], ref: 'ScheduledAction', default: [] },
 }, { timestamps: true });
 
 export default mongoose.models.DemoBooking ||

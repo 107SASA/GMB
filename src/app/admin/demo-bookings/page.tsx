@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, Building, Mail, Phone, Clock, ChevronDown, CheckCircle, XCircle } from 'lucide-react';
+import { Calendar, Building, Mail, Phone, Clock, ChevronDown, CheckCircle, XCircle, UserCheck } from 'lucide-react';
 
 export default function AdminDemoBookingsPage() {
   const [bookings, setBookings] = useState<any[]>([]);
@@ -31,6 +31,21 @@ export default function AdminDemoBookingsPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bookingId, status })
+      });
+      if (res.ok) fetchBookings();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Phase 8 — releases a HUMAN-owned lead back to an agent (SALES/DEMO/
+  // IN_HOUSE), clearing humanHandoff.active so the AI resumes replying.
+  const handleReturnToAI = async (bookingId: string, targetAgent: string) => {
+    try {
+      const res = await fetch('/api/admin/demo-bookings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId, action: 'returnToAI', targetAgent })
       });
       if (res.ok) fetchBookings();
     } catch (e) {
@@ -143,17 +158,37 @@ export default function AdminDemoBookingsPage() {
                   <option value="No Show">No Show</option>
                   <option value="Cancelled">Cancelled</option>
                 </select>
+                {booking.leadCurrentAgent === 'HUMAN' && booking.leadHumanHandoff?.active && (
+                  <p className="text-[10px] font-bold text-on-error-container mt-1.5 flex items-center gap-1">
+                    <UserCheck size={11} /> Needs a human ({booking.leadHumanHandoff?.reason || 'handoff'})
+                  </p>
+                )}
               </div>
 
-              <div className="col-span-2 flex justify-end gap-2">
-                <button 
+              <div className="col-span-2 flex justify-end items-center gap-2">
+                {booking.leadCurrentAgent === 'HUMAN' && booking.leadHumanHandoff?.active && (
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      if (e.target.value) handleReturnToAI(booking._id, e.target.value);
+                    }}
+                    className="text-xs font-bold px-2 py-1.5 rounded-lg border appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary bg-secondary-container/40 text-on-secondary-container border-secondary-fixed"
+                    title="Return to AI — release this lead back to an agent"
+                  >
+                    <option value="" disabled>↩ Return to AI…</option>
+                    <option value="SALES">Sales Agent</option>
+                    <option value="DEMO">Demo Agent</option>
+                    <option value="IN_HOUSE">In-House Agent</option>
+                  </select>
+                )}
+                <button
                   onClick={() => handleStatusChange(booking._id, 'Confirmed')}
                   className="p-2 text-secondary hover:bg-secondary-container/40 rounded-lg transition-colors"
                   title="Confirm Demo"
                 >
                   <CheckCircle size={18} />
                 </button>
-                <button 
+                <button
                   onClick={() => handleStatusChange(booking._id, 'Cancelled')}
                   className="p-2 text-on-error-container hover:bg-error-container rounded-lg transition-colors"
                   title="Cancel Request"
@@ -161,7 +196,7 @@ export default function AdminDemoBookingsPage() {
                   <XCircle size={18} />
                 </button>
               </div>
-              
+
             </div>
           ))}
           {bookings.length === 0 && (

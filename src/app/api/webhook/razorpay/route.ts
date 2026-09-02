@@ -117,10 +117,16 @@ export async function POST(request: Request) {
       throw err;
     }
 
-    const subEntity = event?.payload?.subscription?.entity;
-    const paymentEntity = event?.payload?.payment?.entity;
+    // The dedup row is now claimed. If applying the event throws below, the
+    // route returns 500 and Razorpay retries — but the retry would hit the
+    // 11000 branch above and skip forever, silently losing the activation
+    // (paid customer stays locked out). So release the claim on any failure
+    // and let the retry re-process from scratch.
+    try {
+      const subEntity = event?.payload?.subscription?.entity;
+      const paymentEntity = event?.payload?.payment?.entity;
 
-    switch (eventType) {
+      switch (eventType) {
       case 'subscription.activated':
       case 'subscription.charged': {
         const userId = await resolveUserId(subEntity);
@@ -149,6 +155,18 @@ export async function POST(request: Request) {
         } else {
           console.warn(`[billing] ${eventType}: cannot resolve workspace for ${subEntity?.id}`);
         }
+
+        // Phase 7 — runs strictly AFTER the in-app entitlement flip above,
+        // never before or instead of it, and never affects it either way
+        // (this function catches and swallows its own failures). See
+        // customerActivation.ts's own doc comment for the full idempotent
+        // sequence.
+        const { runCustomerActivationSequence } = await import('@/services/billing/customerActivation');
+        await runCustomerActivationSequence(userId, businessId, {
+          paymentId: paymentEntity?.id,
+          amount: typeof paymentEntity?.amount === 'number' ? paymentEntity.amount : undefined,
+          currency: paymentEntity?.currency,
+        });
         break;
       }
 
@@ -177,6 +195,17 @@ export async function POST(request: Request) {
       default:
         // Unhandled event types are acknowledged so Razorpay stops retrying.
         break;
+      }
+    } catch (applyErr: any) {
+      // Release the idempotency claim so Razorpay's retry actually re-runs the
+      // handler instead of hitting the 11000 skip above. Best-effort — if the
+      // delete itself fails we still surface the original error.
+      try {
+        await ProcessedWebhookEvent.deleteOne({ provider: 'razorpay', eventId });
+      } catch (cleanupErr: any) {
+        console.error('[billing] failed to release webhook dedup claim:', cleanupErr?.message);
+      }
+      throw applyErr;
     }
 
     return NextResponse.json({ success: true });

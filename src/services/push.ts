@@ -126,3 +126,32 @@ export async function sendPushToBusinessUsers(
   const dead = await sendToTokens(tokens, message);
   await pruneDeadTokens(dead);
 }
+
+/**
+ * Platform-side equivalent of sendPushToBusinessUsers, for the GrowwMatics
+ * platform's own WhatsApp leads (Sales/Booking/Report/Support conversations
+ * on the owner-only line) — these have no `businessId` of their own to
+ * notify a tenant's team about, since the "team" here is GrowwMatics'
+ * internal staff (User.role === 'SUPER_ADMIN'), not a customer's workspace
+ * users. Added for Phase 8's human-handoff notifications (see
+ * services/support/supportAgent.ts and the shared handoff-trigger function
+ * in services/agentHandoff/checkHandoffTriggers.ts) — no equivalent
+ * existed before since nothing on the platform side previously needed to
+ * page a human this way.
+ */
+export async function sendPushToSuperAdmins(message: PushMessage): Promise<void> {
+  await dbConnect();
+  const admins = await User.find({
+    role: 'SUPER_ADMIN',
+    isDeleted: { $ne: true },
+    pushTokens: { $exists: true, $ne: [] },
+  })
+    .select('pushTokens')
+    .lean() as any[];
+
+  const tokens = Array.from(new Set(admins.flatMap((u) => u.pushTokens ?? [])));
+  if (tokens.length === 0) return;
+
+  const dead = await sendToTokens(tokens, message);
+  await pruneDeadTokens(dead);
+}

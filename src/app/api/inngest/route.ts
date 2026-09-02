@@ -37,7 +37,8 @@ import {
   reportCardDeliver,
   gbpNightlySyncScheduler,
   gbpSyncWorker,
-  cleanupAbandonedSignups
+  cleanupAbandonedSignups,
+  nurtureSchedulerTick
 } from "@/services/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
@@ -80,5 +81,6 @@ export const { GET, POST, PUT } = serve({
     gbpNightlySyncScheduler,
     gbpSyncWorker,
     cleanupAbandonedSignups,
+    nurtureSchedulerTick,
   ],
 });

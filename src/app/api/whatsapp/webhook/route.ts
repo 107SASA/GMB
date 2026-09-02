@@ -80,6 +80,14 @@ async function handleActiveSalesConversation(
       messages: [{ role: 'lead', text: body, at: new Date() }],
     });
     await inngest.send({ name: 'booking/agent.reply', data: { conversationId: convo._id.toString(), body } });
+
+    const { logLeadEvent } = await import('@/services/leadEvents');
+    logLeadEvent(
+      'AGENT_HANDOFF',
+      { from: 'sales-agent', to: 'booking-agent', reason: 'booking_keyword_match', fromConversationId: salesConvo._id, toConversationId: convo._id },
+      'sales-agent',
+      { phone: salesConvo.leadPhone, conversationType: 'sales', conversationId: salesConvo._id }
+    );
     return true;
   }
 
@@ -382,11 +390,12 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     return;
   }
 
-  // 3.5. An active support thread — append and wait for a human, don't
-  // re-fire the AI acknowledgment on every follow-up message (this is a
-  // one-shot "we've got it" reply, not a multi-turn conversation like sales/
-  // booking/report — repeating it on each message would read as the bot
-  // ignoring them).
+  // 3.5. An active support thread. Pre-sale prospects: append and wait for
+  // a human, don't re-fire the AI acknowledgment on every follow-up message
+  // (one-shot "we've got it" reply, not a multi-turn conversation like
+  // sales/booking/report — repeating it on each message would read as the
+  // bot ignoring them). Phase 8: a paying customer (Lead.currentAgent ===
+  // 'IN_HOUSE') is the exception — see the currentAgent check below.
   const activeSupport = await SupportConversation.findOne({ phoneKey: key, status: 'active' });
   if (activeSupport) {
     if (isOptOut) {
@@ -396,6 +405,18 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     }
     activeSupport.messages.push({ role: 'lead', text: body, at: new Date() });
     await activeSupport.save();
+
+    // Phase 8: a paying customer (Lead.currentAgent === 'IN_HOUSE') gets a
+    // REAL multi-turn conversation with the In-House Agent — re-fire
+    // support/agent.reply on every turn, not just the first. A pre-sale
+    // prospect (any other currentAgent, or no Lead at all yet) keeps the
+    // exact pre-Phase-8 behavior: append only, no re-fire, human takes over
+    // via WhatsApp Business app/Meta Business Suite directly.
+    const normalizedForLead = normalizePhoneE164(phone) || phone;
+    const lead = await Lead.findOne({ phone: normalizedForLead, tenantId: 'gmbboost-internal' }).select('currentAgent').lean() as any;
+    if (lead?.currentAgent === 'IN_HOUSE') {
+      await inngest.send({ name: 'support/agent.reply', data: { conversationId: activeSupport._id.toString(), body } });
+    }
     return;
   }
 
@@ -451,9 +472,102 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     return;
   }
 
+  // P0 FIX (post-implementation-audit) — this static menu send bypasses
+  // every agent-reply function entirely (it's not composed by
+  // salesAgentReply/supportAgentReply/reportAgentReply/bookingAgentReply,
+  // all of which now check isHumanOwned before sending), so it had no
+  // human-handoff awareness of its own. Reachable for a phone with no
+  // currently-active conversation of any type (all four branches above
+  // fell through) — which a HUMAN-owned lead can genuinely be in, e.g. once
+  // their SalesConversation completed/handed_off or their
+  // SupportConversation closed, while currentAgent stays 'HUMAN' until an
+  // explicit admin "Return to AI" release. A normal, never-contacted phone
+  // (the overwhelmingly common case here) has no matching Lead and proceeds
+  // exactly as before — read-only lookup, never creates a Lead.
+  const { isHumanOwned } = await import('@/services/agentHandoff/isHumanOwned');
+  const menuLead = await Lead.findOne({ phone: normalizePhoneE164(phone) || phone, tenantId: 'gmbboost-internal' }).select('currentAgent humanHandoff').lean() as any;
+  if (isHumanOwned(menuLead)) return;
+
   // Unmatched free text with nothing active — ask rather than guess. No
   // conversation is created yet, so their next reply re-enters this branch.
   await sendOutboundMessage(phone, INTENT_MENU_MESSAGE);
+}
+
+// ---------------------------------------------------------------------------
+// Shadow-mode ownership observation (LEAD_ENGINE_V2 groundwork). Called AFTER
+// processPlatformInbound() above has fully executed — it does NOT change,
+// short-circuit, or feed back into that function's routing decision in any
+// way; it independently re-queries the same four legacy collections
+// (read-only, same pattern processPlatformInbound itself uses) to see which
+// one is active *now* that processing has finished, and records that onto
+// Lead.currentAgent via setLeadOwnership().
+//
+// This write happens unconditionally (it's just data collection, not a
+// decision) — LEAD_ENGINE_V2 is irrelevant to whether this function runs.
+// process.env.LEAD_ENGINE_V2 only matters to code that has not been written
+// yet: any FUTURE phase that reads Lead.currentAgent/currentStage to decide
+// which agent actually replies to a lead MUST check
+// `process.env.LEAD_ENGINE_V2 === 'true'` before doing so. Do not skip that
+// check just because this observer already runs unconditionally today.
+//
+// Wrapped in its own try/catch and never awaited by the caller's critical
+// path in a way that could change the HTTP response — a failure here must
+// never affect the real reply that already went out.
+async function observeLeadOwnershipShadow(phone: string): Promise<void> {
+  try {
+    const { phoneDedupeKey, normalizePhoneE164 } = await import('@/lib/phone');
+    const key = phoneDedupeKey(phone);
+    if (!key) return;
+
+    // No Lead yet for this phone (true for most platform-agent conversations
+    // until a demo is actually booked — see LeadEvent.ts's file-level
+    // comment) — nothing to observe onto. Deliberately does NOT create one:
+    // this phase only records ownership for Leads that already exist by
+    // some other, unrelated flow.
+    //
+    // Scoped to tenantId 'gmbboost-internal' (the platform funnel's own tenant,
+    // set at free-report/start, book-demo and handleCollecting) — without it a
+    // tenant customer whose phone happens to collide with a platform inbound
+    // would have setLeadOwnership() silently overwrite their Lead's
+    // currentAgent/currentStage and cancel their pending nurture. Every other
+    // platform-side Lead lookup in this codebase already scopes this way.
+    const lead = await Lead.findOne({
+      phone: normalizePhoneE164(phone) || phone,
+      tenantId: 'gmbboost-internal',
+    }).select('_id currentAgent').lean();
+    if (!lead) return;
+
+    const { default: BookingConversation } = await import('@/models/BookingConversation');
+    const { default: ReportConversation } = await import('@/models/ReportConversation');
+    const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
+
+    // Same priority order as processPlatformInbound's own routing checks
+    // above, re-read post-processing rather than threaded through as a
+    // return value, so this function can be added without touching any of
+    // that function's existing branches/returns.
+    let agent: 'NONE' | 'SALES' | 'DEMO' | 'IN_HOUSE' | 'HUMAN' = 'NONE';
+    const activeSales = await SalesConversation.findOne({ phoneKey: key, status: 'active' }).select('_id').lean();
+    if (activeSales) {
+      agent = 'SALES';
+    } else {
+      const activeBooking = await BookingConversation.findOne({ phoneKey: key, status: 'active' }).select('_id').lean();
+      if (activeBooking) {
+        agent = 'DEMO';
+      } else {
+        const activeReport = await ReportConversation.findOne({ phoneKey: key, status: { $ne: 'stopped' } }).select('_id').lean();
+        if (activeReport) {
+          agent = 'DEMO'; // report/connect flow is a pre-demo prospect touchpoint, not a Sales or in-house one
+        } else {
+          const activeSupport = await SupportConversation.findOne({ phoneKey: key, status: 'active' }).select('_id').lean();
+          if (activeSupport) agent = 'IN_HOUSE';
+        }
+      }
+    }
+
+    await setLeadOwnership(lead._id, agent, 'platform_inbound_shadow_sync', 'system');
+  } catch (err: any) {
+    console.warn('[whatsapp-webhook] shadow ownership observation failed:', err?.message);
+  }
 }
 
 /**
@@ -514,6 +628,45 @@ async function applyMetaStatus(status: any) {
   }
 }
 
+/**
+ * Meta's message_template_status_update webhook field — payload shape per
+ * Meta's WhatsApp Business Platform docs:
+ *   { event: 'APPROVED'|'PAUSED'|'DISABLED'|'REJECTED'|..., message_template_id,
+ *     message_template_name, message_template_language, reason? }
+ * Only alerts when the paused/disabled/rejected template is the specific
+ * one META_UTILITY_TEMPLATE_NAME points at — that's the only template this
+ * codebase's own retry logic (services/whatsapp/send.ts's 24h-window
+ * fallback) actually depends on; any other template pausing is Meta/WABA
+ * housekeeping this codebase has no dependency on.
+ */
+const CONCERNING_TEMPLATE_EVENTS = new Set(['PAUSED', 'DISABLED', 'REJECTED']);
+
+async function handleTemplateStatusUpdate(value: any): Promise<void> {
+  const event = value?.event;
+  const templateName = value?.message_template_name;
+  if (!event || !templateName) return;
+
+  console.log(`[meta-webhook] template status update: "${templateName}" -> ${event}`);
+
+  const watchedTemplate = process.env.META_UTILITY_TEMPLATE_NAME;
+  if (!watchedTemplate || templateName !== watchedTemplate) return;
+  if (!CONCERNING_TEMPLATE_EVENTS.has(event)) return;
+
+  const reason = value?.reason ? ` (reason: ${value.reason})` : '';
+  console.error(`[meta-webhook] ALERT: the 24h-window retry template "${templateName}" is now ${event}${reason} — business-initiated sends outside the session window will start failing.`);
+
+  try {
+    const { sendPushToSuperAdmins } = await import('@/services/push');
+    await sendPushToSuperAdmins({
+      title: 'WhatsApp template alert',
+      body: `Template "${templateName}" (used for the 24h-window retry fallback) is now ${event}${reason}.`,
+      data: { templateName, event, reason: value?.reason || null },
+    });
+  } catch (e: any) {
+    console.error('[meta-webhook] template status alert push failed:', e?.message);
+  }
+}
+
 async function handleMetaWebhook(req: Request) {
   try {
     const rawBody = await req.text();
@@ -531,6 +684,25 @@ async function handleMetaWebhook(req: Request) {
 
     for (const entry of payload.entry || []) {
       for (const change of entry.changes || []) {
+        // Meta can pause or reject an approved message template at any
+        // time (policy violation, low quality rating, etc) — this
+        // silently breaks the 24h-window retry fallback in
+        // services/whatsapp/send.ts (which resends via
+        // META_UTILITY_TEMPLATE_NAME once a free-text send is rejected for
+        // being outside the session window) with no visible symptom other
+        // than that fallback itself starting to fail. Alerts the team
+        // specifically when the PAUSED/DISABLED/REJECTED template is the
+        // one that fallback actually depends on — a different template
+        // being paused doesn't affect anything this codebase relies on.
+        if (change.field === 'message_template_status_update') {
+          try {
+            await handleTemplateStatusUpdate(change.value || {});
+          } catch (e) {
+            console.error('[meta-webhook] template status update error:', e);
+          }
+          continue;
+        }
+
         if (change.field !== 'messages') continue;
         const value = change.value || {};
 
@@ -575,6 +747,9 @@ async function handleMetaWebhook(req: Request) {
 
           if (platform) {
             await processPlatformInbound({ phone, profileName, body, messageSid: message.id || '' });
+            // Shadow-mode only — see observeLeadOwnershipShadow's own doc
+            // comment. Does not affect the routing/reply decision above.
+            await observeLeadOwnershipShadow(phone);
           } else {
             await processInboundMessage({
               business,
@@ -647,6 +822,9 @@ export async function handleTwilioWebhook(req: Request) {
         body: body || '',
         messageSid: messageSid || '',
       });
+      // Shadow-mode only — see observeLeadOwnershipShadow's own doc comment.
+      // Does not affect the routing/reply decision above.
+      await observeLeadOwnershipShadow(phone);
     } else {
       await processInboundMessage({
         business,

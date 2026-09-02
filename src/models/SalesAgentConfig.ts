@@ -18,6 +18,27 @@ const FollowUpSchema = new Schema(
   { _id: false }
 );
 
+// Optional grounded-knowledge block for the NBA executor. Every field
+// optional; an empty block means the executor falls back safely rather than
+// inventing facts. See SalesKnowledge in lib/salesAgentDefaults.ts.
+const KnowledgeSchema = new Schema(
+  {
+    pricingResponse: { type: String, default: '' },
+    objectionResponses: {
+      PRICE: { type: String, default: '' },
+      DECISION_MAKER: { type: String, default: '' },
+      TIMING: { type: String, default: '' },
+      TRUST: { type: String, default: '' },
+      FEATURE_GAP: { type: String, default: '' },
+      OTHER: { type: String, default: '' },
+    },
+    useCases: { type: [String], default: [] },
+    faqs: { type: [{ q: String, a: String }], default: [] },
+    educationPoints: { type: [String], default: [] },
+  },
+  { _id: false }
+);
+
 const SalesAgentConfigSchema: Schema = new Schema(
   {
     key: { type: String, default: 'default', unique: true },
@@ -32,6 +53,7 @@ const SalesAgentConfigSchema: Schema = new Schema(
     agentSystemPrompt: { type: String, default: '' },
     subscribeUrl: { type: String, default: '' },
     shopUrl: { type: String, default: '' },
+    knowledge: { type: KnowledgeSchema, default: () => ({}) },
   },
   { timestamps: true }
 );

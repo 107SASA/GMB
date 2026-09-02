@@ -33,7 +33,13 @@ export interface IScheduledAction extends Document {
     // status check instead of calling the orchestrator; see that function's
     // own doc comment for why this one actionType breaks the "every row
     // sends a message" pattern the rest of this model follows.
-    | 'DEMO_REMINDER' | 'NO_SHOW_CHECK';
+    | 'DEMO_REMINDER' | 'NO_SHOW_CHECK'
+    // Phase 9 — a proactive NBA step: nurtureSchedulerTick runs
+    // executeNextAction(leadId, payload.action) at fire time, after
+    // re-validating the lead. payload: { action: NBAAction }. Created by
+    // scheduleProactiveNba (see functions.ts) from a lead's decided
+    // nextBestAction/nextActionAt when that action is proactive-appropriate.
+    | 'EXECUTE_NBA';
   dueAt: Date;
   status: ScheduledActionStatus;
   reason?: string;
@@ -68,7 +74,7 @@ const ScheduledActionSchema: Schema = new Schema(
         'HANDLE_OBJECTION', 'SHOW_VALUE', 'OFFER_DEMO', 'SCHEDULE_DEMO',
         'SEND_PRICING', 'FOLLOW_UP_AFTER_DEMO', 'OFFER_SUBSCRIPTION',
         'REENGAGE', 'WAIT', 'HUMAN_HANDOFF', 'STOP',
-        'DEMO_REMINDER', 'NO_SHOW_CHECK',
+        'DEMO_REMINDER', 'NO_SHOW_CHECK', 'EXECUTE_NBA',
       ],
       required: true,
     },

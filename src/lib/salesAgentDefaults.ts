@@ -24,6 +24,37 @@ export const SALES_TEMPLATE_VARS = [
 
 export type SalesMessageMode = 'ai' | 'template';
 
+/**
+ * Optional structured knowledge the NBA executor grounds ANSWER_QUESTION /
+ * HANDLE_OBJECTION / SEND_PRICING / EDUCATE replies in. Every field is
+ * optional and empty by default — the executor NEVER invents a fact. When a
+ * field the chosen action needs is empty, the executor falls back safely
+ * (ask a qualification question, or hand to a human) rather than
+ * hallucinating. Super-admins fill these in at /admin/sales-agent over time;
+ * adding content here does not require any engine change.
+ */
+export interface SalesKnowledge {
+  /**
+   * Exact, approved pricing text sent verbatim (after {{var}} rendering) for
+   * a SEND_PRICING action. Empty = the executor does NOT state a price — it
+   * asks a qualification question or routes to a human instead.
+   */
+  pricingResponse?: string;
+  /**
+   * Per-objection-type approved responses. Keys match Lead.objections[].type
+   * (PRICE / DECISION_MAKER / TIMING / TRUST / FEATURE_GAP / OTHER). A
+   * missing key for a detected objection = fall back to the generic persona
+   * reply, never a made-up rebuttal.
+   */
+  objectionResponses?: Partial<Record<'PRICE' | 'DECISION_MAKER' | 'TIMING' | 'TRUST' | 'FEATURE_GAP' | 'OTHER', string>>;
+  /** Short, approved use-case / social-proof snippets for SHARE_USE_CASE. */
+  useCases?: string[];
+  /** Approved Q&A pairs for ANSWER_QUESTION grounding (question hint + answer). */
+  faqs?: { q: string; a: string }[];
+  /** Approved feature/value explanations for EDUCATE. */
+  educationPoints?: string[];
+}
+
 export interface SalesFollowUp {
   /** Hours to wait (since the previous agent message) before sending this. */
   delayHours: number;
@@ -48,6 +79,13 @@ export interface SalesAgentConfigShape {
   agentSystemPrompt: string;
   subscribeUrl: string;
   shopUrl: string;
+  /**
+   * Optional grounded knowledge for the NBA executor. Empty object by
+   * default — see SalesKnowledge. Absent on existing configs; the loader
+   * fills in an empty object so callers can always read config.knowledge.*
+   * without a null check.
+   */
+  knowledge: SalesKnowledge;
 }
 
 export const DEFAULT_FIRST_TEMPLATE =
@@ -119,6 +157,10 @@ export function defaultSalesAgentConfig(subscribeUrl = '', shopUrl = ''): SalesA
     agentSystemPrompt: DEFAULT_AGENT_PROMPT,
     subscribeUrl,
     shopUrl,
+    // Empty by default — nothing to ground on until a super-admin adds it.
+    // The NBA executor treats every missing field as "no approved content,
+    // fall back safely" and never invents a fact.
+    knowledge: {},
   };
 }
 

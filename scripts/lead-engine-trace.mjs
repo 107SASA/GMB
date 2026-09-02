@@ -174,14 +174,16 @@ async function main() {
 
   // ---- quick verdict --------------------------------------------------------
   const types = new Set(evs.map((e) => e.type));
-  const intelligenceSeen = ['INTENT_CHANGED', 'LEAD_SCORE_CHANGED', 'OBJECTION_DETECTED', 'NBA_OVERRIDDEN'].some((t) => types.has(t));
+  const intelligenceTypes = ['INTENT_CHANGED', 'LEAD_SCORE_CHANGED', 'OBJECTION_DETECTED', 'NBA_OVERRIDDEN', 'NBA_SELECTED', 'NBA_EXECUTED'];
+  const seen = intelligenceTypes.filter((t) => types.has(t));
+  const nbaExecuted = evs.filter((e) => e.type === 'NBA_EXECUTED' && (e.payload?.outcome === 'sent' || e.payload?.outcome === 'handoff')).length;
   const sends = evs.filter((e) => e.type === 'MESSAGE_SENT').length;
   console.log('\n' + '-'.repeat(90));
-  console.log(`SUMMARY: ${evs.length} events, ${acts.length} scheduled actions, ${msgs.length} outbound attempts, ${sends} MESSAGE_SENT`);
-  if (sends >= 2 && !intelligenceSeen) {
-    console.log('⚠️  Multiple sends but NO intent/score/objection/NBA events — plumbing only, no intelligence.');
-  } else if (intelligenceSeen) {
-    console.log('✓  Intelligence events present (intent/score/objection changed) — the loop is doing more than sending.');
+  console.log(`SUMMARY: ${evs.length} events, ${acts.length} scheduled actions, ${msgs.length} outbound attempts, ${sends} MESSAGE_SENT, ${nbaExecuted} NBA executed`);
+  if (sends >= 2 && !seen.length) {
+    console.log('⚠️  Multiple sends but NO intelligence events (intent/score/objection/NBA) — plumbing only.');
+  } else if (seen.length) {
+    console.log(`✓  Intelligence events present: ${seen.join(', ')} — the loop understands + decides + acts, not just sends.`);
   }
   console.log('-'.repeat(90));
 

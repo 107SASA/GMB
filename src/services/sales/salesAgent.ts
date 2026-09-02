@@ -79,6 +79,9 @@ export async function getSalesAgentConfig(): Promise<SalesAgentConfigShape> {
       ...existing,
       firstMessage: { ...base.firstMessage, ...(existing.firstMessage ?? {}) },
       followUps: Array.isArray(existing.followUps) ? existing.followUps : base.followUps,
+      // Existing configs predate the knowledge block — always hand callers a
+      // real object so executor code can read config.knowledge.* unguarded.
+      knowledge: { ...base.knowledge, ...(existing.knowledge ?? {}) },
     };
   }
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || '';

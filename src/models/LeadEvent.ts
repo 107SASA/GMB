@@ -43,7 +43,14 @@ export type LeadEventType =
   | 'CUSTOMER_ACTIVATED'
   | 'HUMAN_HANDOFF'
   | 'OPT_OUT'
-  | 'NBA_OVERRIDDEN';
+  | 'NBA_OVERRIDDEN'
+  // NBA executor (services/nba/executeNextAction.ts). NBA_SELECTED records
+  // the action decideNextAction chose that the executor is about to run;
+  // NBA_EXECUTED records the concrete outcome (message sent, handoff done,
+  // scheduled, or a no-op like WAIT). Distinct from NBA_OVERRIDDEN, which is
+  // about the decision, not the execution.
+  | 'NBA_SELECTED'
+  | 'NBA_EXECUTED';
 
 const LEAD_EVENT_TYPES: LeadEventType[] = [
   'LEAD_CREATED',
@@ -67,6 +74,8 @@ const LEAD_EVENT_TYPES: LeadEventType[] = [
   'HUMAN_HANDOFF',
   'OPT_OUT',
   'NBA_OVERRIDDEN',
+  'NBA_SELECTED',
+  'NBA_EXECUTED',
 ];
 
 // Which platform/tenant conversation collection produced this event, if any

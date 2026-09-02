@@ -2011,6 +2011,61 @@ export const salesAgentReply = inngest.createFunction(
         return;
       }
 
+      const history = convo.messages
+        .slice(-10)
+        .map((m: any) => ({ role: m.role === 'lead' ? 'lead' as const : 'agent' as const, text: m.text }));
+
+      // --- Lead intelligence: extract NOW (awaited) so the NBA executor
+      // below acts on THIS message's intent/score/objections, not stale
+      // state. Still safe if it fails (extractLeadIntelligence never throws —
+      // returns null) — we just fall through to the generic reply.
+      if (salesLead && body) {
+        try {
+          const { extractLeadIntelligence } = await import('@/services/leadIntelligence/extract');
+          await extractLeadIntelligence(salesLead._id, body, history);
+        } catch (err: any) {
+          console.warn('[salesAgentReply] lead intelligence extraction failed:', err?.message);
+        }
+      }
+
+      // --- NBA EXECUTION: for a fresh Lead whose decided next action is one
+      // the executor handles deterministically better than a generic
+      // conversational reply (approved pricing block, objection response,
+      // demo nudge, human handoff, signup link), let the executor own the
+      // reply. Everything else falls through to composeAgentReply below.
+      // decideNextAction already ran inside extractLeadIntelligence and wrote
+      // Lead.nextBestAction; re-read the lead to get it.
+      const NBA_OWNS_REPLY = new Set([
+        'SEND_PRICING', 'HANDLE_OBJECTION', 'OFFER_DEMO', 'SCHEDULE_DEMO',
+        'HUMAN_HANDOFF', 'OFFER_SUBSCRIPTION', 'FOLLOW_UP_AFTER_DEMO', 'REENGAGE',
+      ]);
+      if (salesLead && body) {
+        const { default: Lead } = await import('@/models/Lead');
+        const fresh: any = await Lead.findById(salesLead._id).select('nextBestAction currentAgent').lean();
+        const nba = fresh?.nextBestAction as string | undefined;
+        if (nba && NBA_OWNS_REPLY.has(nba)) {
+          const { executeNextAction } = await import('@/services/nba/executeNextAction');
+          const result = await executeNextAction(salesLead._id, nba as any, {
+            trigger: 'reply',
+            lastInboundText: body,
+            history,
+            businessId: convo.businessId?.toString(),
+          });
+          if (result.outcome === 'sent' || result.outcome === 'handoff') {
+            // Executor produced the reply / did the transition. Record its
+            // text into the conversation transcript so the next turn's
+            // history is complete, then stop here.
+            if (result.outcome === 'sent' && result.text) {
+              convo.messages.push({ role: 'agent', text: result.text, at: new Date() });
+            }
+            convo.lastAgentAt = new Date();
+            await convo.save();
+            return;
+          }
+          // skipped/noop/deferred → fall through to the generic reply below.
+        }
+      }
+
       const reply = await composeAgentReply(config, convo);
       const res = await sendOutboundMessage(convo.leadPhone, reply, undefined, convo.businessId.toString());
       if (res.success) {
@@ -2025,24 +2080,6 @@ export const salesAgentReply = inngest.createFunction(
           conversationType: 'sales',
           conversationId: convo._id,
         });
-
-        // Lead intelligence extraction for Sales conversations. salesLead was
-        // already resolved above (read-only, by phone under the platform
-        // tenant) for the human-owned check — reuse it. Fire-and-forget: NOT
-        // awaited, so a slow/failed Groq call can never delay or affect the
-        // WhatsApp reply already sent above. Same pattern as the booking and
-        // support agents. When there's no Lead (SalesConversation is keyed by
-        // businessId+phone, not Lead — see LeadEvent.ts's file-level comment),
-        // there's simply nothing to extract onto and this is skipped; it does
-        // NOT create a Lead as a side effect.
-        if (salesLead && body) {
-          const history = convo.messages
-            .slice(-10)
-            .map((m: any) => ({ role: m.role === 'lead' ? 'lead' as const : 'agent' as const, text: m.text }));
-          import('@/services/leadIntelligence/extract')
-            .then(({ extractLeadIntelligence }) => extractLeadIntelligence(salesLead._id, body, history))
-            .catch((err) => console.warn('[salesAgentReply] lead intelligence extraction failed:', err?.message));
-        }
       }
     });
     return { success: true };
@@ -3735,6 +3772,46 @@ export const nurtureSchedulerTick = inngest.createFunction(
         );
         if (!action) return 'already-handled';
 
+        // Phase 9: EXECUTE_NBA — a proactive next-best-action step. Runs the
+        // NBA executor, which does its own fresh HUMAN/opt-out/customer
+        // re-check and routes any send through the orchestrator (falling back
+        // to a direct send for non-cohort leads). payload.action is the
+        // NBAAction decideNextAction chose when this row was scheduled;
+        // re-decide at fire time so a lead whose state changed gets the
+        // currently-correct action, not a stale one.
+        if (action.actionType === 'EXECUTE_NBA') {
+          try {
+            const { default: Lead } = await import('@/models/Lead');
+            const { decideNextAction } = await import('@/services/nba/decideNextAction');
+            const { executeNextAction } = await import('@/services/nba/executeNextAction');
+            const nbaLead: any = await Lead.findById(action.leadId);
+            if (!nbaLead) {
+              action.status = 'SKIPPED';
+              action.reason = 'lead-not-found';
+              await action.save();
+              return 'skipped';
+            }
+            // Fresh decision (rule lookup only — no LLM) so we execute the
+            // action that fits the lead's CURRENT state.
+            const { action: freshAction } = await decideNextAction(nbaLead);
+            const result = await executeNextAction(action.leadId, freshAction, {
+              trigger: 'proactive',
+              businessId: nbaLead.businessId?.toString(),
+            });
+            action.status = ['sent', 'handoff', 'noop'].includes(result.outcome) ? 'EXECUTED' : 'SKIPPED';
+            if (result.outcome !== 'sent' && result.outcome !== 'handoff') {
+              action.reason = `nba-${result.outcome}${'reason' in result ? `:${result.reason}` : ''}`;
+            }
+            await action.save();
+            return action.status === 'EXECUTED' ? 'executed' : 'skipped';
+          } catch (err: any) {
+            action.status = 'SKIPPED';
+            action.reason = `execute-nba-threw: ${err?.message || 'unknown error'}`;
+            await action.save();
+            return 'skipped';
+          }
+        }
+
         // Phase 6: NO_SHOW_CHECK is NOT a message send — it runs a status
         // check instead. Handled entirely separately from the
         // requestOutboundMessage path below; see runNoShowCheck's own doc
@@ -3875,6 +3952,89 @@ export const nurtureSchedulerTick = inngest.createFunction(
     }
 
     return { success: true, due: dueIds.length, executed, skipped };
+  }
+);
+
+// Phase 9 — proactive NBA scheduler. decideNextAction writes
+// Lead.nextBestAction + Lead.nextActionAt on every intelligence extraction;
+// this cron turns a DUE proactive next-action into an EXECUTE_NBA
+// ScheduledAction that nurtureSchedulerTick then runs through the NBA
+// executor. Only PROACTIVE-appropriate actions are scheduled here — a
+// reply-driven action (ANSWER_QUESTION, SEND_PRICING, etc.) is executed
+// inline by salesAgentReply when the lead messages, never proactively pushed
+// at them out of nowhere.
+//
+// Gated on LEAD_ENGINE_V2 + cohort (via isLeadInCohort) exactly like the
+// gated sales drip — with the flag off this creates nothing. Runs every 30
+// minutes; nextActionAt granularity doesn't need finer.
+//
+// Double-nurture safety vs runSalesFollowUpDrip's gated SHOW_VALUE rows:
+// both this and the drip create ScheduledActions that fire through
+// nurtureSchedulerTick -> requestOutboundMessage, whose Step 4 cooldown
+// (Lead.lastProactiveMessageAt, ORCHESTRATOR_COOLDOWN_HOURS / 4h default)
+// rejects a second proactive send inside the window. So even if both
+// schedule for the same lead, only one message actually goes out per
+// cooldown period — the later one is SKIPPED 'cooldown-active'. The legacy
+// dispatchWhatsappFollowUpJob never runs for platform ('gmbboost-internal')
+// leads (they get no crm/lead-created event), so there is no third path.
+const PROACTIVE_NBA_ACTIONS = new Set(['REENGAGE', 'FOLLOW_UP_AFTER_DEMO', 'SHOW_VALUE', 'SHARE_USE_CASE', 'EDUCATE']);
+
+export const proactiveNbaScheduler = inngest.createFunction(
+  { id: 'proactive-nba-scheduler', triggers: [{ cron: '*/30 * * * *' }] },
+  async ({ step }) => {
+    if (process.env.LEAD_ENGINE_V2 !== 'true') {
+      return { success: true, skipped: 'LEAD_ENGINE_V2 off', scheduled: 0 };
+    }
+
+    const scheduled = await step.run('schedule-due-proactive-nba', async () => {
+      await dbConnect();
+      const { default: Lead } = await import('@/models/Lead');
+      const { default: ScheduledAction } = await import('@/models/ScheduledAction');
+      const { isLeadInCohort } = await import('@/services/orchestration/outboundOrchestrator');
+      const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
+
+      // Candidate leads: a proactive next action is due, and the lead is
+      // still AI-owned and contactable. tenantId scoped to the platform.
+      const candidates = await Lead.find({
+        tenantId: 'gmbboost-internal',
+        nextActionAt: { $lte: new Date() },
+        nextBestAction: { $in: [...PROACTIVE_NBA_ACTIONS] },
+        currentAgent: { $in: ['SALES', 'DEMO'] },
+        nurtureStatus: 'ACTIVE',
+      }).select('_id nextBestAction currentAgent currentStage humanHandoff nurtureStatus').limit(100).lean();
+
+      let created = 0;
+      for (const lead of candidates as any[]) {
+        if (isHumanOwned(lead) || isOptedOutOrDoNotContact(lead)) continue;
+        if (!(await isLeadInCohort(String(lead._id)))) continue;
+
+        // One row per lead per hour bucket — the unique idempotencyKey is the
+        // real guard against duplicates from an overlapping run.
+        const bucket = new Date().toISOString().slice(0, 13);
+        const idempotencyKey = `${lead._id}-EXECUTE_NBA-${bucket}`;
+        try {
+          await ScheduledAction.create({
+            leadId: lead._id,
+            actionType: 'EXECUTE_NBA',
+            dueAt: new Date(),
+            status: 'PENDING',
+            idempotencyKey,
+            createdBy: 'proactive-nba-scheduler',
+            payload: { action: lead.nextBestAction },
+          });
+          created++;
+          const { logLeadEvent } = await import('@/services/leadEvents');
+          logLeadEvent('NURTURE_ACTION_SCHEDULED', {
+            action: lead.nextBestAction, source: 'V2_NURTURE', kind: 'proactive-nba',
+          }, 'nba-engine', { leadId: lead._id, phone: (lead as any).phone });
+        } catch (err: any) {
+          if (err?.code !== 11000) throw err; // already scheduled this bucket — fine
+        }
+      }
+      return created;
+    });
+
+    return { success: true, scheduled };
   }
 );
 

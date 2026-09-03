@@ -30,6 +30,13 @@ export interface ISubscription extends Document {
   // Razorpay linkage (website billing) — additive
   razorpaySubscriptionId?: string;
   currentPeriodEnd?: Date;
+  // Phase 7 — idempotency guards for the post-payment WhatsApp sequence
+  // (services/billing/customerActivation.ts). Each is set exactly once, the
+  // first time its message actually sends; a null value is the sole signal
+  // that step hasn't happened yet, which is what makes a webhook retry safe
+  // to re-run the whole sequence against without resending anything.
+  invoiceMessageSentAt?: Date | null;
+  welcomeMessageSentAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,7 +65,10 @@ const SubscriptionSchema: Schema = new Schema(
     endDate: { type: Date },
     // Razorpay linkage (website billing) — additive
     razorpaySubscriptionId: { type: String, index: true, sparse: true },
-    currentPeriodEnd: { type: Date }
+    currentPeriodEnd: { type: Date },
+    // Phase 7 idempotency guards — see ISubscription's own comment above.
+    invoiceMessageSentAt: { type: Date, default: null },
+    welcomeMessageSentAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

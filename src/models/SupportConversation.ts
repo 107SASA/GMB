@@ -28,6 +28,15 @@ export interface ISupportConversation extends Document {
   // jump straight to the right account instead of just a phone number.
   userId?: mongoose.Types.ObjectId;
   businessId?: mongoose.Types.ObjectId;
+  // Phase 8 — platform-side equivalent of ConversationThread.aiEnabled on
+  // the tenant side (there is no ConversationThread for platform leads, so
+  // this lives directly on SupportConversation instead). Only meaningful
+  // once the associated Lead is currentAgent==='IN_HOUSE' (a paying
+  // customer getting real multi-turn AI support) — false skips the LLM
+  // call entirely and notifies a human instead, same as the tenant
+  // pattern. Defaults true so existing pre-Phase-8 conversations behave
+  // exactly as before (AI-enabled) once this field starts being read.
+  aiEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -53,6 +62,7 @@ const SupportConversationSchema: Schema = new Schema(
     },
     userId: { type: Schema.Types.ObjectId, ref: 'User' },
     businessId: { type: Schema.Types.ObjectId, ref: 'Business' },
+    aiEnabled: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

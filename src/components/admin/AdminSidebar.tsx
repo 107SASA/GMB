@@ -5,21 +5,50 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 
+// SuperAdmin navigation — reorganised Sep 2026 around the Sales → Demo →
+// Payment → Customer conversion lifecycle.
+//
+//   CONVERSION group   = the Lead Engine acquisition funnel (Lead model,
+//                        tenantId 'gmbboost-internal'). "Leads & Pipeline"
+//                        REPLACES the old "GrowwMatics Pipeline" Kanban that
+//                        ran on the legacy Business.pipelineStage field.
+//   Customer Leads     = a DIFFERENT thing — the leads our CUSTOMERS build
+//                        their own CRM from (leadType 'Client Prospect').
+//                        Moved under MONITORS and renamed to make that clear.
+//   /admin/support     = removed from nav (thin mailto: stub; the support
+//                        email lives in Settings). Route left in place.
 const adminGroups = [
   {
     label: null as string | null,
     links: [
-      { name: 'Dashboard', icon: 'dashboard', href: '/admin' },
-      // Real per-tenant customer leads (the Lead model businesses build their
-      // own CRM from) — kept right under Dashboard since this is what
-      // "leads" means to most people looking at this sidebar. Do not confuse
-      // with "GrowwMatics Pipeline" below, which is our own signup funnel.
-      { name: 'Customer Leads', icon: 'contacts', href: '/admin/crm' },
-      { name: 'GrowwMatics Pipeline', icon: 'view_kanban', href: '/admin/leads' },
+      { name: 'Overview', icon: 'dashboard', href: '/admin' },
+    ],
+  },
+  {
+    label: 'CONVERSION',
+    links: [
+      { name: 'Conversion Overview', icon: 'trending_up', href: '/admin/pipeline' },
+      { name: 'Leads & Pipeline', icon: 'filter_alt', href: '/admin/leads' },
+      { name: 'Demos', icon: 'event_available', href: '/admin/demo-bookings' },
+      { name: 'Analytics', icon: 'query_stats', href: '/admin/conversion-analytics' },
+    ],
+  },
+  {
+    label: 'CUSTOMERS & BILLING',
+    links: [
       { name: 'Customers', icon: 'group', href: '/admin/customers' },
       { name: 'Businesses', icon: 'storefront', href: '/admin/businesses' },
       { name: 'Subscriptions', icon: 'credit_card', href: '/admin/subscriptions' },
       { name: 'Revenue', icon: 'payments', href: '/admin/revenue' },
+    ],
+  },
+  {
+    label: 'AGENTS',
+    links: [
+      { name: 'Sales Agent', icon: 'support_agent', href: '/admin/sales-agent' },
+      { name: 'Booking Agent', icon: 'event_note', href: '/admin/booking-agent' },
+      { name: 'Report Agent', icon: 'summarize', href: '/admin/report-agent' },
+      { name: 'WhatsApp Inbox', icon: 'forum', href: '/admin/whatsapp-agent' },
     ],
   },
   {
@@ -31,20 +60,17 @@ const adminGroups = [
     ],
   },
   {
-    label: 'ACTIVITY MONITOR',
+    label: 'MONITORS',
     links: [
+      { name: 'Customer Leads (tenant CRM)', icon: 'contacts', href: '/admin/crm' },
       { name: 'Audit Monitor', icon: 'analytics', href: '/admin/audits' },
       { name: 'Content Monitor', icon: 'campaign', href: '/admin/content' },
       { name: 'Review Monitor', icon: 'star', href: '/admin/reviews' },
       { name: 'WhatsApp Monitor', icon: 'chat', href: '/admin/whatsapp' },
-      { name: 'WhatsApp Inbox', icon: 'forum', href: '/admin/whatsapp-agent' },
-      { name: 'Demo Bookings', icon: 'event_note', href: '/admin/demo-bookings' },
     ],
   },
-  // Separate from ACTIVITY MONITOR on purpose — that group is read-only
-  // observation, these two actually approve/reject client submissions
-  // before they go public on growwmatics.com/showcase (photo/video uploads
-  // and client testimonials about GrowwMatics itself).
+  // Approve/reject client submissions before they go public on
+  // growwmatics.com/showcase (photo/video uploads and client testimonials).
   {
     label: 'MODERATION QUEUE',
     links: [
@@ -53,18 +79,9 @@ const adminGroups = [
     ],
   },
   {
-    label: 'WHATSAPP AGENTS',
-    links: [
-      { name: 'Sales Agent', icon: 'support_agent', href: '/admin/sales-agent' },
-      { name: 'Booking Agent', icon: 'event_available', href: '/admin/booking-agent' },
-      { name: 'Report Agent', icon: 'summarize', href: '/admin/report-agent' },
-    ],
-  },
-  {
     label: 'ADMIN',
     links: [
       { name: 'Settings', icon: 'tune', href: '/admin/settings' },
-      { name: 'Support', icon: 'headset_mic', href: '/admin/support' },
       { name: 'Team Invites', icon: 'person_add', href: '/admin/invites' },
     ],
   },

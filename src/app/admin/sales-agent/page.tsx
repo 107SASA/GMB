@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Loader2, Bot, Plus, Trash2, Save, Info } from 'lucide-react';
+import { SalesKnowledgeEditor, type KnowledgeShape } from '@/components/admin/SalesKnowledgeEditor';
 
 type Mode = 'ai' | 'template';
 interface FollowUp { delayHours: number; mode: Mode; template: string; aiSystemPrompt?: string; onlyIfNoReply: boolean; }
@@ -12,6 +13,7 @@ interface Config {
   agentSystemPrompt: string;
   subscribeUrl: string;
   shopUrl: string;
+  knowledge?: KnowledgeShape;
 }
 
 const cls = 'w-full px-3 py-2 rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary focus:border-primary text-sm';
@@ -32,6 +34,8 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
 export default function SalesAgentAdminPage() {
   const [config, setConfig] = useState<Config | null>(null);
   const [vars, setVars] = useState<string[]>([]);
+  const [defaultKnowledge, setDefaultKnowledge] = useState<KnowledgeShape>({});
+  const [tab, setTab] = useState<'config' | 'knowledge'>('config');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -41,7 +45,11 @@ export default function SalesAgentAdminPage() {
       try {
         const res = await fetch('/api/admin/sales-agent');
         const json = await res.json();
-        if (json.success) { setConfig(json.config); setVars(json.variables || []); }
+        if (json.success) {
+          setConfig(json.config);
+          setVars(json.variables || []);
+          setDefaultKnowledge(json.defaultKnowledge || {});
+        }
       } finally { setLoading(false); }
     })();
   }, []);
@@ -94,6 +102,30 @@ export default function SalesAgentAdminPage() {
         <div className={`mb-4 px-4 py-3 rounded-xl text-sm ${msg.ok ? 'bg-secondary-container/40 text-on-secondary-container border border-secondary-fixed' : 'bg-error-container text-on-error-container border border-error-container'}`}>{msg.text}</div>
       )}
 
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-outline-variant mb-6">
+        {([['config', 'Messages & Persona'], ['knowledge', 'Business Knowledge']] as const).map(([id, lbl]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+              tab === id ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'knowledge' ? (
+        <SalesKnowledgeEditor
+          value={config.knowledge ?? {}}
+          defaults={defaultKnowledge}
+          onChange={(next) => setConfig({ ...config, knowledge: next })}
+        />
+      ) : (
+        <>
       <div className="flex items-start gap-2 bg-surface border border-outline-variant rounded-xl px-4 py-3 text-xs text-on-surface-variant mb-6">
         <Info className="w-4 h-4 mt-0.5 shrink-0 text-outline" />
         <div>Available variables in templates: {vars.map((v) => <code key={v} className="mx-0.5 px-1 bg-surface-container-lowest border border-outline-variant rounded">{v}</code>)}</div>
@@ -183,14 +215,25 @@ export default function SalesAgentAdminPage() {
       {/* Live agent persona */}
       <section className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-5 mb-6 space-y-3">
         <h2 className="font-bold text-on-surface">Live reply agent</h2>
-        <p className="text-xs text-on-surface-variant">How the AI talks when a lead replies — it always gets the lead&apos;s audit scores, competitors and your links as context.</p>
+        <p className="text-xs text-on-surface-variant">How the AI talks when a lead replies — it always gets the lead&apos;s audit scores, competitors, your links, and the approved Business Knowledge as context.</p>
         <textarea rows={8} className={area} value={config.agentSystemPrompt} onChange={(e) => setConfig({ ...config, agentSystemPrompt: e.target.value })} />
       </section>
+        </>
+      )}
 
-      <button onClick={save} disabled={saving}
-        className="px-6 py-3 rounded-xl bg-primary hover:bg-primary-container text-white font-bold transition-colors disabled:opacity-60 flex items-center gap-2">
-        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save configuration
-      </button>
+      <div className="flex items-center gap-3 mt-6 sticky bottom-0 bg-surface/80 backdrop-blur py-3">
+        <button onClick={save} disabled={saving}
+          className="px-6 py-3 rounded-xl bg-primary hover:bg-primary-container text-white font-bold transition-colors disabled:opacity-60 flex items-center gap-2">
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save configuration
+        </button>
+        <button
+          onClick={() => window.location.reload()}
+          disabled={saving}
+          className="px-5 py-3 rounded-xl border border-outline-variant text-on-surface font-semibold hover:bg-surface-container transition-colors disabled:opacity-60"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

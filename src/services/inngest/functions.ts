@@ -386,6 +386,26 @@ export const processWhatsappMessage = inngest.createFunction(
 );
 
 // 2. Lead Follow Up Workflow (Distributed queue replacement for synchronous cron)
+//
+// STATUS: INERT — this cron's lead query below can never match a row against
+// the current Lead schema, so it dispatches zero jobs every hour and
+// processFollowUpJob never fires. Specifically:
+//   - `status: { $nin: ['Converted', 'Lost'] }` — Lead.status is an enum of
+//     ['active','inactive'] (see Lead.ts). No lead is ever 'Converted'/'Lost',
+//     so this clause is always satisfied but selects nothing meaningful.
+//   - `lastInteractionTime: { $lte: oneDayAgo }` — there is NO
+//     `lastInteractionTime` field on the Lead schema. A missing field never
+//     satisfies `$lte: <date>`, so the whole query returns [].
+// It is left registered (app/api/inngest/route.ts) rather than deleted per the
+// stabilization brief's "do not delete legacy systems" rule — it fails safe
+// (sends nothing). The real, working generic follow-up path is
+// dispatchWhatsappFollowUpJob (Day 1/3/7 CRM chain) further down.
+//
+// DO NOT "repair" this query to lifeCycleStage/lastActivityAt without first
+// building it a real test — doing so would wake a follow-up sender that has
+// been dormant and unexercised, bypassing the observability this brief exists
+// to establish. Note also line ~470 below writes `lead.status = 'Lost'`, which
+// is an invalid enum value and would throw if that branch were ever reached.
 export const followUpCron = inngest.createFunction(
   { id: "follow-up-cron", triggers: [{ cron: "0 * * * *" }] }, // Runs every hour
   async ({ step }) => {
@@ -432,6 +452,24 @@ export const processFollowUpJob = inngest.createFunction(
     await dbConnect();
     const lead = await Lead.findById(leadId);
     if (!lead || lead.status === 'Converted' || lead.status === 'Lost') return { skipped: true };
+
+    // P0 FIX — this legacy generic CRM follow-up cron (confirmed still
+    // registered and running hourly — see followUpCron above, and
+    // app/api/inngest/route.ts) had ZERO awareness of the newer ownership
+    // model: no check on currentAgent, humanHandoff, nurtureStatus, or
+    // currentStage anywhere in this function. A lead that the new system
+    // considers HUMAN-owned or opted-out/do-not-contact could still be
+    // messaged by this cron as long as it also matched the old
+    // Lead.status/lastInteractionTime query above. Minimal guard added —
+    // reuses the SAME shared definition every live agent now uses
+    // (services/agentHandoff/isHumanOwned.ts), not a new/competing
+    // ownership model, and does not otherwise touch this system's own
+    // (separate, and separately imperfect — see its own status-enum
+    // mismatch noted elsewhere) logic.
+    const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
+    if (isHumanOwned(lead) || isOptedOutOrDoNotContact(lead)) {
+      return { skipped: true, reason: 'human-owned-or-opted-out' };
+    }
 
     let messageBody = '';
     if (reminderType === '24h Reminder') messageBody = `Hi ${lead.name !== lead.phone ? lead.name : 'there'}, just checking in to see if you had any questions about our previous chat?`;
@@ -1544,9 +1582,102 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
       if (cfg.onlyIfNoReply && convo.lastLeadReplyAt && convo.firstSentAt && convo.lastLeadReplyAt > convo.firstSentAt) {
         return true;
       }
+
+      // P0 FIX (post-implementation-audit) — this drip step had ZERO
+      // human-handoff awareness: the only existing gate below is the
+      // LEAD_ENGINE_V2 cohort check, which is a no-op while that flag is
+      // unset (confirmed unset in both .env.local/.env.production) and even
+      // when on only redirects a lead to the SCHEDULED path — it never
+      // blocks a HUMAN-owned lead from being sent to at all. A lead who
+      // said "talk to a human" (or was otherwise handed off) mid-drip could
+      // still receive every remaining scheduled follow-up message with no
+      // check whatsoever. Resolved the same read-only, never-creates-a-Lead
+      // way every other platform-side agent in this file now does — a
+      // SalesConversation with no matching Lead simply proceeds (nothing to
+      // be human-owned by), same precedent as salesAgentReply above.
+      const { normalizePhoneE164 } = await import('@/lib/phone');
+      const { default: Lead } = await import('@/models/Lead');
+      const { salesReplyBlockedReason } = await import('@/services/agentHandoff/isHumanOwned');
+      const normalizedDripPhone = normalizePhoneE164(convo.leadPhone) || convo.leadPhone;
+      const dripLead: any = await Lead.findOne({ phone: normalizedDripPhone, tenantId: 'gmbboost-internal' });
+      const dripBlocked = salesReplyBlockedReason(dripLead);
+      if (dripBlocked) {
+        const { logLeadEvent } = await import('@/services/leadEvents');
+        logLeadEvent(
+          'NURTURE_ACTION_SKIPPED',
+          { reason: dripBlocked, agent: 'sales-agent-drip' },
+          'sales-agent',
+          { leadId: dripLead?._id, phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id }
+        );
+        return true; // stop drip — do not send this or any later follow-up in the loop
+      }
+
       const config = await getSalesAgentConfig();
       const f = config.followUps[i];
       if (!f) return true;
+
+      // --- Phase 5 gate: LEAD_ENGINE_V2 + cohort, per-lead --------------------
+      // SalesConversation has no leadId field (see LeadEvent.ts's file-level
+      // comment) — resolved here by phone, READ-ONLY (never creates a Lead),
+      // matching the same "skip silently if none exists" precedent every
+      // prior phase established for this exact structural gap. When there's
+      // no Lead, or the flag/cohort doesn't apply to it, this falls straight
+      // through to the untouched legacy send below — byte-for-byte identical
+      // to before this phase for any lead not explicitly opted into the
+      // rollout.
+      let gatedLeadId: string | null = null;
+      if (process.env.LEAD_ENGINE_V2 === 'true') {
+        // Reuse dripLead from the human-owned check above — same canonical
+        // normalization + tenant scoping. A raw-phone, tenant-unscoped lookup
+        // here could miss the real Lead on a format mismatch (silently dropping
+        // it to the legacy path) or resolve a different tenant's Lead that
+        // shares the number.
+        if (dripLead) {
+          const { isLeadInCohort } = await import('@/services/orchestration/outboundOrchestrator');
+          if (await isLeadInCohort(dripLead._id.toString())) {
+            gatedLeadId = dripLead._id.toString();
+          }
+        }
+      }
+
+      if (gatedLeadId) {
+        // Gated path: schedule instead of sending inline. dueAt = now (the
+        // step.sleep above already accounted for the configured delay), so
+        // nurtureSchedulerTick picks this up on its next 15-minute pass and
+        // re-validates everything fresh (ownership, stage, opt-out,
+        // cooldown) before actually sending — see nurtureSchedulerTick's own
+        // doc comment for why that re-validation matters.
+        const { default: ScheduledAction } = await import('@/models/ScheduledAction');
+        // Bucketed to the hour so a step retry (Inngest's own retry, not a
+        // second real drip) can't create a duplicate row for the same
+        // logical follow-up — the unique index on idempotencyKey is the
+        // actual guarantee, this is just what makes the key stable.
+        const dueAtBucket = new Date().toISOString().slice(0, 13); // e.g. "2026-08-29T14"
+        const idempotencyKey = `${gatedLeadId}-SHOW_VALUE-${dueAtBucket}-followup${i}`;
+        try {
+          await ScheduledAction.create({
+            leadId: gatedLeadId,
+            actionType: 'SHOW_VALUE', // the drip is a cadence, not an NBA-rule-derived action — SHOW_VALUE is the rule table's own default for "nurturing, engaged, no objection"
+            dueAt: new Date(),
+            status: 'PENDING',
+            idempotencyKey,
+            createdBy: 'sales-agent-drip',
+            payload: { conversationId, followUpIndex: i },
+          });
+          const { logLeadEvent } = await import('@/services/leadEvents');
+          logLeadEvent(
+            'NURTURE_ACTION_SCHEDULED',
+            { followUpIndex: i, delayHours: cfg.delayHours, gated: true, source: 'V2_NURTURE' },
+            'sales-agent',
+            { leadId: gatedLeadId, phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id }
+          );
+        } catch (err: any) {
+          if (err?.code !== 11000) throw err; // 11000 = duplicate idempotencyKey, already scheduled — not an error
+        }
+        return false; // drip continues to the next follow-up on its own delay, same as the legacy path
+      }
+
+      // --- Legacy path: send inline, completely unchanged from before ---------
       const msg = await composeFollowUp(f, config, convo.scores, convo.leadName);
       const res = await sendOutboundMessage(convo.leadPhone, msg, undefined, convo.businessId.toString());
       if (res.success) {
@@ -1554,6 +1685,14 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
         convo.lastAgentAt = new Date();
         convo.followUpsSent = (convo.followUpsSent || 0) + 1;
         await convo.save();
+
+        const { logLeadEvent } = await import('@/services/leadEvents');
+        logLeadEvent(
+          'NURTURE_ACTION_SCHEDULED',
+          { followUpIndex: i, delayHours: cfg.delayHours, followUpsSent: convo.followUpsSent, source: 'LEGACY_NURTURE' },
+          'sales-agent',
+          { leadId: dripLead?._id, phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id }
+        );
       }
       return false;
     });
@@ -1608,7 +1747,25 @@ export const salesNurtureRequested = inngest.createFunction(
       const phone = owner?.phone || business.phone;
       if (!phone) return { skip: 'no phone' as const };
 
+      // P0 FIX (post-implementation-audit) — this owner/business phone may
+      // already have an existing, HUMAN-owned Lead under the platform
+      // tenant from an earlier, unrelated interaction (e.g. they previously
+      // messaged the Report/Booking line, or were manually flagged HUMAN) —
+      // this first-touch nurture cycle had no awareness of that at all
+      // before starting a brand-new SalesConversation and sending a cold
+      // consent/pitch message. Checked here, before creating anything or
+      // writing the send-once auditNurtureSentAt guard, so a HUMAN-owned
+      // phone gets neither a new conversation nor a message; a normal,
+      // never-contacted phone proceeds exactly as before.
       const { normalizePhoneE164, phoneDedupeKey } = await import('@/lib/phone');
+      const { default: Lead } = await import('@/models/Lead');
+      const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
+      const normalizedOwnerPhone = normalizePhoneE164(phone) || phone;
+      const existingLead: any = await Lead.findOne({ phone: normalizedOwnerPhone, tenantId: 'gmbboost-internal' });
+      if (isHumanOwned(existingLead) || isOptedOutOrDoNotContact(existingLead)) {
+        return { skip: 'human-owned-or-opted-out' as const };
+      }
+
       const phoneKey = phoneDedupeKey(phone);
       const priorContact = await hasPhoneMessagedPlatformBefore(phoneKey);
       const scores = extractScores(audit, business);
@@ -1731,6 +1888,22 @@ export const salesNurtureConsented = inngest.createFunction(
       if (!convo || convo.status !== 'active' || convo.consentStatus !== 'granted') {
         return { skip: 'not eligible' as const };
       }
+
+      // P0 FIX (post-implementation-audit) — time passes between the
+      // original consent request and this affirmative-reply trigger firing
+      // (the lead has to actually reply), during which the lead could have
+      // been handed off to HUMAN via any other agent. Same read-only,
+      // never-creates-a-Lead resolution as every other platform-side check
+      // in this file.
+      const { normalizePhoneE164 } = await import('@/lib/phone');
+      const { default: Lead } = await import('@/models/Lead');
+      const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
+      const normalizedConsentedPhone = normalizePhoneE164(convo.leadPhone) || convo.leadPhone;
+      const consentedLead: any = await Lead.findOne({ phone: normalizedConsentedPhone, tenantId: 'gmbboost-internal' });
+      if (isHumanOwned(consentedLead) || isOptedOutOrDoNotContact(consentedLead)) {
+        return { skip: 'human-owned-or-opted-out' as const };
+      }
+
       const config = await getSalesAgentConfig();
       if (!config.enabled) return { skip: 'agent disabled' as const };
       return { followUpCount: config.followUps.length };
@@ -1774,7 +1947,7 @@ const AGENT_DISABLED_FALLBACK_MESSAGE = "Thanks for reaching out — a team memb
 export const salesAgentReply = inngest.createFunction(
   { id: 'sales-agent-reply', retries: 2, triggers: [{ event: 'sales/agent.reply' }] },
   async ({ event, step }) => {
-    const { conversationId } = event.data;
+    const { conversationId, body } = event.data;
     await step.run('reply', async () => {
       const dbConnect = (await import('@/lib/mongodb')).default;
       await dbConnect();
@@ -1784,6 +1957,59 @@ export const salesAgentReply = inngest.createFunction(
 
       const convo: any = await SalesConversation.findById(conversationId);
       if (!convo || convo.status !== 'active') return;
+
+      // P0 FIX — SalesConversation has no leadId field at all (confirmed:
+      // it's keyed by businessId+phone, not Lead — see LeadEvent.ts's
+      // file-level comment), which made the OLD `if (convo.leadId && body)`
+      // guard permanently dead code: it never ran for any Sales
+      // conversation, so a HUMAN-owned lead kept receiving AI replies from
+      // this agent indefinitely. Fixed by resolving the Lead the SAME way
+      // customerActivation.ts and supportAgentReply already do — a
+      // read-only lookup by phone under the platform tenant, never creating
+      // a Lead as a side effect of this safety check (a Sales conversation
+      // with no matching Lead simply has nothing to be human-owned by, and
+      // proceeds normally).
+      //
+      // checkHandoffTriggers() itself already covers BOTH "already
+      // HUMAN-owned" (re-notifies, returns handedOff:true, changes
+      // nothing) and "a trigger fires on THIS turn" (explicit request /
+      // low-confidence streak / stuck-hot-lead) — used whenever there's a
+      // message body to evaluate. A bare isHumanOwned() check is ALSO run
+      // unconditionally (not gated on `body`) as a defensive fallback: an
+      // empty/falsy body must never be a way to skip the "already
+      // HUMAN-owned" stop, even though every real inbound message has one.
+      const { normalizePhoneE164 } = await import('@/lib/phone');
+      const { default: Lead } = await import('@/models/Lead');
+      const normalizedSalesPhone = normalizePhoneE164(convo.leadPhone) || convo.leadPhone;
+      const salesLead: any = await Lead.findOne({ phone: normalizedSalesPhone, tenantId: 'gmbboost-internal' });
+
+      // P0 STOP conditions for the ENTIRE sales-agent turn — checked before
+      // extraction, NBA, AND the generic composeAgentReply fallback below.
+      // Previously only isHumanOwned was checked here; a lead that had
+      // converted (currentAgent IN_HOUSE / currentStage CUSTOMER after
+      // payment) or opted out still got an AI sales reply from the generic
+      // fallback path (the NBA executor's own re-check only gates the
+      // executor branch, not the fallback). salesReplyBlockedReason unions
+      // all three — see its doc comment.
+      const { salesReplyBlockedReason } = await import('@/services/agentHandoff/isHumanOwned');
+      const blockedReason = salesReplyBlockedReason(salesLead);
+      if (blockedReason) {
+        const { logLeadEvent } = await import('@/services/leadEvents');
+        logLeadEvent(
+          'NURTURE_ACTION_SKIPPED',
+          { reason: blockedReason, agent: 'sales-agent' },
+          'sales-agent',
+          { leadId: salesLead?._id, phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id }
+        );
+        return;
+      }
+
+      if (salesLead && body) {
+        const { checkHandoffTriggers } = await import('@/services/agentHandoff/checkHandoffTriggers');
+        const handoff = await checkHandoffTriggers(salesLead._id, body, 'sales-agent');
+        if (handoff.handedOff) return;
+      }
+
       const config = await getSalesAgentConfig();
       if (!config.enabled) {
         const res = await sendOutboundMessage(convo.leadPhone, AGENT_DISABLED_FALLBACK_MESSAGE, undefined, convo.businessId.toString());
@@ -1795,12 +2021,83 @@ export const salesAgentReply = inngest.createFunction(
         return;
       }
 
+      const history = convo.messages
+        .slice(-10)
+        .map((m: any) => ({ role: m.role === 'lead' ? 'lead' as const : 'agent' as const, text: m.text }));
+
+      // --- Lead intelligence: extract NOW (awaited) so the NBA executor
+      // below acts on THIS message's intent/score/objections, not stale
+      // state. Still safe if it fails (extractLeadIntelligence never throws —
+      // returns null) — we just fall through to the generic reply.
+      //
+      // This whole handler is a single step.run('reply', …), so an Inngest
+      // retry of a later failure (compose/send/save) re-runs this extraction
+      // too. That's now harmless for scoring: applyExtraction dedupes each
+      // (signal, message) behavioral signature via Lead.scoredSignalKeys, so
+      // a re-processed DEMO_REQUESTED/PRICING_QUESTION/etc no longer stacks
+      // another +N onto leadScore. Intent/objections merges were already
+      // idempotent (set-if-changed / merge-by-type).
+      if (salesLead && body) {
+        try {
+          const { extractLeadIntelligence } = await import('@/services/leadIntelligence/extract');
+          await extractLeadIntelligence(salesLead._id, body, history);
+        } catch (err: any) {
+          console.warn('[salesAgentReply] lead intelligence extraction failed:', err?.message);
+        }
+      }
+
+      // --- NBA EXECUTION: for a fresh Lead whose decided next action is one
+      // the executor handles deterministically better than a generic
+      // conversational reply (approved pricing block, objection response,
+      // demo nudge, human handoff, signup link), let the executor own the
+      // reply. Everything else falls through to composeAgentReply below.
+      // decideNextAction already ran inside extractLeadIntelligence and wrote
+      // Lead.nextBestAction; re-read the lead to get it.
+      const NBA_OWNS_REPLY = new Set([
+        'SEND_PRICING', 'HANDLE_OBJECTION', 'OFFER_DEMO', 'SCHEDULE_DEMO',
+        'HUMAN_HANDOFF', 'OFFER_SUBSCRIPTION', 'FOLLOW_UP_AFTER_DEMO', 'REENGAGE',
+      ]);
+      if (salesLead && body) {
+        const { default: Lead } = await import('@/models/Lead');
+        const fresh: any = await Lead.findById(salesLead._id).select('nextBestAction currentAgent').lean();
+        const nba = fresh?.nextBestAction as string | undefined;
+        if (nba && NBA_OWNS_REPLY.has(nba)) {
+          const { executeNextAction } = await import('@/services/nba/executeNextAction');
+          const result = await executeNextAction(salesLead._id, nba as any, {
+            trigger: 'reply',
+            lastInboundText: body,
+            history,
+            businessId: convo.businessId?.toString(),
+          });
+          if (result.outcome === 'sent' || result.outcome === 'handoff') {
+            // Executor produced the reply / did the transition. Record its
+            // text into the conversation transcript so the next turn's
+            // history is complete, then stop here.
+            if (result.outcome === 'sent' && result.text) {
+              convo.messages.push({ role: 'agent', text: result.text, at: new Date() });
+            }
+            convo.lastAgentAt = new Date();
+            await convo.save();
+            return;
+          }
+          // skipped/noop/deferred → fall through to the generic reply below.
+        }
+      }
+
       const reply = await composeAgentReply(config, convo);
       const res = await sendOutboundMessage(convo.leadPhone, reply, undefined, convo.businessId.toString());
       if (res.success) {
         convo.messages.push({ role: 'agent', text: reply, at: new Date() });
         convo.lastAgentAt = new Date();
         await convo.save();
+
+        const { logLeadEvent } = await import('@/services/leadEvents');
+        logLeadEvent('MESSAGE_SENT', { channel: 'whatsapp', conversationStatus: convo.status, source: 'AGENT_REPLY' }, 'sales-agent', {
+          leadId: salesLead?._id,
+          phone: convo.leadPhone,
+          conversationType: 'sales',
+          conversationId: convo._id,
+        });
       }
     });
     return { success: true };
@@ -1808,13 +2105,21 @@ export const salesAgentReply = inngest.createFunction(
 );
 
 // 7d. Live inbound from a demo prospect → AI BOOKING-agent response.
-// GrowwMatics-owned, owner-only line. The agent qualifies the prospect, and
-// once it has name + business + a preferred day/time it books the demo
-// (DemoBooking 'Confirmed'), files a CRM lead, and fires demo/booked.
+// GrowwMatics-owned, owner-only line. The agent qualifies the prospect
+// (name + business), then hands off to a DETERMINISTIC slot-offering step
+// backed by real Google Calendar availability (Phase 6 — see
+// services/calendar/googleCalendar.ts and bookingAgent.ts's
+// pickSlotFromReply) rather than letting the LLM invent or confirm a
+// specific time. Files the CRM lead once name+business are known; files the
+// DemoBooking only once a real calendar event is actually created.
 export const bookingAgentReply = inngest.createFunction(
   { id: 'booking-agent-reply', retries: 2, triggers: [{ event: 'booking/agent.reply' }] },
   async ({ event, step }) => {
-    const { conversationId } = event.data;
+    // `body` (the raw inbound text) was already being sent alongside
+    // conversationId by every caller of this event but wasn't read here
+    // until now — needed as the message to classify for intelligence
+    // extraction below.
+    const { conversationId, body } = event.data;
 
     await step.run('reply', async () => {
       const dbConnect = (await import('@/lib/mongodb')).default;
@@ -1822,12 +2127,32 @@ export const bookingAgentReply = inngest.createFunction(
       const { default: BookingConversation } = await import('@/models/BookingConversation');
       const { default: Lead } = await import('@/models/Lead');
       const { default: Activity } = await import('@/models/Activity');
-      const { default: DemoBooking } = await import('@/models/DemoBooking');
-      const { getBookingAgentConfig, composeAgentReply, renderConfirmation } = await import('@/services/booking/bookingAgent');
+      const { getBookingAgentConfig } = await import('@/services/booking/bookingAgent');
       const { sendOutboundMessage } = await import('@/services/whatsapp/send');
 
       const convo: any = await BookingConversation.findById(conversationId);
-      if (!convo || convo.status !== 'active') return;
+      if (!convo || convo.status === 'stopped') return;
+
+      // Human-handoff / opt-out stop — BEFORE anything else, including the
+      // config-disabled fallback below. A lead who was handed to a human (or
+      // opted out) must get NO further automated message from this agent, not
+      // even the "a team member will get back to you" fallback. Only checks
+      // once convo.leadId exists (set in handleCollecting once name+business
+      // are known) — a brand-new booking conversation has no Lead yet.
+      if (convo.leadId) {
+        const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
+        const bookingLead: any = await Lead.findById(convo.leadId);
+        if (isHumanOwned(bookingLead) || isOptedOutOrDoNotContact(bookingLead)) {
+          const { logLeadEvent } = await import('@/services/leadEvents');
+          logLeadEvent(
+            'NURTURE_ACTION_SKIPPED',
+            { reason: 'human-owned-or-opted-out', agent: 'demo-agent' },
+            'demo-agent',
+            { leadId: convo.leadId, phone: convo.leadPhone, conversationType: 'booking', conversationId: convo._id }
+          );
+          return;
+        }
+      }
 
       const config = await getBookingAgentConfig();
       if (!config.enabled) {
@@ -1839,108 +2164,523 @@ export const bookingAgentReply = inngest.createFunction(
         return;
       }
 
-      const { reply, ready, details } = await composeAgentReply(config, convo);
-      convo.details = { ...convo.details, ...details };
-
-      // File the booking + CRM lead the moment we have everything we need.
-      if (ready && convo.status === 'active') {
-        const tenantId = 'gmbboost-internal';
-        const phone = convo.leadPhone;
-        const name = details.name || convo.leadName || phone;
-
-        let lead: any = await Lead.findOne({ phone, tenantId });
-        if (!lead) {
-          lead = await Lead.create({
-            tenantId,
-            name,
-            email: details.email || undefined,
-            phone,
-            source: 'Demo Booking',
-            leadType: 'Platform Prospect',
-            pipelineStage: 'New Request',
-            status: 'active',
-            businessType: details.businessType || undefined,
-            aiLeadScore: 85,
-          });
-        } else {
-          lead.pipelineStage = 'New Request';
-          lead.source = 'Demo Booking';
-          await lead.save();
-        }
-
-        await Activity.create({
-          tenantId,
-          leadId: lead._id,
-          type: 'Demo',
-          content: `Booked a demo via WhatsApp for ${details.preferredDate} at ${details.preferredTime}.`,
-        });
-
-        const booking = await DemoBooking.create({
-          leadId: lead._id,
-          name,
-          email: details.email || undefined,
-          phone,
-          company: details.businessName || name,
-          businessType: details.businessType || undefined,
-          location: details.location || undefined,
-          challenges: details.notes || undefined,
-          date: details.preferredDate,
-          timeSlot: details.preferredTime,
-          status: 'Confirmed',
-          channel: 'whatsapp',
-        });
-
-        convo.status = 'booked';
-        convo.bookedAt = new Date();
-        convo.leadId = lead._id;
-        convo.bookingId = booking._id;
-
-        await inngest.send({ name: 'demo/booked', data: { bookingId: booking._id.toString() } });
+      // Phase 8 — human-handoff check, BEFORE generating any AI reply.
+      // Only runs once convo.leadId exists (set once name+business are
+      // collected in handleCollecting) — the very first turn or two of a
+      // brand-new booking conversation has no Lead yet to hand off.
+      if (convo.leadId && body) {
+        const { checkHandoffTriggers } = await import('@/services/agentHandoff/checkHandoffTriggers');
+        const handoff = await checkHandoffTriggers(convo.leadId, body, 'demo-agent');
+        if (handoff.handedOff) return;
       }
 
-      // Send whatever reply the agent produced (a question, or the confirmation).
-      const outboundText = ready
-        ? (reply || renderConfirmation(config, details))
-        : reply;
-      const res = await sendOutboundMessage(convo.leadPhone, outboundText, convo.leadId?.toString());
-      if (res.success) {
-        convo.messages.push({ role: 'agent', text: outboundText, at: new Date() });
+      if (convo.status === 'booked') {
+        await handleBookedReply(convo, body, config);
+      } else if (convo.status === 'awaiting_slot_selection') {
+        await handleSlotSelection(convo, body, config);
+      } else {
+        await handleCollecting(convo, body, config, Lead, Activity);
       }
       await convo.save();
+
+      // Fire-and-forget — NOT awaited, so a slow/failed Groq extraction call
+      // can never delay or affect the WhatsApp reply already sent above.
+      // Only fires once convo.leadId exists — earlier turns have no Lead
+      // yet to extract onto, same reasoning as the Sales agent above.
+      if (convo.leadId && body) {
+        const history = convo.messages
+          .slice(-10)
+          .map((m: any) => ({ role: m.role === 'lead' ? 'lead' as const : 'agent' as const, text: m.text }));
+        import('@/services/leadIntelligence/extract')
+          .then(({ extractLeadIntelligence }) => extractLeadIntelligence(convo.leadId, body, history))
+          .catch((err) => console.warn('[bookingAgentReply] lead intelligence extraction failed:', err?.message));
+      }
     });
 
     return { success: true };
   }
 );
 
-// 7d. Live inbound support request (existing customer, or a message matching
-// the support keywords/CTA text) → one-shot AI acknowledgment, then a human
-// takes over via WhatsApp/Twilio/Meta Business Suite directly — see
-// SupportConversation's own doc comment for why this isn't a multi-turn
-// agent like sales/booking. No enabled/disabled config for this one (no
-// admin page), so there's no AGENT_DISABLED_FALLBACK_MESSAGE branch here —
-// composeSupportReply already falls back to a static message internally on
-// any AI failure.
+/** `active` (collecting name/businessName/etc via the LLM contract) → either stays collecting, or transitions to real slot-offering once enough is known. */
+async function handleCollecting(convo: any, body: string, config: any, Lead: any, Activity: any): Promise<void> {
+  const { composeAgentReply } = await import('@/services/booking/bookingAgent');
+  const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+
+  const { reply, readyForSlots, details } = await composeAgentReply(config, convo);
+  convo.details = { ...convo.details, ...details };
+
+  if (!readyForSlots) {
+    const res = await sendOutboundMessage(convo.leadPhone, reply, convo.leadId?.toString());
+    if (res.success) convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+    return;
+  }
+
+  // File the CRM lead now — enough is known (name + business) even before
+  // a specific time is picked, same point the legacy flow filed it at.
+  const tenantId = 'gmbboost-internal';
+  const phone = convo.leadPhone;
+  const name = details.name || convo.leadName || phone;
+
+  let lead: any = await Lead.findOne({ phone, tenantId });
+  if (!lead) {
+    lead = await Lead.create({
+      tenantId, name, email: details.email || undefined, phone,
+      source: 'Demo Booking', leadType: 'Platform Prospect',
+      pipelineStage: 'New Request', status: 'active',
+      businessType: details.businessType || undefined,
+      aiLeadScore: 85,
+    });
+  } else {
+    lead.pipelineStage = 'New Request';
+    lead.source = 'Demo Booking';
+    await lead.save();
+  }
+  convo.leadId = lead._id;
+
+  const offer = await offerRealSlots(convo);
+  const outboundText = offer.available ? `${reply}\n\n${offer.message}` : offer.message;
+  const res = await sendOutboundMessage(convo.leadPhone, outboundText, lead._id.toString());
+  if (res.success) convo.messages.push({ role: 'agent', text: outboundText, at: new Date() });
+  if (offer.available) convo.status = 'awaiting_slot_selection';
+}
+
+/**
+ * Queries real Calendar availability and snapshots the offered slots onto
+ * the conversation (so the deterministic pick step below has something
+ * concrete to match against without a second query). Returns a
+ * user-presentable message either way — including the honest "nothing came
+ * up, a team member will help schedule this" case if the calendar has zero
+ * open slots in the search window, which is a legitimate outcome, not an
+ * error.
+ */
+async function offerRealSlots(convo: any): Promise<{ available: boolean; message: string }> {
+  const { getAvailableSlots, isCalendarConfigured } = await import('@/services/calendar/googleCalendar');
+  const { formatOfferedSlots } = await import('@/services/booking/bookingAgent');
+
+  if (!isCalendarConfigured()) {
+    return { available: false, message: `A team member will reach out shortly to find a time that works for you.` };
+  }
+
+  const rangeStart = new Date();
+  const rangeEnd = new Date(rangeStart.getTime() + 14 * 24 * 60 * 60 * 1000); // 2-week search window
+  try {
+    const slots = await getAvailableSlots(rangeStart, rangeEnd, 30);
+    if (!slots.length) {
+      return { available: false, message: `I couldn't find an open slot right now — a team member will reach out shortly to find a time that works for you.` };
+    }
+    convo.offeredSlots = slots.map((s) => ({ date: s.date, time: s.time, startUtc: s.startUtc }));
+    return { available: true, message: `Here are some times that work:\n${formatOfferedSlots(convo.offeredSlots)}\n\nJust reply with the number! 🙂` };
+  } catch (err: any) {
+    console.warn('[bookingAgent] getAvailableSlots failed:', err?.message);
+    return { available: false, message: `A team member will reach out shortly to find a time that works for you.` };
+  }
+}
+
+/** `awaiting_slot_selection` — deterministic pick against the real offered slots, then books via Calendar. On any Calendar failure: human handoff, never a fabricated link/time (task requirement). */
+async function handleSlotSelection(convo: any, body: string, config: any): Promise<void> {
+  const { pickSlotFromReply, formatOfferedSlots } = await import('@/services/booking/bookingAgent');
+  const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+
+  const offeredSlots = (convo.offeredSlots || []).map((s: any) => ({ ...s, startUtc: new Date(s.startUtc) }));
+  const picked = pickSlotFromReply(body, offeredSlots);
+
+  if (!picked) {
+    const clarify = `Sorry, I didn't catch that. Please reply with just the number of the time that works:\n${formatOfferedSlots(offeredSlots)}`;
+    const res = await sendOutboundMessage(convo.leadPhone, clarify, convo.leadId?.toString());
+    if (res.success) convo.messages.push({ role: 'agent', text: clarify, at: new Date() });
+    return;
+  }
+
+  const outcome = await bookConfirmedSlot(convo, picked, config);
+  const res = await sendOutboundMessage(convo.leadPhone, outcome.message, convo.leadId?.toString());
+  if (res.success) convo.messages.push({ role: 'agent', text: outcome.message, at: new Date() });
+}
+
+/**
+ * Shared by the initial booking flow and the reschedule flow: creates the
+ * real Calendar event, files/updates the DemoBooking, schedules reminders +
+ * the no-show check. On ANY Calendar failure, hands the lead off to a
+ * HUMAN (never fabricates a link/time) per the task's explicit requirement.
+ */
+async function bookConfirmedSlot(
+  convo: any,
+  slot: { date: string; time: string; startUtc: Date },
+  config: any
+): Promise<{ message: string; success: boolean }> {
+  const { createDemoEvent, CalendarError } = await import('@/services/calendar/googleCalendar');
+  const { renderConfirmation } = await import('@/services/booking/bookingAgent');
+  const { default: DemoBooking } = await import('@/models/DemoBooking');
+  const { default: Activity } = await import('@/models/Activity');
+  const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
+  const { logLeadEvent } = await import('@/services/leadEvents');
+  const { friendlyDateLabel, friendlyTimeLabel } = await import('@/services/whatsapp-agent/dateTimeUtils');
+
+  const details = convo.details || {};
+  const name = details.name || convo.leadName || convo.leadPhone;
+  const durationMinutes = 30;
+
+  let eventId: string;
+  let meetingLink: string;
+  try {
+    const created = await createDemoEvent({
+      title: `GrowwMatics Demo — ${details.businessName || name}`,
+      startTime: slot.startUtc,
+      durationMinutes,
+      attendeeEmail: details.email || undefined,
+    });
+    eventId = created.eventId;
+    meetingLink = created.meetingLink;
+  } catch (err) {
+    // createDemoEvent() only ever throws CalendarError (per its own doc
+    // comment) — re-throwing anything else here would be a bug surfacing
+    // as a silent human-handoff instead of a loud failure, so this checks
+    // the type explicitly rather than treating every catch as "the
+    // calendar failed."
+    if (!(err instanceof CalendarError)) throw err;
+
+    // Never fabricate a link/time — hand off to a human instead, per the
+    // task's explicit requirement.
+    console.warn('[bookingAgent] createDemoEvent failed:', err.message);
+    if (convo.leadId) {
+      await setLeadOwnership(convo.leadId, 'HUMAN', 'calendar-api-failure', 'demo-agent');
+      logLeadEvent(
+        'HUMAN_HANDOFF',
+        { reason: 'calendar-api-failure', attemptedSlot: slot },
+        'demo-agent',
+        { leadId: convo.leadId, phone: convo.leadPhone, conversationType: 'booking', conversationId: convo._id }
+      );
+    }
+    return {
+      success: false,
+      message: `Thanks! I'm having trouble confirming that time automatically right now — a team member will personally confirm ${friendlyDateLabel(slot.date)} at ${friendlyTimeLabel(slot.time)} with you shortly.`,
+    };
+  }
+
+  const tenantId = 'gmbboost-internal';
+  const dateStr = friendlyDateLabel(slot.date);
+  const timeStr = friendlyTimeLabel(slot.time);
+
+  let booking: any = convo.bookingId ? await DemoBooking.findById(convo.bookingId) : null;
+  if (booking) {
+    // Reschedule path — reuse the existing DemoBooking row.
+    booking.date = dateStr;
+    booking.timeSlot = timeStr;
+    booking.status = 'Confirmed';
+    booking.calendarEventId = eventId;
+    booking.meetingLink = meetingLink;
+  } else {
+    booking = new DemoBooking({
+      leadId: convo.leadId,
+      name,
+      email: details.email || undefined,
+      phone: convo.leadPhone,
+      company: details.businessName || name,
+      businessType: details.businessType || undefined,
+      location: details.location || undefined,
+      challenges: details.notes || undefined,
+      date: dateStr,
+      timeSlot: timeStr,
+      status: 'Confirmed',
+      channel: 'whatsapp',
+      calendarEventId: eventId,
+      meetingLink,
+    });
+  }
+
+  const reminderActionIds = await scheduleDemoReminders(convo.leadId, booking, slot.startUtc, durationMinutes);
+  booking.reminderActionIds = reminderActionIds;
+  await booking.save();
+
+  if (!convo.bookingId) {
+    await Activity.create({
+      // 'meeting' — Activity.type's enum has no 'Demo' value (the legacy
+      // pre-Phase-6 code used 'Demo' here, which isn't valid and would
+      // throw a ValidationError on every booking; 'meeting' is the closest
+      // real fit and doesn't require widening Activity's own schema for
+      // this one call site).
+      tenantId, leadId: convo.leadId, type: 'meeting',
+      content: `Booked a demo via WhatsApp for ${dateStr} at ${timeStr}.`,
+    });
+    await inngest.send({ name: 'demo/booked', data: { bookingId: booking._id.toString() } });
+  }
+
+  convo.status = 'booked';
+  convo.bookedAt = new Date();
+  convo.bookingId = booking._id;
+
+  if (convo.leadId) {
+    await setLeadOwnership(convo.leadId, 'DEMO', 'demo-scheduled', 'demo-agent', 'DEMO_SCHEDULED');
+  }
+
+  logLeadEvent(
+    'DEMO_SCHEDULED',
+    { date: dateStr, timeSlot: timeStr, bookingId: booking._id, meetingLink },
+    'booking-agent',
+    { leadId: convo.leadId, phone: convo.leadPhone, conversationType: 'booking', conversationId: convo._id }
+  );
+
+  return { success: true, message: renderConfirmation(config, details, slot, meetingLink) };
+}
+
+/**
+ * Schedules the 24h-before + 1h-before DEMO_REMINDER ScheduledActions and
+ * one NO_SHOW_CHECK shortly after the demo's end time. Returns the created
+ * ScheduledAction ids for DemoBooking.reminderActionIds. Best-effort per
+ * row — a failure scheduling one reminder doesn't block the others or the
+ * booking itself (the booking is already real at this point; a missing
+ * reminder is a lesser failure than an unbooked demo).
+ */
+async function scheduleDemoReminders(
+  leadId: any,
+  booking: any,
+  startUtc: Date,
+  durationMinutes: number
+): Promise<any[]> {
+  const { default: ScheduledAction } = await import('@/models/ScheduledAction');
+  const ids: any[] = [];
+
+  const reminderSpecs: { reminderType: '24h' | '1h'; dueAt: Date }[] = [
+    { reminderType: '24h', dueAt: new Date(startUtc.getTime() - 24 * 60 * 60 * 1000) },
+    { reminderType: '1h', dueAt: new Date(startUtc.getTime() - 60 * 60 * 1000) },
+  ];
+
+  for (const spec of reminderSpecs) {
+    if (spec.dueAt <= new Date()) continue; // demo is already less than that far away — skip a reminder that would fire in the past
+    try {
+      const action = await ScheduledAction.create({
+        leadId,
+        actionType: 'DEMO_REMINDER',
+        dueAt: spec.dueAt,
+        status: 'PENDING',
+        idempotencyKey: `${leadId}-DEMO_REMINDER-${spec.reminderType}-${booking._id}`,
+        createdBy: 'demo-agent',
+        payload: { bookingId: booking._id.toString(), reminderType: spec.reminderType },
+      });
+      ids.push(action._id);
+    } catch (err: any) {
+      if (err?.code !== 11000) console.warn('[bookingAgent] failed to schedule reminder:', err?.message);
+    }
+  }
+
+  const noShowCheckAt = new Date(startUtc.getTime() + durationMinutes * 60 * 1000 + 15 * 60 * 1000); // 15 min after the demo would have ended
+  try {
+    const action = await ScheduledAction.create({
+      leadId,
+      actionType: 'NO_SHOW_CHECK',
+      dueAt: noShowCheckAt,
+      status: 'PENDING',
+      idempotencyKey: `${leadId}-NO_SHOW_CHECK-${booking._id}`,
+      createdBy: 'demo-agent',
+      payload: { bookingId: booking._id.toString() },
+    });
+    ids.push(action._id);
+  } catch (err: any) {
+    if (err?.code !== 11000) console.warn('[bookingAgent] failed to schedule no-show check:', err?.message);
+  }
+
+  return ids;
+}
+
+/** `booked` — the lead already has a confirmed demo; only reschedule/cancel keyword intents are handled here (deterministic, not the LLM contract). Anything else is a quiet no-op append (matches the legacy behavior of not re-triggering the AI once booked). */
+async function handleBookedReply(convo: any, body: string, config: any): Promise<void> {
+  const { classifyBookedReplyIntent } = await import('@/services/booking/bookingAgent');
+  const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+  const { default: DemoBooking } = await import('@/models/DemoBooking');
+
+  const intent = classifyBookedReplyIntent(body);
+  if (intent === 'none') {
+    convo.messages.push({ role: 'lead', text: body, at: new Date() });
+    return;
+  }
+
+  const booking: any = convo.bookingId ? await DemoBooking.findById(convo.bookingId) : null;
+
+  if (intent === 'cancel') {
+    if (booking) {
+      await cancelBookingCalendarAndReminders(booking);
+      booking.status = 'Cancelled';
+      await booking.save();
+    }
+    const msg = `No problem — your demo has been cancelled. Just message us here whenever you'd like to book a new time!`;
+    const res = await sendOutboundMessage(convo.leadPhone, msg, convo.leadId?.toString());
+    if (res.success) convo.messages.push({ role: 'agent', text: msg, at: new Date() });
+    convo.status = 'stopped';
+    // Hand the lead back to SALES — without this it stays currentAgent='DEMO'
+    // / currentStage='DEMO_SCHEDULED' with its BookingConversation stopped, so
+    // no agent ever re-engages it. Mirrors the post-demo-completed handback in
+    // postDemoAnalysis. Best-effort — a stopped booking conversation with the
+    // demo cancelled is the important state; the ownership sync is secondary.
+    if (convo.leadId) {
+      try {
+        const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
+        await setLeadOwnership(convo.leadId, 'SALES', 'demo-cancelled-by-lead', 'demo-agent', 'NURTURING');
+      } catch (err: any) {
+        console.warn('[bookingAgent] handback to SALES after cancel failed:', err?.message);
+      }
+    }
+    return;
+  }
+
+  // Reschedule: cancel the old event + reminders, then re-run slot-offering.
+  if (booking) {
+    await cancelBookingCalendarAndReminders(booking);
+  }
+  const offer = await offerRealSlots(convo);
+  const res = await sendOutboundMessage(convo.leadPhone, offer.message, convo.leadId?.toString());
+  if (res.success) convo.messages.push({ role: 'agent', text: offer.message, at: new Date() });
+  if (offer.available) convo.status = 'awaiting_slot_selection';
+}
+
+/** Cancels a booking's calendar event (best-effort — a Calendar failure here doesn't block the reschedule/cancel from proceeding on the WhatsApp/DB side) and its reminder + no-show ScheduledActions. */
+async function cancelBookingCalendarAndReminders(booking: any): Promise<void> {
+  if (booking.calendarEventId) {
+    const { cancelDemoEvent } = await import('@/services/calendar/googleCalendar');
+    try {
+      await cancelDemoEvent(booking.calendarEventId);
+    } catch (err: any) {
+      console.warn('[bookingAgent] cancelDemoEvent failed (proceeding anyway):', err?.message);
+    }
+  }
+  const { cancelScheduledActions } = await import('@/services/scheduler/cancelScheduledActions');
+  if (booking.leadId) {
+    await cancelScheduledActions(booking.leadId, 'demo-rescheduled-or-cancelled');
+  }
+}
+
+// 7d. Live inbound support request. Two modes, branching on whether the
+// associated Lead (resolved by phone — SupportConversation has no leadId
+// field, same structural gap as Sales/Report) is currentAgent==='IN_HOUSE':
+//   - PRE-SALE prospect (any other currentAgent, or no Lead yet): UNCHANGED
+//     one-shot AI acknowledgment, then a human takes over via WhatsApp/
+//     Twilio/Meta Business Suite directly — see SupportConversation's own
+//     doc comment for why this isn't a multi-turn agent.
+//   - PAYING CUSTOMER (currentAgent==='IN_HOUSE'): Phase 8's real multi-turn
+//     In-House Agent — composeInHouseAgentReply, grounded in actual product
+//     knowledge (see that function's own doc comment for sources). Gated by
+//     SupportConversation.aiEnabled: false skips the LLM entirely and
+//     pages a human instead (sendPushToSuperAdmins — the platform-side
+//     equivalent of the tenant push-notify-human-inbox pattern, since a
+//     platform lead has no Business to notify tenant users about).
 export const supportAgentReply = inngest.createFunction(
   { id: 'support-agent-reply', retries: 2, triggers: [{ event: 'support/agent.reply' }] },
   async ({ event, step }) => {
-    const { conversationId } = event.data;
+    const { conversationId, body } = event.data;
 
     await step.run('reply', async () => {
       const dbConnect = (await import('@/lib/mongodb')).default;
       await dbConnect();
       const { default: SupportConversation } = await import('@/models/SupportConversation');
-      const { composeSupportReply } = await import('@/services/support/supportAgent');
+      const { default: Lead } = await import('@/models/Lead');
+      const { composeSupportReply, composeInHouseAgentReply } = await import('@/services/support/supportAgent');
       const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+      const { normalizePhoneE164 } = await import('@/lib/phone');
 
       const convo: any = await SupportConversation.findById(conversationId);
       if (!convo || convo.status !== 'active') return;
 
-      const reply = await composeSupportReply(convo);
-      const res = await sendOutboundMessage(convo.leadPhone, reply, undefined);
+      const normalizedPhone = normalizePhoneE164(convo.leadPhone) || convo.leadPhone;
+      const lead: any = await Lead.findOne({ phone: normalizedPhone, tenantId: 'gmbboost-internal' });
+      const isCustomer = lead?.currentAgent === 'IN_HOUSE';
+
+      // P0 FIX — this HUMAN check used to live INSIDE the `isCustomer`
+      // branch only (further down, right before composeInHouseAgentReply).
+      // That meant a lead whose currentAgent === 'HUMAN' — which is NOT
+      // 'IN_HOUSE' — fell straight into the `!isCustomer` branch below and
+      // got a real Groq-generated acknowledgment with zero handoff check at
+      // all. Moved here, BEFORE the isCustomer branch decision is even
+      // made, so neither branch can be reached for a HUMAN-owned lead
+      // regardless of whether they also happen to be a customer.
+      const { isHumanOwned } = await import('@/services/agentHandoff/isHumanOwned');
+      if (isHumanOwned(lead)) {
+        // 'in-house-agent' is the closest HandoffAgent value for this line
+        // regardless of isCustomer — Support/In-House share one agent
+        // identity in this codebase's handoff vocabulary (there is no
+        // separate 'support-agent' value); only used for logging, doesn't
+        // affect the stop behavior.
+        if (body) {
+          const { checkHandoffTriggers } = await import('@/services/agentHandoff/checkHandoffTriggers');
+          await checkHandoffTriggers(lead._id, body, 'in-house-agent');
+        }
+        const { logLeadEvent } = await import('@/services/leadEvents');
+        logLeadEvent(
+          'NURTURE_ACTION_SKIPPED',
+          { reason: 'human-owned', agent: 'in-house-agent' },
+          'in-house-agent',
+          { leadId: lead?._id, phone: convo.leadPhone, conversationType: 'support', conversationId: convo._id }
+        );
+        return;
+      }
+
+      if (!isCustomer) {
+        // Pre-Phase-8 behavior, completely unchanged — only reached now
+        // for a genuinely non-HUMAN-owned, non-customer lead.
+        const reply = await composeSupportReply(convo);
+        const res = await sendOutboundMessage(convo.leadPhone, reply, undefined);
+        if (res.success) {
+          convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+          await convo.save();
+
+          const { logLeadEvent } = await import('@/services/leadEvents');
+          logLeadEvent('MESSAGE_SENT', { channel: 'whatsapp', acknowledgment: true, userId: convo.userId, source: 'AGENT_REPLY' }, 'support-agent', {
+            phone: convo.leadPhone,
+            conversationType: 'support',
+            conversationId: convo._id,
+          });
+        }
+        return;
+      }
+
+      // Still-active handoff-TRIGGER check (explicit request / low-confidence
+      // streak / stuck-hot-lead) for a genuine IN_HOUSE customer — the
+      // isHumanOwned() check above only covers "already HUMAN"; this covers
+      // "a trigger fires on THIS turn".
+      if (body) {
+        const { checkHandoffTriggers } = await import('@/services/agentHandoff/checkHandoffTriggers');
+        const handoff = await checkHandoffTriggers(lead._id, body, 'in-house-agent');
+        if (handoff.handedOff) return;
+      }
+
+      if (convo.aiEnabled === false) {
+        // Human is handling this conversation — page the team instead of
+        // calling the LLM at all. Same "never fail the workflow" push
+        // pattern as the tenant-side push-notify-human-inbox step.
+        try {
+          const { sendPushToSuperAdmins } = await import('@/services/push');
+          await sendPushToSuperAdmins({
+            title: 'New customer support message',
+            body: `${lead.name || convo.leadPhone} sent a support message (AI disabled for this conversation)`,
+            data: { leadId: String(lead._id), conversationId: convo._id.toString() },
+          });
+        } catch (e: any) {
+          console.error('[support-agent] push-notify-human failed:', e?.message);
+        }
+        return;
+      }
+
+      const reply = await composeInHouseAgentReply(convo);
+      const res = await sendOutboundMessage(convo.leadPhone, reply, lead._id.toString());
       if (res.success) {
         convo.messages.push({ role: 'agent', text: reply, at: new Date() });
         await convo.save();
+
+        const { logLeadEvent } = await import('@/services/leadEvents');
+        logLeadEvent('MESSAGE_SENT', { channel: 'whatsapp', agent: 'in-house', userId: convo.userId, source: 'IN_HOUSE' }, 'in-house-agent', {
+          leadId: lead._id,
+          phone: convo.leadPhone,
+          conversationType: 'support',
+          conversationId: convo._id,
+        });
+
+        if (body) {
+          import('@/services/leadIntelligence/extract')
+            .then(({ extractLeadIntelligence }) => {
+              const history = convo.messages
+                .slice(-10)
+                .map((m: any) => ({ role: m.role === 'lead' ? 'lead' as const : 'agent' as const, text: m.text }));
+              return extractLeadIntelligence(lead._id, body, history);
+            })
+            .catch((err) => console.warn('[supportAgentReply] lead intelligence extraction failed:', err?.message));
+        }
       }
     });
 
@@ -1958,7 +2698,12 @@ export const supportAgentReply = inngest.createFunction(
 export const reportAgentReply = inngest.createFunction(
   { id: 'report-agent-reply', retries: 2, triggers: [{ event: 'report/agent.reply' }] },
   async ({ event, step }) => {
-    const { conversationId } = event.data;
+    // `body` was already being sent alongside conversationId by both
+    // dispatch sites in the webhook route but was never read here — needed
+    // for the P0 human-handoff check below (checkHandoffTriggers needs the
+    // message text to evaluate the explicit-request/low-confidence
+    // triggers, same as every other live agent).
+    const { conversationId, body } = event.data;
 
     await step.run('reply', async () => {
       const dbConnect = (await import('@/lib/mongodb')).default;
@@ -1971,6 +2716,40 @@ export const reportAgentReply = inngest.createFunction(
       const convo: any = await ReportConversation.findById(conversationId);
       if (!convo || convo.status === 'stopped') return;
 
+      // P0 FIX — reportAgentReply previously had ZERO Lead/handoff
+      // awareness of any kind (confirmed: no Lead lookup, no
+      // checkHandoffTriggers call anywhere in this function). Resolved by
+      // phone the same read-only way Sales/Support already do — never
+      // creates a Lead as a side effect (a report conversation with no
+      // matching Lead simply proceeds normally, same precedent as
+      // everywhere else this structural gap appears).
+      const { normalizePhoneE164 } = await import('@/lib/phone');
+      const { default: Lead } = await import('@/models/Lead');
+      const { isHumanOwned } = await import('@/services/agentHandoff/isHumanOwned');
+      const normalizedReportPhone = normalizePhoneE164(convo.leadPhone) || convo.leadPhone;
+      const reportLead: any = await Lead.findOne({ phone: normalizedReportPhone, tenantId: 'gmbboost-internal' });
+
+      if (isHumanOwned(reportLead)) {
+        if (body) {
+          const { checkHandoffTriggers } = await import('@/services/agentHandoff/checkHandoffTriggers');
+          await checkHandoffTriggers(reportLead._id, body, 'demo-agent');
+        }
+        const { logLeadEvent } = await import('@/services/leadEvents');
+        logLeadEvent(
+          'NURTURE_ACTION_SKIPPED',
+          { reason: 'human-owned', agent: 'report-agent' },
+          'report-agent',
+          { leadId: reportLead._id, phone: convo.leadPhone, conversationType: 'report', conversationId: convo._id }
+        );
+        return;
+      }
+
+      if (reportLead && body) {
+        const { checkHandoffTriggers } = await import('@/services/agentHandoff/checkHandoffTriggers');
+        const handoff = await checkHandoffTriggers(reportLead._id, body, 'demo-agent');
+        if (handoff.handedOff) return;
+      }
+
       const config = await getReportAgentConfig();
       if (!config.enabled) return;
 
@@ -1982,7 +2761,16 @@ export const reportAgentReply = inngest.createFunction(
             ? "Your report is generating — I'll send it here as soon as it's ready! 🚀"
             : 'You already have your report above! Let me know if you have questions. 🙂';
         const res = await sendOutboundMessage(convo.leadPhone, reply);
-        if (res.success) convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+        if (res.success) {
+          convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+
+          const { logLeadEvent } = await import('@/services/leadEvents');
+          logLeadEvent('MESSAGE_SENT', { channel: 'whatsapp', conversationStatus: convo.status, source: 'AGENT_REPLY' }, 'report-agent', {
+            phone: convo.leadPhone,
+            conversationType: 'report',
+            conversationId: convo._id,
+          });
+        }
         await convo.save();
         return;
       }
@@ -2004,6 +2792,18 @@ export const reportAgentReply = inngest.createFunction(
       const res = await sendOutboundMessage(convo.leadPhone, reply);
       if (res.success) {
         convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+
+        const { logLeadEvent } = await import('@/services/leadEvents');
+        logLeadEvent('MESSAGE_SENT', { channel: 'whatsapp', isFirstMessage, source: 'AGENT_REPLY' }, 'report-agent', {
+          phone: convo.leadPhone,
+          conversationType: 'report',
+          conversationId: convo._id,
+        });
+
+        // ReportConversation has no leadId field (keyed by phone only — see
+        // LeadEvent.ts's file-level comment), so there's no Lead to extract
+        // intelligence onto here today. Same deliberate no-op as the Sales
+        // and Support agents above.
       }
       await convo.save();
     });
@@ -2041,6 +2841,31 @@ export const reportCardDeliver = inngest.createFunction(
 
       const config = await getReportAgentConfig();
       if (!config.enabled) return;
+
+      // Opt-out guard. This is deterministic fulfilment of an explicit request
+      // (the lead connected their own report via Google OAuth), so a
+      // HUMAN-ownership check would be wrong here — delivering a report a
+      // person asked for to a human-owned lead is fine. But an explicit STOP /
+      // DO_NOT_CONTACT must still be honored: if they opted out between
+      // connecting and delivery, don't send.
+      {
+        const { default: Lead } = await import('@/models/Lead');
+        const { isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
+        const { normalizePhoneE164 } = await import('@/lib/phone');
+        const rptLead: any = convo.leadPhone
+          ? await Lead.findOne({ phone: normalizePhoneE164(convo.leadPhone) || convo.leadPhone, tenantId: 'gmbboost-internal' })
+          : null;
+        if (isOptedOutOrDoNotContact(rptLead)) {
+          const { logLeadEvent } = await import('@/services/leadEvents');
+          logLeadEvent(
+            'NURTURE_ACTION_SKIPPED',
+            { reason: 'opted-out', agent: 'report-agent', context: 'report-card-deliver' },
+            'report-agent',
+            { leadId: rptLead?._id, phone: convo.leadPhone, conversationType: 'report', conversationId: convo._id }
+          );
+          return;
+        }
+      }
 
       // Bounded polling (not durable step.sleep) — audits typically complete
       // in well under this window in practice; if not, apologize and stop
@@ -2423,6 +3248,24 @@ export const dispatchWhatsappFollowUpJob = inngest.createFunction(
 
     if (lead.pipelineStage === 'Converted' || lead.pipelineStage === 'Not Interested') {
       return { skipped: true, reason: `Lead is ${lead.pipelineStage}` };
+    }
+
+    // P0 FIX (post-implementation-audit) — a second, independent legacy
+    // follow-up sender (Day 1/3/7 CRM chain, scheduled by
+    // scheduleLeadFollowUpsJob on crm/lead-created — fired from real tenant
+    // routes: the WhatsApp webhook, Twilio voice, and every CRM lead-create/
+    // import endpoint) with the exact same gap as processFollowUpJob above:
+    // zero awareness of currentAgent/humanHandoff/nurtureStatus. Tenant-
+    // created leads normally never set currentAgent at all (stays 'NONE'),
+    // so this is a no-op for them — but the Lead schema and this
+    // ownership model are shared platform-wide, so any lead that DID get
+    // marked HUMAN (or opted out) through any path must not still receive
+    // this Groq-composed follow-up. Same shared isHumanOwned/
+    // isOptedOutOrDoNotContact definition as every other guard in this
+    // file — not a new/competing ownership model.
+    const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
+    if (isHumanOwned(lead) || isOptedOutOrDoNotContact(lead)) {
+      return { skipped: true, reason: 'human-owned-or-opted-out' };
     }
 
     const msg = await step.run("generate-personalized-message", async () => {
@@ -2880,3 +3723,451 @@ export const cleanupAbandonedSignups = inngest.createFunction(
     return { deleted: deleted.length, emails: deleted };
   }
 );
+
+// Phase 5: picks up every PENDING ScheduledAction whose dueAt has passed and
+// either fires it (via the SAME orchestrator gate every other LEAD_ENGINE_V2
+// send goes through — never a separate, duplicated copy of those checks) or
+// marks it SKIPPED with a reason. Re-validates EVERYTHING fresh at fire
+// time rather than trusting whatever was true when the row was scheduled —
+// a lead's ownership/stage/opt-out state can change in the gap between
+// scheduling and firing (demo booked, opted out, handed to a human, moved
+// to a different agent, etc), and requestOutboundMessage's own Steps 2-6
+// already re-check all of that against the CURRENT Lead document. This
+// function only adds: finding due rows, building the right message for the
+// row's actionType/payload, and recording the outcome back onto the row.
+//
+// Runs every 15 minutes regardless of LEAD_ENGINE_V2 — there is simply
+// nothing to do when the flag is off, since nothing creates a
+// ScheduledAction in that case (see the gated branch of
+// runSalesFollowUpDrip above). Not gating the cron itself keeps this
+// function simple and matches every other cron in this file, which also
+// don't no-op based on a feature flag.
+export const nurtureSchedulerTick = inngest.createFunction(
+  { id: 'nurture-scheduler-tick', triggers: [{ cron: '*/15 * * * *' }] },
+  async ({ step }) => {
+    // A row claimed by a tick that then crashed before recording an outcome
+    // stays PENDING with a stale claimedAt — reclaim it after this long.
+    const CLAIM_STALE_MS = 10 * 60 * 1000;
+
+    const dueIds = await step.run('find-due-actions', async () => {
+      await dbConnect();
+      const { default: ScheduledAction } = await import('@/models/ScheduledAction');
+      const staleCutoff = new Date(Date.now() - CLAIM_STALE_MS);
+      const due = await ScheduledAction.find({
+        status: 'PENDING',
+        dueAt: { $lte: new Date() },
+        $or: [{ claimedAt: null }, { claimedAt: { $lte: staleCutoff } }],
+      })
+        .select('_id')
+        .limit(200) // safety cap per tick — the next tick 15 minutes later picks up any remainder
+        .lean();
+      return due.map((d: any) => d._id.toString());
+    });
+
+    let executed = 0;
+    let skipped = 0;
+
+    for (const actionId of dueIds) {
+      const outcome = await step.run(`process-action-${actionId}`, async () => {
+        await dbConnect();
+        const { default: ScheduledAction } = await import('@/models/ScheduledAction');
+        const { requestOutboundMessage } = await import('@/services/orchestration/outboundOrchestrator');
+
+        // Atomic claim: flip claimedAt only if this row is still PENDING and
+        // either unclaimed or claimed long enough ago to be considered stale.
+        // If findOneAndUpdate returns null, another overlapping tick already
+        // owns this row (or it was cancelled / already processed) — skip it.
+        // This closes the race between find-due-actions above and this step.
+        const staleCutoff = new Date(Date.now() - CLAIM_STALE_MS);
+        const action: any = await ScheduledAction.findOneAndUpdate(
+          {
+            _id: actionId,
+            status: 'PENDING',
+            $or: [{ claimedAt: null }, { claimedAt: { $lte: staleCutoff } }],
+          },
+          { $set: { claimedAt: new Date() } },
+          { new: true }
+        );
+        if (!action) return 'already-handled';
+
+        // Phase 9: EXECUTE_NBA — a proactive next-best-action step. Runs the
+        // NBA executor, which does its own fresh HUMAN/opt-out/customer
+        // re-check and routes any send through the orchestrator (falling back
+        // to a direct send for non-cohort leads). payload.action is the
+        // NBAAction decideNextAction chose when this row was scheduled;
+        // re-decide at fire time so a lead whose state changed gets the
+        // currently-correct action, not a stale one.
+        if (action.actionType === 'EXECUTE_NBA') {
+          try {
+            const { default: Lead } = await import('@/models/Lead');
+            const { decideNextAction } = await import('@/services/nba/decideNextAction');
+            const { executeNextAction } = await import('@/services/nba/executeNextAction');
+            const nbaLead: any = await Lead.findById(action.leadId);
+            if (!nbaLead) {
+              action.status = 'SKIPPED';
+              action.reason = 'lead-not-found';
+              await action.save();
+              return 'skipped';
+            }
+            // Fresh decision (rule lookup only — no LLM) so we execute the
+            // action that fits the lead's CURRENT state. advanceNextActionAt
+            // false: this row is already due and we're just re-deciding it —
+            // re-stamping nextActionAt to `now` here would make the proactive
+            // scheduler re-qualify this same unchanged lead every tick.
+            const { action: freshAction } = await decideNextAction(nbaLead, {}, { advanceNextActionAt: false });
+            const result = await executeNextAction(action.leadId, freshAction, {
+              trigger: 'proactive',
+              businessId: nbaLead.businessId?.toString(),
+            });
+            action.status = ['sent', 'handoff', 'noop'].includes(result.outcome) ? 'EXECUTED' : 'SKIPPED';
+            if (result.outcome !== 'sent' && result.outcome !== 'handoff') {
+              action.reason = `nba-${result.outcome}${'reason' in result ? `:${result.reason}` : ''}`;
+            }
+            await action.save();
+            return action.status === 'EXECUTED' ? 'executed' : 'skipped';
+          } catch (err: any) {
+            action.status = 'SKIPPED';
+            action.reason = `execute-nba-threw: ${err?.message || 'unknown error'}`;
+            await action.save();
+            return 'skipped';
+          }
+        }
+
+        // Phase 6: NO_SHOW_CHECK is NOT a message send — it runs a status
+        // check instead. Handled entirely separately from the
+        // requestOutboundMessage path below; see runNoShowCheck's own doc
+        // comment for why this one actionType breaks the "every row sends a
+        // message" pattern every other actionType follows.
+        if (action.actionType === 'NO_SHOW_CHECK') {
+          try {
+            await runNoShowCheck(action);
+            action.status = 'EXECUTED';
+            await action.save();
+            return 'executed';
+          } catch (err: any) {
+            action.status = 'SKIPPED';
+            action.reason = `no-show-check-threw: ${err?.message || 'unknown error'}`;
+            await action.save();
+            return 'skipped';
+          }
+        }
+
+        // DEMO_REMINDER is a real transactional demo reminder, NOT a
+        // LEAD_ENGINE_V2 experimental nurture message — a booked demo must get
+        // its 24h/1h reminder whether or not the flag is on. Routing it
+        // through requestOutboundMessage (which returns FALL_BACK_TO_LEGACY
+        // whenever LEAD_ENGINE_V2 !== 'true') would silently SKIP every
+        // reminder in production today. Send it directly here, with the same
+        // ownership + human-handoff + opt-out re-checks the orchestrator would
+        // have done, fresh against the current Lead.
+        if (action.actionType === 'DEMO_REMINDER') {
+          const { default: Lead } = await import('@/models/Lead');
+          const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
+          const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+          const { logLeadEvent } = await import('@/services/leadEvents');
+          const remLead: any = await Lead.findById(action.leadId);
+
+          const skip = (reason: string) => {
+            action.status = 'SKIPPED';
+            action.reason = reason;
+            logLeadEvent('NURTURE_ACTION_SKIPPED', { reason, agent: 'demo-agent', actionType: 'DEMO_REMINDER' }, 'demo-agent', {
+              leadId: action.leadId, phone: remLead?.phone,
+            });
+          };
+
+          if (!remLead) { skip('lead-not-found'); await action.save(); return 'skipped'; }
+          if (isHumanOwned(remLead) || isOptedOutOrDoNotContact(remLead)) { skip('human-owned-or-opted-out'); await action.save(); return 'skipped'; }
+          // The demo could have been completed/cancelled or ownership moved on
+          // (back to SALES post-demo, to IN_HOUSE after payment) between
+          // scheduling and now — only remind while the lead is still a
+          // DEMO-owned prospect awaiting this demo.
+          if ((remLead.currentAgent || 'NONE') !== 'DEMO') { skip('no-longer-demo-owned'); await action.save(); return 'skipped'; }
+
+          let msg: string;
+          try {
+            msg = await buildMessageForAction(action);
+          } catch (err: any) {
+            skip(`builder-threw: ${err?.message || 'unknown error'}`);
+            await action.save();
+            return 'skipped';
+          }
+
+          try {
+            const res = await sendOutboundMessage(remLead.phone, msg, String(remLead._id), remLead.businessId?.toString());
+            if (res.success) {
+              action.status = 'EXECUTED';
+              await action.save();
+              logLeadEvent('MESSAGE_SENT', { channel: 'whatsapp', agent: 'DEMO', isReply: false, sid: res.sid, source: 'DEMO_REMINDER' }, 'demo-agent', {
+                leadId: remLead._id, phone: remLead.phone,
+              });
+              return 'executed';
+            }
+            skip(`send-failed: ${res.error || 'unknown'}`);
+            await action.save();
+            return 'skipped';
+          } catch (err: any) {
+            skip(`send-threw: ${err?.message || 'unknown error'}`);
+            await action.save();
+            return 'skipped';
+          }
+        }
+
+        // Captured so the SalesConversation update below (after a confirmed
+        // send) can reuse the exact text that went out, rather than
+        // recomposing — recomposing could theoretically produce different
+        // text on a second call (an AI-mode followUp), which would then not
+        // match what the lead actually received.
+        let builtMessage: string | undefined;
+        const messageBuilder = async () => {
+          builtMessage = await buildMessageForAction(action);
+          return builtMessage;
+        };
+
+        // NO_SHOW_CHECK and DEMO_REMINDER are both handled above, before this
+        // point — every actionType that reaches requestOutboundMessage here is
+        // a sales-drip nurture message, so the owning agent is always SALES.
+        // Extend this mapping if a future phase routes another agent's
+        // scheduled sends through the flag-gated orchestrator.
+        const agentForAction: 'SALES' | 'DEMO' = 'SALES';
+
+        let result;
+        try {
+          result = await requestOutboundMessage({
+            leadId: action.leadId.toString(),
+            agent: agentForAction,
+            messageBuilder,
+            isReply: false, // every ScheduledAction is by definition agent-initiated/proactive, never a reply
+            idempotencyKey: action.idempotencyKey,
+          });
+        } catch (err: any) {
+          action.status = 'SKIPPED';
+          action.reason = `builder-or-send-threw: ${err?.message || 'unknown error'}`;
+          await action.save();
+          return 'skipped';
+        }
+
+        if (result.decision === 'SENT') {
+          action.status = 'EXECUTED';
+          await action.save();
+          // Keep SalesConversation's own record (messages[], followUpsSent,
+          // lastAgentAt) consistent regardless of which path actually sent
+          // the message — the legacy inline path updates these itself, but
+          // the gated path's send happens here instead, so this tick must
+          // do the same bookkeeping the legacy path would have.
+          await recordSentIntoSalesConversation(action, builtMessage);
+          return 'executed';
+        }
+
+        // Both REJECTED and the (should-be-rare-here, since LEAD_ENGINE_V2
+        // was already true when this row was created) FALL_BACK_TO_LEGACY
+        // outcome mean this row does not get to fire — mark it SKIPPED
+        // rather than leaving it PENDING forever.
+        action.status = 'SKIPPED';
+        action.reason = result.decision === 'REJECTED' ? result.reason : 'flag-or-cohort-no-longer-applies';
+        await action.save();
+        return 'skipped';
+      });
+
+      if (outcome === 'executed') executed++;
+      else if (outcome === 'skipped') skipped++;
+    }
+
+    return { success: true, due: dueIds.length, executed, skipped };
+  }
+);
+
+// Phase 9 — proactive NBA scheduler. decideNextAction writes
+// Lead.nextBestAction + Lead.nextActionAt on every intelligence extraction;
+// this cron turns a DUE proactive next-action into an EXECUTE_NBA
+// ScheduledAction that nurtureSchedulerTick then runs through the NBA
+// executor. Only PROACTIVE-appropriate actions are scheduled here — a
+// reply-driven action (ANSWER_QUESTION, SEND_PRICING, etc.) is executed
+// inline by salesAgentReply when the lead messages, never proactively pushed
+// at them out of nowhere.
+//
+// Gated on LEAD_ENGINE_V2 + cohort (via isLeadInCohort) exactly like the
+// gated sales drip — with the flag off this creates nothing. Runs every 30
+// minutes; nextActionAt granularity doesn't need finer.
+//
+// Double-nurture safety vs runSalesFollowUpDrip's gated SHOW_VALUE rows:
+// both this and the drip create ScheduledActions that fire through
+// nurtureSchedulerTick -> requestOutboundMessage, whose Step 4 cooldown
+// (Lead.lastProactiveMessageAt, ORCHESTRATOR_COOLDOWN_HOURS / 4h default)
+// rejects a second proactive send inside the window. So even if both
+// schedule for the same lead, only one message actually goes out per
+// cooldown period — the later one is SKIPPED 'cooldown-active'. The legacy
+// dispatchWhatsappFollowUpJob never runs for platform ('gmbboost-internal')
+// leads (they get no crm/lead-created event), so there is no third path.
+const PROACTIVE_NBA_ACTIONS = new Set(['REENGAGE', 'FOLLOW_UP_AFTER_DEMO', 'SHOW_VALUE', 'SHARE_USE_CASE', 'EDUCATE']);
+
+export const proactiveNbaScheduler = inngest.createFunction(
+  { id: 'proactive-nba-scheduler', triggers: [{ cron: '*/30 * * * *' }] },
+  async ({ step }) => {
+    if (process.env.LEAD_ENGINE_V2 !== 'true') {
+      return { success: true, skipped: 'LEAD_ENGINE_V2 off', scheduled: 0 };
+    }
+
+    const scheduled = await step.run('schedule-due-proactive-nba', async () => {
+      await dbConnect();
+      const { default: Lead } = await import('@/models/Lead');
+      const { default: ScheduledAction } = await import('@/models/ScheduledAction');
+      const { isLeadInCohort } = await import('@/services/orchestration/outboundOrchestrator');
+      const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
+
+      // Candidate leads: a proactive next action is due, and the lead is
+      // still AI-owned and contactable. tenantId scoped to the platform.
+      const candidates = await Lead.find({
+        tenantId: 'gmbboost-internal',
+        nextActionAt: { $lte: new Date() },
+        nextBestAction: { $in: [...PROACTIVE_NBA_ACTIONS] },
+        currentAgent: { $in: ['SALES', 'DEMO'] },
+        nurtureStatus: 'ACTIVE',
+      }).select('_id nextBestAction currentAgent currentStage humanHandoff nurtureStatus').limit(100).lean();
+
+      let created = 0;
+      for (const lead of candidates as any[]) {
+        if (isHumanOwned(lead) || isOptedOutOrDoNotContact(lead)) continue;
+        if (!(await isLeadInCohort(String(lead._id)))) continue;
+
+        // One row per lead per hour bucket — the unique idempotencyKey is the
+        // real guard against duplicates from an overlapping run.
+        const bucket = new Date().toISOString().slice(0, 13);
+        const idempotencyKey = `${lead._id}-EXECUTE_NBA-${bucket}`;
+        try {
+          await ScheduledAction.create({
+            leadId: lead._id,
+            actionType: 'EXECUTE_NBA',
+            dueAt: new Date(),
+            status: 'PENDING',
+            idempotencyKey,
+            createdBy: 'proactive-nba-scheduler',
+            payload: { action: lead.nextBestAction },
+          });
+          created++;
+          // Clear the "proactive action due" marker now that it's been
+          // scheduled. Without this, nextActionAt stays <= now forever
+          // (decideNextAction stamps it to `now`), so this cron re-scheduled
+          // an EXECUTE_NBA for the SAME unchanged lead on every tick — a
+          // proactive action manufactured purely from re-evaluation, not from
+          // any new lead activity. A real new inbound message runs
+          // decideNextAction again (advanceNextActionAt defaults true) and
+          // re-populates nextActionAt, re-arming the lead. Guarded on the
+          // current value so a decideNextAction that ran between the find
+          // above and here isn't clobbered.
+          await Lead.updateOne(
+            { _id: lead._id, nextActionAt: { $lte: new Date() } },
+            { $set: { nextActionAt: null } }
+          );
+          const { logLeadEvent } = await import('@/services/leadEvents');
+          logLeadEvent('NURTURE_ACTION_SCHEDULED', {
+            action: lead.nextBestAction, source: 'V2_NURTURE', kind: 'proactive-nba',
+          }, 'nba-engine', { leadId: lead._id, phone: (lead as any).phone });
+        } catch (err: any) {
+          if (err?.code !== 11000) throw err; // already scheduled this bucket — fine
+        }
+      }
+      return created;
+    });
+
+    return { success: true, scheduled };
+  }
+);
+
+/**
+ * Builds the actual message text for a due ScheduledAction. Extend this
+ * per-actionType/per-payload-shape as future phases schedule other kinds of
+ * actions.
+ */
+async function buildMessageForAction(action: any): Promise<string> {
+  if (action.actionType === 'DEMO_REMINDER') {
+    const bookingId = action.payload?.bookingId;
+    const reminderType = action.payload?.reminderType; // '24h' | '1h'
+    if (!bookingId) throw new Error('DEMO_REMINDER ScheduledAction has no bookingId in payload');
+    const { default: DemoBooking } = await import('@/models/DemoBooking');
+    const booking: any = await DemoBooking.findById(bookingId);
+    // Only a still-scheduled demo deserves a "your demo is tomorrow" nudge —
+    // a demo marked Completed early, or Cancelled / No Show, must not.
+    if (!booking || ['Cancelled', 'Completed', 'No Show'].includes(booking.status)) {
+      throw new Error(`DEMO_REMINDER references a missing or no-longer-scheduled DemoBooking (${booking?.status ?? 'missing'}): ${bookingId}`);
+    }
+    const { firstName } = await import('@/services/booking/bookingAgent');
+    const when = reminderType === '1h' ? 'in about an hour' : 'tomorrow';
+    const linkLine = booking.meetingLink ? `\n\nJoin here: ${booking.meetingLink}` : '';
+    return `Hi ${firstName(booking.name)}! Just a reminder that your GrowwMatics demo is ${when} (${booking.date} at ${booking.timeSlot}).${linkLine}`;
+  }
+
+  const conversationId = action.payload?.conversationId;
+  const followUpIndex = action.payload?.followUpIndex;
+  if (conversationId !== undefined && followUpIndex !== undefined) {
+    const { default: SalesConversation } = await import('@/models/SalesConversation');
+    const { getSalesAgentConfig, composeFollowUp } = await import('@/services/sales/salesAgent');
+    const convo: any = await SalesConversation.findById(conversationId);
+    if (!convo) throw new Error(`ScheduledAction references a missing SalesConversation: ${conversationId}`);
+    const config = await getSalesAgentConfig();
+    const f = config.followUps[followUpIndex];
+    if (!f) throw new Error(`ScheduledAction references a missing followUp index: ${followUpIndex}`);
+    return composeFollowUp(f, config, convo.scores, convo.leadName);
+  }
+  throw new Error(`buildMessageForAction: no known payload shape for actionType ${action.actionType}`);
+}
+
+/**
+ * NO_SHOW_CHECK's execution — deliberately NOT a message send (per the
+ * task: "execution means running a check, not sending a message"). Runs
+ * shortly after a demo's scheduled end time; if the booking is still not
+ * marked Completed by then, marks it No Show and runs the same post-demo
+ * analysis pipeline a manually-completed demo would ("outcome=NO_SHOW" per
+ * the task), so ownership/Lead fields update consistently regardless of
+ * which path (manual completion vs. no-show) actually closed the demo out.
+ */
+async function runNoShowCheck(action: any): Promise<void> {
+  const bookingId = action.payload?.bookingId;
+  if (!bookingId) throw new Error('NO_SHOW_CHECK ScheduledAction has no bookingId in payload');
+  const { default: DemoBooking } = await import('@/models/DemoBooking');
+  const booking: any = await DemoBooking.findById(bookingId);
+  if (!booking) return; // booking deleted entirely — nothing to check
+  if (booking.status !== 'Confirmed') return; // already Completed/Cancelled/Rescheduled — no-show doesn't apply
+
+  booking.status = 'No Show';
+  await booking.save();
+
+  const { logLeadEvent } = await import('@/services/leadEvents');
+  logLeadEvent(
+    'DEMO_NO_SHOW',
+    { bookingId: booking._id, date: booking.date, timeSlot: booking.timeSlot },
+    'demo-agent',
+    { leadId: booking.leadId, phone: booking.phone }
+  );
+
+  const { default: BookingConversation } = await import('@/models/BookingConversation');
+  const convo: any = await BookingConversation.findOne({ bookingId: booking._id }).lean();
+  const history = (convo?.messages || []).map((m: any) => ({ role: m.role === 'lead' ? 'lead' as const : 'agent' as const, text: m.text }));
+
+  const { runPostDemoAnalysis } = await import('@/services/demo/postDemoAnalysis');
+  await runPostDemoAnalysis(booking.leadId, history, 'NO_SHOW');
+}
+
+/**
+ * After nurtureSchedulerTick confirms a send for a sales-drip
+ * ScheduledAction, mirrors the exact bookkeeping the legacy inline path in
+ * runSalesFollowUpDrip performs on its own successful send — so
+ * SalesConversation.messages[]/followUpsSent/lastAgentAt stay accurate
+ * regardless of which path actually did the sending. No-ops quietly for any
+ * ScheduledAction whose payload isn't the sales-drip shape (future
+ * action-type producers will need their own equivalent here).
+ */
+async function recordSentIntoSalesConversation(action: any, sentText: string | undefined): Promise<void> {
+  const conversationId = action.payload?.conversationId;
+  if (conversationId === undefined || !sentText) return;
+  try {
+    const { default: SalesConversation } = await import('@/models/SalesConversation');
+    const convo: any = await SalesConversation.findById(conversationId);
+    if (!convo) return;
+    convo.messages.push({ role: 'agent', text: sentText, at: new Date() });
+    convo.lastAgentAt = new Date();
+    convo.followUpsSent = (convo.followUpsSent || 0) + 1;
+    await convo.save();
+  } catch (err: any) {
+    console.warn('[nurtureSchedulerTick] recordSentIntoSalesConversation failed:', err?.message);
+  }
+}

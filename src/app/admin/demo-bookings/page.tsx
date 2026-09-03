@@ -1,211 +1,212 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Calendar, Building, Mail, Phone, Clock, ChevronDown, CheckCircle, XCircle, UserCheck } from 'lucide-react';
+/**
+ * SuperAdmin — Demos.
+ *
+ * Dedicated view over the existing DemoBooking model. Grouped (today /
+ * upcoming / needs scheduling / completed / cancelled+no-show), with the
+ * lead + business + post-demo outcome. Works BEFORE Google Calendar is
+ * connected — calendar fields show as "not linked" and never block the view.
+ *
+ * Read: GET /api/admin/conversion/demos (grouped + counts).
+ * Write: the existing PATCH /api/admin/demo-bookings (status change +
+ * "Return to AI") — unchanged.
+ */
 
-export default function AdminDemoBookingsPage() {
-  const [bookings, setBookings] = useState<any[]>([]);
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Loader2, CalendarClock, ExternalLink, UserCheck } from 'lucide-react';
+import { RelTime } from '@/components/admin/conversion/primitives';
+
+interface DemoRow {
+  _id: string;
+  leadId: string;
+  lead: string | null;
+  phone: string | null;
+  business: string | null;
+  date: string;
+  timeSlot: string;
+  parsedStart: string | null;
+  status: string;
+  channel: string;
+  meetingLink: string | null;
+  calendarLinked: boolean;
+  outcome: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface Data {
+  counts: Record<string, number>;
+  groups: {
+    today: DemoRow[];
+    upcoming: DemoRow[];
+    needsScheduling: DemoRow[];
+    completed: DemoRow[];
+    cancelledOrNoShow: DemoRow[];
+  };
+}
+
+const STATUS_STYLE: Record<string, string> = {
+  Pending: 'bg-primary-fixed text-primary',
+  Confirmed: 'bg-secondary-container/50 text-on-secondary-container',
+  Completed: 'bg-secondary-container/50 text-on-secondary-container',
+  Cancelled: 'bg-error-container text-on-error-container',
+  'No Show': 'bg-error-container text-on-error-container',
+  Rescheduled: 'bg-warning/20 text-warning-text',
+};
+
+const STATUS_OPTIONS = ['Pending', 'Confirmed', 'Rescheduled', 'Completed', 'No Show', 'Cancelled'];
+
+export default function DemosPage() {
+  const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<keyof Data['groups']>('upcoming');
 
-  const fetchBookings = async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await fetch('/api/admin/demo-bookings');
-      const data = await res.json();
-      if (data.success) {
-        setBookings(data.bookings);
-      }
-    } catch (e) {
-      console.error(e);
+      const res = await fetch('/api/admin/conversion/demos');
+      const json = await res.json();
+      if (json.success) setData(json);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchBookings();
   }, []);
 
-  const handleStatusChange = async (bookingId: string, status: string) => {
-    try {
-      const res = await fetch('/api/admin/demo-bookings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId, status })
-      });
-      if (res.ok) fetchBookings();
-    } catch (e) {
-      console.error(e);
-    }
+  useEffect(() => { load(); }, [load]);
+
+  const patch = async (body: Record<string, unknown>) => {
+    const res = await fetch('/api/admin/demo-bookings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) load();
   };
 
-  // Phase 8 — releases a HUMAN-owned lead back to an agent (SALES/DEMO/
-  // IN_HOUSE), clearing humanHandoff.active so the AI resumes replying.
-  const handleReturnToAI = async (bookingId: string, targetAgent: string) => {
-    try {
-      const res = await fetch('/api/admin/demo-bookings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId, action: 'returnToAI', targetAgent })
-      });
-      if (res.ok) fetchBookings();
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  if (loading && !data) {
+    return <div className="flex items-center justify-center py-32"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  }
 
-  const getStatusColor = (status: string) => {
-    switch(status) {
-      case 'Confirmed': return 'bg-secondary-container text-on-secondary-container border-secondary-fixed';
-      case 'Completed': return 'bg-primary-fixed text-primary border-primary-fixed-dim';
-      case 'Pending': return 'bg-primary-fixed text-primary border-primary-fixed-dim';
-      case 'Cancelled': 
-      case 'No Show': return 'bg-error-container text-on-error-container border-error-container';
-      case 'Rescheduled': return 'bg-primary-fixed text-primary border-primary-fixed-dim';
-      default: return 'bg-surface-container text-on-surface border-outline-variant';
-    }
-  };
-
-  if (loading) return <div className="p-10 text-center text-on-surface-variant">Loading Demo Pipeline...</div>;
-
-  const pendingCount = bookings.filter(b => b.status === 'Pending').length;
-  const upcomingCount = bookings.filter(b => b.status === 'Confirmed' || b.status === 'Rescheduled').length;
-  const completedCount = bookings.filter(b => b.status === 'Completed').length;
+  const c = data?.counts ?? {};
+  const TABS: { key: keyof Data['groups']; label: string; count: number }[] = [
+    { key: 'today', label: 'Today', count: c.today ?? 0 },
+    { key: 'upcoming', label: 'Upcoming', count: c.upcoming ?? 0 },
+    { key: 'needsScheduling', label: 'Needs scheduling', count: (data?.groups.needsScheduling ?? []).length },
+    { key: 'completed', label: 'Completed', count: c.completed ?? 0 },
+    { key: 'cancelledOrNoShow', label: 'Cancelled / no-show', count: (c.cancelled ?? 0) + (c.noShow ?? 0) + (c.rescheduled ?? 0) },
+  ];
+  const rows = data?.groups[tab] ?? [];
 
   return (
-    <div>
-      <div className="mb-8">
-        <h1 className="font-heading text-3xl font-bold text-on-surface tracking-tight">Demo Pipeline</h1>
-        <p className="text-on-surface-variant mt-1">Manage and convert inbound platform prospects.</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow flex items-center justify-between">
-          <div>
-            <p className="text-sm font-bold text-on-surface-variant uppercase">Pending Review</p>
-            <p className="text-3xl font-black text-on-surface mt-1">{pendingCount}</p>
-          </div>
-          <div className="w-12 h-12 bg-primary-fixed rounded-full flex items-center justify-center text-primary-fixed-dim">
-            <Clock size={24} />
-          </div>
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <div className="w-11 h-11 bg-primary rounded-xl flex items-center justify-center shadow-sm">
+          <CalendarClock className="w-5 h-5 text-white" />
         </div>
-        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow flex items-center justify-between">
-          <div>
-            <p className="text-sm font-bold text-on-surface-variant uppercase">Upcoming Demos</p>
-            <p className="text-3xl font-black text-on-surface mt-1">{upcomingCount}</p>
-          </div>
-          <div className="w-12 h-12 bg-primary-fixed rounded-full flex items-center justify-center text-primary">
-            <Calendar size={24} />
-          </div>
-        </div>
-        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant card-shadow flex items-center justify-between">
-          <div>
-            <p className="text-sm font-bold text-on-surface-variant uppercase">Completed</p>
-            <p className="text-3xl font-black text-on-surface mt-1">{completedCount}</p>
-          </div>
-          <div className="w-12 h-12 bg-secondary-container/40 rounded-full flex items-center justify-center text-secondary">
-            <CheckCircle size={24} />
-          </div>
+        <div>
+          <h1 className="font-heading text-2xl font-bold text-on-surface">Demos</h1>
+          <p className="text-sm text-on-surface-variant">Every demo booking, grouped. Calendar links appear when Google Calendar is connected.</p>
         </div>
       </div>
 
-      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden">
-        <div className="grid grid-cols-12 gap-4 px-6 py-4 bg-surface border-b border-outline-variant text-label-sm text-on-surface-variant">
-          <div className="col-span-3">Prospect & Business</div>
-          <div className="col-span-3">Contact</div>
-          <div className="col-span-2">Scheduled For</div>
-          <div className="col-span-2">Status</div>
-          <div className="col-span-2 text-right">Actions</div>
-        </div>
-
-        <div className="divide-y divide-outline-variant">
-          {bookings.map((booking) => (
-            <div key={booking._id} className="grid grid-cols-12 gap-4 px-6 py-5 items-center hover:bg-surface/50 transition-colors">
-              
-              <div className="col-span-3">
-                <p className="font-bold text-on-surface text-sm">{booking.name}</p>
-                <div className="flex items-center gap-1.5 text-xs text-on-surface-variant mt-1">
-                  <Building size={12} />
-                  <span className="truncate">{booking.company} ({booking.businessType})</span>
-                </div>
-              </div>
-
-              <div className="col-span-3 space-y-1 text-sm">
-                <div className="flex items-center gap-2 text-on-surface-variant">
-                  <Mail size={14} className="text-outline" />
-                  <span className="truncate">{booking.email}</span>
-                </div>
-                <div className="flex items-center gap-2 text-on-surface-variant">
-                  <Phone size={14} className="text-outline" />
-                  <span>{booking.phone}</span>
-                </div>
-              </div>
-
-              <div className="col-span-2">
-                <p className="text-sm font-semibold text-on-surface">{new Date(booking.date).toLocaleDateString()}</p>
-                <p className="text-xs font-medium text-on-surface-variant mt-0.5">{booking.timeSlot}</p>
-              </div>
-
-              <div className="col-span-2">
-                <select 
-                  value={booking.status}
-                  onChange={(e) => handleStatusChange(booking._id, e.target.value)}
-                  className={`text-xs font-bold px-3 py-1.5 rounded-lg border appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary ${getStatusColor(booking.status)}`}
-                >
-                  <option value="Pending">Pending Review</option>
-                  <option value="Confirmed">Confirmed</option>
-                  <option value="Rescheduled">Rescheduled</option>
-                  <option value="Completed">Completed</option>
-                  <option value="No Show">No Show</option>
-                  <option value="Cancelled">Cancelled</option>
-                </select>
-                {booking.leadCurrentAgent === 'HUMAN' && booking.leadHumanHandoff?.active && (
-                  <p className="text-[10px] font-bold text-on-error-container mt-1.5 flex items-center gap-1">
-                    <UserCheck size={11} /> Needs a human ({booking.leadHumanHandoff?.reason || 'handoff'})
-                  </p>
-                )}
-              </div>
-
-              <div className="col-span-2 flex justify-end items-center gap-2">
-                {booking.leadCurrentAgent === 'HUMAN' && booking.leadHumanHandoff?.active && (
-                  <select
-                    defaultValue=""
-                    onChange={(e) => {
-                      if (e.target.value) handleReturnToAI(booking._id, e.target.value);
-                    }}
-                    className="text-xs font-bold px-2 py-1.5 rounded-lg border appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary bg-secondary-container/40 text-on-secondary-container border-secondary-fixed"
-                    title="Return to AI — release this lead back to an agent"
-                  >
-                    <option value="" disabled>↩ Return to AI…</option>
-                    <option value="SALES">Sales Agent</option>
-                    <option value="DEMO">Demo Agent</option>
-                    <option value="IN_HOUSE">In-House Agent</option>
-                  </select>
-                )}
-                <button
-                  onClick={() => handleStatusChange(booking._id, 'Confirmed')}
-                  className="p-2 text-secondary hover:bg-secondary-container/40 rounded-lg transition-colors"
-                  title="Confirm Demo"
-                >
-                  <CheckCircle size={18} />
-                </button>
-                <button
-                  onClick={() => handleStatusChange(booking._id, 'Cancelled')}
-                  className="p-2 text-on-error-container hover:bg-error-container rounded-lg transition-colors"
-                  title="Cancel Request"
-                >
-                  <XCircle size={18} />
-                </button>
-              </div>
-
-            </div>
-          ))}
-          {bookings.length === 0 && (
-            <div className="p-12 text-center text-on-surface-variant">
-              No demo bookings found. 
-            </div>
-          )}
-        </div>
+      {/* Count strip */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+        {[
+          ['Total', c.total],
+          ['Scheduled', c.scheduled],
+          ['Today', c.today],
+          ['Completed', c.completed],
+          ['No-show', c.noShow],
+          ['Cancelled', c.cancelled],
+        ].map(([label, v]) => (
+          <div key={label as string} className="bg-surface-container-lowest p-3 rounded-xl border border-outline-variant card-shadow">
+            <p className="text-xs text-on-surface-variant">{label}</p>
+            <p className="text-xl font-bold text-on-surface">{(v as number) ?? 0}</p>
+          </div>
+        ))}
       </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-outline-variant flex-wrap">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+              tab === t.key ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            {t.label} <span className="text-xs opacity-70">({t.count})</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Rows */}
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow overflow-hidden">
+        {rows.length === 0 ? (
+          <p className="py-14 text-center text-sm text-outline">Nothing here.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-label-sm text-on-surface-variant bg-surface-container-low">
+                  <th className="text-left px-3 py-2.5">Lead</th>
+                  <th className="text-left px-3 py-2.5">When</th>
+                  <th className="text-left px-3 py-2.5">Channel</th>
+                  <th className="text-left px-3 py-2.5">Meeting</th>
+                  <th className="text-left px-3 py-2.5">Outcome</th>
+                  <th className="text-left px-3 py-2.5">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant">
+                {rows.map((r) => (
+                  <tr key={r._id} className="hover:bg-surface transition-colors">
+                    <td className="px-3 py-2.5">
+                      <Link href={`/admin/leads/${r.leadId}`} className="font-medium text-on-surface hover:text-primary">
+                        {r.lead || r.phone || '—'}
+                      </Link>
+                      <div className="text-xs text-outline">{r.business || r.phone || ''}</div>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="text-xs text-on-surface">{r.date} · {r.timeSlot}</div>
+                      <div className="text-[11px] text-outline">
+                        {r.parsedStart ? <RelTime date={r.parsedStart} /> : <>booked <RelTime date={r.createdAt} /></>}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-on-surface-variant">{r.channel}</td>
+                    <td className="px-3 py-2.5 text-xs">
+                      {r.meetingLink ? (
+                        <a href={r.meetingLink} target="_blank" rel="noreferrer" className="text-primary inline-flex items-center gap-1">
+                          link <ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <span className="text-outline">not linked</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-on-surface-variant">{r.outcome || '—'}</td>
+                    <td className="px-3 py-2.5">
+                      <select
+                        value={r.status}
+                        onChange={(e) => patch({ bookingId: r._id, status: e.target.value })}
+                        className={`text-xs font-bold px-2 py-1 rounded-lg border-0 appearance-none cursor-pointer ${STATUS_STYLE[r.status] ?? 'bg-surface-container text-on-surface-variant'}`}
+                      >
+                        {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <p className="text-xs text-outline flex items-center gap-1.5">
+        <UserCheck className="w-3.5 h-3.5" />
+        A lead handed to a human mid-booking is released from the lead detail page or the pipeline.
+      </p>
     </div>
   );
 }

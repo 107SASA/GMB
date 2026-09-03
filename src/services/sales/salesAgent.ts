@@ -6,6 +6,7 @@ import type { ISalesConversation, ISalesScores } from '@/models/SalesConversatio
 import {
   defaultSalesAgentConfig,
   renderTemplate,
+  summariseKnowledge,
   type SalesAgentConfigShape,
   type SalesFollowUp,
 } from '@/lib/salesAgentDefaults';
@@ -169,9 +170,22 @@ export async function composeAgentReply(
   convo: Pick<ISalesConversation, 'scores' | 'leadName' | 'messages'>
 ): Promise<string> {
   const vars = buildVars(convo.scores, convo.leadName, config);
+
+  // Compact, approved business knowledge — grounds the persona so it answers
+  // as GrowwMatics-the-business, not with a generic one-liner. Only non-empty
+  // configured fields appear; capped so it can't blow the prompt budget.
+  // Empty string when nothing is configured — the persona then behaves
+  // exactly as before.
+  const knowledge = summariseKnowledge(config.knowledge, { maxItems: 6, includeFaqs: true });
+  const knowledgeBlock = knowledge
+    ? `\nGROWWMATICS BUSINESS KNOWLEDGE (approved — convey these facts; never add a price, ` +
+      `feature, integration, guarantee, statistic or customer number that is NOT below):\n${knowledge}\n`
+    : '';
+
   const contextHeader =
     `${currentTimeLine()}\n` +
-    `AUDIT CONTEXT — Business: ${vars.business}, Google rank: ${vars.rank}, profile ${vars.profile}%, ` +
+    knowledgeBlock +
+    `\nAUDIT CONTEXT — Business: ${vars.business}, Google rank: ${vars.rank}, profile ${vars.profile}%, ` +
     `SEO ${vars.seo}%, reviews ${vars.review}%, top competitor ${vars.competitor}, missing keywords ${vars.keywords}.\n` +
     `Subscribe link: ${vars.subscribeUrl || '(none)'} · Platform link: ${vars.shopUrl || '(none)'}.\n` +
     `You have no other links, no demo video, and no ability to schedule or confirm a specific meeting time — ` +

@@ -39,6 +39,7 @@ import { requestOutboundMessage } from '@/services/orchestration/outboundOrchest
 import { sendOutboundMessage } from '@/services/whatsapp/send';
 import { getSalesAgentConfig } from '@/services/sales/salesAgent';
 import { AGENT_SCOPE_GUARDRAIL } from '@/lib/agentGuardrails';
+import { summariseKnowledge, normaliseUseCases, useCaseLine } from '@/lib/salesAgentDefaults';
 import type { NBAAction } from './rules';
 import type { SalesAgentConfigShape } from '@/lib/salesAgentDefaults';
 
@@ -122,17 +123,20 @@ export async function executeNextAction(
       } catch { /* push is best-effort */ }
       return done(lead, action, { outcome: 'handoff', action, to: 'HUMAN' });
     }
+    // Load the config once — every composing/fixed branch below needs it, and
+    // its knowledge block grounds the LLM briefs (see summariseKnowledge).
+    const config = await getSalesAgentConfig();
+    const knowledgeSummary = summariseKnowledge(config.knowledge, { maxItems: 5, includeFaqs: true });
+
     if (action === 'SCHEDULE_DEMO' || action === 'OFFER_DEMO') {
       // Both resolve to "nudge the lead to confirm they want a demo" — the
       // real booking happens in the deterministic BookingConversation flow
       // once they say yes (webhook booking-keyword handoff). We do NOT create
       // a BookingConversation unilaterally from a decision.
-      return sendComposed(lead, action, ctx, demoNudgeBrief);
+      return sendComposed(lead, action, ctx, (l) => demoNudgeBrief(l, config), knowledgeSummary);
     }
 
     // --- Message actions (LLM composes, orchestrator sends) -----------------
-    const config = await getSalesAgentConfig();
-
     switch (action) {
       case 'SEND_PRICING': {
         if (config.knowledge.pricingResponse && config.knowledge.pricingResponse.trim()) {
@@ -145,7 +149,7 @@ export async function executeNextAction(
         logLeadEvent('NBA_OVERRIDDEN', {
           suggested: 'SEND_PRICING', used: 'ASK_QUALIFICATION', reason: 'no_approved_pricing_content',
         }, 'nba-executor', { leadId: lead._id, phone: lead.phone });
-        return sendComposed(lead, 'ASK_QUALIFICATION', ctx, qualificationBrief);
+        return sendComposed(lead, 'ASK_QUALIFICATION', ctx, qualificationBrief, knowledgeSummary);
       }
 
       case 'HANDLE_OBJECTION': {
@@ -159,32 +163,32 @@ export async function executeNextAction(
         // No approved objection response — compose a grounded reply from the
         // persona + audit context only (the persona prompt already forbids
         // fabricating prices/features), acknowledging the concern honestly.
-        return sendComposed(lead, action, ctx, (l, c) => objectionBrief(l, c, open?.type, open?.note));
+        return sendComposed(lead, action, ctx, (l, c) => objectionBrief(l, c, open?.type, open?.note), knowledgeSummary);
       }
 
       case 'ANSWER_QUESTION':
-        return sendComposed(lead, action, ctx, (l, c) => answerBrief(l, c, config, ctx.lastInboundText));
+        return sendComposed(lead, action, ctx, (l, c) => answerBrief(l, c, config, ctx.lastInboundText), knowledgeSummary);
 
       case 'ASK_QUALIFICATION':
-        return sendComposed(lead, action, ctx, qualificationBrief);
+        return sendComposed(lead, action, ctx, qualificationBrief, knowledgeSummary);
 
       case 'EDUCATE':
-        return sendComposed(lead, action, ctx, (l, c) => educateBrief(l, c, config));
+        return sendComposed(lead, action, ctx, (l, c) => educateBrief(l, c, config), knowledgeSummary);
 
       case 'SHARE_USE_CASE':
-        return sendComposed(lead, action, ctx, (l, c) => useCaseBrief(l, c, config));
+        return sendComposed(lead, action, ctx, (l, c) => useCaseBrief(l, c, config), knowledgeSummary);
 
       case 'SHOW_VALUE':
-        return sendComposed(lead, action, ctx, showValueBrief);
+        return sendComposed(lead, action, ctx, showValueBrief, knowledgeSummary);
 
       case 'OFFER_SUBSCRIPTION':
-        return sendComposed(lead, action, ctx, (l, c) => offerSubscriptionBrief(l, c, config));
+        return sendComposed(lead, action, ctx, (l, c) => offerSubscriptionBrief(l, c, config), knowledgeSummary);
 
       case 'FOLLOW_UP_AFTER_DEMO':
-        return sendComposed(lead, action, ctx, postDemoBrief);
+        return sendComposed(lead, action, ctx, postDemoBrief, knowledgeSummary);
 
       case 'REENGAGE':
-        return sendComposed(lead, action, ctx, reengageBrief);
+        return sendComposed(lead, action, ctx, reengageBrief, knowledgeSummary);
 
       default:
         return done(lead, action, { outcome: 'deferred', action, reason: 'not-executable-yet' });
@@ -262,9 +266,10 @@ function sendComposed(
   lead: ILead,
   action: NBAAction,
   ctx: ExecuteContext,
-  brief: (lead: ILead, ctx: ExecuteContext) => string
+  brief: (lead: ILead, ctx: ExecuteContext) => string,
+  knowledgeSummary = ''
 ): Promise<ExecuteOutcome> {
-  return routeSend(lead, action, ctx, () => composeGrounded(brief(lead, ctx), ctx));
+  return routeSend(lead, action, ctx, () => composeGrounded(brief(lead, ctx), ctx, knowledgeSummary));
 }
 
 /** Send an exact approved string (still rendered for {{vars}}), no LLM. */
@@ -272,18 +277,23 @@ function sendFixed(lead: ILead, action: NBAAction, ctx: ExecuteContext, text: st
   return routeSend(lead, action, ctx, async () => text);
 }
 
-async function composeGrounded(brief: string, ctx: ExecuteContext): Promise<string> {
+async function composeGrounded(brief: string, ctx: ExecuteContext, knowledgeSummary = ''): Promise<string> {
   const history = (ctx.history || [])
     .slice(-10)
     .map((m) => `${m.role === 'lead' ? 'Lead' : 'You'}: ${m.text}`)
     .join('\n');
+  // Approved business knowledge (compact). Only appears when a super-admin has
+  // configured it; empty string = the model behaves exactly as it did before.
+  const knowledgeBlock = knowledgeSummary
+    ? `\n\nGROWWMATICS BUSINESS KNOWLEDGE (approved — use these facts; do NOT add any price, feature, integration, guarantee, statistic or customer number not listed here):\n${knowledgeSummary}`
+    : '';
   const system = `${AGENT_SCOPE_GUARDRAIL}
 
 You are the GrowwMatics WhatsApp sales assistant. GrowwMatics helps local businesses improve their Google Business Profile visibility (profile completeness, local SEO, reviews, ranking).
 
 Write ONE short WhatsApp message (2-5 sentences, *bold* with single asterisks, at most one emoji, no links unless one is given to you below, no markdown headers). One question at most.
 
-CRITICAL: Never state a specific price, discount, plan name, feature, statistic, or guarantee that is not explicitly given to you in the task below. If you don't have a number or fact you'd need, say you'll confirm it / ask a clarifying question instead — never guess.
+CRITICAL: Never state a specific price, discount, plan name, feature, statistic, or guarantee that is not explicitly given to you in the task below or the business knowledge. If you don't have a number or fact you'd need, say you'll confirm it / ask a clarifying question instead — never guess.${knowledgeBlock}
 
 TASK: ${brief}`;
   const user = history ? `Conversation so far:\n${history}` : '(no prior conversation)';
@@ -321,8 +331,11 @@ function qualificationBrief(lead: ILead): string {
   return `Ask ONE friendly qualification question to understand their business and what they want from Google (e.g. type of business, whether they get enough calls/customers from Google today, what they've tried). ${leadFacts(lead)}`;
 }
 
-function demoNudgeBrief(lead: ILead): string {
-  return `The lead may want a live demo/walkthrough. Warmly offer to set one up and ask them to reply "yes" (or "book a demo") to confirm — a real person will then find a time. Do NOT propose a specific time or send a link. ${leadFacts(lead)}`;
+function demoNudgeBrief(lead: ILead, config?: SalesAgentConfigShape): string {
+  const explain = config?.knowledge?.demoExplanation?.trim()
+    ? ` Approved description of what a demo is: ${config.knowledge.demoExplanation.trim()}`
+    : '';
+  return `The lead may want a live demo/walkthrough. Warmly offer to set one up and ask them to reply "yes" (or "book a demo") to confirm — a real person will then find a time. Do NOT propose a specific time or send a link.${explain} ${leadFacts(lead)}`;
 }
 
 function showValueBrief(lead: ILead): string {
@@ -358,15 +371,22 @@ function educateBrief(lead: ILead, _ctx: ExecuteContext, config: SalesAgentConfi
 }
 
 function useCaseBrief(lead: ILead, _ctx: ExecuteContext, config: SalesAgentConfigShape): string {
-  const cases = (config.knowledge.useCases || []).slice(0, 5).join(' | ');
+  const cases = normaliseUseCases(config.knowledge.useCases)
+    .slice(0, 5)
+    .map((u) => useCaseLine(u) || u.name || '')
+    .filter(Boolean)
+    .join(' || ');
   return cases
-    ? `Share one relevant approved use-case/example in your own words: ${cases}. ${leadFacts(lead)}`
+    ? `Pick the ONE approved use case below most relevant to this lead's business/pain points and share it in your own words (problem → how GrowwMatics solves it → the benefit). Approved use cases: ${cases}. Do NOT invent a specific customer name, number, or result. ${leadFacts(lead)}`
     : `Describe in general terms how a business like theirs benefits from better Google visibility — do NOT invent a specific customer name, number, or result. ${leadFacts(lead)}`;
 }
 
 function offerSubscriptionBrief(lead: ILead, _ctx: ExecuteContext, config: SalesAgentConfigShape): string {
   const link = config.subscribeUrl ? `Include this exact signup link once: ${config.subscribeUrl}` : `Do NOT invent a link — tell them you'll send the signup details.`;
-  return `The lead is showing purchase interest. Warmly invite them to get started. ${link}. If they have a pricing question and no price is given to you, say you'll confirm the exact plan pricing rather than guessing. ${leadFacts(lead)}`;
+  const how = config.knowledge?.subscriptionExplanation?.trim()
+    ? ` Approved description of how subscribing works: ${config.knowledge.subscriptionExplanation.trim()}`
+    : '';
+  return `The lead is showing purchase interest. Warmly invite them to get started. ${link}.${how} If they have a pricing question and no price is given to you, say you'll confirm the exact plan pricing rather than guessing. ${leadFacts(lead)}`;
 }
 
 function renderKnowledge(text: string, lead: ILead, config: SalesAgentConfigShape): string {

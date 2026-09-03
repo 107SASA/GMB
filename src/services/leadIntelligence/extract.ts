@@ -7,6 +7,11 @@ import ScoringRuleConfig, { DEFAULT_SCORING_RULES } from '@/models/ScoringRuleCo
 import { logLeadEvent } from '@/services/leadEvents';
 import { decideNextAction } from '@/services/nba/decideNextAction';
 import { NBA_ACTIONS } from '@/services/nba/rules';
+import {
+  alreadyScored,
+  behavioralSignature,
+  withScoredSignature,
+} from '@/services/leadIntelligence/scoringIdempotency';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -128,7 +133,27 @@ export async function extractLeadIntelligence(
       .slice(-10)
       .map((m) => `${m.role === 'lead' ? 'Lead' : 'Agent'}: ${m.text}`)
       .join('\n');
-    const userContent = `Conversation so far (most recent last):\n${history || '(no prior history)'}\n\nLatest inbound message to classify:\n"${messageText}"`;
+
+    // Compact approved business context so the classifier can tell when a
+    // message is about a known service / use case / pricing / demo /
+    // subscription vs. off-topic. Best-effort and token-bounded — a failure
+    // to load it just means classification runs without it (unchanged
+    // behaviour). Never sends the whole config or FAQ list.
+    let businessContext = '';
+    try {
+      const { getSalesAgentConfig } = await import('@/services/sales/salesAgent');
+      const { summariseKnowledge } = await import('@/lib/salesAgentDefaults');
+      const cfg = await getSalesAgentConfig();
+      businessContext = summariseKnowledge(cfg.knowledge, { maxItems: 4, includeFaqs: false });
+    } catch (err: any) {
+      console.warn('[leadIntelligence] business context load failed:', err?.message);
+    }
+
+    const userContent =
+      (businessContext
+        ? `BUSINESS CONTEXT (what GrowwMatics is — use it to judge whether the message is about a known service, pain point, pricing, demo, subscription, or is off-topic; do NOT copy it into your output):\n${businessContext}\n\n`
+        : '') +
+      `Conversation so far (most recent last):\n${history || '(no prior history)'}\n\nLatest inbound message to classify:\n"${messageText}"`;
 
     let parsed: ExtractionResult | null = null;
     try {
@@ -248,11 +273,33 @@ export async function applyExtraction(lead: any, result: ExtractionResult, messa
     lead.lastRepliedScoreAt &&
     isSameCalendarDay(lead.lastRepliedScoreAt, new Date());
 
-  if (result.score_signal && result.score_signal !== 'NONE' && !isReplyCapExhausted) {
+  // Behavioral-signature idempotency: the SAME signal awarded for the SAME
+  // (normalized) message must only ever score once, no matter how many times
+  // this function re-runs for it (Inngest step retry, scheduler re-tick,
+  // scripted re-send). A new message, or a genuinely new signal, produces a
+  // new signature and still scores. `messageText` empty (e.g. postDemoAnalysis
+  // synthetic calls) → signature keyed on the signal alone, still deduped.
+  const signature = behavioralSignature(result.score_signal, messageText);
+  const signatureAlreadyScored = signature ? alreadyScored(lead.scoredSignalKeys, signature) : false;
+
+  if (
+    result.score_signal &&
+    result.score_signal !== 'NONE' &&
+    !isReplyCapExhausted &&
+    !signatureAlreadyScored
+  ) {
     const rules = await getScoringRules();
     const delta = rules[result.score_signal];
     if (typeof delta === 'number') {
       const nextScore = Math.min(100, Math.max(0, previousScore + delta));
+      // Record the signature even when the clamp made the delta a no-op — the
+      // signal HAS been processed; a later re-run must not "find room" and
+      // apply it. (REPLIED is intentionally excluded from signature tracking:
+      // its cap is time-based, not message-based, and a genuine reply the
+      // next day SHOULD score again.)
+      if (signature && result.score_signal !== 'REPLIED') {
+        lead.scoredSignalKeys = withScoredSignature(lead.scoredSignalKeys, signature);
+      }
       if (nextScore !== previousScore) {
         lead.leadScore = nextScore;
         scoreChanged = true;
@@ -304,7 +351,14 @@ export async function applyExtraction(lead: any, result: ExtractionResult, messa
   // Passed the already-saved `lead` doc directly (not re-fetched by id) so
   // this reads the state applyExtraction just wrote, not a stale copy.
   try {
-    await decideNextAction(lead, { suggested_action: result.suggested_action, confidence });
+    await decideNextAction(lead, {
+      suggested_action: result.suggested_action,
+      confidence,
+      // Feed the raw inbound text so decideNextAction's deterministic
+      // explicit-human-request hard rule can fire even if the primary
+      // handoff path (checkHandoffTriggers) missed this phrasing.
+      latestInboundText: messageText,
+    });
   } catch (err: any) {
     console.warn('[leadIntelligence] decideNextAction failed:', err?.message);
   }

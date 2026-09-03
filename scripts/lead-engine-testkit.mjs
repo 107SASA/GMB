@@ -50,13 +50,45 @@ import mongoose from 'mongoose';
 import { resolveTestMongoUri, TEST_TENANT_ID } from './lib/localTestEnv.mjs';
 
 const [, , command, ...rest] = process.argv;
-const COMMANDS = ['seed', 'new', 'list', 'inbound', 'pay', 'handoff', 'return', 'optout', 'reset'];
+const COMMANDS = ['seed', 'new', 'list', 'inbound', 'pay', 'pay-and-activate', 'handoff', 'return', 'optout', 'reset'];
 if (!COMMANDS.includes(command)) {
   console.error(`Commands: ${COMMANDS.join(' | ')}`);
   process.exit(1);
 }
 
 const TESTLEAD_PREFIX = 'TESTLEAD';
+
+// Where the running local dev server is. resolveTestMongoUri()/loadLocalEnv()
+// (called in main) has already loaded .env.local, so NEXT_PUBLIC_APP_URL is
+// available. Override with APP_BASE_URL if the dev server is on another port.
+function appBaseUrl() {
+  return (process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+}
+
+/**
+ * POST JSON to a local app route and return { status, json }. Never throws on
+ * a non-2xx — the caller decides. Throws only if the dev server is unreachable
+ * (with a clear message telling the operator to start it).
+ */
+async function postJson(pathname, body) {
+  const url = `${appBaseUrl()}${pathname}`;
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+  } catch (err) {
+    throw new Error(
+      `Could not reach the local dev server at ${appBaseUrl()} (${err.message}). ` +
+      `Start it with "npm run dev" (and keep "npx inngest-cli dev" running), then retry.`
+    );
+  }
+  let json = null;
+  try { json = await res.json(); } catch { /* non-JSON body */ }
+  return { status: res.status, json };
+}
 
 function normE164(raw) {
   const t = String(raw).trim();
@@ -196,34 +228,77 @@ async function main() {
     console.log(`  node scripts/lead-engine-trace.mjs ${lead.phone}`);
   }
 
-  // ---- pay ----------------------------------------------------------
-  if (command === 'pay') {
+  // ---- pay / pay-and-activate -------------------------------------------
+  // ONE command: seeds the required shadow User/Business/Subscription (idempotent),
+  // then drives the COMPLETE local simulated-payment flow through the
+  // QA_TESTING_MODE-gated /api/dev/simulate-payment route (which calls the
+  // SAME activatePlan + runCustomerActivationSequence the real Razorpay
+  // webhook does). No curl, no manual POST. Touches nothing in production.
+  if (command === 'pay' || command === 'pay-and-activate') {
     const lead = await findLead(db, rest[0]);
-    if (!lead) { console.error('Test lead not found.'); process.exit(1); }
-    console.log('Simulating verified payment via runCustomerActivationSequence...');
-    console.log('(this imports app code — run with: node --experimental-vm-modules or via tsx if it fails to resolve @/ aliases)');
-    // The activation sequence resolves the Lead by the paying user's phone.
-    // For the test we ensure a shadow User + Business + Subscription exist.
+    if (!lead) { console.error('Test lead not found. Run "new <phone>" first.'); process.exit(1); }
+
+    // 1-2. Ensure a shadow User + Business + Subscription (idempotent upserts).
+    const email = `testlead+${last10(lead.phone)}@example.invalid`;
     const userRes = await db.collection('users').findOneAndUpdate(
-      { phone: lead.phone, email: `testlead+${last10(lead.phone)}@example.invalid` },
-      { $setOnInsert: { phone: lead.phone, fullName: lead.name, email: `testlead+${last10(lead.phone)}@example.invalid`, role: 'USER', createdAt: new Date() } },
+      { phone: lead.phone, email },
+      { $setOnInsert: { phone: lead.phone, isPhoneVerified: true, fullName: lead.name, email, role: 'USER', createdAt: new Date(), updatedAt: new Date() } },
       { upsert: true, returnDocument: 'after' }
     );
-    const user = userRes.value || await db.collection('users').findOne({ phone: lead.phone });
+    const user = userRes.value || await db.collection('users').findOne({ phone: lead.phone, email });
     const bizRes = await db.collection('businesses').findOneAndUpdate(
       { userId: user._id, name: lead.name },
-      { $setOnInsert: { userId: user._id, name: lead.name, phone: lead.phone, organizationId: user._id.toString(), createdAt: new Date() } },
+      { $setOnInsert: { userId: user._id, name: lead.name, phone: lead.phone, organizationId: user._id.toString(), createdAt: new Date(), updatedAt: new Date() } },
       { upsert: true, returnDocument: 'after' }
     );
-    const biz = bizRes.value || await db.collection('businesses').findOne({ userId: user._id });
+    const biz = bizRes.value || await db.collection('businesses').findOne({ userId: user._id, name: lead.name });
     await db.collection('subscriptions').updateOne(
       { userId: user._id },
-      { $setOnInsert: { userId: user._id, planType: 'Pro', billingStatus: 'Active', createdAt: new Date() } },
+      { $setOnInsert: { userId: user._id, planType: 'Free', billingStatus: 'Trialing', createdAt: new Date(), updatedAt: new Date() } },
       { upsert: true }
     );
-    console.log(`Shadow user ${user._id} / business ${biz._id} / subscription ready.`);
-    console.log('Now trigger activation. Easiest: POST a fake webhook to the running app:');
-    console.log(`  (see TEST FLOW in the final report — the safe simulate endpoint)`);
+
+    // 3. Invoke the safe QA activation path (real activation code, no Razorpay).
+    console.log(`Driving activation via ${appBaseUrl()}/api/dev/simulate-payment ...`);
+    const { status, json } = await postJson('/api/dev/simulate-payment', {
+      phone: lead.phone,
+      amount: 199900,
+      currency: 'INR',
+    });
+    if (status !== 200 || !json?.success) {
+      console.error(`  simulate-payment FAILED (HTTP ${status}): ${json ? JSON.stringify(json) : '(no body)'}`);
+      if (status === 404) console.error('  -> route is 404: set QA_TESTING_MODE=true in .env.local and restart the dev server.');
+      process.exit(1);
+    }
+
+    // 4. Poll for the terminal state (activation runs synchronously in the
+    //    route, but re-read from the DB to confirm what actually landed).
+    let finalLead = null;
+    for (let i = 0; i < 10; i++) {
+      finalLead = await db.collection('leads').findOne({ _id: lead._id });
+      if (finalLead?.currentStage === 'CUSTOMER') break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    const sub = await db.collection('subscriptions').findOne({ userId: user._id });
+    const activatedEvent = await db.collection('leadevents').findOne(
+      { leadId: lead._id, type: 'CUSTOMER_ACTIVATED' }, { sort: { createdAt: -1 } }
+    );
+    const pendingActions = await db.collection('scheduledactions').countDocuments({ leadId: lead._id, status: 'PENDING' });
+
+    // 5. Concise result.
+    const P = (ok) => (ok ? 'PASS' : 'FAIL');
+    console.log('\nPayment simulation:');
+    console.log(`  lead:          ${lead._id}  (${lead.phone})`);
+    console.log(`  user:          ${user._id}`);
+    console.log(`  business:      ${biz._id}`);
+    console.log(`  subscription:  ${sub?._id}  planType=${sub?.planType} billingStatus=${sub?.billingStatus}`);
+    console.log(`  entitlement:   ${P(sub?.planType === 'Pro' && sub?.billingStatus === 'Active')}`);
+    console.log(`  activation:    ${P(finalLead?.currentStage === 'CUSTOMER' && finalLead?.currentAgent === 'IN_HOUSE')}  (agent=${finalLead?.currentAgent} stage=${finalLead?.currentStage})`);
+    console.log(`  customer evt:  ${P(!!activatedEvent)}  (CUSTOMER_ACTIVATED LeadEvent)`);
+    console.log(`  invoice msg:   ${sub?.invoiceMessageSentAt ? 'PASS (sent ' + new Date(sub.invoiceMessageSentAt).toISOString() + ')' : 'NOT SENT (template send failed — expected for a synthetic phone; guard field left null so a retry re-sends)'}`);
+    console.log(`  welcome msg:   ${sub?.welcomeMessageSentAt ? 'PASS (sent ' + new Date(sub.welcomeMessageSentAt).toISOString() + ')' : 'NOT SENT (see invoice msg note)'}`);
+    console.log(`  nurture stop:  ${P(pendingActions === 0)}  (${pendingActions} PENDING scheduled actions remain)`);
+    console.log(`\n  Trace: node scripts/lead-engine-trace.mjs ${lead.phone}`);
   }
 
   // ---- handoff / return / optout ---------------------------------------

@@ -2,6 +2,41 @@ import twilio from 'twilio';
 import dbConnect from '@/lib/mongodb';
 import MessageQueue from '@/models/MessageQueue';
 
+/**
+ * QA-only outbound suppression. When QA_SUPPRESS_WHATSAPP_SENDS=true, every
+ * WhatsApp send here is short-circuited: it is logged to MessageQueue as a
+ * SENT message with a synthetic `qa_*` sid and returns success, but NO
+ * request is made to Twilio, so an automated end-to-end QA run against the
+ * local test DB never delivers a real WhatsApp message to anyone. Every
+ * downstream consumer (MESSAGE_SENT lead events, NBA_EXECUTED outcome:'sent',
+ * Subscription.invoice/welcomeMessageSentAt guards, SalesConversation
+ * bookkeeping) behaves exactly as it would on a real success.
+ *
+ * Deliberately its OWN env var, not QA_TESTING_MODE — so an operator can
+ * still run a genuine WhatsApp round-trip test (QA_TESTING_MODE=true but this
+ * unset). Absent in every production env file; production is unaffected.
+ */
+function qaSendsSuppressed(): boolean {
+  return process.env.QA_SUPPRESS_WHATSAPP_SENDS === 'true';
+}
+
+async function logSuppressedSend(payload: Record<string, unknown>, leadId?: string): Promise<SendResult> {
+  const sid = `qa_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    await dbConnect();
+    await MessageQueue.create({
+      leadId,
+      direction: 'OUTBOUND',
+      status: 'SENT',
+      sentAt: new Date(),
+      payload: { ...payload, sid, qaSuppressed: true },
+    });
+  } catch (err: any) {
+    console.warn('[twilio][qa-suppress] MessageQueue log failed:', err?.message);
+  }
+  return { success: true, sid, isPlatformDefault: true };
+}
+
 export interface SendResult {
   success: boolean;
   sid?: string;
@@ -80,6 +115,8 @@ export async function sendOutboundMessage(
   mediaUrl?: string
 ): Promise<SendResult> {
   await dbConnect();
+
+  if (qaSendsSuppressed()) return logSuppressedSend({ phone, body, ...(mediaUrl ? { mediaUrl } : {}) }, leadId);
 
   const creds = await resolveTwilioCredentials();
 
@@ -164,6 +201,8 @@ export async function sendTemplateMessage(
   businessId?: string // no longer consulted for credentials — see resolveTwilioCredentials's doc comment. Kept in the signature so existing call sites across the codebase don't need to change their argument list.
 ): Promise<SendResult> {
   await dbConnect();
+
+  if (qaSendsSuppressed()) return logSuppressedSend({ phone, contentSid, variables });
 
   const creds = await resolveTwilioCredentials();
 

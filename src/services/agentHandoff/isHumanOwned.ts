@@ -40,3 +40,38 @@ export function isOptedOutOrDoNotContact(lead: Pick<ILead, 'nurtureStatus' | 'cu
     lead.currentStage === 'DO_NOT_CONTACT'
   );
 }
+
+/**
+ * True when the lead has already converted to a paying customer — the SALES
+ * agent (and the sales nurture drip) must produce NO further reply for such
+ * a lead: they belong to the In-House/support flow now.
+ *
+ * A distinct predicate (not folded into isOptedOutOrDoNotContact) because a
+ * customer is not "opted out" — the In-House agent SHOULD still talk to them;
+ * only the prospect-facing SALES path must stand down. salesAgentReply and
+ * runSalesFollowUpDrip check this; the NBA executor has its own equivalent
+ * 'already-customer' re-check (executeNextAction).
+ */
+export function isConvertedCustomer(lead: Pick<ILead, 'currentAgent' | 'currentStage'> | null | undefined): boolean {
+  if (!lead) return false;
+  return lead.currentAgent === 'IN_HOUSE' || lead.currentStage === 'CUSTOMER';
+}
+
+/**
+ * The single "the SALES agent must not reply on this turn" predicate —
+ * unions the three independent stop conditions so every sales-facing entry
+ * point (salesAgentReply's live path AND its generic composeAgentReply
+ * fallback, the sales drip) applies exactly the same rule. Returns the
+ * matched reason (for the NURTURE_ACTION_SKIPPED event) or null to proceed.
+ */
+export function salesReplyBlockedReason(
+  lead:
+    | (Pick<ILead, 'currentAgent' | 'humanHandoff' | 'nurtureStatus' | 'currentStage'>)
+    | null
+    | undefined
+): 'human-owned' | 'already-customer' | 'opted-out-or-do-not-contact' | null {
+  if (isHumanOwned(lead)) return 'human-owned';
+  if (isConvertedCustomer(lead)) return 'already-customer';
+  if (isOptedOutOrDoNotContact(lead)) return 'opted-out-or-do-not-contact';
+  return null;
+}

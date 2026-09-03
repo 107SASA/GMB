@@ -27,6 +27,12 @@
  * wins" / "AI must never act while human owns the lead").
  */
 
+// NOTE: explicit .ts extension so this module also loads under `node --test`
+// (tests import this file directly, and Node's type-stripping ESM loader
+// needs the extension on a relative import). tsconfig has
+// allowImportingTsExtensions, so `tsc` and the Next/webpack build accept it.
+import { isExplicitHumanRequest } from '../agentHandoff/humanRequest.ts';
+
 export type NBAAction =
   | 'ASK_QUALIFICATION'
   | 'EDUCATE'
@@ -176,19 +182,19 @@ export const NBA_RULES: NBARule[] = [
   {
     name: 'Demo requested, not yet scheduled',
     currentStage: 'DEMO_REQUESTED',
-    legalActions: ['SCHEDULE_DEMO', 'ANSWER_QUESTION'],
+    legalActions: ['SCHEDULE_DEMO', 'ANSWER_QUESTION', 'HUMAN_HANDOFF'],
     defaultAction: 'SCHEDULE_DEMO',
   },
   {
     name: 'Demo scheduled — nothing to do but wait or answer questions',
     currentStage: 'DEMO_SCHEDULED',
-    legalActions: ['WAIT', 'ANSWER_QUESTION'],
+    legalActions: ['WAIT', 'ANSWER_QUESTION', 'HUMAN_HANDOFF'],
     defaultAction: 'WAIT',
   },
   {
     name: 'Demo completed',
     currentStage: 'DEMO_COMPLETED',
-    legalActions: ['FOLLOW_UP_AFTER_DEMO', 'SEND_PRICING', 'HANDLE_OBJECTION'],
+    legalActions: ['FOLLOW_UP_AFTER_DEMO', 'SEND_PRICING', 'HANDLE_OBJECTION', 'HUMAN_HANDOFF'],
     defaultAction: 'FOLLOW_UP_AFTER_DEMO',
   },
   {
@@ -204,26 +210,38 @@ export const NBA_RULES: NBARule[] = [
     name: 'Open objection during nurture — handle it, not generic follow-up',
     currentStage: 'NURTURING',
     hasOpenObjection: true,
-    legalActions: ['HANDLE_OBJECTION', 'SHOW_VALUE', 'WAIT'],
+    legalActions: ['HANDLE_OBJECTION', 'SHOW_VALUE', 'WAIT', 'HUMAN_HANDOFF'],
     defaultAction: 'HANDLE_OBJECTION',
   },
+  // NOTE on HUMAN_HANDOFF in the active-ownership rows below: a lead that an
+  // AI agent (SALES/DEMO) currently owns in a normal, non-terminal stage
+  // MUST be able to reach a human — an explicit "talk to a person" is
+  // handled deterministically before this table (see decideNextAction's
+  // hard rule + services/agentHandoff/checkHandoffTriggers.ts), but the LLM
+  // can also legitimately suggest HUMAN_HANDOFF (frustration, repeated
+  // confusion, an ask this AI can't satisfy). Listing it as a LEGAL action
+  // here — without touching the defaultAction — lets a high-confidence LLM
+  // HUMAN_HANDOFF suggestion be honoured instead of being rejected as
+  // "illegal_for_current_state" and silently overridden to OFFER_DEMO. It is
+  // NOT added to the terminal/echo rows (CUSTOMER, LOST, DO_NOT_CONTACT,
+  // opted-out, already-HUMAN) where a handoff makes no sense.
   {
     name: 'New or qualifying lead',
     currentStage: 'NEW',
-    legalActions: ['ASK_QUALIFICATION', 'EDUCATE', 'ANSWER_QUESTION'],
+    legalActions: ['ASK_QUALIFICATION', 'EDUCATE', 'ANSWER_QUESTION', 'HUMAN_HANDOFF'],
     defaultAction: 'ASK_QUALIFICATION',
   },
   {
     name: 'New or qualifying lead',
     currentStage: 'QUALIFYING',
-    legalActions: ['ASK_QUALIFICATION', 'EDUCATE', 'ANSWER_QUESTION'],
+    legalActions: ['ASK_QUALIFICATION', 'EDUCATE', 'ANSWER_QUESTION', 'HUMAN_HANDOFF'],
     defaultAction: 'ASK_QUALIFICATION',
   },
   {
     name: 'Nurturing, no open objection',
     currentStage: 'NURTURING',
     hasOpenObjection: false,
-    legalActions: ['EDUCATE', 'SHARE_USE_CASE', 'SHOW_VALUE', 'ANSWER_QUESTION', 'OFFER_DEMO'],
+    legalActions: ['EDUCATE', 'SHARE_USE_CASE', 'SHOW_VALUE', 'ANSWER_QUESTION', 'OFFER_DEMO', 'HUMAN_HANDOFF'],
     defaultAction: 'SHOW_VALUE',
   },
   {
@@ -280,6 +298,38 @@ function matchesCondition<T>(ruleValue: T | 'ANY' | undefined, actual: T): boole
   if (ruleValue === undefined) return true; // condition not specified on this row — always matches
   if (ruleValue === 'ANY') return true;
   return ruleValue === actual;
+}
+
+/**
+ * DETERMINISTIC HARD RULE — an explicit request for a human wins over every
+ * normal NBA action and over any LLM suggestion.
+ *
+ * This is the safety net for the case where the primary handoff path
+ * (services/agentHandoff/checkHandoffTriggers.ts, which runs BEFORE any LLM
+ * work and does the full ownership transition + notification) didn't fire —
+ * e.g. extraction ran on a phrasing the trigger's regex didn't catch, or a
+ * code path reached decideNextAction without going through
+ * checkHandoffTriggers first. Without this, an LLM `suggested_action:
+ * 'HUMAN_HANDOFF'` gets rejected as "illegal_for_current_state" by the
+ * legality union and silently overridden to a sales action (OFFER_DEMO,
+ * ASK_QUALIFICATION, …) — exactly the bug this exists to prevent.
+ *
+ * Returns HUMAN_HANDOFF only when:
+ *   - the latest inbound text is an explicit human request, AND
+ *   - the lead is currently owned by an AI agent (NONE/SALES/DEMO/IN_HOUSE)
+ *     and not already opted-out / do-not-contact.
+ * A lead a human already owns, or one that's opted out, is left to the
+ * absolute rules — re-handing-off or messaging them makes no sense.
+ */
+export function explicitHumanRequestAction(
+  input: Pick<NBARuleInput, 'currentAgent' | 'nurtureStatus' | 'currentStage'>,
+  latestInboundText: string | null | undefined
+): NBAAction | null {
+  if (!isExplicitHumanRequest(latestInboundText)) return null;
+  if (input.currentAgent === 'HUMAN') return null;
+  if (input.nurtureStatus === 'OPTED_OUT' || input.nurtureStatus === 'STOPPED') return null;
+  if (input.currentStage === 'DO_NOT_CONTACT') return null;
+  return 'HUMAN_HANDOFF';
 }
 
 /** Returns every rule row whose conditions all match the given lead state. */

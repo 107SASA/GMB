@@ -72,7 +72,8 @@ async function main() {
   const leads = db.collection('leads');
   const leadEvents = db.collection('leadevents');
   const scheduled = db.collection('scheduledactions');
-  const mq = db.collection('messagequeue');
+  // Mongoose pluralizes MessageQueue -> "messagequeues" (not "messagequeue").
+  const mq = db.collection('messagequeues');
 
   // ---- resolve the lead(s) --------------------------------------------------
   let leadDocs = [];

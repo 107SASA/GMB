@@ -5,24 +5,13 @@ import OrchestrationConfig from '@/models/OrchestrationConfig';
 import { setLeadOwnership } from '@/services/leadOwnership/setLeadOwnership';
 import { sendPushToSuperAdmins } from '@/services/push';
 
-/**
- * Same keyword-matching shape as BOOKING_HANDOFF_RE/RESCHEDULE_RE/CANCEL_RE
- * in services/booking/bookingAgent.ts and the platform webhook route's own
- * handoff regexes — deterministic, not an LLM call, so it's instant/free
- * and can't be talked out of by a clever prompt. Matches "agent" only as a
- * standalone word/phrase (task's own wording) so it doesn't fire on
- * unrelated uses of the word (e.g. "insurance agent", "your AI agent is
- * great") — the (?:\b|$) alternation lets it match at the very end of a
- * short message too, not just mid-sentence.
- */
-const HUMAN_REQUEST_RE = /\b(talk to a human|speak to (a |)(human|someone|person)|real person|human agent|(can i|i want to|please) speak to (an? )?agent)\b/i;
-const STANDALONE_AGENT_RE = /^\s*agent\s*[.!?]?\s*$/i;
-
-export function isExplicitHumanRequest(text: string): boolean {
-  const trimmed = (text || '').trim();
-  if (!trimmed) return false;
-  return HUMAN_REQUEST_RE.test(trimmed) || STANDALONE_AGENT_RE.test(trimmed);
-}
+// Deterministic explicit-human-request detection lives in a dependency-free
+// module so the NBA hard rule (services/nba/decideNextAction.ts) can share
+// the exact same definition without importing this file's mongoose/model
+// dependencies. Re-exported here so existing importers of
+// checkHandoffTriggers keep working unchanged.
+export { isExplicitHumanRequest } from './humanRequest';
+import { isExplicitHumanRequest } from './humanRequest';
 
 export type HandoffAgent = 'sales-agent' | 'demo-agent' | 'in-house-agent';
 

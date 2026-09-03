@@ -1597,14 +1597,15 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
       // be human-owned by), same precedent as salesAgentReply above.
       const { normalizePhoneE164 } = await import('@/lib/phone');
       const { default: Lead } = await import('@/models/Lead');
-      const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
+      const { salesReplyBlockedReason } = await import('@/services/agentHandoff/isHumanOwned');
       const normalizedDripPhone = normalizePhoneE164(convo.leadPhone) || convo.leadPhone;
       const dripLead: any = await Lead.findOne({ phone: normalizedDripPhone, tenantId: 'gmbboost-internal' });
-      if (isHumanOwned(dripLead) || isOptedOutOrDoNotContact(dripLead)) {
+      const dripBlocked = salesReplyBlockedReason(dripLead);
+      if (dripBlocked) {
         const { logLeadEvent } = await import('@/services/leadEvents');
         logLeadEvent(
           'NURTURE_ACTION_SKIPPED',
-          { reason: 'human-owned-or-opted-out', agent: 'sales-agent-drip' },
+          { reason: dripBlocked, agent: 'sales-agent-drip' },
           'sales-agent',
           { leadId: dripLead?._id, phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id }
         );
@@ -1979,17 +1980,26 @@ export const salesAgentReply = inngest.createFunction(
       // HUMAN-owned" stop, even though every real inbound message has one.
       const { normalizePhoneE164 } = await import('@/lib/phone');
       const { default: Lead } = await import('@/models/Lead');
-      const { isHumanOwned } = await import('@/services/agentHandoff/isHumanOwned');
       const normalizedSalesPhone = normalizePhoneE164(convo.leadPhone) || convo.leadPhone;
       const salesLead: any = await Lead.findOne({ phone: normalizedSalesPhone, tenantId: 'gmbboost-internal' });
 
-      if (isHumanOwned(salesLead)) {
+      // P0 STOP conditions for the ENTIRE sales-agent turn — checked before
+      // extraction, NBA, AND the generic composeAgentReply fallback below.
+      // Previously only isHumanOwned was checked here; a lead that had
+      // converted (currentAgent IN_HOUSE / currentStage CUSTOMER after
+      // payment) or opted out still got an AI sales reply from the generic
+      // fallback path (the NBA executor's own re-check only gates the
+      // executor branch, not the fallback). salesReplyBlockedReason unions
+      // all three — see its doc comment.
+      const { salesReplyBlockedReason } = await import('@/services/agentHandoff/isHumanOwned');
+      const blockedReason = salesReplyBlockedReason(salesLead);
+      if (blockedReason) {
         const { logLeadEvent } = await import('@/services/leadEvents');
         logLeadEvent(
           'NURTURE_ACTION_SKIPPED',
-          { reason: 'human-owned', agent: 'sales-agent' },
+          { reason: blockedReason, agent: 'sales-agent' },
           'sales-agent',
-          { leadId: salesLead._id, phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id }
+          { leadId: salesLead?._id, phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id }
         );
         return;
       }
@@ -2019,6 +2029,14 @@ export const salesAgentReply = inngest.createFunction(
       // below acts on THIS message's intent/score/objections, not stale
       // state. Still safe if it fails (extractLeadIntelligence never throws —
       // returns null) — we just fall through to the generic reply.
+      //
+      // This whole handler is a single step.run('reply', …), so an Inngest
+      // retry of a later failure (compose/send/save) re-runs this extraction
+      // too. That's now harmless for scoring: applyExtraction dedupes each
+      // (signal, message) behavioral signature via Lead.scoredSignalKeys, so
+      // a re-processed DEMO_REQUESTED/PRICING_QUESTION/etc no longer stacks
+      // another +N onto leadScore. Intent/objections merges were already
+      // idempotent (set-if-changed / merge-by-type).
       if (salesLead && body) {
         try {
           const { extractLeadIntelligence } = await import('@/services/leadIntelligence/extract');
@@ -3792,8 +3810,11 @@ export const nurtureSchedulerTick = inngest.createFunction(
               return 'skipped';
             }
             // Fresh decision (rule lookup only — no LLM) so we execute the
-            // action that fits the lead's CURRENT state.
-            const { action: freshAction } = await decideNextAction(nbaLead);
+            // action that fits the lead's CURRENT state. advanceNextActionAt
+            // false: this row is already due and we're just re-deciding it —
+            // re-stamping nextActionAt to `now` here would make the proactive
+            // scheduler re-qualify this same unchanged lead every tick.
+            const { action: freshAction } = await decideNextAction(nbaLead, {}, { advanceNextActionAt: false });
             const result = await executeNextAction(action.leadId, freshAction, {
               trigger: 'proactive',
               businessId: nbaLead.businessId?.toString(),
@@ -4023,6 +4044,20 @@ export const proactiveNbaScheduler = inngest.createFunction(
             payload: { action: lead.nextBestAction },
           });
           created++;
+          // Clear the "proactive action due" marker now that it's been
+          // scheduled. Without this, nextActionAt stays <= now forever
+          // (decideNextAction stamps it to `now`), so this cron re-scheduled
+          // an EXECUTE_NBA for the SAME unchanged lead on every tick — a
+          // proactive action manufactured purely from re-evaluation, not from
+          // any new lead activity. A real new inbound message runs
+          // decideNextAction again (advanceNextActionAt defaults true) and
+          // re-populates nextActionAt, re-arming the lead. Guarded on the
+          // current value so a decideNextAction that ran between the find
+          // above and here isn't clobbered.
+          await Lead.updateOne(
+            { _id: lead._id, nextActionAt: { $lte: new Date() } },
+            { $set: { nextActionAt: null } }
+          );
           const { logLeadEvent } = await import('@/services/leadEvents');
           logLeadEvent('NURTURE_ACTION_SCHEDULED', {
             action: lead.nextBestAction, source: 'V2_NURTURE', kind: 'proactive-nba',

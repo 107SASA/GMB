@@ -55,6 +55,11 @@ async function handleActiveSalesConversation(
   if (['STOP', 'UNSUBSCRIBE', 'CANCEL'].includes(normalized)) {
     salesConvo.status = 'stopped';
     await salesConvo.save();
+    // NOTE: the Lead-level opt-out (nurtureStatus='OPTED_OUT' + scheduled-
+    // action cancellation) is handled by the caller — processPlatformInbound
+    // does it for every platform STOP before this runs (see that function).
+    // The tenant pipeline (allowBookingHandoff:false) has no platform Lead to
+    // opt out, so nothing to do here either way.
     return true;
   }
 
@@ -350,6 +355,14 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
   const key = phoneDedupeKey(phone);
   const normalized = (body || '').trim().toUpperCase();
   const isOptOut = ['STOP', 'UNSUBSCRIBE', 'CANCEL'].includes(normalized);
+
+  // A platform-line STOP opts the Lead out at the Lead level regardless of
+  // which (if any) conversation is currently active — every branch below
+  // that handles isOptOut only stands down its own conversation. Best-effort.
+  if (isOptOut) {
+    const { optOutLeadByPhone } = await import('@/services/leadOwnership/optOutLead');
+    await optOutLeadByPhone(phone, 'inbound-stop:platform', 'system');
+  }
 
   // 1. Post-audit SALES nurture takes priority while active.
   const salesConvo = await SalesConversation.findOne({ phoneKey: key, status: 'active' });

@@ -127,6 +127,10 @@ export interface ILead extends Document {
   // turns from before a handoff can't immediately re-trigger it after
   // release with zero new evidence.
   recentExtractionConfidences?: number[];
+  // Behavioral-signature idempotency for leadScore — see the schema
+  // definition below and leadIntelligence/extract.ts's applyExtraction.
+  // Each entry: `${score_signal}:${hash(normalized message text)}`.
+  scoredSignalKeys?: string[];
   // P0 fix (post-implementation-audit) — snapshot of
   // SalesConversation.followUpsSent taken at the moment a lead is released
   // from HUMAN back to an agent. NOT a reset of followUpsSent itself
@@ -269,6 +273,16 @@ const LeadSchema: Schema = new Schema(
     lastMeaningfulInteractionAt: { type: Date },
     lastRepliedScoreAt: { type: Date },
     recentExtractionConfidences: { type: [Number], default: [] },
+    // Behavioral-signature idempotency for leadScore. Each entry is
+    // `${score_signal}:${hash(normalized message text)}` for a score delta
+    // that has already been applied — re-processing the same inbound
+    // message/intent/signal (an Inngest retry, a scheduler re-tick, a
+    // scripted re-send) is then a no-op instead of stacking another +N.
+    // A genuinely NEW message produces a new hash; a genuinely new signal
+    // (DEMO_BOOKED after DEMO_REQUESTED, PURCHASE_INTENT, …) a new key — both
+    // still score normally. Capped to the most recent entries; see
+    // leadIntelligence/extract.ts's applyExtraction.
+    scoredSignalKeys: { type: [String], default: [] },
     followUpsSentAtRelease: { type: Number },
 
     // --- Next-best-action engine (decision only) ----------------------------

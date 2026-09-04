@@ -406,7 +406,7 @@ const PHASES: { id: PhaseId; body: React.ReactNode }[] = [
 function InkPanelShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mkt-ink-panel rounded-2xl border border-(--mkt-ink-border) shadow-[0_20px_60px_-15px_rgba(6,179,76,0.35)] overflow-hidden">
-      <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-(--mkt-ink-border)">
+      <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-(--mkt-ink-border)">
         <div className="flex items-center gap-2 min-w-0">
           <span className="relative flex h-2 w-2 shrink-0">
             <span className="absolute inline-flex h-full w-full rounded-full bg-[#4ade80] opacity-75 animate-ping" />
@@ -416,7 +416,7 @@ function InkPanelShell({ children }: { children: React.ReactNode }) {
         </div>
         <span className="mkt-label text-[#4ade80]">Live</span>
       </div>
-      <div className="p-4 sm:p-5">{children}</div>
+      <div className="p-5 sm:p-7">{children}</div>
     </div>
   );
 }
@@ -426,7 +426,7 @@ function InkPanelShell({ children }: { children: React.ReactNode }) {
 function HeroCopy() {
   return (
     <>
-      <div className="mkt-label inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-(--mkt-line) bg-white text-[#006e2c] mb-5 sm:mb-6">
+      <div className="mkt-label self-start inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-(--mkt-line) bg-white text-[#006e2c] mb-5 sm:mb-6">
         <MaterialIcon name="auto_awesome" size={13} className="text-[#006e2c]" />
         AI Growth Platform for Local Business
       </div>
@@ -434,7 +434,7 @@ function HeroCopy() {
         Your Google Business Profile,{" "}
         <span className="text-[#006e2c]">run by AI.</span>
       </h1>
-      <p className="text-base sm:text-lg text-[#3d4a3d] max-w-xl leading-relaxed mb-8">
+      <p className="text-base sm:text-lg text-[#3d4a3d] max-w-xl leading-relaxed mb-7">
         One AI engine posts to your Google Business Profile, replies to reviews, and qualifies
         leads on WhatsApp — so your local visibility keeps working after hours close.
       </p>
@@ -600,9 +600,9 @@ export function HomeSplitExperience() {
       )}
 
       <div className="relative max-w-[1280px] mx-auto px-4 sm:px-6 md:px-12">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12">
           {/* Left: scrolling copy, one block per phase */}
-          <div className="lg:col-span-7">
+          <div className="lg:col-span-6">
             {PHASES.slice(0, ENGINE_ZONE_START).map((phase, i) => (
               <div
                 key={phase.id}
@@ -610,7 +610,7 @@ export function HomeSplitExperience() {
                 ref={(el) => { sectionRefs.current[i] = el; }}
                 data-phase-index={i}
                 className={`flex flex-col justify-center ${
-                  i === 0 ? "pt-28 sm:pt-32 pb-12 lg:pt-40 lg:pb-24" : "py-12 lg:py-24"
+                  i === 0 ? "pt-24 sm:pt-28 pb-10 lg:pt-28 lg:pb-14" : "py-10 lg:py-16"
                 } ${phase.id === "how-it-works" ? "scroll-mt-20" : ""}`}
               >
                 {phaseCopy(phase.id)}
@@ -629,7 +629,7 @@ export function HomeSplitExperience() {
                     key={phase.id}
                     ref={(el) => { sectionRefs.current[i] = el; }}
                     data-phase-index={i}
-                    className="flex flex-col justify-center py-12 lg:py-24"
+                    className="flex flex-col justify-center py-10 lg:py-16"
                   >
                     {phaseCopy(phase.id)}
                     <div className="lg:hidden mt-8 max-w-md mx-auto w-full">
@@ -642,8 +642,8 @@ export function HomeSplitExperience() {
           </div>
 
           {/* Right: single sticky panel, body cross-fades with activePhase (lg+ only) */}
-          <div className="hidden lg:block lg:col-span-5">
-            <div className="lg:sticky lg:top-24">
+          <div className="hidden lg:block lg:col-span-6">
+            <div className="lg:sticky lg:top-1/2 lg:-translate-y-1/2">
               <InkPanelShell>
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div

@@ -12,7 +12,7 @@ import { FreeReportButton } from "@/components/shared/FreeReportButton";
  */
 export function GbpReportBanner() {
   return (
-    <section className="px-4 sm:px-6 md:px-12 py-6 sm:py-8">
+    <section className="px-4 sm:px-6 md:px-12 py-8 sm:py-12">
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}

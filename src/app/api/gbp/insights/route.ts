@@ -168,6 +168,41 @@ export async function GET(request: NextRequest) {
     },
   };
 
+  // --- This calendar month vs last calendar month ---
+  // Deliberately separate from `changes` above (which compares two rolling
+  // windows of the selected range). This is the plain "how am I doing this
+  // month vs last month" view the Insights page surfaces as its own section.
+  const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+  const [thisMonthRows, lastMonthRows] = await Promise.all([
+    GBPInsights.find({ businessId: ctx.businessId, date: { $gte: startOfThisMonth } }).lean(),
+    GBPInsights.find({
+      businessId: ctx.businessId,
+      date: { $gte: startOfLastMonth, $lte: endOfLastMonth },
+    }).lean(),
+  ]);
+  const MONTH_METRICS: [string, string][] = [
+    ['views', 'Total Views'],
+    ['viewsSearch', 'Search Views'],
+    ['viewsMaps', 'Maps Views'],
+    ['callClicks', 'Call Clicks'],
+    ['websiteClicks', 'Website Clicks'],
+    ['directionRequests', 'Directions'],
+    ['conversations', 'Conversations'],
+  ];
+  const monthComparison = {
+    thisMonthLabel: startOfThisMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+    lastMonthLabel: startOfLastMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+    thisMonthDaysCounted: thisMonthRows.length,
+    lastMonthDaysCounted: lastMonthRows.length,
+    metrics: MONTH_METRICS.map(([field, label]) => {
+      const current = sumField(thisMonthRows, field);
+      const previous = sumField(lastMonthRows, field);
+      return { key: field, label, current, previous, change: pctChange(current, previous) };
+    }),
+  };
+
   // --- Keywords (MONTHLY only) ---
   // Google's searchkeywords endpoint has no daily granularity, so this section
   // is inherently month-based and does NOT follow the 7/14/28/90-day range.
@@ -213,6 +248,7 @@ export async function GET(request: NextRequest) {
     summary,
     changes,
     impact,
+    monthComparison,
     monthlyTrend,
     timeSeries,
     searchData: {

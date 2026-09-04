@@ -8,11 +8,12 @@ interface LeadColumnProps {
   title: string;
   leads: any[];
   onLeadClick: (lead: any) => void;
-  onDelete?: () => void;
+  /** Tailwind bg class for the header status dot (sub-stage colour). */
+  dotClass?: string;
   isSystem?: boolean;
 }
 
-export default function LeadColumn({ id, title, leads, onLeadClick, onDelete, isSystem }: LeadColumnProps) {
+export default function LeadColumn({ id, title, leads, onLeadClick, dotClass, isSystem }: LeadColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
@@ -20,26 +21,15 @@ export default function LeadColumn({ id, title, leads, onLeadClick, onDelete, is
       {/* Column Header */}
       <div className="p-4 border-b border-outline-variant/60 bg-surface/50 backdrop-blur-sm sticky top-0 z-10 flex justify-between items-center gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          {isSystem && (
-            <div className="w-2 h-2 rounded-full bg-outline flex-shrink-0" />
+          {(isSystem || dotClass) && (
+            <div className={`w-2 h-2 rounded-full shrink-0 ${dotClass ?? 'bg-outline'}`} />
           )}
           <h3 className="font-bold text-sm text-on-surface uppercase tracking-wider truncate">{title}</h3>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <span className="bg-surface-container-lowest text-on-surface-variant text-xs font-bold px-2 py-1 rounded-full shadow-sm">
             {leads.length}
           </span>
-          {!isSystem && onDelete && (
-            <button
-              onClick={onDelete}
-              title="Delete column"
-              className="w-6 h-6 flex items-center justify-center rounded-full text-outline hover:text-error hover:bg-error-container transition-colors"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
         </div>
       </div>
 

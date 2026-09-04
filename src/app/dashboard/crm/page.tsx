@@ -8,6 +8,8 @@ import CRMFilterBar from '@/components/crm/CRMFilterBar';
 import CRMAnalytics from '@/components/crm/CRMAnalytics';
 import LeadDrawer from '@/components/crm/LeadDrawer';
 import LeadStagesConfig from '@/components/crm/LeadStagesConfig';
+import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
+import type { LeadStagesConfig as LeadStagesConfigType } from '@/lib/leadStages';
 import { LayoutList, Columns, Layers, Upload, X, FileUp, CheckCircle, AlertCircle, Download } from 'lucide-react';
 import { useBusiness } from '@/context/BusinessContext';
 
@@ -77,13 +79,10 @@ function AddLeadModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
             </div>
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1">Phone <span className="text-error">*</span></label>
-              <input
-                type="tel"
+              <PhoneNumberInput
                 value={form.phone}
-                onChange={e => set('phone', e.target.value)}
-                placeholder="+44 7700 000000"
-                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                required
+                onChange={v => set('phone', v)}
+                className="rounded-xl [&_input]:py-2.5 [&_select]:py-2.5"
               />
             </div>
             <div>
@@ -371,7 +370,7 @@ export default function CRMDashboard() {
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, [viewMode]);
-  const [kanbanColumns, setKanbanColumns] = useState<string[]>([]);
+  const [leadStages, setLeadStages] = useState<LeadStagesConfigType | null>(null);
   const [showAddLead, setShowAddLead] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [toast, setToast] = useState('');
@@ -421,44 +420,24 @@ export default function CRMDashboard() {
     }
   };
 
-  const fetchKanbanColumns = async () => {
+  const fetchLeadStages = async () => {
     try {
-      const res = await fetch('/api/business/kanban-columns');
+      const res = await fetch('/api/business/lead-stages');
       const data = await res.json();
-      if (data.success) setKanbanColumns(data.kanbanColumns);
+      if (data.success) setLeadStages(data.leadStages);
     } catch (e) {
-      console.error('Failed to fetch kanban columns', e);
+      console.error('Failed to fetch lead stages', e);
     }
   };
 
-  const saveKanbanColumns = async (cols: string[]) => {
-    try {
-      await fetch('/api/business/kanban-columns', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kanbanColumns: cols })
-      });
-    } catch (e) {
-      console.error('Failed to save kanban columns', e);
-    }
-  };
-
-  const handleSetKanbanColumns = (updater: string[] | ((prev: string[]) => string[])) => {
-    setKanbanColumns(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      saveKanbanColumns(next);
-      return next;
-    });
-  };
-
-  // /api/crm/leads and /api/business/kanban-columns are both scoped to the
+  // /api/crm/leads and /api/business/lead-stages are both scoped to the
   // active business server-side, but this previously fetched once on mount
   // only — switching workspaces left the CRM showing the PREVIOUS
   // workspace's leads until a full reload.
   useEffect(() => {
     if (!activeBusiness?._id) return;
     fetchLeads();
-    fetchKanbanColumns();
+    fetchLeadStages();
   }, [activeBusiness?._id]);
 
   const handleLeadCreated = (newLead: any) => {
@@ -575,8 +554,7 @@ export default function CRMDashboard() {
             leads={filteredLeads}
             setLeads={setLeads}
             onLeadClick={setSelectedLead}
-            columns={kanbanColumns}
-            setColumns={handleSetKanbanColumns}
+            leadStages={leadStages}
           />
         )}
 

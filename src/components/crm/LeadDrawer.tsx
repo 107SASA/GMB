@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Phone, MessageCircle } from 'lucide-react';
 import ActivityTimeline from './ActivityTimeline';
+import ChatModal from './ChatModal';
+import { telHref } from '@/lib/phoneLinks';
 import type { LeadStagesConfig, SubStageGroup } from '@/lib/leadStages';
 
 interface LeadDrawerProps {
@@ -32,6 +35,10 @@ function StageBadge({ stage }: { stage?: string }) {
 export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDrawerProps) {
   const [updatingStage, setUpdatingStage] = useState(false);
   const [stagesConfig, setStagesConfig] = useState<LeadStagesConfig | null>(null);
+  const [showChat, setShowChat] = useState(false);
+
+  // Close the chat modal whenever the drawer switches to another lead / closes
+  useEffect(() => { setShowChat(false); }, [lead?._id, isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -117,6 +124,25 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
               </div>
               <h2 className="text-2xl font-black text-on-surface">{lead.name}</h2>
               <p className="text-sm text-on-surface-variant mt-1">{lead.phone || lead.email || 'No contact info'}</p>
+
+              {lead.phone && (
+                <div className="flex items-center gap-2 mt-3">
+                  <a
+                    href={telHref(lead.phone) ?? undefined}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high border border-outline-variant text-xs font-semibold text-on-surface transition-colors"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    Call
+                  </a>
+                  <button
+                    onClick={() => setShowChat(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary-container/50 hover:bg-secondary-container border border-secondary-fixed text-xs font-semibold text-on-secondary-container transition-colors"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    WhatsApp
+                  </button>
+                </div>
+              )}
             </div>
             <button onClick={onClose} className="p-2 bg-surface-container hover:bg-surface-container-high rounded-full text-on-surface-variant transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -231,6 +257,8 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
 
           </div>
         </motion.div>
+
+        {showChat && <ChatModal lead={lead} onClose={() => setShowChat(false)} />}
       </div>
     </AnimatePresence>
   );

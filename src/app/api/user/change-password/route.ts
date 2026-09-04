@@ -49,8 +49,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Current password is incorrect.' }, { status: 401 });
   }
 
-  user.passwordHash = await bcrypt.hash(newPassword, 12);
-  await user.save();
+  // updateOne (not user.save()) so only passwordHash is written — a drifted
+  // legacy field elsewhere on the doc must never turn a valid password change
+  // into a 500. Mirrors /api/auth/reset-password.
+  await User.updateOne(
+    { _id: user._id },
+    { $set: { passwordHash: await bcrypt.hash(newPassword, 12) } }
+  );
 
   return NextResponse.json({ success: true });
 }

@@ -75,9 +75,14 @@ export async function POST(req: Request) {
     }
 
     const otp = generateOTP();
-    user.phoneOtpHash = hashOTP(otp);
-    user.phoneOtpExpiry = new Date(Date.now() + OTP_TTL_MS);
-    await user.save();
+    // updateOne (not user.save()) so this only touches the two OTP fields — a
+    // legacy/out-of-sync value on an unrelated field (e.g. an old `role` string
+    // that predates the current enum, as written by older QA seed scripts) can
+    // never block a login code from going out. Mirrors reset-password/route.ts.
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { phoneOtpHash: hashOTP(otp), phoneOtpExpiry: new Date(Date.now() + OTP_TTL_MS) } }
+    );
 
     // No businessId — this is a platform-level auth message, not tied to any
     // one workspace, so it routes through the platform's own WhatsApp number

@@ -68,8 +68,11 @@ export async function POST(req: Request) {
       const b = Buffer.from(password);
       isValid = a.length === b.length && crypto.timingSafeEqual(a, b);
       if (isValid) {
-        user.passwordHash = await bcrypt.hash(password, 12);
-        await user.save();
+        // updateOne (not user.save()) so the transparent hash upgrade only
+        // writes passwordHash — a drifted legacy field elsewhere on the doc
+        // must never turn a correct login into a 500. See reset-password.
+        const upgradedHash = await bcrypt.hash(password, 12);
+        await User.updateOne({ _id: user._id }, { $set: { passwordHash: upgradedHash } });
       }
     }
 

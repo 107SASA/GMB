@@ -132,13 +132,19 @@ export async function POST(req: Request) {
       // OTP is sent below and verification is the gate, same as a first-time
       // signup. Backfill the company name they just typed in StepOrganization
       // (never overwrites one already saved).
+      const otp = generateOTP();
+      const resumeSet: Record<string, unknown> = {
+        phoneOtpHash: hashOTP(otp),
+        phoneOtpExpiry: new Date(Date.now() + OTP_TTL_MS),
+      };
       if (body.companyName && !newUser.companyName) {
+        resumeSet.companyName = body.companyName;
         newUser.companyName = body.companyName;
       }
-      const otp = generateOTP();
-      newUser.phoneOtpHash = hashOTP(otp);
-      newUser.phoneOtpExpiry = new Date(Date.now() + OTP_TTL_MS);
-      await newUser.save();
+      // updateOne (not newUser.save()) so a drifted legacy field on this
+      // pre-existing account can't 500 a resumed signup — see
+      // auth/phone-login/request/route.ts.
+      await User.updateOne({ _id: newUser._id }, { $set: resumeSet });
 
       const otpResult = await sendOtpMessage(
         newUser.phone,

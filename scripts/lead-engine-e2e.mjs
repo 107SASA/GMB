@@ -356,7 +356,7 @@ async function testF(lead) {
   const email = `e2e+${last10(lead.phone)}@example.invalid`;
   const uRes = await db.collection('users').findOneAndUpdate(
     { phone: lead.phone, email },
-    { $setOnInsert: { phone: lead.phone, isPhoneVerified: true, fullName: lead.name, email, role: 'USER', createdAt: new Date(), updatedAt: new Date() } },
+    { $setOnInsert: { phone: lead.phone, isPhoneVerified: true, fullName: lead.name, email, role: 'CLIENT', createdAt: new Date(), updatedAt: new Date() } },
     { upsert: true, returnDocument: 'after' },
   );
   const user = uRes.value || await db.collection('users').findOne({ phone: lead.phone, email });

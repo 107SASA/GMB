@@ -45,13 +45,17 @@ export async function POST(req: Request) {
   // "some of these details already exist". The `deleted_<ts>_` prefix keeps the
   // original value recoverable while freeing the indexes.
   const stamp = Date.now();
-  user.isDeleted = true;
-  user.deletedAt = new Date();
-  user.email = `deleted_${stamp}_${user.email}`;
+  const deletedSet: Record<string, unknown> = {
+    isDeleted: true,
+    deletedAt: new Date(),
+    email: `deleted_${stamp}_${user.email}`,
+  };
   if (user.phone) {
-    user.phone = `deleted_${stamp}_${user.phone}`;
+    deletedSet.phone = `deleted_${stamp}_${user.phone}`;
   }
-  await user.save();
+  // updateOne (not user.save()) so a drifted legacy field can't block an
+  // account deletion — see /api/auth/reset-password.
+  await User.updateOne({ _id: user._id }, { $set: deletedSet });
 
   await destroySession();
 

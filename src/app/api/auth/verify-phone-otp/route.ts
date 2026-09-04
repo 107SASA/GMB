@@ -131,9 +131,12 @@ export async function PUT(req: Request) {
     }
 
     const otp = generateOTP();
-    user.phoneOtpHash = hashOTP(otp);
-    user.phoneOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-    await user.save();
+    // updateOne (not user.save()) — see phone-login/request/route.ts: a drifted
+    // legacy field must never block a resend.
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { phoneOtpHash: hashOTP(otp), phoneOtpExpiry: new Date(Date.now() + 10 * 60 * 1000) } }
+    );
 
     const result = await sendOtpMessage(
       user.phone,

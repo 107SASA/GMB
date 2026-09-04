@@ -481,7 +481,8 @@ function fromGoogleCategory(category: string | undefined): GbpMediaCategory {
 export async function uploadLocationPhoto(
   businessId: string,
   category: GbpMediaCategory,
-  sourceUrl: string
+  sourceUrl: string,
+  mediaFormat: 'PHOTO' | 'VIDEO' = 'PHOTO'
 ): Promise<{ liveWriteApplied: boolean; mediaName?: string }> {
   if (!gbpWritesEnabled()) return { liveWriteApplied: false };
   if (!/^https?:\/\//i.test(sourceUrl)) {
@@ -494,7 +495,7 @@ export async function uploadLocationPhoto(
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      mediaFormat: 'PHOTO',
+      mediaFormat,
       locationAssociation: { category: toGoogleCategory(category) },
       sourceUrl,
     }),

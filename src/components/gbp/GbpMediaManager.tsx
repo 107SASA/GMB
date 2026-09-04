@@ -18,16 +18,34 @@ import { cropAndResizeImage, COVER_TARGET, LOGO_TARGET } from '@/lib/imageResize
 
 type MediaCategory = 'LOGO' | 'COVER' | 'ADDITIONAL' | 'PROFILE';
 type MediaStatus = 'staged' | 'published' | 'failed';
+type MediaType = 'photo' | 'video';
 
 interface MediaAsset {
   _id: string;
   category: MediaCategory;
+  mediaType?: MediaType;
   url: string;
   status: MediaStatus;
   googleMediaName?: string;
   publishedAt?: string;
   failureReason?: string;
+  scheduledFor?: string;
   createdAt: string;
+}
+
+/** datetime-local <input> wants "YYYY-MM-DDTHH:mm" in LOCAL time. */
+function toLocalInputValue(iso?: string): string {
+  const d = iso ? new Date(iso) : new Date(Date.now() + 60 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function MediaThumb({ asset, className }: { asset: MediaAsset; className?: string }) {
+  if (asset.mediaType === 'video') {
+    return <video src={asset.url} className={className} muted playsInline preload="metadata" controls />;
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={mediaSrc(asset.url)} alt={asset.category} className={className} />;
 }
 
 /**
@@ -188,6 +206,31 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
     }
   };
 
+  const scheduleMedia = async (asset: MediaAsset, isoOrNull: string | null) => {
+    setBusyId(asset._id);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/gbp/media/${asset._id}/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scheduledFor: isoOrNull }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Could not schedule.');
+      setMsg({
+        ok: true,
+        text: isoOrNull
+          ? `Scheduled — it will auto-publish on ${new Date(isoOrNull).toLocaleString()}.`
+          : 'Schedule removed.',
+      });
+      await loadMedia();
+    } catch (err) {
+      setMsg({ ok: false, text: friendlyClientMessage(err, 'Could not schedule.') });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const changeCategory = async (asset: MediaAsset, category: MediaCategory) => {
     setBusyId(asset._id);
     setMsg(null);
@@ -333,12 +376,12 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
           {/* Additional photos — gallery with CRUD + category */}
           <div className="pt-2 border-t border-outline-variant">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-outline uppercase tracking-wide">Additional photos</p>
+              <p className="text-xs font-semibold text-outline uppercase tracking-wide">Additional photos &amp; videos</p>
               <div>
                 <input
                   ref={addPhotoInput}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp"
+                  accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -353,7 +396,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold disabled:opacity-60"
                 >
                   {uploadingSlot === 'ADD_PHOTO' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
-                  Add photo
+                  Add photo / video
                 </button>
               </div>
             </div>
@@ -369,16 +412,48 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
                       onClick={() => setPreviewAsset(item)}
                       className="block w-full aspect-square bg-surface relative group"
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={mediaSrc(item.url)}
-                        alt={item.category}
-                        className="w-full h-full object-cover"
-                      />
+                      <MediaThumb asset={item} className="w-full h-full object-cover" />
+                      {item.mediaType === 'video' && (
+                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] font-bold uppercase tracking-wide">Video</span>
+                      )}
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
                     </button>
                     <div className="p-2.5 space-y-2">
                       <StatusBadge status={item.status} failureReason={item.failureReason} />
+                      {item.status !== 'published' && (
+                        <div className="rounded-lg bg-surface-container-low border border-outline-variant p-1.5">
+                          {item.scheduledFor ? (
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] text-on-surface-variant flex items-center gap-1">
+                                <Clock className="w-3 h-3 shrink-0" />
+                                {new Date(item.scheduledFor).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => scheduleMedia(item, null)}
+                                disabled={busyId === item._id}
+                                className="text-[10px] font-semibold text-on-surface-variant hover:text-error disabled:opacity-60"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="flex items-center gap-1">
+                              <input
+                                type="datetime-local"
+                                defaultValue={toLocalInputValue()}
+                                min={toLocalInputValue()}
+                                onChange={(e) => {
+                                  if (e.target.value) scheduleMedia(item, new Date(e.target.value).toISOString());
+                                }}
+                                disabled={busyId === item._id}
+                                className="w-full text-[10px] px-1 py-0.5 rounded border border-outline-variant bg-surface disabled:opacity-60"
+                                title="Auto-publish at this date/time"
+                              />
+                            </label>
+                          )}
+                        </div>
+                      )}
                       <select
                         value={item.category}
                         disabled={item.status === 'published' || busyId === item._id}
@@ -442,12 +517,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
               </button>
             </div>
             <div className="bg-surface aspect-video">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={mediaSrc(previewAsset.url)}
-                alt={previewAsset.category}
-                className="w-full h-full object-contain"
-              />
+              <MediaThumb asset={previewAsset} className="w-full h-full object-contain" />
             </div>
             {previewAsset.failureReason && (
               <p className="px-4 pt-3 text-xs text-error">{previewAsset.failureReason}</p>

@@ -8,8 +8,10 @@ import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
-const ALLOWED = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_VIDEO_BYTES = 75 * 1024 * 1024; // 75 MB (Google's own limit is 75MB / 30s)
+const ALLOWED_IMAGE = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+const ALLOWED_VIDEO = ['video/mp4', 'video/quicktime'];
 const CATEGORIES: GbpMediaCategory[] = ['PROFILE', 'COVER', 'ADDITIONAL', 'LOGO'];
 
 /**
@@ -49,11 +51,21 @@ export async function POST(req: Request) {
   if (!CATEGORIES.includes(category)) {
     return NextResponse.json({ success: false, error: 'Invalid category.' }, { status: 400 });
   }
-  if (!ALLOWED.includes(file.type)) {
-    return NextResponse.json({ success: false, error: 'Only JPG, PNG or WebP images are allowed.' }, { status: 400 });
+
+  const isVideo = ALLOWED_VIDEO.includes(file.type);
+  const isImage = ALLOWED_IMAGE.includes(file.type);
+  if (!isVideo && !isImage) {
+    return NextResponse.json({ success: false, error: 'Only JPG, PNG, WebP images or MP4 / MOV video are allowed.' }, { status: 400 });
   }
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json({ success: false, error: 'Image must be 10 MB or smaller.' }, { status: 400 });
+  if (isVideo && category !== 'ADDITIONAL') {
+    return NextResponse.json({ success: false, error: 'Video can only be added as an additional post — not as a logo, cover or profile photo.' }, { status: 400 });
+  }
+  const maxBytes = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+  if (file.size > maxBytes) {
+    return NextResponse.json(
+      { success: false, error: isVideo ? 'Video must be 75 MB or smaller.' : 'Image must be 10 MB or smaller.' },
+      { status: 400 },
+    );
   }
 
   try {
@@ -66,6 +78,7 @@ export async function POST(req: Request) {
       uploadedBy: ctx.userId,
       category,
       url: publicUrl,
+      mediaType: isVideo ? 'video' : 'photo',
     });
 
     return NextResponse.json({ success: true, asset });

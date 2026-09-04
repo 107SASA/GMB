@@ -8,6 +8,8 @@
  * omitted since there's no proven field for it in the audit data.
  */
 
+import { getBrandLogoDataUri } from '@/lib/brandAsset';
+
 export interface ReportCardContext {
   businessName: string;
   rating?: number;
@@ -24,6 +26,13 @@ function h(s: unknown): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function watermarkHtml(): string {
+  const uri = getBrandLogoDataUri();
+  return uri
+    ? `<img src="${uri}" alt="GrowwMatics" style="position:absolute;right:20px;bottom:16px;width:44px;height:44px;object-fit:contain;opacity:0.55;" />`
+    : '';
 }
 
 function ratingLabel(score: number): { label: string; color: string } {
@@ -65,7 +74,7 @@ export function buildReportCardHtml(ctx: ReportCardContext): string {
   @page { size: 600px 800px; margin: 0; }
   * { box-sizing: border-box; }
   body {
-    margin: 0; width: 600px; padding: 40px;
+    margin: 0; width: 600px; padding: 40px; position: relative;
     font-family: Inter, -apple-system, sans-serif;
     background: linear-gradient(180deg, #ede9fe 0%, #ffffff 220px);
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
@@ -73,6 +82,7 @@ export function buildReportCardHtml(ctx: ReportCardContext): string {
 </style>
 </head>
 <body>
+  ${watermarkHtml()}
   <div style="text-align:center;margin-bottom:8px;">
     <span style="font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#0a8a3e;">GrowwMatics AI · Free Report</span>
   </div>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, MapPin, ShieldCheck, ExternalLink, Info, Unplug } from 'lucide-react';
 import { useBusiness } from '@/context/BusinessContext';
 import GbpMediaManager from '@/components/gbp/GbpMediaManager';
+import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 interface Profile {
@@ -176,7 +177,7 @@ export default function GbpProfilePage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-on-surface">Primary phone</label>
-                <input className={inputCls} value={form.primaryPhone} onChange={(e) => setForm({ ...form, primaryPhone: e.target.value })} placeholder="+91 …" />
+                <PhoneNumberInput className="rounded-xl [&_input]:py-3 [&_select]:py-3" value={form.primaryPhone} onChange={(v) => setForm({ ...form, primaryPhone: v })} />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-on-surface">Website</label>

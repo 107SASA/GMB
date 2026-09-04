@@ -8,6 +8,7 @@ import {
   Sparkles, ChevronLeft, ChevronRight, Pencil, Tag, Clock, Wand2, UserPlus, Import, Ban
 } from 'lucide-react';
 import CustomerUploadModal from '@/components/campaigns/CustomerUploadModal';
+import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { useBusiness } from '@/context/BusinessContext';
 
 interface Customer {
@@ -1050,12 +1051,10 @@ export default function CampaignsDashboard() {
               </div>
               <div>
                 <label className="block text-sm font-bold text-on-surface mb-1.5">WhatsApp Number *</label>
-                <input
-                  type="tel"
+                <PhoneNumberInput
                   value={addForm.phone}
-                  onChange={e => setAddForm(p => ({ ...p, phone: e.target.value }))}
-                  placeholder="+91 98765 43210 or 9876543210"
-                  className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  onChange={v => setAddForm(p => ({ ...p, phone: v }))}
+                  className="rounded-xl [&_input]:py-2.5 [&_select]:py-2.5"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">

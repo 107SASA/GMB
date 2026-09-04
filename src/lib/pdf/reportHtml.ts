@@ -2,6 +2,7 @@ import type {
   IAudit, IAuditData, IChecklistItem, IGeoGridKeyword,
 } from '@/models/Audit';
 import { formatRank, rankBucket, computeSuspensionRisk } from '@/services/audit/reportMath';
+import { getBrandLogoDataUri } from '@/lib/brandAsset';
 
 // Brand triad (src/app/globals.css: --color-secondary / --color-primary-container /
 // --color-error) — the same three colors the on-screen report uses for
@@ -335,6 +336,13 @@ export function buildReportHtml(ctx: ReportContext): string {
     table { width: 100%; border-collapse: collapse; }
     img   { max-width: 100%; display: block; }
     p, h1, h2, h3 { margin: 0; }
+    /* Brand mark, bottom-right of every printed page (Chrome repeats
+       position:fixed elements per page in print/PDF). */
+    .gm-watermark {
+      position: fixed; right: 6mm; bottom: 5mm;
+      width: 15mm; height: 15mm; opacity: 0.5; z-index: 9999;
+    }
+    .gm-watermark img { width: 100%; height: 100%; object-fit: contain; }
   `;
 
   // ── 1. REPORT HEADER ─────────────────────────────────────────────────────────
@@ -748,6 +756,7 @@ export function buildReportHtml(ctx: ReportContext): string {
 <style>${css}</style>
 </head>
 <body>
+${getBrandLogoDataUri() ? `<div class="gm-watermark"><img src="${getBrandLogoDataUri()}" alt="GrowwMatics"/></div>` : ''}
 ${headerHtml}
 ${heroHtml}
 ${rankAnalyticsHtml}

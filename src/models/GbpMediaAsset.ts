@@ -38,12 +38,17 @@ import type { GbpMediaCategory } from '@/lib/gbpClient';
  */
 
 export type GbpMediaStatus = 'staged' | 'published' | 'failed';
+export type GbpMediaType = 'photo' | 'video';
 
 export interface IGbpMediaAsset extends Document {
   businessId: mongoose.Types.ObjectId;
   organizationId?: string;
   uploadedBy?: mongoose.Types.ObjectId;
   category: GbpMediaCategory;
+  /** photo (default) or video. Video is ADDITIONAL-only and, since Google's
+   *  v4 media API is unreliable for programmatic video, publish is
+   *  best-effort with a manual-post fallback (failureReason spells it out). */
+  mediaType: GbpMediaType;
   url: string;
   status: GbpMediaStatus;
   /** Full v4 resource name once live on Google, e.g. "accounts/x/locations/y/media/z". */
@@ -61,6 +66,7 @@ const GbpMediaAssetSchema: Schema = new Schema(
     organizationId: { type: String, index: true },
     uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     category: { type: String, enum: ['LOGO', 'COVER', 'ADDITIONAL', 'PROFILE'], required: true },
+    mediaType: { type: String, enum: ['photo', 'video'], default: 'photo' },
     url: { type: String, required: true },
     status: { type: String, enum: ['staged', 'published', 'failed'], default: 'staged', index: true },
     googleMediaName: { type: String },

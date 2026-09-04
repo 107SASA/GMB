@@ -99,14 +99,16 @@ export async function createOrReplaceStagedAsset(params: {
   uploadedBy?: string;
   category: GbpMediaCategory;
   url: string;
+  mediaType?: 'photo' | 'video';
 }): Promise<IGbpMediaAsset> {
   await dbConnect();
-  const { businessId, organizationId, uploadedBy, category, url } = params;
+  const { businessId, organizationId, uploadedBy, category, url, mediaType = 'photo' } = params;
 
   if (SINGLETON_CATEGORIES.includes(category)) {
     const existingStaged = await GbpMediaAsset.findOne({ businessId, category, status: 'staged' });
     if (existingStaged) {
       existingStaged.url = url;
+      existingStaged.mediaType = mediaType;
       existingStaged.uploadedBy = uploadedBy as any;
       existingStaged.failureReason = undefined;
       await existingStaged.save();
@@ -114,7 +116,7 @@ export async function createOrReplaceStagedAsset(params: {
     }
   }
 
-  return GbpMediaAsset.create({ businessId, organizationId, uploadedBy, category, url, status: 'staged' });
+  return GbpMediaAsset.create({ businessId, organizationId, uploadedBy, category, url, mediaType, status: 'staged' });
 }
 
 /** Category can only move while a photo is still staged — see GbpMediaAsset.ts. */
@@ -194,7 +196,12 @@ export async function publishAsset(
   if (asset.status === 'published') return { asset, liveWriteApplied: true };
 
   try {
-    const { liveWriteApplied, mediaName } = await uploadLocationPhoto(businessId, asset.category as GbpMediaCategory, asset.url);
+    const { liveWriteApplied, mediaName } = await uploadLocationPhoto(
+      businessId,
+      asset.category as GbpMediaCategory,
+      asset.url,
+      asset.mediaType === 'video' ? 'VIDEO' : 'PHOTO'
+    );
 
     if (!liveWriteApplied) {
       // Not a failure — live publishing is platform-wide disabled right now
@@ -246,7 +253,10 @@ export async function publishAsset(
     return { asset, liveWriteApplied: true };
   } catch (err) {
     asset.status = 'failed';
-    asset.failureReason = (err as Error).message;
+    asset.failureReason =
+      asset.mediaType === 'video'
+        ? `Google rejected the video upload (${(err as Error).message}). Google's API is unreliable for video — post this video to your profile manually from the Google Business app.`
+        : (err as Error).message;
     await asset.save();
     throw err;
   }

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { X, Search, Loader2, Store, CheckCircle2, Building2 } from "lucide-react";
 import { useBusiness } from "@/context/BusinessContext";
+import { PhoneNumberInput } from "@/components/shared/PhoneNumberInput";
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
 interface Props {
@@ -374,12 +375,10 @@ export function AddWorkspaceModal({ onClose }: Props) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-on-surface mb-1.5">Phone</label>
-                <input
-                  type="tel"
+                <PhoneNumberInput
                   value={form.phone}
-                  onChange={(e) => update("phone", e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm bg-surface border border-outline-variant rounded-xl focus:bg-surface-container-lowest focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
-                  placeholder="+91 98..."
+                  onChange={(v) => update("phone", v)}
+                  className="rounded-xl [&_input]:py-2.5 [&_select]:py-2.5 [&_select]:w-16"
                 />
               </div>
               <div>

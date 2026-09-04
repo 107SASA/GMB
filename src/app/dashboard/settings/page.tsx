@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBusiness } from '@/context/BusinessContext';
 import { useCurrentUserRole } from '@/hooks/useCurrentUserRole';
+import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import {
   Building2,
   Bot,
@@ -394,11 +395,10 @@ export default function SettingsPage() {
               </div>
               <div>
                 <LabelRow label="Phone Number" />
-                <input
-                  className={inputCls('mt-1')}
+                <PhoneNumberInput
+                  className="mt-1 rounded-xl [&_input]:py-2.5 [&_select]:py-2.5"
                   value={bpForm.phone}
-                  onChange={e => setBpForm(p => ({ ...p, phone: e.target.value }))}
-                  placeholder="+91XXXXXXXXXX"
+                  onChange={v => setBpForm(p => ({ ...p, phone: v }))}
                 />
               </div>
               <div>
@@ -442,11 +442,10 @@ export default function SettingsPage() {
               </div>
               <div>
                 <LabelRow label="WhatsApp Number" />
-                <input
-                  className={inputCls('mt-1')}
+                <PhoneNumberInput
+                  className="mt-1 rounded-xl [&_input]:py-2.5 [&_select]:py-2.5"
                   value={bpForm.whatsappNumber}
-                  onChange={e => setBpForm(p => ({ ...p, whatsappNumber: e.target.value }))}
-                  placeholder="+91XXXXXXXXXX (E.164 format)"
+                  onChange={v => setBpForm(p => ({ ...p, whatsappNumber: v }))}
                 />
               </div>
               <div>

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Star, Megaphone } from 'lucide-react';
 import ReviewsDashboard from '@/components/reviews/ReviewsDashboard';
 import CampaignsDashboard from '@/components/reviews/CampaignsDashboard';
+import QuickReviewRequest from '@/components/reviews/QuickReviewRequest';
 
 type Tab = 'monitor' | 'campaigns';
 
@@ -24,6 +25,9 @@ export default function ReviewManagementPage() {
           <h1 className="font-heading text-3xl font-bold text-on-surface tracking-tight">Review Management</h1>
           <p className="text-on-surface-variant mt-1">Monitor incoming reviews and run campaigns to acquire new ones.</p>
         </div>
+
+        {/* Quick single-number review request (desktop parity with the mobile card) */}
+        <QuickReviewRequest />
 
         {/* Top-level tabs */}
         <div className="flex gap-2 border-b border-outline-variant pb-0">

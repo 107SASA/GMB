@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ShieldCheck, Loader2, Eye, EyeOff } from 'lucide-react';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
+import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 
 export default function AcceptInvitePage() {
   const params = useParams();
@@ -106,12 +107,10 @@ export default function AcceptInvitePage() {
 
           <div>
             <label className="block text-sm font-medium text-on-surface mb-1">Phone (optional)</label>
-            <input
-              type="tel"
+            <PhoneNumberInput
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+91XXXXXXXXXX"
-              className="w-full px-4 py-2 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              onChange={setPhone}
+              className="rounded-xl [&_input]:py-2 [&_select]:py-2"
             />
           </div>
 

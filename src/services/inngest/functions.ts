@@ -566,6 +566,105 @@ export const weeklyContentReminder = inngest.createFunction(
   }
 );
 
+// 3b. Weekly content autopilot — fully autonomous. Every Monday, generate a
+// fresh batch of POSTS_PER_WEEK (4) GBP posts from each active business's
+// keywords and schedule them on alternate days. No approval step, no owner
+// action: processContentJob writes them status:"scheduled" and
+// publishScheduledPostsCron publishes them (live when GBP_LIVE_WRITES_ENABLED
+// is on for the platform, mock-only otherwise — same gate as every other
+// publish path). This is the autonomous counterpart to the manual
+// "Generate" button (scheduler/manual-generate) and the low-buffer safety
+// net inside processContentJob.
+export const weeklyContentAutopilot = inngest.createFunction(
+  { id: "weekly-content-autopilot", triggers: [{ cron: "0 3 * * 1" }] }, // Mondays ~08:30 IST
+  async ({ step }) => {
+    const businesses = await step.run("select-autopilot-businesses", async () => {
+      const dbConnect = (await import("@/lib/mongodb")).default;
+      await dbConnect();
+      const { default: Business } = await import("@/models/Business");
+      const { default: AutomationLog } = await import("@/models/AutomationLog");
+
+      const candidates = await Business.find({ isDeleted: { $ne: true } })
+        .select("_id keywords organizationId")
+        .lean();
+
+      const sixDaysAgo = new Date(Date.now() - 6 * 86_400_000);
+      const out: string[] = [];
+      for (const b of candidates as any[]) {
+        // Needs keywords to generate anything meaningful.
+        if (!Array.isArray(b.keywords) || b.keywords.length === 0) continue;
+        // Idempotency: skip if an autopilot batch already ran this week (cron
+        // double-fire / manual replay would otherwise stack another 4 posts).
+        const recent = await AutomationLog.findOne({
+          businessId: b._id.toString(),
+          workflow: "content-scheduler",
+          action: "generate_post_batch",
+          status: "success",
+          createdAt: { $gte: sixDaysAgo },
+        }).lean();
+        if (recent) continue;
+        out.push(b._id.toString());
+      }
+      return out;
+    });
+
+    if (businesses.length > 0) {
+      await step.sendEvent(
+        "dispatch-autopilot-generation",
+        businesses.map((businessId) => ({
+          name: "scheduler/generate" as const,
+          data: { businessId, force: true, autopilot: true },
+        }))
+      );
+    }
+
+    return { success: true, dispatched: businesses.length };
+  }
+);
+
+// 3b-bis. Billing activation safety net — catches a paid customer who got
+// stuck locked because the Razorpay webhook was late/dropped/unreachable AND
+// they weren't around to trigger the self-heal in GET /api/billing/status
+// (checkout tab closed before the poll finished, never opened the dashboard
+// again). Runs every 10 min; bounded to businesses that touched billing in
+// the last 7 days so it never turns into an unbounded full-table scan of
+// long-cancelled workspaces. Reuses the exact same reconcile function the
+// status endpoint calls — this is purely a "nobody was there to ask" net.
+export const billingActivationReconcileCron = inngest.createFunction(
+  { id: "billing-activation-reconcile-cron", triggers: [{ cron: "*/10 * * * *" }] },
+  async ({ step }) => {
+    const result = await step.run("reconcile-stuck-subscriptions", async () => {
+      const dbConnect = (await import("@/lib/mongodb")).default;
+      await dbConnect();
+      const { default: Business } = await import("@/models/Business");
+      const { reconcileWorkspaceSubscription } = await import("@/lib/billing/razorpayReconcile");
+
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000);
+      const candidates = await Business.find({
+        razorpaySubscriptionId: { $exists: true, $ne: null },
+        subscriptionStatus: { $ne: "active" },
+        updatedAt: { $gte: sevenDaysAgo },
+      })
+        .select("_id")
+        .limit(200)
+        .lean();
+
+      let activated = 0;
+      for (const b of candidates as any[]) {
+        try {
+          const r = await reconcileWorkspaceSubscription(b._id.toString());
+          if (r.activated) activated++;
+        } catch (err: any) {
+          console.error(`[billing-activation-reconcile-cron] failed for business ${b._id}:`, err?.message);
+        }
+      }
+      return { checked: candidates.length, activated };
+    });
+
+    return { success: true, ...result };
+  }
+);
+
 // 3c. Subscription expiry — daily enforce-the-cutoff + countdown reminders.
 // After a customer cancels, they keep access until the paid period ends (no
 // refund). This cron: (a) LOCKS workspaces whose paid period has ended if the
@@ -651,7 +750,10 @@ export const processContentJob = inngest.createFunction(
   { id: "process-content-job", retries: 3, triggers: [{ event: "scheduler/generate" }] },
   async ({ event, step }) => {
     const { businessId, force } = event.data;
-    
+    // Weekly-autopilot runs space posts every OTHER day (Mon → Wed → Fri → …);
+    // the manual "Generate" button keeps the original consecutive-day cadence.
+    const daySpacing: number = event.data.autopilot ? 2 : 1;
+
     await dbConnect();
     const business = await Business.findById(businessId);
     if (!business) return { skipped: true };
@@ -717,7 +819,7 @@ export const processContentJob = inngest.createFunction(
 
         for (const generatedPost of aiResponse.posts) {
            const nextDate = new Date(lastScheduledDate);
-           nextDate.setDate(nextDate.getDate() + 1);
+           nextDate.setDate(nextDate.getDate() + daySpacing);
            lastScheduledDate = nextDate;
 
            const newPost = await Post.create({

@@ -12,6 +12,9 @@ node_modules/
 .env.production
 .env.test
 .env.test.local
+
+# One-off DB archives produced by scripts/db-migrate.mjs (may contain PII)
+_db-archive/
 !.env.example
 
 # Next.js build output

@@ -68,22 +68,32 @@ export async function POST(req: Request) {
     const passwordHash = await bcrypt.hash(body.password, 12);
     const otp = generateOTP();
 
-    user.fullName = fullName;
-    user.email = email;
-    user.passwordHash = passwordHash;
-    user.isShadowAccount = false;
-    user.claimedAt = new Date();
-    user.isEmailVerified = false;
-    user.emailOtpHash = hashOTP(otp);
-    user.emailOtpExpiry = new Date(Date.now() + 15 * 60 * 1000);
-    await user.save();
+    // updateOne (not user.save()) so a drifted legacy field on this
+    // pre-existing shadow account can't 500 the claim — see
+    // /api/auth/reset-password. The 11000 handler in catch still covers the
+    // unique-email race.
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          fullName,
+          email,
+          passwordHash,
+          isShadowAccount: false,
+          claimedAt: new Date(),
+          isEmailVerified: false,
+          emailOtpHash: hashOTP(otp),
+          emailOtpExpiry: new Date(Date.now() + 15 * 60 * 1000),
+        },
+      }
+    );
 
-    const otpResult = await sendEmailOtp(user.email, otp, 'verify');
+    const otpResult = await sendEmailOtp(email, otp, 'verify');
     if (!otpResult.success) {
       console.error('Failed to send claim-verification OTP email:', otpResult.error);
     }
 
-    return NextResponse.json({ success: true, requiresVerification: true, email: user.email }, { status: 200 });
+    return NextResponse.json({ success: true, requiresVerification: true, email }, { status: 200 });
   } catch (error: any) {
     console.error('Onboarding Claim Error:', error);
     if (error?.code === 11000) {

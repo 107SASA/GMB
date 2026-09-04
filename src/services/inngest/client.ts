@@ -12,7 +12,7 @@ type Events = {
     };
   };
   "scheduler/generate": {
-    data: { businessId: string };
+    data: { businessId: string; force?: boolean; autopilot?: boolean };
   };
   "scheduler/follow-up": {
     data: { leadId: string; reminderType: string };
@@ -51,7 +51,7 @@ type Events = {
     data: { auditId: string };
   };
   "scheduler/manual-generate": {
-    data: { businessId: string; force?: boolean };
+    data: { businessId: string; force?: boolean; autopilot?: boolean };
   };
   "reviews/sync": {
     data: { businessId: string };

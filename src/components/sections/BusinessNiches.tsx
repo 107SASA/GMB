@@ -37,9 +37,9 @@ function NicheChip({ niche }: { niche: (typeof NICHES)[number] }) {
 
 export function BusinessNiches() {
   return (
-    <section className="py-14 sm:py-20 md:py-28 bg-(--mkt-surface) overflow-hidden">
+    <section className="py-14 sm:py-20 md:py-24 bg-(--mkt-surface) overflow-hidden">
       <div className="max-w-[1280px] mx-auto px-4 sm:px-6 md:px-12">
-        <div className="text-center mb-10 sm:mb-12 md:mb-16">
+        <div className="text-center mb-8 sm:mb-10 md:mb-12">
           <p className="mkt-label text-[#006e2c] mb-2">Who it's for</p>
           <h2 className="font-mkt-display text-2xl sm:text-3xl md:text-5xl font-semibold text-[#101613] tracking-tight mb-3 sm:mb-4">
             Built for small business owners
@@ -68,7 +68,7 @@ export function BusinessNiches() {
         <div className="pointer-events-none absolute inset-y-0 right-0 w-16 sm:w-24 bg-gradient-to-l from-(--mkt-surface) to-transparent" />
       </div>
 
-      <div className="max-w-[1280px] mx-auto px-4 sm:px-6 md:px-12 mt-10 sm:mt-12">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-6 md:px-12 mt-10 sm:mt-14">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}

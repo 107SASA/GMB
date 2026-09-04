@@ -59,6 +59,11 @@ async function dbConnect() {
       // Retry a transient write once (Atlas replica-set failover) instead of
       // surfacing a one-off error to the user.
       retryWrites: true,
+      // Don't let Mongoose rebuild every model's indexes on each cold start
+      // against live production data (flagged in PRODUCTION_READINESS.md). In
+      // production, index changes ship as an explicit migration instead; dev
+      // and QA keep autoIndex on for convenience.
+      autoIndex: process.env.NODE_ENV !== 'production',
     };
 
     cached.promise = mongoose.connect(MONGODB_URI as string, opts).then((m) => m);

@@ -68,4 +68,7 @@ export async function getSession(): Promise<{ userId: string; role: string } | n
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(COOKIE_NAME);
+  // The active-workspace cookie is meaningless without a session — leaving it
+  // behind just confuses the next sign-in (and proxy.ts's workspace gate).
+  cookieStore.delete('activeBusinessId');
 }

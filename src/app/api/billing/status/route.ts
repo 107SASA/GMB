@@ -5,6 +5,7 @@ import Subscription from '@/models/Subscription';
 import Business from '@/models/Business';
 import { requireClient } from '@/lib/auth';
 import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
+import { reconcileWorkspaceSubscription } from '@/lib/billing/razorpayReconcile';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,24 +17,49 @@ export const dynamic = 'force-dynamic';
  * mirrors src/proxy.ts: unlocked when the workspace is subscribed OR the user
  * has a paid user-level plan. Additive — null when no workspace is selected.
  */
+const WORKSPACE_FIELDS =
+  'name subscriptionStatus freeAuditUsed subscriptionCurrentPeriodEnd subscriptionCancelAtPeriodEnd createdAt razorpaySubscriptionId';
+
 async function getWorkspaceStatus(userSubscriptionPlan?: string) {
   const businessId =
     (await headers()).get('x-business-id') ?? (await cookies()).get('activeBusinessId')?.value;
   if (!businessId) return null;
-  const business = await Business.findById(businessId)
-    .select('name subscriptionStatus freeAuditUsed subscriptionCurrentPeriodEnd subscriptionCancelAtPeriodEnd createdAt')
-    .lean() as any;
+  let business = await Business.findById(businessId).select(WORKSPACE_FIELDS).lean() as any;
   if (!business) return null;
+
+  let isActive = isWorkspaceUnlocked({
+    subscriptionStatus: business.subscriptionStatus,
+    userSubscriptionPlan,
+    businessCreatedAt: business.createdAt,
+  });
+
+  // Every read of "is this workspace unlocked" doubles as a chance to
+  // self-heal: if Razorpay's webhook is late, dropped, or (local dev)
+  // unreachable, check directly with Razorpay and activate right here
+  // instead of leaving the customer waiting on a webhook that may never
+  // arrive. See razorpayReconcile.ts for the full reasoning — this is a
+  // no-op unless the workspace has a linked, not-yet-active subscription.
+  if (!isActive && business.razorpaySubscriptionId) {
+    const result = await reconcileWorkspaceSubscription(businessId).catch((err) => {
+      console.error('[billing/status] reconcile threw:', err);
+      return null;
+    });
+    if (result?.activated) {
+      business = await Business.findById(businessId).select(WORKSPACE_FIELDS).lean() as any;
+      isActive = isWorkspaceUnlocked({
+        subscriptionStatus: business.subscriptionStatus,
+        userSubscriptionPlan,
+        businessCreatedAt: business.createdAt,
+      });
+    }
+  }
+
   return {
     businessId,
     name: business.name,
     subscriptionStatus: business.subscriptionStatus ?? 'trialing',
     freeAuditUsed: Boolean(business.freeAuditUsed),
-    isActive: isWorkspaceUnlocked({
-      subscriptionStatus: business.subscriptionStatus,
-      userSubscriptionPlan,
-      businessCreatedAt: business.createdAt,
-    }),
+    isActive,
     currentPeriodEnd: business.subscriptionCurrentPeriodEnd ?? null,
     // True while access continues but the subscription won't renew.
     cancelAtPeriodEnd: Boolean(business.subscriptionCancelAtPeriodEnd),

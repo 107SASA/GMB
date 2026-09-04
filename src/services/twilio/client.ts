@@ -1,6 +1,22 @@
 import twilio from 'twilio';
 import dbConnect from '@/lib/mongodb';
 import MessageQueue from '@/models/MessageQueue';
+import { normalizePhoneE164 } from '@/lib/phone';
+
+/**
+ * Builds Twilio's `whatsapp:+<e164>` recipient address, normalizing first.
+ * Without this, a stored/typed phone number that's missing its leading `+`,
+ * has stray spaces/dashes, or (an older data path) got saved with a literal
+ * "whatsapp:" prefix already baked in reaches Twilio's API as garbage and
+ * comes back as an opaque error 21211 "Invalid 'To' Phone Number" — which is
+ * exactly what a malformed `to:` produces, regardless of the number being
+ * real. Returns null (caller fails fast with a clear, loggable reason)
+ * rather than ever guessing at a shape Twilio might accept.
+ */
+function toWhatsAppAddress(phone: string): string | null {
+  const normalized = normalizePhoneE164(phone);
+  return normalized ? `whatsapp:${normalized}` : null;
+}
 
 /**
  * QA-only outbound suppression. When QA_SUPPRESS_WHATSAPP_SENDS=true, every
@@ -136,6 +152,16 @@ export async function sendOutboundMessage(
     return { success: false, error };
   }
 
+  const toAddress = toWhatsAppAddress(phone);
+  if (!toAddress) {
+    const error = `Invalid WhatsApp recipient number: "${phone}"`;
+    msgLog.status = 'FAILED';
+    msgLog.failedReason = error;
+    await msgLog.save();
+    console.error('[twilio] Refusing to send — could not normalize recipient number:', phone);
+    return { success: false, error, isPlatformDefault: creds.isPlatformDefault };
+  }
+
   const client = twilio(creds.sid, creds.authToken);
   const statusCallback = statusCallbackUrl();
 
@@ -143,7 +169,7 @@ export async function sendOutboundMessage(
     const message = await client.messages.create({
       body,
       from: `whatsapp:${creds.fromNumber}`,
-      to: `whatsapp:${phone}`,
+      to: toAddress,
       ...(mediaUrl ? { mediaUrl: [mediaUrl] } : {}),
       ...(statusCallback ? { statusCallback } : {}),
     });
@@ -221,6 +247,16 @@ export async function sendTemplateMessage(
     return { success: false, error };
   }
 
+  const toAddress = toWhatsAppAddress(phone);
+  if (!toAddress) {
+    const error = `Invalid WhatsApp recipient number: "${phone}"`;
+    msgLog.status = 'FAILED';
+    msgLog.failedReason = error;
+    await msgLog.save();
+    console.error('[twilio] Refusing to send — could not normalize recipient number:', phone);
+    return { success: false, error, isPlatformDefault: creds.isPlatformDefault };
+  }
+
   // Content Template SIDs are scoped to the WABA they were approved under —
   // only ever valid to send from GrowwMatics' own number, which is the only
   // number resolveTwilioCredentials() can return today (see its doc
@@ -236,7 +272,7 @@ export async function sendTemplateMessage(
     // comment on TwilioCredentials above). Twilio's convention is to send
     // one or the other, not both, when a Messaging Service is in play.
     const message = await client.messages.create({
-      to: `whatsapp:${phone}`,
+      to: toAddress,
       contentSid,
       contentVariables: JSON.stringify(variables),
       ...(creds.messagingServiceSid

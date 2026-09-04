@@ -1,3 +1,5 @@
+import { watermarkToDataUri } from '@/lib/imageWatermark';
+
 const NANOBANANA_BASE = 'https://www.nananobanana.com/api/v1';
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 // Google's current image model (nicknamed "Nano Banana"). The previous value,
@@ -65,7 +67,21 @@ async function generateWithNanoBanana(prompt: string, apiKey: string): Promise<s
     }
 
     const data = await res.json();
-    return (data.outputImageUrls as string[])?.[0] ?? null;
+    const url = (data.outputImageUrls as string[])?.[0] ?? null;
+    if (!url) return null;
+
+    // Fetch the hosted image and stamp the brand mark on it — we then store a
+    // (watermarked) data-URL, same shape the Gemini path already returns.
+    try {
+      const imgRes = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+      if (imgRes.ok) {
+        const buf = Buffer.from(await imgRes.arrayBuffer());
+        return await watermarkToDataUri(buf);
+      }
+    } catch (e: any) {
+      console.warn('NanoBanana watermark step failed, using raw URL:', e?.message);
+    }
+    return url;
   } catch (err: any) {
     console.error('NanoBanana thumbnail failed:', err.message);
     return null;
@@ -111,10 +127,15 @@ async function generateWithGemini(prompt: string, apiKey: string): Promise<strin
     if (!imagePart?.inlineData) return null;
 
     const { mimeType, data: b64 } = imagePart.inlineData;
-    // Gemini returns full-size PNGs (~2 MB). Downscale to a web thumbnail so the
-    // data-URL we store/ship is ~150 KB instead of megabytes.
-    const compressed = await compressToThumbnail(b64);
-    return compressed ?? `data:${mimeType};base64,${b64}`;
+    // Gemini returns full-size PNGs (~2 MB). Watermark + downscale in one pass
+    // (watermarkToDataUri resizes to <=1080 and re-encodes as JPEG), so the
+    // stored data-URL is ~150 KB and carries the brand mark.
+    try {
+      return await watermarkToDataUri(Buffer.from(b64, 'base64'));
+    } catch {
+      const compressed = await compressToThumbnail(b64);
+      return compressed ?? `data:${mimeType};base64,${b64}`;
+    }
   } catch (err: any) {
     console.error('Gemini thumbnail failed:', err.message);
     return null;

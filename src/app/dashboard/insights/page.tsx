@@ -50,6 +50,21 @@ interface InsightsData {
     keywordMonth: string | null;
     topKeywords: { keyword: string; impressions: number }[];
   };
+  monthComparison?: {
+    thisMonthLabel: string;
+    lastMonthLabel: string;
+    thisMonthDaysCounted: number;
+    lastMonthDaysCounted: number;
+    metrics: { key: string; label: string; current: number; previous: number; change: number | null }[];
+  };
+}
+
+interface KeywordIntel {
+  generatedAt: string | null;
+  totalEstimatedVolume: number;
+  currentKeywords: { keyword: string; estMonthlyVolume: number; impressions: number }[];
+  growthKeywords: { keyword: string; estMonthlyVolume: number; rationale: string }[];
+  stale?: boolean;
 }
 
 // ── Skeleton shimmer card ─────────────────────────────────────────────────────
@@ -135,6 +150,8 @@ export default function InsightsPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [selectedRange, setSelectedRange] = useState<Range>(28);
+  const [kwIntel, setKwIntel] = useState<KeywordIntel | null>(null);
+  const [kwIntelLoading, setKwIntelLoading] = useState(false);
 
   // Read URL params on mount for post-OAuth redirect feedback
   const [connectedJustNow, setConnectedJustNow] = useState(false);
@@ -164,6 +181,27 @@ export default function InsightsPage() {
   useEffect(() => {
     fetchInsights();
   }, [fetchInsights]);
+
+  // Keyword intelligence (AI-estimated volumes + growth keywords). Separate
+  // fetch — it can take a few seconds and shouldn't block the metrics view.
+  const fetchKwIntel = useCallback(async (refresh = false) => {
+    if (!activeBusiness) return;
+    setKwIntelLoading(true);
+    try {
+      const res = await fetch(`/api/gbp/keyword-intelligence${refresh ? '?refresh=1' : ''}`, {
+        method: refresh ? 'POST' : 'GET',
+      });
+      if (res.ok) setKwIntel(await res.json());
+    } catch (e) {
+      console.error('Failed to fetch keyword intelligence', e);
+    } finally {
+      setKwIntelLoading(false);
+    }
+  }, [activeBusiness]);
+
+  useEffect(() => {
+    if (data?.connected) fetchKwIntel(false);
+  }, [data?.connected, fetchKwIntel]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -252,7 +290,7 @@ export default function InsightsPage() {
     );
   }
 
-  const { summary, changes, timeSeries = [], searchData, googleEmail, needsSync, lastSyncAt } = data;
+  const { summary, changes, timeSeries = [], searchData, googleEmail, needsSync, lastSyncAt, monthComparison } = data;
 
   // ── STATE C: Connected, data loaded ───────────────────────────────────────
   return (
@@ -407,12 +445,25 @@ export default function InsightsPage() {
             <h3 className="font-bold text-on-surface mb-6">Search Visibility</h3>
 
             <div className="space-y-4 mb-6">
-              <div>
-                <p className="text-2xl font-bold text-on-surface">
-                  {(searchData?.totalSearchImpressions ?? 0).toLocaleString()}
-                </p>
-                <p className="text-xs font-semibold text-on-surface-variant mt-0.5">Search Impressions</p>
-                <p className="text-xs text-outline">Times you appeared for a search term</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-2xl font-bold text-on-surface">
+                    {(searchData?.totalSearchImpressions ?? 0).toLocaleString()}
+                  </p>
+                  <p className="text-xs font-semibold text-on-surface-variant mt-0.5">Search Impressions</p>
+                  <p className="text-xs text-outline">Times you appeared for a search term</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-on-surface">
+                    {kwIntel && kwIntel.totalEstimatedVolume > 0
+                      ? `~${kwIntel.totalEstimatedVolume.toLocaleString()}`
+                      : kwIntelLoading
+                      ? '…'
+                      : '—'}
+                  </p>
+                  <p className="text-xs font-semibold text-on-surface-variant mt-0.5">Est. Monthly Searches</p>
+                  <p className="text-xs text-outline">AI estimate of demand for your keywords</p>
+                </div>
               </div>
               <div>
                 <p className="text-2xl font-bold text-on-surface">
@@ -450,6 +501,7 @@ export default function InsightsPage() {
                     <th className="text-left text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4 w-10">#</th>
                     <th className="text-left text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4">Keyword</th>
                     <th className="text-right text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4 w-28">Impressions</th>
+                    <th className="text-right text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4 w-32">Est. Searches/mo</th>
                     <th className="text-left text-xs font-semibold text-outline uppercase tracking-wider pb-3 w-40">Share</th>
                   </tr>
                 </thead>
@@ -457,12 +509,18 @@ export default function InsightsPage() {
                   {searchData.topKeywords.map((kw, i) => {
                     const maxImpressions = searchData.topKeywords[0]?.impressions ?? 1;
                     const pct = Math.round((kw.impressions / maxImpressions) * 100);
+                    const estVol = kwIntel?.currentKeywords.find(
+                      (c) => c.keyword.toLowerCase() === kw.keyword.toLowerCase()
+                    )?.estMonthlyVolume;
                     return (
                       <tr key={kw.keyword} className="hover:bg-surface/50 transition-colors">
                         <td className="py-3 pr-4 text-outline font-medium">{i + 1}</td>
                         <td className="py-3 pr-4 font-medium text-on-surface">{kw.keyword}</td>
                         <td className="py-3 pr-4 text-right font-semibold text-on-surface">
                           {kw.impressions.toLocaleString()}
+                        </td>
+                        <td className="py-3 pr-4 text-right text-on-surface-variant">
+                          {estVol != null ? `~${estVol.toLocaleString()}` : kwIntelLoading ? '…' : '—'}
                         </td>
                         <td className="py-3">
                           <div className="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
@@ -478,6 +536,88 @@ export default function InsightsPage() {
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+
+        {/* This month vs last month */}
+        {monthComparison && (
+          <div className="mt-6 bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+            <div className="flex items-baseline justify-between flex-wrap gap-2 mb-1">
+              <h3 className="font-bold text-on-surface">This Month vs Last Month</h3>
+              <p className="text-xs text-outline">
+                {monthComparison.thisMonthLabel} ({monthComparison.thisMonthDaysCounted}d so far) vs {monthComparison.lastMonthLabel}
+              </p>
+            </div>
+            <p className="text-xs text-outline mb-5">
+              This month is still in progress — expect the current column to catch up as the month completes.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-outline-variant">
+                    <th className="text-left text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4">Metric</th>
+                    <th className="text-right text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4">{monthComparison.lastMonthLabel.split(' ')[0]}</th>
+                    <th className="text-right text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4">{monthComparison.thisMonthLabel.split(' ')[0]}</th>
+                    <th className="text-right text-xs font-semibold text-outline uppercase tracking-wider pb-3 w-24">Change</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant">
+                  {monthComparison.metrics.map((m) => (
+                    <tr key={m.key} className="hover:bg-surface/50 transition-colors">
+                      <td className="py-3 pr-4 font-medium text-on-surface">{m.label}</td>
+                      <td className="py-3 pr-4 text-right text-on-surface-variant">{m.previous.toLocaleString()}</td>
+                      <td className="py-3 pr-4 text-right font-semibold text-on-surface">{m.current.toLocaleString()}</td>
+                      <td className="py-3 text-right"><ChangeBadge value={m.change} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Keywords to grow your business (AI-suggested) */}
+        <div className="mt-6 bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+          <div className="flex items-baseline justify-between flex-wrap gap-2 mb-1">
+            <h3 className="font-bold text-on-surface">Keywords to Grow Your Business</h3>
+            <button
+              onClick={() => fetchKwIntel(true)}
+              disabled={kwIntelLoading}
+              className="text-xs font-semibold text-primary hover:text-primary-container disabled:opacity-50 flex items-center gap-1"
+            >
+              {kwIntelLoading ? 'Analysing…' : 'Refresh'}
+            </button>
+          </div>
+          <p className="text-xs text-outline mb-5">
+            AI-suggested search terms you're not showing for yet but realistically could — with a rough monthly demand estimate.
+          </p>
+
+          {kwIntelLoading && !kwIntel ? (
+            <div className="text-center py-10 text-outline text-sm">Analysing your category and current keywords…</div>
+          ) : !kwIntel?.growthKeywords?.length ? (
+            <div className="text-center py-10 text-outline">
+              <p className="text-sm font-medium mb-1">No suggestions yet.</p>
+              <p className="text-xs">Add a category and description in Settings, then hit Refresh.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {kwIntel.growthKeywords.map((kw) => (
+                <div key={kw.keyword} className="rounded-xl border border-outline-variant p-4 hover:bg-surface/50 transition-colors">
+                  <div className="flex items-start justify-between gap-3 mb-1">
+                    <p className="font-semibold text-on-surface text-sm">{kw.keyword}</p>
+                    <span className="shrink-0 text-[11px] font-bold text-on-secondary-container bg-secondary-container/40 px-2 py-0.5 rounded-full">
+                      ~{kw.estMonthlyVolume.toLocaleString()}/mo
+                    </span>
+                  </div>
+                  {kw.rationale && <p className="text-xs text-on-surface-variant leading-relaxed">{kw.rationale}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+          {kwIntel?.generatedAt && (
+            <p className="text-[10px] text-outline mt-4">
+              Estimates generated {relativeTime(kwIntel.generatedAt)} · refreshed weekly
+            </p>
           )}
         </div>
 

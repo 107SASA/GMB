@@ -1,12 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 
 type PhoneStep = 'enter-phone' | 'enter-otp';
 
-export default function LoginForm() {
+export default function LoginForm({ staleSession = false }: { staleSession?: boolean }) {
+  // The page handed us a session cookie whose account no longer exists — clear
+  // it so this visit (and the next) starts clean instead of the cookie
+  // steering /dashboard's guard back here.
+  useEffect(() => {
+    if (staleSession) {
+      fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    }
+  }, [staleSession]);
+
   // ── Phone + WhatsApp OTP (the only login method) ────────────────────────
   const [phoneStep, setPhoneStep] = useState<PhoneStep>('enter-phone');
   const [phone, setPhone] = useState('');
@@ -113,7 +122,8 @@ export default function LoginForm() {
                   {noAccount ? (
                     <>
                       No account found for this number.{' '}
-                      <a href="/onboarding" className="underline hover:text-primary">Create an account</a> to get started.
+                      <a href="/free-report" className="underline hover:text-primary">Get your free report</a>{' '}
+                      or <a href="/book-demo" className="underline hover:text-primary">book a demo</a> to get started.
                     </>
                   ) : (
                     phoneError

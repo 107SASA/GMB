@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useBusiness } from '@/context/BusinessContext';
 import { planDisplayLabel, isPaidPlanLabel } from '@/lib/billing/planLabel';
 import { checkPasswordStrength } from '@/lib/passwordPolicy';
+import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import {
   Eye,
   EyeOff,
@@ -263,11 +264,10 @@ export default function ProfilePage() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-on-surface-variant mb-1">Phone</label>
-                <input
-                  className={inputCls()}
+                <PhoneNumberInput
+                  className="rounded-xl [&_input]:py-2.5 [&_select]:py-2.5"
                   value={infoForm.phone}
-                  onChange={e => setInfoForm(p => ({ ...p, phone: e.target.value }))}
-                  placeholder="+91XXXXXXXXXX"
+                  onChange={v => setInfoForm(p => ({ ...p, phone: v }))}
                 />
               </div>
               <div>

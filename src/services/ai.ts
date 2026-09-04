@@ -228,6 +228,94 @@ Generate high-quality content now.
   }
 }
 
+/**
+ * Keyword intelligence for the GBP Insights page. Google's API gives keyword
+ * IMPRESSIONS but never search VOLUME, and never suggests terms you're not
+ * already showing for — this fills both gaps with LLM estimates (labelled as
+ * estimates in the UI). One call returns both:
+ *  - volume estimates for the terms already bringing impressions
+ *  - "growth" terms to target next, each with a short rationale + volume
+ * All volumes are rough monthly local-search bands, not precise figures.
+ */
+export async function generateKeywordIntelligence(params: {
+  category: string;
+  description?: string;
+  city?: string;
+  currentKeywords: { keyword: string; impressions: number }[];
+}): Promise<{
+  currentKeywords: { keyword: string; estMonthlyVolume: number; impressions: number }[];
+  growthKeywords: { keyword: string; estMonthlyVolume: number; rationale: string }[];
+}> {
+  const empty = { currentKeywords: [], growthKeywords: [] };
+  try {
+    const currentList = params.currentKeywords.slice(0, 20);
+    const prompt = `You are a local SEO analyst estimating Google search demand for a small business.
+
+Business category: ${params.category || 'Local business'}
+${params.city ? `City / area: ${params.city}` : 'City: not specified — assume a mid-size city'}
+Business description: ${params.description || 'Not provided'}
+
+Terms this business ALREADY appears for on Google (with how many times it showed last month):
+${currentList.length ? currentList.map((k) => `- "${k.keyword}" (${k.impressions} impressions)`).join('\n') : '- (none yet)'}
+
+Do TWO things and return ONE JSON object:
+
+1. "currentKeywords": for EACH term listed above, estimate its realistic MONTHLY local Google search volume for that city/area. Return objects: { "keyword": string, "estMonthlyVolume": integer }.
+   - Be realistic: most local long-tail terms are 10–500/month; broad city terms 500–5000. Round to a sensible number (10, 20, 50, 100, 250, 500, 1000...).
+
+2. "growthKeywords": suggest 6 NEW keywords this business is probably NOT showing for yet but realistically could rank for and that would bring in more customers. For each: { "keyword": string, "estMonthlyVolume": integer, "rationale": string }.
+   - rationale = one short sentence (max 12 words) on why this term will grow the business.
+   - 2–6 words per keyword, real search phrasing, local intent welcome. Don't repeat terms from the list above.
+
+Return ONLY this JSON, no markdown fences:
+{ "currentKeywords": [...], "growthKeywords": [...] }`;
+
+    const completion = await groq.chat.completions.create({
+      model: GROQ_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.6,
+      max_tokens: 1200,
+      response_format: { type: 'json_object' },
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim() || '{}';
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+
+    const impressionsByKw = new Map(currentList.map((k) => [k.keyword.toLowerCase(), k.impressions]));
+    const toInt = (v: any) => {
+      const n = Math.round(Number(v));
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    };
+
+    const currentKeywords = Array.isArray(parsed.currentKeywords)
+      ? parsed.currentKeywords
+          .filter((k: any) => k && typeof k.keyword === 'string')
+          .map((k: any) => ({
+            keyword: k.keyword.trim(),
+            estMonthlyVolume: toInt(k.estMonthlyVolume),
+            impressions: impressionsByKw.get(k.keyword.trim().toLowerCase()) ?? 0,
+          }))
+      : [];
+
+    const seen = new Set(currentKeywords.map((k: any) => k.keyword.toLowerCase()));
+    const growthKeywords = Array.isArray(parsed.growthKeywords)
+      ? parsed.growthKeywords
+          .filter((k: any) => k && typeof k.keyword === 'string' && !seen.has(k.keyword.trim().toLowerCase()))
+          .map((k: any) => ({
+            keyword: k.keyword.trim(),
+            estMonthlyVolume: toInt(k.estMonthlyVolume),
+            rationale: typeof k.rationale === 'string' ? k.rationale.trim() : '',
+          }))
+          .slice(0, 8)
+      : [];
+
+    return { currentKeywords, growthKeywords };
+  } catch (error) {
+    console.error('Keyword intelligence generation error', error);
+    return empty;
+  }
+}
+
 export async function generateReviewSuggestions(businessName: string, customerName: string, service: string, rating: number = 5): Promise<any[]> {
   try {
     const prompt = `You are helping a customer write a genuine Google review for a business.

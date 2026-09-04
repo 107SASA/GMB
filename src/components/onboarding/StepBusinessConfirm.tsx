@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { OnboardingData } from './types';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { motion } from 'framer-motion';
 
 const inputCls =
@@ -126,12 +127,10 @@ export default function StepBusinessConfirm({ data, updateData, onNext, onBack }
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-label-md text-on-surface mb-2">Phone Number *</label>
-                <input
-                  type="tel"
+                <PhoneNumberInput
                   value={data.phone}
-                  onChange={e => updateData({ phone: e.target.value })}
-                  className={inputCls}
-                  placeholder="+1 (555) 000-0000"
+                  onChange={v => updateData({ phone: v })}
+                  className="[&_select]:w-16"
                 />
               </div>
               <div>

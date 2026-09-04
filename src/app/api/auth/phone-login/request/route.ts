@@ -58,7 +58,7 @@ export async function POST(req: Request) {
       // `noAccount: true` lets the login page render a "Create an account"
       // link instead of just plain error text.
       return NextResponse.json(
-        { success: false, error: "No account found for this number. Please create an account first.", noAccount: true },
+        { success: false, error: "No account found for this number. Get your free report or book a demo to get started.", noAccount: true },
         { status: 404 }
       );
     }

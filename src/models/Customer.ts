@@ -48,8 +48,12 @@ const CustomerSchema = new Schema(
   { timestamps: true }
 );
 
-// Compound index to prevent duplicate imports per business
-CustomerSchema.index({ businessId: 1, phone: 1 }, { unique: true, partialFilterExpression: { phone: { $exists: true, $ne: null } } });
-CustomerSchema.index({ businessId: 1, email: 1 }, { unique: true, partialFilterExpression: { email: { $exists: true, $ne: null } } });
+// Compound indexes to prevent duplicate imports per business. The partial
+// filter uses `$type: 'string'` — NOT `$ne: null`, which MongoDB rejects in a
+// partialFilterExpression ("Expression not supported in partial index: $not"),
+// so these unique constraints silently never built before. `$type: 'string'`
+// indexes exactly the rows that have a real phone/email and skips the rest.
+CustomerSchema.index({ businessId: 1, phone: 1 }, { unique: true, partialFilterExpression: { phone: { $type: 'string' } } });
+CustomerSchema.index({ businessId: 1, email: 1 }, { unique: true, partialFilterExpression: { email: { $type: 'string' } } });
 
 export default mongoose.models.Customer || mongoose.model<ICustomer>('Customer', CustomerSchema);

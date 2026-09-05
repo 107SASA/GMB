@@ -4,6 +4,18 @@ import dbConnect from '@/lib/mongodb';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import PlatformSettings from '@/models/PlatformSettings';
 
+/**
+ * Platform Config — down to just supportEmail (Sep 2026 dead-code sweep).
+ * This used to also read/write platformName, maxAuditsPerBusiness,
+ * maxPostsPerMonth, maxWhatsAppMessagesPerDay, maintenanceMode and
+ * defaultTrialDays, but a repo-wide search turned up nothing else in the
+ * app that ever READ any of those fields — editing them here did
+ * genuinely nothing (no maintenance banner exists anywhere, usage limits
+ * are actually enforced via PlanConfig/lib/planDefaults.ts, not this
+ * model — see admin/customers' plan-limits editor for the real one).
+ * supportEmail is the one field with a real reader (admin/support/page.tsx's
+ * "Open Support Inbox" mailto link), so it's the only one kept.
+ */
 export async function GET() {
   const auth = await requireSuperAdmin();
   if (!auth.ok) return auth.response;
@@ -11,26 +23,12 @@ export async function GET() {
   try {
     await dbConnect();
 
-    const settings = await PlatformSettings.findOne().lean();
+    const settings = await PlatformSettings.findOne().select('supportEmail').lean();
 
-    if (!settings) {
-      // Return defaults — upsert happens on first PATCH
-      return NextResponse.json({
-        success: true,
-        data: {
-          platformName:              'GrowwMatics AI',
-          supportEmail:              '',
-          maxAuditsPerBusiness:      10,
-          maxPostsPerMonth:          50,
-          maxWhatsAppMessagesPerDay: 100,
-          maintenanceMode:           false,
-          defaultTrialDays:          14,
-          reviewRequestCooldownDays: 30,
-        },
-      });
-    }
-
-    return NextResponse.json({ success: true, data: settings });
+    return NextResponse.json({
+      success: true,
+      data: { supportEmail: settings?.supportEmail || '' },
+    });
   } catch (error: any) {
     console.error('Settings GET Error:', error);
     return NextResponse.json(
@@ -48,30 +46,17 @@ export async function PATCH(req: NextRequest) {
     await dbConnect();
 
     const body = await req.json();
-
-    const allowed = [
-      'platformName',
-      'supportEmail',
-      'maxAuditsPerBusiness',
-      'maxPostsPerMonth',
-      'maxWhatsAppMessagesPerDay',
-      'maintenanceMode',
-      'defaultTrialDays',
-      'reviewRequestCooldownDays',
-    ];
-
-    const update: Record<string, any> = {};
-    for (const key of allowed) {
-      if (key in body) update[key] = body[key];
+    if (typeof body.supportEmail !== 'string') {
+      return NextResponse.json({ success: false, error: 'supportEmail is required' }, { status: 400 });
     }
 
     const settings = await PlatformSettings.findOneAndUpdate(
       {},
-      { $set: update },
+      { $set: { supportEmail: body.supportEmail } },
       { upsert: true, new: true, setDefaultsOnInsert: true }
-    ).lean();
+    ).select('supportEmail').lean();
 
-    return NextResponse.json({ success: true, data: settings });
+    return NextResponse.json({ success: true, data: { supportEmail: settings?.supportEmail || '' } });
   } catch (error: any) {
     console.error('Settings PATCH Error:', error);
     return NextResponse.json(

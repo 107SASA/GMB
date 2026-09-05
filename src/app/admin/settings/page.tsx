@@ -2,50 +2,14 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { SlidersHorizontal, AlertTriangle, Trash2, FileX, Check } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 interface Settings {
-  platformName: string;
   supportEmail: string;
-  maxAuditsPerBusiness: number;
-  maxPostsPerMonth: number;
-  maxWhatsAppMessagesPerDay: number;
-  maintenanceMode: boolean;
-  defaultTrialDays: number;
-  reviewRequestCooldownDays: number;
 }
 
 const DEFAULT_SETTINGS: Settings = {
-  platformName:              'GrowwMatics AI',
-  supportEmail:              '',
-  maxAuditsPerBusiness:      10,
-  maxPostsPerMonth:          50,
-  maxWhatsAppMessagesPerDay: 100,
-  maintenanceMode:           false,
-  defaultTrialDays:          14,
-  reviewRequestCooldownDays: 30,
+  supportEmail: '',
 };
-
-// ── Toggle switch ─────────────────────────────────────────────────────────────
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className={cn(
-        'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none',
-        checked ? 'bg-error' : 'bg-surface-container-high'
-      )}
-    >
-      <span
-        className={cn(
-          'inline-block h-4 w-4 transform rounded-full bg-surface-container-lowest shadow transition-transform',
-          checked ? 'translate-x-6' : 'translate-x-1'
-        )}
-      />
-    </button>
-  );
-}
 
 // ── Danger action modal ───────────────────────────────────────────────────────
 function DangerModal({
@@ -229,16 +193,6 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Maintenance banner */}
-      {settings.maintenanceMode && (
-        <div className="mb-6 flex items-center gap-3 px-5 py-4 bg-error-container border border-error-container rounded-xl">
-          <AlertTriangle className="w-5 h-5 text-error shrink-0" />
-          <p className="text-sm font-bold text-on-error-container">
-            Maintenance mode is ON — all client dashboards are currently showing a maintenance banner.
-          </p>
-        </div>
-      )}
-
       {error && (
         <div className="mb-6 px-4 py-3 bg-error-container border border-error-container rounded-xl text-sm text-on-error-container font-medium">
           {error}
@@ -248,19 +202,17 @@ export default function SettingsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* ── Platform Config ──────────────────────────────────────────────── */}
+        {/* Trimmed to just Support Email (Sep 2026 dead-code sweep) — this
+            card used to also cover Platform Name, Default Trial Days, and a
+            whole Usage Limits section (audits/posts/WhatsApp/cooldown) plus
+            a Maintenance Mode toggle. None of those were ever read anywhere
+            else in the app — editing them here did nothing. Real usage
+            limits live in Admin → Customers' plan-limits editor (PlanConfig),
+            not here. */}
         <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
           <h2 className="text-base font-bold text-on-surface mb-6">Platform Config</h2>
 
           <div className="space-y-5">
-            <Field label="Platform Name">
-              <input
-                type="text"
-                value={settings.platformName}
-                onChange={e => setSettings(s => ({ ...s, platformName: e.target.value }))}
-                className="w-full px-4 py-2.5 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-              />
-            </Field>
-
             <Field label="Support Email" hint="Used on the Support page as a mailto link">
               <input
                 type="email"
@@ -270,72 +222,6 @@ export default function SettingsPage() {
                 className="w-full px-4 py-2.5 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
               />
             </Field>
-
-            <Field label="Default Trial Days" hint="Days of free trial for new signups">
-              <input
-                type="number"
-                min={1}
-                max={90}
-                value={settings.defaultTrialDays}
-                onChange={e => setSettings(s => ({ ...s, defaultTrialDays: Number(e.target.value) }))}
-                className="w-full px-4 py-2.5 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-              />
-            </Field>
-
-            <div className="border-t border-outline-variant pt-5">
-              <p className="text-label-sm text-on-surface-variant mb-4">Usage Limits</p>
-              <div className="space-y-4">
-                <Field label="Max Audits per Business">
-                  <input
-                    type="number"
-                    min={1}
-                    value={settings.maxAuditsPerBusiness}
-                    onChange={e => setSettings(s => ({ ...s, maxAuditsPerBusiness: Number(e.target.value) }))}
-                    className="w-full px-4 py-2.5 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                  />
-                </Field>
-                <Field label="Max Posts per Month">
-                  <input
-                    type="number"
-                    min={1}
-                    value={settings.maxPostsPerMonth}
-                    onChange={e => setSettings(s => ({ ...s, maxPostsPerMonth: Number(e.target.value) }))}
-                    className="w-full px-4 py-2.5 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                  />
-                </Field>
-                <Field label="Max WhatsApp Messages / Day">
-                  <input
-                    type="number"
-                    min={1}
-                    value={settings.maxWhatsAppMessagesPerDay}
-                    onChange={e => setSettings(s => ({ ...s, maxWhatsAppMessagesPerDay: Number(e.target.value) }))}
-                    className="w-full px-4 py-2.5 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                  />
-                </Field>
-                <Field label="Review Request Cooldown (days)" hint="Minimum days between requests to the same customer">
-                  <input
-                    type="number"
-                    min={1}
-                    value={settings.reviewRequestCooldownDays}
-                    onChange={e => setSettings(s => ({ ...s, reviewRequestCooldownDays: Number(e.target.value) }))}
-                    className="w-full px-4 py-2.5 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                  />
-                </Field>
-              </div>
-            </div>
-
-            <div className="border-t border-outline-variant pt-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-on-surface">Maintenance Mode</p>
-                  <p className="text-xs text-outline mt-0.5">Shows a maintenance banner to all non-admin users</p>
-                </div>
-                <Toggle
-                  checked={settings.maintenanceMode}
-                  onChange={v => setSettings(s => ({ ...s, maintenanceMode: v }))}
-                />
-              </div>
-            </div>
           </div>
 
           {/* Save button */}

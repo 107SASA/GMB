@@ -31,6 +31,18 @@ export async function POST(req: Request) {
     const source = ALLOWED_SOURCES.includes(data.source) ? data.source : 'Manual';
     const name = typeof data.name === 'string' && data.name.trim() ? data.name.trim() : phone;
 
+    // Optional — validated here (not just trusted from the client) since
+    // it's a plain number field with no dropdown to constrain it. Same rule
+    // as the web Add Lead form's /api/crm/leads.
+    let valuation: number | undefined;
+    if (data.valuation !== undefined && data.valuation !== null && data.valuation !== '') {
+      const n = Number(data.valuation);
+      if (!Number.isFinite(n) || n < 0) {
+        return NextResponse.json({ error: 'Valuation must be a non-negative number.' }, { status: 400 });
+      }
+      valuation = n;
+    }
+
     await dbConnect();
     const businessObjId = new mongoose.Types.ObjectId(ctx.businessId);
 
@@ -56,6 +68,7 @@ export async function POST(req: Request) {
       source,
       pipelineStage: null,
       lifeCycleStage: 'initial',
+      valuation,
     });
 
     await inngest.send({

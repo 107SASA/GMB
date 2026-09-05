@@ -45,6 +45,19 @@ export async function POST(req: Request) {
     if (!gate.ok) return gate.response;
 
     const data = await req.json();
+
+    // Optional — the Add Lead form only sends this when the owner actually
+    // typed something. Validated here (not just trusted from the client)
+    // since it's a plain number field with no dropdown to constrain it.
+    let valuation: number | undefined;
+    if (data.valuation !== undefined && data.valuation !== null && data.valuation !== '') {
+      const n = Number(data.valuation);
+      if (!Number.isFinite(n) || n < 0) {
+        return NextResponse.json({ error: 'Valuation must be a non-negative number.' }, { status: 400 });
+      }
+      valuation = n;
+    }
+
     await dbConnect();
 
     const lead = await Lead.create({
@@ -59,6 +72,7 @@ export async function POST(req: Request) {
       notes: data.notes,
       interest: data.interest,
       lifeCycleStage: data.lifeCycleStage || 'initial',
+      valuation,
     });
 
     await inngest.send({

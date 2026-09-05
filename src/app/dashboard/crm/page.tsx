@@ -15,12 +15,14 @@ import { useBusiness } from '@/context/BusinessContext';
 
 type ViewMode = 'list' | 'kanban' | 'analytics' | 'stages';
 
-const SOURCES = ['Google Business Profile', 'WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral'] as const;
-
 // ─── Add Lead Modal ───────────────────────────────────────────────────────────
 
 function AddLeadModal({ onClose, onCreated }: { onClose: () => void; onCreated: (lead: any) => void }) {
-  const [form, setForm] = useState({ name: '', phone: '', email: '', source: 'Manual', interest: '', notes: '', lifeCycleStage: 'initial' });
+  // Trimmed to Name/Phone/Valuation/Notes (owner's explicit choice) — Email,
+  // Source and Stage still exist on the Lead model and stay editable from
+  // the lead drawer afterward; the API defaults source to 'Manual' and
+  // lifeCycleStage to 'initial' when this form doesn't send them.
+  const [form, setForm] = useState({ name: '', phone: '', valuation: '', notes: '' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const firstInputRef = useRef<HTMLInputElement>(null);
@@ -38,7 +40,7 @@ function AddLeadModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
       const res = await fetch('/api/crm/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, valuation: form.valuation.trim() || undefined }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Failed to create lead.'); return; }
@@ -86,45 +88,14 @@ function AddLeadModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Email</label>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Valuation (₹)</label>
               <input
-                type="email"
-                value={form.email}
-                onChange={e => set('email', e.target.value)}
-                placeholder="jane@example.com"
-                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Source <span className="text-error">*</span></label>
-              <select
-                value={form.source}
-                onChange={e => set('source', e.target.value)}
-                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-surface-container-lowest"
-              >
-                {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Stage</label>
-              <select
-                value={form.lifeCycleStage}
-                onChange={e => set('lifeCycleStage', e.target.value)}
-                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-surface-container-lowest"
-              >
-                <option value="initial">Initial</option>
-                <option value="active">Active</option>
-                <option value="closed">Closed</option>
-                <option value="converted">Converted</option>
-              </select>
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Interest</label>
-              <input
-                type="text"
-                value={form.interest}
-                onChange={e => set('interest', e.target.value)}
-                placeholder="What is this lead interested in?"
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={form.valuation}
+                onChange={e => set('valuation', e.target.value)}
+                placeholder="e.g. 50000"
                 className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               />
             </div>

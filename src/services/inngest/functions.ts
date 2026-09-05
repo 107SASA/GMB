@@ -828,6 +828,8 @@ export const processContentJob = inngest.createFunction(
 
       const createdScheduled = await step.run(`generate-and-save-buffer`, async () => {
         const { default: Post } = await import("@/models/Post");
+        const { generateThumbnail } = await import("@/services/ai/imageGenerator");
+        const { isStorageConfigured, rehostImageFromUrl } = await import("@/lib/storage");
 
         const aiResponse = await generateAIContent({
           businessName: business.name || 'Local Business',
@@ -854,6 +856,33 @@ export const processContentJob = inngest.createFunction(
            nextDate.setDate(nextDate.getDate() + daySpacing);
            lastScheduledDate = nextDate;
 
+           // Thumbnail — best-effort, same generate→watermark→rehost sequence
+           // the manual /api/content/generate route already uses. Failure
+           // here (missing prompt, API error, rehost failure) must never
+           // block the post itself from being created and scheduled — a
+           // text-only post is still far better than none. Done inline
+           // (not deferred like that route's `after()`) since this already
+           // runs as a background Inngest step, not a request that needs to
+           // answer a browser within a gateway timeout.
+           let imageUrl: string | undefined;
+           if (generatedPost.thumbnailPrompt) {
+             try {
+               const generated = await generateThumbnail(generatedPost.thumbnailPrompt);
+               if (generated) {
+                 // Gemini/NanoBanana return a base64 data-URL or a third-party
+                 // hosted URL — Google Business Profile's publish API can only
+                 // fetch a real, ours-to-keep HTTPS URL, so re-host to Spaces
+                 // when configured. Falls back to the raw result otherwise
+                 // (fine for in-app preview; publish may not carry the image).
+                 imageUrl = isStorageConfigured()
+                   ? await rehostImageFromUrl(generated, `post-thumbnails/${business._id}`)
+                   : generated;
+               }
+             } catch (e: any) {
+               console.error(`[processContentJob] thumbnail generation failed for businessId=${business._id}:`, e?.message);
+             }
+           }
+
            const newPost = await Post.create({
              tenantId,
              title: generatedPost.title,
@@ -861,6 +890,7 @@ export const processContentJob = inngest.createFunction(
              postType: generatedPost.postType,
              cta: generatedPost.cta,
              hashtags: generatedPost.hashtags,
+             imageUrl,
              status: "scheduled",
              platform: "gmb",
              aiGenerated: true,

@@ -46,7 +46,10 @@ const MENU: { section: string; items: MenuItem[] }[] = [
     items: [
       // Leads (now "CRM") moved onto the bottom tab bar (Sep 2026) —
       // dropped from here so it isn't listed in two places.
-      { label: 'Inbox', icon: 'chatbubbles', href: '/inbox', tint: 'emerald', surface: 'inbox' },
+      // Inbox removed from here too (owner's explicit call, Sep 2026) — the
+      // route itself is untouched and still reachable via deep links (the
+      // lead detail screen's "Inbox" quick action, push notifications for
+      // new messages), just no longer a standalone nav entry.
       { label: 'WhatsApp AI Agent', icon: 'logo-whatsapp', href: '/whatsapp', tint: 'emerald', superAdminOnly: true },
     ],
   },
@@ -65,9 +68,10 @@ const MENU: { section: string; items: MenuItem[] }[] = [
 // Media/CRM) is intentionally routed through here for now — Aug 2026,
 // per an explicit ask to park everything under More rather than deciding
 // per-screen whether it stays in the app. Audit/Business Profile/Content
-// Generator/Content Scheduler/Inbox/WhatsApp AI Agent/Settings/
-// Billing/Profile/Notifications are all listed above; nothing hidden is
-// currently unreachable. Revisit this list once that decision is made.
+// Generator/Content Scheduler/WhatsApp AI Agent/Settings/Billing/Profile/
+// Notifications are all listed above. Inbox is deliberately NOT listed
+// (Sep 2026, owner's call) — reachable only via deep links now, not a nav
+// entry. Nothing else hidden is currently unreachable.
 
 function MenuRow({ item, locked }: { item: MenuItem; locked: boolean }) {
   const router = useRouter();

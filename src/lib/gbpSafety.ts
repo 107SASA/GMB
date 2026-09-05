@@ -7,45 +7,27 @@
  * Google Business Profile. Until we have tested the full flow end-to-end on our
  * own test account, no code path is allowed to write to a live profile.
  *
- * Today every "publish"/"post reply" path is intentionally a mock (it only
- * updates our own database and never calls Google). This flag guarantees it
- * STAYS that way: any future code that adds a real Google write MUST call
- * `assertGbpWritesAllowed()` first, so it is impossible to ship live posting by
- * accident. Flipping the single env var `GBP_LIVE_WRITES_ENABLED=true` is the
- * only way to enable real writes — and we will only do that after testing.
+ * Today every real Google-write call site (a local post, a review reply, a
+ * profile edit, media upload) branches on `gbpWritesEnabled()` and falls back
+ * to a mock/log-only path when it's false — see lib/gbpClient.ts,
+ * lib/gbpMediaService.ts, services/reviews/postReply.ts, and the scheduler/
+ * publish routes for the actual call sites. Flipping the single env var
+ * `GBP_LIVE_WRITES_ENABLED=true` is the only way to enable real writes — and
+ * we will only do that after testing.
+ *
+ * (Sep 2026: this file used to also export a throwing `assertGbpWritesAllowed()`
+ * as "the" required guard, but no call site ever actually used it — every real
+ * one used `gbpWritesEnabled()` instead. Removed rather than left as
+ * documentation for a pattern the code doesn't follow.)
  */
 
 export const GBP_LIVE_WRITES_ENABLED =
   process.env.GBP_LIVE_WRITES_ENABLED === 'true';
 
-export class GbpWriteBlockedError extends Error {
-  constructor(action: string) {
-    super(
-      `Live GBP write blocked: "${action}". Writing to real Google Business ` +
-        `Profiles is disabled. Set GBP_LIVE_WRITES_ENABLED=true only after the ` +
-        `flow has been verified on a test account.`
-    );
-    this.name = 'GbpWriteBlockedError';
-  }
-}
-
 /**
- * Call this immediately before any code that pushes content to a real Google
- * Business Profile (a local post, a review reply, a profile edit, media upload,
- * etc.). Throws unless live writes have been explicitly enabled.
- *
- * @param action short human label of what is being attempted, e.g.
- *               "publish-post" or "post-review-reply". Used in the error/log.
- */
-export function assertGbpWritesAllowed(action: string): void {
-  if (!GBP_LIVE_WRITES_ENABLED) {
-    throw new GbpWriteBlockedError(action);
-  }
-}
-
-/**
- * Non-throwing variant for mock code paths: returns true only when real writes
- * are enabled. Use it to branch between "real Google call" and "mock/log only".
+ * Returns true only when real Google writes are enabled. Branch on this
+ * before any code that would push content to a real Google Business Profile;
+ * fall back to a mock/log-only path when it's false.
  */
 export function gbpWritesEnabled(): boolean {
   return GBP_LIVE_WRITES_ENABLED;

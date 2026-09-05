@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { inngest } from '@/services/inngest/client';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 import { checkRateLimit, getRateLimitConfig } from '@/lib/rateLimit';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
@@ -14,6 +15,13 @@ export async function POST(req: Request) {
 
     const ctx = await requireBusinessContext({ businessIdFromBody: businessId });
     if (!ctx.ok) return ctx.response;
+    // ADDITIVE (Sep 2026) — content_studio was never actually enforced
+    // server-side; see lib/moduleGating.ts. This is the manual "Generate
+    // Now" button only — the autopilot cron dispatches its own Inngest
+    // event directly and never goes through this HTTP route, so it's
+    // unaffected by this gate.
+    const gate = await requireModule(ctx.userId, 'content_studio');
+    if (!gate.ok) return gate.response;
 
     const rl = checkRateLimit(`scheduler-generate:${ctx.userId}`, RATE_LIMIT, RATE_WINDOW_MS);
     if (!rl.allowed) {

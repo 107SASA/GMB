@@ -58,22 +58,37 @@ export async function bookAppointment(
 
   const scheduledAt = zonedTimeToUtc(input.date, input.time, input.timezone);
 
-  const appointment = await WhatsAppAppointment.create({
-    tenantId: input.tenantId,
-    businessId: input.businessId,
-    leadId: input.leadId,
-    customerId: input.customerId,
-    customerName: input.customerName,
-    phone: input.phone,
-    email: input.email || undefined,
-    serviceRequested: input.serviceRequested || undefined,
-    date: input.date,
-    time: input.time,
-    scheduledAt,
-    status: 'Confirmed',
-    source: input.source || 'WhatsApp AI Agent',
-    history: [{ action: 'created', newDate: input.date, newTime: input.time, at: new Date() }],
-  });
+  // isSlotTaken() above is a fast path, not the real guard — it has a
+  // TOCTOU gap (two near-simultaneous booking requests for the same open
+  // slot can both pass it before either write lands). WhatsAppAppointment's
+  // partial unique index (businessId+date+time, active statuses only) is
+  // what actually makes a second one impossible; a race that slips past
+  // the pre-check surfaces here as E11000 instead.
+  let appointment;
+  try {
+    appointment = await WhatsAppAppointment.create({
+      tenantId: input.tenantId,
+      businessId: input.businessId,
+      leadId: input.leadId,
+      customerId: input.customerId,
+      customerName: input.customerName,
+      phone: input.phone,
+      email: input.email || undefined,
+      serviceRequested: input.serviceRequested || undefined,
+      date: input.date,
+      time: input.time,
+      scheduledAt,
+      status: 'Confirmed',
+      source: input.source || 'WhatsApp AI Agent',
+      history: [{ action: 'created', newDate: input.date, newTime: input.time, at: new Date() }],
+    });
+  } catch (err: any) {
+    if (err?.code === 11000) {
+      const alternatives = suggestAlternativeSlots(config, input.date, [input.time], 3);
+      return { ok: false, reason: 'slot_taken', alternatives };
+    }
+    throw err;
+  }
 
   return { ok: true, appointment };
 }
@@ -140,7 +155,18 @@ export async function rescheduleAppointment(
     newTime,
     at: new Date(),
   } as any);
-  await appt.save();
+
+  // Same TOCTOU gap as bookAppointment() above — isSlotTaken() is a fast
+  // path, the unique index is the real guard; a race surfaces as E11000.
+  try {
+    await appt.save();
+  } catch (err: any) {
+    if (err?.code === 11000) {
+      const alternatives = suggestAlternativeSlots(config, newDate, [newTime], 3);
+      return { ok: false, reason: 'slot_taken', alternatives };
+    }
+    throw err;
+  }
 
   return { ok: true, appointment: appt };
 }

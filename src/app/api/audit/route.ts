@@ -101,12 +101,15 @@ export async function POST(req: Request) {
       }
     }
 
+    // No dev-environment bypass here (removed Sep 2026) — it used to let
+    // ANY logged-in user run an audit against ANY business (burning that
+    // tenant's paid SerpApi/AI quota) on the shared dev/QA deployment real
+    // testers use, since NODE_ENV there is never 'production'.
     const isOwner = business.userId?.toString() === authResult.userId;
     const isOrgMember = authResult.user.organizationId && business.organizationId?.toString() === authResult.user.organizationId?.toString();
     const isSuperAdmin = authResult.user.role === 'SUPER_ADMIN';
-    const isDev = process.env.NODE_ENV !== 'production';
 
-    if (!isOwner && !isOrgMember && !isSuperAdmin && !isDev) {
+    if (!isOwner && !isOrgMember && !isSuperAdmin) {
       console.warn(`[AUTH FAILED] User ${authResult.userId} tried to access Business ${businessId}. Business UserId: ${business.userId}, OrgId: ${business.organizationId}`);
       return NextResponse.json({ error: 'Unauthorized to access this business' }, { status: 403 });
     }

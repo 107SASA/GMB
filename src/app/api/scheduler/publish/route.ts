@@ -4,6 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
 import AutomationLog from '@/models/AutomationLog';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 import { createLocalPost } from '@/lib/gbpClient';
 import mongoose from 'mongoose';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
@@ -17,6 +18,10 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    // ADDITIVE (Sep 2026) — content_studio was never actually enforced
+    // server-side; see lib/moduleGating.ts.
+    const gate = await requireModule(ctx.userId, 'content_studio');
+    if (!gate.ok) return gate.response;
 
     const body = await req.json();
     const parsed = publishSchema.safeParse(body);

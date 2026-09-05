@@ -3,6 +3,7 @@ import { z } from 'zod';
 import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 import mongoose from 'mongoose';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import { inngest } from '@/services/inngest/client';
@@ -16,6 +17,10 @@ export async function GET(
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    // ADDITIVE (Sep 2026) — content_studio was never actually enforced
+    // server-side; see lib/moduleGating.ts.
+    const gate = await requireModule(ctx.userId, 'content_studio');
+    if (!gate.ok) return gate.response;
 
     const { id } = await params;
     await dbConnect();
@@ -43,6 +48,10 @@ export async function DELETE(
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    // ADDITIVE (Sep 2026) — content_studio was never actually enforced
+    // server-side; see lib/moduleGating.ts.
+    const gate = await requireModule(ctx.userId, 'content_studio');
+    if (!gate.ok) return gate.response;
 
     const { id } = await params;
     await dbConnect();
@@ -91,6 +100,10 @@ export async function PATCH(
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    // ADDITIVE (Sep 2026) — content_studio was never actually enforced
+    // server-side; see lib/moduleGating.ts.
+    const gate = await requireModule(ctx.userId, 'content_studio');
+    if (!gate.ok) return gate.response;
 
     const { id } = await params;
 

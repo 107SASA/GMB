@@ -1,9 +1,8 @@
 export const runtime = 'nodejs';
 
-import { requireClient } from '@/lib/auth';
 import dbConnect from '@/lib/mongodb';
-import Audit from '@/models/Audit';
 import Business from '@/models/Business';
+import { requireAuditAccess } from '@/lib/tenant';
 
 function buildStaticMapUrl(
   centerLat: number,
@@ -51,33 +50,23 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireClient();
-  if (!auth.ok) {
-    console.error('[geo-map] Auth failed');
-    return auth.response;
-  }
-
   const { id } = await params;
   const { searchParams } = new URL(request.url);
   const kwIndex = Math.max(0, parseInt(searchParams.get('kwIndex') ?? '0', 10));
 
+  // Single source of truth for "is this caller allowed to view this audit"
+  // (owner, org-mate, or SUPER_ADMIN) — no dev-environment bypass; see
+  // lib/tenant.ts. Previously this route only allowed owner-or-superadmin,
+  // missing the org-member case audit/[id]/route.ts already allowed, so an
+  // org-mate could see an audit's data but not its geo-map image.
+  const ctx = await requireAuditAccess(id);
+  if (!ctx.ok) {
+    console.error(`[geo-map] Access denied for audit ${id}`);
+    return new Response(ctx.response.status === 404 ? 'Not found' : 'Forbidden', { status: ctx.response.status });
+  }
+  const audit = ctx.audit;
+
   await dbConnect();
-
-  const audit = await Audit.findById(id).lean() as any;
-  if (!audit) {
-    console.error(`[geo-map] Audit not found: ${id}`);
-    return new Response('Not found', { status: 404 });
-  }
-
-  const isOwner =
-    String(audit.userId) === String(auth.userId) ||
-    (auth.user as any)?.role === 'SUPER_ADMIN' ||
-    process.env.NODE_ENV !== 'production';
-
-  if (!isOwner) {
-    console.error(`[geo-map] Forbidden: userId=${auth.userId} auditUserId=${audit.userId}`);
-    return new Response('Forbidden', { status: 403 });
-  }
 
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
   if (!apiKey) {

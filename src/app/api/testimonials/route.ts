@@ -18,6 +18,16 @@ export async function POST(req: Request) {
   if (!ctx.ok) return ctx.response;
 
   try {
+    // One-time-only (owner's explicit call, Sep 2026) — a business gets
+    // exactly one review submission. A prior 'rejected' one doesn't count
+    // against this; only a still-pending or already-approved one blocks a
+    // resubmit, matching /api/success-stories/status's own definition of
+    // "done" so the two can never disagree.
+    const already = await Testimonial.exists({ businessId: ctx.businessId, status: { $ne: 'rejected' } });
+    if (already) {
+      return NextResponse.json({ success: false, error: 'You have already submitted a review.' }, { status: 409 });
+    }
+
     const body = await req.json();
     const reviewerName = typeof body.reviewerName === 'string' ? body.reviewerName.trim() : '';
     const reviewText = typeof body.reviewText === 'string' ? body.reviewText.trim() : '';
@@ -34,15 +44,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Review text is required.' }, { status: 400 });
     }
 
-    const testimonial = await Testimonial.create({
-      businessId: ctx.businessId,
-      addedBy: ctx.userId,
-      reviewerName,
-      rating,
-      reviewText,
-      photoUrl,
-      status: 'pending',
-    });
+    let testimonial;
+    try {
+      testimonial = await Testimonial.create({
+        businessId: ctx.businessId,
+        addedBy: ctx.userId,
+        reviewerName,
+        rating,
+        reviewText,
+        photoUrl,
+        status: 'pending',
+      });
+    } catch (err: any) {
+      // The exists() pre-check above is a fast path, not the real guard — it
+      // has a TOCTOU gap (a double-tap/retry can both pass it before either
+      // create() lands). TestimonialSchema's partial unique index on
+      // businessId is what actually makes a second one impossible; a race
+      // that slips past the pre-check surfaces here as E11000 instead.
+      if (err?.code === 11000) {
+        return NextResponse.json({ success: false, error: 'You have already submitted a review.' }, { status: 409 });
+      }
+      throw err;
+    }
 
     return NextResponse.json({ success: true, testimonial }, { status: 201 });
   } catch (err: any) {

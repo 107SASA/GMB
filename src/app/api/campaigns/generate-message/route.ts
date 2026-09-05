@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 import { GROQ_MODEL } from '@/lib/aiModel';
 
 const TYPE_INSTRUCTIONS: Record<string, string> = {
@@ -18,6 +19,10 @@ const TYPE_INSTRUCTIONS: Record<string, string> = {
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // ADDITIVE (Sep 2026) — marketing_automation was never actually enforced
+  // server-side; see lib/moduleGating.ts.
+  const gate = await requireModule(ctx.userId, 'marketing_automation');
+  if (!gate.ok) return gate.response;
 
   try {
     const { type = 'initial', tone = 'Friendly' } = await req.json();

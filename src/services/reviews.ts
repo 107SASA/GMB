@@ -29,10 +29,19 @@ export async function processNewReviews(businessId: string) {
     let criticalDetails: { rating: number; reviewId: string } | null = null;
     const errors: string[] = [];
 
+    // Already-stored check, batched: one query for the whole fetched page
+    // instead of one per review (this runs on a schedule, so it was
+    // recurring waste, not one-off — a page of 50 reviews meant 50
+    // sequential existence checks on every monitor run).
+    const alreadyStored = new Set(
+      (await Review.find({
+        providerReviewId: { $in: fetchedReviews.map((r) => r.providerReviewId) },
+      }).select('providerReviewId').lean()).map((r: any) => r.providerReviewId)
+    );
+
     for (const raw of fetchedReviews) {
       // Already stored by a previous monitor run or campaign sync
-      const existing = await Review.findOne({ providerReviewId: raw.providerReviewId });
-      if (existing) continue;
+      if (alreadyStored.has(raw.providerReviewId)) continue;
 
       newReviewsDetected++;
       try {

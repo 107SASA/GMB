@@ -38,11 +38,17 @@ export async function GET() {
     const startOfMonth = new Date(`${month}-01T00:00:00.000Z`);
     const endOfMonth = new Date(startOfMonth);
     endOfMonth.setUTCMonth(endOfMonth.getUTCMonth() + 1);
+    // whatsappMessagesUsed is bucketed by DAY, not month (see the matching
+    // comment in lib/featureGating.ts) — maxWhatsAppMessagesPerDay is a
+    // daily cap, so this reads the same day-keyed document that check/
+    // incrementUsage actually write to, not the month-keyed one below.
+    const day = new Date().toISOString().slice(0, 10);
 
-    const [user, override, subUsage, aiCount] = await Promise.all([
+    const [user, override, subUsage, whatsappUsage, aiCount] = await Promise.all([
       User.findById(ctx.userId).select('subscriptionPlan fullName email').lean() as any,
       UserLimitOverride.findOne({ userId: ctx.userId }).lean() as any,
       SubscriptionUsage.findOne({ businessId: ctx.businessId, month }).lean() as any,
+      SubscriptionUsage.findOne({ businessId: ctx.businessId, month: day }).select('whatsappMessagesUsed').lean() as any,
       AIUsageLog.countDocuments({
         userId: ctx.userId,
         status: 'success',
@@ -78,7 +84,7 @@ export async function GET() {
     const usage = {
       auditsUsed:         subUsage?.auditsUsed            ?? 0,
       postsUsed,
-      whatsappUsed:       subUsage?.whatsappMessagesUsed  ?? 0,
+      whatsappUsed:       whatsappUsage?.whatsappMessagesUsed ?? 0,
       aiGenerationsUsed:  aiCount,
     };
 

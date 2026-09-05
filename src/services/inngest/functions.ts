@@ -826,6 +826,25 @@ export const processContentJob = inngest.createFunction(
         return { skipped: true, reason: 'missing organizationId' };
       }
 
+      // ADDITIVE (Sep 2026) — maxPostsPerMonth was configurable in the admin
+      // UI and shown to customers as a real cap, but nothing ever enforced
+      // or counted it (checkUsageLimit/incrementUsage were only ever called
+      // with 'audits'/'aiGenerations'). Checked here (this Post.create loop
+      // is the one place both autopilot and the manual "Generate Now"/
+      // "Generate extra batch now" button funnel through) against a full
+      // batch (POSTS_PER_WEEK) so a business only just under its cap isn't
+      // let through to generate a batch it can't fully use.
+      const { checkUsageLimit, incrementUsage } = await import("@/lib/featureGating");
+      const { POSTS_PER_WEEK } = await import("@/lib/contentConfig");
+      if (business.userId) {
+        const usage = await step.run("check-post-quota", () =>
+          checkUsageLimit(business.userId!.toString(), business._id.toString(), 'posts', POSTS_PER_WEEK)
+        );
+        if (!usage.allowed) {
+          return { skipped: true, reason: 'posts-per-month limit reached' };
+        }
+      }
+
       const createdScheduled = await step.run(`generate-and-save-buffer`, async () => {
         const { default: Post } = await import("@/models/Post");
         const { generateThumbnail } = await import("@/services/ai/imageGenerator");
@@ -916,6 +935,8 @@ export const processContentJob = inngest.createFunction(
       });
 
       if (createdScheduled.length > 0) {
+        await step.run("increment-post-usage", () => incrementUsage(business._id, 'posts', createdScheduled.length));
+
         await step.sendEvent(
           "dispatch-buffer-scheduled-posts",
           createdScheduled.map((p) => ({
@@ -991,11 +1012,30 @@ async function sendReviewRequest(
   businessId: string,
   vars: { name: string; business: string; placeId: string }
 ): Promise<{ success: boolean; error?: string; sid?: string }> {
+  // ADDITIVE (Sep 2026) — maxWhatsAppMessagesPerDay was configurable in the
+  // admin UI and shown to customers as a real cap, but nothing ever enforced
+  // or counted it. Checked/incremented here since every review-campaign
+  // send (initial + both reminders) funnels through this one function —
+  // see the matching comment on the 'whatsappMessages' case in
+  // lib/featureGating.ts for why this is bucketed by day, not month.
+  const { checkUsageLimit, incrementUsage } = await import('@/lib/featureGating');
+  const { default: BusinessModel } = await import('@/models/Business');
+  const business = await BusinessModel.findById(businessId).select('userId').lean() as any;
+  if (business?.userId) {
+    const usage = await checkUsageLimit(business.userId.toString(), businessId, 'whatsappMessages');
+    if (!usage.allowed) {
+      return { success: false, error: usage.reason || 'Daily WhatsApp message limit reached.' };
+    }
+  }
+
   const { sendOutboundMessage: sendViaTwilio, sendTemplateMessage } = await import('@/services/twilio/client');
   const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
 
   const result = await sendViaTwilio(phone, freeTextMsg, undefined, businessId);
-  if (result.success) return result;
+  if (result.success) {
+    if (business?.userId) await incrementUsage(businessId, 'whatsappMessages');
+    return result;
+  }
 
   if (result.outsideWindow && result.isPlatformDefault && vars.placeId && WA_TEMPLATES.reviewRequest) {
     const retry = await sendTemplateMessage(phone, WA_TEMPLATES.reviewRequest, {
@@ -1003,7 +1043,10 @@ async function sendReviewRequest(
       '2': vars.business,
       '3': vars.placeId,
     }, businessId);
-    if (retry.success) return retry;
+    if (retry.success) {
+      if (business?.userId) await incrementUsage(businessId, 'whatsappMessages');
+      return retry;
+    }
     return { success: false, error: `${result.error} (review-template fallback also failed: ${retry.error})` };
   }
 

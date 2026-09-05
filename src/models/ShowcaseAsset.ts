@@ -62,6 +62,21 @@ const ShowcaseAssetSchema: Schema = new Schema(
 ShowcaseAssetSchema.index({ status: 1, createdAt: -1 });
 // Dashboard "my uploads" list.
 ShowcaseAssetSchema.index({ businessId: 1, createdAt: -1 });
+// Enforces "one video per business, ever" (see /api/showcase/upload POST)
+// at the DB level — the route's own exists()-then-create() check is
+// TOCTOU-racy on its own (a double-tap or client retry can fire two POSTs
+// that both pass the pre-check before either create() lands); this partial
+// unique index is what actually makes a second non-rejected video
+// impossible, with the route catching the resulting E11000 as the same
+// "already submitted" response. A rejected one doesn't count, so the
+// business can still submit again after a rejection. Scoped to
+// mediaType:'video' only — photo upload is no longer offered going
+// forward, but this must never block a business's older, pre-existing
+// approved photo(s) from coexisting alongside its one video.
+ShowcaseAssetSchema.index(
+  { businessId: 1 },
+  { unique: true, partialFilterExpression: { mediaType: 'video', status: { $in: ['pending', 'approved'] } } }
+);
 
 export default mongoose.models.ShowcaseAsset ||
   mongoose.model<IShowcaseAsset>('ShowcaseAsset', ShowcaseAssetSchema);

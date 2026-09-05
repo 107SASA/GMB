@@ -1,36 +1,20 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import Audit from '@/models/Audit';
-import { requireClient } from '@/lib/auth';
+import { requireAuditAccess } from '@/lib/tenant';
 
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ id: string }> } // In Next.js 15, params in Route Handlers should be awaited if we follow the latest conventions or they are sync. Actually, in Next.js 15, `params` is a Promise and needs to be awaited.
+  { params }: { params: Promise<{ id: string }> } // In Next.js 15, params is a Promise and needs to be awaited.
 ) {
   try {
-    const authResult = await requireClient();
-    if (!authResult.ok) return authResult.response;
-
     const { id } = await params;
-    await dbConnect();
 
-    const audit = await Audit.findById(id);
+    // Single source of truth for "is this caller allowed to view this
+    // audit" (owner, org-mate, or SUPER_ADMIN) — no dev-environment bypass;
+    // see lib/tenant.ts.
+    const ctx = await requireAuditAccess(id);
+    if (!ctx.ok) return ctx.response;
 
-    if (!audit) {
-      return NextResponse.json({ error: 'Audit not found' }, { status: 404 });
-    }
-
-    const isOwner = audit.userId === authResult.userId;
-    const isOrgMember =
-      !!authResult.user.organizationId &&
-      audit.organizationId === authResult.user.organizationId.toString();
-    const isSuperAdmin = authResult.user.role === 'SUPER_ADMIN';
-
-    if (!isOwner && !isOrgMember && !isSuperAdmin) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    return NextResponse.json({ success: true, audit }, { status: 200 });
+    return NextResponse.json({ success: true, audit: ctx.audit }, { status: 200 });
   } catch (error) {
     console.error('Failed to fetch audit:', error);
     return NextResponse.json({ error: 'Something went wrong on our end. Please try again, and contact support if this keeps happening.' }, { status: 500 });

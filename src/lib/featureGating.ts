@@ -82,6 +82,7 @@ export async function checkUsageLimit(
 
   const limits = await resolveUserLimits(userId, planName);
   const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
   let limit = -1;
   let currentUsage = 0;
@@ -119,8 +120,15 @@ export async function checkUsageLimit(
       break;
     }
     case 'whatsappMessages': {
+      // maxWhatsAppMessagesPerDay is, per its own name, a DAILY cap — but
+      // this used to read the same month-bucketed SubscriptionUsage
+      // document `posts`/`audits` use, so a business would blow through a
+      // "per day" limit's worth of cumulative sends within the first
+      // day or two of any month and then read as permanently over-limit for
+      // the rest of it. Bucketed by day (see incrementUsage below) instead,
+      // same fix shape as `posts`' own weekly-vs-monthly special case above.
       limit = limits.maxWhatsAppMessagesPerDay;
-      const usage = await SubscriptionUsage.findOne({ businessId, month }).lean() as any;
+      const usage = await SubscriptionUsage.findOne({ businessId, month: day }).lean() as any;
       currentUsage = usage?.whatsappMessagesUsed ?? 0;
       break;
     }
@@ -148,7 +156,14 @@ export async function incrementUsage(
   metric: UsageMetric,
   amount: number = 1
 ) {
-  const month = new Date().toISOString().slice(0, 7);
+  // whatsappMessages is bucketed by DAY (see the matching comment in
+  // checkUsageLimit above) — everything else stays monthly. `month` here is
+  // just the document's bucket key, reused as a day-string for this one
+  // metric; posts/audits documents (month-keyed) and whatsapp documents
+  // (day-keyed) never collide since the key strings have different lengths.
+  const month = metric === 'whatsappMessages'
+    ? new Date().toISOString().slice(0, 10)
+    : new Date().toISOString().slice(0, 7);
 
   const updateObj: Record<string, number> = {};
   if (metric === 'posts')            updateObj.postsUsed            = amount;

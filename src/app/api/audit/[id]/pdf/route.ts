@@ -1,9 +1,7 @@
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-import { requireClient } from '@/lib/auth';
-import dbConnect from '@/lib/mongodb';
-import Audit from '@/models/Audit';
+import { requireAuditAccess } from '@/lib/tenant';
 import { launchBrowser } from '@/lib/pdf/browser';
 
 function parseCookies(header: string): Record<string, string> {
@@ -25,27 +23,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   // ── Auth ──────────────────────────────────────────────────────────────────
-  const auth = await requireClient();
-  if (!auth.ok) return auth.response;
-
+  // Single source of truth for "is this caller allowed to view this audit"
+  // (owner, org-mate, or SUPER_ADMIN) — no dev-environment bypass; see
+  // lib/tenant.ts. Previously this route only allowed owner-or-superadmin,
+  // missing the org-member case audit/[id]/route.ts already allowed, so an
+  // org-mate could see an audit's data but not download its PDF.
   const { id } = await params;
-  await dbConnect();
-
-  const audit = await Audit.findById(id).lean() as any;
-  if (!audit) {
-    const { NextResponse } = await import('next/server');
-    return NextResponse.json({ error: 'Audit not found' }, { status: 404 });
-  }
-
-  const isOwner =
-    String(audit.userId) === String(auth.userId) ||
-    (auth.user as any)?.role === 'SUPER_ADMIN' ||
-    process.env.NODE_ENV !== 'production';
-
-  if (!isOwner) {
-    const { NextResponse } = await import('next/server');
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const ctx = await requireAuditAccess(id);
+  if (!ctx.ok) return ctx.response;
+  const audit = ctx.audit;
 
   // ── Resolve base URL ──────────────────────────────────────────────────────
   // Use NEXT_PUBLIC_APP_URL if set (production), else derive from the request.
@@ -76,16 +62,17 @@ export async function GET(
     // localhost) that differs from NEXT_PUBLIC_APP_URL. When they differed the
     // cookie wasn't sent, the print page rendered its 401 "Unauthorized" body,
     // and the resulting PDF looked blank.
-    for (const name of ['session', 'activeBusinessId'] as const) {
-      if (cookies[name]) {
-        await page.setCookie({
-          name,
-          value: cookies[name],
-          url: auditPageUrl,
-          httpOnly: name === 'session',
-        });
-      }
-    }
+    // The two setCookie calls don't depend on each other — no need to await
+    // them one at a time.
+    await Promise.all((['session', 'activeBusinessId'] as const).map((name) => {
+      if (!cookies[name]) return undefined;
+      return page.setCookie({
+        name,
+        value: cookies[name],
+        url: auditPageUrl,
+        httpOnly: name === 'session',
+      });
+    }));
 
     // The print route returns server-rendered HTML with no React hydration needed.
     // 'networkidle2' ensures fonts and any static-map images are fetched before capture.

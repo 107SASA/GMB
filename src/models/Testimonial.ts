@@ -56,6 +56,18 @@ const TestimonialSchema: Schema = new Schema(
 TestimonialSchema.index({ status: 1, createdAt: -1 });
 // Dashboard "my submissions" list.
 TestimonialSchema.index({ businessId: 1, createdAt: -1 });
+// Enforces "one review per business, ever" (see /api/testimonials POST) at
+// the DB level — the route's own exists()-then-create() check is TOCTOU-
+// racy on its own (a double-tap or client retry can fire two POSTs that
+// both pass the pre-check before either create() lands); this partial
+// unique index is what actually makes a second non-rejected testimonial
+// impossible, with the route catching the resulting E11000 as the same
+// "already submitted" response. A rejected one doesn't count, so the
+// business can still submit again after a rejection.
+TestimonialSchema.index(
+  { businessId: 1 },
+  { unique: true, partialFilterExpression: { status: { $in: ['pending', 'approved'] } } }
+);
 
 export default mongoose.models.Testimonial ||
   mongoose.model<ITestimonial>('Testimonial', TestimonialSchema);

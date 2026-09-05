@@ -1,39 +1,31 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
-import { requireClient } from '@/lib/auth';
+import { requireBusinessContext } from '@/lib/tenant';
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireClient();
-    if (!auth.ok) return auth.response;
-
     const { id } = await params;
+
+    // Single source of truth for "is this caller allowed to touch this
+    // business" (owner, org member, or SUPER_ADMIN — no dev-environment
+    // bypass; see lib/tenant.ts). Previously this route re-derived the same
+    // check by hand with its own NODE_ENV!=='production' escape hatch,
+    // which meant ANY logged-in user could edit ANY business's data on the
+    // shared dev/QA deployment real testers use — removed, not replaced.
+    const ctx = await requireBusinessContext({ businessIdFromBody: id });
+    if (!ctx.ok) return ctx.response;
+
     const body = await request.json();
 
     await dbConnect();
 
-    // Verify ownership
     const business = await Business.findById(id);
     if (!business) {
       return NextResponse.json({ error: 'Business not found' }, { status: 404 });
-    }
-
-    const isOwner = business.userId?.toString() === auth.userId;
-    const isOrgMember =
-      auth.user.organizationId &&
-      business.organizationId?.toString() === auth.user.organizationId?.toString();
-    const isSuperAdmin = auth.user.role === 'SUPER_ADMIN';
-    const isDev = process.env.NODE_ENV !== 'production';
-
-    if (!isOwner && !isOrgMember && !isSuperAdmin && !isDev) {
-      console.warn(
-        `[AUTH FAILED] User ${auth.userId} tried to access Business ${id}. Business UserId: ${business.userId}, OrgId: ${business.organizationId}`
-      );
-      return NextResponse.json({ error: 'Unauthorized to modify this business' }, { status: 403 });
     }
 
     // --- Scalar fields ---

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Campaign from '@/models/Campaign';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 
 // Owner-editable campaign settings. Reminder MESSAGES are re-read by the
 // Inngest worker at send time, so edits reach in-flight sequences; DELAYS are
@@ -16,6 +17,10 @@ const EDITABLE_FIELDS = [
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // ADDITIVE (Sep 2026) — marketing_automation was never actually enforced
+  // server-side; see lib/moduleGating.ts.
+  const gate = await requireModule(ctx.userId, 'marketing_automation');
+  if (!gate.ok) return gate.response;
 
   try {
     await dbConnect();
@@ -45,6 +50,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // ADDITIVE (Sep 2026) — marketing_automation was never actually enforced
+  // server-side; see lib/moduleGating.ts.
+  const gate = await requireModule(ctx.userId, 'marketing_automation');
+  if (!gate.ok) return gate.response;
 
   try {
     await dbConnect();

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Zap, CheckCircle2, ArrowRight, RefreshCw,
-  BarChart3, FileText, Bot, Clock,
+  BarChart3, FileText, Clock,
   TrendingUp, Crown, Download, Receipt,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -474,13 +474,11 @@ export default function BillingPage() {
           <div>
             <h2 className="text-base font-bold text-on-surface mb-3">This Month's Usage</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <UsageBar
-                label="AI Generations"
-                icon={Bot}
-                used={data.usage.aiGenerationsUsed}
-                limit={data.limits.maxAIGenerations}
-                color="bg-primary"
-              />
+              {/* AI Generations usage bar removed from the customer-facing
+                  billing page (owner's explicit call, Sep 2026) — display
+                  only; the limit itself still applies exactly as before
+                  (checkUsageLimit('aiGenerations') in featureGating.ts,
+                  counted via AIUsageLog — untouched by this removal). */}
               <UsageBar
                 label="Audits Run"
                 icon={FileText}
@@ -508,7 +506,6 @@ export default function BillingPage() {
             <h2 className="text-base font-bold text-on-surface mb-4">Plan Limits</h2>
             <div className="space-y-2.5 text-sm">
               {[
-                { label: 'AI Generations / Month',     icon: Bot,            value: data.limits.maxAIGenerations },
                 { label: 'Audits / Business / Month',  icon: FileText,       value: data.limits.maxAuditsPerBusiness },
                 { label: data.limits.postLimitFrequency === 'weekly' ? 'Posts / Week' : 'Posts / Month', icon: BarChart3, value: data.limits.maxPostsPerMonth },
                 { label: 'Review Request Cooldown',     icon: Clock,          value: `${data.limits.reviewRequestCooldownDays} days` },

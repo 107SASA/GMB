@@ -43,25 +43,43 @@ export async function POST(req: Request) {
 
     const leads = await Lead.find(query).select('name phone email').lean() as any[];
 
-    let imported = 0;
+    // Normalize + dedupe up front (both against each other — two leads
+    // resolving to the same phone must only import once — and against
+    // already-imported customers), then do ONE existence check and ONE
+    // insert instead of a query-then-create pair per lead. That was
+    // previously up to 2x `leads.length` sequential DB round-trips for a
+    // batch import that can run to hundreds of leads.
     let skipped = 0;
-
+    const candidates = new Map<string, { name?: string; email?: string }>();
     for (const lead of leads) {
       const phone = normalizePhoneE164(lead.phone);
       if (!phone) { skipped++; continue; }
+      if (candidates.has(phone)) { skipped++; continue; } // duplicate within this batch
+      candidates.set(phone, { name: lead.name, email: lead.email });
+    }
 
-      const exists = await Customer.exists({ businessId: ctx.businessId, phone });
-      if (exists) { skipped++; continue; }
+    const existing = await Customer.find({
+      businessId: ctx.businessId,
+      phone: { $in: Array.from(candidates.keys()) },
+    }).select('phone').lean();
+    for (const c of existing) {
+      if (candidates.delete((c as any).phone)) skipped++;
+    }
 
-      await Customer.create({
+    let imported = 0;
+    if (candidates.size > 0) {
+      const docs = Array.from(candidates.entries()).map(([phone, lead]) => ({
         tenantId: ctx.organizationId,
         businessId: ctx.businessId,
         name: lead.name || phone,
         phone,
         email: lead.email || undefined,
         tags: ['From CRM'],
-      });
-      imported++;
+      }));
+      // unordered — one bad doc (e.g. a last-instant duplicate from a
+      // concurrent import) shouldn't stop the rest of the batch.
+      const result = await Customer.insertMany(docs, { ordered: false });
+      imported = result.length;
     }
 
     return NextResponse.json({ success: true, imported, skipped, totalLeads: leads.length });

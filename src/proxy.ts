@@ -44,18 +44,6 @@ const ACTIVE_BUSINESS_COOKIE = 'activeBusinessId';
 const INTAKE_PATH = '/dashboard/onboarding/intake';
 const INTAKE_ALLOWED_PREFIXES = [INTAKE_PATH, '/dashboard/profile', '/dashboard/billing'];
 
-// ADDITIVE — shadow accounts (see src/lib/shadowAccount.ts: passwordless
-// accounts auto-created by /free-report and the WhatsApp report flow) get
-// exactly one real credential-setting gate, checked BEFORE intake, the
-// moment their workspace unlocks (i.e. right after paying). Without this a
-// paying customer would have no durable way to log back into their account
-// on another device/session — see POST /api/onboarding/claim.
-const CLAIM_PATH = '/dashboard/onboarding/claim';
-
-function isAllowedBeforeClaim(pathname: string): boolean {
-  return pathname === CLAIM_PATH || pathname.startsWith(`${CLAIM_PATH}/`);
-}
-
 // Only NEW workspaces (created on/after this date) are HARD-gated into the
 // intake. Workspaces that existed before are nudged with a notification instead
 // (see scripts backfill), so we don't suddenly wall existing paying customers.
@@ -115,29 +103,32 @@ export default async function proxy(request: NextRequest) {
   try {
     await dbConnect();
 
-    const user = await User.findById(session.userId)
-      .select('role subscriptionPlan isShadowAccount isEmailVerified shadowSource email claimSkipped')
-      .lean<{
-        role?: string;
-        subscriptionPlan?: string;
-        isShadowAccount?: boolean;
-        isEmailVerified?: boolean;
-        shadowSource?: string;
-        email?: string;
-        claimSkipped?: boolean;
-      }>();
+    // Which workspace is the user acting on? Read up front (sync, no DB) so
+    // the User and Business lookups below can run concurrently instead of
+    // sequentially — this gate runs on every /dashboard navigation, so the
+    // extra round trip was directly on the critical path of every page
+    // transition (e.g. the redirect straight after saving the intake form).
+    const businessId = request.cookies.get(ACTIVE_BUSINESS_COOKIE)?.value;
+
+    const [user, business] = await Promise.all([
+      User.findById(session.userId)
+        .select('role subscriptionPlan')
+        .lean<{ role?: string; subscriptionPlan?: string }>(),
+      businessId
+        ? Business.findById(businessId)
+            .select('subscriptionStatus freeAuditUsed intakeCompleted createdAt')
+            .lean<{ subscriptionStatus?: string; freeAuditUsed?: boolean; intakeCompleted?: boolean; createdAt?: Date }>()
+        : Promise.resolve(null),
+    ]);
     if (!user) return NextResponse.next();
     // Owner keeps full access to every workspace (incl. their WhatsApp AI).
+    // The Business lookup above was still fired in parallel for this case —
+    // wasted for a SUPER_ADMIN navigation, but that's rare next to the
+    // regular-customer path this optimizes, and it's a single indexed
+    // findById, so the cost is negligible.
     if (user.role === 'SUPER_ADMIN') return NextResponse.next();
 
-    // Which workspace is the user acting on? Without a selected workspace we
-    // can't decide — fail open and let the page/UI drive workspace selection.
-    const businessId = request.cookies.get(ACTIVE_BUSINESS_COOKIE)?.value;
     if (!businessId) return NextResponse.next();
-
-    const business = await Business.findById(businessId)
-      .select('subscriptionStatus freeAuditUsed intakeCompleted createdAt')
-      .lean<{ subscriptionStatus?: string; freeAuditUsed?: boolean; intakeCompleted?: boolean; createdAt?: Date }>();
     if (!business) return NextResponse.next();
 
     // Subscribed workspace (or an existing paid user) -> dashboard is open,
@@ -150,47 +141,12 @@ export default async function proxy(request: NextRequest) {
         businessCreatedAt: business.createdAt,
       })
     ) {
-      // Paid + still a shadow account -> nudged to set a real email/password
-      // before anything else, including intake. Checked as one combined
-      // "claim still outstanding" condition (rather than two independent
-      // early-return checks) so the intake gate below can never redirect a
-      // pending-claim user away from the claim page — that was the exact bug:
-      // isAllowedBeforeIntake() didn't exempt CLAIM_PATH, so a brand-new
-      // (post-2026-07-23) shadow-account workspace landing on /claim got
-      // bounced to /intake, which immediately bounced back to /claim
-      // (isShadowAccount still true there) — an infinite redirect loop.
-      //
-      // NOT a hard block: gated on !claimSkipped (POST /api/onboarding/claim/skip).
-      // Every shadow account has a phone number by construction (see
-      // provisionShadowAccount) and /api/auth/phone-login already gives it a
-      // durable way back in regardless of email/password state — the
-      // "no way back in" risk this gate was built to prevent doesn't actually
-      // apply once phone+OTP login exists, so this only nudges once and lets
-      // the user dismiss it rather than trapping the dashboard behind it.
-      const needsClaim =
-        !user.claimSkipped &&
-        (
-          user.isShadowAccount ||
-          // Claimed (isShadowAccount just flipped false) but the OTP step was
-          // never completed -> the pre-existing session would otherwise let
-          // this straight through, silently defeating the whole point of the
-          // claim step for anyone relying on POST /api/auth/login (email/password),
-          // which refuses unverified accounts. Scoped to former shadow accounts
-          // only via shadowSource, so normal /onboarding signups (which never
-          // get a session before verifying) are untouched.
-          (!!user.shadowSource && !user.isEmailVerified)
-        );
-
-      if (needsClaim) {
-        if (isAllowedBeforeClaim(pathname)) return NextResponse.next();
-        const url = new URL(CLAIM_PATH, request.url);
-        if (!user.isShadowAccount) {
-          url.searchParams.set('step', 'verify');
-          if (user.email) url.searchParams.set('email', user.email);
-        }
-        return NextResponse.redirect(url);
-      }
-
+      // Shadow accounts (see src/lib/shadowAccount.ts) log back in via
+      // phone+WhatsApp OTP (/api/auth/phone-login) — that's their durable
+      // credential, so there is no separate email/password "claim" step to
+      // gate on here. (Previously this nudged a paid-but-unclaimed shadow
+      // account to /dashboard/onboarding/claim; removed now that WhatsApp
+      // OTP is the only supported login path.)
       const isNewWorkspace = !!business.createdAt && new Date(business.createdAt) >= INTAKE_ENFORCED_SINCE;
       if (isNewWorkspace && !business.intakeCompleted && !isAllowedBeforeIntake(pathname)) {
         return NextResponse.redirect(new URL(INTAKE_PATH, request.url));

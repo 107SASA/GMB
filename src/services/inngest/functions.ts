@@ -566,44 +566,76 @@ export const weeklyContentReminder = inngest.createFunction(
   }
 );
 
-// 3b. Weekly content autopilot — fully autonomous. Every Monday, generate a
-// fresh batch of POSTS_PER_WEEK (4) GBP posts from each active business's
-// keywords and schedule them on alternate days. No approval step, no owner
-// action: processContentJob writes them status:"scheduled" and
-// publishScheduledPostsCron publishes them (live when GBP_LIVE_WRITES_ENABLED
-// is on for the platform, mock-only otherwise — same gate as every other
-// publish path). This is the autonomous counterpart to the manual
-// "Generate" button (scheduler/manual-generate) and the low-buffer safety
-// net inside processContentJob.
+// 3b. Weekly content autopilot — fully autonomous. Per-BUSINESS weekly
+// cadence, not a fixed calendar day: the first batch of POSTS_PER_WEEK (4)
+// GBP posts fires the moment a workspace has both an active subscription AND
+// a connected Google Business Profile (see maybeStartContentAutopilot in
+// lib/contentAutopilot.ts, called from activateBusinessPlan and
+// finalizeGbpConnection — whichever of the two conditions completes second
+// fires it immediately), then every 7 days from that same moment after —
+// "next week, same day" per business, anchored to when THEY started, not a
+// shared Monday. No approval step, no owner action: processContentJob writes
+// them status:"scheduled" and publishScheduledPostsCron publishes them (live
+// when GBP_LIVE_WRITES_ENABLED is on for the platform, mock-only otherwise —
+// same gate as every other publish path). This is the autonomous counterpart
+// to the manual "Generate Now" button (scheduler/manual-generate) and the
+// low-buffer safety net inside processContentJob.
+//
+// This cron is the SAFETY NET + the recurring weekly engine, not the primary
+// trigger for a brand-new business — that's the two event-hook call sites
+// above. Running hourly (rather than weekly) means:
+//  - a business the event hooks somehow missed (call threw, or both
+//    conditions were already true before this feature shipped) is picked up
+//    within the hour — Business.autopilotNextRunAt being unset is exactly
+//    the same "not started yet" signal in both places;
+//  - each business's actual weekly recurrence fires close to its real
+//    anchor time, not just "sometime Monday."
 export const weeklyContentAutopilot = inngest.createFunction(
-  { id: "weekly-content-autopilot", triggers: [{ cron: "0 3 * * 1" }] }, // Mondays ~08:30 IST
+  { id: "weekly-content-autopilot", triggers: [{ cron: "0 * * * *" }] }, // hourly
   async ({ step }) => {
-    const businesses = await step.run("select-autopilot-businesses", async () => {
+    const businesses = await step.run("select-due-autopilot-businesses", async () => {
       const dbConnect = (await import("@/lib/mongodb")).default;
       await dbConnect();
       const { default: Business } = await import("@/models/Business");
-      const { default: AutomationLog } = await import("@/models/AutomationLog");
+      const { AUTOPILOT_INTERVAL_MS } = await import("@/lib/contentAutopilot");
 
-      const candidates = await Business.find({ isDeleted: { $ne: true } })
-        .select("_id keywords organizationId")
+      const now = new Date();
+
+      // Due = never anchored yet (a pre-existing business from before this
+      // feature existed, or the event hooks missed it — both start now), OR
+      // its scheduled weekly run has arrived. Needs keywords to generate
+      // anything meaningful — a business missing them just keeps getting
+      // picked up here every hour until the owner completes onboarding intake.
+      const candidates = await Business.find({
+        isDeleted: { $ne: true },
+        subscriptionStatus: "active",
+        googleConnected: true,
+        keywords: { $exists: true, $ne: [] },
+        $or: [{ autopilotNextRunAt: { $exists: false } }, { autopilotNextRunAt: { $lte: now } }],
+      })
+        .select("_id autopilotNextRunAt")
         .lean();
 
-      const sixDaysAgo = new Date(Date.now() - 6 * 86_400_000);
       const out: string[] = [];
       for (const b of candidates as any[]) {
-        // Needs keywords to generate anything meaningful.
-        if (!Array.isArray(b.keywords) || b.keywords.length === 0) continue;
-        // Idempotency: skip if an autopilot batch already ran this week (cron
-        // double-fire / manual replay would otherwise stack another 4 posts).
-        const recent = await AutomationLog.findOne({
-          businessId: b._id.toString(),
-          workflow: "content-scheduler",
-          action: "generate_post_batch",
-          status: "success",
-          createdAt: { $gte: sixDaysAgo },
-        }).lean();
-        if (recent) continue;
-        out.push(b._id.toString());
+        const prev: Date | undefined = b.autopilotNextRunAt;
+        let next = new Date((prev ? prev.getTime() : now.getTime()) + AUTOPILOT_INTERVAL_MS);
+        // A long-unqualified gap (subscription lapsed, GBP disconnected for a
+        // while) can leave the +7d-from-last-scheduled-date still in the
+        // past — resync to "7 days from now" instead of firing a burst of
+        // catch-up batches back-to-back to close the gap.
+        if (next <= now) next = new Date(now.getTime() + AUTOPILOT_INTERVAL_MS);
+
+        // Atomic claim, matching the EXACT autopilotNextRunAt value just
+        // read (unset vs. this precise timestamp) — so this can never race
+        // with another concurrent pass of this same cron, or with
+        // maybeStartContentAutopilot firing for the same business at the
+        // same time, into a double dispatch.
+        const claimed = await Business.findOneAndUpdate(
+          { _id: b._id, autopilotNextRunAt: prev ?? { $exists: false } },
+          { $set: { autopilotNextRunAt: next } }
+        );
+        if (claimed) out.push(b._id.toString());
       }
       return out;
     });

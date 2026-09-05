@@ -39,8 +39,8 @@ export const PRODUCT_TOUR_STEPS: TourStep[] = [
     id: 'generate-content',
     route: '/dashboard/content',
     selector: '[data-tour="generate-content"]',
-    title: 'Step 3 — Create your first post',
-    body: 'Generate AI-written posts for your business, then schedule them to keep your profile active on Google.',
+    title: 'Step 3 — Your posts are automated',
+    body: 'A fresh batch of AI-written posts generates and schedules itself every week — no action needed. Use this button anytime you want an extra batch right now.',
   },
   {
     id: 'review-campaigns-tab',

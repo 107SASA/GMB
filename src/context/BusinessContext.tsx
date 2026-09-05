@@ -15,6 +15,9 @@ interface Business {
   organizationId: string;
   googleConnected: boolean;
   keywords?: string[];
+  subscriptionStatus?: string;
+  /** Weekly content autopilot anchor — see lib/contentAutopilot.ts. Unset means autopilot hasn't started for this workspace yet. */
+  autopilotNextRunAt?: string;
   whatsappConfig?: {
     isConnected: boolean;
     businessPhone?: string;

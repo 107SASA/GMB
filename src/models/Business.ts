@@ -143,6 +143,15 @@ export interface IBusiness extends Document {
     competitorNames?: string[];
     primaryGoal?: string;
   };
+  // ADDITIVE — weekly content autopilot anchor (see weeklyContentAutopilot in
+  // services/inngest/functions.ts). Set ONCE, the first time this workspace
+  // has both an active subscription AND a connected Google Business Profile
+  // (whichever completes second) — never reset by a later GBP disconnect/
+  // reconnect or subscription lapse/resume, so the weekly cadence stays
+  // anchored to that original day. Undefined means "not started yet" (either
+  // genuinely new, or a pre-existing business from before this feature
+  // existed — the autopilot cron treats both the same: start on its next pass).
+  autopilotNextRunAt?: Date;
   // ADDITIVE — WhatsApp AI Agent booking configuration (Feature 1).
   // Opt-in only: bookingEnabled defaults to false so existing businesses
   // are completely unaffected until they explicitly configure this.
@@ -290,6 +299,8 @@ const BusinessSchema: Schema = new Schema(
       competitorNames: [{ type: String }],
       primaryGoal: { type: String },
     },
+    // ADDITIVE — weekly content autopilot anchor (see IBusiness above).
+    autopilotNextRunAt: { type: Date },
     // ADDITIVE — see whatsappBookingSettings in IBusiness above. Not required,
     // no default object is forced onto existing documents; the WhatsApp
     // appointment agent treats a missing/disabled config as "booking off".

@@ -3,6 +3,7 @@ import Subscription from '@/models/Subscription';
 import User from '@/models/User';
 import Business from '@/models/Business';
 import { notifyBusinessUsers } from '@/services/notifications';
+import { maybeStartContentAutopilot } from '@/lib/contentAutopilot';
 import { sendPaymentFailedEmail, sendCancellationEmail } from './billingEmails';
 import {
   ALL_MODULES,
@@ -81,6 +82,13 @@ export async function activateBusinessPlan(
   } catch (e: any) {
     console.error('[billing] activateBusinessPlan notification failed:', e.message);
   }
+
+  // If this workspace's Google Business Profile was already connected before
+  // now, activation is the second of the two conditions weekly content
+  // autopilot waits on — this fires its first batch immediately instead of
+  // waiting for the next hourly safety-net pass. No-op (fast) if GBP isn't
+  // connected yet, or autopilot already started for this business.
+  await maybeStartContentAutopilot(businessId);
 }
 
 export async function markBusinessPastDue(businessId: string): Promise<void> {

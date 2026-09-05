@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Campaign from '@/models/Campaign';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 
 function serializeCampaign(c: any) {
   return {
@@ -36,6 +37,10 @@ function serializeCampaign(c: any) {
 export async function GET() {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // ADDITIVE (Sep 2026) — marketing_automation was never actually enforced
+  // server-side; see lib/moduleGating.ts.
+  const gate = await requireModule(ctx.userId, 'marketing_automation');
+  if (!gate.ok) return gate.response;
 
   try {
     await dbConnect();
@@ -49,6 +54,10 @@ export async function GET() {
 export async function POST(request: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // ADDITIVE (Sep 2026) — marketing_automation was never actually enforced
+  // server-side; see lib/moduleGating.ts.
+  const gate = await requireModule(ctx.userId, 'marketing_automation');
+  if (!gate.ok) return gate.response;
 
   try {
     await dbConnect();

@@ -3,12 +3,17 @@ import { inngest } from '@/services/inngest/client';
 import dbConnect from '@/lib/mongodb';
 import Customer from '@/models/Customer';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import { requirePlaceIdForReviews } from '@/lib/reviewCampaignGuard';
 
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // ADDITIVE (Sep 2026) — marketing_automation was never actually enforced
+  // server-side; see lib/moduleGating.ts.
+  const gate = await requireModule(ctx.userId, 'marketing_automation');
+  if (!gate.ok) return gate.response;
 
   try {
     await dbConnect();

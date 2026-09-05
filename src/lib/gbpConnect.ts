@@ -4,6 +4,7 @@ import Business from '@/models/Business';
 import Review from '@/models/Review';
 import { encrypt } from '@/lib/crypto';
 import { inngest } from '@/services/inngest/client';
+import { maybeStartContentAutopilot } from '@/lib/contentAutopilot';
 
 export interface FinalizeGbpConnectionInput {
   businessId: string;
@@ -74,6 +75,13 @@ export async function finalizeGbpConnection(input: FinalizeGbpConnectionInput): 
     // Non-blocking — sync will be retried by the nightly cron if this fails.
     console.error('Failed to trigger GBP auto-sync:', e);
   }
+
+  // If this workspace's subscription was already active before now,
+  // connecting Google is the second of the two conditions weekly content
+  // autopilot waits on — this fires its first batch immediately instead of
+  // waiting for the next hourly safety-net pass. No-op (fast) if the
+  // subscription isn't active yet, or autopilot already started.
+  await maybeStartContentAutopilot(input.businessId);
 }
 
 /** Mirrors the address formatting used in gbpClient.ts's fetchLocationProfile. */

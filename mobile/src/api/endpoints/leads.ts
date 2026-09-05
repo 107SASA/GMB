@@ -21,6 +21,8 @@ const leadSchema = z.object({
   aiLeadScore: z.number().nullable().optional(),
   aiInsights: z.string().nullable().optional(),
   interest: z.string().nullable().optional(),
+  // Manually entered estimated deal value (INR) — see models/Lead.ts.
+  valuation: z.number().nullable().optional(),
   lastActivityAt: z.string().nullable().catch(null),
   createdAt: z.string().optional(),
 });
@@ -92,6 +94,7 @@ export async function quickAddLead(params: {
   phone: string;
   name?: string;
   source?: 'Manual' | 'Phone Call' | 'Contacts Import';
+  valuation?: number;
 }): Promise<QuickAddResult> {
   const { data } = await api.post('/api/leads/quick-add', params);
   return quickAddResponseSchema.parse(data);

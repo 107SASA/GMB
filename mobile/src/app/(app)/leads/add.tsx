@@ -31,6 +31,7 @@ export default function AddLeadScreen() {
 
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
+  const [valuation, setValuation] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [clipboardPhone, setClipboardPhone] = useState<string | null>(null);
@@ -73,6 +74,7 @@ export default function AddLeadScreen() {
         phone: phone.trim(),
         name: name.trim() || undefined,
         source: isCallLog ? 'Phone Call' : 'Manual',
+        valuation: trimmedValuation ? Number(trimmedValuation) : undefined,
       });
       if (isCallLog) {
         await logLeadActivity(result.lead._id, {
@@ -96,6 +98,8 @@ export default function AddLeadScreen() {
   });
 
   const phoneValid = parsePhoneCandidate(phone) !== null;
+  const trimmedValuation = valuation.trim();
+  const valuationValid = !trimmedValuation || (Number.isFinite(Number(trimmedValuation)) && Number(trimmedValuation) >= 0);
 
   return (
     <Screen>
@@ -169,6 +173,12 @@ export default function AddLeadScreen() {
           autoFocus
         />
         <Field value={name} onChangeText={setName} placeholder="Name (optional)" />
+        <Field
+          value={valuation}
+          onChangeText={setValuation}
+          placeholder="Valuation in ₹ (optional)"
+          keyboardType="numeric"
+        />
         {isCallLog && (
           <Field
             value={note}
@@ -185,12 +195,15 @@ export default function AddLeadScreen() {
             Enter a 10-digit number or use +country format.
           </Text>
         )}
+        {!valuationValid && (
+          <Text className="font-sans text-sm text-zinc-500">Valuation must be a non-negative number.</Text>
+        )}
         <ErrorText>{error}</ErrorText>
 
         <PrimaryButton
           title={isCallLog ? 'Save call' : 'Add lead'}
           loading={submit.isPending}
-          disabled={!phoneValid}
+          disabled={!phoneValid || !valuationValid}
           onPress={() => {
             void (async () => {
               // Call capture counts as a CRM-capture feature — one-time consent.

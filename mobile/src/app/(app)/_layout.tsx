@@ -58,23 +58,28 @@ export default function AppLayout() {
         sceneStyle: { backgroundColor: t.bg },
       }}
     >
-      {/* Flat 5-tab layout (Aug 2026 restructure, matching the competitor
-          reference app): Home · Performance · Posts · Photos · Reviews.
-          Each screen gates its own entitlement lock now (see LockedScreen
-          usage inside them) rather than the tab bar hiding itself — same
-          convention Home/GBP always used. */}
+      {/* Flat 5-tab layout: Home · Performance · Posts · Media · CRM.
+          (Sep 2026: Photos + Reviews merged into one "Media" tab — see
+          media.tsx — to free up a slot for CRM, i.e. the existing Leads
+          section promoted from More onto the bar.) Each screen gates its
+          own entitlement lock now (see LockedScreen usage inside them)
+          rather than the tab bar hiding itself — same convention Home/GBP
+          always used. */}
       <Tabs.Screen name="dashboard" options={{ title: 'Home' }} />
       <Tabs.Screen name="performance" options={{ title: 'Performance' }} />
       <Tabs.Screen name="posts" options={{ title: 'Posts' }} />
-      <Tabs.Screen name="photos" options={{ title: 'Photos' }} />
-      <Tabs.Screen name="reviews" options={{ title: 'Reviews' }} />
+      <Tabs.Screen name="media" options={{ title: 'Media' }} />
+      <Tabs.Screen name="leads" options={{ title: 'CRM' }} />
       {/* Hidden sections — reachable from the header (gear/More) and in-app
           links. `gbp` is now just Business Profile fields (see gbp/index.tsx)
           — its Performance/Posts/Reviews/Photos sub-tabs moved to the flat
-          tabs above. `leads` (All Contacts) moved off the bar into More too,
-          matching the reference app, which doesn't show Contacts as a tab. */}
+          tabs above. `photos`/`reviews` are now embedded inside the `media`
+          tab above (see media.tsx) rather than tabs of their own, but stay
+          registered (hidden) so existing deep links to /photos, /photos/all,
+          /reviews and /reviews/[id] elsewhere in the app keep working. */}
       <Tabs.Screen name="gbp" options={{ href: null }} />
-      <Tabs.Screen name="leads" options={{ href: null }} />
+      <Tabs.Screen name="photos" options={{ href: null }} />
+      <Tabs.Screen name="reviews" options={{ href: null }} />
       <Tabs.Screen name="audit" options={{ href: null }} />
       <Tabs.Screen name="inbox" options={{ href: null }} />
       <Tabs.Screen name="more" options={{ href: null }} />

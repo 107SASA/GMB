@@ -16,8 +16,10 @@ const ICONS: Record<string, { outline: keyof typeof Ionicons.glyphMap; filled: k
   dashboard: { outline: 'home-outline', filled: 'home' },
   performance: { outline: 'stats-chart-outline', filled: 'stats-chart' },
   posts: { outline: 'newspaper-outline', filled: 'newspaper' },
-  photos: { outline: 'folder-outline', filled: 'folder' },
-  reviews: { outline: 'star-outline', filled: 'star' },
+  // Combined Photos + Reviews tab (see app/(app)/media.tsx).
+  media: { outline: 'images-outline', filled: 'images' },
+  // CRM tab (app/(app)/leads/* — same routes as before, now on the bar).
+  leads: { outline: 'people-outline', filled: 'people' },
 };
 
 /**

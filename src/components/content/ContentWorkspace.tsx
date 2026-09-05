@@ -5,8 +5,6 @@ import { toast } from 'sonner';
 import { useBusiness } from '@/context/BusinessContext';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import ContentHistoryTab from './ContentHistoryTab';
-import BufferHealthBar from '@/components/scheduler/BufferHealthBar';
-import LowBufferBanner from '@/components/scheduler/LowBufferBanner';
 import WeeklyCalendar from '@/components/scheduler/WeeklyCalendar';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
@@ -200,21 +198,20 @@ export default function ContentWorkspace() {
         </button>
       </div>
 
+      {/* Buffer Health / "Action Required: Low Content Buffer" deliberately
+          removed — those were built for a manual-posting world where a thin
+          queue meant "go generate something." Everything here is automated
+          now (autopilot keeps the queue topped up on its own), so a health
+          meter/warning about it was just noise. The calendar itself already
+          gives full manual control (reschedule/edit/delete — see
+          WeeklyCalendar's PostDetailModal) for whenever it's actually needed. */}
       {!bufferLoading && bufferData && (
-        <>
-          <BufferHealthBar
-            scheduled={bufferData.scheduledThisWeek}
-            target={bufferData.weeklyTarget}
-            healthStatus={bufferData.healthStatus}
-          />
-          <LowBufferBanner postsNeeded={bufferData.postsNeeded} onGenerate={handleGenerateNow} />
-          <WeeklyCalendar
-            posts={bufferData.allPosts}
-            onPublish={handlePublish}
-            onReschedule={handleReschedule}
-            onDataChanged={fetchBuffer}
-          />
-        </>
+        <WeeklyCalendar
+          posts={bufferData.allPosts}
+          onPublish={handlePublish}
+          onReschedule={handleReschedule}
+          onDataChanged={fetchBuffer}
+        />
       )}
 
       <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant p-4 sm:p-8">

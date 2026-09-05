@@ -107,12 +107,28 @@ const WhatsAppAppointmentSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-// Prevent double-booking the exact same business/date/time while the slot
-// is still active (Pending or Confirmed). Cancelled/Completed appointments
-// are excluded so a freed-up or historical slot can be reused.
+// Lookup optimization only — NOT what actually prevents double-booking (see
+// the unique index below for that). Kept for the isSlotTaken()-style reads
+// appointmentService.ts does before booking/rescheduling.
 WhatsAppAppointmentSchema.index(
   { businessId: 1, date: 1, time: 1, status: 1 },
   { name: 'business_slot_lookup' }
+);
+
+// The REAL double-booking guard (added Sep 2026) — the read-then-write in
+// bookAppointment()/rescheduleAppointment() (isSlotTaken() check, then
+// create()/save()) is TOCTOU-racy on its own: two near-simultaneous requests
+// for the same open slot (a double-tap, or two different customers racing
+// for the last slot) can both pass the read before either write lands,
+// producing two real double-booked appointments. This partial unique index
+// makes that impossible at the DB level — a second Pending/Confirmed
+// appointment for the same business/date/time throws E11000, which the
+// service layer catches and turns into the same "slot taken" response.
+// Cancelled/Completed are excluded so a freed-up or historical slot can be
+// reused.
+WhatsAppAppointmentSchema.index(
+  { businessId: 1, date: 1, time: 1 },
+  { unique: true, partialFilterExpression: { status: { $in: ['Pending', 'Confirmed'] } }, name: 'business_slot_unique' }
 );
 
 export default mongoose.models.WhatsAppAppointment ||

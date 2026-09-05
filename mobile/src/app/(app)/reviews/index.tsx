@@ -348,7 +348,7 @@ function AllReviewsTab({
   );
 }
 
-export default function ReviewsScreen() {
+export default function ReviewsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const locked = useSurfaceLocked('reviews');
   const { activeBusinessId } = useBusiness();
   const queryClient = useQueryClient();
@@ -389,11 +389,17 @@ export default function ReviewsScreen() {
   }, [reviews.data, filter, ratingFilter]);
 
   // After all hooks (rules-of-hooks) — matches the dashboard/GBP-hub pattern.
+  // Note: with `embedded`, the parent (media.tsx) already gates the whole
+  // combined tab on this same lock, so this is belt-and-suspenders, not the
+  // only guard — kept anyway so this screen is still safe to render
+  // standalone (its own /reviews route is still reachable via deep links).
   if (locked) return <LockedScreen surface="reviews" />;
 
-  return (
-    <Screen>
-      <AppHeader title="Reviews" />
+  // This tab's own Overview/All sub-navigation — distinct from, and nested
+  // one level under, the Media tab's Reviews/Photos switch above it when
+  // `embedded` (see media.tsx).
+  const body = (
+    <>
       <SegmentedControl
         segments={[
           { id: 'overview', label: 'Overview' },
@@ -417,6 +423,18 @@ export default function ReviewsScreen() {
         />
       )}
       {info.node}
+    </>
+  );
+
+  // Embedded inside media.tsx: that screen already owns the single
+  // Screen/AppHeader for the combined tab — nesting another SafeAreaView
+  // (Screen) + header here would double up on both.
+  if (embedded) return body;
+
+  return (
+    <Screen>
+      <AppHeader title="Reviews" />
+      {body}
     </Screen>
   );
 }

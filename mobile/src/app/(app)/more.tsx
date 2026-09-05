@@ -44,7 +44,8 @@ const MENU: { section: string; items: MenuItem[] }[] = [
   {
     section: 'Customers',
     items: [
-      { label: 'Leads', icon: 'people', href: '/leads', tint: 'brandBright', surface: 'leads' },
+      // Leads (now "CRM") moved onto the bottom tab bar (Sep 2026) —
+      // dropped from here so it isn't listed in two places.
       { label: 'Inbox', icon: 'chatbubbles', href: '/inbox', tint: 'emerald', surface: 'inbox' },
       { label: 'WhatsApp AI Agent', icon: 'logo-whatsapp', href: '/whatsapp', tint: 'emerald', superAdminOnly: true },
     ],
@@ -61,10 +62,10 @@ const MENU: { section: string; items: MenuItem[] }[] = [
 ];
 
 // Every tab/screen not in the 5-slot bottom bar (Home/Performance/Posts/
-// Photos/Reviews) is intentionally routed through here for now — Aug 2026,
+// Media/CRM) is intentionally routed through here for now — Aug 2026,
 // per an explicit ask to park everything under More rather than deciding
 // per-screen whether it stays in the app. Audit/Business Profile/Content
-// Generator/Content Scheduler/Leads/Inbox/WhatsApp AI Agent/Settings/
+// Generator/Content Scheduler/Inbox/WhatsApp AI Agent/Settings/
 // Billing/Profile/Notifications are all listed above; nothing hidden is
 // currently unreachable. Revisit this list once that decision is made.
 

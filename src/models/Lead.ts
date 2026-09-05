@@ -33,7 +33,13 @@ export interface ILead extends Document {
   pipelineStage: string | null;
   tags: string[];
   notes?: string;
-  
+  // ADDITIVE — manually entered estimated deal value (INR), set at lead
+  // creation (see /api/crm/leads, /api/leads/quick-add) or edited later.
+  // Distinct from `budget` below (a free-text string the AI sales agent
+  // infers from conversation, e.g. "around 50k") — this is a plain number
+  // the owner enters themselves.
+  valuation?: number;
+
   followUpDates: Date[];
   
   aiLeadScore?: number;
@@ -208,7 +214,9 @@ const LeadSchema: Schema = new Schema(
     pipelineStage: { type: String, default: null },
     tags: [{ type: String }],
     notes: { type: String },
-    
+    // ADDITIVE — see valuation in ILead above.
+    valuation: { type: Number, min: 0 },
+
     followUpDates: [{ type: Date }],
     
     aiLeadScore: { type: Number },

@@ -85,6 +85,19 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 export default function IntakePage() {
   const router = useRouter();
+
+  // Warm the dashboard route the instant this page opens, well before the
+  // user actually hits Save. Without this, clicking Save felt like it hung
+  // ("buffering") — router.push('/dashboard') doesn't swap the screen until
+  // Next.js has fetched and rendered the target route, and that whole
+  // round trip was previously only ever kicked off AFTER the save request
+  // completed. Prefetching here means it's already warm by submit time, so
+  // the post-save redirect is close to instant instead of adding its own
+  // wait on top of the save itself.
+  useEffect(() => {
+    router.prefetch('/dashboard');
+  }, [router]);
+
   // Renders the empty form immediately instead of blocking behind a full-page
   // spinner — for a brand-new customer (the common case) there's nothing to
   // prefill anyway, so making everyone wait on this round-trip before they
@@ -128,15 +141,21 @@ export default function IntakePage() {
     }
   };
 
-  // Fires the initial suggestion batch once category + a real description
-  // are both filled in — debounced so it doesn't fire on every keystroke.
+  // Fires the initial suggestion batch once the category is filled in —
+  // debounced so it doesn't fire on every keystroke. Fires fast once a real
+  // description is there too (better suggestions); otherwise still fires
+  // after a longer pause on category alone rather than waiting forever for
+  // a description that may never come — suggestTargetKeywords works fine
+  // without one. (A manual "Suggest keywords" button below covers anyone
+  // who types out of order or just wants a fresh batch on demand.)
   useEffect(() => {
     if (hasFetchedInitialRef.current) return;
-    if (!data.category.trim() || data.description.trim().length < 10) return;
+    if (!data.category.trim()) return;
+    const hasDescription = data.description.trim().length >= 10;
     const t = setTimeout(() => {
       hasFetchedInitialRef.current = true;
       fetchKeywordSuggestions(data.keywords);
-    }, 800);
+    }, hasDescription ? 800 : 2500);
     return () => clearTimeout(t);
   }, [data.category, data.description]);
 
@@ -264,6 +283,23 @@ export default function IntakePage() {
             validate={isValidKeyword}
             placeholder="e.g. best bakery in Kolkata"
           />
+
+          {/* Manual fallback — the effect above fires this automatically a
+              little after category (+ ideally description) is filled in,
+              but that's timing-dependent (a slow typer, filling fields out
+              of order, or just wanting a fresh batch later). This gives an
+              always-available, explicit way to get suggestions instead of
+              relying purely on the auto-trigger, gated only on there being
+              a category to suggest from. */}
+          {data.category.trim() && !suggestLoading && suggestedKeywords.length === 0 && !suggestError && (
+            <button
+              type="button"
+              onClick={() => { hasFetchedInitialRef.current = true; fetchKeywordSuggestions(data.keywords); }}
+              className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+            >
+              <MaterialIcon name="auto_awesome" size={14} /> Suggest keywords for me
+            </button>
+          )}
 
           {/* AI suggestions — appear once category + description are filled
               in above. Clicking one adds it and immediately refreshes with

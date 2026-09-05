@@ -133,7 +133,7 @@ export default function LeadsScreen() {
 
   return (
     <Screen>
-      <AppHeader title="All Contacts" />
+      <AppHeader title="CRM" />
 
       {/* Capture actions (Phase 4B) */}
       <View className="pb-3">

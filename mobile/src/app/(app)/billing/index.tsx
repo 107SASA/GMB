@@ -208,11 +208,10 @@ export default function BillingScreen() {
           <Text className="px-1 font-sans text-sm text-zinc-500">Couldn't load usage.</Text>
         ) : (
           <View className="rounded-card border border-surface-border bg-surface-raised px-4 pb-1 pt-4">
-            <UsageRow
-              label="AI generations"
-              used={usage.data.usage.aiGenerationsUsed}
-              limit={usage.data.limits.maxAIGenerations}
-            />
+            {/* AI generations usage removed from the customer-facing
+                billing screen (owner's explicit call, Sep 2026) — display
+                only, matching the web dashboard; the limit itself still
+                applies exactly as before. */}
             <UsageRow
               label="Audits"
               used={usage.data.usage.auditsUsed}

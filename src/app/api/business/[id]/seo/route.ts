@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
-import { requireClient } from '@/lib/auth';
+import { requireBusinessContext } from '@/lib/tenant';
 
 const seoUpdateSchema = z.object({
   description: z.string().max(750, 'Description must be 750 characters or fewer'),
@@ -13,10 +13,17 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireClient();
-    if (!auth.ok) return auth.response;
-
     const { id } = await params;
+
+    // Single source of truth for "is this caller allowed to touch this
+    // business" — no dev-environment bypass; see lib/tenant.ts. Previously
+    // this route re-derived the same check by hand with its own
+    // NODE_ENV!=='production' escape hatch, which meant ANY logged-in user
+    // could edit ANY business's SEO description on the shared dev/QA
+    // deployment real testers use — removed, not replaced.
+    const ctx = await requireBusinessContext({ businessIdFromBody: id });
+    if (!ctx.ok) return ctx.response;
+
     const body = await request.json();
 
     const parsed = seoUpdateSchema.safeParse(body);
@@ -29,17 +36,6 @@ export async function PATCH(
     const business = await Business.findById(id);
     if (!business) {
       return NextResponse.json({ error: 'Business not found' }, { status: 404 });
-    }
-
-    const isOwner = business.userId?.toString() === auth.userId;
-    const isOrgMember =
-      auth.user.organizationId &&
-      business.organizationId?.toString() === auth.user.organizationId?.toString();
-    const isSuperAdmin = auth.user.role === 'SUPER_ADMIN';
-    const isDev = process.env.NODE_ENV !== 'production';
-
-    if (!isOwner && !isOrgMember && !isSuperAdmin && !isDev) {
-      return NextResponse.json({ error: 'Unauthorized to modify this business' }, { status: 403 });
     }
 
     business.description = parsed.data.description;

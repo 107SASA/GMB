@@ -31,7 +31,15 @@ export interface PlanLimits {
  */
 export const PLAN_DEFAULTS: Record<string, PlanLimits> = {
   Free: {
-    maxAuditsPerBusiness:      2,
+    // One audit per business per calendar month (owner's explicit call,
+    // Sep 2026) — checkUsageLimit's 'audits' case already buckets usage by
+    // month (SubscriptionUsage keyed on {businessId, month}), so this is
+    // purely a cap-value change, no new machinery needed. Note: an
+    // unsubscribed workspace is additionally gated by the STRICTER,
+    // lifetime (not monthly) Business.freeAuditUsed check in
+    // /api/audit/route.ts, so this value rarely even gets exercised for
+    // Free — kept in sync with Pro anyway for consistency.
+    maxAuditsPerBusiness:      1,
     maxPostsPerMonth:          10,
     postLimitFrequency:        'monthly',
     maxWhatsAppMessagesPerDay: 50,
@@ -39,7 +47,7 @@ export const PLAN_DEFAULTS: Record<string, PlanLimits> = {
     maxAIGenerations:          20,
   },
   Pro: {
-    maxAuditsPerBusiness:      10,
+    maxAuditsPerBusiness:      1,
     maxPostsPerMonth:          50,
     postLimitFrequency:        'monthly',
     maxWhatsAppMessagesPerDay: 200,

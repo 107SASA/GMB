@@ -4,10 +4,11 @@ import mongoose from 'mongoose';
 import { generateAIContent, ContentGenerationRequest } from '@/services/ai/contentEngine';
 import { generateThumbnail } from '@/services/ai/imageGenerator';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireModule } from '@/lib/moduleGating';
 import dbConnect from '@/lib/mongodb';
 import Post from '@/models/Post';
 import { logAIUsage } from '@/lib/logAIUsage';
-import { checkUsageLimit } from '@/lib/featureGating';
+import { checkUsageLimit, incrementUsage } from '@/lib/featureGating';
 import { GROQ_MODEL } from '@/lib/aiModel';
 import { checkRateLimit, getRateLimitConfig } from '@/lib/rateLimit';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
@@ -36,6 +37,12 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    // ADDITIVE (Sep 2026) — content_studio was never actually enforced
+    // server-side (same gap as marketing_automation, fixed in
+    // /api/campaigns/*); the mobile/web UI already hid it for a locked
+    // plan, but nothing stopped a direct request. See lib/moduleGating.ts.
+    const gate = await requireModule(ctx.userId, 'content_studio');
+    if (!gate.ok) return gate.response;
 
     const rl = checkRateLimit(`content-generate:${ctx.userId}`, RATE_LIMIT, RATE_WINDOW_MS);
     if (!rl.allowed) {
@@ -106,6 +113,19 @@ export async function POST(req: Request) {
       durationMs: Date.now() - contentStartMs,
     });
 
+    // ADDITIVE (Sep 2026) — maxPostsPerMonth was configurable in the admin
+    // UI and shown to customers as a real cap, but nothing ever enforced or
+    // counted it. Checked here (after generation, since the batch size isn't
+    // known beforehand) rather than blocking earlier — the 'aiGenerations'
+    // check above already bounds the AI-cost side of this route.
+    const postsLimitCheck = await checkUsageLimit(ctx.userId, ctx.businessId, 'posts', aiResult.posts.length);
+    if (!postsLimitCheck.allowed) {
+      return NextResponse.json(
+        { error: postsLimitCheck.reason, code: postsLimitCheck.code ?? 'UPGRADE_REQUIRED', limit: postsLimitCheck.limit, used: postsLimitCheck.used },
+        { status: 403 }
+      );
+    }
+
     await dbConnect();
     const savedDrafts = await Post.insertMany(
       aiResult.posts.map(p => ({
@@ -123,6 +143,8 @@ export async function POST(req: Request) {
         automationMetadata: { generatedVia: 'manual-generator', topic: data.topic || null },
       }))
     );
+
+    await incrementUsage(ctx.businessId, 'posts', savedDrafts.length);
 
     // Attach draft IDs immediately
     const postsWithIds = aiResult.posts.map((p, i) => ({

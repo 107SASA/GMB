@@ -45,7 +45,12 @@ const sidebarLinks = [
   // Content Generator + Content Scheduler were combined into one page (Bug
   // 14) — Existing Posts / Generate / Schedule are now tabs inside /dashboard/content.
   { name: "Content", icon: "campaign", href: "/dashboard/content" },
-  { name: "Success Stories", icon: "auto_awesome", href: "/dashboard/success-stories" },
+  // Success Stories deliberately NOT a sidebar link anymore (Sep 2026) — it's
+  // a one-time ask (one review + one video, ever), surfaced instead via
+  // SuccessStoryPrompt's popup (see components/dashboard/SuccessStoryPrompt.tsx,
+  // mounted in DashboardLayout) rather than a permanent nav item for a task
+  // most businesses complete once and never need again. The page itself
+  // (/dashboard/success-stories) still exists — reachable from that popup.
   { name: "WhatsApp AI Agent", icon: "chat", href: "/dashboard/whatsapp", superAdminOnly: true },
   { name: "Settings", icon: "settings", href: "/dashboard/settings" },
   { name: "Billing", icon: "bar_chart", href: "/dashboard/billing" },

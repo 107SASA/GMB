@@ -15,8 +15,9 @@ import { isQaTestingMode } from '@/lib/testingMode';
  * (e.g. /free-report), immediately given a real session cookie. This is what
  * lets the existing audit engine, dashboard, and billing/checkout stack — all
  * of which assume a real logged-in User — work completely unmodified for a
- * visitor who never signed up. "Claiming" later (see /api/onboarding/claim)
- * just means setting a real email + password on the same User document.
+ * visitor who never signed up. There's no separate "claim" step to convert
+ * one into a normal account — phone+WhatsApp OTP (/api/auth/phone-login) is
+ * the durable, permanent way back in for these accounts.
  */
 
 export interface ShadowBusinessData {
@@ -193,8 +194,8 @@ export async function provisionShadowAccount(
       // person's. It was leaking into every "who's logged in" display
       // (DashboardHeader's name + initials avatar) and into WhatsApp sales
       // messages that address the lead by "first name" (composeFirstMessage
-      // → firstName(owner?.fullName)) until POST /api/onboarding/claim
-      // overwrites this with what they actually type on the claim page.
+      // → firstName(owner?.fullName)) until PATCH /api/user/profile
+      // overwrites this with their real name (e.g. typed at checkout).
       fullName: 'New User',
       email: shadowEmailFor(normalizedPhone),
       phone: normalizedPhone,

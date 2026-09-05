@@ -44,10 +44,10 @@ export async function PATCH(req: Request) {
   // "Contact support" copy) — but a shadow account (see shadowAccount.ts)
   // was provisioned with a fake `<phone>@shadow.growwmatics.internal`
   // placeholder and hasn't set a real one yet, so it's fine — expected,
-  // even — to let it through here. /api/onboarding/claim still runs the
-  // full claim (password + OTP verification) afterward; this only fixes the
-  // placeholder being shown/used (e.g. as the Razorpay receipt address) in
-  // the meantime.
+  // even — to let it through here. Login stays phone+WhatsApp OTP either
+  // way (there's no separate email/password claim step anymore); this only
+  // fixes the placeholder being shown/used (e.g. as the Razorpay receipt
+  // address) once a real email is entered, e.g. at checkout.
   if (email !== undefined) {
     const current = await User.findById(auth.userId, 'isShadowAccount').lean<{ isShadowAccount?: boolean }>();
     if (!current) return NextResponse.json({ error: 'User not found' }, { status: 404 });

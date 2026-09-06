@@ -51,34 +51,40 @@ export default function SuccessStoryPrompt() {
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-surface-container-lowest rounded-2xl card-shadow w-full max-w-sm border border-outline-variant p-6 text-center relative">
+    <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-60 sm:w-80 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant p-4 relative">
         <button
           onClick={() => setVisible(false)}
-          className="absolute top-3 right-3 p-1.5 hover:bg-surface-container rounded-full transition-colors"
+          className="absolute top-2.5 right-2.5 p-1 hover:bg-surface-container rounded-full transition-colors"
           aria-label="Dismiss"
         >
-          <X className="w-4 h-4 text-on-surface-variant" />
+          <X className="w-3.5 h-3.5 text-on-surface-variant" />
         </button>
-        <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center shadow-sm mx-auto mb-4">
-          <Sparkles className="w-6 h-6 text-white" />
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 shrink-0 bg-primary rounded-lg flex items-center justify-center shadow-sm">
+            <Sparkles className="w-4 h-4 text-white" />
+          </div>
+          <div className="min-w-0 pr-4">
+            <h2 className="font-heading text-sm font-bold text-on-surface">Share your success story</h2>
+            <p className="text-xs text-on-surface-variant mt-1">
+              Record a quick video and leave a review — approved submissions go live on our public showcase.
+            </p>
+            <div className="flex items-center gap-3 mt-3">
+              <button
+                onClick={() => { setVisible(false); router.push('/dashboard/success-stories'); }}
+                className="px-3 py-1.5 text-xs font-bold text-white bg-primary hover:bg-primary-container rounded-lg transition-colors"
+              >
+                Share now
+              </button>
+              <button
+                onClick={() => setVisible(false)}
+                className="text-xs font-medium text-on-surface-variant hover:text-on-surface transition-colors"
+              >
+                Not now
+              </button>
+            </div>
+          </div>
         </div>
-        <h2 className="font-heading text-lg font-bold text-on-surface">Share your success story</h2>
-        <p className="text-sm text-on-surface-variant mt-1.5">
-          Record a quick video and leave a review — approved submissions go live on our public showcase. Takes a minute, one of each.
-        </p>
-        <button
-          onClick={() => { setVisible(false); router.push('/dashboard/success-stories'); }}
-          className="w-full mt-5 px-5 py-3 text-sm font-bold text-white bg-primary hover:bg-primary-container rounded-xl transition-colors"
-        >
-          Share now
-        </button>
-        <button
-          onClick={() => setVisible(false)}
-          className="w-full mt-2 px-5 py-2 text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors"
-        >
-          Not now
-        </button>
       </div>
     </div>
   );

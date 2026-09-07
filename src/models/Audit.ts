@@ -245,6 +245,10 @@ export interface IAuditData {
    *  src/services/audit/keywordTable.ts. */
   keywordTable?: IKeywordTableRow[];
 
+  /** Neighbourhood names the primary keyword was checked in — rendered as
+   *  "Areas checked: Bidhannagar, Rajarhat, …". */
+  areasChecked?: string[];
+
   /** Consultant sections (Key Finding, competitor landscape, GBP drafts,
    *  market opportunities, action phases, weekly posts, Q&As). Present only
    *  when the SEO-plan generation succeeded — surfaces hide when absent. See

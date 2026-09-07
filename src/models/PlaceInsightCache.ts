@@ -81,6 +81,10 @@ export interface IPlaceInsightCache extends Document {
       thirtyDayPlan: any[];
       ninetyDayPlan: any[];
       actionPlan: any;
+      /** Consultant sections (Key Finding, GBP drafts, action phases, weekly
+       *  posts, Q&As) — see src/services/ai/seoPlanEngine.ts. Optional so
+       *  pre-v6 cache entries don't need a backfill. */
+      seoPlanDraft?: any;
     };
     fetchedAt: Date;
     /** Same purpose as rank.logicVersion — guards against e.g. a change to

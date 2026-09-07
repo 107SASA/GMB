@@ -601,6 +601,57 @@ function isOwnBusiness(resultName: string, business: any): boolean {
   return namesLikelyMatch(target, other);
 }
 
+export interface KeywordRankSnapshotRow {
+  keyword: string;
+  rank: number;
+  competitorsAbove: Array<{ name: string; rank: number; rating?: number; reviewCount?: number; placeId?: string }>;
+}
+
+/**
+ * Rank each keyword ONCE, at the business's own location — the cheap check
+ * behind the free report's "Keyword Search Volume Analysis" table (which
+ * shows one rank per keyword, not a grid). One batched DataForSEO request.
+ * Never throws — a failed batch returns every keyword at NOT_FOUND_RANK.
+ */
+export async function fetchKeywordRankSnapshot(
+  business: any,
+  keywords: string[],
+): Promise<KeywordRankSnapshotRow[]> {
+  const uniq = Array.from(new Set(keywords.map((k) => String(k || '').trim()).filter(Boolean)));
+  if (uniq.length === 0) return [];
+
+  const point = business.coordinates?.lat && business.coordinates?.lng
+    ? { lat: Number(business.coordinates.lat), lng: Number(business.coordinates.lng) }
+    : undefined;
+
+  let batch: any[][];
+  try {
+    batch = await fetchMapsLocalResultsBatch(
+      uniq.map((keyword) => ({ keyword, point, business })),
+    );
+  } catch (err: any) {
+    console.warn(`[seoAnalyzer] keyword snapshot batch failed: ${err?.message}`);
+    batch = uniq.map(() => []);
+  }
+
+  return uniq.map((keyword, i) => {
+    const results = batch[i] || [];
+    const rank = findTargetRank(results, business);
+    const aboveCount = rank >= NOT_FOUND_RANK ? Math.min(10, results.length) : rank - 1;
+    const competitorsAbove = results
+      .slice(0, aboveCount)
+      .map((r: any, idx: number) => ({
+        name: r.title || '',
+        rank: idx + 1,
+        rating: r.rating,
+        reviewCount: r.reviews,
+        placeId: r.place_id || r.data_id,
+      }))
+      .filter((c: any) => c.name && !isOwnBusiness(c.name, business));
+    return { keyword, rank, competitorsAbove };
+  });
+}
+
 /** Center + immediate east/south neighbors from the full 3×3 grid, instead
  *  of all 9 points — real Maps data at 3 points instead of 9, used for
  *  fastMode's "reduced" rank check so it costs ~3 DataForSEO calls (with 1

@@ -402,11 +402,42 @@ export async function processAuditJob(auditId: string) {
     // count/rating can't provide, and are untouched by this.
     const effectiveReviewCount = reviewMetrics.reviewCount;
 
-    // ── Keyword Search Volume Analysis table ──────────────────────────────
-    // Attach a demand band to every ranked keyword: live from DataForSEO
-    // Google Ads when available, a labeled city-tier estimate otherwise
-    // (estimated rows render with a `*`). See keywordTable.ts / cityTierVolume.ts.
+    // ── Free-report keyword expansion + Keyword Search Volume table ───────
+    // The reference report's signature is a ~14-row keyword table with
+    // hyper-local phrases ("IT Training Institute Bidhannagar") and a demand
+    // band per row. On fastMode (free) audits we reverse-geocode the
+    // neighbourhoods around the pin, seed those phrases, rank each ONCE at
+    // the business location (one batched DataForSEO call), then attach a
+    // demand band (live Google Ads volume when available, labeled city-tier
+    // estimate otherwise — estimated rows carry a `*`). Paid audits keep
+    // their existing full geo-grid keyword set.
     let keywordTable: any[] = [];
+    let areasChecked: string[] = [];
+    if (audit.fastMode && rankData && !rankData.fetchError) {
+      try {
+        const { fetchNearbyLocalities } = require('./localities');
+        const { buildFreeReportKeywords } = require('./keywordSeeds');
+        const { fetchKeywordRankSnapshot } = require('./seoAnalyzer');
+
+        const localities = await fetchNearbyLocalities(businessForRankings.coordinates, { limit: 8 });
+        const seeded = buildFreeReportKeywords(
+          { ...businessForRankings, city: resolvedCity, category: resolvedCategory },
+          localities.neighbourhoods,
+        );
+        areasChecked = localities.neighbourhoods;
+
+        const snapshot = await fetchKeywordRankSnapshot(businessForRankings, seeded.keywords);
+        // Merge: geo-grid keywords (already ranked, richer) win on collision.
+        const seen = new Set(keywordRankings.map((k: any) => String(k.keyword).toLowerCase()));
+        for (const row of snapshot) {
+          if (seen.has(row.keyword.toLowerCase())) continue;
+          keywordRankings.push({ keyword: row.keyword, rank: row.rank, sourceQuery: row.keyword, confidence: row.rank < 21 ? 'High' : 'Low' });
+        }
+      } catch (seedErr: any) {
+        console.warn('[auditService] free-report keyword expansion failed:', seedErr?.message);
+      }
+    }
+
     if (keywordRankings.length > 0) {
       try {
         const { buildKeywordTable } = require('./keywordTable');
@@ -623,10 +654,52 @@ export async function processAuditJob(auditId: string) {
       });
     }
 
+    // ── Consultant SEO-plan sections (Key Finding, GBP drafts, action
+    // phases, weekly posts, Q&As) — the "looks like the full report" layer.
+    // Reuses the v6 narrative cache blob so a repeat lookup of the same
+    // listing doesn't re-pay the ~3 Groq calls. Best-effort: a failure here
+    // leaves seoPlanDraft undefined and the UI simply hides those sections.
+    let seoPlanDraft: any = narrativeCacheFresh
+      ? insightCache?.narrative?.aiFields?.seoPlanDraft
+      : undefined;
+    if (!seoPlanDraft && keywordTable.length > 0) {
+      try {
+        const { generateSeoPlanDraft } = require('../ai/seoPlanEngine');
+        seoPlanDraft = await generateSeoPlanDraft({
+          businessName: business.name,
+          category: resolvedCategory,
+          city: resolvedCity,
+          area: business.area || '',
+          state: business.state || '',
+          country: business.country || '',
+          website: business.website || '',
+          neighbourhoods: areasChecked,
+          primaryKeyword: keywordTable[0]?.keyword || '',
+          keywordTable,
+          competitors: (localPackCompetitors.length ? localPackCompetitors : effectiveCompetitors).map((c: any) => ({
+            name: c.name,
+            mapsRank: c.avgRank ?? c.estimatedRank,
+            rating: c.rating,
+            reviewCount: c.reviewCount,
+          })),
+          avgRank: googleSearchRank.averageRank,
+          reviewCount: effectiveReviewCount,
+          rating: reviewMetrics.averageRating,
+          profileCompletion,
+          strengths: aiResult?.strengths,
+          weaknesses: aiResult?.weaknesses,
+        });
+      } catch (planErr: any) {
+        console.warn('[auditService] seoPlanDraft generation failed:', planErr?.message);
+      }
+    }
+
     // ── Merge native truths over AI output ───────────────────
     if (typeof aiResult === 'object') {
       aiResult.googleSearchRank    = googleSearchRank;
       aiResult.keywordTable        = keywordTable;
+      aiResult.areasChecked        = areasChecked;
+      if (seoPlanDraft) aiResult.seoPlanDraft = seoPlanDraft;
       aiResult.profileCompletion   = profileCompletion;
       aiResult.seoScore            = nativeSeoScore;
       aiResult.auditConfidence     = auditConfidence;
@@ -767,6 +840,7 @@ export async function processAuditJob(auditId: string) {
                   thirtyDayPlan: aiResult.thirtyDayPlan,
                   ninetyDayPlan: aiResult.ninetyDayPlan,
                   actionPlan:    aiResult.actionPlan,
+                  seoPlanDraft:  aiResult.seoPlanDraft,
                 },
                 fetchedAt: new Date(),
                 logicVersion: CACHE_LOGIC_VERSION,

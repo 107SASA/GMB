@@ -877,6 +877,31 @@ export async function processAuditJob(auditId: string) {
       } catch (gateErr) {
         console.error(`[auditService] Failed to update freeAuditUsed for business ${audit.businessId}:`, gateErr);
       }
+
+      // ── Upsert the SEO brain ──────────────────────────────────────────────
+      // Every completed audit — free reports included — creates the next
+      // SeoPlan version and supersedes the prior active one. Content jobs and
+      // review replies read getActiveSeoPlan() from here on. Best-effort: a
+      // failure must not fail the audit itself.
+      try {
+        const { upsertSeoPlanFromAudit } = require('../seoPlan/seoPlanService');
+        await upsertSeoPlanFromAudit({
+          businessId: audit.businessId.toString(),
+          sourceAuditId: audit._id.toString(),
+          draft: aiResult?.seoPlanDraft,
+          keywordTable,
+          areasChecked,
+          baseline: {
+            overallScore: finalScore,
+            avgRank: googleSearchRank.averageRank,
+            reviewCount: effectiveReviewCount,
+            rating: reviewMetrics.averageRating,
+            completionPct: profileCompletion.completionPercentage,
+          },
+        });
+      } catch (planErr: any) {
+        console.error(`[auditService] SeoPlan upsert failed for business ${audit.businessId}:`, planErr?.message);
+      }
     }
 
   } catch (error) {

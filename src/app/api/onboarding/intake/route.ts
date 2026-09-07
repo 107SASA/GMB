@@ -111,5 +111,24 @@ export async function POST(req: Request) {
     }
   );
 
+  // Merge the owner's answers into a new SEO-brain version — their keywords,
+  // USP, services and description now lead. Best-effort: intake still
+  // succeeds if the brain isn't seeded yet (e.g. the free audit failed).
+  try {
+    const { mergeIntakeIntoSeoPlan } = await import('@/services/seoPlan/seoPlanService');
+    await mergeIntakeIntoSeoPlan(String(ctx.businessId), {
+      category: d.category,
+      description: d.description,
+      services: d.services,
+      keywords,
+      uniqueSellingPoints: d.uniqueSellingPoints,
+      targetAudience: d.targetAudience,
+      competitorNames: cleanList(d.competitorNames),
+      primaryGoal: d.primaryGoal,
+    });
+  } catch (err) {
+    console.error('[intake] mergeIntakeIntoSeoPlan failed:', err);
+  }
+
   return NextResponse.json({ success: true });
 }

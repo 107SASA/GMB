@@ -256,7 +256,7 @@ function renderConsultantSections(
   const parts: string[] = [];
   let sn = 0;
   const sec = () => ++sn;
-  const showMapsVol = full && keywordTable.some((k) => k.mapsVolume != null);
+  const showMapsVol = keywordTable.some((k) => k.mapsVolume != null);
 
   // Performance Snapshot
   if (Array.isArray(draft.performanceSnapshot) && draft.performanceSnapshot.length) {
@@ -383,7 +383,7 @@ function renderConsultantSections(
     parts.push(bar(sec(), 'SUGGESTED GOOGLE Q&AS') + card(qas));
   }
 
-  if (full && Array.isArray(draft.rankTimeline) && draft.rankTimeline.length) {
+  if (Array.isArray(draft.rankTimeline) && draft.rankTimeline.length) {
     const ms = draft.rankTimeline
       .map((m: any, i: number) => `<div style="border:1px solid ${i === 0 ? '#fde68a' : '#e2e8f0'};${i === 0 ? 'background:#fffbeb;' : ''}border-radius:10px;padding:12px;text-align:center;">
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">${h(m.label)}</div>

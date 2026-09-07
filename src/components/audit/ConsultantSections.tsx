@@ -112,7 +112,7 @@ export default function ConsultantSections({
   const failed = new Set(draft.failed || []);
   const table = keywordTable?.length ? keywordTable : [];
   const full = draft.depth === 'full';
-  const showMapsVol = full && table.some((k) => k.mapsVolume != null);
+  const showMapsVol = table.some((k) => k.mapsVolume != null);
   // Running section number — JSX below evaluates top-to-bottom, so this
   // stays in step. Free and full tiers number their own sections.
   const counter = { n: 0 };
@@ -130,9 +130,8 @@ export default function ConsultantSections({
       {/* PERFORMANCE SNAPSHOT */}
       {(draft.performanceSnapshot || []).length > 0 && (
         <div className="space-y-4">
-          {full ? <SectionBar num={S()} title="PERFORMANCE SNAPSHOT" /> : null}
+          <SectionBar num={S()} title="PERFORMANCE SNAPSHOT" />
           <Card>
-            {!full && <div className="text-xs font-bold uppercase tracking-wide text-primary mb-3">Performance Snapshot</div>}
             <SnapshotGrid tiles={draft.performanceSnapshot!} />
           </Card>
         </div>
@@ -477,8 +476,8 @@ export default function ConsultantSections({
         </div>
       )}
 
-      {/* PROJECTED RANK TIMELINE (full) / WHAT WE AIM FOR (free) */}
-      {full && (draft.rankTimeline || []).length > 0 ? (
+      {/* PROJECTED RANK TIMELINE (both tiers) / WHAT WE AIM FOR (fallback) */}
+      {(draft.rankTimeline || []).length > 0 ? (
         <div className="space-y-4">
           <SectionBar num={S()} title="PROJECTED RANK IMPROVEMENT TIMELINE" />
           <Card>

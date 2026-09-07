@@ -149,15 +149,12 @@ function buildCoreSnapshot(input: SeoPlanInput): ISeoPlanSnapshotTile[] {
     note: (pc.oauthPendingCount ?? pc.unknownCount ?? 0) > 0 ? `${pc.oauthPendingCount ?? pc.unknownCount} fields need Google` : 'All visible fields filled',
     tone: (pc.completionPercentage ?? 0) >= 90 ? 'good' : 'warn',
   });
-
-  if (input.depth === 'full') {
-    tiles.push({
-      label: 'Suspension risk',
-      value: input.suspensionRisk?.level || 'Low',
-      note: 'No naming/policy violations found',
-      tone: (input.suspensionRisk?.level || 'Low').toLowerCase() === 'low' ? 'good' : 'warn',
-    });
-  }
+  tiles.push({
+    label: 'Suspension risk',
+    value: input.suspensionRisk?.level || 'Low',
+    note: 'No naming/policy violations found',
+    tone: (input.suspensionRisk?.level || 'Low').toLowerCase() === 'low' ? 'good' : 'warn',
+  });
   return tiles;
 }
 
@@ -365,16 +362,24 @@ export async function generateSeoPlanDraft(input: SeoPlanInput): Promise<ISeoPla
   const draft: ISeoPlanDraft = {
     depth,
     performanceSnapshot: buildCoreSnapshot(input),
+    // KPI blocks — Performance Snapshot + Projected Rank Timeline + dual
+    // Search/Maps volume — are on BOTH tiers (owner ask, Sep 2026). The
+    // depth split is now: 'full' also reads the website + live GBP, does the
+    // deeper GBP-gap prose (status icons, exact title inline, attributes,
+    // 750-char keyword list, platform gaps) and gets the Confidential PDF.
+    rankTimeline: buildRankTimeline(input),
     competitorLandscape: buildCompetitorLandscape(input),
     criticalGap: buildCriticalGap(input),
     whatWeAimFor: buildWhatWeAimFor(input),
     dataRequired: buildDataRequired(depth),
     failed: [],
   };
-  if (depth === 'full') draft.rankTimeline = buildRankTimeline(input);
 
+  const hasOwnerData = !!(input.usps || input.offers || input.services);
   const tasks = [callNarrative(input), callGbpDrafts(input), callActionPlan(input)];
-  if (depth === 'full') tasks.push(callSnapshotTiles(input) as any);
+  // Offer/USP snapshot tiles need real owner facts — skip the call entirely
+  // on a free report with nothing to work from (the common case pre-intake).
+  if (depth === 'full' || hasOwnerData) tasks.push(callSnapshotTiles(input) as any);
 
   const [narrative, gbp, action, tiles] = await Promise.allSettled(tasks);
 
@@ -387,7 +392,7 @@ export async function generateSeoPlanDraft(input: SeoPlanInput): Promise<ISeoPla
   if (action.status === 'fulfilled') Object.assign(draft, action.value);
   else { draft.failed!.push('actionPlan'); console.warn('[seoPlanEngine] actionPlan failed:', (action as PromiseRejectedResult).reason?.message); }
 
-  if (depth === 'full' && tiles && tiles.status === 'fulfilled' && Array.isArray(tiles.value) && tiles.value.length) {
+  if (tiles && tiles.status === 'fulfilled' && Array.isArray(tiles.value) && tiles.value.length) {
     draft.performanceSnapshot = [...(draft.performanceSnapshot || []), ...tiles.value];
   }
 

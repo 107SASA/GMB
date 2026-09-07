@@ -10,6 +10,7 @@ import {
 } from '@/models/Audit';
 import { Download, RefreshCw, Share2, Copy, Check } from 'lucide-react';
 import { formatRank, rankBucket, computeSuspensionRisk } from '@/services/audit/reportMath';
+import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
 
 /* ─── Google Logo ───────────────────────────────────────────────────────────── */
 function GoogleLogo({ size = 18 }: { size?: number }) {
@@ -256,14 +257,15 @@ export default function AuditReportGrexa({
   const responsePct  = parseInt(responseStr.replace('%', '')) || 0;
 
   const completion    = data.profileCompletion;
-  const completionPct = completion?.completionPercentage ?? 0;
+  const completionView = formatProfileCompletionDisplay(completion);
+  const completionPct = completionView.pct;
   const checklist     = (completion?.checklist ?? []) as IChecklistItem[];
   // Unknown fields (need a live Google connection to check — see
   // seoAnalyzer.ts's calculateProfileCompletion) are excluded from the ratio
   // itself on purpose, but that means this percentage is "of what we could
   // verify," not "of everything" — surfaced so a high number pre-connection
   // isn't read as a fully complete profile.
-  const unverifiedCount = completion?.unknownCount ?? 0;
+  const unverifiedCount = completionView.pending;
 
   // Prefer SerpApi local-pack competitors (have real avgRank). Fall back to
   // Places competitors — including ones without a rank (show "—").
@@ -751,11 +753,9 @@ export default function AuditReportGrexa({
                 style={{ width: `${completionPct}%`, background: completionPct >= 90 ? '#0a8a3e' : completionPct >= 70 ? '#fab219' : '#ba1a1a' }}
               />
             </div>
-            {unverifiedCount > 0 && (
-              <p className="mt-2 text-xs text-on-surface-variant max-w-sm">
-                {completionPct}% of what we can verify right now — {unverifiedCount} more field{unverifiedCount === 1 ? '' : 's'} need{unverifiedCount === 1 ? 's' : ''} a live Google connection to check.
-              </p>
-            )}
+            <p className="mt-2 text-xs text-on-surface-variant max-w-sm">
+              {completionView.label}
+            </p>
           </div>
           <div className="flex items-center gap-4 text-[11px] text-on-surface-variant flex-wrap">
             <span className="text-outline font-medium">Should be 100%</span>

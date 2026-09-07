@@ -10,6 +10,7 @@ import { FaqAccordion } from '@/components/shared/FaqAccordion';
 import { ALL_FAQS } from '@/lib/faqData';
 import { usePublicPlan } from '@/components/billing/useRazorpayCheckout';
 import { pickDuration } from '@/components/billing/DurationPicker';
+import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
 
 interface AuditDoc {
   _id: string;
@@ -226,8 +227,11 @@ function FreeReportResultContent() {
   const competitorsAhead = rank != null
     ? Math.max(0, Math.round(rank) - 1)
     : localCompetitors.length;
-  const profileCompletionPct = d.profileCompletion?.completionPercentage ?? profile.profileCompletionScore ?? 0;
-  const unverifiedFieldCount = d.profileCompletion?.unknownCount ?? unknownChecklistCount;
+  // One completion number + one qualified wording for every spot it appears
+  // (hero stat tile, Profile Completion section). See src/lib/profileCompletion.ts.
+  const completionView = formatProfileCompletionDisplay(d.profileCompletion);
+  const profileCompletionPct = completionView.pct;
+  const unverifiedFieldCount = completionView.pending || unknownChecklistCount;
 
   // "Why {business} isn't ranking" — built from real audit data only.
   const issueLines: string[] = [];
@@ -337,8 +341,8 @@ function FreeReportResultContent() {
                     <div className="text-xs text-on-surface-variant mt-1">Issues hurting your ranking</div>
                   </div>
                   <div className="bg-surface-container rounded-xl p-4 text-center border border-outline-variant">
-                    <div className="font-heading text-2xl font-bold text-on-surface">{Math.round(profileCompletionPct)}%</div>
-                    <div className="text-xs text-on-surface-variant mt-1">Profile complete</div>
+                    <div className="font-heading text-2xl font-bold text-on-surface">{profileCompletionPct}%</div>
+                    <div className="text-xs text-on-surface-variant mt-1">{completionView.badgeCaption}</div>
                   </div>
                 </div>
                 <Link
@@ -536,13 +540,11 @@ function FreeReportResultContent() {
             <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
               <SectionHeader title="Profile Completion" icon="check_circle" />
               <div className="mb-5">
-                <div className="flex items-center justify-between text-xs text-on-surface-variant mb-1.5">
-                  <span>{Math.round(profileCompletionPct)}% filled in</span>
-                </div>
+                <p className="text-sm text-on-surface-variant mb-2">{completionView.label}</p>
                 <div className="h-2 rounded-full bg-surface-container overflow-hidden">
                   <div
                     className="h-full rounded-full bg-primary"
-                    style={{ width: `${Math.min(100, Math.round(profileCompletionPct))}%` }}
+                    style={{ width: `${Math.min(100, profileCompletionPct)}%` }}
                   />
                 </div>
               </div>
@@ -559,7 +561,7 @@ function FreeReportResultContent() {
               {unverifiedFieldCount > 0 && (
                 <div className="mt-4 pt-4 border-t border-outline-variant flex items-center gap-2 text-xs text-outline">
                   <MaterialIcon name="help" size={16} className="shrink-0" />
-                  {unverifiedFieldCount} field{unverifiedFieldCount > 1 ? 's' : ''} need{unverifiedFieldCount > 1 ? '' : 's'} verification — connect your Google account to check
+                  {unverifiedFieldCount} field{unverifiedFieldCount > 1 ? 's' : ''} need{unverifiedFieldCount > 1 ? '' : 's'} a Google connection to check
                 </div>
               )}
             </div>

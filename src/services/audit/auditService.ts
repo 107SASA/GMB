@@ -61,7 +61,14 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // point, not-found at the other two) was only showing ~4 named competitors
 // in the table, visibly out of proportion with what the rank number
 // implied. More of the same real, already-fetched data, not new data.
-const CACHE_LOGIC_VERSION = 5;
+// v6 (Sep 2026): profile completion now carries a qualified label/prompt
+// fact (places vs oauth field groups — see src/lib/profileCompletion.ts)
+// and the Groq prompt is fed that fact instead of a bare "100%". Old
+// narratives cached under v5 still say "Full Profile Completion — 100%
+// profile completion" / "profile is 100% complete"; this bump forces them
+// to regenerate. The consultant SEO-plan sections also land at this
+// version.
+const CACHE_LOGIC_VERSION = 6;
 
 export async function processAuditJob(auditId: string) {
   await dbConnect();
@@ -395,6 +402,23 @@ export async function processAuditJob(auditId: string) {
     // count/rating can't provide, and are untouched by this.
     const effectiveReviewCount = reviewMetrics.reviewCount;
 
+    // ── Keyword Search Volume Analysis table ──────────────────────────────
+    // Attach a demand band to every ranked keyword: live from DataForSEO
+    // Google Ads when available, a labeled city-tier estimate otherwise
+    // (estimated rows render with a `*`). See keywordTable.ts / cityTierVolume.ts.
+    let keywordTable: any[] = [];
+    if (keywordRankings.length > 0) {
+      try {
+        const { buildKeywordTable } = require('./keywordTable');
+        keywordTable = await buildKeywordTable(
+          keywordRankings.map((k: any) => ({ keyword: k.keyword, rank: k.rank })),
+          { city: resolvedCity, area: business.area || '', country: business.country || '' },
+        );
+      } catch (kwErr: any) {
+        console.warn('[auditService] keyword table build failed:', kwErr?.message);
+      }
+    }
+
     const avgRank = keywordRankings.length > 0
       ? keywordRankings.reduce((acc: number, k: any) => acc + k.rank, 0) / keywordRankings.length
       : 0;
@@ -533,6 +557,9 @@ export async function processAuditJob(auditId: string) {
     // stale narrative about a business that's since changed.
     const narrativeInputs = {
       profileCompletionPct: profileCompletion.completionPercentage,
+      // Bust cached "100% complete" prose when the qualified wording changes
+      // (e.g. a field got promoted so it's now "6 fields need a connection").
+      profileCompletionFact: profileCompletion.completionPromptFact || '',
       reviewCount:          reviewMetrics.reviewCount,
       averageRating:        reviewMetrics.averageRating,
       avgRank:              googleSearchRank.averageRank,
@@ -599,6 +626,7 @@ export async function processAuditJob(auditId: string) {
     // ── Merge native truths over AI output ───────────────────
     if (typeof aiResult === 'object') {
       aiResult.googleSearchRank    = googleSearchRank;
+      aiResult.keywordTable        = keywordTable;
       aiResult.profileCompletion   = profileCompletion;
       aiResult.seoScore            = nativeSeoScore;
       aiResult.auditConfidence     = auditConfidence;

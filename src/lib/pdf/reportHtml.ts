@@ -3,6 +3,7 @@ import type {
 } from '@/models/Audit';
 import { formatRank, rankBucket, computeSuspensionRisk } from '@/services/audit/reportMath';
 import { getBrandLogoDataUri } from '@/lib/brandAsset';
+import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
 
 // Brand triad (src/app/globals.css: --color-secondary / --color-primary-container /
 // --color-error) — the same three colors the on-screen report uses for
@@ -232,7 +233,8 @@ export function buildReportHtml(ctx: ReportContext): string {
   // ── Data extraction ──────────────────────────────────────────────────────────
   const overallScore: number = (audit as any).overallScore ?? data.profileScore?.overallScore ?? 0;
   const seoScore: number = data.seoScore?.score ?? 0;
-  const completionPct: number = data.profileCompletion?.completionPercentage ?? 0;
+  const completionView = formatProfileCompletionDisplay(data.profileCompletion);
+  const completionPct: number = completionView.pct;
   const checklist: IChecklistItem[] = data.profileCompletion?.checklist ?? [];
   // Mirrors AuditReportGrexa: no reviews synced yet means auditService deleted
   // reviewAnalysis entirely rather than leaving hollow zeros, so its presence
@@ -639,9 +641,9 @@ export function buildReportHtml(ctx: ReportContext): string {
   const checklistHtml = `
 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:14px;">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
-    <h2 style="font-size:15px;font-weight:700;color:#0f172a;">Your Profile Completion (${completionPct}%)</h2>
+    <h2 style="font-size:15px;font-weight:700;color:#0f172a;">Your Profile Completion (${completionPct}% ${completionView.badgeCaption})</h2>
     <div style="display:flex;align-items:center;gap:14px;font-size:11px;color:#374151;flex-wrap:wrap;">
-      <span style="color:#94a3b8;font-weight:500;">Should be 100%</span>
+      <span style="color:#94a3b8;font-weight:500;">${h(completionView.label)}</span>
       <div style="display:flex;align-items:center;gap:5px;">
         <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="${BRAND_GOOD}"/><path d="M8 12l3 3 5-5" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
         <span>Complete</span>

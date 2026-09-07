@@ -2,6 +2,13 @@ import type { IProfileCompletion, IChecklistItem, IDataQuality, IAuditConfidence
 import type { GeoGridPoint } from './geoGrid';
 import { generateGeoGrid, GRID_SPACING_KM, GRID_AREA_SQ_KM } from './geoGrid';
 import { fetchMapsLocalResultsBatch } from './dataForSeoClient';
+import {
+  groupForField,
+  buildCompletionLabel,
+  buildCompletionPromptFact,
+  type CompletionScope,
+  type ChecklistGroup,
+} from '@/lib/profileCompletion';
 
 // ── Profile Completion ─────────────────────────────────────────────────────────
 //
@@ -24,13 +31,13 @@ export function calculateProfileCompletion(business: any) {
   const checklist: IChecklistItem[] = [];
 
   const add = (field: string, isComplete: boolean) =>
-    checklist.push({ field, status: isComplete ? 'Complete' : 'Missing' });
+    checklist.push({ field, status: isComplete ? 'Complete' : 'Missing', group: groupForField(field) });
 
   const addUnknown = (field: string, known: boolean | undefined, isComplete: boolean) => {
     if (known === undefined || known === null) {
-      checklist.push({ field, status: 'Unknown' });
+      checklist.push({ field, status: 'Unknown', group: groupForField(field) });
     } else {
-      checklist.push({ field, status: isComplete ? 'Complete' : 'Missing' });
+      checklist.push({ field, status: isComplete ? 'Complete' : 'Missing', group: groupForField(field) });
     }
   };
 
@@ -90,21 +97,62 @@ export function calculateProfileCompletion(business: any) {
   // These require GBP Management API (OAuth) – we cannot verify them, mark Unknown
   const gbpOnly = ['Videos', 'Logo / Cover Image', 'Attributes', 'Booking / Appointment Link'];
   for (const f of gbpOnly) {
-    checklist.push({ field: f, status: 'Unknown' });
+    checklist.push({ field: f, status: 'Unknown', group: groupForField(f) });
   }
 
   const completeCount = checklist.filter((c) => c.status === 'Complete').length;
   const missingCount  = checklist.filter((c) => c.status === 'Missing').length;
   const unknownCount  = checklist.filter((c) => c.status === 'Unknown').length;
 
-  // Guarded against 0 even though Business Name/Category/Address/Phone/
-  // Website/Service Area are always checkable (never Unknown), so
-  // completeCount+missingCount is never actually 0 in practice.
-  const checkableTotal = Math.max(1, completeCount + missingCount);
-  const completionPercentage = Math.round((completeCount / checkableTotal) * 100);
+  // ── One number, one story ────────────────────────────────────────────────
+  // Pre-OAuth the denominator is the Places-verifiable group only (Business
+  // Name, Category, Address, Phone, Website, Service Area, Hours, Photos) —
+  // the fields we can actually check without a connected Google account.
+  // OAuth-only fields (description, services, social, videos, logo,
+  // attributes, booking link) are Unknown, not Missing, and are reported
+  // separately as "N fields need a Google connection" rather than folded
+  // into (or dragging down) the percentage. Post-OAuth the denominator
+  // widens to every field we can now verify. See src/lib/profileCompletion.ts
+  // for the shared display/prompt formatting that every surface consumes.
+  const inGroup = (g: ChecklistGroup) => checklist.filter((c) => c.group === g);
+  const placesCompleteCount = inGroup('places').filter((c) => c.status === 'Complete').length;
+  const placesMissingCount  = inGroup('places').filter((c) => c.status === 'Missing').length;
+  const placesTotalCount    = placesCompleteCount + placesMissingCount;
+
+  const scope: CompletionScope = hasGbpConnection ? 'full' : 'places';
+  const completionPercentage = scope === 'full'
+    ? Math.round((completeCount / Math.max(1, completeCount + missingCount)) * 100)
+    : Math.round((placesCompleteCount / Math.max(1, placesTotalCount)) * 100);
+
+  // "N fields need a Google connection to check" — every field still Unknown.
+  // Naturally 7 when keywords are already present pre-OAuth (Additional
+  // Keywords is promoted to Complete), 8 when they aren't.
+  const oauthPendingCount = unknownCount;
+
+  const completionLabel = buildCompletionLabel({
+    pct: completionPercentage,
+    pending: oauthPendingCount,
+    scope,
+  });
+  const completionPromptFact = buildCompletionPromptFact({
+    completionPercentage,
+    oauthPendingCount,
+    checklist,
+  });
 
   return {
-    data: { completionPercentage, checklist, missingCount, unknownCount },
+    data: {
+      completionPercentage,
+      completionScope: scope,
+      completionLabel,
+      completionPromptFact,
+      checklist,
+      placesCompleteCount,
+      placesTotalCount,
+      oauthPendingCount,
+      missingCount,
+      unknownCount,
+    },
     evidenceSource: hasGbpConnection
       ? 'Calculated from connected GBP data. Fields marked Unknown require GBP Management API access we don\'t have even when connected (Videos, Logo/Cover, Attributes, Booking Link).'
       : 'Calculated from Google Places + intake data — this business is not yet connected via GBP OAuth, so keywords/description/services/social links marked Unknown could not be checked (Places API doesn\'t expose them), not confirmed absent. Percentage reflects only confirmed-complete vs confirmed-missing fields; Unknown fields are excluded, not penalized.'

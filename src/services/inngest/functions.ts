@@ -850,13 +850,20 @@ export const processContentJob = inngest.createFunction(
         const { generateThumbnail } = await import("@/services/ai/imageGenerator");
         const { isStorageConfigured, rehostImageFromUrl } = await import("@/lib/storage");
 
+        // Keywords / USP / post themes come from the active SeoPlan when the
+        // business has one (the brain), falling back to Business.keywords.
+        const { resolveContentKeywords } = await import("@/services/seoPlan/seoPlanService");
+        const planContent = await resolveContentKeywords(business);
+
         const aiResponse = await generateAIContent({
           businessName: business.name || 'Local Business',
           businessType: business.category || 'Local Business',
           location: business.address || 'Local Area',
-          keywords: business.keywords || ['services'],
-          tone: 'Professional',
-          contentTypes: ['GMB Posts']
+          keywords: planContent.keywords.length ? planContent.keywords : (business.keywords || ['services']),
+          tone: business.tone || 'Professional',
+          contentTypes: ['GMB Posts'],
+          usp: planContent.uspLine,
+          postThemes: planContent.postThemes,
         });
 
         if (!aiResponse || !aiResponse.posts) throw new Error("Empty AI content returned");
@@ -1749,6 +1756,131 @@ export const cleanupStalePendingAudits = inngest.createFunction(
         );
       }
       return { deleted: stale.length };
+    });
+
+    return { success: true, ...result };
+  }
+);
+
+// 7c. Monthly paid re-audit — keeps the SEO brain fresh. A business on an
+// active subscription whose current SeoPlan has been active ≥ 30 days gets a
+// full (not fastMode) audit dispatched; the audit's own SeoPlan upsert then
+// creates the next version and supersedes the current one. Owner edits are
+// carried forward by upsertSeoPlanFromAudit. Runs daily, small batch.
+export const seoPlanMonthlyReaudit = inngest.createFunction(
+  { id: "seo-plan-monthly-reaudit", triggers: [{ cron: "0 3 * * *" }] }, // daily ~08:30 IST
+  async ({ step }) => {
+    const dispatched = await step.run("select-and-dispatch-reaudits", async () => {
+      await dbConnect();
+      const { default: SeoPlan } = await import("@/models/SeoPlan");
+      const { default: Business } = await import("@/models/Business");
+      const { default: Audit } = await import("@/models/Audit");
+      const { createPendingAuditAndDispatch } = await import("@/lib/startAudit");
+      const { default: Organization } = await import("@/models/Organization");
+      const { default: User } = await import("@/models/User");
+
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const duePlans = await SeoPlan.find({ status: "active", activeFrom: { $lte: cutoff } })
+        .select("businessId activeFrom")
+        .limit(25)
+        .lean();
+
+      const out: string[] = [];
+      for (const plan of duePlans as any[]) {
+        const biz: any = await Business.findById(plan.businessId).lean();
+        if (!biz || biz.isDeleted) continue;
+        if (biz.subscriptionStatus !== "active") continue;
+
+        // Skip if an audit is already in flight for this business.
+        const pending = await Audit.exists({ businessId: plan.businessId, status: "PENDING" });
+        if (pending) continue;
+
+        const org = biz.organizationId ? await Organization.findById(biz.organizationId).lean() : null;
+        const user = biz.userId ? await User.findById(biz.userId).lean() : null;
+        if (!org || !user) continue;
+
+        try {
+          // Full audit (not fastMode) — createPendingAuditAndDispatch forces
+          // fastMode, so dispatch the event directly with fastMode: false.
+          const audit = await Audit.create({
+            tenantId: (org as any)._id.toString(),
+            userId: (user as any)._id.toString(),
+            organizationId: (org as any)._id.toString(),
+            businessId: biz._id,
+            businessName: biz.name,
+            userDefinedCategory: biz.userDefinedCategory || biz.category,
+            website: biz.website,
+            phone: biz.phone,
+            address: biz.address,
+            city: biz.city,
+            state: biz.state,
+            country: biz.country,
+            location: [biz.city, biz.state].filter(Boolean).join(", ") || biz.address || "Location hidden",
+            status: "PENDING",
+            fastMode: false,
+            metadata: { trigger: "seo-plan-monthly-reaudit" },
+          });
+          await inngest.send({ name: "audit/generate.requested", data: { auditId: audit._id.toString() } });
+          out.push(biz._id.toString());
+          // Bump activeFrom so a slow/failed audit doesn't get re-picked
+          // every single day until it finally completes.
+          await SeoPlan.updateOne({ _id: plan._id }, { $set: { activeFrom: new Date() } });
+        } catch (err: any) {
+          console.error(`[seo-plan-monthly-reaudit] dispatch failed for business ${biz._id}:`, err?.message);
+        }
+      }
+      return out;
+    });
+
+    return { success: true, dispatched: dispatched.length };
+  }
+);
+
+// 7d. Weekly SEO-plan progress summary for active subscribers — posts
+// published + new reviews in the last 7 days, plus a nudge toward the active
+// plan. Delivered as an in-app notification (notifyBusinessUsers); a cold
+// business-initiated WhatsApp send would need an approved template and is
+// left for a follow-up. Opt-out: Business.weeklySummaryOptOut.
+export const seoPlanWeeklySummary = inngest.createFunction(
+  { id: "seo-plan-weekly-summary", triggers: [{ cron: "0 12 * * 1" }] }, // Mondays ~17:30 IST
+  async ({ step }) => {
+    const result = await step.run("send-weekly-summaries", async () => {
+      await dbConnect();
+      const { default: Business } = await import("@/models/Business");
+      const { default: Post } = await import("@/models/Post");
+      const { default: Review } = await import("@/models/Review");
+      const { default: SeoPlan } = await import("@/models/SeoPlan");
+      const { notifyBusinessUsers } = await import("@/services/notifications");
+
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const businesses = await Business.find({
+        isDeleted: { $ne: true },
+        subscriptionStatus: "active",
+        weeklySummaryOptOut: { $ne: true },
+      }).select("_id name").lean();
+
+      let sent = 0;
+      for (const b of businesses as any[]) {
+        const plan = await SeoPlan.findOne({ businessId: b._id, status: "active" }).select("version primaryKeywords").lean();
+        if (!plan) continue;
+
+        const [postsPublished, newReviews] = await Promise.all([
+          Post.countDocuments({ businessId: b._id, status: "published", updatedAt: { $gte: weekAgo } }),
+          Review.countDocuments({ businessId: b._id, createdAt: { $gte: weekAgo } }),
+        ]);
+
+        if (postsPublished === 0 && newReviews === 0) continue;
+
+        const kw = (plan as any).primaryKeywords?.[0];
+        await notifyBusinessUsers(b._id.toString(), {
+          type: "seo_plan_summary",
+          title: "Your week on Google",
+          body: `${postsPublished} post${postsPublished === 1 ? "" : "s"} published and ${newReviews} new review${newReviews === 1 ? "" : "s"} this week — all working the current SEO plan${kw ? ` (targeting "${kw}")` : ""}.`,
+          link: "/dashboard/seo-plan",
+        });
+        sent++;
+      }
+      return { sent, total: businesses.length };
     });
 
     return { success: true, ...result };

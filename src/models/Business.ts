@@ -132,6 +132,8 @@ export interface IBusiness extends Document {
   auditNurtureSentAt?: Date;
   /** When the "your report is ready" WhatsApp ping was sent (send-once guard). */
   reportReadySentAt?: Date;
+  /** Owner opted out of the weekly SEO-plan progress summary. */
+  weeklySummaryOptOut?: boolean;
   // ADDITIVE — post-payment intake. Rich marketing info collected right after a
   // workspace subscribes, so audits, content and competitor comparison run on
   // real data instead of empty/garbage fields. `intakeCompleted` gates the
@@ -291,6 +293,7 @@ const BusinessSchema: Schema = new Schema(
     // ADDITIVE — when the post-audit WhatsApp sales nurture was sent (send-once).
     auditNurtureSentAt: { type: Date },
     reportReadySentAt: { type: Date },
+    weeklySummaryOptOut: { type: Boolean },
     // ADDITIVE — post-payment intake (see IBusiness above).
     intakeCompleted: { type: Boolean, default: false },
     intake: {

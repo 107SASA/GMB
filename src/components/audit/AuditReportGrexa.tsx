@@ -11,6 +11,7 @@ import {
 import { Download, RefreshCw, Share2, Copy, Check } from 'lucide-react';
 import { formatRank, rankBucket, computeSuspensionRisk } from '@/services/audit/reportMath';
 import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
+import ConsultantSections from '@/components/audit/ConsultantSections';
 
 /* ─── Google Logo ───────────────────────────────────────────────────────────── */
 function GoogleLogo({ size = 18 }: { size?: number }) {
@@ -837,6 +838,17 @@ export default function AuditReportGrexa({
             </div>
           )}
         </div>
+      )}
+
+      {/* ══ Consultant sections (Key Finding → Data Required) ══════════ */}
+      {data.seoPlanDraft && (
+        <ConsultantSections
+          draft={data.seoPlanDraft}
+          keywordTable={data.keywordTable || []}
+          businessName={audit.businessName}
+          city={(audit.location || '').split(',')[0]?.trim() || ''}
+          checkoutHref="/dashboard/upgrade"
+        />
       )}
 
       {/* ══ 8. CTA BANNER ══════════════════════════════════════════════ */}

@@ -224,6 +224,148 @@ function renderGeoGridMap(kw: IGeoGridKeyword, mapsApiKey?: string, gridSpacingK
 </div>`;
 }
 
+// ── Consultant sections (Key Finding → Data Required) ──────────────────────────
+// String-HTML mirror of ConsultantSections.tsx. Kept intentionally close in
+// structure so the PDF and the web report stay in sync section-for-section.
+
+const NAVY = '#1e293b';
+const RANK_RED = '#dc2626';
+const BAND_W: Record<string, string> = { HIGH: '100%', MED: '66%', LOW: '38%', NICHE: '18%' };
+const BAND_C: Record<string, string> = { HIGH: '#f59e0b', MED: '#f59e0b', LOW: '#60a5fa', NICHE: '#a78bfa' };
+const POT_C: Record<string, string> = { 'HIGHEST POTENTIAL': '#16a34a', 'IMMEDIATE WIN': '#ea580c', 'HIGH POTENTIAL': '#2563eb' };
+const PRI_C: Record<string, string> = { CRITICAL: '#dc2626', HIGH: '#ea580c', MEDIUM: '#ca8a04' };
+
+const fmtR = (r?: number | null) => (r == null ? '—' : r >= 21 ? '20+' : `#${Math.round(r)}`);
+const bar = (n: number, title: string) =>
+  `<div style="background:${NAVY};color:#fff;border-radius:10px;padding:12px 16px;font-weight:700;font-size:13px;margin:18px 0 10px;">${n}. ${h(title)}</div>`;
+const card = (inner: string) =>
+  `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px;break-inside:avoid;margin-bottom:12px;">${inner}</div>`;
+const pill = (t: string, c: string) =>
+  `<span style="background:${c};color:#fff;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;text-transform:uppercase;white-space:nowrap;">${h(t)}</span>`;
+
+function renderConsultantSections(
+  draft: any,
+  keywordTable: Array<{ keyword: string; volumeBand: string; estimated: boolean; mapsRank: number }>,
+  businessName: string,
+  city: string,
+): string {
+  if (!draft) return '';
+  const parts: string[] = [];
+
+  if (draft.keyFinding) {
+    parts.push(card(
+      `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#06b34c;margin-bottom:6px;">Key Finding</div>
+       <p style="font-size:12px;color:#374151;line-height:1.6;margin:0;">${h(draft.keyFinding)}</p>`,
+    ));
+  }
+
+  if (draft.criticalGap?.rows?.length) {
+    const rows = draft.criticalGap.rows
+      .map((r: any) => `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px;border-top:1px solid #fde68a;"><span>${h(r.keyword)}</span><span style="color:${RANK_RED};font-weight:700;">${fmtR(r.mapsRank)}</span></div>`)
+      .join('');
+    parts.push(
+      `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:14px;padding:18px;break-inside:avoid;margin-bottom:12px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#92400e;margin-bottom:6px;">Critical Gap — Searches That Are Not Showing You</div>
+        <p style="font-size:12px;color:#78716c;margin:0 0 8px;">${h(draft.criticalGap.intro)}</p>
+        ${rows}
+        <p style="font-size:12px;color:#78716c;margin:10px 0 0;">${h(draft.criticalGap.closer)}</p>
+      </div>`,
+    );
+  }
+
+  if (keywordTable.length) {
+    const rows = keywordTable
+      .map((k) => `<tr style="border-top:1px solid #f1f5f9;">
+        <td style="padding:7px 6px;font-size:11px;color:#374151;">${h(k.keyword)}</td>
+        <td style="padding:7px 6px;"><span style="display:inline-block;width:56px;height:5px;border-radius:3px;background:#e2e8f0;vertical-align:middle;overflow:hidden;"><span style="display:block;height:100%;width:${BAND_W[k.volumeBand] || '18%'};background:${BAND_C[k.volumeBand] || '#a78bfa'};"></span></span> <span style="font-size:10px;font-weight:700;color:${BAND_C[k.volumeBand] || '#a78bfa'};">${h(k.volumeBand)}${k.estimated ? '*' : ''}</span></td>
+        <td style="padding:7px 6px;text-align:right;font-weight:700;font-size:11px;color:${k.mapsRank > 5 ? RANK_RED : '#16a34a'};">${fmtR(k.mapsRank)}</td>
+      </tr>`)
+      .join('');
+    const insights = (draft.keywordInsights || []).map((l: string) => `<li style="font-size:11px;color:#64748b;">${h(l)}</li>`).join('');
+    parts.push(bar(1, 'KEYWORD SEARCH VOLUME ANALYSIS — GOOGLE MAPS') + card(
+      `<p style="font-size:11px;color:#64748b;margin:0 0 8px;">Phrases people type around ${h(city || 'your area')}. Rank is live Maps data when we have it — never guessed. Volume is a band, not a monthly count. <span>* = estimated demand</span></p>
+       <table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;"><th style="padding:4px 6px;">Keyword</th><th style="padding:4px 6px;">Demand</th><th style="padding:4px 6px;text-align:right;">Maps Rank</th></tr></thead><tbody>${rows}</tbody></table>
+       ${insights ? `<ul style="margin:10px 0 0;padding-left:16px;">${insights}</ul>` : ''}`,
+    ));
+  }
+
+  if (draft.competitorLandscape?.length) {
+    const rows = draft.competitorLandscape
+      .map((c: any) => `<tr style="border-top:1px solid #f1f5f9;vertical-align:top;">
+        <td style="padding:7px 6px;font-size:11px;font-weight:600;color:#0f172a;">${h(c.name)}</td>
+        <td style="padding:7px 6px;font-size:11px;font-weight:700;color:#06b34c;white-space:nowrap;">${fmtR(c.mapsRank)}</td>
+        <td style="padding:7px 6px;font-size:11px;color:#64748b;white-space:nowrap;">${c.rating != null ? h(`${c.rating}★`) : '—'}${c.reviewCount != null ? h(` · ${c.reviewCount}`) : ''}</td>
+        <td style="padding:7px 6px;font-size:11px;color:#64748b;">${h(c.keyEdge || '')}</td>
+      </tr>`)
+      .join('');
+    parts.push(bar(2, 'COMPETITOR LANDSCAPE') + card(
+      `<table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;"><th style="padding:4px 6px;">Competitor</th><th style="padding:4px 6px;">Maps Rank</th><th style="padding:4px 6px;">Reviews</th><th style="padding:4px 6px;">Key Edge</th></tr></thead><tbody>${rows}</tbody></table>
+       ${draft.competitorCounterPosition ? `<p style="font-size:11px;color:#64748b;margin:10px 0 0;line-height:1.6;">${h(draft.competitorCounterPosition)}</p>` : ''}`,
+    ));
+  }
+
+  if (draft.gbpGaps?.length || draft.suggestedTitle) {
+    const gaps = (draft.gbpGaps || []).map((g: any) =>
+      `<div style="margin-bottom:8px;"><div style="font-size:11px;font-weight:600;color:#0f172a;">✕ ${h(g.field)}</div><div style="font-size:10px;color:#94a3b8;">${h(g.whyItMatters || '')}</div><div style="font-size:11px;color:#374151;">${h(g.recommendation || '')}</div></div>`).join('');
+    const services = (draft.suggestedServices || []).map((s: string) => `<span style="display:inline-block;font-size:10px;padding:3px 7px;border-radius:4px;background:#dcfce7;color:#166534;margin:0 4px 4px 0;">${h(s)}</span>`).join('');
+    const cats = (draft.suggestedCategories || []).map((c: string) => `<span style="display:inline-block;font-size:10px;padding:3px 7px;border-radius:4px;background:#f1f5f9;color:#475569;margin:0 4px 4px 0;">${h(c)}</span>`).join('');
+    parts.push(bar(3, 'GBP PROFILE GAP ANALYSIS') + card(
+      `<p style="font-size:11px;color:#64748b;margin:0 0 10px;">Drafts for ${h(businessName)} only. We do not overwrite the live listing from this report.</p>
+       ${gaps}
+       ${draft.suggestedTitle ? `<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};">Title is not carrying the keywords</div><div style="font-size:12px;font-weight:600;color:#0f172a;">${h(draft.suggestedTitle)}</div></div>` : ''}
+       ${draft.suggestedDescription ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};">Description — first 150 characters must be the USP</div><div style="font-size:11px;color:#374151;line-height:1.6;">${h(draft.suggestedDescription)}</div></div>` : ''}
+       ${services ? `<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};margin-bottom:4px;">Services list is thinner than it should be</div>${services}</div>` : ''}
+       ${cats ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">Extra Google categories to add</div>${cats}</div>` : ''}`,
+    ));
+  }
+
+  if (draft.marketOpportunities?.length) {
+    const rows = draft.marketOpportunities.map((m: any) =>
+      `<div style="padding:10px 0;border-top:1px solid #f1f5f9;"><div style="font-size:12px;font-weight:700;color:#0f172a;">${h(m.keyword)}</div><div style="margin:3px 0;">${pill(m.potential || 'HIGH POTENTIAL', POT_C[(m.potential || '').toUpperCase()] || '#2563eb')}</div><div style="font-size:11px;color:#64748b;">${h(m.rationale || '')}</div></div>`).join('');
+    parts.push(bar(4, 'MARKET OPPORTUNITY GAPS') + card(rows));
+  }
+
+  if (draft.actionPhases?.length) {
+    const phases = draft.actionPhases.map((p: any) => {
+      const items = (p.items || []).map((it: any, i: number) =>
+        `<div style="display:flex;gap:8px;margin-bottom:6px;"><span style="font-size:10px;font-weight:700;color:#06b34c;">${i + 1}.</span><div style="flex:1;"><div style="display:flex;justify-content:space-between;gap:6px;"><span style="font-size:11px;font-weight:600;color:#0f172a;">${h(it.title)}</span>${pill(it.priority || 'MEDIUM', PRI_C[(it.priority || '').toUpperCase()] || '#ca8a04')}</div><div style="font-size:11px;color:#64748b;">${h(it.detail || '')}</div></div></div>`).join('');
+      return `<div style="margin-bottom:12px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};margin-bottom:6px;">${h(p.label)} (${h(p.window)})</div>${items}</div>`;
+    }).join('');
+    parts.push(bar(5, 'PRIORITY ACTION PLAN — 30 / 60 / 90 DAYS') + card(phases));
+  }
+
+  if (draft.weeklyPostThemes?.length) {
+    const cards = draft.weeklyPostThemes.map((t: any) =>
+      `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:11px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">${h(t.weekday)} · ${h(t.postType)}</div><div style="font-weight:600;color:#0f172a;margin-top:3px;">${h(t.theme)}</div><div style="color:#94a3b8;margin-top:2px;">Keyword: ${h(t.keyword)}</div></div>`).join('');
+    parts.push(bar(6, "THIS WEEK'S GOOGLE POSTS") + card(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${cards}</div>`));
+  }
+
+  if (draft.suggestedQas?.length) {
+    const qas = draft.suggestedQas.map((qa: any) =>
+      `<div style="padding:8px 0;border-top:1px solid #f1f5f9;"><div style="font-size:11px;font-weight:600;color:#0f172a;">${h(qa.q)}</div><div style="font-size:11px;color:#64748b;margin-top:2px;">${h(qa.a)}</div></div>`).join('');
+    parts.push(bar(7, 'SUGGESTED GOOGLE Q&AS') + card(qas));
+  }
+
+  if (draft.whatWeAimFor) {
+    const ms = [
+      `<div style="border:1px solid #fde68a;background:#fffbeb;border-radius:10px;padding:12px;text-align:center;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">Today</div><div style="font-size:20px;font-weight:800;color:${RANK_RED};">${h(draft.whatWeAimFor.todayRank)}</div><div style="font-size:9px;color:#94a3b8;">Live Maps position we measured</div></div>`,
+      ...(draft.whatWeAimFor.milestones || []).map((m: any) =>
+        `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;text-align:center;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">${h(m.label)}</div><div style="font-size:9px;color:#64748b;margin-top:6px;">${h(m.text)}</div></div>`),
+    ].join('');
+    parts.push(bar(8, 'WHAT WE AIM FOR — NOT A GUARANTEED RANK') + card(
+      `<p style="font-size:11px;color:#64748b;margin:0 0 8px;">Targets for the work, not a promise of position. Google decides ranking.</p><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">${ms}</div>`,
+    ));
+  }
+
+  if (draft.dataRequired?.length) {
+    const items = draft.dataRequired.map((d: string, i: number) =>
+      `<li style="font-size:11px;color:#374151;margin-bottom:4px;list-style:none;"><span style="color:#94a3b8;font-family:monospace;">${String(i + 1).padStart(2, '0')}.</span> ${h(d)}</li>`).join('');
+    parts.push(bar(9, 'DATA REQUIRED TO COMPLETE THIS AUDIT') + card(`<ul style="margin:0;padding:0;">${items}</ul>`));
+  }
+
+  return parts.join('\n');
+}
+
 // ── Main builder ───────────────────────────────────────────────────────────────
 
 export function buildReportHtml(ctx: ReportContext): string {
@@ -726,6 +868,16 @@ export function buildReportHtml(ctx: ReportContext): string {
 </div>`;
   }
 
+  // ── Consultant sections (Key Finding → Data Required) ────────────────────────
+  // Mirrors ConsultantSections.tsx on the web report. Rendered only when the
+  // SEO-plan draft is present on the audit.
+  const consultantHtml = renderConsultantSections(
+    data.seoPlanDraft,
+    data.keywordTable ?? [],
+    audit.businessName,
+    (audit as any).location?.split(',')[0]?.trim() || '',
+  );
+
   // ── 8. CTA BANNER ─────────────────────────────────────────────────────────────
   const ctaHtml = `
 <div style="border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#62bd32 0%,#06b34c 100%);break-inside:avoid;">
@@ -765,6 +917,7 @@ ${rankAnalyticsHtml}
 ${geoGridHtml}
 ${profileBreakdownHtml}
 ${checklistHtml}
+${consultantHtml}
 ${actionPlanHtml}
 ${ctaHtml}
 </body>

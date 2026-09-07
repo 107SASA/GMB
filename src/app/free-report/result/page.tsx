@@ -11,7 +11,7 @@ import { ALL_FAQS } from '@/lib/faqData';
 import { usePublicPlan } from '@/components/billing/useRazorpayCheckout';
 import { pickDuration } from '@/components/billing/DurationPicker';
 import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
-import ConsultantSections from './ConsultantSections';
+import ConsultantSections from '@/components/audit/ConsultantSections';
 
 interface AuditDoc {
   _id: string;

@@ -35,6 +35,17 @@ export async function autoReplyToReview(businessId: string, review: IReview): Pr
   const businessName = business?.name || 'Local Business';
   const ownerId = business?.userId?.toString();
 
+  // Pull the USP + must-include phrases from the active SEO brain so
+  // auto-replies stay on-message with posts and the listing description.
+  let uspLine: string | undefined;
+  let mustInclude: string[] | undefined;
+  try {
+    const { getActiveSeoPlan } = await import('@/services/seoPlan/seoPlanService');
+    const plan = await getActiveSeoPlan(businessId);
+    uspLine = plan?.uspLine;
+    mustInclude = plan?.reviewReplyMustInclude;
+  } catch { /* brain optional */ }
+
   try {
     const startMs = Date.now();
     const { reply, promptTokens, completionTokens } = await generateReviewReply({
@@ -42,6 +53,8 @@ export async function autoReplyToReview(businessId: string, review: IReview): Pr
       rating: review.rating,
       tone,
       businessName,
+      uspLine,
+      mustInclude,
     });
 
     // Usage logging requires a real userId (AIUsageLog.userId is a required

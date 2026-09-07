@@ -14,15 +14,21 @@ import { generateGeoGrid, GRID_SPACING_KM } from './geoGrid';
 
 const GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
 
-// "Ward Number 58", "Ward No 12", bare postal-ish tokens — not a name a
-// searcher would ever type.
-const JUNK_LOCALITY = /^(ward\s*(number|no\.?)?\s*\d+|sector\s*\d+|block\s*[a-z0-9]+|zone\s*\d+)$/i;
+// Names a searcher would never type: "Ward Number 58", "Zone 4", bare
+// abbreviations ("P.O.", "PS", "GPO"), pure numbers, "Post Office" tails.
+const JUNK_LOCALITY = /^(ward\s*(number|no\.?)?\s*\d+|zone\s*\d+|p\.?\s*o\.?|p\.?\s*s\.?|g\.?\s*p\.?\s*o\.?|post\s*office|police\s*station|pin\s*\d+)$/i;
 
 function cleanLocality(name: string): string | null {
-  const n = (name || '').trim().replace(/\s+/g, ' ');
+  let n = (name || '').trim().replace(/\s+/g, ' ');
+  // strip a trailing " P.O." / " Post Office" / " (Kolkata)" etc.
+  n = n.replace(/\s*[,(]?\s*(p\.?\s*o\.?|post\s*office|g\.?p\.?o\.?)\s*[)]?$/i, '').trim();
   if (!n || n.length < 3 || n.length > 40) return null;
   if (JUNK_LOCALITY.test(n)) return null;
   if (/^\d+$/.test(n)) return null;
+  // Drop things that are just a single letter + "Block" ("A Block") — too
+  // ambiguous to search; keep two-letter block codes ("BP Block", "AE Block")
+  // which are real, well-known Kolkata locality names.
+  if (/^[a-z]\s*block$/i.test(n)) return null;
   return n;
 }
 
@@ -38,20 +44,23 @@ async function reverseGeocodeLocality(
     });
     if (data.status !== 'OK' || !Array.isArray(data.results)) return { locality: null, city: null };
 
-    let locality: string | null = null;
+    // Prefer the more recognisable "neighbourhood" / broader sublocality over
+    // a granular block code where both exist ("Bidhannagar" over "BP Block").
+    const byTier: Record<number, string | null> = {};
     let city: string | null = null;
     for (const result of data.results) {
       for (const comp of result.address_components || []) {
         const types: string[] = comp.types || [];
-        if (!locality && (types.includes('sublocality_level_1') || types.includes('sublocality') || types.includes('neighborhood'))) {
-          locality = cleanLocality(comp.long_name);
-        }
-        if (!city && types.includes('locality')) {
-          city = cleanLocality(comp.long_name);
-        }
+        const name = cleanLocality(comp.long_name);
+        if (!name) continue;
+        if (types.includes('neighborhood')) byTier[0] = byTier[0] || name;
+        else if (types.includes('sublocality') && !types.includes('sublocality_level_1')) byTier[1] = byTier[1] || name;
+        else if (types.includes('sublocality_level_1')) byTier[2] = byTier[2] || name;
+        else if (types.includes('sublocality_level_2')) byTier[3] = byTier[3] || name;
+        if (!city && types.includes('locality')) city = cleanLocality(comp.long_name);
       }
-      if (locality) break;
     }
+    const locality = byTier[0] || byTier[1] || byTier[2] || byTier[3] || null;
     return { locality, city };
   } catch {
     return { locality: null, city: null };

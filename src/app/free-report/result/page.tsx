@@ -51,7 +51,9 @@ const MAX_POLL_ATTEMPTS = 60; // ~3 minutes
 const RANK_NOT_FOUND = 21;
 
 function RankBadge({ rank }: { rank: number }) {
-  const found = rank < RANK_NOT_FOUND;
+  // An average that rounds to 20+ means most checked keywords weren't in the
+  // local pack — show "20+" rather than a misleading "#21".
+  const found = rank < 20.5;
   return (
     <span className={`font-heading text-2xl font-bold ${found ? 'text-primary' : 'text-outline'}`}>
       {found ? `#${Math.round(rank)}` : '20+'}

@@ -424,7 +424,9 @@ export async function processAuditJob(auditId: string) {
           { ...businessForRankings, city: resolvedCity, category: resolvedCategory },
           localities.neighbourhoods,
         );
-        areasChecked = localities.neighbourhoods;
+        // Show exactly the neighbourhoods the keywords were built from (same
+        // junk-filtered list), not the raw geocode output.
+        areasChecked = seeded.areasUsed.length ? seeded.areasUsed : localities.neighbourhoods;
 
         const snapshot = await fetchKeywordRankSnapshot(businessForRankings, seeded.keywords);
         // Merge: geo-grid keywords (already ranked, richer) win on collision.
@@ -433,6 +435,36 @@ export async function processAuditJob(auditId: string) {
           if (seen.has(row.keyword.toLowerCase())) continue;
           keywordRankings.push({ keyword: row.keyword, rank: row.rank, sourceQuery: row.keyword, confidence: row.rank < 21 ? 'High' : 'Low' });
         }
+
+        // The snapshot also harvested the businesses ranking above the target
+        // at each keyword — fold them into the local-pack list so "N
+        // businesses near you" and the competitor landscape aren't limited to
+        // the ~3 the reduced geo-grid found. Real Maps results, deduped by
+        // placeId/name, ranks averaged.
+        const compMap = new Map<string, { name: string; ranks: number[]; rating?: number; reviewCount?: number; placeId?: string }>();
+        for (const c of localPackCompetitors) {
+          const k = (c.placeId || c.name || '').toLowerCase().trim();
+          if (k) compMap.set(k, { name: c.name, ranks: [c.avgRank ?? 21], rating: c.rating, reviewCount: c.reviewCount, placeId: c.placeId });
+        }
+        for (const row of snapshot) {
+          for (const c of row.competitorsAbove || []) {
+            const k = (c.placeId || c.name || '').toLowerCase().trim();
+            if (!k) continue;
+            const ex = compMap.get(k);
+            if (ex) ex.ranks.push(c.rank);
+            else compMap.set(k, { name: c.name, ranks: [c.rank], rating: c.rating, reviewCount: c.reviewCount, placeId: c.placeId });
+          }
+        }
+        localPackCompetitors = Array.from(compMap.values())
+          .map((c) => ({
+            name: c.name,
+            avgRank: parseFloat((c.ranks.reduce((a, b) => a + b, 0) / c.ranks.length).toFixed(1)),
+            rating: c.rating,
+            reviewCount: c.reviewCount,
+            placeId: c.placeId,
+          }))
+          .sort((a, b) => a.avgRank - b.avgRank)
+          .slice(0, 12);
       } catch (seedErr: any) {
         console.warn('[auditService] free-report keyword expansion failed:', seedErr?.message);
       }

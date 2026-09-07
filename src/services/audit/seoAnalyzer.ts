@@ -403,6 +403,68 @@ const WEAK_TRAILING_WORDS = new Set(['solutions', 'enterprises', 'group', 'indus
 // junk tokens that survive punctuation stripping.
 const TRAILING_FILLER_WORDS = new Set(['in', 'at', 'near', 'on', 'of', 'for', 'the']);
 
+// Self-praise / ranking words that Google's own naming guidelines disallow in
+// a Business Profile title — strip them before deriving a search phrase so we
+// don't seed "top it training institute kolkata".
+const SELF_PRAISE_WORDS = new Set([
+  'top', 'best', 'no1', 'no', '1', 'number', 'premier', 'leading', 'famous',
+  'finest', 'trusted', 'award', 'awarded', 'winning', 'official', 'authorized',
+  'authorised', 'certified', 'genuine', 'original', 'the',
+]);
+
+// A stored Places category this vague is a weak signal — if the business
+// NAME carries a real category anchor ("... IT Training Institute ...") that
+// phrase is a better search term than the bucket word.
+const WEAK_CATEGORY_VALUES = new Set([
+  'educational institution', 'education', 'institution', 'institute',
+  'school', 'academy', 'training centre', 'training center', 'point of interest',
+  'store', 'shop', 'general contractor', 'contractor',
+]);
+
+// Category anchor words that commonly appear IN an SMB name and describe what
+// it actually is. When one is present we take it plus up to 2 preceding
+// descriptive words ("IT Training" + "Institute") as the category phrase.
+const CATEGORY_ANCHORS = [
+  'institute', 'academy', 'school', 'college', 'university', 'coaching',
+  'classes', 'tuition', 'training', 'clinic', 'hospital', 'diagnostics',
+  'pharmacy', 'dental', 'salon', 'spa', 'parlour', 'parlor', 'gym',
+  'fitness', 'restaurant', 'cafe', 'bakery', 'kitchen', 'caterers',
+  'catering', 'hotel', 'resort', 'store', 'mart', 'bazaar', 'boutique',
+  'studio', 'photography', 'agency', 'consultancy', 'consultants',
+  'solutions', 'technologies', 'systems', 'services', 'builders',
+  'developers', 'interiors', 'architects', 'electricals', 'electronics',
+  'automobiles', 'motors', 'garage', 'workshop', 'hardware', 'furniture',
+  'jewellers', 'jewellery', 'opticals', 'eyewear', 'travels', 'tours',
+  'logistics', 'packers', 'movers', 'law', 'advocates', 'associates',
+];
+const CATEGORY_ANCHOR_SET = new Set(CATEGORY_ANCHORS);
+
+/** Extract a category phrase from a business name using a category anchor
+ *  word plus up to 2 meaningful words in front of it. Returns '' if no
+ *  anchor is present. */
+function categoryPhraseFromName(cleanedWords: string[]): string {
+  const lower = cleanedWords.map((w) => w.toLowerCase());
+  // last anchor position (names read "Brand … Category")
+  let anchorIdx = -1;
+  for (let i = lower.length - 1; i >= 0; i--) {
+    if (CATEGORY_ANCHOR_SET.has(lower[i])) { anchorIdx = i; break; }
+  }
+  if (anchorIdx === -1) return '';
+
+  const out: string[] = [cleanedWords[anchorIdx]];
+  let taken = 0;
+  // Walk backwards from the anchor picking up to 2 descriptive words. Stop
+  // before the first token of the name — that is almost always the brand
+  // ("Peacock" in "Peacock Salon", "Desun" in "Desun Academy …").
+  for (let i = anchorIdx - 1; i >= 1 && taken < 2; i--) {
+    const w = lower[i];
+    if (SELF_PRAISE_WORDS.has(w) || TRAILING_FILLER_WORDS.has(w) || w.length < 2) continue;
+    out.unshift(cleanedWords[i]);
+    taken++;
+  }
+  return out.join(' ').replace(/\s+/g, ' ').trim();
+}
+
 /**
  * A stored `category` this generic isn't worth searching on alone — falls
  * back to a keyword derived from the business's own NAME instead (stripped
@@ -433,7 +495,12 @@ export function resolveSearchCategory(
   location?: Array<string | undefined>,
 ): string {
   const cat = (category || '').trim();
-  if (cat && !GENERIC_CATEGORY_VALUES.has(cat.toLowerCase())) return cat;
+  const catLower = cat.toLowerCase();
+  const catIsReal = !!cat && !GENERIC_CATEGORY_VALUES.has(catLower);
+  const catIsWeak = catIsReal && WEAK_CATEGORY_VALUES.has(catLower);
+
+  // A specific, non-weak stored category always wins.
+  if (catIsReal && !catIsWeak) return cat;
 
   let cleanedName = (businessName || '')
     .replace(/\b(pvt\.?|private|ltd\.?|limited|llp|inc\.?|llc|co\.?|company|plc|corp\.?|corporation)\b/gi, '')
@@ -452,7 +519,27 @@ export function resolveSearchCategory(
   while (words.length > 1 && TRAILING_FILLER_WORDS.has(words[words.length - 1].toLowerCase())) {
     words = words.slice(0, -1);
   }
+
+  // Best case: the name carries a real category anchor ("... IT Training
+  // Institute ...") — that phrase beats a vague/absent stored category and
+  // needs no "company" qualifier.
+  const anchored = categoryPhraseFromName(words);
+  if (anchored && anchored.split(' ').length >= 1) {
+    // A weak stored category can still add a leading qualifier the name
+    // lacked (rare) — but the anchored phrase is the spine.
+    return anchored;
+  }
+
+  // A weak-but-present stored category is still better than a bare
+  // brand-word + "company" guess.
+  if (catIsWeak) return cat;
+
   if (words.length === 0) return cat || 'business';
+
+  // Strip self-praise from the tail before taking the last word(s).
+  while (words.length > 1 && SELF_PRAISE_WORDS.has(words[words.length - 1].toLowerCase())) {
+    words = words.slice(0, -1);
+  }
 
   const last = words[words.length - 1];
   const nameKeyword = words.length >= 2 && WEAK_TRAILING_WORDS.has(last.toLowerCase())

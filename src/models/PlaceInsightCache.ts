@@ -37,6 +37,11 @@ export interface IPlaceInsightCache extends Document {
     legacyRankings: any[];
     geoGridRank: any;
     localPackCompetitors: any[];
+    /** Free-report "Keyword Search Volume Analysis" rows + the neighbourhood
+     *  list — cached here so a repeat lookup skips the DataForSEO Maps +
+     *  Keyword Planner + Google Geocoding calls that built them. */
+    keywordTable?: any[];
+    areasChecked?: string[];
     rankingsEvidence: string;
     accepted: any[];
     rejected: any[];

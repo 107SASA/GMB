@@ -69,10 +69,11 @@ export interface KeywordVolume {
 }
 
 /**
- * Fetch live search volume for up to ~700 keywords in one call (the endpoint
- * accepts a large batch). Returns a Map keyed by the lowercased keyword.
- * Never throws — on any failure it returns an empty map and the caller falls
- * back to labeled estimates.
+ * Fetch search volume for a keyword list. Per-keyword results are cached for
+ * ~45 days (KeywordVolumeCache) since monthly volumes barely move and the
+ * DataForSEO call is a flat ~$0.09 — a live call only fires for the keywords
+ * not already in the cache. Returns a Map keyed by the lowercased keyword;
+ * never throws.
  */
 export async function fetchSearchVolumes(
   keywords: string[],
@@ -84,14 +85,34 @@ export async function fetchSearchVolumes(
   );
   if (unique.length === 0) return out;
 
+  const { location_code } = resolveGoogleAdsLocation(opts.countryHint);
+
+  // ── Cache lookup ─────────────────────────────────────────────────────────
+  let KeywordVolumeCache: any = null;
+  try {
+    const dbConnect = (await import('@/lib/mongodb')).default;
+    await dbConnect();
+    KeywordVolumeCache = (await import('@/models/KeywordVolumeCache')).default;
+    const keys = unique.map((kw) => `${kw}::${location_code}`);
+    const cached = await KeywordVolumeCache.find({ key: { $in: keys } }).lean();
+    for (const row of cached as any[]) out.set(row.keyword, row.searchVolume ?? null);
+  } catch (err: any) {
+    console.warn('[keywordVolume] cache read skipped:', err?.message);
+  }
+
+  const missing = unique.filter((kw) => !out.has(kw));
+  if (missing.length === 0) {
+    console.log(`[keywordVolume] all ${unique.length} keywords served from cache (location_code ${location_code})`);
+    return out;
+  }
+
   const c = creds();
   if (!c) {
     console.warn('[keywordVolume] DATAFORSEO_LOGIN/PASSWORD not set — skipping live volume');
     return out;
   }
 
-  const { location_code } = resolveGoogleAdsLocation(opts.countryHint);
-  const body = [{ keywords: unique.slice(0, 700), language_code: 'en', location_code }];
+  const body = [{ keywords: missing.slice(0, 700), language_code: 'en', location_code }];
 
   try {
     const res = await axios.post(SEARCH_VOLUME_URL, body, {
@@ -102,7 +123,7 @@ export async function fetchSearchVolumes(
     const envelope = res.data ?? {};
     const task = envelope.tasks?.[0] ?? {};
     console.log(
-      `[keywordVolume] HTTP ${res.status} · envelope ${envelope.status_code} · task ${task.status_code} ${task.status_message ?? ''} · location_code ${location_code} · ${unique.length} keywords`,
+      `[keywordVolume] HTTP ${res.status} · envelope ${envelope.status_code} · task ${task.status_code} ${task.status_message ?? ''} · location_code ${location_code} · ${missing.length} of ${unique.length} keywords (rest cached)`,
     );
 
     if (envelope.status_code !== 20000 || task.status_code !== 20000) {
@@ -113,15 +134,37 @@ export async function fetchSearchVolumes(
     }
 
     const results: any[] = task.result ?? [];
+    const fetched = new Map<string, number | null>();
     for (const item of results) {
       const kw = String(item?.keyword || '').trim().toLowerCase();
       if (!kw) continue;
       const vol = item?.search_volume;
-      out.set(kw, typeof vol === 'number' ? vol : null);
+      const v = typeof vol === 'number' ? vol : null;
+      out.set(kw, v);
+      fetched.set(kw, v);
     }
-    if (results.length === 0) {
-      console.warn('[keywordVolume] task OK but result array empty');
+    // Cache misses that came back with no row at all → store as null so we
+    // don't re-ask next audit.
+    for (const kw of missing) if (!fetched.has(kw)) fetched.set(kw, null);
+
+    if (KeywordVolumeCache && fetched.size) {
+      try {
+        await KeywordVolumeCache.bulkWrite(
+          Array.from(fetched.entries()).map(([kw, v]) => ({
+            updateOne: {
+              filter: { key: `${kw}::${location_code}` },
+              update: { $set: { key: `${kw}::${location_code}`, keyword: kw, locationCode: location_code, searchVolume: v, fetchedAt: new Date() } },
+              upsert: true,
+            },
+          })),
+          { ordered: false },
+        );
+      } catch (err: any) {
+        console.warn('[keywordVolume] cache write skipped:', err?.message);
+      }
     }
+
+    if (results.length === 0) console.warn('[keywordVolume] task OK but result array empty');
     return out;
   } catch (err: any) {
     const status = err?.response?.status;

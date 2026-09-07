@@ -68,7 +68,11 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // profile completion" / "profile is 100% complete"; this bump forces them
 // to regenerate. The consultant SEO-plan sections also land at this
 // version.
-const CACHE_LOGIC_VERSION = 6;
+// v7 (Sep 2026): the free-report keyword table + areas-checked list are now
+// stored in the rank cache blob (previously recomputed on every hit,
+// wasting ~$0.13 of Maps + Keyword Planner + Geocoding per repeat lookup).
+// Pre-v7 rank entries have no keywordTable, so they must regenerate once.
+const CACHE_LOGIC_VERSION = 7;
 
 export async function processAuditJob(auditId: string) {
   await dbConnect();
@@ -301,6 +305,79 @@ export async function processAuditJob(auditId: string) {
           ? 'reduced-grid'
           : 'full-grid';
 
+    // ── Free-report keyword table (cached inside the rank blob) ───────────
+    // ~14 hyper-local phrases ("IT Training Institute Bidhannagar") ranked
+    // once + a demand band each. Runs BEFORE the rank cache write so a
+    // repeat lookup of the same listing restores it for free — no extra
+    // DataForSEO Maps / Keyword Planner / Google Geocoding spend on a
+    // cache hit. Paid audits (never cacheable) build the table from their
+    // full geo-grid keyword set.
+    let keywordTable: any[] = rankCacheFresh ? (insightCache?.rank?.keywordTable || []) : [];
+    let areasChecked: string[] = rankCacheFresh ? (insightCache?.rank?.areasChecked || []) : [];
+
+    if (!rankCacheFresh && audit.fastMode && rankData && !rankData.fetchError) {
+      try {
+        const { fetchNearbyLocalities } = require('./localities');
+        const { buildFreeReportKeywords } = require('./keywordSeeds');
+        const { fetchKeywordRankSnapshot } = require('./seoAnalyzer');
+
+        const localities = await fetchNearbyLocalities(businessForRankings.coordinates, { limit: 8 });
+        const seeded = buildFreeReportKeywords(
+          { ...businessForRankings, city: resolvedCity, category: resolvedCategory },
+          localities.neighbourhoods,
+        );
+        areasChecked = seeded.areasUsed.length ? seeded.areasUsed : localities.neighbourhoods;
+
+        const snapshot = await fetchKeywordRankSnapshot(businessForRankings, seeded.keywords);
+        const seen = new Set(keywordRankings.map((k: any) => String(k.keyword).toLowerCase()));
+        for (const row of snapshot) {
+          if (seen.has(row.keyword.toLowerCase())) continue;
+          keywordRankings.push({ keyword: row.keyword, rank: row.rank, sourceQuery: row.keyword, confidence: row.rank < 21 ? 'High' : 'Low' });
+        }
+
+        // Fold the snapshot's harvested "ranked above you" businesses into
+        // the local pack — real Maps results, deduped, ranks averaged.
+        const compMap = new Map<string, { name: string; ranks: number[]; rating?: number; reviewCount?: number; placeId?: string }>();
+        for (const c of localPackCompetitors) {
+          const k = (c.placeId || c.name || '').toLowerCase().trim();
+          if (k) compMap.set(k, { name: c.name, ranks: [c.avgRank ?? 21], rating: c.rating, reviewCount: c.reviewCount, placeId: c.placeId });
+        }
+        for (const row of snapshot) {
+          for (const c of row.competitorsAbove || []) {
+            const k = (c.placeId || c.name || '').toLowerCase().trim();
+            if (!k) continue;
+            const ex = compMap.get(k);
+            if (ex) ex.ranks.push(c.rank);
+            else compMap.set(k, { name: c.name, ranks: [c.rank], rating: c.rating, reviewCount: c.reviewCount, placeId: c.placeId });
+          }
+        }
+        localPackCompetitors = Array.from(compMap.values())
+          .map((c) => ({
+            name: c.name,
+            avgRank: parseFloat((c.ranks.reduce((a, b) => a + b, 0) / c.ranks.length).toFixed(1)),
+            rating: c.rating,
+            reviewCount: c.reviewCount,
+            placeId: c.placeId,
+          }))
+          .sort((a, b) => a.avgRank - b.avgRank)
+          .slice(0, 12);
+      } catch (seedErr: any) {
+        console.warn('[auditService] free-report keyword expansion failed:', seedErr?.message);
+      }
+    }
+
+    if (!rankCacheFresh && keywordRankings.length > 0) {
+      try {
+        const { buildKeywordTable } = require('./keywordTable');
+        keywordTable = await buildKeywordTable(
+          keywordRankings.map((k: any) => ({ keyword: k.keyword, rank: k.rank })),
+          { city: resolvedCity, area: business.area || '', country: business.country || '' },
+        );
+      } catch (kwErr: any) {
+        console.warn('[auditService] keyword table build failed:', kwErr?.message);
+      }
+    }
+
     // We hold the claim (wonRankClaim) — release it now regardless of
     // outcome, so a failed/empty result doesn't block the next request for
     // the full staleness window. Only write `rank` itself when there's real,
@@ -321,6 +398,10 @@ export async function processAuditJob(auditId: string) {
             rejected,
             targetTier,
             compEvidence,
+            // Cached so a repeat lookup skips the ~$0.13 of Maps + Keyword
+            // Planner + Geocoding the free-report keyword expansion costs.
+            keywordTable,
+            areasChecked,
             fetchedAt: new Date(),
             logicVersion: CACHE_LOGIC_VERSION,
           },
@@ -401,86 +482,6 @@ export async function processAuditJob(auditId: string) {
     // (rating distribution, sentiment, dates), which a snapshot's bare
     // count/rating can't provide, and are untouched by this.
     const effectiveReviewCount = reviewMetrics.reviewCount;
-
-    // ── Free-report keyword expansion + Keyword Search Volume table ───────
-    // The reference report's signature is a ~14-row keyword table with
-    // hyper-local phrases ("IT Training Institute Bidhannagar") and a demand
-    // band per row. On fastMode (free) audits we reverse-geocode the
-    // neighbourhoods around the pin, seed those phrases, rank each ONCE at
-    // the business location (one batched DataForSEO call), then attach a
-    // demand band (live Google Ads volume when available, labeled city-tier
-    // estimate otherwise — estimated rows carry a `*`). Paid audits keep
-    // their existing full geo-grid keyword set.
-    let keywordTable: any[] = [];
-    let areasChecked: string[] = [];
-    if (audit.fastMode && rankData && !rankData.fetchError) {
-      try {
-        const { fetchNearbyLocalities } = require('./localities');
-        const { buildFreeReportKeywords } = require('./keywordSeeds');
-        const { fetchKeywordRankSnapshot } = require('./seoAnalyzer');
-
-        const localities = await fetchNearbyLocalities(businessForRankings.coordinates, { limit: 8 });
-        const seeded = buildFreeReportKeywords(
-          { ...businessForRankings, city: resolvedCity, category: resolvedCategory },
-          localities.neighbourhoods,
-        );
-        // Show exactly the neighbourhoods the keywords were built from (same
-        // junk-filtered list), not the raw geocode output.
-        areasChecked = seeded.areasUsed.length ? seeded.areasUsed : localities.neighbourhoods;
-
-        const snapshot = await fetchKeywordRankSnapshot(businessForRankings, seeded.keywords);
-        // Merge: geo-grid keywords (already ranked, richer) win on collision.
-        const seen = new Set(keywordRankings.map((k: any) => String(k.keyword).toLowerCase()));
-        for (const row of snapshot) {
-          if (seen.has(row.keyword.toLowerCase())) continue;
-          keywordRankings.push({ keyword: row.keyword, rank: row.rank, sourceQuery: row.keyword, confidence: row.rank < 21 ? 'High' : 'Low' });
-        }
-
-        // The snapshot also harvested the businesses ranking above the target
-        // at each keyword — fold them into the local-pack list so "N
-        // businesses near you" and the competitor landscape aren't limited to
-        // the ~3 the reduced geo-grid found. Real Maps results, deduped by
-        // placeId/name, ranks averaged.
-        const compMap = new Map<string, { name: string; ranks: number[]; rating?: number; reviewCount?: number; placeId?: string }>();
-        for (const c of localPackCompetitors) {
-          const k = (c.placeId || c.name || '').toLowerCase().trim();
-          if (k) compMap.set(k, { name: c.name, ranks: [c.avgRank ?? 21], rating: c.rating, reviewCount: c.reviewCount, placeId: c.placeId });
-        }
-        for (const row of snapshot) {
-          for (const c of row.competitorsAbove || []) {
-            const k = (c.placeId || c.name || '').toLowerCase().trim();
-            if (!k) continue;
-            const ex = compMap.get(k);
-            if (ex) ex.ranks.push(c.rank);
-            else compMap.set(k, { name: c.name, ranks: [c.rank], rating: c.rating, reviewCount: c.reviewCount, placeId: c.placeId });
-          }
-        }
-        localPackCompetitors = Array.from(compMap.values())
-          .map((c) => ({
-            name: c.name,
-            avgRank: parseFloat((c.ranks.reduce((a, b) => a + b, 0) / c.ranks.length).toFixed(1)),
-            rating: c.rating,
-            reviewCount: c.reviewCount,
-            placeId: c.placeId,
-          }))
-          .sort((a, b) => a.avgRank - b.avgRank)
-          .slice(0, 12);
-      } catch (seedErr: any) {
-        console.warn('[auditService] free-report keyword expansion failed:', seedErr?.message);
-      }
-    }
-
-    if (keywordRankings.length > 0) {
-      try {
-        const { buildKeywordTable } = require('./keywordTable');
-        keywordTable = await buildKeywordTable(
-          keywordRankings.map((k: any) => ({ keyword: k.keyword, rank: k.rank })),
-          { city: resolvedCity, area: business.area || '', country: business.country || '' },
-        );
-      } catch (kwErr: any) {
-        console.warn('[auditService] keyword table build failed:', kwErr?.message);
-      }
-    }
 
     const avgRank = keywordRankings.length > 0
       ? keywordRankings.reduce((acc: number, k: any) => acc + k.rank, 0) / keywordRankings.length

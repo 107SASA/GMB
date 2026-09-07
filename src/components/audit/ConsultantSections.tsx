@@ -29,10 +29,10 @@ function fmtRank(r?: number | null) {
   return r >= 21 ? '20+' : `#${Math.round(r)}`;
 }
 
-function SectionBar({ n, title }: { n: number; title: string }) {
+function SectionBar({ num, title }: { num: number; title: string }) {
   return (
     <div style={{ background: NAVY, color: '#fff', borderRadius: 12, padding: '14px 18px', fontWeight: 700, fontSize: 14, letterSpacing: '0.02em' }}>
-      {n}. {title}
+      {num}. {title}
     </div>
   );
 }
@@ -65,12 +65,36 @@ const POTENTIAL_COLOR: Record<string, string> = {
   'HIGHEST POTENTIAL': '#16a34a',
   'IMMEDIATE WIN': '#ea580c',
   'HIGH POTENTIAL': '#2563eb',
+  'MEDIUM POTENTIAL': '#0891b2',
 };
 const PRIORITY_COLOR: Record<string, string> = {
   CRITICAL: '#dc2626',
   HIGH: '#ea580c',
   MEDIUM: '#ca8a04',
 };
+const TONE_COLOR: Record<string, string> = { good: '#16a34a', warn: '#ca8a04', bad: '#dc2626' };
+
+function GapStatusIcon({ status }: { status?: 'ok' | 'missing' | 'unverified' }) {
+  if (status === 'ok') return <MaterialIcon name="check_circle" size={16} className="text-secondary shrink-0" />;
+  if (status === 'unverified') return <MaterialIcon name="help" size={16} className="text-outline shrink-0" />;
+  return <MaterialIcon name="cancel" size={16} className="text-error shrink-0" />;
+}
+
+function SnapshotGrid({ tiles }: { tiles: NonNullable<ISeoPlanDraft['performanceSnapshot']> }) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {tiles.map((t, i) => (
+        <div key={i} className="bg-surface-container rounded-xl border border-outline-variant p-4">
+          <div className="text-[11px] text-on-surface-variant">{t.label}</div>
+          <div className="font-heading text-lg font-bold mt-1" style={{ color: t.tone ? TONE_COLOR[t.tone] : undefined }}>
+            {t.value}
+          </div>
+          {t.note && <div className="text-[11px] text-on-surface-variant mt-0.5">{t.note}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function ConsultantSections({
   draft,
@@ -87,9 +111,33 @@ export default function ConsultantSections({
 }) {
   const failed = new Set(draft.failed || []);
   const table = keywordTable?.length ? keywordTable : [];
+  const full = draft.depth === 'full';
+  const showMapsVol = full && table.some((k) => k.mapsVolume != null);
+  // Running section number — JSX below evaluates top-to-bottom, so this
+  // stays in step. Free and full tiers number their own sections.
+  const counter = { n: 0 };
+  const S = () => ++counter.n;
 
   return (
     <div className="space-y-8">
+      {full && (
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-primary">
+          <MaterialIcon name="verified" size={16} />
+          Full Audit Report
+        </div>
+      )}
+
+      {/* PERFORMANCE SNAPSHOT */}
+      {(draft.performanceSnapshot || []).length > 0 && (
+        <div className="space-y-4">
+          {full ? <SectionBar num={S()} title="PERFORMANCE SNAPSHOT" /> : null}
+          <Card>
+            {!full && <div className="text-xs font-bold uppercase tracking-wide text-primary mb-3">Performance Snapshot</div>}
+            <SnapshotGrid tiles={draft.performanceSnapshot!} />
+          </Card>
+        </div>
+      )}
+
       {/* KEY FINDING */}
       {(draft.keyFinding || failed.has('narrative')) && (
         <Card>
@@ -99,6 +147,14 @@ export default function ConsultantSections({
           ) : (
             <SupportNote what="Key Finding" />
           )}
+        </Card>
+      )}
+
+      {/* WEBSITE ASSESSMENT (full only) */}
+      {full && draft.websiteAssessment && (
+        <Card>
+          <div className="text-xs font-bold uppercase tracking-wide text-primary mb-2">Your Website</div>
+          <p className="text-sm text-on-surface leading-relaxed">{draft.websiteAssessment}</p>
         </Card>
       )}
 
@@ -124,7 +180,7 @@ export default function ConsultantSections({
       {/* 1. KEYWORD SEARCH VOLUME ANALYSIS */}
       {table.length > 0 && (
         <div className="space-y-4">
-          <SectionBar n={1} title="KEYWORD SEARCH VOLUME ANALYSIS — GOOGLE MAPS" />
+          <SectionBar num={S()} title="KEYWORD SEARCH VOLUME ANALYSIS — GOOGLE MAPS" />
           <Card>
             <p className="text-sm text-on-surface-variant mb-3">
               Phrases people type around {city || 'your area'}. Rank is live Maps data when we have it — never guessed. Volume is a band, not a monthly count.
@@ -135,12 +191,15 @@ export default function ConsultantSections({
               ))}
               <span className="text-on-surface-variant ml-2">Red rank = not in a strong position</span>
               <span className="text-on-surface-variant">* = estimated demand</span>
+              {showMapsVol && <span className="text-on-surface-variant">~ Maps volume derived from Google search volume</span>}
             </div>
             <div className="overflow-x-auto -mx-2">
               <table className="w-full text-sm min-w-90">
                 <thead>
                   <tr className="text-left text-xs text-outline uppercase tracking-wide">
                     <th className="px-2 py-2 font-medium">Keyword</th>
+                    {showMapsVol && <th className="px-2 py-2 font-medium text-right">Search / mo</th>}
+                    {showMapsVol && <th className="px-2 py-2 font-medium text-right">Maps / mo ~</th>}
                     <th className="px-2 py-2 font-medium">Demand</th>
                     <th className="px-2 py-2 font-medium text-right">Maps Rank</th>
                   </tr>
@@ -149,6 +208,16 @@ export default function ConsultantSections({
                   {table.map((k, i) => (
                     <tr key={i} className="border-t border-outline-variant">
                       <td className="px-2 py-3 text-on-surface">{k.keyword}</td>
+                      {showMapsVol && (
+                        <td className="px-2 py-3 text-right text-on-surface-variant whitespace-nowrap">
+                          {k.searchVolume != null ? k.searchVolume.toLocaleString('en-IN') : '—'}
+                        </td>
+                      )}
+                      {showMapsVol && (
+                        <td className="px-2 py-3 text-right text-on-surface-variant whitespace-nowrap">
+                          {k.mapsVolume != null ? `~${k.mapsVolume.toLocaleString('en-IN')}` : '—'}
+                        </td>
+                      )}
                       <td className="px-2 py-3">
                         <div className="flex items-center gap-2">
                           <div className="w-20 h-1.5 rounded-full bg-surface-container overflow-hidden">
@@ -181,7 +250,7 @@ export default function ConsultantSections({
       {/* 2. COMPETITOR LANDSCAPE */}
       {(draft.competitorLandscape || []).length > 0 && (
         <div className="space-y-4">
-          <SectionBar n={2} title="COMPETITOR LANDSCAPE" />
+          <SectionBar num={S()} title="COMPETITOR LANDSCAPE" />
           <Card>
             <div className="overflow-x-auto -mx-2">
               <table className="w-full text-sm min-w-90">
@@ -217,7 +286,7 @@ export default function ConsultantSections({
       {/* 3. GBP PROFILE GAP ANALYSIS */}
       {(draft.gbpGaps?.length || draft.suggestedTitle || failed.has('gbpDrafts')) && (
         <div className="space-y-4">
-          <SectionBar n={3} title="GBP PROFILE GAP ANALYSIS" />
+          <SectionBar num={S()} title="GBP PROFILE GAP ANALYSIS" />
           <Card>
             <p className="text-sm text-on-surface-variant mb-5">
               Drafts for {businessName} only. We do not overwrite the live listing from this report. After you subscribe and connect Google, apply them from Google Profile.
@@ -230,7 +299,7 @@ export default function ConsultantSections({
                   {(draft.gbpGaps || []).map((g, i) => (
                     <div key={i}>
                       <div className="flex items-center gap-2 text-sm font-semibold text-on-surface">
-                        <MaterialIcon name="cancel" size={16} className="text-error" />
+                        <GapStatusIcon status={g.status} />
                         {g.field}
                       </div>
                       <p className="text-xs text-on-surface-variant mt-1">{g.whyItMatters}</p>
@@ -238,6 +307,39 @@ export default function ConsultantSections({
                     </div>
                   ))}
                 </div>
+
+                {(draft.descriptionKeywords || []).length > 0 && (
+                  <div className="mt-5">
+                    <div className="text-xs font-bold uppercase tracking-wide text-on-surface-variant mb-2">The 750-char description must embed</div>
+                    <div className="flex flex-wrap gap-2">
+                      {draft.descriptionKeywords!.map((k, i) => (
+                        <span key={i} className="text-xs px-2 py-1 rounded bg-surface-container text-on-surface-variant">{k}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(draft.suggestedAttributes || []).length > 0 && (
+                  <div className="mt-5">
+                    <div className="text-xs font-bold uppercase tracking-wide text-error mb-2">GBP attributes to set</div>
+                    <div className="flex flex-wrap gap-2">
+                      {draft.suggestedAttributes!.map((a, i) => (
+                        <span key={i} className="text-xs px-2 py-1 rounded bg-primary-fixed text-primary">{a}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(draft.platformGaps || []).length > 0 && (
+                  <div className="mt-5">
+                    <div className="text-xs font-bold uppercase tracking-wide text-on-surface-variant mb-2">List on these platforms too</div>
+                    <ul className="space-y-1.5">
+                      {draft.platformGaps!.map((p, i) => (
+                        <li key={i} className="text-sm text-on-surface-variant">
+                          <span className="font-semibold text-on-surface">{p.platform}</span> — {p.why}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {draft.suggestedTitle && (
                   <div className="mt-6">
@@ -280,7 +382,7 @@ export default function ConsultantSections({
       {/* 4. MARKET OPPORTUNITY GAPS */}
       {(draft.marketOpportunities || []).length > 0 && (
         <div className="space-y-4">
-          <SectionBar n={4} title="MARKET OPPORTUNITY GAPS" />
+          <SectionBar num={S()} title="MARKET OPPORTUNITY GAPS" />
           <Card>
             <div className="divide-y divide-outline-variant">
               {draft.marketOpportunities!.map((m, i) => (
@@ -302,7 +404,7 @@ export default function ConsultantSections({
       {/* 5. PRIORITY ACTION PLAN */}
       {(draft.actionPhases || []).length > 0 && (
         <div className="space-y-4">
-          <SectionBar n={5} title="PRIORITY ACTION PLAN — 30 / 60 / 90 DAYS" />
+          <SectionBar num={S()} title="PRIORITY ACTION PLAN — 30 / 60 / 90 DAYS" />
           <Card>
             <div className="space-y-6">
               {draft.actionPhases!.map((phase, pi) => (
@@ -336,7 +438,7 @@ export default function ConsultantSections({
       {/* 6. THIS WEEK'S GOOGLE POSTS */}
       {(draft.weeklyPostThemes || []).length > 0 && (
         <div className="space-y-4">
-          <SectionBar n={6} title="THIS WEEK'S GOOGLE POSTS" />
+          <SectionBar num={S()} title="THIS WEEK'S GOOGLE POSTS" />
           <Card>
             <p className="text-sm text-on-surface-variant mb-4">
               After you subscribe, auto-posts use these themes and keywords — not generic copy.
@@ -361,7 +463,7 @@ export default function ConsultantSections({
       {/* 7. SUGGESTED GOOGLE Q&AS */}
       {(draft.suggestedQas || []).length > 0 && (
         <div className="space-y-4">
-          <SectionBar n={7} title="SUGGESTED GOOGLE Q&AS" />
+          <SectionBar num={S()} title="SUGGESTED GOOGLE Q&AS" />
           <Card>
             <div className="divide-y divide-outline-variant">
               {draft.suggestedQas!.map((qa, i) => (
@@ -375,10 +477,32 @@ export default function ConsultantSections({
         </div>
       )}
 
-      {/* 8. WHAT WE AIM FOR */}
-      {draft.whatWeAimFor && (
+      {/* PROJECTED RANK TIMELINE (full) / WHAT WE AIM FOR (free) */}
+      {full && (draft.rankTimeline || []).length > 0 ? (
         <div className="space-y-4">
-          <SectionBar n={8} title="WHAT WE AIM FOR — NOT A GUARANTEED RANK" />
+          <SectionBar num={S()} title="PROJECTED RANK IMPROVEMENT TIMELINE" />
+          <Card>
+            <p className="text-sm text-on-surface-variant mb-4">
+              Targets for the work, not a promise of position. Google decides ranking.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {draft.rankTimeline!.map((m, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl p-4 text-center border"
+                  style={i === 0 ? { background: AMBER_BG, borderColor: AMBER_BORDER } : { borderColor: 'var(--color-outline-variant)' }}
+                >
+                  <div className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">{m.label}</div>
+                  <div className="font-heading text-xl font-bold mt-1" style={{ color: m.tone ? TONE_COLOR[m.tone] : undefined }}>{m.rank}</div>
+                  <div className="text-[11px] text-on-surface-variant mt-1">{m.note}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      ) : draft.whatWeAimFor ? (
+        <div className="space-y-4">
+          <SectionBar num={S()} title="WHAT WE AIM FOR — NOT A GUARANTEED RANK" />
           <Card>
             <p className="text-sm text-on-surface-variant mb-4">
               Targets for the work, not a promise of position, reviews, or enquiries. Google decides ranking.
@@ -398,12 +522,12 @@ export default function ConsultantSections({
             </div>
           </Card>
         </div>
-      )}
+      ) : null}
 
       {/* 9. DATA REQUIRED */}
       {(draft.dataRequired || []).length > 0 && (
         <div className="space-y-4">
-          <SectionBar n={9} title="DATA REQUIRED TO COMPLETE THIS AUDIT" />
+          <SectionBar num={S()} title="DATA REQUIRED TO COMPLETE THIS AUDIT" />
           <Card>
             <ol className="space-y-2">
               {draft.dataRequired!.map((line, i) => (

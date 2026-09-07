@@ -243,19 +243,44 @@ const card = (inner: string) =>
 const pill = (t: string, c: string) =>
   `<span style="background:${c};color:#fff;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;text-transform:uppercase;white-space:nowrap;">${h(t)}</span>`;
 
+const TONE_HEX: Record<string, string> = { good: '#16a34a', warn: '#ca8a04', bad: '#dc2626' };
+
 function renderConsultantSections(
   draft: any,
-  keywordTable: Array<{ keyword: string; volumeBand: string; estimated: boolean; mapsRank: number }>,
+  keywordTable: Array<{ keyword: string; volumeBand: string; estimated: boolean; mapsRank: number; searchVolume?: number | null; mapsVolume?: number | null }>,
   businessName: string,
   city: string,
 ): string {
   if (!draft) return '';
+  const full = draft.depth === 'full';
   const parts: string[] = [];
+  let sn = 0;
+  const sec = () => ++sn;
+  const showMapsVol = full && keywordTable.some((k) => k.mapsVolume != null);
+
+  // Performance Snapshot
+  if (Array.isArray(draft.performanceSnapshot) && draft.performanceSnapshot.length) {
+    const tiles = draft.performanceSnapshot
+      .map((t: any) => `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;">
+        <div style="font-size:9px;color:#94a3b8;">${h(t.label)}</div>
+        <div style="font-size:15px;font-weight:800;margin-top:3px;color:${t.tone ? TONE_HEX[t.tone] || '#0f172a' : '#0f172a'};">${h(t.value)}</div>
+        ${t.note ? `<div style="font-size:9px;color:#94a3b8;margin-top:2px;">${h(t.note)}</div>` : ''}
+      </div>`)
+      .join('');
+    parts.push(bar(sec(), 'PERFORMANCE SNAPSHOT') + card(`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">${tiles}</div>`));
+  }
 
   if (draft.keyFinding) {
     parts.push(card(
       `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#06b34c;margin-bottom:6px;">Key Finding</div>
        <p style="font-size:12px;color:#374151;line-height:1.6;margin:0;">${h(draft.keyFinding)}</p>`,
+    ));
+  }
+
+  if (full && draft.websiteAssessment) {
+    parts.push(card(
+      `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#06b34c;margin-bottom:6px;">Your Website</div>
+       <p style="font-size:12px;color:#374151;line-height:1.6;margin:0;">${h(draft.websiteAssessment)}</p>`,
     ));
   }
 
@@ -274,17 +299,21 @@ function renderConsultantSections(
   }
 
   if (keywordTable.length) {
+    const volCols = showMapsVol
+      ? `<th style="padding:4px 6px;text-align:right;">Search/mo</th><th style="padding:4px 6px;text-align:right;">Maps/mo ~</th>`
+      : '';
     const rows = keywordTable
       .map((k) => `<tr style="border-top:1px solid #f1f5f9;">
         <td style="padding:7px 6px;font-size:11px;color:#374151;">${h(k.keyword)}</td>
+        ${showMapsVol ? `<td style="padding:7px 6px;text-align:right;font-size:10px;color:#64748b;">${k.searchVolume != null ? h(k.searchVolume.toLocaleString('en-IN')) : '—'}</td><td style="padding:7px 6px;text-align:right;font-size:10px;color:#64748b;">${k.mapsVolume != null ? h(`~${k.mapsVolume.toLocaleString('en-IN')}`) : '—'}</td>` : ''}
         <td style="padding:7px 6px;"><span style="display:inline-block;width:56px;height:5px;border-radius:3px;background:#e2e8f0;vertical-align:middle;overflow:hidden;"><span style="display:block;height:100%;width:${BAND_W[k.volumeBand] || '18%'};background:${BAND_C[k.volumeBand] || '#a78bfa'};"></span></span> <span style="font-size:10px;font-weight:700;color:${BAND_C[k.volumeBand] || '#a78bfa'};">${h(k.volumeBand)}${k.estimated ? '*' : ''}</span></td>
         <td style="padding:7px 6px;text-align:right;font-weight:700;font-size:11px;color:${k.mapsRank > 5 ? RANK_RED : '#16a34a'};">${fmtR(k.mapsRank)}</td>
       </tr>`)
       .join('');
     const insights = (draft.keywordInsights || []).map((l: string) => `<li style="font-size:11px;color:#64748b;">${h(l)}</li>`).join('');
-    parts.push(bar(1, 'KEYWORD SEARCH VOLUME ANALYSIS — GOOGLE MAPS') + card(
-      `<p style="font-size:11px;color:#64748b;margin:0 0 8px;">Phrases people type around ${h(city || 'your area')}. Rank is live Maps data when we have it — never guessed. Volume is a band, not a monthly count. <span>* = estimated demand</span></p>
-       <table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;"><th style="padding:4px 6px;">Keyword</th><th style="padding:4px 6px;">Demand</th><th style="padding:4px 6px;text-align:right;">Maps Rank</th></tr></thead><tbody>${rows}</tbody></table>
+    parts.push(bar(sec(), 'KEYWORD SEARCH VOLUME ANALYSIS — GOOGLE MAPS') + card(
+      `<p style="font-size:11px;color:#64748b;margin:0 0 8px;">Phrases people type around ${h(city || 'your area')}. Rank is live Maps data when we have it — never guessed. <span>* = estimated demand${showMapsVol ? ' · ~ Maps volume derived from Google search volume' : ''}</span></p>
+       <table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;"><th style="padding:4px 6px;">Keyword</th>${volCols}<th style="padding:4px 6px;">Demand</th><th style="padding:4px 6px;text-align:right;">Maps Rank</th></tr></thead><tbody>${rows}</tbody></table>
        ${insights ? `<ul style="margin:10px 0 0;padding-left:16px;">${insights}</ul>` : ''}`,
     ));
   }
@@ -298,20 +327,28 @@ function renderConsultantSections(
         <td style="padding:7px 6px;font-size:11px;color:#64748b;">${h(c.keyEdge || '')}</td>
       </tr>`)
       .join('');
-    parts.push(bar(2, 'COMPETITOR LANDSCAPE') + card(
+    parts.push(bar(sec(), 'COMPETITOR LANDSCAPE') + card(
       `<table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;"><th style="padding:4px 6px;">Competitor</th><th style="padding:4px 6px;">Maps Rank</th><th style="padding:4px 6px;">Reviews</th><th style="padding:4px 6px;">Key Edge</th></tr></thead><tbody>${rows}</tbody></table>
        ${draft.competitorCounterPosition ? `<p style="font-size:11px;color:#64748b;margin:10px 0 0;line-height:1.6;">${h(draft.competitorCounterPosition)}</p>` : ''}`,
     ));
   }
 
   if (draft.gbpGaps?.length || draft.suggestedTitle) {
+    const mark = (s?: string) => (s === 'ok' ? '✓' : s === 'unverified' ? '?' : '✕');
     const gaps = (draft.gbpGaps || []).map((g: any) =>
-      `<div style="margin-bottom:8px;"><div style="font-size:11px;font-weight:600;color:#0f172a;">✕ ${h(g.field)}</div><div style="font-size:10px;color:#94a3b8;">${h(g.whyItMatters || '')}</div><div style="font-size:11px;color:#374151;">${h(g.recommendation || '')}</div></div>`).join('');
-    const services = (draft.suggestedServices || []).map((s: string) => `<span style="display:inline-block;font-size:10px;padding:3px 7px;border-radius:4px;background:#dcfce7;color:#166534;margin:0 4px 4px 0;">${h(s)}</span>`).join('');
-    const cats = (draft.suggestedCategories || []).map((c: string) => `<span style="display:inline-block;font-size:10px;padding:3px 7px;border-radius:4px;background:#f1f5f9;color:#475569;margin:0 4px 4px 0;">${h(c)}</span>`).join('');
-    parts.push(bar(3, 'GBP PROFILE GAP ANALYSIS') + card(
+      `<div style="margin-bottom:8px;"><div style="font-size:11px;font-weight:600;color:#0f172a;">${mark(g.status)} ${h(g.field)}</div><div style="font-size:10px;color:#94a3b8;">${h(g.whyItMatters || '')}</div><div style="font-size:11px;color:#374151;">${h(g.recommendation || '')}</div></div>`).join('');
+    const chips = (arr: string[], bg: string, fg: string) => arr.map((s) => `<span style="display:inline-block;font-size:10px;padding:3px 7px;border-radius:4px;background:${bg};color:${fg};margin:0 4px 4px 0;">${h(s)}</span>`).join('');
+    const services = chips(draft.suggestedServices || [], '#dcfce7', '#166534');
+    const cats = chips(draft.suggestedCategories || [], '#f1f5f9', '#475569');
+    const attrs = chips(draft.suggestedAttributes || [], '#dbeafe', '#1e40af');
+    const descKw = chips(draft.descriptionKeywords || [], '#f1f5f9', '#475569');
+    const platforms = (draft.platformGaps || []).map((p: any) => `<li style="font-size:11px;color:#64748b;"><b style="color:#0f172a;">${h(p.platform)}</b> — ${h(p.why || '')}</li>`).join('');
+    parts.push(bar(sec(), 'GBP PROFILE GAP ANALYSIS') + card(
       `<p style="font-size:11px;color:#64748b;margin:0 0 10px;">Drafts for ${h(businessName)} only. We do not overwrite the live listing from this report.</p>
        ${gaps}
+       ${descKw ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">The 750-char description must embed</div>${descKw}</div>` : ''}
+       ${attrs ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};margin-bottom:4px;">GBP attributes to set</div>${attrs}</div>` : ''}
+       ${platforms ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">List on these platforms too</div><ul style="margin:0;padding-left:16px;">${platforms}</ul></div>` : ''}
        ${draft.suggestedTitle ? `<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};">Title is not carrying the keywords</div><div style="font-size:12px;font-weight:600;color:#0f172a;">${h(draft.suggestedTitle)}</div></div>` : ''}
        ${draft.suggestedDescription ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};">Description — first 150 characters must be the USP</div><div style="font-size:11px;color:#374151;line-height:1.6;">${h(draft.suggestedDescription)}</div></div>` : ''}
        ${services ? `<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};margin-bottom:4px;">Services list is thinner than it should be</div>${services}</div>` : ''}
@@ -322,7 +359,7 @@ function renderConsultantSections(
   if (draft.marketOpportunities?.length) {
     const rows = draft.marketOpportunities.map((m: any) =>
       `<div style="padding:10px 0;border-top:1px solid #f1f5f9;"><div style="font-size:12px;font-weight:700;color:#0f172a;">${h(m.keyword)}</div><div style="margin:3px 0;">${pill(m.potential || 'HIGH POTENTIAL', POT_C[(m.potential || '').toUpperCase()] || '#2563eb')}</div><div style="font-size:11px;color:#64748b;">${h(m.rationale || '')}</div></div>`).join('');
-    parts.push(bar(4, 'MARKET OPPORTUNITY GAPS') + card(rows));
+    parts.push(bar(sec(), 'MARKET OPPORTUNITY GAPS') + card(rows));
   }
 
   if (draft.actionPhases?.length) {
@@ -331,28 +368,39 @@ function renderConsultantSections(
         `<div style="display:flex;gap:8px;margin-bottom:6px;"><span style="font-size:10px;font-weight:700;color:#06b34c;">${i + 1}.</span><div style="flex:1;"><div style="display:flex;justify-content:space-between;gap:6px;"><span style="font-size:11px;font-weight:600;color:#0f172a;">${h(it.title)}</span>${pill(it.priority || 'MEDIUM', PRI_C[(it.priority || '').toUpperCase()] || '#ca8a04')}</div><div style="font-size:11px;color:#64748b;">${h(it.detail || '')}</div></div></div>`).join('');
       return `<div style="margin-bottom:12px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};margin-bottom:6px;">${h(p.label)} (${h(p.window)})</div>${items}</div>`;
     }).join('');
-    parts.push(bar(5, 'PRIORITY ACTION PLAN — 30 / 60 / 90 DAYS') + card(phases));
+    parts.push(bar(sec(), 'PRIORITY ACTION PLAN — 30 / 60 / 90 DAYS') + card(phases));
   }
 
   if (draft.weeklyPostThemes?.length) {
     const cards = draft.weeklyPostThemes.map((t: any) =>
       `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:11px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">${h(t.weekday)} · ${h(t.postType)}</div><div style="font-weight:600;color:#0f172a;margin-top:3px;">${h(t.theme)}</div><div style="color:#94a3b8;margin-top:2px;">Keyword: ${h(t.keyword)}</div></div>`).join('');
-    parts.push(bar(6, "THIS WEEK'S GOOGLE POSTS") + card(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${cards}</div>`));
+    parts.push(bar(sec(), "THIS WEEK'S GOOGLE POSTS") + card(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${cards}</div>`));
   }
 
   if (draft.suggestedQas?.length) {
     const qas = draft.suggestedQas.map((qa: any) =>
       `<div style="padding:8px 0;border-top:1px solid #f1f5f9;"><div style="font-size:11px;font-weight:600;color:#0f172a;">${h(qa.q)}</div><div style="font-size:11px;color:#64748b;margin-top:2px;">${h(qa.a)}</div></div>`).join('');
-    parts.push(bar(7, 'SUGGESTED GOOGLE Q&AS') + card(qas));
+    parts.push(bar(sec(), 'SUGGESTED GOOGLE Q&AS') + card(qas));
   }
 
-  if (draft.whatWeAimFor) {
+  if (full && Array.isArray(draft.rankTimeline) && draft.rankTimeline.length) {
+    const ms = draft.rankTimeline
+      .map((m: any, i: number) => `<div style="border:1px solid ${i === 0 ? '#fde68a' : '#e2e8f0'};${i === 0 ? 'background:#fffbeb;' : ''}border-radius:10px;padding:12px;text-align:center;">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">${h(m.label)}</div>
+        <div style="font-size:16px;font-weight:800;color:${m.tone ? TONE_HEX[m.tone] || '#0f172a' : '#0f172a'};">${h(m.rank)}</div>
+        <div style="font-size:9px;color:#94a3b8;margin-top:4px;">${h(m.note || '')}</div>
+      </div>`)
+      .join('');
+    parts.push(bar(sec(), 'PROJECTED RANK IMPROVEMENT TIMELINE') + card(
+      `<p style="font-size:11px;color:#64748b;margin:0 0 8px;">Targets for the work, not a promise of position. Google decides ranking.</p><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">${ms}</div>`,
+    ));
+  } else if (draft.whatWeAimFor) {
     const ms = [
       `<div style="border:1px solid #fde68a;background:#fffbeb;border-radius:10px;padding:12px;text-align:center;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">Today</div><div style="font-size:20px;font-weight:800;color:${RANK_RED};">${h(draft.whatWeAimFor.todayRank)}</div><div style="font-size:9px;color:#94a3b8;">Live Maps position we measured</div></div>`,
       ...(draft.whatWeAimFor.milestones || []).map((m: any) =>
         `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;text-align:center;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">${h(m.label)}</div><div style="font-size:9px;color:#64748b;margin-top:6px;">${h(m.text)}</div></div>`),
     ].join('');
-    parts.push(bar(8, 'WHAT WE AIM FOR — NOT A GUARANTEED RANK') + card(
+    parts.push(bar(sec(), 'WHAT WE AIM FOR — NOT A GUARANTEED RANK') + card(
       `<p style="font-size:11px;color:#64748b;margin:0 0 8px;">Targets for the work, not a promise of position. Google decides ranking.</p><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">${ms}</div>`,
     ));
   }
@@ -360,7 +408,7 @@ function renderConsultantSections(
   if (draft.dataRequired?.length) {
     const items = draft.dataRequired.map((d: string, i: number) =>
       `<li style="font-size:11px;color:#374151;margin-bottom:4px;list-style:none;"><span style="color:#94a3b8;font-family:monospace;">${String(i + 1).padStart(2, '0')}.</span> ${h(d)}</li>`).join('');
-    parts.push(bar(9, 'DATA REQUIRED TO COMPLETE THIS AUDIT') + card(`<ul style="margin:0;padding:0;">${items}</ul>`));
+    parts.push(bar(sec(), 'DATA REQUIRED TO COMPLETE THIS AUDIT') + card(`<ul style="margin:0;padding:0;">${items}</ul>`));
   }
 
   return parts.join('\n');
@@ -877,6 +925,14 @@ export function buildReportHtml(ctx: ReportContext): string {
     audit.businessName,
     (audit as any).location?.split(',')[0]?.trim() || '',
   );
+  const isFullAudit = (data.seoPlanDraft as any)?.depth === 'full';
+  const confidentialFooter = isFullAudit
+    ? `<div style="margin-top:14px;padding:14px 18px;background:#1e293b;color:#94a3b8;border-radius:12px;font-size:10px;line-height:1.6;">
+        GrowwMatics AI · Powered by Desun Technology Pvt Ltd<br/>
+        GBP Full Audit Report — ${h(audit.businessName)} · ${genDate}<br/>
+        Confidential — prepared exclusively for the client named above.
+      </div>`
+    : '';
 
   // ── 8. CTA BANNER ─────────────────────────────────────────────────────────────
   const ctaHtml = `
@@ -920,6 +976,7 @@ ${checklistHtml}
 ${consultantHtml}
 ${actionPlanHtml}
 ${ctaHtml}
+${confidentialFooter}
 </body>
 </html>`;
 }

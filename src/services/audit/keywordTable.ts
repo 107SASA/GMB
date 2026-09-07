@@ -16,11 +16,18 @@ export interface KeywordTableRow {
   keyword: string;
   /** Live monthly volume from Google Ads, or null when estimated. */
   searchVolume: number | null;
+  /** ≈ searchVolume × 0.62 when the search volume is real; null otherwise. */
+  mapsVolume: number | null;
   volumeBand: VolumeBand;
   estimated: boolean;
   /** Maps rank (1..20), or NOT_FOUND_RANK (21) → rendered "20+". */
   mapsRank: number;
 }
+
+/** Local patient/customer searches on Google Maps run lower than the same
+ *  phrase on Google Search — a stable ~0.62 ratio in local-services verticals.
+ *  Only derived from a REAL search volume, never from an estimate. */
+const MAPS_VOLUME_RATIO = 0.62;
 
 export interface BuildKeywordTableOpts {
   city?: string;
@@ -52,9 +59,11 @@ export async function buildKeywordTable(
     const live = liveVolumes.get(keyword.trim().toLowerCase());
     const liveBand = bandFromVolume(live);
     if (liveBand) {
+      const sv = typeof live === 'number' ? live : null;
       return {
         keyword,
-        searchVolume: typeof live === 'number' ? live : null,
+        searchVolume: sv,
+        mapsVolume: sv != null && sv > 0 ? Math.round(sv * MAPS_VOLUME_RATIO) : null,
         volumeBand: liveBand,
         estimated: false,
         mapsRank: rank ?? NOT_FOUND_RANK,
@@ -63,6 +72,7 @@ export async function buildKeywordTable(
     return {
       keyword,
       searchVolume: null,
+      mapsVolume: null,
       volumeBand: estimateKeywordVolume(keyword, { cityTier, city: opts.city, area: opts.area }),
       estimated: true,
       mapsRank: rank ?? NOT_FOUND_RANK,

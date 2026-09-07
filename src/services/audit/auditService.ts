@@ -697,6 +697,42 @@ export async function processAuditJob(auditId: string) {
     if (!seoPlanDraft && keywordTable.length > 0) {
       try {
         const { generateSeoPlanDraft } = require('../ai/seoPlanEngine');
+        // Depth tier: fastMode (cold-lead free report) → 'free'; a paid audit
+        // (post-Google-connect + the monthly re-audit, both non-fastMode) →
+        // 'full', which also reads the website and the live GBP profile.
+        const depth: 'free' | 'full' = audit.fastMode ? 'free' : 'full';
+
+        let websiteSignals: any = null;
+        let gbpLive: any = null;
+        if (depth === 'full') {
+          try {
+            const { fetchWebsiteSignals } = require('./websiteSignals');
+            websiteSignals = await fetchWebsiteSignals(business.website || '');
+          } catch (wsErr: any) {
+            console.warn('[auditService] website signals failed:', wsErr?.message);
+          }
+          if (business.googleLocationId) {
+            try {
+              const { fetchLocationProfile } = require('../../lib/gbpClient');
+              const live = await fetchLocationProfile(audit.businessId.toString());
+              gbpLive = {
+                title: live?.title,
+                description: live?.description,
+                primaryCategory: live?.primaryCategory,
+                additionalCategories: live?.additionalCategories || [],
+              };
+            } catch (gErr: any) {
+              console.warn('[auditService] live GBP read failed:', gErr?.message);
+            }
+          }
+        }
+
+        const { computeSuspensionRisk } = require('./reportMath');
+        const suspensionRisk = computeSuspensionRisk(
+          profileCompletion.completionPercentage,
+          effectiveReviewCount,
+        );
+
         seoPlanDraft = await generateSeoPlanDraft({
           businessName: business.name,
           category: resolvedCategory,
@@ -720,6 +756,13 @@ export async function processAuditJob(auditId: string) {
           profileCompletion,
           strengths: aiResult?.strengths,
           weaknesses: aiResult?.weaknesses,
+          depth,
+          offers: business.offers || '',
+          usps: business.intake?.uniqueSellingPoints || '',
+          services: business.services || '',
+          websiteSignals,
+          gbpLive,
+          suspensionRisk: { level: suspensionRisk?.level || 'Low', pct: suspensionRisk?.pct ?? 0 },
         });
       } catch (planErr: any) {
         console.warn('[auditService] seoPlanDraft generation failed:', planErr?.message);

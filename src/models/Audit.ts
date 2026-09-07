@@ -259,6 +259,9 @@ export interface IAuditData {
 export interface IKeywordTableRow {
   keyword: string;
   searchVolume: number | null;
+  /** Derived Google-Maps monthly estimate (≈ search × 0.62); null when the
+   *  search volume itself is a band estimate. Shown as "~N" and labeled. */
+  mapsVolume?: number | null;
   volumeBand: 'HIGH' | 'MED' | 'LOW' | 'NICHE';
   estimated: boolean;
   mapsRank: number;
@@ -270,17 +273,47 @@ export interface ISeoPlanActionItem {
   priority: 'CRITICAL' | 'HIGH' | 'MEDIUM';
 }
 
+export interface ISeoPlanGapItem {
+  field: string;
+  whyItMatters: string;
+  recommendation: string;
+  /** 'ok' = present and adequate, 'missing' = confirmed/near-certain gap,
+   *  'unverified' = needs a Google connection / owner input to confirm.
+   *  Present on the 'full' depth tier. */
+  status?: 'ok' | 'missing' | 'unverified';
+}
+
+export interface ISeoPlanSnapshotTile {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: 'good' | 'warn' | 'bad';
+}
+
 export interface ISeoPlanDraft {
+  /** 'free' = cold-lead teaser (fastMode audit); 'full' = the deep paid
+   *  audit (post-Google-connect + monthly re-audit). Drives which blocks the
+   *  report renders. */
+  depth?: 'free' | 'full';
+
   keyFinding?: string;
+  /** 8-tile "Performance Snapshot" (4 core + 4 offer/USP tiles on 'full'). */
+  performanceSnapshot?: ISeoPlanSnapshotTile[];
   criticalGap?: { intro: string; rows: Array<{ keyword: string; mapsRank: number }>; closer: string };
   keywordInsights?: string[];
   competitorLandscape?: Array<{ name: string; mapsRank?: number; rating?: number; reviewCount?: number; keyEdge: string }>;
   competitorCounterPosition?: string;
-  gbpGaps?: Array<{ field: string; whyItMatters: string; recommendation: string }>;
+  gbpGaps?: ISeoPlanGapItem[];
   suggestedTitle?: string;
   suggestedDescription?: string;
   suggestedServices?: string[];
   suggestedCategories?: string[];
+  /** 'full' only — GBP attributes to set (industry-specific, LLM-picked). */
+  suggestedAttributes?: string[];
+  /** 'full' only — the explicit keyword list the 750-char description must embed. */
+  descriptionKeywords?: string[];
+  /** 'full' only — off-GBP platforms worth a listing (Practo, Justdial, …). */
+  platformGaps?: Array<{ platform: string; why: string }>;
   marketOpportunities?: Array<{ keyword: string; potential: string; rationale: string }>;
   actionPhases?: Array<{ label: string; window: string; items: ISeoPlanActionItem[] }>;
   weeklyPostThemes?: Array<{ weekday: string; theme: string; keyword: string; postType: string }>;
@@ -288,6 +321,10 @@ export interface ISeoPlanDraft {
   uspLine?: string;
   reviewReplyMustInclude?: string[];
   whatWeAimFor?: { todayRank: string; milestones: Array<{ label: string; text: string }> };
+  /** 'full' — Today → 14d → 45d → 90d rank bands. */
+  rankTimeline?: Array<{ label: string; rank: string; note: string; tone?: 'bad' | 'warn' | 'good' }>;
+  /** 'full' — one-paragraph assessment of the business's own website. */
+  websiteAssessment?: string;
   dataRequired?: string[];
   /** Per-subsection generation failures — UI shows a support message for
    *  just that block instead of faking it. */

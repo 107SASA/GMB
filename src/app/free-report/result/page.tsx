@@ -11,6 +11,7 @@ import { ALL_FAQS } from '@/lib/faqData';
 import { usePublicPlan } from '@/components/billing/useRazorpayCheckout';
 import { pickDuration } from '@/components/billing/DurationPicker';
 import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
+import ConsultantSections from './ConsultantSections';
 
 interface AuditDoc {
   _id: string;
@@ -193,6 +194,9 @@ function FreeReportResultContent() {
     (d.keywordGapAnalysis || []).filter((k: any) => k.missing);
   const rank = d.googleSearchRank?.averageRank;
   const topKeywordRanks: Array<{ keyword: string; rank: number }> = d.googleSearchRank?.topKeywords || [];
+  const seoPlanDraft = d.seoPlanDraft;
+  const keywordTable = d.keywordTable || [];
+  const areasChecked: string[] = d.areasChecked || [];
   // Only the first keyword's points — for a reduced grid there's just one
   // keyword anyway; for a full 5-keyword×9-point grid, plotting all 45
   // points would make the map illegible, so one representative keyword's
@@ -395,7 +399,10 @@ function FreeReportResultContent() {
                       not a separate/new claim. */}
                   <div className="px-3 py-2.5 text-xs text-on-surface bg-surface-container-lowest border-t border-outline-variant">
                     You rank in the top 5 in <strong>{mapPoints.filter((p) => p.rank <= 5).length}</strong> of{' '}
-                    <strong>{mapPoints.length}</strong> nearby areas searched.
+                    <strong>{areasChecked.length || mapPoints.length}</strong> nearby areas searched.
+                    {areasChecked.length > 0 && (
+                      <span className="block text-on-surface-variant mt-1">Areas checked: {areasChecked.join(', ')}.</span>
+                    )}
                   </div>
                 </div>
               )}
@@ -623,6 +630,19 @@ function FreeReportResultContent() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Consultant sections 1–9 (Keyword Search Volume Analysis → Data
+              Required) — rendered only when the SEO-plan generation succeeded.
+              See ConsultantSections.tsx / src/services/ai/seoPlanEngine.ts. */}
+          {seoPlanDraft && (
+            <ConsultantSections
+              draft={seoPlanDraft}
+              keywordTable={keywordTable}
+              businessName={audit!.businessName}
+              city={city}
+              checkoutHref={checkoutHref}
+            />
           )}
 
           {/* dataQuality (rankSource/reviewSource/cache-hit flags) stays in

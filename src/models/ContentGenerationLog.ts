@@ -23,4 +23,8 @@ const ContentGenerationLogSchema: Schema = new Schema(
   { timestamps: true }
 );
 
+// Retention: 180 days (approved policy). Debug/audit trail for AI content
+// generation — the generated Posts themselves are stored separately and kept.
+ContentGenerationLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });
+
 export default mongoose.models.ContentGenerationLog || mongoose.model<IContentGenerationLog>('ContentGenerationLog', ContentGenerationLogSchema);

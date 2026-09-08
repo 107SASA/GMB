@@ -5,6 +5,7 @@ import Review from '@/models/Review';
 import { encrypt } from '@/lib/crypto';
 import { inngest } from '@/services/inngest/client';
 import { maybeStartContentAutopilot } from '@/lib/contentAutopilot';
+import { maybeStartAuditAutopilot } from '@/lib/auditAutopilot';
 
 export interface FinalizeGbpConnectionInput {
   businessId: string;
@@ -82,6 +83,11 @@ export async function finalizeGbpConnection(input: FinalizeGbpConnectionInput): 
   // waiting for the next hourly safety-net pass. No-op (fast) if the
   // subscription isn't active yet, or autopilot already started.
   await maybeStartContentAutopilot(input.businessId);
+
+  // Likewise for the automatic audit — connecting Google may be the last of
+  // the three conditions (active subscription + Google connected + real
+  // category) the first report waits on. No-op if not yet qualified.
+  await maybeStartAuditAutopilot(input.businessId);
 }
 
 /** Mirrors the address formatting used in gbpClient.ts's fetchLocationProfile. */

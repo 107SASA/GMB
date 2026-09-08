@@ -5,6 +5,11 @@ import Customer from "@/models/Customer";
 import { requireBusinessContext } from "@/lib/tenant";
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
+// SEC-13 — bound the work a single upload can trigger (memory + a per-row
+// findOne/save loop). A customer list well past these limits should be split.
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_ROWS = 5000;
+
 export async function POST(req: NextRequest) {
   try {
     const ctx = await requireBusinessContext();
@@ -14,16 +19,27 @@ export async function POST(req: NextRequest) {
 
     const formData = await req.formData();
     const file = formData.get("file") as File;
-    
+
     if (!file) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ error: "File is larger than 5 MB. Please split it into smaller files." }, { status: 413 });
+    }
 
     const csvData = await file.text();
-    const records = parse(csvData, {
-      columns: true,
-      skip_empty_lines: true,
-    }) as Record<string, any>[];
+    let records: Record<string, any>[];
+    try {
+      records = parse(csvData, {
+        columns: true,
+        skip_empty_lines: true,
+      }) as Record<string, any>[];
+    } catch {
+      return NextResponse.json({ error: "Could not parse the file as CSV. Please check the format." }, { status: 400 });
+    }
+    if (records.length > MAX_ROWS) {
+      return NextResponse.json({ error: `File has ${records.length} rows — the limit is ${MAX_ROWS}. Please split it.` }, { status: 413 });
+    }
 
     let newCount = 0;
     let updatedCount = 0;

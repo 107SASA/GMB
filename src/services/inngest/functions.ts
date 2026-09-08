@@ -850,13 +850,20 @@ export const processContentJob = inngest.createFunction(
         const { generateThumbnail } = await import("@/services/ai/imageGenerator");
         const { isStorageConfigured, rehostImageFromUrl } = await import("@/lib/storage");
 
+        // Keywords / USP / post themes come from the active SeoPlan when the
+        // business has one (the brain), falling back to Business.keywords.
+        const { resolveContentKeywords } = await import("@/services/seoPlan/seoPlanService");
+        const planContent = await resolveContentKeywords(business);
+
         const aiResponse = await generateAIContent({
           businessName: business.name || 'Local Business',
           businessType: business.category || 'Local Business',
           location: business.address || 'Local Area',
-          keywords: business.keywords || ['services'],
-          tone: 'Professional',
-          contentTypes: ['GMB Posts']
+          keywords: planContent.keywords.length ? planContent.keywords : (business.keywords || ['services']),
+          tone: business.tone || 'Professional',
+          contentTypes: ['GMB Posts'],
+          usp: planContent.uspLine,
+          postThemes: planContent.postThemes,
         });
 
         if (!aiResponse || !aiResponse.posts) throw new Error("Empty AI content returned");
@@ -944,6 +951,16 @@ export const processContentJob = inngest.createFunction(
             data: p,
           }))
         );
+
+        // Owner WhatsApp — queued to the daily digest.
+        await step.run("owner-whatsapp-digest", async () => {
+          const { notifyOwner } = await import("@/services/ownerNotify");
+          await notifyOwner(business._id.toString(), {
+            event: 'content_batch_generated',
+            text: `${createdScheduled.length} new Google Business Profile ${createdScheduled.length === 1 ? 'post' : 'posts'} generated and scheduled`,
+            count: createdScheduled.length,
+          });
+        });
       }
     } catch (error: any) {
       await step.run("alert-admin-generation-failed", async () => {
@@ -1511,6 +1528,17 @@ export const processPublishPostJob = inngest.createFunction(
       } catch (e: any) {
         console.error('[notifications] post-published notify failed:', e.message);
       }
+
+      // Owner WhatsApp — queued to the daily digest (routine activity).
+      try {
+        const { notifyOwner } = await import("@/services/ownerNotify");
+        await notifyOwner(businessIdStr, {
+          event: 'post_published',
+          text: post.title ? `Post published: ${post.title}` : 'A post was published to your Google Business Profile',
+        });
+      } catch (e: any) {
+        console.error('[ownerNotify] post-published failed:', e.message);
+      }
     });
 
     return { success: true };
@@ -1566,6 +1594,18 @@ export const processScheduledMediaPublishJob = inngest.createFunction(
         const { liveWriteApplied } = await publishAsset(businessId, assetId, {
           name: "Scheduled publish",
         });
+
+        if (liveWriteApplied) {
+          try {
+            const { notifyOwner } = await import("@/services/ownerNotify");
+            await notifyOwner(businessId, {
+              event: 'photo_published',
+              text: 'A scheduled photo was published to your Google Business Profile',
+            });
+          } catch (e: any) {
+            console.error('[ownerNotify] photo-published failed:', e?.message);
+          }
+        }
 
         if (!liveWriteApplied) {
           // Live writes are platform-wide disabled — publishAsset correctly
@@ -1648,10 +1688,29 @@ export const generateAuditJob = inngest.createFunction(
 
     // "Your report is ready" WhatsApp ping (see sendReportReadyNotification
     // below) — separate event so a failure/skip there can't affect the
-    // sales-nurture dispatch above.
+    // sales-nurture dispatch above. That handler is scoped to fastMode
+    // (lead-gen) audits only.
     await step.sendEvent('start-report-ready', {
       name: 'report/ready.requested',
       data: { auditId },
+    });
+
+    // For a FULL audit (the automatic monthly report for a paying customer —
+    // fastMode is false), tell the workspace owner over WhatsApp that their
+    // fresh report is ready. notifyOwner respects the reportReadyWhatsApp
+    // preference and no-ops without a phone.
+    await step.run('owner-whatsapp-report-ready', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: Audit } = await import('@/models/Audit');
+      const { notifyOwner } = await import('@/services/ownerNotify');
+      const audit: any = await Audit.findById(auditId).select('status fastMode businessId businessName').lean();
+      if (!audit || audit.status !== 'COMPLETED' || audit.fastMode) return { skip: true };
+      await notifyOwner(audit.businessId.toString(), {
+        event: 'report_ready',
+        text: `📄 GrowwMatics: your monthly Google Business Profile report for ${audit.businessName || 'your business'} is ready. Open your dashboard to see this month's score and action plan.`,
+      });
+      return { sent: true };
     });
 
     return { success: true, auditId };
@@ -1749,6 +1808,173 @@ export const cleanupStalePendingAudits = inngest.createFunction(
         );
       }
       return { deleted: stale.length };
+    });
+
+    return { success: true, ...result };
+  }
+);
+
+// 7c. Automatic audit autopilot — the ONLY way a customer audit is generated
+// now that the manual "Run Audit" button is gone (see src/lib/auditAutopilot.ts
+// and POST /api/audit, which is locked to the freemium one-shot + super-admin).
+//
+// Two jobs in one hourly pass:
+//   1. FIRST report — a qualified workspace (active subscription + connected
+//      Google + real category) that has never had an automatic audit
+//      (auditAutopilotNextRunAt unset) gets its first full audit now and the
+//      30-day anchor set. This is the safety net behind the three event hooks
+//      in maybeStartAuditAutopilot (billing activation, GBP connect, intake).
+//   2. MONTHLY re-audit — a workspace whose anchor is due (<= now) gets a
+//      fresh full audit and its anchor rolled forward. The audit's own
+//      upsertSeoPlanFromAudit keeps the SEO brain versioned (this replaced
+//      the old seoPlanMonthlyReaudit, which keyed off SeoPlan.activeFrom and
+//      never ran until a first audit had already created a plan).
+//
+// A workspace that stops qualifying (subscription lapsed, GBP disconnected)
+// is skipped without moving its anchor — same non-destructive contract as
+// weekly content autopilot.
+export const auditAutopilotCron = inngest.createFunction(
+  { id: "audit-autopilot-cron", triggers: [{ cron: "0 * * * *" }] }, // hourly
+  async ({ step }) => {
+    const result = await step.run("select-and-dispatch-audits", async () => {
+      await dbConnect();
+      const { default: Business } = await import("@/models/Business");
+      const {
+        AUDIT_AUTOPILOT_INTERVAL_MS,
+        hasRealAuditCategory,
+        claimAndDispatch,
+        dispatchAuditForBusiness,
+        maybeStartAuditAutopilot,
+      } = await import("@/lib/auditAutopilot");
+
+      const now = new Date();
+
+      // Candidates: currently-qualified workspaces that are either not yet
+      // anchored (first run) or due for their monthly re-audit.
+      const candidates = await Business.find({
+        isDeleted: { $ne: true },
+        subscriptionStatus: "active",
+        googleConnected: true,
+        $or: [
+          { auditAutopilotNextRunAt: { $exists: false } },
+          { auditAutopilotNextRunAt: { $lte: now } },
+        ],
+      })
+        .select(
+          "_id name category userDefinedCategory organizationId userId website phone address city state country " +
+            "auditAutopilotNextRunAt auditAutopilotCategoryNudgedAt isDeleted"
+        )
+        .limit(50)
+        .lean();
+
+      let firstRuns = 0;
+      let reAudits = 0;
+      let nudged = 0;
+
+      for (const biz of candidates as any[]) {
+        // No real category yet — can't build a full audit. maybeStart handles
+        // the throttled owner nudge; never claims the anchor.
+        if (!hasRealAuditCategory(biz)) {
+          await maybeStartAuditAutopilot(biz._id.toString());
+          nudged++;
+          continue;
+        }
+
+        if (!biz.auditAutopilotNextRunAt) {
+          // FIRST run — atomic claim guards against a concurrent hook/cron.
+          if (await claimAndDispatch(biz._id.toString())) firstRuns++;
+          continue;
+        }
+
+        // MONTHLY re-audit — roll the anchor forward first (atomically, keyed
+        // to the exact value just read) so a concurrent pass can't double-fire.
+        const prev: Date = new Date(biz.auditAutopilotNextRunAt);
+        let next = new Date(prev.getTime() + AUDIT_AUTOPILOT_INTERVAL_MS);
+        // A long unqualified gap can leave +30d still in the past — resync to
+        // "30 days from now" rather than firing a burst of catch-up audits.
+        if (next <= now) next = new Date(now.getTime() + AUDIT_AUTOPILOT_INTERVAL_MS);
+
+        const claimed = await Business.findOneAndUpdate(
+          { _id: biz._id, auditAutopilotNextRunAt: prev },
+          { $set: { auditAutopilotNextRunAt: next } }
+        );
+        if (!claimed) continue; // another pass already advanced it
+
+        if (await dispatchAuditForBusiness(biz, "audit-autopilot-monthly")) reAudits++;
+      }
+
+      return { firstRuns, reAudits, nudged, candidates: candidates.length };
+    });
+
+    return { success: true, ...result };
+  }
+);
+
+// 7c-bis. Owner WhatsApp daily digest — the batched half of the owner
+// notification system (see services/ownerNotify.ts). Routine automation
+// activity (posts published, photos published, AI review replies sent,
+// content batches generated) is queued to OwnerNotifyDigest instead of
+// WhatsApp'd one-by-one; this fires once a day (~7pm IST) and sends each
+// workspace owner a single consolidated message, then stamps the rows sent.
+// High-value events (new lead, demo booking, critical review, billing,
+// report ready) are sent immediately by notifyOwner and never reach here.
+export const ownerWhatsAppDigestCron = inngest.createFunction(
+  { id: "owner-whatsapp-digest-cron", triggers: [{ cron: "30 13 * * *" }] }, // 13:30 UTC ≈ 19:00 IST
+  async ({ step }) => {
+    const result = await step.run("send-owner-digests", async () => {
+      await dbConnect();
+      const { sendPendingOwnerDigests } = await import("@/services/ownerNotify");
+      return await sendPendingOwnerDigests();
+    });
+    return { success: true, ...result };
+  }
+);
+
+// 7d. Weekly SEO-plan progress summary for active subscribers — posts
+// published + new reviews in the last 7 days, plus a nudge toward the active
+// plan. Delivered as an in-app notification (notifyBusinessUsers); a cold
+// business-initiated WhatsApp send would need an approved template and is
+// left for a follow-up. Opt-out: Business.weeklySummaryOptOut.
+export const seoPlanWeeklySummary = inngest.createFunction(
+  { id: "seo-plan-weekly-summary", triggers: [{ cron: "0 12 * * 1" }] }, // Mondays ~17:30 IST
+  async ({ step }) => {
+    const result = await step.run("send-weekly-summaries", async () => {
+      await dbConnect();
+      const { default: Business } = await import("@/models/Business");
+      const { default: Post } = await import("@/models/Post");
+      const { default: Review } = await import("@/models/Review");
+      const { default: SeoPlan } = await import("@/models/SeoPlan");
+      const { notifyBusinessUsers } = await import("@/services/notifications");
+
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const businesses = await Business.find({
+        isDeleted: { $ne: true },
+        subscriptionStatus: "active",
+        weeklySummaryOptOut: { $ne: true },
+      }).select("_id name").lean();
+
+      let sent = 0;
+      for (const b of businesses as any[]) {
+        const plan = await SeoPlan.findOne({ businessId: b._id, status: "active" }).select("version primaryKeywords").lean();
+        if (!plan) continue;
+
+        const [postsPublished, newReviews] = await Promise.all([
+          Post.countDocuments({ businessId: b._id, status: "published", updatedAt: { $gte: weekAgo } }),
+          Review.countDocuments({ businessId: b._id, createdAt: { $gte: weekAgo } }),
+        ]);
+
+        if (postsPublished === 0 && newReviews === 0) continue;
+
+        const kw = (plan as any).primaryKeywords?.[0];
+        await notifyBusinessUsers(b._id.toString(), {
+          type: "seo_plan_summary",
+          title: "Your week on Google",
+          body: `${postsPublished} post${postsPublished === 1 ? "" : "s"} published and ${newReviews} new review${newReviews === 1 ? "" : "s"} this week — all working the current SEO plan${kw ? ` (targeting "${kw}")` : ""}.`,
+          link: "/dashboard/seo-plan",
+        });
+        sent++;
+      }
+      return { sent, total: businesses.length };
     });
 
     return { success: true, ...result };
@@ -3237,7 +3463,7 @@ export const processAutoReplyBatchJob = inngest.createFunction(
   async ({ event, step }) => {
     const { businessId, reviewIds } = event.data as { businessId: string; reviewIds: string[] };
 
-    await step.run("auto-reply-reviews", async () => {
+    const posted = await step.run("auto-reply-reviews", async () => {
       const dbConnect = (await import('@/lib/mongodb')).default;
       await dbConnect();
       const { default: Review } = await import('@/models/Review');
@@ -3248,9 +3474,28 @@ export const processAutoReplyBatchJob = inngest.createFunction(
         if (!review) continue;
         await autoReplyToReview(businessId, review);
       }
+
+      // Count how many of this batch are now actually replied (autoReplyToReview
+      // swallows per-review failures) so the owner digest reflects reality.
+      return await Review.countDocuments({
+        _id: { $in: reviewIds },
+        businessId,
+        replyStatus: 'POSTED',
+      });
     });
 
-    return { success: true, count: reviewIds.length };
+    if (posted > 0) {
+      await step.run("owner-whatsapp-digest", async () => {
+        const { notifyOwner } = await import("@/services/ownerNotify");
+        await notifyOwner(businessId, {
+          event: 'review_reply_sent',
+          text: posted > 1 ? `${posted} review replies posted automatically` : 'A review reply was posted automatically',
+          count: posted,
+        });
+      });
+    }
+
+    return { success: true, count: reviewIds.length, posted };
   }
 );
 
@@ -3297,11 +3542,18 @@ export const criticalAlertWorker = inngest.createFunction(
       });
     });
 
-    if (!business.phone) return { success: true, reason: "No phone for WhatsApp alert" };
-
-    await step.run("send-twilio-alert", async () => {
-      const msg = `🚨 *Reputation Alert*\n${business.name} just received a critical/1-star review. Please check your Reputation Dashboard immediately to generate an AI response.`;
-      await sendOutboundMessage(business.phone, msg, undefined, business._id.toString());
+    // Owner WhatsApp — immediate (high-value). notifyOwner resolves the
+    // owner's account phone (falling back to business.phone), respects the
+    // criticalReviewWhatsApp preference, and no-ops if neither phone exists.
+    await step.run("send-owner-whatsapp-alert", async () => {
+      const { notifyOwner } = await import("@/services/ownerNotify");
+      await notifyOwner(business._id.toString(), {
+        event: 'critical_review',
+        text:
+          typeof rating === 'number'
+            ? `🚨 GrowwMatics: ${business.name} just received a ${rating}★ review. Open your Reviews dashboard to respond quickly and protect your rating.`
+            : `🚨 GrowwMatics: ${business.name} just received a critical review. Open your Reviews dashboard to respond quickly and protect your rating.`,
+      });
     });
 
     return { success: true };
@@ -3342,6 +3594,19 @@ export const reviewReplyDraftedWorker = inngest.createFunction(
             ? `${count} AI-drafted review replies are waiting for your approval.`
             : 'An AI-drafted review reply is waiting for your approval.',
         link: '/dashboard/reviews',
+      });
+    });
+
+    await step.run("owner-whatsapp-digest", async () => {
+      const { notifyOwner } = await import("@/services/ownerNotify");
+      const n = typeof count === 'number' && count > 1 ? count : 1;
+      await notifyOwner(businessId, {
+        event: 'review_reply_drafted',
+        text:
+          n > 1
+            ? `${n} AI-drafted review replies are waiting for your approval`
+            : 'An AI-drafted review reply is waiting for your approval',
+        count: n,
       });
     });
 
@@ -3409,8 +3674,30 @@ Return ONLY valid JSON in this exact shape:
       await lead.save();
     });
 
+    // Owner WhatsApp — immediate, but ONLY for organically-captured inbound
+    // leads. Bulk/CSV imports and manually-typed rows also fire
+    // crm/lead-created (per row) — WhatsApp'ing the owner for each of those
+    // would mean 200 messages on one import. notifyOwner also respects the
+    // owner's newLeadWhatsApp preference and no-ops without a phone.
+    await step.run("owner-whatsapp-new-lead", async () => {
+      const dbConnect = (await import("@/lib/mongodb")).default;
+      await dbConnect();
+      const { default: Lead } = await import("@/models/Lead");
+      const { notifyOwner } = await import("@/services/ownerNotify");
+      const lead: any = await Lead.findById(leadId).select('name source businessId phone tenantId').lean();
+      if (!lead || !lead.businessId) return;
+      // Platform-internal prospects have their own admin funnel — not an owner's CRM.
+      if (lead.tenantId === 'gmbboost-internal') return;
+      const ORGANIC = new Set(['WhatsApp', 'Website', 'Instagram', 'Facebook', 'Google Business Profile', 'Phone Call', 'Demo Booking']);
+      if (!ORGANIC.has(lead.source)) return;
+      await notifyOwner(lead.businessId.toString(), {
+        event: 'new_lead',
+        text: `New lead: ${lead.name || lead.phone || 'someone'} just came in via ${lead.source}. Open your CRM to follow up.`,
+      });
+    });
+
     const now = new Date();
-    
+
     // Day 1
     const day1 = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     await step.sleepUntil("wait-day-1", day1);
@@ -4378,3 +4665,124 @@ async function recordSentIntoSalesConversation(action: any, sentText: string | u
     console.warn('[nurtureSchedulerTick] recordSentIntoSalesConversation failed:', err?.message);
   }
 }
+
+// ===========================================================================
+// Data-retention cleanup — the state-conditional half of the retention
+// policy (Sep 2026). The pure "delete the whole document after N days"
+// collections use native MongoDB TTL indexes instead (defined on their
+// schemas): ProcessedWebhookEvent, LoginLink, AdminInvite, ReportConversation,
+// LeadEvent, Activity, AIUsageLog, AutomationLog, ReviewMonitorLog,
+// ContentGenerationLog, ProfileActivity, Notification, OwnerNotifyDigest,
+// KeywordVolumeCache, PendingGbpConnection.
+//
+// This cron covers what a TTL index can't express:
+//   1. OTP / password-reset field sweep on the User document — never delete
+//      the User, only $unset the temporary auth fields whose expiry has
+//      already passed (defence-in-depth; the auth routes already clear these
+//      on successful verification).
+//   2. MessageQueue / JobQueue — delete only genuinely-terminal rows
+//      (MessageQueue status SENT, JobQueue status COMPLETED) older than 30
+//      days. PENDING / PROCESSING / FAILED rows — which may still run, retry,
+//      or be needed to debug a delivery failure — are never touched.
+//   3. ScheduledAction — delete only terminal rows (EXECUTED/SKIPPED/
+//      CANCELLED) older than 90 days. PENDING actions are never touched.
+//   4. Conversation message-array cap — atomically trim the embedded
+//      messages[] on Sales/Booking/Support/Report conversations to the most
+//      recent 500 via a `$slice` aggregation-pipeline update (no read-modify-
+//      write, so concurrent inbound messages can't clobber each other).
+//
+// Core business records (Lead, Customer, Business, Organization, User,
+// completed Audit, Subscription, SeoPlan) are NEVER deleted by this job.
+// Runs daily ~03:15 UTC.
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const dataRetentionCleanupCron = inngest.createFunction(
+  { id: "data-retention-cleanup-cron", triggers: [{ cron: "15 3 * * *" }] },
+  async ({ step }) => {
+    // 1. Expired OTP / password-reset fields on User — clear, never delete the user.
+    const otpSwept = await step.run("sweep-expired-otp-fields", async () => {
+      await dbConnect();
+      const { default: User } = await import("@/models/User");
+      const now = new Date();
+      const [email, phone, reset, resetToken] = await Promise.all([
+        User.updateMany(
+          { emailOtpExpiry: { $lt: now } },
+          { $unset: { emailOtpHash: "", emailOtpExpiry: "" } }
+        ),
+        User.updateMany(
+          { phoneOtpExpiry: { $lt: now } },
+          { $unset: { phoneOtpHash: "", phoneOtpExpiry: "" } }
+        ),
+        User.updateMany(
+          { passwordResetExpiry: { $lt: now } },
+          { $unset: { passwordResetOtp: "", passwordResetExpiry: "", passwordResetAttempts: "" } }
+        ),
+        User.updateMany(
+          { passwordResetTokenExpiry: { $lt: now } },
+          { $unset: { passwordResetTokenHash: "", passwordResetTokenExpiry: "" } }
+        ),
+      ]);
+      return {
+        emailOtp: email.modifiedCount ?? 0,
+        phoneOtp: phone.modifiedCount ?? 0,
+        passwordResetOtp: reset.modifiedCount ?? 0,
+        passwordResetToken: resetToken.modifiedCount ?? 0,
+      };
+    });
+
+    // 2. Terminal MessageQueue / JobQueue rows older than 30 days.
+    const queuesPruned = await step.run("prune-terminal-queue-rows", async () => {
+      await dbConnect();
+      const { default: MessageQueue } = await import("@/models/MessageQueue");
+      const { default: JobQueue } = await import("@/models/JobQueue");
+      const cutoff = new Date(Date.now() - 30 * DAY_MS);
+      const [mq, jq] = await Promise.all([
+        MessageQueue.deleteMany({ status: "SENT", updatedAt: { $lt: cutoff } }),
+        JobQueue.deleteMany({ status: "COMPLETED", updatedAt: { $lt: cutoff } }),
+      ]);
+      return { messageQueue: mq.deletedCount ?? 0, jobQueue: jq.deletedCount ?? 0 };
+    });
+
+    // 3. Terminal ScheduledAction rows older than 90 days.
+    const scheduledActionsPruned = await step.run("prune-terminal-scheduled-actions", async () => {
+      await dbConnect();
+      const { default: ScheduledAction } = await import("@/models/ScheduledAction");
+      const cutoff = new Date(Date.now() - 90 * DAY_MS);
+      const res = await ScheduledAction.deleteMany({
+        status: { $in: ["EXECUTED", "SKIPPED", "CANCELLED"] },
+        updatedAt: { $lt: cutoff },
+      });
+      return res.deletedCount ?? 0;
+    });
+
+    // 4. Cap embedded conversation message arrays at 500 (atomic $slice).
+    const conversationsTrimmed = await step.run("trim-conversation-messages", async () => {
+      await dbConnect();
+      const models = await Promise.all([
+        import("@/models/SalesConversation"),
+        import("@/models/BookingConversation"),
+        import("@/models/SupportConversation"),
+        import("@/models/ReportConversation"),
+      ]);
+      const CAP = 500;
+      let trimmed = 0;
+      for (const m of models) {
+        const Model: any = m.default;
+        const res = await Model.updateMany(
+          { $expr: { $gt: [{ $size: { $ifNull: ["$messages", []] } }, CAP] } },
+          [{ $set: { messages: { $slice: ["$messages", -CAP] } } }]
+        );
+        trimmed += res.modifiedCount ?? 0;
+      }
+      return trimmed;
+    });
+
+    const summary = {
+      otpFieldsSwept: otpSwept,
+      queuesPruned,
+      scheduledActionsPruned,
+      conversationsTrimmed,
+    };
+    console.log("[data-retention-cleanup]", JSON.stringify(summary));
+    return { success: true, ...summary };
+  }
+);

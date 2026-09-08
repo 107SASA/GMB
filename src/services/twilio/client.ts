@@ -162,7 +162,10 @@ export async function sendOutboundMessage(
     return { success: false, error, isPlatformDefault: creds.isPlatformDefault };
   }
 
-  const client = twilio(creds.sid, creds.authToken);
+  // 15s HTTP timeout so a hung Twilio call can't stall the request (and, for
+  // login OTP, surface to the browser as a "Network error" on what is really
+  // a slow upstream). The route's own catch then returns a clean JSON error.
+  const client = twilio(creds.sid, creds.authToken, { timeout: 15000 });
   const statusCallback = statusCallbackUrl();
 
   try {
@@ -263,7 +266,10 @@ export async function sendTemplateMessage(
   // comment) — no runtime check needed here anymore since there is no
   // other kind of credential this could resolve to.
 
-  const client = twilio(creds.sid, creds.authToken);
+  // 15s HTTP timeout so a hung Twilio call can't stall the request (and, for
+  // login OTP, surface to the browser as a "Network error" on what is really
+  // a slow upstream). The route's own catch then returns a clean JSON error.
+  const client = twilio(creds.sid, creds.authToken, { timeout: 15000 });
   const statusCallback = statusCallbackUrl();
 
   try {

@@ -37,6 +37,11 @@ export interface IPlaceInsightCache extends Document {
     legacyRankings: any[];
     geoGridRank: any;
     localPackCompetitors: any[];
+    /** Free-report "Keyword Search Volume Analysis" rows + the neighbourhood
+     *  list — cached here so a repeat lookup skips the DataForSEO Maps +
+     *  Keyword Planner + Google Geocoding calls that built them. */
+    keywordTable?: any[];
+    areasChecked?: string[];
     rankingsEvidence: string;
     accepted: any[];
     rejected: any[];
@@ -81,6 +86,10 @@ export interface IPlaceInsightCache extends Document {
       thirtyDayPlan: any[];
       ninetyDayPlan: any[];
       actionPlan: any;
+      /** Consultant sections (Key Finding, GBP drafts, action phases, weekly
+       *  posts, Q&As) — see src/services/ai/seoPlanEngine.ts. Optional so
+       *  pre-v6 cache entries don't need a backfill. */
+      seoPlanDraft?: any;
     };
     fetchedAt: Date;
     /** Same purpose as rank.logicVersion — guards against e.g. a change to

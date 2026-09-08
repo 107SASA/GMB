@@ -28,4 +28,8 @@ const NotificationSchema: Schema = new Schema(
 
 NotificationSchema.index({ userId: 1, createdAt: -1 });
 
+// Retention: 90 days (approved policy). In-app bell notifications — a
+// notification older than 90 days is no longer actionable, read or not.
+NotificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
+
 export default mongoose.models.Notification || mongoose.model<INotification>('Notification', NotificationSchema);

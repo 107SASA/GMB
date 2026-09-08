@@ -89,7 +89,8 @@ export async function POST(req: Request) {
     // (see services/whatsapp/send.ts's resolveProvider).
     const result = await sendOtpMessage(
       user.phone,
-      `Your GrowwMatics AI login code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`
+      `Your GrowwMatics AI login code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`,
+      otp
     );
 
     if (!result.success) {

@@ -14,6 +14,7 @@ export async function GET() {
     await dbConnect();
 
     const invites = await AdminInvite.find()
+      .select('-tokenHash')
       .sort({ createdAt: -1 })
       .populate('invitedBy', 'fullName email')
       .lean();
@@ -66,8 +67,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Generate secure token
-    const token = crypto.randomBytes(32).toString('hex');
+    // Generate a secure token; store ONLY its SHA-256 hash. The raw value is
+    // returned once here (in inviteLink) and never persisted — see AdminInvite.ts.
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
 
     // Expires in 48 hours
     const expiresAt = new Date();
@@ -75,16 +78,20 @@ export async function POST(req: Request) {
 
     const invite = await AdminInvite.create({
       email: email.toLowerCase(),
-      token,
+      tokenHash,
       invitedBy: auth.userId,
       expiresAt,
     });
 
-    const inviteLink = `${process.env.NEXTAUTH_URL}/admin/invite/${token}`;
+    const inviteLink = `${process.env.NEXTAUTH_URL}/admin/invite/${rawToken}`;
+
+    // Don't echo the stored hash back to the client.
+    const inviteView = invite.toObject();
+    delete inviteView.tokenHash;
 
     return NextResponse.json({
       success: true,
-      data: { invite, inviteLink },
+      data: { invite: inviteView, inviteLink },
     });
   } catch (error: any) {
     console.error('Invites POST Error:', error);

@@ -125,28 +125,54 @@ export async function sendOutboundMessage(
 /**
  * Sends an OTP code (login, signup, resend).
  *
- * REVERTED 2026-08-22: this used to try growwmatics_notification first and
- * fall back to free text — the opposite of what it does now. That was meant
- * to sidestep the 24h-session-window problem (free text silently fails for a
- * cold recipient), but growwmatics_notification turned out to fail via this
- * direct-number send path ~100% of the time itself (Twilio error 63027,
- * "template does not exist for a language and locale") — confirmed by
- * checking the FINAL async status of "successful" test sends, not just the
- * synchronous API response, which had been masking it. So template-first
- * was strictly worse: it broke OTPs for everyone, including recipients with
- * an open session who worked fine before.
+ * PRIMARY PATH (2026-09): a dedicated WhatsApp AUTHENTICATION-category
+ * template — WA_TEMPLATES.loginOtp / TWILIO_TEMPLATE_LOGIN_OTP. Auth
+ * templates are the compliant way to deliver an OTP and, crucially, are NOT
+ * subject to the 24h customer-session window, so a cold login/signup (the
+ * common case — the user isn't mid-conversation with our WhatsApp number)
+ * delivers reliably. Sent DIRECTLY as a template — no free-text attempt
+ * first (every login is a cold send by definition, so leading with free
+ * text just guarantees a 63016 rejection and wastes a Twilio call).
  *
- * This now just calls sendOutboundMessage() directly, which already has the
- * right fallback shape (free text first, template retry only on a
- * *synchronous* rejection — see its comment above). Recipients with an open
- * session (have messaged the platform's number recently) get their code
- * reliably. Recipients without one remain a known, unresolved gap — TODO:
- * either get growwmatics_notification actually working via this send path
- * (may need Twilio support — see scripts/debug-content-send.mjs, which
- * reproduces the failure outside the app), or add a real delivery-status
- * webhook so an async failure (this one, or 63016) can trigger a genuine
- * retry instead of the caller believing "success" from the sync response.
+ * `code` is the bare numeric OTP for the template's single {{1}} variable.
+ * When the auth template is configured this is a SINGLE Twilio call — it does
+ * NOT then chase a failure with the free-text + generic-notification-template
+ * fallback the way general messages do. That cascade is 2 extra sequential
+ * Twilio round-trips (pushing the login request past ~6-9s and risking a
+ * gateway/proxy timeout that surfaces to the browser as "Network error") and
+ * neither leg helps a cold login: free text needs an open 24h session, and
+ * the generic `notification` template send is itself broken (21656). So on a
+ * template failure this returns that failure straight away and the route
+ * answers fast with a real 502 the user can see and retry.
+ *
+ * `message` (the full human-readable line) is only used when the auth
+ * template SID isn't configured at all (local/dev before approval) — then it
+ * falls back to a best-effort free-text send, which still lands for a
+ * recipient inside a 24h window.
+ *
+ * HISTORY: this previously went out only as free text (reliable ONLY inside a
+ * 24h window) after an earlier attempt via the GENERIC growwmatics_notification
+ * template was reverted — that template failed ~100% here (Twilio 63027, then
+ * 21656 "ContentVariables invalid"). A purpose-built auth template sidesteps both.
  */
-export async function sendOtpMessage(phone: string, message: string): Promise<SendResult> {
+export async function sendOtpMessage(
+  phone: string,
+  message: string,
+  code?: string
+): Promise<SendResult> {
+  const provider = await resolveProvider();
+
+  // Twilio auth-template path — the reliable one, and the only send attempted
+  // when it's available. Content Template SIDs are WABA-scoped so this is
+  // platform-Twilio-number only; needs the bare code for {{1}}.
+  if (provider === 'twilio' && code && WA_TEMPLATES.loginOtp) {
+    const res = await sendTemplateMessage(phone, WA_TEMPLATES.loginOtp, { '1': code });
+    if (!res.success) {
+      console.error('[whatsapp] login-OTP auth template send failed:', res.error);
+    }
+    return res;
+  }
+
+  // No auth template configured — best-effort free text (works inside a 24h window).
   return sendOutboundMessage(phone, message);
 }

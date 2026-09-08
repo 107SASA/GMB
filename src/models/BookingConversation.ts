@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { applyConversationMessageCap } from './shared/conversationMessageCap';
 
 export interface IBookingMessage {
   role: 'agent' | 'lead';
@@ -91,6 +92,8 @@ const BookingConversationSchema: Schema = new Schema(
 
 // One active booking conversation per phone at a time.
 BookingConversationSchema.index({ phoneKey: 1, status: 1 });
+
+applyConversationMessageCap(BookingConversationSchema);
 
 export default mongoose.models.BookingConversation ||
   mongoose.model<IBookingConversation>('BookingConversation', BookingConversationSchema);

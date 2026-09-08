@@ -292,9 +292,15 @@ export class GooglePlacesService {
       state: pickComponent(components, ['administrative_area_level_1']),
       country: pickComponent(components, ['country']),
       postalCode: pickComponent(components, ['postal_code']),
-      // Prefer Places API (New)'s real category name; fall back to guessing
-      // from the legacy `types` enum only if v1 was unavailable/unenabled.
-      primaryCategory: placesNew.name || deriveCategory(r.types),
+      // Prefer Places API (New)'s real category name. Then try the New API's
+      // full `types` list (richer/more specific than the legacy details
+      // enum — e.g. it carries "educational_institution" where legacy details
+      // returns only "point_of_interest,establishment"). Legacy `r.types` is
+      // the last resort.
+      primaryCategory:
+        placesNew.name ||
+        deriveCategory(placesNew.raw?.types) ||
+        deriveCategory(r.types),
       categoryDebug: {
         source: placesNew.name ? 'places_new' : placesNew.source === 'places_new_failed' ? 'places_new_failed' : 'legacy_types',
         placesNewPrimaryType: placesNew.raw?.primaryType,

@@ -12,17 +12,27 @@ export async function generateReviewReply(params: {
   rating: number;
   tone: string;
   businessName: string;
+  /** SeoPlan.uspLine — the differentiator to weave in naturally. Optional. */
+  uspLine?: string;
+  /** SeoPlan.reviewReplyMustInclude — short phrases (city, a service word,
+   *  the USP theme) to try to include when it reads naturally. Optional. */
+  mustInclude?: string[];
 }): Promise<ReplyResult> {
   const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
   });
+
+  const uspLine = params.uspLine ? `\nBusiness USP (weave in naturally when it fits): ${params.uspLine}` : '';
+  const mustLine = params.mustInclude && params.mustInclude.length
+    ? `\nTry to include these where it reads naturally (never force all of them): ${params.mustInclude.join(', ')}`
+    : '';
 
   const prompt = `You are an expert Public Relations and Reputation Management AI for "${params.businessName}".
 A customer left a ${params.rating}-star review.
 Review text: "${params.reviewText}"
 
 Your task: Generate a direct, human-sounding response to this review.
-Tone requested: ${params.tone}.
+Tone requested: ${params.tone}.${uspLine}${mustLine}
 
 Guidelines:
 1. Do not use generic corporate jargon (e.g., "We are sorry for the inconvenience").

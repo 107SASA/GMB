@@ -31,5 +31,10 @@ const DemoBookingSchema = new mongoose.Schema({
   reminderActionIds: { type: [mongoose.Schema.Types.ObjectId], ref: 'ScheduledAction', default: [] },
 }, { timestamps: true });
 
+// SEC-12: book-demo (fileDemoRequest) and the admin Demos view look bookings
+// up by leadId, and by (leadId, status:'Pending') for the "needs scheduling"
+// group — this collection had no indexes at all.
+DemoBookingSchema.index({ leadId: 1, status: 1 });
+
 export default mongoose.models.DemoBooking ||
   mongoose.model('DemoBooking', DemoBookingSchema);

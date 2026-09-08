@@ -39,7 +39,7 @@ export async function GET(
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  await createSession(user._id.toString(), user.role);
+  await createSession(user._id.toString(), user.role, user.sessionEpoch ?? 0);
 
   if (user.activeBusinessId) {
     const cookieStore = await cookies();

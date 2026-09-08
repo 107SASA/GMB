@@ -36,11 +36,11 @@ echo "==> 2/6  Removing .next (full clean rebuild — see comment above for why)
 rm -rf .next
 
 echo "==> 3/6  Installing dependencies (safe no-op if package.json didn't change)"
-# --legacy-peer-deps: next-auth declares a nodemailer@^7 peer, but next-auth
-# isn't actually imported anywhere in this codebase (rolls its own session
-# auth) — the conflict is cosmetic. Real dependency mismatches would still
-# fail loudly at build/runtime; this just stops npm blocking installs over
-# an unused package's peer preference.
+# --legacy-peer-deps kept as a belt-and-braces flag. The historical reason
+# (an unused next-auth declaring a stale nodemailer peer) is gone — next-auth
+# was removed in the Sep 2026 security pass and a plain `npm install` now
+# resolves cleanly — but leaving the flag on is harmless and avoids a deploy
+# breaking on some future transitive peer nit.
 npm install --legacy-peer-deps
 
 echo "==> 4/6  Building (NODE_OPTIONS=${NODE_OPTIONS})"

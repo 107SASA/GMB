@@ -1,5 +1,10 @@
 import Groq from 'groq-sdk';
 import { GROQ_MODEL } from '@/lib/aiModel';
+import {
+  buildCompletionPromptFact,
+  qualifyCompletionInProse,
+  COMPLETION_PROMPT_RULE,
+} from '@/lib/profileCompletion';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -73,8 +78,17 @@ export async function generateAIAudit(
   // weakness for businesses we genuinely can't check, contradicting the
   // checklist's own Unknown status shown elsewhere in the same report. Only
   // a checklist status of 'Missing' gets described as missing to the model.
-  const checklist = businessData.nativeAnalytics?.profileCompletion?.checklist || [];
+  const profileCompletion = businessData.nativeAnalytics?.profileCompletion || {};
+  const checklist = profileCompletion.checklist || [];
   const checklistStatus = (field: string) => checklist.find((c: any) => c.field === field)?.status;
+  // The qualified completion fact — never a bare "100%". See
+  // src/lib/profileCompletion.ts for why (the old bare "100%" leaked into
+  // "Full Profile Completion — 100% profile completion" in Strengths and
+  // "its profile is 100% complete" in the Key Finding).
+  const completionFact = buildCompletionPromptFact(profileCompletion);
+  const completionPending = Number(
+    profileCompletion.oauthPendingCount ?? profileCompletion.unknownCount ?? 0,
+  );
   const describeField = (field: string, rawValue: string | undefined) => {
     if (checklistStatus(field) === 'Unknown') {
       return 'Unknown — not verifiable without a connected Google account (do NOT describe this as missing or absent)';
@@ -96,7 +110,8 @@ WEBSITE: ${businessData.website || 'Missing'}
 DESCRIPTION: ${describeField('Business Description', businessData.description)}
 
 NATIVE ANALYTICS (Do not modify these numbers, only analyze them):
-Profile Completion Score: ${businessData.nativeAnalytics?.profileCompletion?.completionPercentage || 0}%
+PROFILE COMPLETION: ${completionFact}
+${COMPLETION_PROMPT_RULE}
 Review Count: ${businessData.nativeAnalytics?.reviewMetrics?.reviewCount || 0}
 Average Rating: ${businessData.nativeAnalytics?.reviewMetrics?.averageRating || 0}
 
@@ -182,7 +197,7 @@ Plan focus for this duration: ${planSpec.focus}
 Generate "ninetyDayPlan" as exactly ONE item titled "${planSpec.extendedLabel}" representing what comes AFTER this plan: ${planSpec.extendedFocus}
 
 RULES:
-1. "strengths" MUST be generated from actual data (e.g., if Profile Score is 90%, make that a strength, list the evidence).
+1. "strengths" MUST be generated from actual data (e.g. a strong rating with real review volume, ranking well for a keyword). Follow the PROFILE COMPLETION rule above: only treat profile completeness as a strength if the fact confirms every field is verified complete — if fields still need a Google connection, do NOT title a strength "Full Profile Completion" or claim the profile is 100% complete; at most note that the Places-visible fields are filled in, quoting the fact.
 2. "weaknesses" MUST be generated from actual gaps (e.g., use the Competitor Intelligence to find Review Gaps). Never generate a weakness/strength about a fact marked "Unknown" above (e.g. DESCRIPTION) — that means we couldn't verify it, not that it's missing.
 3. Do NOT generate "Data Unavailable". Provide as many genuine strengths and weaknesses as the real data actually supports (usually 3+, but never pad the count). Do NOT reframe a neutral or positive fact as a weakness just to hit a number — "low market saturation" (less competition) and a "Challenger" competitive position are NOT weaknesses; a business with genuinely few real weaknesses should show fewer than 3 rather than one being a spun positive.
 4. "priorityFixes" MUST perfectly match the items listed in IDENTIFIED NATIVE PRIORITY FIXES — including when that list is EMPTY: output priorityFixes as an empty array [] in that case. NEVER invent a placeholder entry (e.g. "No priority fixes identified") — an empty array is the correct, honest output when there is nothing to fix, and a placeholder entry gets counted as a real problem downstream. Do not invent new fixes beyond the list either. Just add the Impact/Effort/expectedScoreGain scoring to the real ones.
@@ -206,6 +221,22 @@ RULES:
     const jsonStr = jsonMatch ? jsonMatch[1] : content;
 
     const parsed = JSON.parse(jsonStr.trim());
+
+    // Last-resort cleanup: if the model still wrote "100% complete" / "Full
+    // Profile Completion" into any prose field despite the rule above,
+    // rewrite it to the qualified fact. No-op when nothing is pending.
+    const qualify = (s: unknown) =>
+      typeof s === 'string' ? qualifyCompletionInProse(s, completionFact, completionPending) : s;
+    for (const list of [parsed.strengths, parsed.weaknesses, parsed.priorityFixes]) {
+      if (!Array.isArray(list)) continue;
+      for (const item of list) {
+        if (!item || typeof item !== 'object') continue;
+        for (const key of ['title', 'observation', 'evidence', 'impact', 'reason', 'risk']) {
+          if (key in item) item[key] = qualify(item[key]);
+        }
+      }
+    }
+
     parsed._usage = {
       promptTokens:    response.usage?.prompt_tokens    ?? 0,
       completionTokens: response.usage?.completion_tokens ?? 0,

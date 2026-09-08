@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { applyConversationMessageCap } from './shared/conversationMessageCap';
 
 export interface ISupportMessage {
   role: 'agent' | 'lead';
@@ -68,6 +69,8 @@ const SupportConversationSchema: Schema = new Schema(
 );
 
 SupportConversationSchema.index({ phoneKey: 1, status: 1 });
+
+applyConversationMessageCap(SupportConversationSchema);
 
 export default mongoose.models.SupportConversation ||
   mongoose.model<ISupportConversation>('SupportConversation', SupportConversationSchema);

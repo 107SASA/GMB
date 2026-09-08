@@ -61,7 +61,18 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // point, not-found at the other two) was only showing ~4 named competitors
 // in the table, visibly out of proportion with what the rank number
 // implied. More of the same real, already-fetched data, not new data.
-const CACHE_LOGIC_VERSION = 5;
+// v6 (Sep 2026): profile completion now carries a qualified label/prompt
+// fact (places vs oauth field groups — see src/lib/profileCompletion.ts)
+// and the Groq prompt is fed that fact instead of a bare "100%". Old
+// narratives cached under v5 still say "Full Profile Completion — 100%
+// profile completion" / "profile is 100% complete"; this bump forces them
+// to regenerate. The consultant SEO-plan sections also land at this
+// version.
+// v7 (Sep 2026): the free-report keyword table + areas-checked list are now
+// stored in the rank cache blob (previously recomputed on every hit,
+// wasting ~$0.13 of Maps + Keyword Planner + Geocoding per repeat lookup).
+// Pre-v7 rank entries have no keywordTable, so they must regenerate once.
+const CACHE_LOGIC_VERSION = 7;
 
 export async function processAuditJob(auditId: string) {
   await dbConnect();
@@ -294,6 +305,79 @@ export async function processAuditJob(auditId: string) {
           ? 'reduced-grid'
           : 'full-grid';
 
+    // ── Free-report keyword table (cached inside the rank blob) ───────────
+    // ~14 hyper-local phrases ("IT Training Institute Bidhannagar") ranked
+    // once + a demand band each. Runs BEFORE the rank cache write so a
+    // repeat lookup of the same listing restores it for free — no extra
+    // DataForSEO Maps / Keyword Planner / Google Geocoding spend on a
+    // cache hit. Paid audits (never cacheable) build the table from their
+    // full geo-grid keyword set.
+    let keywordTable: any[] = rankCacheFresh ? (insightCache?.rank?.keywordTable || []) : [];
+    let areasChecked: string[] = rankCacheFresh ? (insightCache?.rank?.areasChecked || []) : [];
+
+    if (!rankCacheFresh && audit.fastMode && rankData && !rankData.fetchError) {
+      try {
+        const { fetchNearbyLocalities } = require('./localities');
+        const { buildFreeReportKeywords } = require('./keywordSeeds');
+        const { fetchKeywordRankSnapshot } = require('./seoAnalyzer');
+
+        const localities = await fetchNearbyLocalities(businessForRankings.coordinates, { limit: 8 });
+        const seeded = buildFreeReportKeywords(
+          { ...businessForRankings, city: resolvedCity, category: resolvedCategory },
+          localities.neighbourhoods,
+        );
+        areasChecked = seeded.areasUsed.length ? seeded.areasUsed : localities.neighbourhoods;
+
+        const snapshot = await fetchKeywordRankSnapshot(businessForRankings, seeded.keywords);
+        const seen = new Set(keywordRankings.map((k: any) => String(k.keyword).toLowerCase()));
+        for (const row of snapshot) {
+          if (seen.has(row.keyword.toLowerCase())) continue;
+          keywordRankings.push({ keyword: row.keyword, rank: row.rank, sourceQuery: row.keyword, confidence: row.rank < 21 ? 'High' : 'Low' });
+        }
+
+        // Fold the snapshot's harvested "ranked above you" businesses into
+        // the local pack — real Maps results, deduped, ranks averaged.
+        const compMap = new Map<string, { name: string; ranks: number[]; rating?: number; reviewCount?: number; placeId?: string }>();
+        for (const c of localPackCompetitors) {
+          const k = (c.placeId || c.name || '').toLowerCase().trim();
+          if (k) compMap.set(k, { name: c.name, ranks: [c.avgRank ?? 21], rating: c.rating, reviewCount: c.reviewCount, placeId: c.placeId });
+        }
+        for (const row of snapshot) {
+          for (const c of row.competitorsAbove || []) {
+            const k = (c.placeId || c.name || '').toLowerCase().trim();
+            if (!k) continue;
+            const ex = compMap.get(k);
+            if (ex) ex.ranks.push(c.rank);
+            else compMap.set(k, { name: c.name, ranks: [c.rank], rating: c.rating, reviewCount: c.reviewCount, placeId: c.placeId });
+          }
+        }
+        localPackCompetitors = Array.from(compMap.values())
+          .map((c) => ({
+            name: c.name,
+            avgRank: parseFloat((c.ranks.reduce((a, b) => a + b, 0) / c.ranks.length).toFixed(1)),
+            rating: c.rating,
+            reviewCount: c.reviewCount,
+            placeId: c.placeId,
+          }))
+          .sort((a, b) => a.avgRank - b.avgRank)
+          .slice(0, 12);
+      } catch (seedErr: any) {
+        console.warn('[auditService] free-report keyword expansion failed:', seedErr?.message);
+      }
+    }
+
+    if (!rankCacheFresh && keywordRankings.length > 0) {
+      try {
+        const { buildKeywordTable } = require('./keywordTable');
+        keywordTable = await buildKeywordTable(
+          keywordRankings.map((k: any) => ({ keyword: k.keyword, rank: k.rank })),
+          { city: resolvedCity, area: business.area || '', country: business.country || '' },
+        );
+      } catch (kwErr: any) {
+        console.warn('[auditService] keyword table build failed:', kwErr?.message);
+      }
+    }
+
     // We hold the claim (wonRankClaim) — release it now regardless of
     // outcome, so a failed/empty result doesn't block the next request for
     // the full staleness window. Only write `rank` itself when there's real,
@@ -314,6 +398,10 @@ export async function processAuditJob(auditId: string) {
             rejected,
             targetTier,
             compEvidence,
+            // Cached so a repeat lookup skips the ~$0.13 of Maps + Keyword
+            // Planner + Geocoding the free-report keyword expansion costs.
+            keywordTable,
+            areasChecked,
             fetchedAt: new Date(),
             logicVersion: CACHE_LOGIC_VERSION,
           },
@@ -533,6 +621,9 @@ export async function processAuditJob(auditId: string) {
     // stale narrative about a business that's since changed.
     const narrativeInputs = {
       profileCompletionPct: profileCompletion.completionPercentage,
+      // Bust cached "100% complete" prose when the qualified wording changes
+      // (e.g. a field got promoted so it's now "6 fields need a connection").
+      profileCompletionFact: profileCompletion.completionPromptFact || '',
       reviewCount:          reviewMetrics.reviewCount,
       averageRating:        reviewMetrics.averageRating,
       avgRank:              googleSearchRank.averageRank,
@@ -596,9 +687,95 @@ export async function processAuditJob(auditId: string) {
       });
     }
 
+    // ── Consultant SEO-plan sections (Key Finding, GBP drafts, action
+    // phases, weekly posts, Q&As) — the "looks like the full report" layer.
+    // Reuses the v6 narrative cache blob so a repeat lookup of the same
+    // listing doesn't re-pay the ~3 Groq calls. Best-effort: a failure here
+    // leaves seoPlanDraft undefined and the UI simply hides those sections.
+    let seoPlanDraft: any = narrativeCacheFresh
+      ? insightCache?.narrative?.aiFields?.seoPlanDraft
+      : undefined;
+    if (!seoPlanDraft && keywordTable.length > 0) {
+      try {
+        const { generateSeoPlanDraft } = require('../ai/seoPlanEngine');
+        // Depth tier: fastMode (cold-lead free report) → 'free'; a paid audit
+        // (post-Google-connect + the monthly re-audit, both non-fastMode) →
+        // 'full', which also reads the website and the live GBP profile.
+        const depth: 'free' | 'full' = audit.fastMode ? 'free' : 'full';
+
+        let websiteSignals: any = null;
+        let gbpLive: any = null;
+        if (depth === 'full') {
+          try {
+            const { fetchWebsiteSignals } = require('./websiteSignals');
+            websiteSignals = await fetchWebsiteSignals(business.website || '');
+          } catch (wsErr: any) {
+            console.warn('[auditService] website signals failed:', wsErr?.message);
+          }
+          if (business.googleLocationId) {
+            try {
+              const { fetchLocationProfile } = require('../../lib/gbpClient');
+              const live = await fetchLocationProfile(audit.businessId.toString());
+              gbpLive = {
+                title: live?.title,
+                description: live?.description,
+                primaryCategory: live?.primaryCategory,
+                additionalCategories: live?.additionalCategories || [],
+              };
+            } catch (gErr: any) {
+              console.warn('[auditService] live GBP read failed:', gErr?.message);
+            }
+          }
+        }
+
+        const { computeSuspensionRisk } = require('./reportMath');
+        const suspensionRisk = computeSuspensionRisk(
+          profileCompletion.completionPercentage,
+          effectiveReviewCount,
+        );
+
+        seoPlanDraft = await generateSeoPlanDraft({
+          businessName: business.name,
+          category: resolvedCategory,
+          city: resolvedCity,
+          area: business.area || '',
+          state: business.state || '',
+          country: business.country || '',
+          website: business.website || '',
+          neighbourhoods: areasChecked,
+          primaryKeyword: keywordTable[0]?.keyword || '',
+          keywordTable,
+          competitors: (localPackCompetitors.length ? localPackCompetitors : effectiveCompetitors).map((c: any) => ({
+            name: c.name,
+            mapsRank: c.avgRank ?? c.estimatedRank,
+            rating: c.rating,
+            reviewCount: c.reviewCount,
+          })),
+          avgRank: googleSearchRank.averageRank,
+          reviewCount: effectiveReviewCount,
+          rating: reviewMetrics.averageRating,
+          profileCompletion,
+          strengths: aiResult?.strengths,
+          weaknesses: aiResult?.weaknesses,
+          depth,
+          offers: business.offers || '',
+          usps: business.intake?.uniqueSellingPoints || '',
+          services: business.services || '',
+          websiteSignals,
+          gbpLive,
+          suspensionRisk: { level: suspensionRisk?.level || 'Low', pct: suspensionRisk?.pct ?? 0 },
+        });
+      } catch (planErr: any) {
+        console.warn('[auditService] seoPlanDraft generation failed:', planErr?.message);
+      }
+    }
+
     // ── Merge native truths over AI output ───────────────────
     if (typeof aiResult === 'object') {
       aiResult.googleSearchRank    = googleSearchRank;
+      aiResult.keywordTable        = keywordTable;
+      aiResult.areasChecked        = areasChecked;
+      if (seoPlanDraft) aiResult.seoPlanDraft = seoPlanDraft;
       aiResult.profileCompletion   = profileCompletion;
       aiResult.seoScore            = nativeSeoScore;
       aiResult.auditConfidence     = auditConfidence;
@@ -739,6 +916,7 @@ export async function processAuditJob(auditId: string) {
                   thirtyDayPlan: aiResult.thirtyDayPlan,
                   ninetyDayPlan: aiResult.ninetyDayPlan,
                   actionPlan:    aiResult.actionPlan,
+                  seoPlanDraft:  aiResult.seoPlanDraft,
                 },
                 fetchedAt: new Date(),
                 logicVersion: CACHE_LOGIC_VERSION,
@@ -774,6 +952,31 @@ export async function processAuditJob(auditId: string) {
         );
       } catch (gateErr) {
         console.error(`[auditService] Failed to update freeAuditUsed for business ${audit.businessId}:`, gateErr);
+      }
+
+      // ── Upsert the SEO brain ──────────────────────────────────────────────
+      // Every completed audit — free reports included — creates the next
+      // SeoPlan version and supersedes the prior active one. Content jobs and
+      // review replies read getActiveSeoPlan() from here on. Best-effort: a
+      // failure must not fail the audit itself.
+      try {
+        const { upsertSeoPlanFromAudit } = require('../seoPlan/seoPlanService');
+        await upsertSeoPlanFromAudit({
+          businessId: audit.businessId.toString(),
+          sourceAuditId: audit._id.toString(),
+          draft: aiResult?.seoPlanDraft,
+          keywordTable,
+          areasChecked,
+          baseline: {
+            overallScore: finalScore,
+            avgRank: googleSearchRank.averageRank,
+            reviewCount: effectiveReviewCount,
+            rating: reviewMetrics.averageRating,
+            completionPct: profileCompletion.completionPercentage,
+          },
+        });
+      } catch (planErr: any) {
+        console.error(`[auditService] SeoPlan upsert failed for business ${audit.businessId}:`, planErr?.message);
       }
     }
 

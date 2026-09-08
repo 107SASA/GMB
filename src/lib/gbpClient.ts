@@ -247,6 +247,7 @@ export interface GbpLocationProfile {
   primaryPhone: string;
   website: string;
   primaryCategory: string;
+  additionalCategories: string[];
   address: string;
 }
 
@@ -287,6 +288,9 @@ export async function fetchLocationProfile(businessId: string): Promise<GbpLocat
     primaryPhone: d.phoneNumbers?.primaryPhone ?? '',
     website: d.websiteUri ?? '',
     primaryCategory: d.categories?.primaryCategory?.displayName ?? '',
+    additionalCategories: (d.categories?.additionalCategories ?? [])
+      .map((c: any) => c?.displayName)
+      .filter(Boolean),
     address,
   };
 }

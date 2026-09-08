@@ -30,11 +30,16 @@ export async function POST(req: Request) {
     const business = await Business.findById(review.businessId).select('name').lean();
     const businessName = (business as any)?.name || 'Local Business';
 
+    const { getActiveSeoPlan } = await import('@/services/seoPlan/seoPlanService');
+    const plan = await getActiveSeoPlan(String(review.businessId)).catch(() => null);
+
     const { reply: aiReply } = await generateReviewReply({
       reviewText: review.reviewText,
       rating: review.rating,
       tone: 'Professional',
       businessName,
+      uspLine: plan?.uspLine,
+      mustInclude: plan?.reviewReplyMustInclude,
     });
 
     review.aiSuggestedReply = aiReply;

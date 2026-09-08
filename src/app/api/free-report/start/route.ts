@@ -100,15 +100,21 @@ export async function POST(req: Request) {
       },
     });
 
-    // CRM record for this funnel — phone-only Lead creation is already the
-    // proven, schema-legal pattern the WhatsApp booking agent uses.
-    await Lead.create({
-      tenantId: 'gmbboost-internal',
+    // CRM record for this funnel. Upsert on phone within the platform tenant
+    // (same dedupe rule /api/leads/book-demo uses) so a visitor who submits
+    // twice — or already came through book-demo / the WhatsApp agent —
+    // updates one record instead of spawning duplicates, and then wire it
+    // into the Lead Engine funnel (currentAgent SALES / currentStage
+    // NURTURING + a LEAD_CREATED event) so it shows correctly staged on the
+    // SuperAdmin conversion dashboard instead of sitting at NEW forever. The
+    // actual WhatsApp nurture is the existing post-audit sales drip
+    // (sales/nurture.requested, dispatched from generateAuditJob).
+    await fileFreeReportLead({
       name: user.fullName || businessName,
       phone: normalizedPhone,
-      source: 'Website',
-      leadType: 'Platform Prospect',
-      notes: 'Submitted the Free Business Report form',
+      businessName,
+    }).catch((err) => {
+      console.error('Free Report — CRM lead wiring failed (audit still dispatched):', err);
     });
 
     // Reuse an existing report instead of generating a duplicate one if this
@@ -172,4 +178,69 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
+}
+
+interface FreeReportLeadInput {
+  name: string;
+  phone: string; // E.164 with '+'
+  businessName: string;
+}
+
+/**
+ * Upserts the platform Lead for a free-report submission and wires it into
+ * the Lead Engine funnel. Split out from POST so the whole block is one
+ * best-effort unit — a failure here is logged by the caller and never fails
+ * the response, because the audit dispatch is what the visitor is waiting on.
+ */
+async function fileFreeReportLead(input: FreeReportLeadInput): Promise<void> {
+  const { name, phone, businessName } = input;
+  const notes = `Submitted the Free Business Report form for "${businessName}"`;
+
+  let lead = await Lead.findOne({ phone, tenantId: 'gmbboost-internal' });
+  if (lead) {
+    if (!lead.name || lead.name === lead.phone) lead.name = name;
+    // Don't stomp a 'Demo Booking' source with a weaker 'Website' one.
+    if (!lead.source || lead.source === 'Website') lead.source = 'Website';
+    lead.leadType = 'Platform Prospect';
+    if (!lead.businessType) lead.businessType = businessName;
+    lead.notes = notes;
+    lead.lastActivityAt = new Date();
+    await lead.save();
+  } else {
+    lead = await Lead.create({
+      tenantId: 'gmbboost-internal',
+      name,
+      phone,
+      source: 'Website',
+      leadType: 'Platform Prospect',
+      businessType: businessName,
+      notes,
+      aiLeadScore: 60,
+    });
+  }
+
+  const [{ setLeadOwnership }, { logLeadEvent }] = await Promise.all([
+    import('@/services/leadOwnership/setLeadOwnership'),
+    import('@/services/leadEvents'),
+  ]);
+
+  // Only move a lead that isn't already further along (e.g. it came through
+  // book-demo first and is DEMO-owned) — SALES/NURTURING is the entry stage
+  // for the post-audit sales drip, not a downgrade for a hotter lead.
+  const owner = (lead.currentAgent || 'NONE') as string;
+  if (owner === 'NONE' || owner === 'SALES') {
+    await setLeadOwnership(lead._id, 'SALES', 'free-report-form', 'free-report-form', 'NURTURING').catch(
+      (err: any) => console.warn('[free-report] setLeadOwnership failed:', err?.message)
+    );
+  }
+  if (!lead.intent) {
+    await Lead.updateOne({ _id: lead._id }, { $set: { intent: 'EXPLORING' } }).catch(() => {});
+  }
+
+  await logLeadEvent(
+    'LEAD_CREATED',
+    { channel: 'free-report', businessName },
+    'free-report-form',
+    { leadId: lead._id, phone }
+  );
 }

@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       );
     }
 
-    await createSession(user._id.toString(), user.role);
+    await createSession(user._id.toString(), user.role, (user as any).sessionEpoch ?? 0);
 
     return NextResponse.json({
       success: true,

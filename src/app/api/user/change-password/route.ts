@@ -57,5 +57,11 @@ export async function POST(req: Request) {
     { $set: { passwordHash: await bcrypt.hash(newPassword, 12) } }
   );
 
+  // NOTE: a voluntary, already-authenticated password *change* does not
+  // force-log-out this account's other sessions/devices (that would silently
+  // sign a mobile user out of their own account after a routine change). The
+  // recovery flow — /api/auth/reset-password — DOES bump sessionEpoch, and a
+  // user who wants to drop other devices deliberately can call
+  // POST /api/auth/logout?scope=all.
   return NextResponse.json({ success: true });
 }

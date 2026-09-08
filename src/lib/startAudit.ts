@@ -1,14 +1,34 @@
 import Audit from '@/models/Audit';
 import { inngest } from '@/services/inngest/client';
 
+interface StartAuditOptions {
+  /**
+   * fastMode skips the live geo-grid + review backfill for a seconds-not-
+   * minutes result. Defaults to true because the original (and still only
+   * other) callers are the lead-gen entry points (/free-report, WhatsApp
+   * report-connect). The audit autopilot passes false — a paying customer's
+   * automatic monthly report is a full audit.
+   */
+  fastMode?: boolean;
+  /** Recorded on Audit.metadata.trigger for observability. */
+  trigger?: string;
+}
+
 /**
  * Creates a PENDING Audit for a business and dispatches the existing,
  * unmodified audit/generate.requested Inngest event — the same shape POST
- * /api/audit uses, extracted here since both /api/free-report/start and the
- * report-connect finalize route need to start an audit for a business that
- * has no logged-in-via-the-UI caller to go through that route.
+ * /api/audit uses, extracted here since /api/free-report/start, the
+ * report-connect finalize route, and the audit autopilot all need to start
+ * an audit for a business that has no logged-in-via-the-UI caller to go
+ * through that route.
  */
-export async function createPendingAuditAndDispatch(business: any, organization: any, user: any) {
+export async function createPendingAuditAndDispatch(
+  business: any,
+  organization: any,
+  user: any,
+  options: StartAuditOptions = {}
+) {
+  const { fastMode = true, trigger } = options;
   const locationStr = [business.city, business.state].filter(Boolean).join(', ');
   const finalLocation = locationStr || business.address || 'Location hidden';
   const effectiveCategory = business.userDefinedCategory || business.category;
@@ -30,11 +50,8 @@ export async function createPendingAuditAndDispatch(business: any, organization:
 
     location: finalLocation,
     status: 'PENDING',
-    metadata: { userDefinedCategory: effectiveCategory },
-    // This helper is only ever called from the lead-gen entry points
-    // (/free-report, WhatsApp report-connect) — never from the authenticated
-    // POST /api/audit route — so it's always safe to request the fast path.
-    fastMode: true,
+    metadata: { userDefinedCategory: effectiveCategory, ...(trigger ? { trigger } : {}) },
+    fastMode,
   });
 
   await inngest.send({

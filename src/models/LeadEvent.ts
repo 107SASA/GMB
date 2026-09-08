@@ -127,4 +127,10 @@ LeadEventSchema.index({ leadId: 1, createdAt: -1 });
 // because most platform-agent events have no leadId yet (see comment above).
 LeadEventSchema.index({ phone: 1, createdAt: -1 });
 
+// Retention: 18 months (approved policy). Append-only event log — the Lead
+// record and its current stage/ownership live on the Lead document itself;
+// this is the historical trail behind it. Dropping entries older than 18
+// months trims the SuperAdmin timeline's tail, never the lead.
+LeadEventSchema.index({ createdAt: 1 }, { expireAfterSeconds: 548 * 24 * 60 * 60 });
+
 export default mongoose.models.LeadEvent || mongoose.model<ILeadEvent>('LeadEvent', LeadEventSchema);

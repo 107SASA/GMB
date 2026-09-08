@@ -70,13 +70,31 @@ export interface IReviewAnalysis {
 export interface IChecklistItem {
   field: string;
   status: 'Complete' | 'Partial' | 'Missing' | 'Unknown';
+  /** 'places' fields form the pre-OAuth percentage denominator; 'oauth'
+   *  fields are only verifiable once the owner connects Google. See
+   *  src/lib/profileCompletion.ts. */
+  group?: 'places' | 'oauth';
 }
 
 export interface IProfileCompletion {
-  /** Complete / (Complete + Missing) — Unknown fields are excluded from the
-   *  ratio entirely, not scored as partial failures. See seoAnalyzer.ts. */
+  /** Pre-OAuth: Places-complete / (Places-complete + Places-missing).
+   *  Post-OAuth: complete / (complete + missing) across every checkable
+   *  field. Unknown fields are always excluded from the ratio. See
+   *  src/lib/profileCompletion.ts + seoAnalyzer.ts. */
   completionPercentage: number;
+  /** 'places' before a Google connection, 'full' after. */
+  completionScope?: 'places' | 'full';
+  /** The one qualified sentence every surface prints, e.g. "100% of visible
+   *  fields complete — 7 more fields need a Google connection to check." */
+  completionLabel?: string;
+  /** The exact string fed to Groq wherever completion is referenced — longer
+   *  and more explicit so the model can't round it to "100% complete". */
+  completionPromptFact?: string;
   checklist: IChecklistItem[];
+  placesCompleteCount?: number;
+  placesTotalCount?: number;
+  /** Fields still Unknown — i.e. "N fields need a Google connection". */
+  oauthPendingCount?: number;
   /** Fields checked and confirmed absent. */
   missingCount?: number;
   /** Fields we structurally couldn't verify (pre-OAuth) — surfaced
@@ -220,6 +238,97 @@ export interface IAuditData {
   };
   localPackCompetitors?: ILocalPackCompetitor[];
   dataQuality?: IDataQualitySource;
+
+  /** "Keyword Search Volume Analysis — Google Maps" table. Live demand band
+   *  from DataForSEO Google Ads when available, else a labeled city-tier
+   *  estimate (estimated:true → rendered with a `*`). See
+   *  src/services/audit/keywordTable.ts. */
+  keywordTable?: IKeywordTableRow[];
+
+  /** Neighbourhood names the primary keyword was checked in — rendered as
+   *  "Areas checked: Bidhannagar, Rajarhat, …". */
+  areasChecked?: string[];
+
+  /** Consultant sections (Key Finding, competitor landscape, GBP drafts,
+   *  market opportunities, action phases, weekly posts, Q&As). Present only
+   *  when the SEO-plan generation succeeded — surfaces hide when absent. See
+   *  src/services/ai/seoPlanEngine.ts. */
+  seoPlanDraft?: ISeoPlanDraft;
+}
+
+export interface IKeywordTableRow {
+  keyword: string;
+  searchVolume: number | null;
+  /** Derived Google-Maps monthly estimate (≈ search × 0.62); null when the
+   *  search volume itself is a band estimate. Shown as "~N" and labeled. */
+  mapsVolume?: number | null;
+  volumeBand: 'HIGH' | 'MED' | 'LOW' | 'NICHE';
+  estimated: boolean;
+  mapsRank: number;
+}
+
+export interface ISeoPlanActionItem {
+  title: string;
+  detail: string;
+  priority: 'CRITICAL' | 'HIGH' | 'MEDIUM';
+}
+
+export interface ISeoPlanGapItem {
+  field: string;
+  whyItMatters: string;
+  recommendation: string;
+  /** 'ok' = present and adequate, 'missing' = confirmed/near-certain gap,
+   *  'unverified' = needs a Google connection / owner input to confirm.
+   *  Present on the 'full' depth tier. */
+  status?: 'ok' | 'missing' | 'unverified';
+}
+
+export interface ISeoPlanSnapshotTile {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: 'good' | 'warn' | 'bad';
+}
+
+export interface ISeoPlanDraft {
+  /** 'free' = cold-lead teaser (fastMode audit); 'full' = the deep paid
+   *  audit (post-Google-connect + monthly re-audit). Drives which blocks the
+   *  report renders. */
+  depth?: 'free' | 'full';
+
+  keyFinding?: string;
+  /** 8-tile "Performance Snapshot" (4 core + 4 offer/USP tiles on 'full'). */
+  performanceSnapshot?: ISeoPlanSnapshotTile[];
+  criticalGap?: { intro: string; rows: Array<{ keyword: string; mapsRank: number }>; closer: string };
+  keywordInsights?: string[];
+  competitorLandscape?: Array<{ name: string; mapsRank?: number; rating?: number; reviewCount?: number; keyEdge: string }>;
+  competitorCounterPosition?: string;
+  gbpGaps?: ISeoPlanGapItem[];
+  suggestedTitle?: string;
+  suggestedDescription?: string;
+  suggestedServices?: string[];
+  suggestedCategories?: string[];
+  /** 'full' only — GBP attributes to set (industry-specific, LLM-picked). */
+  suggestedAttributes?: string[];
+  /** 'full' only — the explicit keyword list the 750-char description must embed. */
+  descriptionKeywords?: string[];
+  /** 'full' only — off-GBP platforms worth a listing (Practo, Justdial, …). */
+  platformGaps?: Array<{ platform: string; why: string }>;
+  marketOpportunities?: Array<{ keyword: string; potential: string; rationale: string }>;
+  actionPhases?: Array<{ label: string; window: string; items: ISeoPlanActionItem[] }>;
+  weeklyPostThemes?: Array<{ weekday: string; theme: string; keyword: string; postType: string }>;
+  suggestedQas?: Array<{ q: string; a: string }>;
+  uspLine?: string;
+  reviewReplyMustInclude?: string[];
+  whatWeAimFor?: { todayRank: string; milestones: Array<{ label: string; text: string }> };
+  /** 'full' — Today → 14d → 45d → 90d rank bands. */
+  rankTimeline?: Array<{ label: string; rank: string; note: string; tone?: 'bad' | 'warn' | 'good' }>;
+  /** 'full' — one-paragraph assessment of the business's own website. */
+  websiteAssessment?: string;
+  dataRequired?: string[];
+  /** Per-subsection generation failures — UI shows a support message for
+   *  just that block instead of faking it. */
+  failed?: string[];
 }
 
 export interface IAudit extends Document {

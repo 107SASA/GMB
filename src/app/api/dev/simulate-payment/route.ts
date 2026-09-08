@@ -64,6 +64,9 @@ export async function POST(req: Request) {
     const { activatePlan } = await import('@/lib/billing/applyEntitlements');
     await activatePlan(userId, { razorpaySubscriptionId: `sub_SIMULATED_${Date.now()}` });
 
+    const { sendPaymentReceivedMessage } = await import('@/services/billing/paymentReceivedNotice');
+    await sendPaymentReceivedMessage(userId, businessId ?? null);
+
     const { runCustomerActivationSequence } = await import('@/services/billing/customerActivation');
     await runCustomerActivationSequence(userId, businessId ?? null, {
       paymentId: body.paymentId || `pay_SIMULATED_${Date.now()}`,

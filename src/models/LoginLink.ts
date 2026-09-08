@@ -30,4 +30,11 @@ const LoginLinkSchema = new Schema<ILoginLink>(
   { timestamps: { createdAt: true, updatedAt: false } }
 );
 
+// TTL — a login link is single-use and short-lived (see the session-link
+// route). Keep it ~7 days past its own expiry for support/debugging ("my
+// link didn't work"), then let Mongo drop it. `expiresAt` is the real
+// intended-expiration Date; nothing reads a consumed/expired link, so
+// deleting the whole document is safe.
+LoginLinkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 7 * 24 * 60 * 60 });
+
 export default mongoose.models.LoginLink || mongoose.model<ILoginLink>('LoginLink', LoginLinkSchema);

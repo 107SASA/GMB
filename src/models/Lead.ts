@@ -312,4 +312,12 @@ const LeadSchema: Schema = new Schema(
   { timestamps: true }
 );
 
+// Hot dedup path (SEC-12): book-demo, free-report, the WhatsApp webhook and
+// the sales-nurture guard all run `Lead.findOne({ phone, tenantId })`. Every
+// platform-funnel lead lands under tenantId 'gmbboost-internal', so without
+// this the phone match was a scan of the whole platform tenant. `tenantId`
+// alone is already indexed (inline); this compound serves the two-field
+// lookup directly.
+LeadSchema.index({ tenantId: 1, phone: 1 });
+
 export default mongoose.models.Lead || mongoose.model<ILead>('Lead', LeadSchema);

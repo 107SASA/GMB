@@ -86,8 +86,31 @@ test('accepting a real admin invite creates a user with role SUPER_ADMIN, not a 
   });
   assert.equal(inviteRes.status, 200, 'invite creation should succeed');
   const inviteBody = await inviteRes.json();
-  const token = inviteBody?.data?.invite?.token;
-  assert.ok(typeof token === 'string' && token.length > 0, 'response should include a real invite token');
+  // SEC-1: the raw token is only ever in the one-time inviteLink now — the
+  // stored/returned invite object carries no usable token (only its hash, DB
+  // side).
+  const inviteLink: string = inviteBody?.data?.inviteLink || '';
+  const token = inviteLink.split('/admin/invite/')[1];
+  assert.ok(typeof token === 'string' && token.length > 0, 'inviteLink should contain a real invite token');
+  assert.equal(inviteBody?.data?.invite?.token, undefined, 'the invite object must NOT expose a usable token');
+  assert.equal(inviteBody?.data?.invite?.tokenHash, undefined, 'the invite object must NOT expose the token hash');
+
+  // 3a. SEC-1 regression — a NoSQL-operator object as the token must be
+  // rejected outright, never matched against an arbitrary pending invite.
+  const injectRes = await fetch(`${BASE_URL}/api/admin/invites/accept`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: { $gte: '' }, name: 'Injector', password: 'Str0ng!Pass1' }),
+  });
+  assert.equal(injectRes.status, 400, 'an object token must be rejected with 400, not used to match an invite');
+  const stillPending = await mongoose.connection.db!
+    .collection('admininvites')
+    .findOne({ email: INVITEE_EMAIL });
+  assert.equal(stillPending?.status, 'pending', 'the injection attempt must not have consumed the invite');
+  const noInjectedUser = await mongoose.connection.db!
+    .collection('users')
+    .findOne({ fullName: 'Injector' });
+  assert.equal(noInjectedUser, null, 'the injection attempt must not have created a SUPER_ADMIN');
 
   // 3. Accept the invite — this is the exact call that used to 500 because
   // the route wrote role: 'super_admin' against an enum that only allows
@@ -117,7 +140,7 @@ test('accepting a real admin invite creates a user with role SUPER_ADMIN, not a 
   const replayRes = await fetch(`${BASE_URL}/api/admin/invites/accept`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, name: 'Replay Attempt', password: 'irrelevant1!' }),
+    body: JSON.stringify({ token, name: 'Replay Attempt', password: 'Str0ng!Replay1' }),
   });
   assert.equal(replayRes.status, 400, 'an already-accepted invite must not be usable a second time');
 });

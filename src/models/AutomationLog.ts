@@ -41,4 +41,7 @@ const AutomationLogSchema: Schema = new Schema(
   { timestamps: true }
 );
 
+// Retention: 180 days (approved policy). Operational/debugging log only.
+AutomationLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });
+
 export default mongoose.models.AutomationLog || mongoose.model<IAutomationLog>('AutomationLog', AutomationLogSchema);

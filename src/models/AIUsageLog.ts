@@ -42,5 +42,11 @@ AIUsageLogSchema.index({ userId: 1, createdAt: -1 });
 AIUsageLogSchema.index({ status: 1, createdAt: -1 });
 AIUsageLogSchema.index({ promptType: 1, createdAt: -1 });
 
+// Retention: 12 months (approved policy). Cost/usage analytics only — a
+// rolling year is plenty for trend and per-customer usage reporting. Separate
+// ascending single-field index (the documented-safe TTL shape); the existing
+// `{createdAt:-1}` above stays for descending analytics sorts.
+AIUsageLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 365 * 24 * 60 * 60 });
+
 export default mongoose.models.AIUsageLog ||
   mongoose.model<IAIUsageLog>('AIUsageLog', AIUsageLogSchema);

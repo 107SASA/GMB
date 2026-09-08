@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { applyConversationMessageCap } from './shared/conversationMessageCap';
 
 export interface IReportMessage {
   role: 'agent' | 'lead';
@@ -106,6 +107,21 @@ const ReportConversationSchema: Schema = new Schema(
 
 // One active report conversation per phone at a time.
 ReportConversationSchema.index({ phoneKey: 1, status: 1 });
+
+// TTL — this is an ephemeral lead-gen funnel record: the "connect Google to
+// get your report" chat. The durable outcomes (Business, GBPToken, Audit)
+// are persisted separately; the report-connect routes look it up only via a
+// signed token that itself expires in minutes. It has no dedicated
+// `expiresAt` field, so the TTL anchors on `updatedAt` (kept fresh by
+// `timestamps: true` on every message) — a conversation untouched for 30
+// days is abandoned and safe to drop. Worst case a returning lead is asked
+// for WhatsApp consent again (whatsappConsent.ts also checks the still-
+// retained Sales/BookingConversation), which is the more conservative
+// direction. NOTE: deviates from the "expiresAt + 7d" spec because no
+// expiresAt field exists — 30d-since-last-activity is strictly longer.
+ReportConversationSchema.index({ updatedAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
+
+applyConversationMessageCap(ReportConversationSchema);
 
 export default mongoose.models.ReportConversation ||
   mongoose.model<IReportConversation>('ReportConversation', ReportConversationSchema);

@@ -69,6 +69,17 @@ export interface IUser extends Document {
   accountLockedUntil?: Date;
   lastLoginAt?: Date;
 
+  // Server-side session invalidation ("session epoch"). Every issued session
+  // JWT / mobile bearer token embeds the value this field held at sign-in
+  // time; requireClient()/requireSuperAdmin()/proxy.ts reject any token whose
+  // embedded value doesn't match the current one. Bumped to Date.now() by
+  // invalidateUserSessions() on: password reset, "log out everywhere"
+  // (POST /api/auth/logout?scope=all), and any future role change /
+  // account-security event. 0 (or missing, on pre-migration docs) is the
+  // bootstrap value — tokens issued before this feature carry no epoch and
+  // are treated as 0, so they stay valid until the FIRST invalidation.
+  sessionEpoch?: number;
+
   businessIds: mongoose.Types.ObjectId[];
 
   // Expo push tokens for the mobile app (one per device/install)
@@ -196,6 +207,10 @@ const UserSchema: Schema = new Schema(
     failedLoginAttempts: { type: Number, default: 0 },
     accountLockedUntil: { type: Date },
     lastLoginAt: { type: Date },
+    // Session-invalidation epoch — see INotificationPreferences-adjacent note
+    // in IUser above and src/lib/sessionInvalidation.ts. Default 0 = "never
+    // invalidated"; every issued token carries the value at sign-in.
+    sessionEpoch: { type: Number, default: 0 },
 
     businessIds: [{ type: Schema.Types.ObjectId, ref: 'Business' }],
 

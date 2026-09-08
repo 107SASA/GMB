@@ -33,4 +33,8 @@ const ActivitySchema: Schema = new Schema(
   { timestamps: true }
 );
 
+// Retention: 18 months (approved policy). CRM activity feed for a lead —
+// historical trail, not lead-lifecycle state. The Lead record is untouched.
+ActivitySchema.index({ createdAt: 1 }, { expireAfterSeconds: 548 * 24 * 60 * 60 });
+
 export default mongoose.models.Activity || mongoose.model<IActivity>('Activity', ActivitySchema);

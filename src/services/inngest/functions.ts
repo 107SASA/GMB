@@ -4665,3 +4665,124 @@ async function recordSentIntoSalesConversation(action: any, sentText: string | u
     console.warn('[nurtureSchedulerTick] recordSentIntoSalesConversation failed:', err?.message);
   }
 }
+
+// ===========================================================================
+// Data-retention cleanup — the state-conditional half of the retention
+// policy (Sep 2026). The pure "delete the whole document after N days"
+// collections use native MongoDB TTL indexes instead (defined on their
+// schemas): ProcessedWebhookEvent, LoginLink, AdminInvite, ReportConversation,
+// LeadEvent, Activity, AIUsageLog, AutomationLog, ReviewMonitorLog,
+// ContentGenerationLog, ProfileActivity, Notification, OwnerNotifyDigest,
+// KeywordVolumeCache, PendingGbpConnection.
+//
+// This cron covers what a TTL index can't express:
+//   1. OTP / password-reset field sweep on the User document — never delete
+//      the User, only $unset the temporary auth fields whose expiry has
+//      already passed (defence-in-depth; the auth routes already clear these
+//      on successful verification).
+//   2. MessageQueue / JobQueue — delete only genuinely-terminal rows
+//      (MessageQueue status SENT, JobQueue status COMPLETED) older than 30
+//      days. PENDING / PROCESSING / FAILED rows — which may still run, retry,
+//      or be needed to debug a delivery failure — are never touched.
+//   3. ScheduledAction — delete only terminal rows (EXECUTED/SKIPPED/
+//      CANCELLED) older than 90 days. PENDING actions are never touched.
+//   4. Conversation message-array cap — atomically trim the embedded
+//      messages[] on Sales/Booking/Support/Report conversations to the most
+//      recent 500 via a `$slice` aggregation-pipeline update (no read-modify-
+//      write, so concurrent inbound messages can't clobber each other).
+//
+// Core business records (Lead, Customer, Business, Organization, User,
+// completed Audit, Subscription, SeoPlan) are NEVER deleted by this job.
+// Runs daily ~03:15 UTC.
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const dataRetentionCleanupCron = inngest.createFunction(
+  { id: "data-retention-cleanup-cron", triggers: [{ cron: "15 3 * * *" }] },
+  async ({ step }) => {
+    // 1. Expired OTP / password-reset fields on User — clear, never delete the user.
+    const otpSwept = await step.run("sweep-expired-otp-fields", async () => {
+      await dbConnect();
+      const { default: User } = await import("@/models/User");
+      const now = new Date();
+      const [email, phone, reset, resetToken] = await Promise.all([
+        User.updateMany(
+          { emailOtpExpiry: { $lt: now } },
+          { $unset: { emailOtpHash: "", emailOtpExpiry: "" } }
+        ),
+        User.updateMany(
+          { phoneOtpExpiry: { $lt: now } },
+          { $unset: { phoneOtpHash: "", phoneOtpExpiry: "" } }
+        ),
+        User.updateMany(
+          { passwordResetExpiry: { $lt: now } },
+          { $unset: { passwordResetOtp: "", passwordResetExpiry: "", passwordResetAttempts: "" } }
+        ),
+        User.updateMany(
+          { passwordResetTokenExpiry: { $lt: now } },
+          { $unset: { passwordResetTokenHash: "", passwordResetTokenExpiry: "" } }
+        ),
+      ]);
+      return {
+        emailOtp: email.modifiedCount ?? 0,
+        phoneOtp: phone.modifiedCount ?? 0,
+        passwordResetOtp: reset.modifiedCount ?? 0,
+        passwordResetToken: resetToken.modifiedCount ?? 0,
+      };
+    });
+
+    // 2. Terminal MessageQueue / JobQueue rows older than 30 days.
+    const queuesPruned = await step.run("prune-terminal-queue-rows", async () => {
+      await dbConnect();
+      const { default: MessageQueue } = await import("@/models/MessageQueue");
+      const { default: JobQueue } = await import("@/models/JobQueue");
+      const cutoff = new Date(Date.now() - 30 * DAY_MS);
+      const [mq, jq] = await Promise.all([
+        MessageQueue.deleteMany({ status: "SENT", updatedAt: { $lt: cutoff } }),
+        JobQueue.deleteMany({ status: "COMPLETED", updatedAt: { $lt: cutoff } }),
+      ]);
+      return { messageQueue: mq.deletedCount ?? 0, jobQueue: jq.deletedCount ?? 0 };
+    });
+
+    // 3. Terminal ScheduledAction rows older than 90 days.
+    const scheduledActionsPruned = await step.run("prune-terminal-scheduled-actions", async () => {
+      await dbConnect();
+      const { default: ScheduledAction } = await import("@/models/ScheduledAction");
+      const cutoff = new Date(Date.now() - 90 * DAY_MS);
+      const res = await ScheduledAction.deleteMany({
+        status: { $in: ["EXECUTED", "SKIPPED", "CANCELLED"] },
+        updatedAt: { $lt: cutoff },
+      });
+      return res.deletedCount ?? 0;
+    });
+
+    // 4. Cap embedded conversation message arrays at 500 (atomic $slice).
+    const conversationsTrimmed = await step.run("trim-conversation-messages", async () => {
+      await dbConnect();
+      const models = await Promise.all([
+        import("@/models/SalesConversation"),
+        import("@/models/BookingConversation"),
+        import("@/models/SupportConversation"),
+        import("@/models/ReportConversation"),
+      ]);
+      const CAP = 500;
+      let trimmed = 0;
+      for (const m of models) {
+        const Model: any = m.default;
+        const res = await Model.updateMany(
+          { $expr: { $gt: [{ $size: { $ifNull: ["$messages", []] } }, CAP] } },
+          [{ $set: { messages: { $slice: ["$messages", -CAP] } } }]
+        );
+        trimmed += res.modifiedCount ?? 0;
+      }
+      return trimmed;
+    });
+
+    const summary = {
+      otpFieldsSwept: otpSwept,
+      queuesPruned,
+      scheduledActionsPruned,
+      conversationsTrimmed,
+    };
+    console.log("[data-retention-cleanup]", JSON.stringify(summary));
+    return { success: true, ...summary };
+  }
+);

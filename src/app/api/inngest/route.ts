@@ -44,7 +44,8 @@ import {
   gbpSyncWorker,
   cleanupAbandonedSignups,
   nurtureSchedulerTick,
-  proactiveNbaScheduler
+  proactiveNbaScheduler,
+  dataRetentionCleanupCron
 } from "@/services/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
@@ -94,5 +95,6 @@ export const { GET, POST, PUT } = serve({
     cleanupAbandonedSignups,
     nurtureSchedulerTick,
     proactiveNbaScheduler,
+    dataRetentionCleanupCron,
   ],
 });

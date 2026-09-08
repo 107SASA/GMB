@@ -130,5 +130,16 @@ export async function POST(req: Request) {
     console.error('[intake] mergeIntakeIntoSeoPlan failed:', err);
   }
 
+  // Completing intake is the moment a real business category exists — for a
+  // subscribed, Google-connected workspace this is the last of the three
+  // conditions the automatic first audit waits on. Best-effort; the hourly
+  // auditAutopilotCron is the safety net if this misses.
+  try {
+    const { maybeStartAuditAutopilot } = await import('@/lib/auditAutopilot');
+    await maybeStartAuditAutopilot(String(ctx.businessId));
+  } catch (err) {
+    console.error('[intake] maybeStartAuditAutopilot failed:', err);
+  }
+
   return NextResponse.json({ success: true });
 }

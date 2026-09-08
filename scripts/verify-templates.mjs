@@ -100,6 +100,7 @@ const TEMPLATES = {
   reportReady:     { env: 'TWILIO_TEMPLATE_REPORT_READY',     vars: { '1': 'Test Lead', '2': 'Test Business', '3': '000000000000000000000000' } },
   reviewRequest:   { env: 'TWILIO_TEMPLATE_REVIEW_REQUEST',   vars: { '1': 'Test Customer', '2': 'Test Business', '3': 'ChIJTESTPLACEID' } },
   notification:    { env: 'TWILIO_TEMPLATE_NOTIFICATION',     vars: { '1': 'there', '2': 'This is a template-verification test. No action needed.' } },
+  loginOtp:        { env: 'TWILIO_TEMPLATE_LOGIN_OTP',        vars: { '1': '123456' } },
   invoiceReady:    { env: 'TWILIO_TEMPLATE_INVOICE_READY',    vars: { '1': 'Test Customer' } },
   welcomeCustomer: { env: 'TWILIO_TEMPLATE_WELCOME_CUSTOMER', vars: { '1': 'Test Customer' } },
 };

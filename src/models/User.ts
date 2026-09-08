@@ -8,6 +8,20 @@ export interface INotificationPreferences {
   weeklyDigestEmail: boolean;
   campaignCompletedEmail: boolean;
   schedulerLowBufferEmail: boolean;
+
+  // WhatsApp notification channel for platform activity on the owner's
+  // workspace — read by services/ownerNotify.ts. `whatsAppNotificationsEnabled`
+  // is the master switch; `dailyDigestWhatsApp` additionally gates every
+  // digest-mode event (posts/photos/review-replies). The two older keys above
+  // (newLeadWhatsApp, criticalReviewWhatsApp) existed before but nothing read
+  // them until now — they are the per-event toggles for those two events.
+  whatsAppNotificationsEnabled: boolean;
+  dailyDigestWhatsApp: boolean;
+  demoBookingWhatsApp: boolean;
+  billingWhatsApp: boolean;
+  postPublishedWhatsApp: boolean;
+  reviewReplyWhatsApp: boolean;
+  reportReadyWhatsApp: boolean;
 }
 
 export interface IUser extends Document {
@@ -112,6 +126,15 @@ const NotificationPreferencesSchema = new Schema(
     weeklyDigestEmail: { type: Boolean, default: true },
     campaignCompletedEmail: { type: Boolean, default: true },
     schedulerLowBufferEmail: { type: Boolean, default: true },
+
+    // WhatsApp channel for platform activity (see INotificationPreferences).
+    whatsAppNotificationsEnabled: { type: Boolean, default: true },
+    dailyDigestWhatsApp: { type: Boolean, default: true },
+    demoBookingWhatsApp: { type: Boolean, default: true },
+    billingWhatsApp: { type: Boolean, default: true },
+    postPublishedWhatsApp: { type: Boolean, default: true },
+    reviewReplyWhatsApp: { type: Boolean, default: true },
+    reportReadyWhatsApp: { type: Boolean, default: true },
   },
   { _id: false }
 );

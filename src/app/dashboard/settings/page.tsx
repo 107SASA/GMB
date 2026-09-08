@@ -150,6 +150,14 @@ export default function SettingsPage() {
     weeklyDigestEmail: true,
     campaignCompletedEmail: true,
     schedulerLowBufferEmail: true,
+    // WhatsApp notification channel for platform activity (services/ownerNotify.ts).
+    whatsAppNotificationsEnabled: true,
+    dailyDigestWhatsApp: true,
+    demoBookingWhatsApp: true,
+    billingWhatsApp: true,
+    postPublishedWhatsApp: true,
+    reviewReplyWhatsApp: true,
+    reportReadyWhatsApp: true,
   });
   const [savedRows, setSavedRows] = useState<Set<string>>(new Set());
 
@@ -716,6 +724,79 @@ export default function SettingsPage() {
                   icon: '🗓️',
                   label: 'Low content buffer',
                   desc: 'Warn me when scheduled posts run low for the week',
+                },
+              ]}
+              prefs={notifPrefs}
+              savedRows={savedRows}
+              onToggle={handleNotifToggle}
+            />
+          </div>
+
+          <div className="bg-surface border border-outline-variant rounded-2xl px-5 py-4 flex gap-3 text-sm text-on-surface-variant">
+            <Info className="w-5 h-5 shrink-0 mt-0.5 text-outline" />
+            <span>
+              Get a <strong>WhatsApp message</strong> about activity on your account. High-value events
+              (new lead, demo booking, critical review, billing, report ready) are sent immediately;
+              routine activity (posts, photos, review replies) is rolled into one daily summary at ~7pm.
+            </span>
+          </div>
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl divide-y divide-outline-variant">
+            <NotifSection
+              title="WhatsApp Notifications"
+              rows={[
+                {
+                  key: 'whatsAppNotificationsEnabled',
+                  icon: '📱',
+                  label: 'WhatsApp notifications',
+                  desc: 'Master switch — turn all WhatsApp messages below on or off',
+                },
+                {
+                  key: 'newLeadWhatsApp',
+                  icon: '🔔',
+                  label: 'New lead',
+                  desc: 'Message me the moment a new lead comes in',
+                },
+                {
+                  key: 'demoBookingWhatsApp',
+                  icon: '📅',
+                  label: 'Demo booking',
+                  desc: 'Message me when a demo is requested or booked',
+                },
+                {
+                  key: 'criticalReviewWhatsApp',
+                  icon: '⚠️',
+                  label: 'Critical review',
+                  desc: 'Message me immediately about a 1–2★ review',
+                },
+                {
+                  key: 'billingWhatsApp',
+                  icon: '💳',
+                  label: 'Billing',
+                  desc: 'Message me about activation, renewals and payment issues',
+                },
+                {
+                  key: 'reportReadyWhatsApp',
+                  icon: '📄',
+                  label: 'Report ready',
+                  desc: 'Message me when a new audit report is generated',
+                },
+                {
+                  key: 'dailyDigestWhatsApp',
+                  icon: '📊',
+                  label: 'Daily activity digest',
+                  desc: 'One evening summary of posts published, photos, and review replies',
+                },
+                {
+                  key: 'postPublishedWhatsApp',
+                  icon: '📢',
+                  label: 'Posts & photos (in digest)',
+                  desc: 'Include published posts, photos and new content in the daily digest',
+                },
+                {
+                  key: 'reviewReplyWhatsApp',
+                  icon: '💬',
+                  label: 'Review replies (in digest)',
+                  desc: 'Include AI review replies sent / awaiting approval in the daily digest',
                 },
               ]}
               prefs={notifPrefs}

@@ -90,6 +90,19 @@ export async function bookAppointment(
     throw err;
   }
 
+  // Tell the workspace owner over WhatsApp that a customer just booked an
+  // appointment through their WhatsApp agent. Best-effort — never blocks the
+  // booking; notifyOwner respects the demoBookingWhatsApp preference.
+  try {
+    const { notifyOwner } = await import('@/services/ownerNotify');
+    await notifyOwner(input.businessId, {
+      event: 'demo_booking',
+      text: `📅 GrowwMatics: ${input.customerName || 'a customer'} just booked an appointment via your WhatsApp agent for ${input.date} at ${input.time}${input.serviceRequested ? ` (${input.serviceRequested})` : ''}.`,
+    });
+  } catch (e: any) {
+    console.error('[ownerNotify] appointment-booked failed:', e?.message);
+  }
+
   return { ok: true, appointment };
 }
 

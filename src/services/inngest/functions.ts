@@ -951,6 +951,16 @@ export const processContentJob = inngest.createFunction(
             data: p,
           }))
         );
+
+        // Owner WhatsApp — queued to the daily digest.
+        await step.run("owner-whatsapp-digest", async () => {
+          const { notifyOwner } = await import("@/services/ownerNotify");
+          await notifyOwner(business._id.toString(), {
+            event: 'content_batch_generated',
+            text: `${createdScheduled.length} new Google Business Profile ${createdScheduled.length === 1 ? 'post' : 'posts'} generated and scheduled`,
+            count: createdScheduled.length,
+          });
+        });
       }
     } catch (error: any) {
       await step.run("alert-admin-generation-failed", async () => {
@@ -1518,6 +1528,17 @@ export const processPublishPostJob = inngest.createFunction(
       } catch (e: any) {
         console.error('[notifications] post-published notify failed:', e.message);
       }
+
+      // Owner WhatsApp — queued to the daily digest (routine activity).
+      try {
+        const { notifyOwner } = await import("@/services/ownerNotify");
+        await notifyOwner(businessIdStr, {
+          event: 'post_published',
+          text: post.title ? `Post published: ${post.title}` : 'A post was published to your Google Business Profile',
+        });
+      } catch (e: any) {
+        console.error('[ownerNotify] post-published failed:', e.message);
+      }
     });
 
     return { success: true };
@@ -1573,6 +1594,18 @@ export const processScheduledMediaPublishJob = inngest.createFunction(
         const { liveWriteApplied } = await publishAsset(businessId, assetId, {
           name: "Scheduled publish",
         });
+
+        if (liveWriteApplied) {
+          try {
+            const { notifyOwner } = await import("@/services/ownerNotify");
+            await notifyOwner(businessId, {
+              event: 'photo_published',
+              text: 'A scheduled photo was published to your Google Business Profile',
+            });
+          } catch (e: any) {
+            console.error('[ownerNotify] photo-published failed:', e?.message);
+          }
+        }
 
         if (!liveWriteApplied) {
           // Live writes are platform-wide disabled — publishAsset correctly
@@ -1655,10 +1688,29 @@ export const generateAuditJob = inngest.createFunction(
 
     // "Your report is ready" WhatsApp ping (see sendReportReadyNotification
     // below) — separate event so a failure/skip there can't affect the
-    // sales-nurture dispatch above.
+    // sales-nurture dispatch above. That handler is scoped to fastMode
+    // (lead-gen) audits only.
     await step.sendEvent('start-report-ready', {
       name: 'report/ready.requested',
       data: { auditId },
+    });
+
+    // For a FULL audit (the automatic monthly report for a paying customer —
+    // fastMode is false), tell the workspace owner over WhatsApp that their
+    // fresh report is ready. notifyOwner respects the reportReadyWhatsApp
+    // preference and no-ops without a phone.
+    await step.run('owner-whatsapp-report-ready', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: Audit } = await import('@/models/Audit');
+      const { notifyOwner } = await import('@/services/ownerNotify');
+      const audit: any = await Audit.findById(auditId).select('status fastMode businessId businessName').lean();
+      if (!audit || audit.status !== 'COMPLETED' || audit.fastMode) return { skip: true };
+      await notifyOwner(audit.businessId.toString(), {
+        event: 'report_ready',
+        text: `📄 GrowwMatics: your monthly Google Business Profile report for ${audit.businessName || 'your business'} is ready. Open your dashboard to see this month's score and action plan.`,
+      });
+      return { sent: true };
     });
 
     return { success: true, auditId };
@@ -1762,77 +1814,119 @@ export const cleanupStalePendingAudits = inngest.createFunction(
   }
 );
 
-// 7c. Monthly paid re-audit — keeps the SEO brain fresh. A business on an
-// active subscription whose current SeoPlan has been active ≥ 30 days gets a
-// full (not fastMode) audit dispatched; the audit's own SeoPlan upsert then
-// creates the next version and supersedes the current one. Owner edits are
-// carried forward by upsertSeoPlanFromAudit. Runs daily, small batch.
-export const seoPlanMonthlyReaudit = inngest.createFunction(
-  { id: "seo-plan-monthly-reaudit", triggers: [{ cron: "0 3 * * *" }] }, // daily ~08:30 IST
+// 7c. Automatic audit autopilot — the ONLY way a customer audit is generated
+// now that the manual "Run Audit" button is gone (see src/lib/auditAutopilot.ts
+// and POST /api/audit, which is locked to the freemium one-shot + super-admin).
+//
+// Two jobs in one hourly pass:
+//   1. FIRST report — a qualified workspace (active subscription + connected
+//      Google + real category) that has never had an automatic audit
+//      (auditAutopilotNextRunAt unset) gets its first full audit now and the
+//      30-day anchor set. This is the safety net behind the three event hooks
+//      in maybeStartAuditAutopilot (billing activation, GBP connect, intake).
+//   2. MONTHLY re-audit — a workspace whose anchor is due (<= now) gets a
+//      fresh full audit and its anchor rolled forward. The audit's own
+//      upsertSeoPlanFromAudit keeps the SEO brain versioned (this replaced
+//      the old seoPlanMonthlyReaudit, which keyed off SeoPlan.activeFrom and
+//      never ran until a first audit had already created a plan).
+//
+// A workspace that stops qualifying (subscription lapsed, GBP disconnected)
+// is skipped without moving its anchor — same non-destructive contract as
+// weekly content autopilot.
+export const auditAutopilotCron = inngest.createFunction(
+  { id: "audit-autopilot-cron", triggers: [{ cron: "0 * * * *" }] }, // hourly
   async ({ step }) => {
-    const dispatched = await step.run("select-and-dispatch-reaudits", async () => {
+    const result = await step.run("select-and-dispatch-audits", async () => {
       await dbConnect();
-      const { default: SeoPlan } = await import("@/models/SeoPlan");
       const { default: Business } = await import("@/models/Business");
-      const { default: Audit } = await import("@/models/Audit");
-      const { createPendingAuditAndDispatch } = await import("@/lib/startAudit");
-      const { default: Organization } = await import("@/models/Organization");
-      const { default: User } = await import("@/models/User");
+      const {
+        AUDIT_AUTOPILOT_INTERVAL_MS,
+        hasRealAuditCategory,
+        claimAndDispatch,
+        dispatchAuditForBusiness,
+        maybeStartAuditAutopilot,
+      } = await import("@/lib/auditAutopilot");
 
-      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const duePlans = await SeoPlan.find({ status: "active", activeFrom: { $lte: cutoff } })
-        .select("businessId activeFrom")
-        .limit(25)
+      const now = new Date();
+
+      // Candidates: currently-qualified workspaces that are either not yet
+      // anchored (first run) or due for their monthly re-audit.
+      const candidates = await Business.find({
+        isDeleted: { $ne: true },
+        subscriptionStatus: "active",
+        googleConnected: true,
+        $or: [
+          { auditAutopilotNextRunAt: { $exists: false } },
+          { auditAutopilotNextRunAt: { $lte: now } },
+        ],
+      })
+        .select(
+          "_id name category userDefinedCategory organizationId userId website phone address city state country " +
+            "auditAutopilotNextRunAt auditAutopilotCategoryNudgedAt isDeleted"
+        )
+        .limit(50)
         .lean();
 
-      const out: string[] = [];
-      for (const plan of duePlans as any[]) {
-        const biz: any = await Business.findById(plan.businessId).lean();
-        if (!biz || biz.isDeleted) continue;
-        if (biz.subscriptionStatus !== "active") continue;
+      let firstRuns = 0;
+      let reAudits = 0;
+      let nudged = 0;
 
-        // Skip if an audit is already in flight for this business.
-        const pending = await Audit.exists({ businessId: plan.businessId, status: "PENDING" });
-        if (pending) continue;
-
-        const org = biz.organizationId ? await Organization.findById(biz.organizationId).lean() : null;
-        const user = biz.userId ? await User.findById(biz.userId).lean() : null;
-        if (!org || !user) continue;
-
-        try {
-          // Full audit (not fastMode) — createPendingAuditAndDispatch forces
-          // fastMode, so dispatch the event directly with fastMode: false.
-          const audit = await Audit.create({
-            tenantId: (org as any)._id.toString(),
-            userId: (user as any)._id.toString(),
-            organizationId: (org as any)._id.toString(),
-            businessId: biz._id,
-            businessName: biz.name,
-            userDefinedCategory: biz.userDefinedCategory || biz.category,
-            website: biz.website,
-            phone: biz.phone,
-            address: biz.address,
-            city: biz.city,
-            state: biz.state,
-            country: biz.country,
-            location: [biz.city, biz.state].filter(Boolean).join(", ") || biz.address || "Location hidden",
-            status: "PENDING",
-            fastMode: false,
-            metadata: { trigger: "seo-plan-monthly-reaudit" },
-          });
-          await inngest.send({ name: "audit/generate.requested", data: { auditId: audit._id.toString() } });
-          out.push(biz._id.toString());
-          // Bump activeFrom so a slow/failed audit doesn't get re-picked
-          // every single day until it finally completes.
-          await SeoPlan.updateOne({ _id: plan._id }, { $set: { activeFrom: new Date() } });
-        } catch (err: any) {
-          console.error(`[seo-plan-monthly-reaudit] dispatch failed for business ${biz._id}:`, err?.message);
+      for (const biz of candidates as any[]) {
+        // No real category yet — can't build a full audit. maybeStart handles
+        // the throttled owner nudge; never claims the anchor.
+        if (!hasRealAuditCategory(biz)) {
+          await maybeStartAuditAutopilot(biz._id.toString());
+          nudged++;
+          continue;
         }
+
+        if (!biz.auditAutopilotNextRunAt) {
+          // FIRST run — atomic claim guards against a concurrent hook/cron.
+          if (await claimAndDispatch(biz._id.toString())) firstRuns++;
+          continue;
+        }
+
+        // MONTHLY re-audit — roll the anchor forward first (atomically, keyed
+        // to the exact value just read) so a concurrent pass can't double-fire.
+        const prev: Date = new Date(biz.auditAutopilotNextRunAt);
+        let next = new Date(prev.getTime() + AUDIT_AUTOPILOT_INTERVAL_MS);
+        // A long unqualified gap can leave +30d still in the past — resync to
+        // "30 days from now" rather than firing a burst of catch-up audits.
+        if (next <= now) next = new Date(now.getTime() + AUDIT_AUTOPILOT_INTERVAL_MS);
+
+        const claimed = await Business.findOneAndUpdate(
+          { _id: biz._id, auditAutopilotNextRunAt: prev },
+          { $set: { auditAutopilotNextRunAt: next } }
+        );
+        if (!claimed) continue; // another pass already advanced it
+
+        if (await dispatchAuditForBusiness(biz, "audit-autopilot-monthly")) reAudits++;
       }
-      return out;
+
+      return { firstRuns, reAudits, nudged, candidates: candidates.length };
     });
 
-    return { success: true, dispatched: dispatched.length };
+    return { success: true, ...result };
+  }
+);
+
+// 7c-bis. Owner WhatsApp daily digest — the batched half of the owner
+// notification system (see services/ownerNotify.ts). Routine automation
+// activity (posts published, photos published, AI review replies sent,
+// content batches generated) is queued to OwnerNotifyDigest instead of
+// WhatsApp'd one-by-one; this fires once a day (~7pm IST) and sends each
+// workspace owner a single consolidated message, then stamps the rows sent.
+// High-value events (new lead, demo booking, critical review, billing,
+// report ready) are sent immediately by notifyOwner and never reach here.
+export const ownerWhatsAppDigestCron = inngest.createFunction(
+  { id: "owner-whatsapp-digest-cron", triggers: [{ cron: "30 13 * * *" }] }, // 13:30 UTC ≈ 19:00 IST
+  async ({ step }) => {
+    const result = await step.run("send-owner-digests", async () => {
+      await dbConnect();
+      const { sendPendingOwnerDigests } = await import("@/services/ownerNotify");
+      return await sendPendingOwnerDigests();
+    });
+    return { success: true, ...result };
   }
 );
 
@@ -3369,7 +3463,7 @@ export const processAutoReplyBatchJob = inngest.createFunction(
   async ({ event, step }) => {
     const { businessId, reviewIds } = event.data as { businessId: string; reviewIds: string[] };
 
-    await step.run("auto-reply-reviews", async () => {
+    const posted = await step.run("auto-reply-reviews", async () => {
       const dbConnect = (await import('@/lib/mongodb')).default;
       await dbConnect();
       const { default: Review } = await import('@/models/Review');
@@ -3380,9 +3474,28 @@ export const processAutoReplyBatchJob = inngest.createFunction(
         if (!review) continue;
         await autoReplyToReview(businessId, review);
       }
+
+      // Count how many of this batch are now actually replied (autoReplyToReview
+      // swallows per-review failures) so the owner digest reflects reality.
+      return await Review.countDocuments({
+        _id: { $in: reviewIds },
+        businessId,
+        replyStatus: 'POSTED',
+      });
     });
 
-    return { success: true, count: reviewIds.length };
+    if (posted > 0) {
+      await step.run("owner-whatsapp-digest", async () => {
+        const { notifyOwner } = await import("@/services/ownerNotify");
+        await notifyOwner(businessId, {
+          event: 'review_reply_sent',
+          text: posted > 1 ? `${posted} review replies posted automatically` : 'A review reply was posted automatically',
+          count: posted,
+        });
+      });
+    }
+
+    return { success: true, count: reviewIds.length, posted };
   }
 );
 
@@ -3429,11 +3542,18 @@ export const criticalAlertWorker = inngest.createFunction(
       });
     });
 
-    if (!business.phone) return { success: true, reason: "No phone for WhatsApp alert" };
-
-    await step.run("send-twilio-alert", async () => {
-      const msg = `🚨 *Reputation Alert*\n${business.name} just received a critical/1-star review. Please check your Reputation Dashboard immediately to generate an AI response.`;
-      await sendOutboundMessage(business.phone, msg, undefined, business._id.toString());
+    // Owner WhatsApp — immediate (high-value). notifyOwner resolves the
+    // owner's account phone (falling back to business.phone), respects the
+    // criticalReviewWhatsApp preference, and no-ops if neither phone exists.
+    await step.run("send-owner-whatsapp-alert", async () => {
+      const { notifyOwner } = await import("@/services/ownerNotify");
+      await notifyOwner(business._id.toString(), {
+        event: 'critical_review',
+        text:
+          typeof rating === 'number'
+            ? `🚨 GrowwMatics: ${business.name} just received a ${rating}★ review. Open your Reviews dashboard to respond quickly and protect your rating.`
+            : `🚨 GrowwMatics: ${business.name} just received a critical review. Open your Reviews dashboard to respond quickly and protect your rating.`,
+      });
     });
 
     return { success: true };
@@ -3474,6 +3594,19 @@ export const reviewReplyDraftedWorker = inngest.createFunction(
             ? `${count} AI-drafted review replies are waiting for your approval.`
             : 'An AI-drafted review reply is waiting for your approval.',
         link: '/dashboard/reviews',
+      });
+    });
+
+    await step.run("owner-whatsapp-digest", async () => {
+      const { notifyOwner } = await import("@/services/ownerNotify");
+      const n = typeof count === 'number' && count > 1 ? count : 1;
+      await notifyOwner(businessId, {
+        event: 'review_reply_drafted',
+        text:
+          n > 1
+            ? `${n} AI-drafted review replies are waiting for your approval`
+            : 'An AI-drafted review reply is waiting for your approval',
+        count: n,
       });
     });
 
@@ -3541,8 +3674,30 @@ Return ONLY valid JSON in this exact shape:
       await lead.save();
     });
 
+    // Owner WhatsApp — immediate, but ONLY for organically-captured inbound
+    // leads. Bulk/CSV imports and manually-typed rows also fire
+    // crm/lead-created (per row) — WhatsApp'ing the owner for each of those
+    // would mean 200 messages on one import. notifyOwner also respects the
+    // owner's newLeadWhatsApp preference and no-ops without a phone.
+    await step.run("owner-whatsapp-new-lead", async () => {
+      const dbConnect = (await import("@/lib/mongodb")).default;
+      await dbConnect();
+      const { default: Lead } = await import("@/models/Lead");
+      const { notifyOwner } = await import("@/services/ownerNotify");
+      const lead: any = await Lead.findById(leadId).select('name source businessId phone tenantId').lean();
+      if (!lead || !lead.businessId) return;
+      // Platform-internal prospects have their own admin funnel — not an owner's CRM.
+      if (lead.tenantId === 'gmbboost-internal') return;
+      const ORGANIC = new Set(['WhatsApp', 'Website', 'Instagram', 'Facebook', 'Google Business Profile', 'Phone Call', 'Demo Booking']);
+      if (!ORGANIC.has(lead.source)) return;
+      await notifyOwner(lead.businessId.toString(), {
+        event: 'new_lead',
+        text: `New lead: ${lead.name || lead.phone || 'someone'} just came in via ${lead.source}. Open your CRM to follow up.`,
+      });
+    });
+
     const now = new Date();
-    
+
     // Day 1
     const day1 = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     await step.sleepUntil("wait-day-1", day1);

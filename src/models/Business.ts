@@ -154,6 +154,19 @@ export interface IBusiness extends Document {
   // genuinely new, or a pre-existing business from before this feature
   // existed — the autopilot cron treats both the same: start on its next pass).
   autopilotNextRunAt?: Date;
+  // ADDITIVE — automatic audit autopilot anchor (see src/lib/auditAutopilot.ts
+  // + auditAutopilotCron in services/inngest/functions.ts). Set the first time
+  // this workspace has an active subscription + connected Google Business
+  // Profile + a real category, when the first full audit is dispatched; then
+  // rolled forward +30 days on every automatic re-audit. Undefined = "first
+  // report not generated yet" (new workspace, or one that predates this
+  // feature — the cron treats both as due on its next pass). Manual audits
+  // were removed; all customer audits now flow through this.
+  auditAutopilotNextRunAt?: Date;
+  /** Last time the owner was nudged (in-app + WhatsApp) to add a real business
+   *  category so their automatic audit can run — throttles that nudge to once
+   *  every few days. */
+  auditAutopilotCategoryNudgedAt?: Date;
   // ADDITIVE — WhatsApp AI Agent booking configuration (Feature 1).
   // Opt-in only: bookingEnabled defaults to false so existing businesses
   // are completely unaffected until they explicitly configure this.
@@ -304,6 +317,9 @@ const BusinessSchema: Schema = new Schema(
     },
     // ADDITIVE — weekly content autopilot anchor (see IBusiness above).
     autopilotNextRunAt: { type: Date },
+    // ADDITIVE — automatic audit autopilot (see IBusiness above + src/lib/auditAutopilot.ts).
+    auditAutopilotNextRunAt: { type: Date },
+    auditAutopilotCategoryNudgedAt: { type: Date },
     // ADDITIVE — see whatsappBookingSettings in IBusiness above. Not required,
     // no default object is forced onto existing documents; the WhatsApp
     // appointment agent treats a missing/disabled config as "booking off".

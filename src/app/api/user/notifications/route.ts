@@ -11,6 +11,15 @@ const DEFAULTS = {
   weeklyDigestEmail: true,
   campaignCompletedEmail: true,
   schedulerLowBufferEmail: true,
+
+  // WhatsApp notification channel for platform activity (services/ownerNotify.ts).
+  whatsAppNotificationsEnabled: true,
+  dailyDigestWhatsApp: true,
+  demoBookingWhatsApp: true,
+  billingWhatsApp: true,
+  postPublishedWhatsApp: true,
+  reviewReplyWhatsApp: true,
+  reportReadyWhatsApp: true,
 };
 
 export async function GET() {

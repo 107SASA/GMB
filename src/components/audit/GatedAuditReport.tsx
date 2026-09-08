@@ -33,7 +33,6 @@ export default function GatedAuditReport({ auditId }: { auditId: string }) {
   // Status-only poll so the sidebar copy can differ while the report builds.
   // AuditResultsDashboard does its own polling for the report body itself.
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval>;
     const check = async () => {
       try {
         const res = await fetch(`/api/audit/${auditId}`);
@@ -45,8 +44,8 @@ export default function GatedAuditReport({ auditId }: { auditId: string }) {
         clearInterval(timer);
       }
     };
+    const timer = setInterval(check, 3000);
     check();
-    timer = setInterval(check, 3000);
     return () => clearInterval(timer);
   }, [auditId]);
 

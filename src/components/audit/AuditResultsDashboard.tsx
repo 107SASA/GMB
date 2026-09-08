@@ -40,7 +40,6 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
   // so the user can read the whole report without being interrupted.
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
     let attempts = 0;
     // Generation normally finishes in 15–30s. The backend marks the audit
     // FAILED on a caught error, which stops this poll immediately — but if the
@@ -71,8 +70,8 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
         clearInterval(interval);
       }
     };
+    const interval = setInterval(fetchAudit, 3000);
     fetchAudit();
-    interval = setInterval(fetchAudit, 3000);
     return () => clearInterval(interval);
   }, [auditId]);
 

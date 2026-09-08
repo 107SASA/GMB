@@ -28,7 +28,7 @@ function SelectBusinessScreen() {
 
 export default function AppLayout() {
   const { isAuthenticated } = useAuth();
-  const { isLoading, needsSelection } = useBusiness();
+  const { isLoading, needsSelection, needsOnboarding } = useBusiness();
   const t = useTheme();
   const router = useRouter();
 
@@ -37,11 +37,19 @@ export default function AppLayout() {
   // useFocusEffect wants a stable navigator/focus context) at the exact
   // moment this layout would otherwise be swapping its own navigator out.
   useEffect(() => {
-    if (!isAuthenticated) router.replace('/login');
-  }, [isAuthenticated, router]);
+    if (!isAuthenticated) {
+      router.replace('/login');
+      return;
+    }
+    // Hard gate: an account with onboarding still to finish (no workspace, or
+    // an incomplete post-payment intake) can't reach the tabs — same as the
+    // web proxy.ts behaviour.
+    if (!isLoading && needsOnboarding) router.replace('/onboarding');
+  }, [isAuthenticated, isLoading, needsOnboarding, router]);
 
   if (!isAuthenticated) return <LoadingScreen />;
   if (isLoading) return <LoadingScreen />;
+  if (needsOnboarding) return <LoadingScreen />;
   if (needsSelection) return <SelectBusinessScreen />;
 
   return (

@@ -16,6 +16,20 @@ import { useAuth } from '@/auth/AuthContext';
 
 const BUSINESS_KEY = 'active_business_id';
 
+// Mirrors src/proxy.ts's INTAKE_ENFORCED_SINCE on the web: only workspaces
+// created on/after this date are hard-gated into the post-payment intake.
+// Older workspaces are left alone (they predate the intake requirement).
+const INTAKE_ENFORCED_SINCE = new Date('2026-07-23T00:00:00.000Z');
+
+/**
+ * `'create'` — the user has no workspace at all; the wizard starts by finding
+ * their business on Google and creating it.
+ * `'intake'` — a workspace exists but its "Tell us about your business" intake
+ * form hasn't been completed.
+ * `null`     — onboarding is not required.
+ */
+export type OnboardingStep = 'create' | 'intake' | null;
+
 interface BusinessContextValue {
   businesses: Business[];
   isLoading: boolean;
@@ -27,6 +41,15 @@ interface BusinessContextValue {
    * server-side default — the UI must show the picker before the tabs.
    */
   needsSelection: boolean;
+  /**
+   * True when the signed-in user still has onboarding to finish — no
+   * workspace yet, or a workspace whose post-payment intake is incomplete.
+   * The app hard-gates the tabs behind the /(onboarding) wizard while this
+   * is true (see (app)/_layout.tsx), matching the web proxy.ts behaviour.
+   */
+  needsOnboarding: boolean;
+  /** Which step the onboarding wizard should start on (see OnboardingStep). */
+  onboardingStep: OnboardingStep;
   selectBusiness: (businessId: string) => Promise<void>;
   /**
    * Soft-deletes a workspace. If the deleted one was active, switches to the
@@ -128,12 +151,34 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   const value = useMemo<BusinessContextValue>(() => {
     const activeBusiness = businesses.find((b) => b._id === activeBusinessId) ?? null;
     const isLoading = isFetching || (isAuthenticated && !restored);
+    const needsSelection = !isLoading && businesses.length > 1 && activeBusiness === null;
+
+    // Onboarding gate. Deliberately independent of subscription status (unlike
+    // web's proxy.ts, which wraps the intake check in isWorkspaceUnlocked) —
+    // BusinessContext has no billing data and the real-world entry point is a
+    // customer opening the app right after paying, so the intake form is the
+    // right next screen for them regardless. An unpaid user who reaches here
+    // is a rare edge and the intake form is harmless.
+    let onboardingStep: OnboardingStep = null;
+    if (isAuthenticated && !isLoading && !needsSelection) {
+      if (businesses.length === 0) {
+        onboardingStep = 'create';
+      } else if (activeBusiness && !activeBusiness.intakeCompleted) {
+        const createdAt = activeBusiness.createdAt ? new Date(activeBusiness.createdAt) : null;
+        if (createdAt && createdAt >= INTAKE_ENFORCED_SINCE) {
+          onboardingStep = 'intake';
+        }
+      }
+    }
+
     return {
       businesses,
       isLoading,
       activeBusinessId,
       activeBusiness,
-      needsSelection: !isLoading && businesses.length > 1 && activeBusiness === null,
+      needsSelection,
+      needsOnboarding: onboardingStep !== null,
+      onboardingStep,
       selectBusiness,
       deleteBusiness,
     };

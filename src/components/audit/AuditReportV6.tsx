@@ -1,5 +1,6 @@
 import React from 'react';
 import { IAudit, IAuditData, IChecklistItem, IPriorityFix } from '@/models/Audit';
+import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
 import { Download, Search, CheckCircle2, AlertCircle, TrendingUp, Zap, Target, Star, FileText, XCircle, Clock } from 'lucide-react';
 
 const EvidenceBadge = ({ text }: { text?: string }) => {
@@ -272,8 +273,15 @@ export default function AuditReportV6({ audit, onDownload }: { audit: IAudit; on
             <FileText className="w-6 h-6 text-outline" /> Profile Completion Checklist
             <EvidenceBadge text={data.evidence?.profileCompletion} />
           </div>
-          <span className="text-primary font-black">{data.profileCompletion?.completionPercentage || 0}%</span>
+          <span className="text-primary font-black">
+            {formatProfileCompletionDisplay(data.profileCompletion).pct}%
+          </span>
         </h2>
+        {formatProfileCompletionDisplay(data.profileCompletion).pending > 0 && (
+          <p className="-mt-3 mb-5 text-sm text-on-surface-variant">
+            {formatProfileCompletionDisplay(data.profileCompletion).label}
+          </p>
+        )}
         <div className="grid md:grid-cols-3 gap-4">
           {(data.profileCompletion?.checklist || []).map((item: IChecklistItem, i: number) => (
             <div key={i} className="flex items-center justify-between p-4 rounded-xl border border-outline-variant bg-surface/50">

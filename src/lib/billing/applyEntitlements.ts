@@ -3,7 +3,9 @@ import Subscription from '@/models/Subscription';
 import User from '@/models/User';
 import Business from '@/models/Business';
 import { notifyBusinessUsers } from '@/services/notifications';
+import { notifyOwner } from '@/services/ownerNotify';
 import { maybeStartContentAutopilot } from '@/lib/contentAutopilot';
+import { maybeStartAuditAutopilot } from '@/lib/auditAutopilot';
 import { sendPaymentFailedEmail, sendCancellationEmail } from './billingEmails';
 import {
   ALL_MODULES,
@@ -83,12 +85,24 @@ export async function activateBusinessPlan(
     console.error('[billing] activateBusinessPlan notification failed:', e.message);
   }
 
+  await notifyOwner(businessId, {
+    event: 'billing_activated',
+    text: isRenewal
+      ? `GrowwMatics: payment received — your subscription for ${workspaceName} is renewed. ✅`
+      : `GrowwMatics: your subscription for ${workspaceName} is now active — every feature is unlocked, and your monthly Google Business Profile report will generate automatically. ✅`,
+  });
+
   // If this workspace's Google Business Profile was already connected before
   // now, activation is the second of the two conditions weekly content
   // autopilot waits on — this fires its first batch immediately instead of
   // waiting for the next hourly safety-net pass. No-op (fast) if GBP isn't
   // connected yet, or autopilot already started for this business.
   await maybeStartContentAutopilot(businessId);
+
+  // Same idea for the automatic audit: if Google is already connected and a
+  // real category is on file, generate the first report now instead of
+  // waiting for the hourly auditAutopilotCron. No-op if not yet qualified.
+  await maybeStartAuditAutopilot(businessId);
 }
 
 export async function markBusinessPastDue(businessId: string): Promise<void> {
@@ -110,6 +124,11 @@ export async function markBusinessPastDue(businessId: string): Promise<void> {
   } catch (e: any) {
     console.error('[billing] markBusinessPastDue notification failed:', e.message);
   }
+
+  await notifyOwner(businessId, {
+    event: 'billing_past_due',
+    text: `GrowwMatics: we couldn't process your payment for ${workspaceName}. Please update your payment method from Billing to avoid losing access.`,
+  });
 
   const contact = await resolveBillingContact(businessId);
   if (contact) {
@@ -142,6 +161,11 @@ export async function cancelBusinessPlan(businessId: string): Promise<void> {
   } catch (e: any) {
     console.error('[billing] cancelBusinessPlan notification failed:', e.message);
   }
+
+  await notifyOwner(businessId, {
+    event: 'billing_canceled',
+    text: `GrowwMatics: the subscription for ${workspaceName} has been canceled. You can reactivate any time from Billing.`,
+  });
 
   const contact = await resolveBillingContact(businessId);
   if (contact) {

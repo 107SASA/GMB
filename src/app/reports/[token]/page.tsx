@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
@@ -349,12 +350,12 @@ export default function PublicReportPage() {
           <p className="text-primary-fixed-dim text-sm mb-6">
             GrowwMatics AI automates reviews, content, and GBP optimisation — so you show up first.
           </p>
-          <a
+          <Link
             href="/"
             className="inline-block bg-surface-container-lowest text-primary font-bold px-6 py-3 rounded-lg hover:bg-primary-fixed transition-colors"
           >
             Get Started Free
-          </a>
+          </Link>
         </div>
       </div>
     </div>

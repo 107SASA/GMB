@@ -116,7 +116,7 @@ async function run() {
     await user.save();
 
     console.log('Finding highest tier Plan...');
-    let plan = await Plan.findOne({ name: 'Agency / Multi-Location' });
+    const plan = await Plan.findOne({ name: 'Agency / Multi-Location' });
     if (!plan) {
        console.log('Plan not found, please run the migration script first.');
        process.exit(1);

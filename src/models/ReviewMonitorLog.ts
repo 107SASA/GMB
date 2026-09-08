@@ -21,4 +21,7 @@ const ReviewMonitorLogSchema: Schema = new Schema(
   { timestamps: true }
 );
 
+// Retention: 180 days (approved policy). Per-run monitoring log only.
+ReviewMonitorLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });
+
 export default mongoose.models.ReviewMonitorLog || mongoose.model<IReviewMonitorLog>('ReviewMonitorLog', ReviewMonitorLogSchema);

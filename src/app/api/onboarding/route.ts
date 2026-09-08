@@ -120,7 +120,8 @@ export async function POST(req: Request) {
 
       const otpResult = await sendOtpMessage(
         newUser.phone,
-        `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`
+        `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`,
+        otp
       );
       if (!otpResult.success) {
         console.error('Failed to send onboarding OTP over WhatsApp:', otpResult.error);
@@ -148,7 +149,8 @@ export async function POST(req: Request) {
 
       const otpResult = await sendOtpMessage(
         newUser.phone,
-        `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`
+        `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`,
+        otp
       );
       if (!otpResult.success) {
         console.error('Failed to send onboarding OTP over WhatsApp:', otpResult.error);

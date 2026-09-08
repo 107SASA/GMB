@@ -241,10 +241,10 @@ function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImpo
               ) : (
                 <div className="text-center">
                   <p className="text-sm font-semibold text-on-surface">Drop file here or click to browse</p>
-                  <p className="text-xs text-outline mt-0.5">.csv, .xlsx, .xls accepted</p>
+                  <p className="text-xs text-outline mt-0.5">.csv or .xlsx accepted</p>
                 </div>
               )}
-              <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFileChange} className="hidden" />
+              <input ref={fileInputRef} type="file" accept=".csv,.xlsx" onChange={handleFileChange} className="hidden" />
             </div>
           )}
 

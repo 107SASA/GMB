@@ -45,5 +45,9 @@ const ProfileActivitySchema: Schema = new Schema(
 
 ProfileActivitySchema.index({ businessId: 1, createdAt: -1 });
 
+// Retention: 180 days (approved policy). Per-business profile-change feed —
+// historical trail; the Business record itself is untouched.
+ProfileActivitySchema.index({ createdAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });
+
 export default mongoose.models.ProfileActivity ||
   mongoose.model<IProfileActivity>('ProfileActivity', ProfileActivitySchema);

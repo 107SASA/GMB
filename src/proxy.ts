@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySessionToken } from '@/lib/session';
+import { verifySessionToken, type SessionClaims } from '@/lib/session';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import Business from '@/models/Business';
 import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
+import { isSessionEpochValid } from '@/lib/sessionEpoch';
 
 /**
  * Per-workspace subscription gate.
@@ -92,7 +93,7 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  let session: { userId: string; role: string } | null = null;
+  let session: SessionClaims | null = null;
   try {
     session = await verifySessionToken(token);
   } catch {
@@ -112,8 +113,8 @@ export default async function proxy(request: NextRequest) {
 
     const [user, business] = await Promise.all([
       User.findById(session.userId)
-        .select('role subscriptionPlan')
-        .lean<{ role?: string; subscriptionPlan?: string }>(),
+        .select('role subscriptionPlan sessionEpoch')
+        .lean<{ role?: string; subscriptionPlan?: string; sessionEpoch?: number }>(),
       businessId
         ? Business.findById(businessId)
             .select('subscriptionStatus freeAuditUsed intakeCompleted createdAt')
@@ -121,6 +122,19 @@ export default async function proxy(request: NextRequest) {
         : Promise.resolve(null),
     ]);
     if (!user) return NextResponse.next();
+
+    // Server-side session invalidation — a token whose embedded epoch no
+    // longer matches the user's current one has been revoked (password reset,
+    // logout-all, …). Bounce to /login and clear the dead cookies. The API
+    // guards (requireClient/requireSuperAdmin) enforce the same check for
+    // /api/* independently — this is the /dashboard/* half.
+    if (!isSessionEpochValid(session.sessionEpoch, user.sessionEpoch)) {
+      const res = NextResponse.redirect(new URL('/login?error=session_expired', request.url));
+      res.cookies.delete(SESSION_COOKIE);
+      res.cookies.delete(ACTIVE_BUSINESS_COOKIE);
+      return res;
+    }
+
     // Owner keeps full access to every workspace (incl. their WhatsApp AI).
     // The Business lookup above was still fired in parallel for this case —
     // wasted for a SUPER_ADMIN navigation, but that's rare next to the

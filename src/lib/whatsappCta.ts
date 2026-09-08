@@ -6,9 +6,12 @@
  * them as a lead in the CRM. The target number comes from
  * NEXT_PUBLIC_WHATSAPP_NUMBER (digits only, e.g. "919876543210").
  *
- * Demos are handled entirely by the WhatsApp booking agent — there is no web
- * form. If no number is configured yet (the number is still being provisioned)
- * we fall back to /contact so the CTA is never a dead end.
+ * The /book-demo page collects business/phone/budget first and files the
+ * Lead + DemoBooking + BookingConversation server-side (see
+ * app/api/leads/book-demo/route.ts) BEFORE handing off to this wa.me link,
+ * so a submission is never lost even if the visitor doesn't send the
+ * pre-filled WhatsApp message. If no number is configured yet (still being
+ * provisioned) we fall back to /contact so the CTA is never a dead end.
  */
 
 /** Digits-only sales/demo WhatsApp number, from env. Empty string if unset. */

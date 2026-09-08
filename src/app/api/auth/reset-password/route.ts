@@ -52,19 +52,26 @@ export async function POST(req: Request) {
     // Uses updateOne (not user.save()) so this only touches the fields below —
     // a legacy/out-of-sync value on an unrelated field (e.g. an old `role`
     // string that predates the current enum) can never block a password reset.
+    //
+    // sessionEpoch is bumped so every existing session / mobile bearer token
+    // for this account is immediately revoked — a reset is exactly the moment
+    // "log everyone out" is the safe default (the person may be recovering
+    // from a compromise). All the consumed reset/OTP fields are removed rather
+    // than zeroed so nothing sensitive lingers on the document.
     await User.updateOne(
       { _id: user._id },
       {
         $set: {
           passwordHash: newPasswordHash,
-          passwordResetAttempts: 0,
           failedLoginAttempts: 0,
+          sessionEpoch: Date.now(),
         },
         $unset: {
           passwordResetTokenHash: '',
           passwordResetTokenExpiry: '',
           passwordResetOtp: '',
           passwordResetExpiry: '',
+          passwordResetAttempts: '',
           accountLockedUntil: '',
         },
       }

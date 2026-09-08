@@ -4,15 +4,13 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useBusiness } from '@/context/BusinessContext';
-import { Zap, Clock, ExternalLink, ChevronRight, CheckCircle2, AlertTriangle, FileText, Loader2 } from 'lucide-react';
-import AuditForm from '@/components/audit/AuditForm';
+import { Clock, ChevronRight, CheckCircle2, AlertTriangle, FileText, Loader2 } from 'lucide-react';
 
 export default function AuditDashboardPage() {
   const router = useRouter();
   const { activeBusiness } = useBusiness();
   const [audits, setAudits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showNewAudit, setShowNewAudit] = useState(false);
   // Freemium signups get their one report generated FOR them — see autoStart().
   const [autoStarting, setAutoStarting] = useState(false);
   const [autoError, setAutoError] = useState('');
@@ -40,19 +38,18 @@ export default function AuditDashboardPage() {
   };
 
   /**
-   * A brand-new (freemium-gated) user should never have to hunt for a "Run
-   * Audit" button — the report is the whole point of signing up. If they are
-   * gated and have no audits yet, generate the first one automatically and
-   * send them straight to the report, where the pricing card sits alongside it.
+   * Manual audits were removed — a subscribed workspace's reports are
+   * generated automatically (first one on subscribe + Google connect, then
+   * monthly; see src/lib/auditAutopilot.ts). The ONE exception is a
+   * brand-new, unsubscribed workspace: it still gets a single free trial
+   * report generated FOR it here so it can see value before paying.
    *
    * Guarded by a ref so React StrictMode's double-effect (and any re-fetch)
-   * cannot fire two audits — the free tier allows exactly one.
+   * cannot fire two audits.
    */
   const maybeAutoStart = async (existing: any[]) => {
     if (autoStartedRef.current || existing.length > 0 || !activeBusiness) return;
 
-    // Auto-run the one free audit only for a workspace that is NOT subscribed
-    // and has not yet used its free audit (per-workspace gate).
     let gated = false;
     try {
       const statusRes = await fetch('/api/billing/status');
@@ -100,53 +97,16 @@ export default function AuditDashboardPage() {
     );
   }
 
-  if (showNewAudit) {
-    return (
-      <div className="space-y-6">
-        <button
-          onClick={() => setShowNewAudit(false)}
-          className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1"
-        >
-          &larr; Back to Audits
-        </button>
-        {activeBusiness && !activeBusiness.googleConnected ? (
-          <div className="rounded-2xl border border-error-container bg-error-container p-8 text-center">
-            <div className="w-14 h-14 bg-error-container text-error rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="w-7 h-7" />
-            </div>
-            <h3 className="text-lg font-bold text-on-surface mb-2">Connect Google Business Profile first</h3>
-            <p className="text-on-surface-variant mb-6 max-w-md mx-auto">
-              Running a new audit needs a live Google Business Profile connection for {activeBusiness.name} —
-              without it, the report can&apos;t pull real ranking, review, or profile data.
-            </p>
-            <Link
-              href="/dashboard/gbp-profile"
-              className="inline-flex items-center gap-2 bg-primary hover:bg-primary text-white px-6 py-3 rounded-xl font-bold transition-all"
-            >
-              Connect Google Business Profile
-            </Link>
-          </div>
-        ) : (
-          <AuditForm />
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="font-heading text-2xl sm:text-3xl font-bold text-on-surface tracking-tight">AI Audits</h1>
-          <p className="text-on-surface-variant mt-1">Review AI-generated health reports for your Google Business Profile.</p>
+          <p className="text-on-surface-variant mt-1">
+            Your Google Business Profile health report is generated automatically — the first once your
+            subscription is active and Google is connected, then refreshed every month.
+          </p>
         </div>
-        <button
-          onClick={() => setShowNewAudit(true)}
-          className="bg-primary hover:bg-primary-container text-white px-5 py-2.5 rounded-lg font-bold transition-all card-shadow flex items-center gap-2 self-start sm:self-auto"
-        >
-          <Zap className="w-5 h-5" />
-          Run New Audit
-        </button>
       </div>
 
       {autoError && (
@@ -155,7 +115,7 @@ export default function AuditDashboardPage() {
           className="flex items-start gap-3 rounded-xl border border-error-container bg-error-container p-4 text-sm font-medium text-on-error-container"
         >
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-          <span>{autoError} You can start it manually with “Run New Audit”.</span>
+          <span>{autoError} It will retry automatically shortly.</span>
         </div>
       )}
 
@@ -167,20 +127,18 @@ export default function AuditDashboardPage() {
             <div className="w-16 h-16 bg-primary-fixed text-primary rounded-full flex items-center justify-center mx-auto mb-4">
               <FileText className="w-8 h-8" />
             </div>
-            <h3 className="text-lg font-bold text-on-surface mb-2">No Audits Found</h3>
-            <p className="text-on-surface-variant mb-6 max-w-md mx-auto">You haven't generated any AI audits for {activeBusiness?.name} yet.</p>
-            <button
-              onClick={() => setShowNewAudit(true)}
-              className="bg-primary hover:bg-primary text-white px-6 py-3 rounded-xl font-bold transition-all"
-            >
-              Generate First Audit
-            </button>
+            <h3 className="text-lg font-bold text-on-surface mb-2">No report yet</h3>
+            <p className="text-on-surface-variant mb-6 max-w-md mx-auto">
+              {activeBusiness?.name}&apos;s first report will be generated automatically once your
+              subscription is active and your Google Business Profile is connected. Nothing to do here —
+              we&apos;ll notify you when it&apos;s ready.
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-outline-variant">
             {audits.map((audit) => (
-              <Link 
-                href={`/dashboard/audit/${audit._id}`} 
+              <Link
+                href={`/dashboard/audit/${audit._id}`}
                 key={audit._id}
                 className="block hover:bg-surface/50 transition-colors"
               >

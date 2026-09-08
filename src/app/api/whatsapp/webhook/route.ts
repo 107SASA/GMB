@@ -177,10 +177,17 @@ export async function GET(req: Request) {
   const challenge = url.searchParams.get('hub.challenge');
 
   const expected = process.env.META_WEBHOOK_VERIFY_TOKEN;
-  if (mode === 'subscribe' && expected && token === expected && challenge) {
+  if (mode === 'subscribe' && expected && challenge && token && timingSafeStrEqual(token, expected)) {
     return new NextResponse(challenge, { status: 200 });
   }
   return NextResponse.json({ error: 'Webhook verification failed' }, { status: 403 });
+}
+
+/** Constant-time string compare — length is not secret, contents are. */
+function timingSafeStrEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
 }
 
 export async function POST(req: Request) {

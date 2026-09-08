@@ -30,6 +30,9 @@ import {
   generateAuditJob,
   sendReportReadyNotification,
   cleanupStalePendingAudits,
+  auditAutopilotCron,
+  ownerWhatsAppDigestCron,
+  seoPlanWeeklySummary,
   salesNurtureRequested,
   salesNurtureConsented,
   salesAgentReply,
@@ -41,7 +44,8 @@ import {
   gbpSyncWorker,
   cleanupAbandonedSignups,
   nurtureSchedulerTick,
-  proactiveNbaScheduler
+  proactiveNbaScheduler,
+  dataRetentionCleanupCron
 } from "@/services/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
@@ -76,6 +80,9 @@ export const { GET, POST, PUT } = serve({
     generateAuditJob,
     sendReportReadyNotification,
     cleanupStalePendingAudits,
+    auditAutopilotCron,
+    ownerWhatsAppDigestCron,
+    seoPlanWeeklySummary,
     salesNurtureRequested,
     salesNurtureConsented,
     salesAgentReply,
@@ -88,5 +95,6 @@ export const { GET, POST, PUT } = serve({
     cleanupAbandonedSignups,
     nurtureSchedulerTick,
     proactiveNbaScheduler,
+    dataRetentionCleanupCron,
   ],
 });

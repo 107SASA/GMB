@@ -140,7 +140,8 @@ export async function PUT(req: Request) {
 
     const result = await sendOtpMessage(
       user.phone,
-      `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`
+      `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`,
+      otp
     );
     if (!result.success) {
       console.error('[verify-phone-otp/resend] WhatsApp send failed:', result.error);

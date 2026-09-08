@@ -54,12 +54,17 @@ export async function POST(req: Request) {
     const business = await Business.findById(ctx.businessId);
     const businessName = business?.name || 'Local Business';
 
+    const { getActiveSeoPlan } = await import('@/services/seoPlan/seoPlanService');
+    const plan = await getActiveSeoPlan(ctx.businessId).catch(() => null);
+
     const startMs = Date.now();
     const { reply: aiReply, promptTokens, completionTokens } = await generateReviewReply({
       reviewText: review.reviewText,
       rating: review.rating,
       tone,
-      businessName
+      businessName,
+      uspLine: plan?.uspLine,
+      mustInclude: plan?.reviewReplyMustInclude,
     });
 
     void logAIUsage({

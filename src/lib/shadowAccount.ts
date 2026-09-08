@@ -282,7 +282,7 @@ export async function provisionShadowAccount(
 
   // Real session, same as a normal login/signup — this is what makes
   // requireClient()/requireBusinessContext() succeed transparently below.
-  await createSession(user._id.toString(), user.role);
+  await createSession(user._id.toString(), user.role, (user as any).sessionEpoch ?? 0);
   // Cookie must agree with whatever we decided user.activeBusinessId is
   // above — an established account keeps pointing at ITS existing active
   // workspace (falling back to the new `business` only in the unexpected

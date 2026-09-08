@@ -34,7 +34,13 @@ export async function GET(request: Request) {
   }
 
   try {
-    const res = await fetch(parsed.toString(), { signal: AbortSignal.timeout(12_000) });
+    // redirect: 'error' — the host allowlist is only checked on the URL we're
+    // given, so a 3xx from lh*.googleusercontent.com to any other host must
+    // NOT be followed (defence-in-depth against an open-redirect-into-SSRF).
+    const res = await fetch(parsed.toString(), {
+      redirect: 'error',
+      signal: AbortSignal.timeout(12_000),
+    });
     if (!res.ok) {
       return new Response('Media unavailable', { status: 502 });
     }

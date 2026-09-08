@@ -8,6 +8,20 @@ export interface INotificationPreferences {
   weeklyDigestEmail: boolean;
   campaignCompletedEmail: boolean;
   schedulerLowBufferEmail: boolean;
+
+  // WhatsApp notification channel for platform activity on the owner's
+  // workspace — read by services/ownerNotify.ts. `whatsAppNotificationsEnabled`
+  // is the master switch; `dailyDigestWhatsApp` additionally gates every
+  // digest-mode event (posts/photos/review-replies). The two older keys above
+  // (newLeadWhatsApp, criticalReviewWhatsApp) existed before but nothing read
+  // them until now — they are the per-event toggles for those two events.
+  whatsAppNotificationsEnabled: boolean;
+  dailyDigestWhatsApp: boolean;
+  demoBookingWhatsApp: boolean;
+  billingWhatsApp: boolean;
+  postPublishedWhatsApp: boolean;
+  reviewReplyWhatsApp: boolean;
+  reportReadyWhatsApp: boolean;
 }
 
 export interface IUser extends Document {
@@ -54,6 +68,17 @@ export interface IUser extends Document {
   failedLoginAttempts: number;
   accountLockedUntil?: Date;
   lastLoginAt?: Date;
+
+  // Server-side session invalidation ("session epoch"). Every issued session
+  // JWT / mobile bearer token embeds the value this field held at sign-in
+  // time; requireClient()/requireSuperAdmin()/proxy.ts reject any token whose
+  // embedded value doesn't match the current one. Bumped to Date.now() by
+  // invalidateUserSessions() on: password reset, "log out everywhere"
+  // (POST /api/auth/logout?scope=all), and any future role change /
+  // account-security event. 0 (or missing, on pre-migration docs) is the
+  // bootstrap value — tokens issued before this feature carry no epoch and
+  // are treated as 0, so they stay valid until the FIRST invalidation.
+  sessionEpoch?: number;
 
   businessIds: mongoose.Types.ObjectId[];
 
@@ -112,6 +137,15 @@ const NotificationPreferencesSchema = new Schema(
     weeklyDigestEmail: { type: Boolean, default: true },
     campaignCompletedEmail: { type: Boolean, default: true },
     schedulerLowBufferEmail: { type: Boolean, default: true },
+
+    // WhatsApp channel for platform activity (see INotificationPreferences).
+    whatsAppNotificationsEnabled: { type: Boolean, default: true },
+    dailyDigestWhatsApp: { type: Boolean, default: true },
+    demoBookingWhatsApp: { type: Boolean, default: true },
+    billingWhatsApp: { type: Boolean, default: true },
+    postPublishedWhatsApp: { type: Boolean, default: true },
+    reviewReplyWhatsApp: { type: Boolean, default: true },
+    reportReadyWhatsApp: { type: Boolean, default: true },
   },
   { _id: false }
 );
@@ -173,6 +207,10 @@ const UserSchema: Schema = new Schema(
     failedLoginAttempts: { type: Number, default: 0 },
     accountLockedUntil: { type: Date },
     lastLoginAt: { type: Date },
+    // Session-invalidation epoch — see INotificationPreferences-adjacent note
+    // in IUser above and src/lib/sessionInvalidation.ts. Default 0 = "never
+    // invalidated"; every issued token carries the value at sign-in.
+    sessionEpoch: { type: Number, default: 0 },
 
     businessIds: [{ type: Schema.Types.ObjectId, ref: 'Business' }],
 

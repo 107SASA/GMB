@@ -5,13 +5,23 @@ import { checkScheduledPosts } from "@/services/automation";
 /**
  * External scheduler hook (n8n / cron) that runs the scheduled-post sweep.
  *
- * Auth: `Authorization: Bearer <JWT_SECRET>` — the contract documented in
- * .env.production. The check below used to have its `return` commented out,
- * which left the endpoint fully open: anyone could POST it in a loop and drive
- * checkScheduledPosts(), spending Groq/SerpAPI credits and loading Atlas.
+ * Auth: `Authorization: Bearer <AUTOMATION_TRIGGER_SECRET>`.
+ *
+ * SEC-13: this used to reuse `JWT_SECRET` (the session-signing secret) as its
+ * bearer — so rotating the signing key silently broke this integration and
+ * vice-versa. It now uses a dedicated `AUTOMATION_TRIGGER_SECRET`, falling
+ * back to `JWT_SECRET` (with a warning) ONLY while the new var is being rolled
+ * out. Set `AUTOMATION_TRIGGER_SECRET` in the deploy env and update the n8n
+ * credential; the fallback can then be removed.
  */
 function isAuthorized(req: Request): boolean {
-  const secret = process.env.JWT_SECRET;
+  const secret = process.env.AUTOMATION_TRIGGER_SECRET || process.env.JWT_SECRET;
+  if (!process.env.AUTOMATION_TRIGGER_SECRET && process.env.JWT_SECRET) {
+    console.warn(
+      '[automation/trigger] AUTOMATION_TRIGGER_SECRET is not set — falling back to JWT_SECRET. ' +
+      'Set a dedicated AUTOMATION_TRIGGER_SECRET and update the n8n credential.'
+    );
+  }
   // No secret configured means we cannot authenticate anyone — fail closed
   // rather than accepting "Bearer undefined".
   if (!secret) return false;

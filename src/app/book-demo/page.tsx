@@ -40,9 +40,14 @@ function BookDemoForm() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const goToWhatsApp = () => {
+  // `userInitiated` = fired from the "Continue Now" click (a real user
+  // gesture) — only then can we open a new tab without the popup blocker
+  // silently eating it. The 1.8s auto-redirect isn't a gesture, so it must
+  // navigate the current tab instead (the old code called window.open there
+  // and it was being blocked — the visitor just sat on the thank-you screen).
+  const goToWhatsApp = (userInitiated = false) => {
     const link = bookDemoLink();
-    if (bookDemoOpensWhatsApp) {
+    if (userInitiated && bookDemoOpensWhatsApp) {
       window.open(link, '_blank', 'noopener,noreferrer');
     } else {
       window.location.href = link;
@@ -75,7 +80,7 @@ function BookDemoForm() {
       }
       setSubmitted(true);
       setSubmitting(false);
-      setTimeout(goToWhatsApp, 1800);
+      setTimeout(() => goToWhatsApp(false), 1800);
     } catch {
       setError('Network error. Please try again.');
       setSubmitting(false);
@@ -140,7 +145,7 @@ function BookDemoForm() {
                 </p>
                 <button
                   type="button"
-                  onClick={goToWhatsApp}
+                  onClick={() => goToWhatsApp(true)}
                   className="w-full py-3 bg-[#25D366] text-white rounded-lg font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2"
                 >
                   <WhatsAppIcon size={18} />

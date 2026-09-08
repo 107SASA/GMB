@@ -67,6 +67,24 @@ export async function POST(req: Request) {
       userSubscriptionPlan: (authResult.user as any).subscriptionPlan,
       businessCreatedAt: business.createdAt,
     });
+
+    // Manual audits were removed (Sep 2026) — a subscribed workspace's audits
+    // now run automatically: the first the day it's subscribed + Google-
+    // connected, then every 30 days (see src/lib/auditAutopilot.ts). This
+    // endpoint stays open ONLY for (a) SUPER_ADMIN (support/debugging) and
+    // (b) the one-time freemium trial report a brand-new, unsubscribed
+    // workspace still gets so it can see value before paying.
+    const isFreemiumTrialAudit = !workspaceUnlocked && !business.freeAuditUsed;
+    if (authResult.user.role !== 'SUPER_ADMIN' && !isFreemiumTrialAudit) {
+      return NextResponse.json(
+        {
+          error: 'Audits now run automatically every month while your subscription is active — no need to start one manually.',
+          code: 'AUTOMATED_AUDITS_ONLY',
+        },
+        { status: 403 }
+      );
+    }
+
     if (
       authResult.user.role !== 'SUPER_ADMIN' &&
       !workspaceUnlocked &&

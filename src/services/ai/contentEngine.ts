@@ -16,6 +16,12 @@ export interface ContentGenerationRequest {
   keywords: string[];
   contentTypes: string[];
   topic?: string;
+  /** The single differentiator to lead posts with — from the SEO brain
+   *  (SeoPlan.uspLine). Optional. */
+  usp?: string;
+  /** Weekday/theme/keyword plan from the SEO brain (SeoPlan.postThemes).
+   *  When present, each post follows one theme in order. Optional. */
+  postThemes?: Array<{ weekday: string; theme: string; keyword: string; postType: string }>;
 }
 
 export interface GeneratedPost {
@@ -51,6 +57,12 @@ export async function generateAIContent(request: ContentGenerationRequest): Prom
   const topicLine = request.topic
     ? `- Campaign Topic: ${request.topic}`
     : '';
+  const uspLine = request.usp ? `- Differentiator to lead with (USP): ${request.usp}` : '';
+  const themesLine = request.postThemes && request.postThemes.length
+    ? `- Post plan (follow one per post, in order — use the given keyword as that post's primary keyword):\n${request.postThemes
+        .map((t, i) => `    ${i + 1}. ${t.weekday} · ${t.postType} — ${t.theme} (keyword: ${t.keyword})`)
+        .join('\n')}`
+    : '';
 
   const prompt = `
 You are an expert AI marketing assistant and copywriter. Generate content for the following business based on the requirements.
@@ -62,8 +74,12 @@ BUSINESS DETAILS:
 - Location: ${request.location}
 - Tone: ${request.tone}
 - Keywords: ${request.keywords.join(', ')}
+${uspLine}
+${themesLine}
 ${topicLine}
 - Requested Content Types: ${request.contentTypes.join(', ')}
+
+KEYWORD RULES: each post targets ONE primary keyword (plus optionally one locality word). Do not stuff multiple keywords into a post. Lead the copy with the USP when one is given.
 
 REQUIRED JSON OUTPUT SCHEMA:
 {

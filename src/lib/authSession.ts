@@ -15,12 +15,15 @@ import { createSession, signSessionToken, SESSION_MAX_AGE_SECONDS } from '@/lib/
  * sequence.
  */
 export async function finalizeLogin(
-  user: { _id: unknown; role: string; activeBusinessId?: unknown },
+  user: { _id: unknown; role: string; activeBusinessId?: unknown; sessionEpoch?: number },
   req: Request
 ): Promise<NextResponse> {
   const userId = String(user._id);
+  // Embed the user's current session epoch so this token survives until the
+  // next invalidateUserSessions() call for them (see src/lib/sessionInvalidation.ts).
+  const sessionEpoch = (user as any).sessionEpoch ?? 0;
 
-  await createSession(userId, user.role);
+  await createSession(userId, user.role, sessionEpoch);
 
   await User.updateOne(
     { _id: userId },
@@ -50,7 +53,7 @@ export async function finalizeLogin(
 
   // Mobile clients get the JWT in the body (no cookie support); web never does.
   if (req.headers.get('x-client') === 'mobile') {
-    const token = await signSessionToken(userId, user.role);
+    const token = await signSessionToken(userId, user.role, sessionEpoch);
     const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
     return NextResponse.json({ success: true, token, expiresAt }, { status: 200 });
   }

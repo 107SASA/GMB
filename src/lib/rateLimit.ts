@@ -67,11 +67,43 @@ export function resetRateLimit(key: string): void {
   buckets.delete(key);
 }
 
-/** Best-effort client IP from proxy headers (works behind Vercel/DO/NGINX). */
+/**
+ * Client IP as seen by our OWN trusted reverse proxy — safe to use as a
+ * rate-limit key.
+ *
+ * Production topology is `Client -> Nginx -> Node` (DigitalOcean). The
+ * attacker-controlled part of `X-Forwarded-For` is the LEFT side: a client
+ * can send `X-Forwarded-For: 1.2.3.4` but Nginx
+ * (`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`) appends the
+ * address it actually received the connection from, so the real client is
+ * always the LAST entry — never the first. `X-Real-IP` (set by Nginx from
+ * `$remote_addr`) is a single, un-appendable value and is preferred when
+ * present.
+ *
+ * `TRUSTED_PROXY_COUNT` (default 1) is how many proxy hops WE run — bump it to
+ * 2 if you put Cloudflare in front of Nginx, etc. We skip that many entries
+ * from the end of `X-Forwarded-For`.
+ *
+ * IMPORTANT (documented in documentation/deployment/nginx-rate-limiting.md):
+ * this is only sound if the Node port is NOT publicly reachable. If a client
+ * can hit Node directly (bypassing Nginx), it can send a forged
+ * `X-Forwarded-For`/`X-Real-IP` with no trusted hop to correct it. The Node
+ * process MUST bind to 127.0.0.1 (or be firewalled to Nginx only).
+ */
 export function getClientIp(req: Request): string {
+  const realIp = req.headers.get('x-real-ip');
+  if (realIp && realIp.trim()) return realIp.trim();
+
   const xff = req.headers.get('x-forwarded-for');
-  if (xff) return xff.split(',')[0].trim();
-  return req.headers.get('x-real-ip') || 'unknown';
+  if (xff) {
+    const parts = xff.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length) {
+      const hops = Math.max(1, parseInt(process.env.TRUSTED_PROXY_COUNT || '1', 10) || 1);
+      // The entry our outermost trusted proxy saw as the client.
+      return parts[Math.max(0, parts.length - hops)];
+    }
+  }
+  return 'unknown';
 }
 
 /**

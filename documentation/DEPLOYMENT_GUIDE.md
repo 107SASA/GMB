@@ -30,3 +30,27 @@ Copy `.env.local.example` to the Vercel Environment Variables dashboard. Ensure 
 2. Ensure the Framework Preset is set to `Next.js`.
 3. Hit Deploy. The build process will run `next build`.
 4. Monitor the logs for any TypeScript compilation errors.
+
+## 7. Build memory
+
+`next build` (and a standalone `tsc --noEmit`) type-check the whole codebase in
+one pass and the default Node heap (~2 GB) is no longer enough — the build
+fails with `FATAL ERROR: Ineffective mark-compacts near heap limit / JavaScript
+heap out of memory` in the "Running TypeScript" phase.
+
+Set an 8 GB heap in the build/CI environment:
+
+```
+NODE_OPTIONS=--max-old-space-size=8192
+```
+
+- **Vercel / most CI**: add `NODE_OPTIONS` as an environment variable (build scope).
+- **DigitalOcean droplet / bare `npm run build`**: `NODE_OPTIONS=--max-old-space-size=8192 npm run build`
+  (PowerShell: `$env:NODE_OPTIONS='--max-old-space-size=8192'; npm run build`).
+
+It is intentionally NOT baked into the `package.json` scripts because the inline
+`NODE_OPTIONS=… cmd` prefix is not portable to Windows `cmd`/PowerShell and this
+repo is developed on Windows.
+
+The `mobile/` Expo app is a separate package — build and lint it from inside
+`mobile/` with its own toolchain, not from the web root.

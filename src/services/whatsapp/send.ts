@@ -72,7 +72,16 @@ export async function sendOutboundMessage(
     // own Twilio number can't use a GrowwMatics-scoped Content Template) and
     // never for media (no header-media template configured).
     if (!result.success && result.outsideWindow && result.isPlatformDefault && !media && WA_TEMPLATES.notification) {
-      const retry = await sendTemplateMessage(phone, WA_TEMPLATES.notification, { '1': 'there', '2': body }, businessId);
+      // WhatsApp/Twilio reject any Content Template variable that contains a
+      // newline/tab or 21656 "ContentVariables invalid" (this was silently
+      // dropping every multi-line body — the sales-nurture drip's follow-up
+      // templates and the owner daily digest both include line breaks — see
+      // incident notes Sep 2026). Flatten to a single line before packing it
+      // into {{2}}; this is the fallback's own last-resort summary text, not
+      // the primary send, so losing line breaks here is an acceptable trade
+      // for the message actually arriving.
+      const flatBody = body.replace(/\s*[\r\n\t]+\s*/g, ' ').replace(/ {2,}/g, ' ').trim();
+      const retry = await sendTemplateMessage(phone, WA_TEMPLATES.notification, { '1': 'there', '2': flatBody }, businessId);
       if (retry.success) return retry;
       return { ...result, error: `${result.error} (template fallback also failed: ${retry.error})` };
     }

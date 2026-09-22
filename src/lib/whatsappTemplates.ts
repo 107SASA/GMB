@@ -37,6 +37,20 @@
  *                     Assistant, now that ownership has moved to IN_HOUSE —
  *                     sent once, after the invoice message, on payment
  *                     confirmation.
+ *  - paymentReceived: {{1}} customer first name — only body variable, plus a
+ *                     single URL button "Download the app" →
+ *                     https://growwmatics.com/app (static button URL, no
+ *                     variable). Sent ONCE per subscription, immediately on the
+ *                     first payment (Razorpay subscription.activated/charged),
+ *                     BEFORE and independently of the CRM-lead-scoped
+ *                     invoice/welcome sequence in customerActivation.ts — this
+ *                     one goes to every paying customer whether or not a
+ *                     platform-side Lead resolves. Guarded by
+ *                     Subscription.paymentReceivedMessageSentAt. Body tells the
+ *                     customer their payment landed + points them at the web
+ *                     portal (https://growwmatics.com/login, in the body text)
+ *                     or the app (the button). Submit as UTILITY category.
+ *                     See services/billing/paymentReceivedNotice.ts.
  *  - loginOtp:        {{1}} the numeric code — only variable. A WhatsApp
  *                     AUTHENTICATION-category template (Twilio Content
  *                     Template Builder → Authentication) used for every
@@ -56,5 +70,6 @@ export const WA_TEMPLATES = {
   notification: process.env.TWILIO_TEMPLATE_NOTIFICATION || '',
   invoiceReady: process.env.TWILIO_TEMPLATE_INVOICE_READY || '',
   welcomeCustomer: process.env.TWILIO_TEMPLATE_WELCOME_CUSTOMER || '',
+  paymentReceived: process.env.TWILIO_TEMPLATE_PAYMENT_RECEIVED || '',
   loginOtp: process.env.TWILIO_TEMPLATE_LOGIN_OTP || '',
 } as const;

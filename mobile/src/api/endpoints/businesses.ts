@@ -20,6 +20,15 @@ export const businessSchema = z.object({
   // (see GbpMediaAsset on the backend) — the header/avatar shows this
   // instead of initials whenever it's present.
   logoUrl: z.string().nullable().optional(),
+  // Onboarding state — drives the in-app onboarding gate (see
+  // BusinessContext's `needsOnboarding`). `intakeCompleted` is the
+  // post-payment "Tell us about your business" form; `googleConnected` is
+  // whether GBP OAuth is linked; `createdAt` is used to match the web
+  // proxy.ts cutoff (only workspaces created on/after 2026-07-23 are
+  // hard-gated into the intake).
+  intakeCompleted: z.boolean().catch(false),
+  googleConnected: z.boolean().catch(false),
+  createdAt: z.string().nullable().optional(),
 });
 export type Business = z.infer<typeof businessSchema>;
 

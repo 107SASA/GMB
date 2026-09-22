@@ -156,6 +156,13 @@ export async function POST(request: Request) {
           console.warn(`[billing] ${eventType}: cannot resolve workspace for ${subEntity?.id}`);
         }
 
+        // "Payment received + download the app" WhatsApp message — sent to
+        // EVERY paying customer (not gated on a CRM lead like the sequence
+        // below), once, guarded by Subscription.paymentReceivedMessageSentAt.
+        // Runs after the entitlement flip and swallows its own errors.
+        const { sendPaymentReceivedMessage } = await import('@/services/billing/paymentReceivedNotice');
+        await sendPaymentReceivedMessage(userId, businessId);
+
         // Phase 7 — runs strictly AFTER the in-app entitlement flip above,
         // never before or instead of it, and never affects it either way
         // (this function catches and swallows its own failures). See

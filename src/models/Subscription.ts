@@ -37,6 +37,11 @@ export interface ISubscription extends Document {
   // to re-run the whole sequence against without resending anything.
   invoiceMessageSentAt?: Date | null;
   welcomeMessageSentAt?: Date | null;
+  // "Payment received + download the app" WhatsApp message — sent once, on the
+  // first payment, to EVERY paying customer (unlike the two above, this one
+  // does not require a resolvable platform-side Lead). Set exactly once, the
+  // first time it actually sends. See services/billing/paymentReceivedNotice.ts.
+  paymentReceivedMessageSentAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -69,6 +74,7 @@ const SubscriptionSchema: Schema = new Schema(
     // Phase 7 idempotency guards — see ISubscription's own comment above.
     invoiceMessageSentAt: { type: Date, default: null },
     welcomeMessageSentAt: { type: Date, default: null },
+    paymentReceivedMessageSentAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

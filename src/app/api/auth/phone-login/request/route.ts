@@ -6,6 +6,7 @@ import { generateOTP, hashOTP } from '@/services/auth/otp';
 import { sendOtpMessage } from '@/services/whatsapp/send';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
+import { isReviewerUser } from '@/lib/reviewerAccount';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +73,11 @@ export async function POST(req: Request) {
         },
         { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
       );
+    }
+
+    // Store-reviewer account: fixed code, nothing to send (see lib/reviewerAccount.ts).
+    if (isReviewerUser(user)) {
+      return NextResponse.json({ success: true, maskedPhone: maskPhone(user.phone) });
     }
 
     const otp = generateOTP();

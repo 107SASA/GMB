@@ -6,6 +6,7 @@ import { verifyOTP } from '@/services/auth/otp';
 import { finalizeLogin } from '@/lib/authSession';
 import { checkRateLimit, resetRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
+import { isReviewerUser, isReviewerOtp } from '@/lib/reviewerAccount';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,10 +60,11 @@ export async function POST(req: Request) {
     }
 
     const otpValid =
-      !!user.phoneOtpHash &&
-      !!user.phoneOtpExpiry &&
-      user.phoneOtpExpiry.getTime() > Date.now() &&
-      verifyOTP(String(otp), user.phoneOtpHash);
+      (isReviewerUser(user) && isReviewerOtp(String(otp))) ||
+      (!!user.phoneOtpHash &&
+        !!user.phoneOtpExpiry &&
+        user.phoneOtpExpiry.getTime() > Date.now() &&
+        verifyOTP(String(otp), user.phoneOtpHash));
 
     if (!otpValid) {
       if (!isQaTestingMode()) {

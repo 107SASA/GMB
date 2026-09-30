@@ -7,6 +7,16 @@ export interface IReviewReply extends Document {
   posted: boolean;
   tone: string;
   aiGenerated: boolean;
+  /** Audit trail (Sep 2026): one row per draft / publish attempt. */
+  businessId?: mongoose.Types.ObjectId;
+  event?: 'drafted' | 'approved' | 'publish_attempt';
+  sources?: string[];
+  validation?: { ok: boolean; reasons: string[]; attempts?: number };
+  approvalStatus?: 'draft' | 'needs_review' | 'approved' | 'rejected';
+  approvedBy?: 'owner' | 'auto';
+  publishStatus?: 'published' | 'blocked' | 'failed' | 'not_attempted';
+  googleResponse?: string;
+  error?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,6 +29,15 @@ const ReviewReplySchema: Schema = new Schema(
     posted: { type: Boolean, default: false },
     tone: { type: String, default: 'Professional' },
     aiGenerated: { type: Boolean, default: true },
+    businessId: { type: Schema.Types.ObjectId, ref: 'Business', index: true },
+    event: { type: String, enum: ['drafted', 'approved', 'publish_attempt'] },
+    sources: [{ type: String }],
+    validation: { type: Schema.Types.Mixed },
+    approvalStatus: { type: String, enum: ['draft', 'needs_review', 'approved', 'rejected'] },
+    approvedBy: { type: String, enum: ['owner', 'auto'] },
+    publishStatus: { type: String, enum: ['published', 'blocked', 'failed', 'not_attempted'] },
+    googleResponse: { type: String },
+    error: { type: String },
   },
   { timestamps: true }
 );

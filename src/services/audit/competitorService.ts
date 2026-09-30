@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { meter } from '@/lib/providerMeter';
 import { resolveSearchCategory } from './seoAnalyzer';
 import { deriveCategory, GENERIC_PLACE_TYPES } from '@/services/google/places';
 
@@ -185,6 +186,10 @@ export async function findCompetitors(businessData: BusinessData): Promise<{
     [businessData.city, businessData.area, businessData.state],
   );
 
+  if (!effectiveCategory) {
+    return { accepted: [], rejected: [], targetTier, evidenceSource: 'Not searched — no business category (Google lists only a generic category)' };
+  }
+
   // Build 2-3 queries from specific → broad
   const queries: string[] = [];
   if (businessData.area && businessData.city) {
@@ -209,6 +214,7 @@ export async function findCompetitors(businessData: BusinessData): Promise<{
   const queryResults: any[][] = await Promise.all(
     queries.map(async (query) => {
       try {
+        meter('googleTextSearch', 1, 'competitor_fallback (no ranking results)');
         const response = await axios.get(PLACES_BASE, {
           params: {
             query,
@@ -264,10 +270,12 @@ export async function findCompetitors(businessData: BusinessData): Promise<{
         // previously just copied the target's own category onto every row,
         // which made the field identical (and meaningless) for every
         // competitor by construction.
-        category: deriveCategory(placeTypes) || businessData.category,
+        // Real category from THIS candidate's own Places types; null when
+        // Google gives only generic types (never the target's category).
+        category: deriveCategory(placeTypes) || '',
         address: place.formatted_address,
-        similarityScore: 80,
-        strengthScore: Math.round((place.rating || 0) * 20),
+        // No similarityScore / strengthScore: neither is measurable from a
+        // text-search result, so they are left out rather than invented.
       };
 
       competitor.gapAnalysis = calculateGapAnalysis(businessData, competitor);

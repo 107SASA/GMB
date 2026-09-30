@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
-import Review from "@/models/Review";
-import ReviewReply from "@/models/ReviewReply";
 import { requireBusinessContext } from "@/lib/tenant";
 import { requireModule } from "@/lib/moduleGating";
-import { postReviewReplyToGoogle } from '@/services/reviews/postReply';
+import { publishReply } from '@/services/reviews/replyPipeline';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -17,31 +15,18 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     await dbConnect();
     const { id } = await params;
 
-    const review = await Review.findOne({ _id: id, businessId: ctx.businessId });
-    if (!review) {
-      return NextResponse.json({ error: "Review not found" }, { status: 404 });
+    // Requires owner approval; re-checks the exact text; POSTED only when Google confirms.
+    const r = await publishReply(ctx.businessId, id);
+    if (r.outcome === 'refused') {
+      return NextResponse.json({ success: false, error: r.reason, review: r.review }, { status: r.review ? 400 : 404 });
     }
-
-    if (review.replyStatus !== 'APPROVED') {
-      return NextResponse.json({ error: "Reply must be approved before posting" }, { status: 400 });
+    if (r.outcome === 'failed') {
+      return NextResponse.json({ success: false, error: r.reason, review: r.review }, { status: 502 });
     }
-
-    await postReviewReplyToGoogle(ctx.businessId, review);
-
-    review.response = review.aiSuggestedReply;
-    review.replyStatus = 'POSTED';
-    await review.save();
-
-    await ReviewReply.create({
-      reviewId: review._id,
-      generatedReply: review.aiSuggestedReply,
-      approved: true,
-      posted: true,
-      tone: review.replyTone || 'Professional',
-      aiGenerated: true,
-    });
-
-    return NextResponse.json({ success: true, message: "Reply posted successfully", review });
+    if (r.outcome === 'blocked') {
+      return NextResponse.json({ success: false, blocked: true, message: r.reason, review: r.review }, { status: 200 });
+    }
+    return NextResponse.json({ success: true, message: "Reply posted to Google", review: r.review });
   } catch (error: any) {
     return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }

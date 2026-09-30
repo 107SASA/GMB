@@ -60,6 +60,9 @@ export default function SchedulerDashboard() {
         const json = await res.json().catch(() => ({}));
         throw new Error(json.error ?? 'Publish failed');
       }
+      const json = await res.json().catch(() => ({}));
+      if (json.blocked) toast.message(json.message ?? 'Scheduled in GrowwMatics — Google publishing has not been executed.');
+      else toast.success('Published to your Google Business Profile.');
       await fetchBuffer();
     } catch (err: any) {
       toast.error(friendlyClientMessage(err, 'Failed to publish'));

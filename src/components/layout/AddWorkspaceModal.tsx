@@ -5,6 +5,7 @@ import { X, Search, Loader2, Store, CheckCircle2, Building2 } from "lucide-react
 import { useBusiness } from "@/context/BusinessContext";
 import { PhoneNumberInput } from "@/components/shared/PhoneNumberInput";
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
+import { newPlacesSessionToken, rotatePlacesSession } from '@/lib/placesSession';
 
 interface Props {
   onClose: () => void;
@@ -82,6 +83,8 @@ export function AddWorkspaceModal({ onClose }: Props) {
   // selection time so the very next debounce firing is skipped unconditionally,
   // no matter how long the place-details fetch takes.
   const skipNextSearchRef = useRef(false);
+  // One Places session per search → the keystroke requests aren't billed individually.
+  const sessionTokenRef = useRef<string>(newPlacesSessionToken());
 
   // Fetch autocomplete suggestions
   useEffect(() => {
@@ -99,7 +102,7 @@ export function AddWorkspaceModal({ onClose }: Props) {
     const fetch_ = async () => {
       setIsSearching(true);
       try {
-        const res = await fetch(`/api/google/autocomplete?q=${encodeURIComponent(debouncedQuery)}`);
+        const res = await fetch(`/api/google/autocomplete?q=${encodeURIComponent(debouncedQuery)}&sessiontoken=${sessionTokenRef.current}`);
         const json = await res.json();
         if (json.success) {
           setSuggestions(json.data);
@@ -131,7 +134,8 @@ export function AddWorkspaceModal({ onClose }: Props) {
     setSearchQuery(mainText);
     setIsFetchingDetails(true);
     try {
-      const res = await fetch(`/api/google/place-details?placeId=${placeId}`);
+      const sessionToken = rotatePlacesSession(sessionTokenRef);
+      const res = await fetch(`/api/google/place-details?placeId=${placeId}&sessiontoken=${sessionToken}`);
       const json = await res.json();
       if (json.success && json.data) {
         const d = json.data;

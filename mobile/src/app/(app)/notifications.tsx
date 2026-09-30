@@ -38,14 +38,23 @@ const LINK_MAP: Record<string, { route: string; superAdminOnly?: boolean }> = {
   inbox: { route: '/inbox', superAdminOnly: true },
   'gbp-profile': { route: '/gbp' },
   whatsapp: { route: '/whatsapp', superAdminOnly: true },
+  // Weekly engine (Sep 2026): offer question / festival prompts link to the dashboard,
+  // review nudges to review requests (reviews screen here), monthly reports to the audit.
+  '': { route: '/dashboard' },
+  'review-requests': { route: '/reviews' },
+  posts: { route: '/scheduler' },
+  audit: { route: '/audit' },
 };
 
 function mobileRouteFor(link: string | null | undefined, isSuperAdmin: boolean): string | null {
   if (!link) return null;
-  const segment = link.replace(/^\/dashboard\/?/, '').split('/')[0];
+  const path = link.replace(/^\/dashboard\/?/, '').split('?')[0];
+  const [segment, id] = path.split('/');
   const entry = LINK_MAP[segment];
   if (!entry) return null;
   if (entry.superAdminOnly && !isSuperAdmin) return null;
+  // /dashboard/audit/<id> → the report itself.
+  if (segment === 'audit' && id) return `/audit/${id}`;
   return entry.route;
 }
 
@@ -53,6 +62,13 @@ const TYPE_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   critical_review: 'alert-circle',
   review_received: 'star',
   reply_drafted: 'chatbubble-ellipses',
+  festival_prompt: 'sparkles',
+  weekly_offer_question: 'pricetag',
+  weekly_no_new_reviews: 'star-outline',
+  content_draft: 'document-text-outline',
+  post_failed: 'alert-circle-outline',
+  post_published: 'checkmark-circle-outline',
+  monthly_report: 'bar-chart-outline',
 };
 
 function NotificationRow({

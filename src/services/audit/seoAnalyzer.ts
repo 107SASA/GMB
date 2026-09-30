@@ -1,13 +1,14 @@
-import type { IProfileCompletion, IChecklistItem, IDataQuality, IAuditConfidence, IBusinessIntelligence, IGeoGridKeyword, IKeywordRank } from '@/models/Audit';
+import type { IProfileCompletion, IChecklistItem, IDataQuality, IAuditConfidence, IBusinessIntelligence } from '@/models/Audit';
 import type { GeoGridPoint } from './geoGrid';
+import type { RankingSummary } from './facts';
 import { generateGeoGrid, GRID_SPACING_KM, GRID_AREA_SQ_KM } from './geoGrid';
 import { fetchMapsLocalResultsBatch } from './dataForSeoClient';
+import { buildObservation, DESCRIPTION_MIN_CHARS, type SearchKind, type SearchObservation } from './facts';
 import {
   groupForField,
   buildCompletionLabel,
   buildCompletionPromptFact,
   type CompletionScope,
-  type ChecklistGroup,
 } from '@/lib/profileCompletion';
 
 // ── Profile Completion ─────────────────────────────────────────────────────────
@@ -27,102 +28,112 @@ import {
 // unknownCount is returned separately so the UI can say "N fields need
 // verification" instead of silently folding them into the percentage.
 
-export function calculateProfileCompletion(business: any) {
+/** Values our own intake writes when Google gave us nothing — never evidence. */
+const PLACEHOLDER_VALUES = new Set(['local business', 'unknown', 'n/a', 'na', '-']);
+const realValue = (v: unknown): string => {
+  const t = String(v ?? '').trim();
+  return t && !PLACEHOLDER_VALUES.has(t.toLowerCase()) ? t : '';
+};
+
+/** Live GBP fields actually read this run (see auditService.ts). */
+export interface GbpLiveRead {
+  title?: string;
+  description?: string;
+  primaryPhone?: string;
+  website?: string;
+  primaryCategory?: string;
+  additionalCategories?: string[];
+}
+
+/**
+ * Profile completion — ONE formula for every surface:
+ *   completionPercentage = Complete ÷ (Complete + Missing)
+ * Unknown fields are excluded (never counted as missing).
+ *
+ * A field is only ever marked Missing when a Google source we actually read
+ * confirms its absence:
+ *   - Places Details snapshot (free report / onboarding pick / WhatsApp
+ *     connect): phone, website, hours, photos.
+ *   - Live GBP read (connected, full audits): description, phone, website,
+ *     primary + additional categories.
+ * A value we hold counts as Complete. Placeholder values our own intake
+ * writes ("Local Business", "Unknown") count as nothing. Fields no code
+ * reads from Google (services, social links, service area, videos, logo,
+ * attributes, booking link) are always Unknown.
+ */
+export function calculateProfileCompletion(
+  business: any,
+  opts: {
+    gbpLive?: GbpLiveRead | null;
+    /** The target's public Maps listing as seen in ranking results (facts.publicProfileFromObservations). */
+    publicProfile?: { observed: boolean; additionalCategories: string[] | null; bookingUrl: string | null } | null;
+  } = {},
+) {
   const checklist: IChecklistItem[] = [];
+  const live = opts.gbpLive || null;
+  const pub = opts.publicProfile?.observed ? opts.publicProfile : null;
+  const push = (field: string, status: IChecklistItem['status']) =>
+    checklist.push({ field, status, group: groupForField(field) });
+  /** present → Complete; absent + verifiable → Missing; else Unknown. */
+  const check = (field: string, present: boolean, absenceVerified: boolean) =>
+    push(field, present ? 'Complete' : absenceVerified ? 'Missing' : 'Unknown');
 
-  const add = (field: string, isComplete: boolean) =>
-    checklist.push({ field, status: isComplete ? 'Complete' : 'Missing', group: groupForField(field) });
+  // Did we read the listing from Google Places / Maps (not just hold a name)?
+  const placesSnapshot =
+    !!(business.googlePlaceId || business.placeId) &&
+    (typeof business.placesReviewCount === 'number' ||
+      typeof business.photoCount === 'number' ||
+      typeof business.hasHours === 'boolean' ||
+      (Array.isArray(business.googleTypes) && business.googleTypes.length > 0));
 
-  const addUnknown = (field: string, known: boolean | undefined, isComplete: boolean) => {
-    if (known === undefined || known === null) {
-      checklist.push({ field, status: 'Unknown', group: groupForField(field) });
-    } else {
-      checklist.push({ field, status: isComplete ? 'Complete' : 'Missing', group: groupForField(field) });
-    }
-  };
+  const name = realValue(live?.title) || realValue(business.name);
+  const category = realValue(live?.primaryCategory) || realValue(business.userDefinedCategory) || realValue(business.category);
+  const phone = live ? realValue(live.primaryPhone) : realValue(business.phone);
+  const website = live ? realValue(live.website) : realValue(business.website);
+  const address = realValue(business.address);
 
-  // Real GBP Business Profile Management API access (OAuth) — set only by
-  // the "Connect Google" flow (gbpConnect.ts / reportConnect.ts), never by
-  // /free-report's Places autocomplete (that only sets googlePlaceId/
-  // googleConnected, which just means "a listing was picked", not that we
-  // have owner-authorized access to it). Without this, Additional Keywords/
-  // Business Description/Services Listed/Social Links are genuinely
-  // unknowable from any API we call — Places doesn't expose them — so an
-  // empty value here means "never queryable", not "confirmed absent".
-  // INTENTIONAL: this is why those four checklist items below use
-  // addUnknown() instead of add() — do not "simplify" them back to add()
-  // to make the percentage math look more familiar; that's the exact bug
-  // this was fixed for (a free-report lead's profile completion penalized
-  // for fields we structurally never had a way to check). See
-  // PRODUCTION_READINESS / the free-report data-accuracy fix (Aug 2026).
-  const hasGbpConnection = !!business.googleLocationId;
-  const knownIf = (isKnown: boolean) => (isKnown ? true : undefined);
+  check('Business Name', !!name, false);
+  // Every Google listing must have a primary category; if we couldn't read
+  // one, that is unknown — never "missing".
+  check('Primary Category', !!category, false);
+  check('Address', !!address, false);
+  check('Phone', !!phone, placesSnapshot || !!live);
+  check('Website', !!website, placesSnapshot || !!live);
+  push('Business Hours', typeof business.hasHours === 'boolean' ? (business.hasHours ? 'Complete' : 'Missing') : 'Unknown');
+  push('Business Photos', typeof business.photoCount === 'number' ? (business.photoCount > 0 ? 'Complete' : 'Missing') : 'Unknown');
+  // Our `area` is a sublocality parsed from the address — not Google's
+  // service-area field, which nothing reads. Always unknown.
+  push('Service Area', 'Unknown');
 
-  // Fields we can definitively check from stored data
-  add('Business Name',      !!business.name);
-  add('Primary Category',   !!business.category || !!business.userDefinedCategory);
-  addUnknown(
-    'Additional Keywords',
-    knownIf(hasGbpConnection || (!!business.keywords && business.keywords.length > 0)),
-    !!business.keywords && business.keywords.length > 0,
-  );
-  addUnknown(
-    'Business Description',
-    knownIf(hasGbpConnection || (!!business.description && business.description.length > 0)),
-    !!business.description && business.description.length > 50,
-  );
-  addUnknown(
-    'Services Listed',
-    knownIf(hasGbpConnection || (!!business.services && business.services.length > 0)),
-    !!business.services && business.services.length > 0,
-  );
-  add('Address',            !!business.address);
-  add('Phone',              !!business.phone);
-  add('Website',            !!business.website);
-  add('Service Area',       !!business.area);
-
-  // Social links — use whichever social fields are actually stored
-  const hasSocial = !!(
-    business.facebookPageUrl ||
-    business.instagramUrl ||
-    business.metaBusinessProfileUrl
-  );
-  addUnknown('Social Links', knownIf(hasGbpConnection || hasSocial), hasSocial);
-
-  // These two are populated from the SerpApi place-details response during data_id
-  // resolution. If they've never been resolved, status is Unknown (benefit of the doubt).
-  addUnknown('Business Photos',  business.photoCount, (business.photoCount ?? 0) > 0);
-  addUnknown('Business Hours',   business.hasHours,    !!business.hasHours);
-
-  // These require GBP Management API (OAuth) – we cannot verify them, mark Unknown
-  const gbpOnly = ['Videos', 'Logo / Cover Image', 'Attributes', 'Booking / Appointment Link'];
-  for (const f of gbpOnly) {
-    checklist.push({ field: f, status: 'Unknown', group: groupForField(f) });
+  if (live) {
+    const desc = String(live.description || '').trim();
+    push('Business Description', desc.length >= DESCRIPTION_MIN_CHARS ? 'Complete' : 'Missing');
+    push('Additional Categories', (live.additionalCategories || []).length > 0 ? 'Complete' : 'Missing');
+  } else {
+    push('Business Description', 'Unknown');
+    // The public Maps listing can SHOW additional categories; when it shows
+    // none that is not proof there are none, so absence stays Unknown.
+    push('Additional Categories', pub?.additionalCategories?.length ? 'Complete' : 'Unknown');
   }
+
+  for (const f of ['Services Listed', 'Social Links', 'Videos', 'Logo / Cover Image', 'Attributes']) {
+    push(f, 'Unknown');
+  }
+  // Booking link: Complete when Google's public listing shows one; its
+  // absence there is not verified, so it stays Unknown.
+  push('Booking / Appointment Link', pub?.bookingUrl ? 'Complete' : 'Unknown');
+  const hasGbpConnection = !!live;
 
   const completeCount = checklist.filter((c) => c.status === 'Complete').length;
   const missingCount  = checklist.filter((c) => c.status === 'Missing').length;
   const unknownCount  = checklist.filter((c) => c.status === 'Unknown').length;
 
-  // ── One number, one story ────────────────────────────────────────────────
-  // Pre-OAuth the denominator is the Places-verifiable group only (Business
-  // Name, Category, Address, Phone, Website, Service Area, Hours, Photos) —
-  // the fields we can actually check without a connected Google account.
-  // OAuth-only fields (description, services, social, videos, logo,
-  // attributes, booking link) are Unknown, not Missing, and are reported
-  // separately as "N fields need a Google connection" rather than folded
-  // into (or dragging down) the percentage. Post-OAuth the denominator
-  // widens to every field we can now verify. See src/lib/profileCompletion.ts
-  // for the shared display/prompt formatting that every surface consumes.
-  const inGroup = (g: ChecklistGroup) => checklist.filter((c) => c.group === g);
-  const placesCompleteCount = inGroup('places').filter((c) => c.status === 'Complete').length;
-  const placesMissingCount  = inGroup('places').filter((c) => c.status === 'Missing').length;
-  const placesTotalCount    = placesCompleteCount + placesMissingCount;
-
+  const placesCompleteCount = checklist.filter((c) => c.group === 'places' && c.status === 'Complete').length;
+  const placesTotalCount = checklist.filter((c) => c.group === 'places' && c.status !== 'Unknown').length;
   const scope: CompletionScope = hasGbpConnection ? 'full' : 'places';
-  const completionPercentage = scope === 'full'
-    ? Math.round((completeCount / Math.max(1, completeCount + missingCount)) * 100)
-    : Math.round((placesCompleteCount / Math.max(1, placesTotalCount)) * 100);
+  const completionPercentage = completeCount + missingCount > 0
+    ? Math.round((completeCount / (completeCount + missingCount)) * 100)
+    : 0;
 
   // "N fields need a Google connection to check" — every field still Unknown.
   // Naturally 7 when keywords are already present pre-OAuth (Additional
@@ -154,8 +165,8 @@ export function calculateProfileCompletion(business: any) {
       unknownCount,
     },
     evidenceSource: hasGbpConnection
-      ? 'Calculated from connected GBP data. Fields marked Unknown require GBP Management API access we don\'t have even when connected (Videos, Logo/Cover, Attributes, Booking Link).'
-      : 'Calculated from Google Places + intake data — this business is not yet connected via GBP OAuth, so keywords/description/services/social links marked Unknown could not be checked (Places API doesn\'t expose them), not confirmed absent. Percentage reflects only confirmed-complete vs confirmed-missing fields; Unknown fields are excluded, not penalized.'
+      ? 'Calculated from the live Google Business Profile read plus the Google Places listing. Complete ÷ (Complete + Missing); fields we could not read are Unknown and excluded.'
+      : 'Calculated from the Google Places listing. Complete ÷ (Complete + Missing); fields Places does not expose (description, categories beyond the primary, services, social links, service area, media, attributes, booking) are Unknown and excluded, not counted as missing.'
   };
 }
 
@@ -164,6 +175,7 @@ export function calculateProfileCompletion(business: any) {
 export function calculateReviewMetrics(
   reviews: any[],
   placesSnapshot?: { rating?: number; reviewCount?: number },
+  options: { periodDays?: number } = {},
 ) {
   if (!reviews || reviews.length === 0) {
     // No synced Review documents (fastMode skips that sync, or it just
@@ -218,16 +230,13 @@ export function calculateReviewMetrics(
   const sumRating = reviews.reduce((acc, r) => acc + (r.rating || 0), 0);
   const averageRating = parseFloat((sumRating / reviewCount).toFixed(1));
 
-  let reviewsPerWeek = 0;
-  if (reviewCount > 1) {
-    const sorted = [...reviews].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    const oldest = new Date(sorted[0].date);
-    const newest = new Date(sorted[sorted.length - 1].date);
-    const weeksDiff = Math.max(1, (newest.getTime() - oldest.getTime()) / (1000 * 60 * 60 * 24 * 7));
-    reviewsPerWeek = parseFloat((reviewCount / weeksDiff).toFixed(1));
-  } else {
-    reviewsPerWeek = 0.5;
-  }
+  // Velocity over the real analysis window (reviews here are already
+  // filtered to it), not the span between the oldest and newest review —
+  // and never a placeholder (the old code returned 0.5 for a single review).
+  const periodDays = options.periodDays && options.periodDays > 0 ? options.periodDays : null;
+  const reviewsPerWeek = periodDays
+    ? parseFloat((reviewCount / (periodDays / 7)).toFixed(1))
+    : 0;
 
   const respondedCount = reviews.filter(r => r.ownerReply).length;
   const responseRate = Math.round((respondedCount / reviewCount) * 100) + '%';
@@ -367,10 +376,10 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 3): Promis
 // Checks rank from 9 points in a 3×3 grid (1.5 km spacing) around the business.
 // Harvests local-pack competitors from the same 45 responses at no extra cost.
 //
-// NOT_FOUND_RANK (21) is a sentinel meaning "not in the Google local pack
-// (typically top ~20)". It is NOT a real Maps position — UI/PDF must render it
-// as "20+".
-
+// NOT_FOUND_RANK (21) is how audits created before Sep 2026 stored "not in the
+// top 20" (indistinguishable from a provider failure). New audits never write
+// it — not-found is `rank: null` (facts.ts). Kept only so code reading OLD
+// stored audits can recognise the value.
 export const NOT_FOUND_RANK = 21;
 
 // Google Places' own category resolution falls back to bucket words this
@@ -534,7 +543,13 @@ export function resolveSearchCategory(
   // brand-word + "company" guess.
   if (catIsWeak) return cat;
 
-  if (words.length === 0) return cat || 'business';
+  // Sep 2026: with no real category and nothing but the brand name left,
+  // there is no customer search term to measure — return '' ("category
+  // unknown") instead of searching the business's own name (a real case:
+  // "Mulsetu", Google category "Services", searched as "Mulsetu company" →
+  // #1 everywhere, which measures brand lookups, not visibility).
+  if (words.length === 0) return '';
+  const brandFirst = words[0].toLowerCase();
 
   // Strip self-praise from the tail before taking the last word(s).
   while (words.length > 1 && SELF_PRAISE_WORDS.has(words[words.length - 1].toLowerCase())) {
@@ -545,7 +560,8 @@ export function resolveSearchCategory(
   const nameKeyword = words.length >= 2 && WEAK_TRAILING_WORDS.has(last.toLowerCase())
     ? words.slice(-2).join(' ')
     : last;
-  if (!nameKeyword) return cat || 'business';
+  if (!nameKeyword) return '';
+  if (words.length === 1 || nameKeyword.toLowerCase().split(/\s+/).includes(brandFirst)) return '';
 
   // "Company" qualifier: verified against live Google Places data (Aug
   // 2026) — a bare word like "Technology" alone reads to Places' textsearch
@@ -571,28 +587,30 @@ function buildKeywords(business: any): string[] {
   );
   const categoryLower = effectiveCategory.toLowerCase();
   const cityLower = (business.city || '').toLowerCase();
+  const withCity = (k: string) => (cityLower && !k.toLowerCase().includes(cityLower) ? `${k} ${cityLower}` : k);
 
   let seedWords: string[] = [];
   if (business.keywords && business.keywords.length > 0) {
     seedWords = business.keywords.map((k: string) => String(k).trim()).filter(Boolean);
   } else if (business.services && business.services.length > 0) {
     seedWords = String(business.services).split(/[,;]+/).map((s: string) => s.trim()).filter(Boolean);
-  } else {
+  } else if (categoryLower) {
     seedWords = [categoryLower];
   }
+  // No category and no keywords → nothing a customer would search for.
+  if (seedWords.length === 0) return [];
 
-  const primary = seedWords[0] || categoryLower;
+  const primary = seedWords[0];
   const secondary = seedWords[1];
+  const primaryNoCity = cityLower ? primary.replace(new RegExp(`\\s*\\b${escapeRegExp(cityLower)}\\b\\s*`, 'i'), ' ').trim() : primary;
 
-  return [
-    cityLower ? `${primary} ${cityLower}` : primary,
-    cityLower ? `best ${primary} ${cityLower}` : `best ${primary}`,
-    cityLower ? `top ${primary} ${cityLower}` : `top ${primary}`,
-    `${primary} near me`,
-    secondary
-      ? (cityLower ? `${secondary} ${cityLower}` : secondary)
-      : (cityLower ? `${cityLower} ${categoryLower}` : categoryLower),
-  ].map(k => k.trim()).filter(Boolean);
+  return Array.from(new Set([
+    withCity(primary),
+    withCity(`best ${primaryNoCity}`),
+    withCity(`top ${primaryNoCity}`),
+    `${primaryNoCity} near me`,
+    secondary ? withCity(secondary) : categoryLower ? withCity(categoryLower) : '',
+  ].map(k => k.trim().replace(/\s+/g, ' ')).filter(Boolean)));
 }
 
 /** Normalize names for fuzzy matching (strip legal suffixes / punctuation).
@@ -641,8 +659,50 @@ export function namesLikelyMatch(a: string, b: string): boolean {
   return overlap >= Math.max(1, Math.ceil(minSize * 0.7));
 }
 
-function findTargetRank(localResults: any[], business: any): number {
-  if (!localResults?.length) return NOT_FOUND_RANK;
+/** Real 1-based position of the target in the results, or null when absent. */
+function findTargetPosition(localResults: any[], business: any): number | null {
+  const idx = findTargetIndex(localResults, business);
+  return idx === -1 ? null : idx + 1;
+}
+
+/** Maps a DataForSEO result list into a facts-layer observation. null results = provider failure. */
+function toObservation(
+  keyword: string,
+  kind: SearchKind,
+  localResults: any[] | null,
+  business: any,
+  point?: { lat: number; lng: number } | null,
+): SearchObservation {
+  return buildObservation({
+    keyword,
+    kind,
+    point: point ? { lat: point.lat, lng: point.lng } : null,
+    results: localResults === null
+      ? null
+      : localResults.map((r: any) => ({
+          name: r.title || '',
+          placeId: r.place_id || undefined,
+          cid: r.data_id || undefined,
+          rating: typeof r.rating === 'number' ? r.rating : null,
+          reviewCount: typeof r.reviews === 'number' ? r.reviews : null,
+          category: r.category || null,
+          address: r.address || null,
+          website: r.website || null,
+          phone: r.phone || null,
+          additionalCategories: r.additionalCategories ?? null,
+          hasHours: r.hasHours ?? null,
+          bookingUrl: r.bookingUrl || null,
+          isClaimed: r.isClaimed ?? null,
+          totalPhotos: r.totalPhotos ?? null,
+        })),
+    targetPosition: localResults === null ? null : findTargetPosition(localResults, business),
+    isTarget: (item) => isOwnBusiness(item.name, business) ||
+      (!!item.placeId && collectPlaceIds(business).includes(item.placeId)),
+  });
+}
+
+function findTargetIndex(localResults: any[], business: any): number {
+  if (!localResults?.length) return -1;
 
   const placeIds = collectPlaceIds(business);
   let idx = -1;
@@ -678,7 +738,7 @@ function findTargetRank(localResults: any[], business: any): number {
     });
   }
 
-  return idx === -1 ? NOT_FOUND_RANK : idx + 1;
+  return idx;
 }
 
 function isOwnBusiness(resultName: string, business: any): boolean {
@@ -690,19 +750,19 @@ function isOwnBusiness(resultName: string, business: any): boolean {
 
 export interface KeywordRankSnapshotRow {
   keyword: string;
-  rank: number;
-  competitorsAbove: Array<{ name: string; rank: number; rating?: number; reviewCount?: number; placeId?: string }>;
+  observation: SearchObservation;
 }
 
 /**
  * Rank each keyword ONCE, at the business's own location — the cheap check
- * behind the free report's "Keyword Search Volume Analysis" table (which
- * shows one rank per keyword, not a grid). One batched DataForSEO request.
- * Never throws — a failed batch returns every keyword at NOT_FOUND_RANK.
+ * behind the free report's nearby-area / keyword rows. One batched
+ * DataForSEO request. Never throws — a failed batch returns every keyword
+ * as an 'unavailable' observation (never "not found").
  */
 export async function fetchKeywordRankSnapshot(
   business: any,
   keywords: string[],
+  opts: { kindOf?: (keyword: string) => SearchKind } = {},
 ): Promise<KeywordRankSnapshotRow[]> {
   const uniq = Array.from(new Set(keywords.map((k) => String(k || '').trim()).filter(Boolean)));
   if (uniq.length === 0) return [];
@@ -711,32 +771,18 @@ export async function fetchKeywordRankSnapshot(
     ? { lat: Number(business.coordinates.lat), lng: Number(business.coordinates.lng) }
     : undefined;
 
-  let batch: any[][];
+  let batch: Array<any[] | null>;
   try {
-    batch = await fetchMapsLocalResultsBatch(
-      uniq.map((keyword) => ({ keyword, point, business })),
-    );
+    batch = await fetchMapsLocalResultsBatch(uniq.map((keyword) => ({ keyword, point, business })));
   } catch (err: any) {
     console.warn(`[seoAnalyzer] keyword snapshot batch failed: ${err?.message}`);
-    batch = uniq.map(() => []);
+    batch = uniq.map(() => null);
   }
 
-  return uniq.map((keyword, i) => {
-    const results = batch[i] || [];
-    const rank = findTargetRank(results, business);
-    const aboveCount = rank >= NOT_FOUND_RANK ? Math.min(10, results.length) : rank - 1;
-    const competitorsAbove = results
-      .slice(0, aboveCount)
-      .map((r: any, idx: number) => ({
-        name: r.title || '',
-        rank: idx + 1,
-        rating: r.rating,
-        reviewCount: r.reviews,
-        placeId: r.place_id || r.data_id,
-      }))
-      .filter((c: any) => c.name && !isOwnBusiness(c.name, business));
-    return { keyword, rank, competitorsAbove };
-  });
+  return uniq.map((keyword, i) => ({
+    keyword,
+    observation: toObservation(keyword, opts.kindOf?.(keyword) ?? 'discovery', batch[i] ?? null, business, point ?? null),
+  }));
 }
 
 /** Center + immediate east/south neighbors from the full 3×3 grid, instead
@@ -752,275 +798,83 @@ function reducedGridPoints(fullGrid: GeoGridPoint[]): GeoGridPoint[] {
   return [center, east, south].filter(Boolean) as GeoGridPoint[];
 }
 
+export interface GeoGridRankingResult {
+  /** One facts-layer observation per keyword × point searched (see facts.ts). */
+  observations: SearchObservation[];
+  gridResolution: 'full' | 'reduced';
+  gridSpacingKm: number;
+  /** 0 for a reduced grid (not a clean square — an area would be invented). */
+  areaSqKm: number;
+  evidenceSource: string;
+  /** Set when the DataForSEO call itself failed (account/rate-limit/server/
+   *  unknown) — every observation is then 'unavailable'. */
+  fetchError?: { category: string; message: string } | null;
+  /** Set when no search was attempted (e.g. no usable category). */
+  notRunReason?: 'category_unknown';
+}
+
+/**
+ * Geo-grid ranking via DataForSEO: 5 keywords × 9 points (3×3, 1.5 km
+ * spacing) for a full audit; 1 keyword × 3 points in fastMode. Without
+ * coordinates, each keyword is checked once at city level. Returns raw
+ * per-search observations only — every statistic (averages, visibility,
+ * competitors ahead) is computed from them in facts.ts.
+ */
 export async function fetchGeoGridRankings(
   business: any,
   options: { reduced?: boolean } = {},
-): Promise<{
-  geoGridRank: {
-    keywords: IGeoGridKeyword[];
-    overallAvgRank: number;
-    gridSpacingKm: number;
-    areaSqKm: number;
-    visibilityPct?: number;
-    /** 'reduced' = fastMode's cheaper check (1 keyword × ≤3 points) — real
-     *  data, just a smaller sample. UI should badge this "Quick check"
-     *  rather than hide the number, per the no-fabrication rule below. */
-    gridResolution: 'full' | 'reduced';
-  } | null;
-  localPackCompetitors: Array<{
-    name: string;
-    avgRank: number;
-    rating?: number;
-    reviewCount?: number;
-    placeId?: string;
-  }>;
-  legacyRankings: IKeywordRank[];
-  evidenceSource: string;
-  /** Set when the DataForSEO call itself failed (account/rate-limit/server/
-   *  unknown) rather than genuinely finding nothing — see
-   *  DataForSeoApiError in dataForSeoClient.ts. Distinct from a null/absent
-   *  value, which means "not attempted" (e.g. not configured). Consumers
-   *  should NOT cache a result with fetchError set as if it were a real
-   *  "not found" answer. */
-  fetchError?: { category: string; message: string } | null;
-}> {
+): Promise<GeoGridRankingResult> {
   const gridResolution: 'full' | 'reduced' = options.reduced ? 'reduced' : 'full';
-  // Reduced mode checks only the single highest-priority keyword (primary
-  // category + city, buildKeywords()'s first entry) — real rank for a real
-  // keyword, just one instead of five, to keep the query budget small.
   const allKeywords = buildKeywords(business);
   const keywords = options.reduced ? allKeywords.slice(0, 1) : allKeywords;
-
-  // ── No coordinates → single-point fallback ───────────────────────────────────
-  if (!business.coordinates?.lat || !business.coordinates?.lng) {
-    let fetchError: { category: string; message: string } | null = null;
-    let rawResults: any[][];
-    try {
-      rawResults = await fetchMapsLocalResultsBatch(keywords.map(keyword => ({ keyword, business })));
-    } catch (err: any) {
-      fetchError = { category: err?.category || 'unknown', message: err?.message || String(err) };
-      console.error(`[seoAnalyzer] DataForSEO Maps call failed (${fetchError.category}): ${fetchError.message}`);
-      rawResults = keywords.map(() => []);
-    }
-
-    const legacyRankings: IKeywordRank[] = keywords.map((keyword, idx) => {
-      const localResults = rawResults[idx] || [];
-      const rank = findTargetRank(localResults, business);
-      return { keyword, rank, sourceQuery: keyword, confidence: rank < NOT_FOUND_RANK ? 'High' : 'Low' };
-    });
-
-    // Harvest competitors with their REAL local-pack positions (not the 21 sentinel)
-    const competitorMap = new Map<string, {
-      name: string; ranks: number[]; rating?: number; reviewCount?: number; placeId?: string;
-    }>();
-    for (const localResults of rawResults) {
-      localResults.slice(0, 10).forEach((r: any, i: number) => {
-        if (!r.title) return;
-        if (isOwnBusiness(r.title, business)) return;
-        const key = (r.place_id || r.data_id || r.title).toString().toLowerCase().trim();
-        const existing = competitorMap.get(key);
-        if (existing) {
-          existing.ranks.push(i + 1);
-        } else {
-          competitorMap.set(key, {
-            name: r.title,
-            ranks: [i + 1],
-            rating: r.rating,
-            reviewCount: r.reviews,
-            placeId: r.place_id || r.data_id,
-          });
-        }
-      });
-    }
-    const localPackCompetitors = Array.from(competitorMap.values())
-      .map(c => ({
-        name: c.name,
-        avgRank: parseFloat((c.ranks.reduce((a, b) => a + b, 0) / c.ranks.length).toFixed(1)),
-        rating: c.rating,
-        reviewCount: c.reviewCount,
-        placeId: c.placeId,
-      }))
-      .sort((a, b) => a.avgRank - b.avgRank)
-      // Raised from 5 → 10: the free-report leaderboard table now shows a
-      // fuller list (matching Grexa's longer competitor list) — this is
-      // free, since it's just keeping more of the already-fetched/
-      // aggregated results, not an extra API call.
-      .slice(0, 10);
-
-    const overallAvgRank = parseFloat(
-      (legacyRankings.reduce((sum, k) => sum + k.rank, 0) / Math.max(1, legacyRankings.length)).toFixed(1),
-    );
-    const foundCount = legacyRankings.filter(k => k.rank < NOT_FOUND_RANK).length;
-
+  if (keywords.length === 0) {
     return {
-      // Synthetic keyword grid so the report can always render keyword + competitor tables
-      geoGridRank: {
-        keywords: legacyRankings.map(k => ({
-          keyword: k.keyword,
-          avgRank: k.rank,
-          points: [] as Array<{ lat: number; lng: number; rank: number }>,
-        })),
-        overallAvgRank,
-        gridSpacingKm: 0,
-        areaSqKm: 0,
-        visibilityPct: Math.round((foundCount / Math.max(1, legacyRankings.length)) * 100),
-        gridResolution,
-      },
-      localPackCompetitors,
-      legacyRankings,
-      evidenceSource: fetchError
-        ? `DataForSEO request failed (${fetchError.category}): ${fetchError.message}`
-        : `${gridResolution === 'reduced' ? 'Quick check — single' : 'Single'}-point SERP data (no coordinates): ${keywords.slice(0, 3).join(', ')}`,
-      fetchError,
+      observations: [],
+      gridResolution,
+      gridSpacingKm: 0,
+      areaSqKm: 0,
+      evidenceSource: 'Not measured — no business category to search for (Google lists only a generic category).',
+      fetchError: null,
+      notRunReason: 'category_unknown',
     };
   }
+  const hasCoords = !!(business.coordinates?.lat && business.coordinates?.lng);
 
-  // ── 3×3 geo-grid: 5 keywords × 9 points = 45 DataForSEO Maps calls
-  // (reduced: 1 keyword × 3 points = 3 calls) ─────────────────────────────
-  const fullGridPoints: GeoGridPoint[] = generateGeoGrid(
-    business.coordinates.lat,
-    business.coordinates.lng,
-    GRID_SPACING_KM,
-  );
-  const gridPoints = options.reduced ? reducedGridPoints(fullGridPoints) : fullGridPoints;
+  const gridPoints: Array<GeoGridPoint | null> = hasCoords
+    ? (() => {
+        const full = generateGeoGrid(business.coordinates.lat, business.coordinates.lng, GRID_SPACING_KM);
+        return options.reduced ? reducedGridPoints(full) : full;
+      })()
+    : [null];
+  const queries = keywords.flatMap((keyword) => gridPoints.map((point) => ({ keyword, point })));
 
-  type TaskResult = {
-    keyword: string;
-    point: GeoGridPoint;
-    rank: number;
-    competitors: Array<{ name: string; rank: number; rating?: number; reviewCount?: number; placeId?: string }>;
-  };
-
-  const queries = keywords.flatMap(keyword => gridPoints.map(point => ({ keyword, point })));
-
-  // All 45 keyword/point combinations go out in a single DataForSEO request
-  // (their Live endpoint accepts a batch of tasks and processes them
-  // server-side) instead of 45 individually-throttled client calls — this is
-  // what previously made geo-grid the slowest part of generating an audit.
   let fetchError: { category: string; message: string } | null = null;
-  let batchResults: any[][];
+  let batchResults: Array<any[] | null>;
   try {
     batchResults = await retryWithBackoff(() =>
-      fetchMapsLocalResultsBatch(queries.map(q => ({ ...q, business }))),
+      fetchMapsLocalResultsBatch(queries.map((q) => ({ keyword: q.keyword, point: q.point ?? undefined, business }))),
     );
   } catch (err: any) {
     fetchError = { category: err?.category || 'unknown', message: err?.message || String(err) };
     console.error(`[seoAnalyzer] DataForSEO Maps call failed (${fetchError.category}): ${fetchError.message}`);
-    batchResults = queries.map(() => []);
+    batchResults = queries.map(() => null);
   }
 
-  const allResults: TaskResult[] = queries.map(({ keyword, point }, i) => {
-    const localResults = batchResults[i] || [];
-    const rank = findTargetRank(localResults, business);
-    const rankIdx = rank - 1; // 0-based index of target, or -1 if not found
-
-    // Collect results ranked above the target (or top 10 when target not
-    // found at this specific point — raised from 5, Aug 2026: with 2 of 3
-    // reduced-grid points often landing "not found," the old cap of 5 could
-    // leave the competitor table showing only a handful of real names next
-    // to a rank number (an average across points, including the not-found
-    // ones) that implied many more businesses ahead — a real data-
-    // completeness gap, not a fabrication; this doesn't invent anything,
-    // just keeps more of what the same already-paid-for query returned).
-    const aboveCount = rank === NOT_FOUND_RANK
-      ? Math.min(10, localResults.length)
-      : rankIdx;
-
-    const competitors = localResults.slice(0, aboveCount)
-      .map((r: any, i: number) => ({
-        name: (r.title || '') as string,
-        rank: i + 1,
-        rating: r.rating as number | undefined,
-        reviewCount: r.reviews as number | undefined,
-        placeId: (r.place_id || r.data_id) as string | undefined,
-      }))
-      .filter(c => c.name && !isOwnBusiness(c.name, business));
-
-    return { keyword, point, rank, competitors };
-  });
-
-  // ── Aggregate competitors: dedupe by placeId or name, average their ranks ───
-  const competitorMap = new Map<string, {
-    name: string; ranks: number[]; rating?: number; reviewCount?: number; placeId?: string;
-  }>();
-
-  for (const { competitors } of allResults) {
-    for (const c of competitors) {
-      if (!c.name) continue;
-      const key = c.placeId || c.name.toLowerCase().trim();
-      const existing = competitorMap.get(key);
-      if (existing) {
-        existing.ranks.push(c.rank);
-      } else {
-        competitorMap.set(key, { name: c.name, ranks: [c.rank], rating: c.rating, reviewCount: c.reviewCount, placeId: c.placeId });
-      }
-    }
-  }
-
-  const localPackCompetitors = Array.from(competitorMap.values())
-    .map(c => ({
-      name: c.name,
-      avgRank: parseFloat((c.ranks.reduce((a, b) => a + b, 0) / c.ranks.length).toFixed(1)),
-      rating: c.rating,
-      reviewCount: c.reviewCount,
-      placeId: c.placeId,
-    }))
-    .sort((a, b) => a.avgRank - b.avgRank)
-    // Raised from 5 → 10 — see the matching comment in the no-coordinates
-    // branch above.
-    .slice(0, 10);
-
-  // ── Aggregate per keyword: average rank across its 9 grid points ─────────────
-  const geoGridKeywords: IGeoGridKeyword[] = keywords.map(keyword => {
-    const kResults = allResults.filter(r => r.keyword === keyword);
-    const points = kResults.map(r => ({ lat: r.point.lat, lng: r.point.lng, rank: r.rank }));
-    const avgRank = parseFloat(
-      (points.reduce((sum, p) => sum + p.rank, 0) / Math.max(1, points.length)).toFixed(1),
-    );
-    return { keyword, avgRank, points };
-  });
-
-  const overallAvgRank = parseFloat(
-    (geoGridKeywords.reduce((sum, k) => sum + k.avgRank, 0) / Math.max(1, geoGridKeywords.length)).toFixed(1),
+  const observations = queries.map(({ keyword, point }, i) =>
+    toObservation(keyword, keyword === keywords[0] ? 'primary' : 'discovery', batchResults[i] ?? null, business, point),
   );
 
-  const allPointRanks = geoGridKeywords.flatMap(k => k.points.map(p => p.rank));
-  const visibilityPct = Math.round(
-    (allPointRanks.filter(r => r < NOT_FOUND_RANK).length / Math.max(1, allPointRanks.length)) * 100,
-  );
-
-  // Legacy shape — keeps googleSearchRank working in the existing scoring / UI
-  const legacyRankings: IKeywordRank[] = geoGridKeywords.map(k => ({
-    keyword: k.keyword,
-    rank: k.avgRank,
-    sourceQuery: k.keyword,
-    confidence: k.avgRank < NOT_FOUND_RANK ? 'High' : 'Low',
-  }));
-
+  const found = observations.filter((o) => o.found).length;
+  const valid = observations.filter((o) => o.status === 'ok').length;
   return {
-    geoGridRank: {
-      keywords: geoGridKeywords,
-      overallAvgRank,
-      gridSpacingKm: GRID_SPACING_KM,
-      // A reduced grid (center + 2 neighbors) isn't a clean square, so the
-      // "sq km" figure doesn't mean anything for it — 0 rather than the
-      // full-grid constant, so the UI doesn't report a fabricated area.
-      // gridResolution is what the UI should actually key off of.
-      areaSqKm: options.reduced ? 0 : GRID_AREA_SQ_KM,
-      visibilityPct,
-      gridResolution,
-    },
-    localPackCompetitors,
-    legacyRankings,
+    observations,
+    gridResolution,
+    gridSpacingKm: hasCoords ? GRID_SPACING_KM : 0,
+    areaSqKm: hasCoords && !options.reduced ? GRID_AREA_SQ_KM : 0,
     evidenceSource: fetchError
       ? `DataForSEO request failed (${fetchError.category}): ${fetchError.message}`
-      : options.reduced
-        ? `Quick check — ${gridPoints.length}-point sample, ${GRID_SPACING_KM} km spacing ` +
-          `around [${business.coordinates.lat}, ${business.coordinates.lng}] | ` +
-          `keyword: ${keywords[0]} | visibility ${visibilityPct}%`
-        : `Geo-grid SERP: 3×3, ${GRID_SPACING_KM} km spacing, ${GRID_AREA_SQ_KM} sq km ` +
-          `around [${business.coordinates.lat}, ${business.coordinates.lng}] | ` +
-          `keywords: ${keywords.slice(0, 3).join(', ')} | visibility ${visibilityPct}%`,
+      : `${hasCoords ? `${gridPoints.length}-point grid, ${GRID_SPACING_KM} km spacing` : 'city-level search (no coordinates)'} | ` +
+        `keywords: ${keywords.slice(0, 3).join(', ')} | found in top 20 in ${found} of ${valid} searches`,
     fetchError,
   };
 }
@@ -1039,7 +893,7 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function findSelfPraiseTerm(nameLower: string): string | undefined {
+export function findSelfPraiseTerm(nameLower: string): string | undefined {
   return SELF_PRAISE_TERMS.find((term) => new RegExp(`\\b${escapeRegExp(term)}\\b`, 'i').test(nameLower));
 }
 
@@ -1062,10 +916,7 @@ export function analyzeTitleSeo(business: any): string[] {
   if (!name) return [];
 
   const issues: string[] = [];
-  const words = name.split(/\s+/).filter(Boolean);
-  if (words.length > 8) {
-    issues.push(`Title has ${words.length} words — Google Business Profile titles read best under 8 words`);
-  }
+  // No word-count check: length alone is not evidence of keyword stuffing.
 
   const nameLower = name.toLowerCase();
   const praiseTerm = findSelfPraiseTerm(nameLower);
@@ -1073,51 +924,61 @@ export function analyzeTitleSeo(business: any): string[] {
     issues.push(`Title contains a self-praise keyword ("${praiseTerm}") — against Google's Business Profile naming guidelines`);
   }
 
-  // The same name-derived keyword root buildKeywords() uses for rank
-  // tracking, so "primary keyword" here means the literal term the report
-  // is checking rank against, not a separately invented one.
-  const primaryKeyword = resolveSearchCategory(business.category, name, [business.city, business.area, business.state])
-    .replace(/\s+company$/i, '')
-    .trim();
-  if (primaryKeyword && primaryKeyword.toLowerCase() !== 'business' && !nameLower.includes(primaryKeyword.toLowerCase())) {
-    issues.push(`Primary keyword "${primaryKeyword}" not found in your business title`);
-  }
+  // No "primary keyword not in your title" check (removed Sep 2026): the
+  // title must be the real-world business name — adding keywords to it is
+  // keyword stuffing under Google's guidelines and a suspension risk, so
+  // recommending it would push customers into a violation.
 
   return issues;
 }
 
+/**
+ * Profile SEO score — deterministic, never AI-computed.
+ *
+ *   score = round(100 × Σ weight(checked & complete) ÷ Σ weight(checked))
+ *
+ * Each item reads the SAME checklist status as profile completion, so a
+ * fact is evaluated once and in one way:
+ *   Business Name 15 · Business Description 20 · Primary Category 15 ·
+ *   Additional Categories 15 · Services Listed 10 · Website 15   (= 90)
+ * An item whose status is Unknown is excluded from BOTH sums (no penalty
+ * for data we could not read). "Profile completion ≥ 80%" is no longer an
+ * item — it re-penalised the same fields a second time.
+ * Title-quality checks (promotional words, length) are listed as
+ * opportunities but carry no weight.
+ */
+export const SEO_SCORE_ITEMS: Array<{ field: string; weight: number; fix: string }> = [
+  { field: 'Business Name', weight: 15, fix: 'Add the business name to the Google profile' },
+  { field: 'Business Description', weight: 20, fix: `Write a business description of at least ${DESCRIPTION_MIN_CHARS} characters` },
+  { field: 'Primary Category', weight: 15, fix: 'Set a primary category' },
+  { field: 'Additional Categories', weight: 15, fix: 'Add additional categories that match services you offer' },
+  { field: 'Services Listed', weight: 10, fix: 'List the services you offer' },
+  { field: 'Website', weight: 15, fix: 'Link your website on the Google profile' },
+];
+
 export function calculateNativeSeoScore(business: any, profileCompletion: IProfileCompletion) {
-  let score = 0;
+  const statusOf = (field: string) => profileCompletion.checklist?.find((c) => c.field === field)?.status;
+  let earned = 0;
+  let checkedWeight = 0;
+  let checkedItems = 0;
   const opps: string[] = [];
-
-  const add = (condition: boolean, weight: number, opp: string) => {
-    if (condition) score += weight;
-    else opps.push(opp);
-  };
-
-  // Title Present was a real gap: word-count/self-praise/keyword-in-title
-  // checks (analyzeTitleSeo, below) were always unweighted findings, but a
-  // completely missing business name earned/lost nothing either — a blank
-  // title could still score 100. Weights rebalanced (still sum to 100) to
-  // make room for it rather than just bolting 15 more points onto the top.
-  const name = String(business.name || business.businessName || '').trim();
-  add(!!name,                                                        15, 'Add a Business Name/Title — this is required for any SEO visibility');
-  add(!!business.description && business.description.length > 100, 20, 'Expand Business Description to 100+ characters');
-  add(!!business.category || !!business.userDefinedCategory,        15, 'Set a Primary Category');
-  add(!!business.keywords && business.keywords.length > 0,          15, 'Add Keywords / Additional Categories');
-  add(!!business.services && business.services.length > 0,          10, 'Populate Service Catalog');
-  add(!!business.website,                                            15, 'Link a Website for local authority');
-  add(profileCompletion.completionPercentage >= 80,                  10, 'Improve overall Profile Completion to >80%');
-
-  // Word-count/self-praise/keyword-in-title checks stay unweighted findings
-  // (title *presence* is scored above; title *quality* is advisory, same as
-  // before) — analyzeTitleSeo() already no-ops when name is empty, so this
-  // never double-reports the missing-title case handled by add() above.
+  for (const item of SEO_SCORE_ITEMS) {
+    const st = statusOf(item.field);
+    if (st !== 'Complete' && st !== 'Partial' && st !== 'Missing') continue; // Unknown / not in checklist
+    checkedWeight += item.weight;
+    checkedItems += 1;
+    if (st === 'Missing') opps.push(item.fix);
+    else earned += item.weight;
+  }
+  // null = nothing checkable → "Not measured", never a fabricated 0.
+  const score: number | null = checkedWeight > 0 ? Math.round((earned / checkedWeight) * 100) : null;
   opps.push(...analyzeTitleSeo(business));
 
   return {
     score,
-    missingKeywords: opps.filter(o => o.includes('Category') || o.includes('Keyword')),
+    checkedItems,
+    totalItems: SEO_SCORE_ITEMS.length,
+    missingKeywords: opps.filter(o => /categor/i.test(o)),
     optimizationOpportunities: opps,
   };
 }
@@ -1126,13 +987,15 @@ export function calculateAuditConfidence(
   profileCompletion: number,
   competitorCount: number,
   reviewCount: number,
-  hasWebsite: boolean
+  hasWebsite: boolean,
+  rankingStatus: 'ok' | 'partial' | 'unavailable' | 'not_run' = 'ok',
 ): IAuditConfidence {
   let score = 0;
   const dataQuality: IDataQuality = {
     profileData:          profileCompletion > 50 ? 'Complete' : profileCompletion > 0 ? 'Partial' : 'Unavailable',
     competitorDiscovery:  competitorCount >= 5   ? 'Complete' : competitorCount > 0    ? 'Partial' : 'Unavailable',
-    keywordDiscovery:     'Complete',
+    // Was hardcoded 'Complete' (+20) even when the ranking provider failed.
+    keywordDiscovery:     rankingStatus === 'ok' ? 'Complete' : rankingStatus === 'partial' ? 'Partial' : 'Unavailable',
     reviewAnalysis:       reviewCount > 0        ? 'Complete' : 'Unavailable',
     websiteAnalysis:      hasWebsite             ? 'Complete' : 'Unavailable',
   };
@@ -1142,6 +1005,7 @@ export function calculateAuditConfidence(
   if (dataQuality.competitorDiscovery === 'Complete') score += 25;
   else if (dataQuality.competitorDiscovery === 'Partial') score += 15;
   if (dataQuality.keywordDiscovery === 'Complete')    score += 20;
+  else if (dataQuality.keywordDiscovery === 'Partial') score += 10;
   if (dataQuality.reviewAnalysis === 'Complete')      score += 20;
   if (dataQuality.websiteAnalysis === 'Complete')     score += 10;
 
@@ -1190,35 +1054,54 @@ export function generateNativePriorityFixes(
 export function calculateBusinessIntelligence(
   _business: any,
   competitors: any[],
-  reviewCount: number
+  /** Lifetime Google review count; null = unknown (never treated as 0). */
+  reviewCount: number | null,
+  ranking?: RankingSummary | null,
+  competitorsAheadCount?: number,
 ): IBusinessIntelligence {
-  const avgReviewCount = competitors.length > 0
-    ? Math.round(competitors.reduce((acc: number, c: any) => acc + c.reviewCount, 0) / competitors.length)
+  const counts = competitors
+    .map((c: any) => c.reviewCount)
+    .filter((n: any): n is number => typeof n === 'number');
+  const avgReviewCount = counts.length > 0
+    ? Math.round(counts.reduce((acc: number, n: number) => acc + n, 0) / counts.length)
     : 0;
-  const reviewGap = avgReviewCount > reviewCount ? avgReviewCount - reviewCount : 0;
+  const reviewGap = reviewCount != null && avgReviewCount > reviewCount ? avgReviewCount - reviewCount : 0;
+
+  // Position needs ranking evidence across several searches (Sep 2026):
+  // "Market Leader" used to mean nothing more than "more reviews than the
+  // competitor average", even with no ranking data at all.
+  const tested = ranking?.testedCount ?? 0;
+  let competitivePosition: string;
+  if (!ranking || ranking.status === 'unavailable' || ranking.status === 'not_run' || tested === 0) {
+    competitivePosition = 'Unknown — ranking could not be measured';
+  } else if (tested >= 3 && (ranking.top3Rate ?? 0) >= 0.6) {
+    competitivePosition = `Leading nearby — top 3 in ${ranking.top3Count} of ${tested} searches`;
+  } else if (ranking.foundCount === 0) {
+    competitivePosition = `Not yet visible — not in the top 20 in any of ${tested} searches`;
+  } else {
+    competitivePosition = `Challenger — in the top 20 in ${ranking.foundCount} of ${tested} searches`;
+  }
+
+  const ahead = competitorsAheadCount ?? competitors.length;
+  const marketSaturation = tested > 0
+    ? `${ahead} business${ahead === 1 ? '' : 'es'} observed above you across ${tested} search${tested === 1 ? '' : 'es'}`
+    : 'Unknown — ranking could not be measured';
 
   return {
-    competitivePosition: reviewCount === 0 ? 'New Entrant / Unestablished'
-      : reviewCount > avgReviewCount ? 'Market Leader' : 'Challenger',
-    // competitors.length is hard-capped at 10 by findCompetitors — "Highly
-    // Saturated" at >=10 really means "hit our search cap," not a precise
-    // saturation count, so the label says that rather than implying we
-    // measured an exact number of competitors.
-    marketSaturation: competitors.length >= 10 ? 'Highly Saturated (10+ nearby competitors found)'
-      : competitors.length >= 5 ? 'Moderately Competitive' : 'Low Competition',
+    competitivePosition,
+    marketSaturation,
     reviewGap,
-    // Renamed from visibilityGap (Aug 2026): this is computed purely from
-    // the review-count gap, not any real search-visibility/rank data — the
-    // old name/wording read as a ranking finding and was showing up as
-    // "Severe Visibility Gap" in AI-generated weaknesses even on reports
-    // where real rank data was unavailable (DataForSEO down), implying a
-    // search-visibility problem we hadn't actually measured. Key AND
-    // wording both changed so the AI (which sees this object's raw JSON
-    // keys in its prompt) stops inheriting the old, inaccurate framing.
-    reviewGapImpact: reviewGap > 50 ? 'Large review gap vs. nearby competitors.'
-      : reviewGap > 0 ? 'Moderate review gap vs. nearby competitors.' : 'Review count is competitive with nearby businesses.',
-    growthPotential: reviewCount === 0
-      ? 'High potential with basic optimization.'
-      : 'Incremental growth through consistent review collection.',
+    reviewGapImpact: reviewCount == null
+      ? 'Your Google review count could not be read, so it is not compared.'
+      : counts.length < 2
+      ? 'Not enough competitor review data to compare.'
+      : reviewGap > 0
+        ? `Businesses ranking near you average ${avgReviewCount} reviews; you have ${reviewCount}.`
+        : 'Review count is at or above the average of businesses ranking near you.',
+    growthPotential: reviewCount == null
+      ? 'Unknown — review count not available.'
+      : reviewCount === 0
+      ? 'No reviews yet — review collection is the clearest starting point.'
+      : 'Steady review collection and a complete profile are the controllable levers.',
   };
 }

@@ -160,7 +160,10 @@ export async function POST(req: Request) {
     // Now the content returns immediately and images populate into the Post docs
     // in the background; the posts pages read them from the DB once ready.
     after(async () => {
-      const { isStorageConfigured, rehostImageFromUrl } = await import('@/lib/storage');
+      const { isStorageConfigured, rehostImageFromUrl, uploadPublicObject } = await import('@/lib/storage');
+      const { geotagMedia } = await import('@/lib/imageGeotag');
+      const { getVerifiedBusinessLocation } = await import('@/lib/verifiedLocation');
+      const location = await getVerifiedBusinessLocation(ctx.businessId);
       for (let i = 0; i < savedDrafts.length; i++) {
         const prompt = aiResult.posts[i].thumbnailPrompt;
         if (!prompt) continue;
@@ -172,14 +175,24 @@ export async function POST(req: Request) {
           // is a public URL (also keeps big data-URLs out of the DB). Falls back
           // to the original URL if storage isn't configured.
           let finalUrl = imageUrl;
+          let imageGeotag: any = { status: 'none', reason: 'image not re-hosted (storage not configured)' };
           if (isStorageConfigured()) {
             try {
-              finalUrl = await rehostImageFromUrl(imageUrl, `post-thumbnails/${ctx.businessId}`);
+              // Generated thumbnails are data-URLs: geotag (verified Google location only), then host.
+              const data = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(imageUrl);
+              if (data) {
+                const g = await geotagMedia(Buffer.from(data[2], 'base64'), data[1], location);
+                finalUrl = await uploadPublicObject(g.buffer, g.mime, `post-thumbnails/${ctx.businessId}`);
+                imageGeotag = g.geotag;
+              } else {
+                finalUrl = await rehostImageFromUrl(imageUrl, `post-thumbnails/${ctx.businessId}`);
+                imageGeotag = { status: 'none', reason: 'remote image re-hosted without processing' };
+              }
             } catch (e) {
               console.error(`[content/generate] thumbnail re-host failed for ${savedDrafts[i]._id}, using original:`, e);
             }
           }
-          await Post.updateOne({ _id: savedDrafts[i]._id }, { $set: { imageUrl: finalUrl } });
+          await Post.updateOne({ _id: savedDrafts[i]._id }, { $set: { imageUrl: finalUrl, imageGeotag } });
         } catch (err) {
           console.error(`[content/generate] background thumbnail failed for ${savedDrafts[i]._id}:`, err);
         }

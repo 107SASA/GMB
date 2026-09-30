@@ -3,6 +3,8 @@ import { z } from 'zod';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import { requireBusinessContext } from '@/lib/tenant';
+import { buildIntakePrefill, type PrefillSuggestion } from '@/services/intel/intakePrefill';
+import { normalizeOrigin } from '@/services/intel/websiteExtract';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,9 +31,16 @@ export async function GET() {
   if (!ctx.ok) return ctx.response;
 
   const b = ctx.business;
+  const suggestions = await loadPrefillSuggestions(b).catch((err) => {
+    console.warn('[intake] prefill suggestions skipped:', err?.message);
+    return {};
+  });
   return NextResponse.json({
     success: true,
     intakeCompleted: Boolean(b.intakeCompleted),
+    // Sourced suggestions for EMPTY fields only — the owner reviews each one;
+    // nothing here is saved until they submit the form.
+    suggestions,
     data: {
       // 'Local Business' is the generic placeholder Business.create() falls
       // back to when onboarding couldn't auto-fill a real one (see
@@ -65,6 +74,12 @@ const intakeSchema = z.object({
   targetAudience: z.string().trim().optional().default(''),
   competitorNames: z.array(z.string()).optional().default([]),
   primaryGoal: z.string().trim().optional().default(''),
+  /** Fields the owner filled from a sourced suggestion (kept only if the value was not edited away). */
+  acceptedSuggestions: z.array(z.object({
+    field: z.enum(['category', 'description', 'services', 'keywords', 'uniqueSellingPoints', 'offers']),
+    source: z.enum(['website', 'google_listing', 'measured_report']),
+    sourceUrl: z.string().max(500).optional(),
+  })).max(5).optional().default([]),
 });
 
 export async function POST(req: Request) {
@@ -106,6 +121,7 @@ export async function POST(req: Request) {
           targetAudience: d.targetAudience,
           competitorNames: cleanList(d.competitorNames),
           primaryGoal: d.primaryGoal,
+          confirmedSuggestions: d.acceptedSuggestions.map((a) => ({ ...a, confirmedAt: new Date() })),
         },
       },
     }
@@ -142,4 +158,28 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ success: true });
+}
+
+/** Stored intelligence only (no crawl, no paid call): website research + the latest report. */
+async function loadPrefillSuggestions(b: any): Promise<Record<string, PrefillSuggestion>> {
+  await dbConnect();
+  const origin = normalizeOrigin(String(b.website || ''));
+  const [{ default: WebsiteIntelligence }, { default: Audit }] = await Promise.all([
+    import('@/models/WebsiteIntelligence'),
+    import('@/models/Audit'),
+  ]);
+  const [website, audit]: any[] = await Promise.all([
+    origin ? WebsiteIntelligence.findOne({ origin }).lean() : null,
+    Audit.findOne({ businessId: b._id, status: 'COMPLETED' })
+      .sort({ createdAt: -1 })
+      .select('auditData.keywordTable auditData.facts.publicProfile')
+      .lean(),
+  ]);
+  const rows: any[] = audit?.auditData?.keywordTable || [];
+  return buildIntakePrefill({
+    business: b,
+    website,
+    measuredKeywords: rows.filter((r) => (r.rankStatus ?? 'ok') === 'ok').map((r) => ({ keyword: r.keyword, source: r.source })),
+    listingCategory: audit?.auditData?.facts?.publicProfile?.category ?? null,
+  }) as Record<string, PrefillSuggestion>;
 }

@@ -31,22 +31,23 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface IPlaceInsightCache extends Document {
   googlePlaceId: string;
 
-  /** DataForSEO geo-grid rank + Google Places competitor search — the two
-   *  real per-call costs of a fastMode report. */
+  /** DataForSEO ranking data — the main per-call cost of a fastMode report.
+   *  Shape as of CACHE_LOGIC_VERSION 8 (entries from older versions are
+   *  never read — the version check treats them as stale). */
   rank?: {
-    legacyRankings: any[];
-    geoGridRank: any;
-    localPackCompetitors: any[];
+    /** Per-search facts (services/audit/facts.ts): not-found = null rank,
+     *  provider failure = 'unavailable'. Competitors are derived from these. */
+    observations: any[];
+    gridMeta?: { gridResolution?: 'full' | 'reduced'; gridSpacingKm?: number; areaSqKm?: number } | null;
     /** Free-report "Keyword Search Volume Analysis" rows + the neighbourhood
      *  list — cached here so a repeat lookup skips the DataForSEO Maps +
      *  Keyword Planner + Google Geocoding calls that built them. */
     keywordTable?: any[];
     areasChecked?: string[];
     rankingsEvidence: string;
-    accepted: any[];
-    rejected: any[];
-    targetTier: string;
-    compEvidence: string;
+    /** Google Places competitors — only present when ranking found none
+     *  (Places Text Search is a fallback since v8). */
+    placesFallback?: any[];
     fetchedAt: Date;
     /** Which build of the keyword/competitor-resolution logic produced this
      *  entry — see CACHE_LOGIC_VERSION in auditService.ts. A mismatch means

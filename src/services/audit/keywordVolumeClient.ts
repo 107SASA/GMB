@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { meter } from '@/lib/providerMeter';
 
 /**
  * Live monthly search volume from DataForSEO's Google Ads (Keyword Planner)
@@ -119,6 +120,7 @@ export async function fetchSearchVolumes(
       auth: { username: c.login, password: c.password },
       timeout: opts.timeout ?? 30000,
     });
+    meter('dataForSeoAdsVolumeLiveTask', 1, `keyword_demand (${missing.length} uncached keywords)`);
 
     const envelope = res.data ?? {};
     const task = envelope.tasks?.[0] ?? {};

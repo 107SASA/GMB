@@ -9,6 +9,8 @@ import {
   type ReportAgentConfigShape,
 } from '@/lib/reportAgentDefaults';
 import { AGENT_SCOPE_GUARDRAIL } from '@/lib/agentGuardrails';
+import { leadMessageFacts, leadMessageScores } from '@/services/audit/reportMath';
+import { DEFAULT_REPORT_SUMMARY, LEGACY_REPORT_SUMMARY } from '@/lib/reportAgentDefaults';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -78,6 +80,11 @@ export interface ReportScores {
   profile: string;
   seo: string;
   review: string;
+  rankText?: string;
+  profileText?: string;
+  seoText?: string;
+  reviewText?: string;
+  issuesBlock?: string;
 }
 
 function pct(n: unknown, fallback = '0'): string {
@@ -92,13 +99,20 @@ function pct(n: unknown, fallback = '0'): string {
  */
 export function extractReportScores(audit: any, business: any): ReportScores {
   const d = audit?.auditData ?? {};
-  const rankValue = d.googleSearchRank?.rank ?? audit?.rank;
+  const lead = leadMessageScores(d);
+  const facts = leadMessageFacts(d);
   return {
     businessName: business?.name ?? audit?.businessName ?? 'your business',
-    rank: Number.isFinite(Number(rankValue)) ? String(Math.round(Number(rankValue))) : 'beyond 20',
-    profile: pct(d.profileScore?.profileCompletionScore ?? d.profileCompletion?.score),
-    seo: pct(d.seoScore?.score ?? d.profileScore?.seoScore),
-    review: pct(d.profileScore?.reviewScore),
+    rank: lead.rank,
+    // 'n/a' (not a placeholder 0) when unmeasured — see leadMessageFacts.
+    profile: pct(d.profileScore?.profileCompletionScore ?? d.profileCompletion?.completionPercentage, 'n/a'),
+    seo: pct(d.seoScore?.score ?? d.profileScore?.seoScore, 'n/a'),
+    review: lead.review,
+    rankText: facts.rankText,
+    profileText: facts.profileText,
+    seoText: facts.seoText,
+    reviewText: facts.reviewText,
+    issuesBlock: facts.issuesBlock,
   };
 }
 
@@ -109,10 +123,19 @@ export function composeSummaryMessage(
   leadName: string,
   dashboardLink: string
 ): string {
-  return renderTemplate(config.reportSummaryTemplate, {
+  // An unmodified pre-Sep-2026 default is upgraded to the fact-based one.
+  const template = config.reportSummaryTemplate?.trim() === LEGACY_REPORT_SUMMARY.trim()
+    ? DEFAULT_REPORT_SUMMARY
+    : config.reportSummaryTemplate;
+  return renderTemplate(template, {
     name: firstName(leadName),
     business: scores.businessName,
     rank: scores.rank,
+    rankText: scores.rankText,
+    profileText: scores.profileText,
+    seoText: scores.seoText,
+    reviewText: scores.reviewText,
+    issuesBlock: scores.issuesBlock,
     profile: scores.profile,
     seo: scores.seo,
     review: scores.review,

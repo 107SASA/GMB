@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { newPlacesSessionToken, rotatePlacesSession } from '@/lib/placesSession';
 
 interface PlaceSuggestion {
   placeId: string;
@@ -75,6 +76,8 @@ export function BusinessAutocomplete({
   // so the place-details fetch racing the 300ms debounce can't reopen the
   // dropdown right after the visitor closed it by selecting an item.
   const skipNextSearchRef = useRef(false);
+  // One Places session per search → the keystroke requests aren't billed individually.
+  const sessionTokenRef = useRef<string>(newPlacesSessionToken());
 
   useEffect(() => {
     if (skipNextSearchRef.current) {
@@ -91,7 +94,7 @@ export function BusinessAutocomplete({
     (async () => {
       setIsSearching(true);
       try {
-        const res = await fetch(`/api/google/autocomplete?q=${encodeURIComponent(debouncedQuery)}`);
+        const res = await fetch(`/api/google/autocomplete?q=${encodeURIComponent(debouncedQuery)}&sessiontoken=${sessionTokenRef.current}`);
         const json = await res.json();
         if (json.success) {
           setSuggestions(json.data);
@@ -116,7 +119,8 @@ export function BusinessAutocomplete({
     setIsFetchingDetails(true);
     setFetchError('');
     try {
-      const res = await fetch(`/api/google/place-details?placeId=${placeId}`);
+      const sessionToken = rotatePlacesSession(sessionTokenRef);
+      const res = await fetch(`/api/google/place-details?placeId=${placeId}&sessiontoken=${sessionToken}`);
       const json = await res.json();
       if (json.success && json.data) {
         const d = json.data;

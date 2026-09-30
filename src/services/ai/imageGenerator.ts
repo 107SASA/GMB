@@ -1,4 +1,5 @@
 import { watermarkToDataUri } from '@/lib/imageWatermark';
+import { meter } from '@/lib/providerMeter';
 
 const NANOBANANA_BASE = 'https://www.nananobanana.com/api/v1';
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
@@ -70,16 +71,21 @@ async function generateWithNanoBanana(prompt: string, apiKey: string): Promise<s
     const url = (data.outputImageUrls as string[])?.[0] ?? null;
     if (!url) return null;
 
-    // Fetch the hosted image and stamp the brand mark on it — we then store a
-    // (watermarked) data-URL, same shape the Gemini path already returns.
+    // Fetch the hosted image and store it as a downscaled data-URL (same shape
+    // the Gemini path returns). No GrowwMatics mark — the customer's own logo
+    // is added later by the content pipeline when one exists.
     try {
-      const imgRes = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+      const { checkUrlShape } = await import('@/lib/ssrfGuard');
+      const shape = checkUrlShape(url);
+      if (!shape.ok || shape.url.protocol !== 'https:') return null;
+      const imgRes = await fetch(shape.url.toString(), { redirect: 'error', signal: AbortSignal.timeout(20_000) });
       if (imgRes.ok) {
         const buf = Buffer.from(await imgRes.arrayBuffer());
-        return await watermarkToDataUri(buf);
+        meter('imageGeneration', 1, 'post_image');
+        return await watermarkToDataUri(buf, null);
       }
     } catch (e: any) {
-      console.warn('NanoBanana watermark step failed, using raw URL:', e?.message);
+      console.warn('NanoBanana image post-processing failed, using raw URL:', e?.message);
     }
     return url;
   } catch (err: any) {
@@ -127,11 +133,11 @@ async function generateWithGemini(prompt: string, apiKey: string): Promise<strin
     if (!imagePart?.inlineData) return null;
 
     const { mimeType, data: b64 } = imagePart.inlineData;
-    // Gemini returns full-size PNGs (~2 MB). Watermark + downscale in one pass
-    // (watermarkToDataUri resizes to <=1080 and re-encodes as JPEG), so the
-    // stored data-URL is ~150 KB and carries the brand mark.
+    // Gemini returns full-size PNGs (~2 MB). Downscale + re-encode (≤1080 px
+    // JPEG, ~150 KB). No GrowwMatics mark on customer images.
+    meter('imageGeneration', 1, 'post_image');
     try {
-      return await watermarkToDataUri(Buffer.from(b64, 'base64'));
+      return await watermarkToDataUri(Buffer.from(b64, 'base64'), null);
     } catch {
       const compressed = await compressToThumbnail(b64);
       return compressed ?? `data:${mimeType};base64,${b64}`;

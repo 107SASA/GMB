@@ -6,12 +6,16 @@ import Review from '@/models/Review';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { isAutoPublishActive } from '@/services/reviews/replyPipeline';
 
 /**
- * Review Management's reply-mode toggle: 'manual' (AI drafts, owner
- * approves — the existing generate/approve/post flow) or 'auto' (AI drafts
- * AND posts on its own). See services/reviews/autoReply.ts for what 'auto'
- * actually does, and Business.reviewReplySettings for where it's stored.
+ * Review Management's reply-mode toggle. 'manual' (DEFAULT): every reply is a
+ * fact-checked draft the owner approves before it is posted. 'auto': drafts
+ * that pass the fact check are posted without waiting; drafts that fail wait
+ * for the owner. Auto is active only when the owner switched it on here
+ * (autoPublishConsentAt recorded) — a legacy mode:'auto' saved before the
+ * fact-checked flow existed is treated as manual until re-enabled.
+ * See services/reviews/replyPipeline.ts.
  */
 const bodySchema = z.object({
   mode: z.enum(['manual', 'auto']),
@@ -24,13 +28,18 @@ export async function GET() {
 
   await dbConnect();
   const business = await Business.findById(ctx.businessId).select('reviewReplySettings').lean<{
-    reviewReplySettings?: { mode?: string; tone?: string };
+    reviewReplySettings?: { mode?: string; tone?: string; autoPublishConsentAt?: Date };
   }>();
+  const s = business?.reviewReplySettings;
+  const active = isAutoPublishActive(s);
 
   return NextResponse.json({
     success: true,
-    mode: business?.reviewReplySettings?.mode ?? 'manual',
-    tone: business?.reviewReplySettings?.tone ?? 'Professional',
+    mode: active ? 'auto' : 'manual',
+    tone: s?.tone ?? 'Professional',
+    autoPublishSince: active ? s?.autoPublishConsentAt : null,
+    // Saved as 'auto' before replies were fact-checked — paused until the owner turns it on again.
+    legacyAutoPaused: s?.mode === 'auto' && !active,
   });
 }
 
@@ -51,18 +60,25 @@ export async function POST(req: Request) {
     await dbConnect();
 
     const before = await Business.findById(ctx.businessId).select('reviewReplySettings').lean<{
-      reviewReplySettings?: { mode?: string };
+      reviewReplySettings?: { mode?: string; autoPublishConsentAt?: Date };
     }>();
-    const wasAuto = before?.reviewReplySettings?.mode === 'auto';
+    const wasAuto = isAutoPublishActive(before?.reviewReplySettings);
 
     await Business.updateOne(
       { _id: ctx.businessId },
-      {
-        $set: {
-          'reviewReplySettings.mode': mode,
-          ...(tone ? { 'reviewReplySettings.tone': tone } : {}),
-        },
-      }
+      mode === 'auto'
+        ? {
+            $set: {
+              'reviewReplySettings.mode': 'auto',
+              // The owner's explicit opt-in to automatic publishing (only fact-checked replies).
+              ...(wasAuto ? {} : { 'reviewReplySettings.autoPublishConsentAt': new Date(), 'reviewReplySettings.autoPublishConsentBy': ctx.userId }),
+              ...(tone ? { 'reviewReplySettings.tone': tone } : {}),
+            },
+          }
+        : {
+            $set: { 'reviewReplySettings.mode': 'manual', ...(tone ? { 'reviewReplySettings.tone': tone } : {}) },
+            $unset: { 'reviewReplySettings.autoPublishConsentAt': 1, 'reviewReplySettings.autoPublishConsentBy': 1 },
+          }
     );
 
     // Switching ON auto-reply (from manual, or the first time) means "all
@@ -74,7 +90,7 @@ export async function POST(req: Request) {
       const pending = await Review.find({
         businessId: ctx.businessId,
         response: { $in: [null, undefined, ''] },
-        replyStatus: { $ne: 'POSTED' },
+        replyStatus: { $in: [null, 'PENDING'] },
       }).select('_id').lean();
 
       if (pending.length > 0) {

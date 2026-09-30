@@ -193,7 +193,7 @@ export class GooglePlacesService {
     }
   }
 
-  static async autocomplete(query: string): Promise<AutocompleteResult[]> {
+  static async autocomplete(query: string, sessionToken?: string): Promise<AutocompleteResult[]> {
     if (!query) return [];
 
     const apiKey = this.getApiKey();
@@ -206,6 +206,9 @@ export class GooglePlacesService {
     url.searchParams.append("input", query);
     url.searchParams.append("key", apiKey);
     url.searchParams.append("types", "establishment"); // focus on businesses
+    // Session billing: with a token, these keystroke requests are free and
+    // the session is billed when Place Details (same token) closes it.
+    if (sessionToken) url.searchParams.append("sessiontoken", sessionToken);
 
     const response = await fetch(url.toString());
     const data = await response.json();
@@ -225,7 +228,7 @@ export class GooglePlacesService {
     return this.textSearchFallback(query, apiKey);
   }
 
-  static async getDetails(placeId: string): Promise<PlaceDetailsResult | null> {
+  static async getDetails(placeId: string, sessionToken?: string): Promise<PlaceDetailsResult | null> {
     if (!placeId) return null;
     
     const apiKey = this.getApiKey();
@@ -237,6 +240,8 @@ export class GooglePlacesService {
     const url = new URL("https://maps.googleapis.com/maps/api/place/details/json");
     url.searchParams.append("place_id", placeId);
     url.searchParams.append("key", apiKey);
+    // Closes the autocomplete session started with the same token.
+    if (sessionToken) url.searchParams.append("sessiontoken", sessionToken);
     // address_components is what makes area/city/state/country autofill possible.
     // Without it the onboarding form could only ever get one flat address string.
     url.searchParams.append(

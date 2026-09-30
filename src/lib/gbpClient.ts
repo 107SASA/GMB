@@ -296,6 +296,23 @@ export async function fetchLocationProfile(businessId: string): Promise<GbpLocat
 }
 
 /**
+ * The location's map pin as Google stores it (`latlng`) plus its Maps place id.
+ * Free (Business Information API). `latlng` can be absent — callers then fall
+ * back to Google Places for `placeId`.
+ */
+export async function fetchLocationPin(businessId: string): Promise<{ lat?: number; lng?: number; placeId?: string }> {
+  const accessToken = await getValidToken(businessId);
+  await dbConnect();
+  const tokenDoc = await GBPToken.findOne({ businessId });
+  if (!tokenDoc?.locationId) throw new Error('No GBP location linked to this business');
+  const url = `${BIZINFO_BASE}/${tokenDoc.locationId}?readMask=${encodeURIComponent('latlng,metadata')}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) throw describeGoogleApiError('fetchLocationPin', res.status, await res.text());
+  const d = await res.json();
+  return { lat: d.latlng?.latitude, lng: d.latlng?.longitude, placeId: d.metadata?.placeId };
+}
+
+/**
  * Applies an edit to the GBP profile. The edit is ALWAYS mirrored into our own
  * Business doc so the data is captured; the live write to Google only happens
  * when GBP_LIVE_WRITES_ENABLED is on (until the app is verified for the
@@ -429,7 +446,7 @@ export async function replyToReview(
   businessId: string,
   reviewName: string,
   comment: string
-): Promise<{ liveWriteApplied: boolean }> {
+): Promise<{ liveWriteApplied: boolean; googleResponse?: string }> {
   if (!gbpWritesEnabled()) return { liveWriteApplied: false };
   await dbConnect();
 
@@ -448,7 +465,9 @@ export async function replyToReview(
     const err = await res.text();
     throw describeGoogleApiError('replyToReview', res.status, err);
   }
-  return { liveWriteApplied: true };
+  // Google echoes the stored reply ({ comment, updateTime }) — kept as the publish receipt.
+  const receipt = await res.text().catch(() => '');
+  return { liveWriteApplied: true, googleResponse: receipt.slice(0, 1000) };
 }
 
 export type GbpMediaCategory = 'PROFILE' | 'COVER' | 'ADDITIONAL' | 'LOGO';

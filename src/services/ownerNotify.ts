@@ -42,6 +42,9 @@ export type OwnerNotifyEvent =
   | 'billing_past_due'
   | 'billing_canceled'
   | 'profile_incomplete'
+  | 'monthly_report'
+  | 'weekly_update'
+  | 'festival_prompt'
   // digest
   | 'post_published'
   | 'photo_published'
@@ -59,6 +62,7 @@ interface EventMeta {
     | 'postPublishedWhatsApp'
     | 'reviewReplyWhatsApp'
     | 'reportReadyWhatsApp'
+    | 'weeklyUpdateWhatsApp'
     | 'whatsAppNotificationsEnabled';
   /** false → queued to the daily digest instead of sent immediately. */
   immediate: boolean;
@@ -73,6 +77,9 @@ const EVENT_META: Record<OwnerNotifyEvent, EventMeta> = {
   billing_past_due: { pref: 'billingWhatsApp', immediate: true },
   billing_canceled: { pref: 'billingWhatsApp', immediate: true },
   profile_incomplete: { pref: 'whatsAppNotificationsEnabled', immediate: true },
+  monthly_report: { pref: 'reportReadyWhatsApp', immediate: true },
+  weekly_update: { pref: 'weeklyUpdateWhatsApp', immediate: true },
+  festival_prompt: { pref: 'weeklyUpdateWhatsApp', immediate: true },
   post_published: { pref: 'postPublishedWhatsApp', immediate: false },
   photo_published: { pref: 'postPublishedWhatsApp', immediate: false },
   review_reply_sent: { pref: 'reviewReplyWhatsApp', immediate: false },
@@ -91,6 +98,8 @@ export const OWNER_NOTIFY_PREF_DEFAULTS = {
   postPublishedWhatsApp: true,
   reviewReplyWhatsApp: true,
   reportReadyWhatsApp: true,
+  weeklyUpdateWhatsApp: true,
+  weeklyReportAlwaysWhatsApp: false,
 } as const;
 
 export interface NotifyOwnerInput {
@@ -215,6 +224,13 @@ export async function sendPendingOwnerDigests(): Promise<{ businesses: number; s
   }
 
   return { businesses: businessIds.length, sent };
+}
+
+/** The owner's resolved WhatsApp preferences (defaults applied), for callers that gate on them. */
+export async function ownerWhatsAppPrefs(businessId: string): Promise<{ phone?: string; prefs: Record<string, boolean> } | null> {
+  await dbConnect();
+  const o = await resolveOwner(businessId);
+  return o ? { phone: o.phone, prefs: o.prefs } : null;
 }
 
 export async function notifyOwner(businessId: string, input: NotifyOwnerInput): Promise<void> {

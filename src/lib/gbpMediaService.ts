@@ -63,6 +63,7 @@ export async function listMediaAssets(
             status: 'published',
             googleMediaName: item.name,
             publishedAt: new Date(),
+            publishedVia: 'google_sync',
           });
         }
       }
@@ -100,9 +101,11 @@ export async function createOrReplaceStagedAsset(params: {
   category: GbpMediaCategory;
   url: string;
   mediaType?: 'photo' | 'video';
+  /** Location-metadata outcome from lib/mediaUpload.ts (recorded on the asset). */
+  geotag?: IGbpMediaAsset['geotag'];
 }): Promise<IGbpMediaAsset> {
   await dbConnect();
-  const { businessId, organizationId, uploadedBy, category, url, mediaType = 'photo' } = params;
+  const { businessId, organizationId, uploadedBy, category, url, mediaType = 'photo', geotag } = params;
 
   if (SINGLETON_CATEGORIES.includes(category)) {
     const existingStaged = await GbpMediaAsset.findOne({ businessId, category, status: 'staged' });
@@ -111,12 +114,13 @@ export async function createOrReplaceStagedAsset(params: {
       existingStaged.mediaType = mediaType;
       existingStaged.uploadedBy = uploadedBy as any;
       existingStaged.failureReason = undefined;
+      existingStaged.geotag = geotag;
       await existingStaged.save();
       return existingStaged;
     }
   }
 
-  return GbpMediaAsset.create({ businessId, organizationId, uploadedBy, category, url, mediaType, status: 'staged' });
+  return GbpMediaAsset.create({ businessId, organizationId, uploadedBy, category, url, mediaType, status: 'staged', geotag });
 }
 
 /** Category can only move while a photo is still staged — see GbpMediaAsset.ts. */
@@ -235,6 +239,7 @@ export async function publishAsset(
     asset.status = 'published';
     asset.googleMediaName = mediaName;
     asset.publishedAt = new Date();
+    (asset as any).publishedVia = 'growwmatics';
     asset.failureReason = undefined;
     asset.scheduledFor = undefined; // no longer meaningful once actually live
     await asset.save();

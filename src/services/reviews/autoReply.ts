@@ -1,105 +1,33 @@
 import dbConnect from '@/lib/mongodb';
-import Review, { type IReview } from '@/models/Review';
-import ReviewReply from '@/models/ReviewReply';
 import Business from '@/models/Business';
-import { generateReviewReply } from '@/services/ai/replyEngine';
+import type { IReview } from '@/models/Review';
 import { logAIUsage } from '@/lib/logAIUsage';
 import { GROQ_MODEL } from '@/lib/aiModel';
-import { postReviewReplyToGoogle } from './postReply';
+import { approveReply, draftReply, isAutoPublishActive, publishReply, type ReplyDeps } from './replyPipeline';
 
 /**
- * The "auto" half of Review Management's reply-mode toggle (see
- * Business.reviewReplySettings) — generates AND posts a reply with no human
- * approval step, unlike the manual generate → approve → post flow the
- * Review Management UI already had. Reuses the exact same generation
- * (replyEngine) and posting (postReply.ts) logic as that manual flow, so
- * "auto" behaves identically to a human clicking Generate → Approve → Post
- * back-to-back — just without waiting for the click.
- *
- * Best-effort per review: a failure here marks that one review FAILED with
- * a real reason and moves on, rather than aborting the whole batch.
+ * Background handling of a newly synced review (processAutoReplyBatchJob):
+ * always drafts a fact-checked reply for the owner; publishes it ONLY when
+ * the owner has switched on auto-reply (mode 'auto' + consent recorded) AND
+ * the draft passed the check. Everything else waits for owner approval.
  */
-export async function autoReplyToReview(businessId: string, review: IReview): Promise<void> {
-  // Already answered (either previously posted by us, or the profile
-  // already had an owner reply mirrored in from Google at sync time) —
-  // never overwrite an existing reply.
-  if (review.replyStatus === 'POSTED' || review.response) return;
+export async function autoReplyToReview(businessId: string, review: IReview, deps?: ReplyDeps): Promise<{ drafted: string; published: string | null }> {
+  // Never overwrite a reply that exists or a draft the owner is already handling.
+  if (review.replyStatus === 'POSTED' || review.response) return { drafted: 'skipped', published: null };
+  if (['DRAFT', 'NEEDS_REVIEW', 'APPROVED', 'REJECTED'].includes(String(review.replyStatus))) return { drafted: 'skipped', published: null };
 
   await dbConnect();
-  const business = await Business.findById(businessId).select('name userId reviewReplySettings').lean<{
-    name?: string;
-    userId?: { toString(): string };
-    reviewReplySettings?: { tone?: string };
-  }>();
-  const tone = business?.reviewReplySettings?.tone || 'Professional';
-  const businessName = business?.name || 'Local Business';
+  const business = await Business.findById(businessId).select('userId reviewReplySettings').lean<{ userId?: { toString(): string }; reviewReplySettings?: any }>();
+  const startMs = Date.now();
+  const d = await draftReply(businessId, String(review._id), { deps });
   const ownerId = business?.userId?.toString();
-
-  // Pull the USP + must-include phrases from the active SEO brain so
-  // auto-replies stay on-message with posts and the listing description.
-  let uspLine: string | undefined;
-  let mustInclude: string[] | undefined;
-  try {
-    const { getActiveSeoPlan } = await import('@/services/seoPlan/seoPlanService');
-    const plan = await getActiveSeoPlan(businessId);
-    uspLine = plan?.uspLine;
-    mustInclude = plan?.reviewReplyMustInclude;
-  } catch { /* brain optional */ }
-
-  try {
-    const startMs = Date.now();
-    const { reply, promptTokens, completionTokens } = await generateReviewReply({
-      reviewText: review.reviewText,
-      rating: review.rating,
-      tone,
-      businessName,
-      uspLine,
-      mustInclude,
-    });
-
-    // Usage logging requires a real userId (AIUsageLog.userId is a required
-    // ref) — attribute it to the workspace owner since there's no acting
-    // user for an autonomous auto-reply. Skip rather than log against a
-    // bogus id if the business somehow has no owner on record.
-    if (ownerId) {
-      void logAIUsage({
-        userId: ownerId,
-        businessId,
-        promptType: 'review_reply_auto',
-        aiModel: GROQ_MODEL,
-        promptTokens,
-        completionTokens,
-        status: 'success',
-        durationMs: Date.now() - startMs,
-      });
-    }
-
-    review.aiSuggestedReply = reply;
-    review.replyTone = tone;
-    review.replyStatus = 'APPROVED'; // auto-mode skips the human approval step by design
-    review.replyFailureReason = undefined;
-    await review.save();
-
-    await postReviewReplyToGoogle(businessId, review);
-
-    review.response = review.aiSuggestedReply;
-    review.replyStatus = 'POSTED';
-    await review.save();
-
-    await ReviewReply.create({
-      reviewId: review._id,
-      generatedReply: reply,
-      approved: true,
-      posted: true,
-      tone,
-      aiGenerated: true,
-    });
-  } catch (err: any) {
-    review.replyStatus = 'FAILED';
-    review.replyFailureReason = err?.message || 'Auto-reply failed.';
-    await review.save();
-    // Swallowed here deliberately — see processAutoReplyBatchJob in
-    // services/inngest/functions.ts, which calls this per-review in a loop
-    // and must not let one bad review stop the rest of the batch.
+  if (ownerId && d.usage) {
+    void logAIUsage({ userId: ownerId, businessId, promptType: 'review_reply_auto', aiModel: GROQ_MODEL, promptTokens: d.usage.promptTokens, completionTokens: d.usage.completionTokens, status: d.error ? 'failed' : 'success', durationMs: Date.now() - startMs });
   }
+  if (d.status !== 'DRAFT' || !isAutoPublishActive(business?.reviewReplySettings)) return { drafted: d.status, published: null };
+
+  const a = await approveReply(businessId, String(review._id), { by: 'auto' });
+  if (!a.ok) return { drafted: 'NEEDS_REVIEW', published: null };
+  const p = await publishReply(businessId, String(review._id), { deps });
+  return { drafted: d.status, published: p.outcome };
 }

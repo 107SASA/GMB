@@ -12,6 +12,7 @@ import {
   postReply,
   rejectReply,
   PlanLimitError,
+  ReplyCheckError,
   type Review,
 } from '@/api/endpoints/reviews';
 import { useBusiness } from '@/business/BusinessContext';
@@ -75,6 +76,9 @@ export default function ReviewDetailScreen() {
 
   const [replyDraft, setReplyDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Fact-check reasons from the latest generate / approve attempt. */
+  const [checkReasons, setCheckReasons] = useState<string[] | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const reviews = useQuery({
     queryKey: ['reviews', activeBusinessId],
@@ -90,15 +94,23 @@ export default function ReviewDetailScreen() {
     void queryClient.invalidateQueries({ queryKey: ['reviews', activeBusinessId] });
 
   const handleError = (err: unknown, fallback: string) => {
-    if (err instanceof PlanLimitError) setError(err.message);
+    if (err instanceof ReplyCheckError) {
+      setError(err.message);
+      setCheckReasons(err.reasons);
+    } else if (err instanceof PlanLimitError) setError(err.message);
     else setError(getApiErrorMessage(err, fallback));
+  };
+  const reset = () => {
+    setError(null);
+    setNotice(null);
   };
 
   const generate = useMutation({
     mutationFn: () => generateReply(id, review?.replyTone || 'Professional'),
-    onMutate: () => setError(null),
-    onSuccess: (reply) => {
-      setReplyDraft(reply);
+    onMutate: reset,
+    onSuccess: (res) => {
+      setReplyDraft(res.reply);
+      setCheckReasons(res.status === 'NEEDS_REVIEW' ? res.reasons : []);
       invalidate();
     },
     onError: (err) => handleError(err, 'Failed to generate a reply.'),
@@ -106,22 +118,29 @@ export default function ReviewDetailScreen() {
 
   const approve = useMutation({
     mutationFn: (text: string) => approveReply(id, text),
-    onMutate: () => setError(null),
-    onSuccess: invalidate,
+    onMutate: reset,
+    onSuccess: () => {
+      setCheckReasons([]);
+      invalidate();
+    },
     onError: (err) => handleError(err, 'Failed to approve the reply.'),
   });
 
   const reject = useMutation({
     mutationFn: () => rejectReply(id),
-    onMutate: () => setError(null),
+    onMutate: reset,
     onSuccess: invalidate,
     onError: (err) => handleError(err, 'Failed to reject the reply.'),
   });
 
   const post = useMutation({
     mutationFn: () => postReply(id),
-    onMutate: () => setError(null),
-    onSuccess: invalidate,
+    onMutate: reset,
+    onSuccess: (res) => {
+      // Only a Google-confirmed publish is "posted"; blocked means it is not on Google.
+      setNotice(res.outcome === 'published' ? 'Reply posted to Google.' : res.message);
+      invalidate();
+    },
     onError: (err) => handleError(err, 'Failed to post the reply.'),
   });
 
@@ -139,6 +158,9 @@ export default function ReviewDetailScreen() {
   }
 
   const status = replyStatusBadge(review.replyStatus);
+  const reasons = checkReasons ?? (review.replyStatus === 'NEEDS_REVIEW' ? review.replyValidation?.reasons ?? [] : []);
+  const statusNote =
+    review.replyStatus === 'FAILED' || review.replyPublishStatus === 'blocked' ? review.replyFailureReason : null;
   const draft = replyDraft ?? review.aiSuggestedReply ?? '';
   const busy = generate.isPending || approve.isPending || reject.isPending || post.isPending;
 
@@ -179,6 +201,26 @@ export default function ReviewDetailScreen() {
             <ErrorText>{error}</ErrorText>
           </View>
         )}
+        {!!(notice || statusNote) && (
+          <View className="mt-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3">
+            <Text className="font-sans text-sm text-zinc-300">{notice || statusNote}</Text>
+          </View>
+        )}
+        {reasons.length > 0 && review.replyStatus !== 'POSTED' && (
+          <View className="mt-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3">
+            <Text className="mb-1 font-sans-bold text-xs uppercase tracking-wider text-zinc-500">
+              Held for your review — fact check
+            </Text>
+            {reasons.slice(0, 5).map((r) => (
+              <Text key={r} className="font-sans text-sm text-zinc-300">
+                • {r}
+              </Text>
+            ))}
+            <Text className="mt-1 font-sans text-xs text-zinc-500">
+              Edit the reply to remove these, then approve. Nothing is posted until it passes.
+            </Text>
+          </View>
+        )}
 
         {review.replyStatus === 'POSTED' ? (
           <>
@@ -192,7 +234,7 @@ export default function ReviewDetailScreen() {
         ) : (
           <>
             <Text className="mb-2 mt-6 font-sans-bold text-xs uppercase tracking-wider text-zinc-500">
-              AI-suggested reply
+              AI-suggested reply (fact-checked)
             </Text>
 
             {draft ? (

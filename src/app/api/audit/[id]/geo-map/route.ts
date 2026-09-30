@@ -3,48 +3,7 @@ export const runtime = 'nodejs';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import { requireAuditAccess } from '@/lib/tenant';
-
-function buildStaticMapUrl(
-  centerLat: number,
-  centerLng: number,
-  points: Array<{ lat: number; lng: number; rank: number }>,
-  apiKey: string,
-  gridSpacingKm = 1.5,
-): string {
-  // Dynamically pick zoom: show the full grid comfortably
-  const zoom = gridSpacingKm <= 1 ? 14 : gridSpacingKm <= 2 ? 13 : 12;
-
-  const parts: string[] = [
-    `center=${centerLat},${centerLng}`,
-    `zoom=${zoom}`,
-    'size=640x360',
-    'scale=2',
-    'maptype=roadmap',
-    // Cleaner map style – hide POI icons and transit clutter
-    'style=feature:poi%7Celement:labels%7Cvisibility:off',
-    'style=feature:transit%7Cvisibility:off',
-  ];
-
-  // Non-center points first so the center renders on top
-  for (let i = 0; i < points.length; i++) {
-    if (i === 4) continue;
-    const p = points[i];
-    let color: string;
-    let labelPart = '';
-    if (p.rank <= 5)       { color = '0x22c55e'; if (p.rank <= 9) labelPart = `%7Clabel:${p.rank}`; }
-    else if (p.rank <= 10) { color = '0xf59e0b'; if (p.rank <= 9) labelPart = `%7Clabel:${p.rank}`; }
-    else if (p.rank <= 20) { color = '0xef4444'; }
-    else                   { color = '0x94a3b8'; }
-    parts.push(`markers=color:${color}%7Csize:mid${labelPart}%7C${p.lat},${p.lng}`);
-  }
-
-  // Business location (center grid point) — blue, large, on top
-  const cpt = points[4] ?? { lat: centerLat, lng: centerLng };
-  parts.push(`markers=color:0x1d4ed8%7Csize:large%7Clabel:Y%7C${cpt.lat ?? centerLat},${cpt.lng ?? centerLng}`);
-
-  parts.push(`key=${encodeURIComponent(apiKey)}`);
-  return `https://maps.googleapis.com/maps/api/staticmap?${parts.join('&')}`;
-}
+import { buildRankMapUrl } from '@/services/audit/reportDisplay';
 
 export async function GET(
   request: Request,
@@ -84,19 +43,16 @@ export async function GET(
 
   const business = await Business.findById(audit.businessId).lean() as any;
 
-  const pts: Array<{ lat: number; lng: number; rank: number }> = [...kw.points]
-    .sort((a: any, b: any) => b.lat - a.lat || a.lng - b.lng)
-    .slice(0, 9);
-
-  const fallbackLat = pts.reduce((s, p) => s + p.lat, 0) / pts.length;
-  const fallbackLng = pts.reduce((s, p) => s + p.lng, 0) / pts.length;
-  while (pts.length < 9) pts.push({ lat: fallbackLat, lng: fallbackLng, rank: 21 });
-
-  const cLat: number = business?.coordinates?.lat ?? fallbackLat;
-  const cLng: number = business?.coordinates?.lng ?? fallbackLng;
-  const gridSpacingKm: number = geoGrid?.gridSpacingKm ?? 1.5;
-
-  const mapUrl = buildStaticMapUrl(cLat, cLng, pts, apiKey, gridSpacingKm);
+  // Only the points that were actually searched — no padding to a 3×3 grid
+  // with made-up rank-21 markers (a 3-point quick check used to show 6
+  // fake markers). Colours come from the shared legend (reportDisplay.ts).
+  const pts = (kw.points as any[]).map((p) => ({ lat: p.lat, lng: p.lng, rank: p.rank ?? null, found: p.found, status: p.status }));
+  const center = business?.coordinates?.lat != null && business?.coordinates?.lng != null
+    ? { lat: Number(business.coordinates.lat), lng: Number(business.coordinates.lng) }
+    : null;
+  const gridSpacingKm: number = geoGrid?.gridSpacingKm || 1.5;
+  const zoom = gridSpacingKm <= 1 ? 14 : gridSpacingKm <= 2 ? 13 : 12;
+  const mapUrl = buildRankMapUrl({ points: pts, center, apiKey, size: '640x360', zoom: center ? zoom : undefined });
   console.log(`[geo-map] Fetching: ${mapUrl.replace(apiKey, 'KEY_REDACTED')}`);
 
   try {

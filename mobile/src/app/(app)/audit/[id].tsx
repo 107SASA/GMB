@@ -449,6 +449,270 @@ function PendingBody({ timedOut, onRetry }: { timedOut: boolean; onRetry: () => 
   );
 }
 
+function Rows({ rows }: { rows: Array<{ label: string; value: string }> }) {
+  return (
+    <Card>
+      {rows.map((r, i) => (
+        <View key={`${r.label}-${i}`} className="flex-row justify-between gap-3 py-1">
+          <Text className="flex-1 font-sans text-sm text-zinc-400">{r.label}</Text>
+          <Text className="font-sans-semibold text-sm text-white">{r.value}</Text>
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+function LineList({ title, items, empty }: { title: string; items: string[]; empty?: string }) {
+  if (items.length === 0 && !empty) return null;
+  return (
+    <View className="mt-2">
+      <Text className="mb-1 font-sans-bold text-xs uppercase tracking-wider text-zinc-500">{title}</Text>
+      {items.length === 0 ? (
+        <Text className="font-sans text-sm text-zinc-500">{empty}</Text>
+      ) : (
+        items.map((x, i) => (
+          <Text key={`${title}-${i}`} className="font-sans text-sm leading-5 text-zinc-300">
+            • {x}
+          </Text>
+        ))
+      )}
+    </View>
+  );
+}
+
+/**
+ * The report from the server-computed `mobileView` — the same verified values
+ * the web report shows (average OBSERVED rank, real businesses seen above
+ * you, lifetime vs recent reviews, completion over checked fields only).
+ * Nothing here is estimated on the phone.
+ */
+function VerifiedResultsBody({ audit, highlightKey }: { audit: Audit; highlightKey: string | null }) {
+  const scrollRef = useRef<ScrollView>(null);
+  const t = useTheme();
+  const v = audit.mobileView!;
+  const data = audit.auditData;
+  const h = v.headline;
+  const geoKeywords = (data?.geoGridRank?.keywords ?? []).filter((k): k is AuditKeywordRank => k !== null);
+  const rankNote =
+    h.rankingStatus === 'unavailable'
+      ? 'Ranking provider unavailable for this audit'
+      : h.rankingStatus === 'not_measured'
+        ? 'Ranking not measured in this audit'
+        : `Average observed rank · ${h.searchesChecked} searches`;
+
+  return (
+    <AuditHighlightContext.Provider value={{ scrollRef, highlightKey }}>
+      <ScrollView ref={scrollRef} contentContainerClassName="px-5 pb-12">
+        {!!v.legacyNotice && (
+          <Card className="mb-3">
+            <Text className="font-sans text-sm text-zinc-300">{v.legacyNotice}</Text>
+          </Card>
+        )}
+        {v.aiUnavailable && (
+          <Card className="mb-3">
+            <Text className="font-sans text-sm text-zinc-300">
+              The written analysis was unavailable for this audit — the numbers below are from measured data only.
+            </Text>
+          </Card>
+        )}
+
+        <View className="items-center rounded-card border border-surface-border bg-surface-raised py-5">
+          <Text className="font-display text-4xl text-white">{h.issuesCount}</Text>
+          <Text className="mt-1 font-sans text-sm text-zinc-400">
+            verified issue{h.issuesCount === 1 ? '' : 's'} found
+          </Text>
+          {!!h.reviewCount && (
+            <Text className="mt-2 font-sans text-sm text-zinc-300">
+              {h.rating ? `★ ${h.rating} ` : ''}
+              <Text className="font-sans text-zinc-500">
+                ({h.reviewCount} Google review{h.reviewCount === '1' ? '' : 's'})
+              </Text>
+            </Text>
+          )}
+          {!!(audit.address ?? audit.location) && (
+            <Text className="mt-1 px-6 text-center font-sans text-xs text-zinc-500">{audit.address ?? audit.location}</Text>
+          )}
+        </View>
+
+        <View className="mt-3 flex-row gap-3">
+          <View className="flex-1 rounded-card border border-surface-border bg-surface-raised px-4 py-3">
+            <Text className="font-display text-2xl text-white">{h.averageRank}</Text>
+            <Text className="mt-0.5 font-sans text-xs text-zinc-400">{rankNote}</Text>
+          </View>
+          <View className="flex-1 rounded-card border border-surface-border bg-surface-raised px-4 py-3">
+            <Text className="font-display text-2xl text-white">
+              {v.completion?.percent != null ? `${v.completion.percent}%` : '—'}
+            </Text>
+            <Text className="mt-0.5 font-sans text-xs text-zinc-400">Profile completion (checked fields)</Text>
+          </View>
+        </View>
+        {h.competitorsAhead > 0 && (
+          <Card className="mt-3">
+            <Text className="font-sans-semibold text-sm text-white">
+              {h.competitorsAhead} business{h.competitorsAhead === 1 ? '' : 'es'} showed up above you on Google Maps
+            </Text>
+            <Text className="mt-0.5 font-sans text-xs text-zinc-500">
+              Real listings seen above you in the {h.searchesChecked} searches we ran.
+            </Text>
+          </Card>
+        )}
+
+        {v.rankingStats.length > 0 && (
+          <View>
+            <SectionLabel>How you rank</SectionLabel>
+            <Rows rows={v.rankingStats} />
+          </View>
+        )}
+
+        {geoKeywords.length > 0 && (
+          <View>
+            <SectionLabel>Your rank at nearby locations</SectionLabel>
+            {geoKeywords.slice(0, 2).map((kw, i) => (
+              <GeoMapCard key={`${kw.keyword}-${i}`} auditId={audit._id} kwIndex={i} keyword={kw.keyword} avgRank={null} />
+            ))}
+          </View>
+        )}
+
+        {v.keywords.length > 0 && (
+          <View>
+            <SectionLabel>Searches we checked</SectionLabel>
+            <Card>
+              {v.keywords.map((k, i) => (
+                <View key={`${k.keyword}-${i}`} className="flex-row items-center justify-between gap-3 py-1.5">
+                  <View className="flex-1">
+                    <Text className="font-sans text-sm text-zinc-200">{k.keyword}</Text>
+                    <Text className="font-sans text-[11px] text-zinc-500">{k.demand}</Text>
+                  </View>
+                  <Text className="font-sans-bold text-sm text-white">{k.rank}</Text>
+                </View>
+              ))}
+            </Card>
+          </View>
+        )}
+
+        {v.competitors.length > 0 && (
+          <View>
+            <SectionLabel>Businesses above you</SectionLabel>
+            <View className="gap-2">
+              {v.competitors.map((c, i) => (
+                <Card key={`${c.name}-${i}`}>
+                  <Text className="font-sans-semibold text-sm text-white">{c.name}</Text>
+                  <Text className="mt-0.5 font-sans text-xs text-zinc-400">
+                    {c.rating} · {c.reviews} reviews · above you in {c.aboveYou}
+                  </Text>
+                  {!!c.tier && <Text className="mt-0.5 font-sans text-[11px] text-zinc-500">{c.tier}</Text>}
+                </Card>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {v.reviews && (
+          <View>
+            <SectionLabel>Reviews</SectionLabel>
+            <Rows
+              rows={[
+                { label: 'Google reviews (all time)', value: v.reviews.lifetimeCount },
+                { label: 'Rating', value: v.reviews.lifetimeRating },
+                { label: `New reviews (${v.reviews.recentPeriod})`, value: v.reviews.recentCount },
+                { label: 'Reviews per week', value: v.reviews.reviewsPerWeek },
+                { label: 'Response rate', value: v.reviews.responseRate },
+              ]}
+            />
+            <Text className="mt-2 font-sans text-xs text-zinc-500">{v.reviews.themes}</Text>
+          </View>
+        )}
+
+        {v.completion && (
+          <View>
+            <SectionLabel>Profile completion</SectionLabel>
+            <Card>
+              <Text className="font-sans text-sm text-zinc-300">{v.completion.sentence}</Text>
+              <LineList title="Missing" items={v.completion.missing} />
+              <LineList title="Could not be checked (not counted)" items={v.completion.notChecked} />
+            </Card>
+          </View>
+        )}
+
+        {v.issues.length > 0 && (
+          <View>
+            <SectionLabel>Verified issues</SectionLabel>
+            <View className="gap-2">
+              {v.issues.map((f, i) => (
+                <Card key={`${f.title}-${i}`}>
+                  <Text className="font-sans-semibold text-sm text-white">{f.title}</Text>
+                  {!!f.evidence && <Text className="mt-1 font-sans text-xs text-zinc-400">{f.evidence}</Text>}
+                  <View className="mt-2 flex-row flex-wrap gap-2">
+                    {!!f.severity && (
+                      <Badge
+                        label={f.severity}
+                        tone={f.severity === 'High' ? 'negative' : f.severity === 'Medium' ? 'warning' : 'neutral'}
+                      />
+                    )}
+                    {!!f.actionability && <Badge label={f.actionability} tone="info" />}
+                    {f.growwmaticsCan && <Badge label="GrowwMatics can help" tone="positive" />}
+                  </View>
+                  {!!f.recommendedAction && (
+                    <Text className="mt-2 font-sans text-sm text-zinc-300">{f.recommendedAction}</Text>
+                  )}
+                </Card>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {v.suspension && (
+          <View>
+            <SectionLabel>Suspension risk</SectionLabel>
+            <Card>
+              <Text className="font-sans-semibold text-sm text-white">{v.suspension.level}</Text>
+              <Text className="mt-1 font-sans text-xs text-zinc-400">{v.suspension.note}</Text>
+            </Card>
+          </View>
+        )}
+
+        {v.monthly && (
+          <View>
+            <SectionLabel>Monthly optimization report</SectionLabel>
+            <Card>
+              <LineList title="What changed" items={v.monthly.changes} empty="No verified profile changes between the two audits." />
+              <LineList
+                title="What GrowwMatics did"
+                items={v.monthly.growwmatics}
+                empty="No GrowwMatics actions reached your Google profile this period."
+              />
+              <LineList title="What you did" items={v.monthly.owner} />
+              <LineList title="Google posts this month" items={v.monthly.contentActivity} />
+              <LineList title="Google performance" items={v.monthly.performance} empty={v.monthly.performanceNote} />
+              {v.monthly.performance.length > 0 && (
+                <Text className="mt-1 font-sans text-[11px] text-zinc-500">{v.monthly.performanceNote}</Text>
+              )}
+              <LineList title="Reviews" items={v.monthly.reviews} />
+              <LineList title="Profile health" items={v.monthly.profileHealth ? [v.monthly.profileHealth] : []} />
+              <LineList title="Completed plan" items={v.monthly.planCompleted} />
+              <LineList title="Pending plan" items={v.monthly.planPending} />
+              <LineList title="Issues that remain" items={v.monthly.remainingIssues} />
+            </Card>
+          </View>
+        )}
+
+        <RichSection title="Strengths" items={data?.strengths ?? []} icon="checkmark-circle" color={t.emerald} />
+        <RichSection title="Weaknesses" items={data?.weaknesses ?? []} icon="close-circle" color={t.rose} />
+        <BulletSection title="Quick wins" items={data?.quickWins ?? []} icon="flash" color={t.amber} sectionKey="quickWins" />
+        <RichSection
+          title="Priority fixes"
+          items={data?.priorityFixes ?? []}
+          icon="alert-circle"
+          color="#ff8f00"
+          sectionKey="priorityFixes"
+        />
+        <PlanSection title="30-day plan" blocks={data?.thirtyDayPlan ?? []} />
+        <PlanSection title="90-day plan" blocks={data?.ninetyDayPlan ?? []} />
+      </ScrollView>
+    </AuditHighlightContext.Provider>
+  );
+}
+
 function ResultsBody({ audit, highlightKey }: { audit: Audit; highlightKey: string | null }) {
   const scrollRef = useRef<ScrollView>(null);
   const data = audit.auditData;
@@ -774,7 +1038,11 @@ export default function AuditDetailScreen() {
           hint="Something went wrong while generating this audit. Run a new one from the audit list."
         />
       ) : (
-        <ResultsBody audit={audit.data!} highlightKey={highlight ?? null} />
+        audit.data!.mobileView ? (
+          <VerifiedResultsBody audit={audit.data!} highlightKey={highlight ?? null} />
+        ) : (
+          <ResultsBody audit={audit.data!} highlightKey={highlight ?? null} />
+        )
       )}
     </Screen>
   );

@@ -15,6 +15,7 @@ import { AddCustomerCard } from '@/components/home/add-customer-card';
 import { AiAgentCard } from '@/components/home/ai-agent-card';
 import { BrandingFooter } from '@/components/home/branding-footer';
 import { ImpactCard } from '@/components/home/impact-card';
+import { WeeklyOfferCard } from '@/components/home/weekly-offer-card';
 import { HomeStatList } from '@/components/home/stat-list';
 import { BillingBanner, LockedScreen } from '@/components/locked';
 import { Screen, Skeleton } from '@/components/ui';
@@ -207,6 +208,7 @@ export default function HomeScreen() {
       >
         <BillingBanner />
 
+        <WeeklyOfferCard />
         <WeeklyReviewsCard />
         <View className="mx-4 mt-4">
           <AddCustomerCard />

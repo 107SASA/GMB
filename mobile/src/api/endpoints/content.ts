@@ -76,8 +76,90 @@ export const contentPostSchema = z.object({
   // already include imageUrl — this was just never declared here before, so
   // zod silently stripped it on every parse.
   imageUrl: z.string().nullable().optional().catch(null),
+  /** failed = Google rejected (reason); blocked = Google publishing is off (not on Google). */
+  failureReason: z.string().nullable().optional().catch(null),
+  /** true only when Google confirmed the post. */
+  liveWriteApplied: z.boolean().nullable().optional().catch(null),
+  /** Weekly content engine trace (absent on manual posts). */
+  contentMeta: z
+    .object({
+      purpose: z.string().nullable().catch(null).optional(),
+      service: z.string().nullable().catch(null).optional(),
+      keyword: z.string().nullable().catch(null).optional(),
+      keywordMeasured: z.boolean().nullable().catch(null).optional(),
+      seoTheme: z.string().nullable().catch(null).optional(),
+      festivalName: z.string().nullable().catch(null).optional(),
+      draftReason: z.string().nullable().catch(null).optional(),
+    })
+    .nullable()
+    .optional()
+    .catch(null),
+  /** Location metadata written into the image (server geotag policy). */
+  imageGeotag: z
+    .object({ status: z.string().catch('none'), lat: z.number().optional(), lng: z.number().optional(), source: z.string().optional() })
+    .nullable()
+    .optional()
+    .catch(null),
 });
 export type ContentPost = z.infer<typeof contentPostSchema>;
+
+const PURPOSE_LABEL: Record<string, string> = {
+  seo_theme: 'SEO plan theme', service: 'Service', local: 'Local', festival: 'Festival greeting', offer: 'Your offer', education: 'Educational',
+};
+
+/**
+ * One status vocabulary for every post surface (matches the web calendar):
+ * a post is "Published" only when Google confirmed it; "Not on Google" when
+ * it was due but Google publishing is switched off.
+ */
+export function postStatusView(p: Pick<ContentPost, 'status' | 'scheduledDate' | 'failureReason' | 'contentMeta'>): {
+  label: string;
+  tone: 'positive' | 'negative' | 'warning' | 'info' | 'neutral';
+  note: string | null;
+} {
+  switch (p.status) {
+    case 'published':
+      return { label: 'Published', tone: 'positive', note: null };
+    case 'blocked':
+      return { label: 'Not on Google', tone: 'warning', note: p.failureReason || 'Scheduled in GrowwMatics — Google publishing has not been executed.' };
+    case 'failed':
+      return { label: 'Failed', tone: 'negative', note: p.failureReason || 'Google did not accept this post.' };
+    case 'publishing':
+      return { label: 'Publishing', tone: 'info', note: null };
+    case 'scheduled':
+      return { label: 'Scheduled', tone: 'info', note: null };
+    case 'draft':
+      return p.contentMeta?.draftReason
+        ? { label: 'Needs review', tone: 'warning', note: p.contentMeta.draftReason }
+        : { label: 'Draft', tone: 'neutral', note: null };
+    default:
+      return { label: p.scheduledDate ? 'Scheduled' : 'Draft', tone: p.scheduledDate ? 'info' : 'neutral', note: null };
+  }
+}
+
+/** "SEO plan theme · bathroom renovation nashik (measured keyword)" — or null for manual posts. */
+export function postPlanLine(p: Pick<ContentPost, 'contentMeta'>): string | null {
+  const m = p.contentMeta;
+  if (!m?.purpose) return null;
+  return [
+    PURPOSE_LABEL[m.purpose] ?? m.purpose,
+    m.festivalName || m.service || null,
+    m.keyword ? `“${m.keyword}” (${m.keywordMeasured ? 'measured keyword' : 'proposed — not measured'})` : null,
+  ].filter(Boolean).join(' · ');
+}
+
+/** Short description of the image's location metadata, or null. */
+export function geotagLine(g: { status: string; source?: string } | null | undefined): string | null {
+  if (!g) return null;
+  switch (g.status) {
+    case 'original_gps_preserved': return 'Location: kept from your photo';
+    case 'photo_location_added': return g.source === 'device_at_capture' ? 'Location: where the photo was taken' : 'Location: kept from your photo';
+    case 'business_location_added': return 'Location: your Google Business Profile location';
+    case 'video_unmodified': return 'Video kept as uploaded';
+    case 'none': return 'No location metadata added';
+    default: return null;
+  }
+}
 
 export interface ContentPostsPage {
   posts: ContentPost[];

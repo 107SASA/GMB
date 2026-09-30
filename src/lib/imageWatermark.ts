@@ -1,68 +1,43 @@
-import { getBrandLogoBuffer } from '@/lib/brandAsset';
-
 /**
- * Composites the brand mark onto a generated image, bottom-right corner.
- * Used for every AI-generated post/thumbnail image so shared/published
- * visuals always carry the brand. Server-only (needs `sharp`).
+ * Image finishing for customer GBP creatives. Server-only (needs `sharp`).
  *
- * Fails soft: if sharp or the logo isn't available, returns the source
- * bytes re-encoded (or, worst case, the original untouched) rather than
- * throwing — a missing watermark must never block content generation.
+ * Sep 2026: customer Google images NEVER carry the GrowwMatics mark — the
+ * business being advertised is the brand. When the customer's own logo is
+ * available it is composited subtly (bottom-right); otherwise the image is
+ * only resized/re-encoded. (The GrowwMatics mark still appears on
+ * GrowwMatics' own artefacts such as PDF reports — see lib/brandAsset.ts.)
+ *
+ * Fails soft: never blocks content generation.
  */
 
 const MAX_EDGE = 1080; // downscale big model outputs to a sane web size
-const LOGO_WIDTH_RATIO = 0.16; // logo ~16% of the image width
-const MARGIN_RATIO = 0.03; // gap from the edges, relative to image width
-const LOGO_OPACITY = 0.85;
+const LOGO_WIDTH_RATIO = 0.14; // customer logo ~14% of the image width — subtle
+const MARGIN_RATIO = 0.03;
+const LOGO_OPACITY = 0.92;
 
-export async function watermarkImageBuffer(input: Buffer): Promise<{ buffer: Buffer; mime: string }> {
+export async function watermarkImageBuffer(input: Buffer, customerLogo: Buffer | null = null): Promise<{ buffer: Buffer; mime: string }> {
   try {
     const sharp = (await import('sharp')).default;
-
-    const base = sharp(input, { failOn: 'none' }).rotate(); // respect EXIF orientation
-    const meta = await base.metadata();
-    const srcW = meta.width ?? MAX_EDGE;
-
-    // Resize first so the logo is sized against the FINAL dimensions.
-    const resized = base.resize({ width: MAX_EDGE, height: MAX_EDGE, fit: 'inside', withoutEnlargement: true });
-    const resizedBuf = await resized.toBuffer();
-    const resizedMeta = await sharp(resizedBuf).metadata();
-    const finalW = resizedMeta.width ?? Math.min(srcW, MAX_EDGE);
-
-    const logo = getBrandLogoBuffer();
-    if (!logo) {
-      const buffer = await sharp(resizedBuf).jpeg({ quality: 85 }).toBuffer();
-      return { buffer, mime: 'image/jpeg' };
+    const resizedBuf = await sharp(input, { failOn: 'none' })
+      .rotate()
+      .resize({ width: MAX_EDGE, height: MAX_EDGE, fit: 'inside', withoutEnlargement: true })
+      .toBuffer();
+    if (!customerLogo) {
+      return { buffer: await sharp(resizedBuf).jpeg({ quality: 85 }).toBuffer(), mime: 'image/jpeg' };
     }
-
-    const logoW = Math.max(48, Math.round(finalW * LOGO_WIDTH_RATIO));
+    const finalW = (await sharp(resizedBuf).metadata()).width ?? MAX_EDGE;
+    const logoW = Math.max(56, Math.round(finalW * LOGO_WIDTH_RATIO));
     const margin = Math.max(16, Math.round(finalW * MARGIN_RATIO));
-
-    const scaledLogo = await sharp(logo).resize({ width: logoW }).ensureAlpha().png().toBuffer();
-    // Dim the whole logo's alpha for a subtle mark.
-    const dimmedLogo = await sharp(scaledLogo)
-      .composite([
-        {
-          input: Buffer.from([255, 255, 255, Math.round(LOGO_OPACITY * 255)]),
-          raw: { width: 1, height: 1, channels: 4 },
-          tile: true,
-          blend: 'dest-in',
-        },
-      ])
+    const scaled = await sharp(customerLogo).resize({ width: logoW }).ensureAlpha().png().toBuffer();
+    const dimmed = await sharp(scaled)
+      .composite([{ input: Buffer.from([255, 255, 255, Math.round(LOGO_OPACITY * 255)]), raw: { width: 1, height: 1, channels: 4 }, tile: true, blend: 'dest-in' }])
       .png()
       .toBuffer();
-    // sharp's gravity placement has no per-side offset, so bake the corner
-    // margin into the overlay by padding it with transparency.
-    const preparedLogo = await sharp(dimmedLogo)
+    const padded = await sharp(dimmed)
       .extend({ top: margin, bottom: margin, left: margin, right: margin, background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .png()
       .toBuffer();
-
-    const buffer = await sharp(resizedBuf)
-      .composite([{ input: preparedLogo, gravity: 'southeast' }])
-      .jpeg({ quality: 85 })
-      .toBuffer();
-
+    const buffer = await sharp(resizedBuf).composite([{ input: padded, gravity: 'southeast' }]).jpeg({ quality: 85 }).toBuffer();
     return { buffer, mime: 'image/jpeg' };
   } catch (err) {
     console.warn('[imageWatermark] skipped:', (err as Error).message);
@@ -71,7 +46,39 @@ export async function watermarkImageBuffer(input: Buffer): Promise<{ buffer: Buf
 }
 
 /** Same as {@link watermarkImageBuffer} but returns a data-URI. */
-export async function watermarkToDataUri(input: Buffer): Promise<string> {
-  const { buffer, mime } = await watermarkImageBuffer(input);
+export async function watermarkToDataUri(input: Buffer, customerLogo: Buffer | null = null): Promise<string> {
+  const { buffer, mime } = await watermarkImageBuffer(input, customerLogo);
   return `data:${mime};base64,${buffer.toString('base64')}`;
+}
+
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+
+/**
+ * Safe branded graphic — the fallback when there is no photo and image
+ * generation fails: brand colours, the verified headline (service / festival
+ * greeting / "This week at <business>") and the customer's logo. No scene,
+ * no people, no invented claims.
+ */
+export async function brandedGraphic(opts: { headline: string; subline?: string; colors: string[]; customerLogo?: Buffer | null }): Promise<{ buffer: Buffer; mime: string }> {
+  const sharp = (await import('sharp')).default;
+  const [bg, accent] = [opts.colors[0] || '#1f2937', opts.colors[1] || '#f3f4f6'];
+  const W = 1080; const H = 1080;
+  const words = opts.headline.split(/\s+/);
+  const lines: string[] = [];
+  for (const w of words) {
+    const last = lines[lines.length - 1];
+    if (last && (last + ' ' + w).length <= 22) lines[lines.length - 1] = `${last} ${w}`;
+    else lines.push(w);
+  }
+  const shown = lines.slice(0, 4);
+  const startY = H / 2 - (shown.length - 1) * 45;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${bg}"/><stop offset="1" stop-color="${bg}" stop-opacity="0.82"/></linearGradient></defs>
+    <rect width="100%" height="100%" fill="url(#g)"/>
+    <rect x="80" y="${H - 120}" width="${W - 160}" height="6" fill="${accent}" opacity="0.7"/>
+    ${shown.map((l, i) => `<text x="${W / 2}" y="${startY + i * 90}" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="700" fill="${accent}" text-anchor="middle">${esc(l)}</text>`).join('')}
+    ${opts.subline ? `<text x="${W / 2}" y="${startY + shown.length * 90 + 30}" font-family="Arial, Helvetica, sans-serif" font-size="40" fill="${accent}" opacity="0.9" text-anchor="middle">${esc(opts.subline)}</text>` : ''}
+  </svg>`;
+  const base = await sharp(Buffer.from(svg)).png().toBuffer();
+  return watermarkImageBuffer(base, opts.customerLogo ?? null);
 }

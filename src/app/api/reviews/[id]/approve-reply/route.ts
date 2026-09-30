@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
-import Review from "@/models/Review";
+import { approveReply } from "@/services/reviews/replyPipeline";
 import { requireBusinessContext } from "@/lib/tenant";
 import { requireModule } from "@/lib/moduleGating";
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
@@ -15,27 +15,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await dbConnect();
     const { id } = await params;
 
-    const review = await Review.findOne({ _id: id, businessId: ctx.businessId });
-    if (!review) {
-      return NextResponse.json({ error: "Review not found" }, { status: 404 });
-    }
-
     let updatedReply: string | undefined;
     try {
       const body = await request.json();
-      if (body?.aiSuggestedReply) updatedReply = body.aiSuggestedReply;
+      if (body?.aiSuggestedReply) updatedReply = String(body.aiSuggestedReply);
     } catch {
-      // empty or unparseable body — keep existing aiSuggestedReply
+      // No body — approve the stored draft as-is.
     }
 
-    if (updatedReply) {
-      review.aiSuggestedReply = updatedReply;
+    // The exact text (owner-edited or not) must pass the fact check to be approved.
+    const r = await approveReply(ctx.businessId, id, { text: updatedReply, by: 'owner' });
+    if (!r.review) return NextResponse.json({ error: "Review not found" }, { status: 404 });
+    if (!r.ok) {
+      return NextResponse.json({ success: false, error: `This reply can't be approved yet: ${r.reasons.join('; ')}`, reasons: r.reasons, review: r.review }, { status: 422 });
     }
-
-    review.replyStatus = 'APPROVED';
-    await review.save();
-
-    return NextResponse.json({ success: true, review });
+    return NextResponse.json({ success: true, review: r.review });
   } catch (error: any) {
     return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }

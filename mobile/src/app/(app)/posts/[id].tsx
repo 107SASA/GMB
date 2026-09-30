@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
+import { geotagLine, postPlanLine, postStatusView } from '@/api/endpoints/content';
 import { deletePost, fetchPost, publishPost, schedulePost } from '@/api/endpoints/scheduler';
 import { useDateTimePicker } from '@/components/datetime-picker';
 import { EditPostModal } from '@/components/gbp/edit-post-modal';
@@ -95,7 +96,10 @@ export default function PostDetailScreen() {
 
   const publish = useMutation({
     mutationFn: () => publishPost(id!),
-    onSuccess: invalidate,
+    onSuccess: (res) => {
+      invalidate();
+      if (res.outcome === 'blocked') info.show('Not sent to Google', res.message);
+    },
     onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not publish the post.')),
   });
   const reschedule = useMutation({
@@ -126,6 +130,9 @@ export default function PostDetailScreen() {
   const p = post.data;
   const isPublished = p.status === 'published';
   const isUpdate = (p.postType ?? '').toLowerCase().includes('update') || !p.postType;
+  const sv = postStatusView(p);
+  const plan = postPlanLine(p);
+  const geo = geotagLine(p.imageGeotag);
 
   return (
     <Screen>
@@ -145,7 +152,15 @@ export default function PostDetailScreen() {
         )}
 
         <View className="px-4 pt-4">
-          <Badge label={isUpdate ? 'Update Post' : (p.postType ?? 'Standard Post')} tone="warning" />
+          <View className="flex-row flex-wrap gap-2">
+            <Badge label={sv.label} tone={sv.tone} />
+            <Badge label={isUpdate ? 'Update Post' : (p.postType ?? 'Standard Post')} tone="neutral" />
+          </View>
+          {!!sv.note && (
+            <Text className="mt-2 font-sans text-sm text-amber-300">{sv.note}</Text>
+          )}
+          {!!plan && <Text className="mt-2 font-sans text-xs text-zinc-500">Plan: {plan}</Text>}
+          {!!geo && !!p.imageUrl && <Text className="mt-1 font-sans text-xs text-zinc-500">{geo}</Text>}
 
           <View className="mt-3 flex-row items-center gap-1.5">
             <Ionicons name="calendar-outline" size={14} color={t.textFaint} />

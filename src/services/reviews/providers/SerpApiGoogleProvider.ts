@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { meter } from '@/lib/providerMeter';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
-import { ProviderReview, FetchReviewsOptions } from './MockGoogleProvider';
+import { ProviderReview, FetchReviewsOptions, ProviderReviewTotals } from './MockGoogleProvider';
 
 const SERPAPI_KEY = process.env.SERPAPI_KEY;
 const BASE_URL = 'https://serpapi.com/search.json';
@@ -26,6 +27,9 @@ function serpApiErrorMessage(err: any): string {
 const MAX_REVIEWS = parseInt(process.env.MAX_REVIEWS_PER_AUDIT || '50', 10);
 
 export class SerpApiGoogleProvider {
+  /** Lifetime totals from the last fetchReviews() call (see syncReviews.ts). */
+  lastTotals: ProviderReviewTotals | null = null;
+
   private async resolveDataId(businessId: string): Promise<string> {
     await dbConnect();
     const business = await Business.findById(businessId);
@@ -53,6 +57,7 @@ export class SerpApiGoogleProvider {
 
     let response;
     try {
+      meter('serpApiSearch', 1, 'resolve_place_for_reviews');
       response = await axios.get(BASE_URL, { params });
     } catch (err: any) {
       throw new Error(`SerpApi lookup failed for ${business.name}: ${serpApiErrorMessage(err)}`);
@@ -107,6 +112,7 @@ export class SerpApiGoogleProvider {
     let nextPageToken: string | undefined;
     let firstPage = true;
     let reachedKnown = false;
+    this.lastTotals = null;
 
     do {
       try {
@@ -120,6 +126,7 @@ export class SerpApiGoogleProvider {
         };
         if (nextPageToken) params.next_page_token = nextPageToken;
 
+        meter('serpApiSearch', 1, 'review_page');
         const response = await axios.get(BASE_URL, { params });
         // Surface a hard error on the first page (e.g. quota exhausted); on
         // later pages we keep whatever we already collected.
@@ -127,6 +134,12 @@ export class SerpApiGoogleProvider {
           throw new Error(`SerpApi reviews fetch failed: ${response.data.error}`);
         }
         const page: any[] = response.data.reviews ?? [];
+        // place_info carries Google's lifetime count + rating on the same
+        // response we already pay for — previously discarded.
+        const info = response.data.place_info;
+        if (firstPage && info && typeof info.reviews === 'number') {
+          this.lastTotals = { count: info.reviews, rating: typeof info.rating === 'number' ? info.rating : null };
+        }
 
         for (const r of page) {
           if (reviews.length >= MAX_REVIEWS) break;
@@ -149,6 +162,10 @@ export class SerpApiGoogleProvider {
             rating: typeof r.rating === 'number' ? r.rating : parseInt(r.rating, 10) || 0,
             text: r.snippet ?? r.text ?? '',
             postedAt: r.iso_date ?? new Date().toISOString(),
+            // The owner's reply (SerpApi `response`). Without it every
+            // SerpApi-synced review looked unanswered → a false "0%" response
+            // rate (found in a live Sep 2026 check).
+            ownerReply: r.response?.snippet ?? r.response?.text ?? undefined,
             // SerpApi's google_maps_reviews engine exposes this as
             // user.thumbnail — best-effort, not documented as guaranteed.
             reviewerPhotoUrl: r.user?.thumbnail ?? undefined,

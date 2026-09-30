@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireBusinessContext } from '@/lib/tenant';
 import { uploadPublicObject, isStorageConfigured } from '@/lib/storage';
 import { createOrReplaceStagedAsset } from '@/lib/gbpMediaService';
+import { photoLocationFromForm, prepareGalleryMedia } from '@/lib/mediaUpload';
+import { getVerifiedBusinessLocation } from '@/lib/verifiedLocation';
 import { GbpMediaCategory } from '@/lib/gbpClient';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
@@ -69,8 +71,19 @@ export async function POST(req: Request) {
   }
 
   try {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const publicUrl = await uploadPublicObject(buffer, file.type, `gbp-media/${ctx.businessId}`);
+    // Cover/logo crop (server-side, EXIF kept) + geotag policy: GPS already in
+    // the photo is kept untouched; otherwise the business's verified Google
+    // location is added; without one, nothing is added. Videos are stored as-is.
+    const prepared = await prepareGalleryMedia({
+      buffer: Buffer.from(await file.arrayBuffer()),
+      mime: file.type,
+      category,
+      location: isVideo ? null : await getVerifiedBusinessLocation(ctx.businessId),
+      // Mobile app: the photo's own GPS (phones strip it when compressing) or the
+      // phone's position when the photo was taken in the app camera.
+      photoLocation: isVideo ? null : photoLocationFromForm(form),
+    });
+    const publicUrl = await uploadPublicObject(prepared.buffer, prepared.mime, `gbp-media/${ctx.businessId}`);
 
     const asset = await createOrReplaceStagedAsset({
       businessId: ctx.businessId,
@@ -79,6 +92,7 @@ export async function POST(req: Request) {
       category,
       url: publicUrl,
       mediaType: isVideo ? 'video' : 'photo',
+      geotag: prepared.geotag,
     });
 
     return NextResponse.json({ success: true, asset });

@@ -3,7 +3,14 @@ import dbConnect from '@/lib/mongodb';
 import { GROQ_MODEL } from '@/lib/aiModel';
 import SalesAgentConfig from '@/models/SalesAgentConfig';
 import type { ISalesConversation, ISalesScores } from '@/models/SalesConversation';
+import { leadMessageFacts, leadMessageScores, resolveRankHeadline } from '@/services/audit/reportMath';
 import {
+  DEFAULT_FIRST_AI_PROMPT,
+  DEFAULT_FIRST_TEMPLATE,
+  DEFAULT_FOLLOWUPS,
+  LEGACY_FIRST_AI_PROMPT,
+  LEGACY_FIRST_TEMPLATE,
+  LEGACY_FOLLOWUP_TEMPLATES,
   defaultSalesAgentConfig,
   renderTemplate,
   summariseKnowledge,
@@ -55,12 +62,22 @@ function pct(n: unknown): number | null {
 /** Pulls the numbers the messages reference out of a completed audit. */
 export function extractScores(audit: any, business: any): ISalesScores {
   const d = audit?.auditData ?? {};
+  // Rank/review previously read fields that never existed
+  // (googleSearchRank.rank, profileScore.reviewScore), so leads were told
+  // "rank 0" / "reviews 0%". See leadMessageScores in reportMath.ts.
+  const headline = resolveRankHeadline(d);
+  const lead = leadMessageScores(d);
   return {
     businessName: business?.name ?? audit?.businessName ?? 'your business',
-    rank: pct(d.googleSearchRank?.rank ?? audit?.rank),
-    profile: pct(d.profileScore?.profileCompletionScore ?? d.profileCompletion?.score),
+    rank: headline.status === 'ok' && headline.value != null && headline.value <= 20 ? Math.round(headline.value * 10) / 10 : null,
+    rankStatus: headline.status === 'ok' ? 'ok' : 'unavailable',
+    profile: pct(d.profileScore?.profileCompletionScore ?? d.profileCompletion?.completionPercentage),
     seo: pct(d.seoScore?.score ?? d.profileScore?.seoScore),
-    review: pct(d.profileScore?.reviewScore),
+    review: lead.review === 'n/a' ? null : Number(lead.review),
+    ...(() => {
+      const f = leadMessageFacts(d);
+      return { rankText: f.rankText, profileText: f.profileText, seoText: f.seoText, reviewText: f.reviewText, verifiedIssues: f.issues };
+    })(),
     competitor: d.competitors?.[0]?.name ?? d.localPackCompetitors?.[0]?.name ?? null,
     missingKeywords: (d.keywordGapAnalysis ?? [])
       .map((k: any) => k?.keyword)
@@ -98,17 +115,34 @@ function buildVars(scores: ISalesScores, leadName: string, config: SalesAgentCon
   return {
     name: firstName(leadName),
     business: scores.businessName,
-    rank: scores.rank != null ? String(scores.rank) : 'beyond 10',
-    profile: scores.profile != null ? String(scores.profile) : '0',
-    seo: scores.seo != null ? String(scores.seo) : '0',
-    review: scores.review != null ? String(scores.review) : '0',
+    rank: scores.rank != null ? String(scores.rank) : scores.rankStatus === 'unavailable' ? 'not measured yet' : 'beyond 20',
+    // 'n/a' — never a placeholder 0 — when a value wasn't measured.
+    profile: scores.profile != null ? String(scores.profile) : 'n/a',
+    seo: scores.seo != null ? String(scores.seo) : 'n/a',
+    review: scores.review != null ? String(scores.review) : 'n/a',
     competitor: scores.competitor || 'other local businesses',
     keywords: scores.missingKeywords.length
       ? scores.missingKeywords.map((k) => `"${k}"`).join(', ')
       : 'the terms your customers search',
     subscribeUrl: config.subscribeUrl || '',
     shopUrl: config.shopUrl || '',
+    rankText: scores.rankText || (scores.rank != null ? `#${scores.rank}` : 'not measured yet'),
+    profileText: scores.profileText || (scores.profile != null ? `${scores.profile}%` : 'not measured'),
+    seoText: scores.seoText || (scores.seo != null ? `${scores.seo}%` : 'not measured'),
+    reviewText: scores.reviewText || 'not measured',
+    issuesBlock: scores.verifiedIssues?.length
+      ? `What we found:\n${scores.verifiedIssues.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n`
+      : '',
   };
+}
+
+/** Appended to every sales-AI system prompt in code, so even an older
+ *  stored prompt can't produce claims the audit doesn't support. */
+const FACT_GUARD = `\n\nFACT RULES (always apply): use only the audit values and verified issues provided. A value "not measured" / "n/a" is unknown — never guess it or call it zero. Never claim what caused a ranking, never predict rankings, never say competitors use GrowwMatics, and never mention a problem that is not in the verified issues.`;
+
+/** Unmodified pre-Sep-2026 defaults are upgraded to the fact-based ones. */
+function upgradeLegacy(text: string | undefined, legacy: string, current: string): string | undefined {
+  return text?.trim() === legacy.trim() ? current : text;
 }
 
 async function aiMessage(systemPrompt: string, context: string): Promise<string | null> {
@@ -120,7 +154,10 @@ async function aiMessage(systemPrompt: string, context: string): Promise<string 
         { role: 'user', content: context },
       ],
       temperature: 0.7,
-      max_tokens: 600,
+      // gpt-oss is a reasoning model: hidden reasoning shares this budget,
+      // and 600 truncated the first message mid-sentence in a live check.
+      max_tokens: 1500,
+      reasoning_effort: 'low',
     });
     const text = res.choices?.[0]?.message?.content?.trim();
     return text && text.length > 20 ? text : null;
@@ -137,15 +174,17 @@ export async function composeFirstMessage(
   leadName: string
 ): Promise<string> {
   const vars = buildVars(scores, leadName, config);
-  if (config.firstMessage.mode === 'ai' && config.firstMessage.aiSystemPrompt) {
+  const aiPrompt = upgradeLegacy(config.firstMessage.aiSystemPrompt, LEGACY_FIRST_AI_PROMPT, DEFAULT_FIRST_AI_PROMPT);
+  if (config.firstMessage.mode === 'ai' && aiPrompt) {
     const context =
-      `Lead first name: ${vars.name}\nBusiness: ${vars.business}\nGoogle rank: ${vars.rank}\n` +
-      `Profile completion: ${vars.profile}%\nSEO score: ${vars.seo}%\nReviews & replies score: ${vars.review}%\n` +
-      `Missing keywords: ${vars.keywords}\nTop competitor: ${vars.competitor}`;
-    const ai = await aiMessage(withGuardrail(config.firstMessage.aiSystemPrompt), context);
+      `Lead first name: ${vars.name}\nBusiness: ${vars.business}\nGoogle Maps rank: ${vars.rankText}\n` +
+      `Profile completion: ${vars.profileText}\nProfile SEO score: ${vars.seoText}\nReviews: ${vars.reviewText}\n` +
+      `Verified issues: ${scores.verifiedIssues?.length ? scores.verifiedIssues.join('; ') : 'none'}\n` +
+      `Business shown above them in searches: ${scores.competitor || 'unknown'}`;
+    const ai = await aiMessage(withGuardrail(aiPrompt + FACT_GUARD), context);
     if (ai) return ai;
   }
-  return renderTemplate(config.firstMessage.template, vars);
+  return renderTemplate(upgradeLegacy(config.firstMessage.template, LEGACY_FIRST_TEMPLATE, DEFAULT_FIRST_TEMPLATE) || DEFAULT_FIRST_TEMPLATE, vars);
 }
 
 /** Composes a follow-up drip message (AI or template per config). */
@@ -157,11 +196,13 @@ export async function composeFollowUp(
 ): Promise<string> {
   const vars = buildVars(scores, leadName, config);
   if (followUp.mode === 'ai' && followUp.aiSystemPrompt) {
-    const context = `Lead: ${vars.name}, business ${vars.business}, rank ${vars.rank}, profile ${vars.profile}%, competitor ${vars.competitor}. Subscribe link: ${vars.subscribeUrl}`;
-    const ai = await aiMessage(withGuardrail(followUp.aiSystemPrompt), context);
+    const context = `Lead: ${vars.name}, business ${vars.business}, Google Maps rank ${vars.rankText}, profile completion ${vars.profileText}, reviews ${vars.reviewText}. Verified issues: ${scores.verifiedIssues?.join('; ') || 'none'}. Subscribe link: ${vars.subscribeUrl}`;
+    const ai = await aiMessage(withGuardrail(followUp.aiSystemPrompt + FACT_GUARD), context);
     if (ai) return ai;
   }
-  return renderTemplate(followUp.template, vars);
+  const legacyIdx = LEGACY_FOLLOWUP_TEMPLATES.findIndex((t) => t.trim() === followUp.template?.trim());
+  const template = legacyIdx >= 0 ? DEFAULT_FOLLOWUPS[legacyIdx]?.template ?? followUp.template : followUp.template;
+  return renderTemplate(template, vars);
 }
 
 /** Composes a live reply to an inbound lead message, using the full history. */

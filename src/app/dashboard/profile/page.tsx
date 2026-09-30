@@ -519,7 +519,7 @@ export default function ProfilePage() {
               <h2 className="text-base font-bold text-on-error-container">Danger Zone</h2>
             </div>
             <p className="text-sm text-on-surface-variant">
-              Permanently delete your account and all associated data. This action cannot be undone.
+              Delete your account. You&apos;re signed out immediately and all associated data is permanently erased after 30 days.
             </p>
             <button
               onClick={() => setShowDeleteModal(true)}
@@ -541,8 +541,10 @@ export default function ProfilePage() {
                 <h2 className="text-lg font-bold text-on-surface">Delete Your Account</h2>
               </div>
               <p className="text-sm text-on-surface-variant mt-3 leading-relaxed">
-                Your account, all your business data, leads, reviews, content, and campaigns will be{' '}
-                <strong>permanently deleted</strong>. This cannot be undone.
+                You&apos;ll be signed out everywhere, any paid subscription is cancelled, and your account,
+                business data, leads, reviews, content and campaigns are <strong>permanently erased after 30 days</strong>.
+                Billing records are kept without your personal details for tax purposes.{' '}
+                <a href="/delete-account" target="_blank" rel="noopener noreferrer" className="underline">Details</a>
               </p>
             </div>
             <div className="p-6 space-y-4">

@@ -1,9 +1,28 @@
 import type {
   IAudit, IAuditData, IChecklistItem, IGeoGridKeyword,
 } from '@/models/Audit';
-import { formatRank, rankBucket, computeSuspensionRisk } from '@/services/audit/reportMath';
+import { formatRank, rankBucket, resolveRankHeadline, resolveSuspensionRisk } from '@/services/audit/reportMath';
 import { getBrandLogoDataUri } from '@/lib/brandAsset';
+import { contentActivityLines } from '@/services/lifecycle/monthly';
 import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
+import { GROWWMATICS_CAPABILITIES } from '@/services/audit/findings';
+import {
+  ACTIONABILITY_LABEL,
+  LEGACY_REPORT_NOTICE,
+  RANK_BAND_HEX,
+  RANK_LEGEND,
+  buildRankMapUrl,
+  completionBreakdown,
+  completionSentence,
+  isLegacyAudit,
+  rankBand,
+  rankLabel,
+  rankingStatRows,
+  reviewDisplay,
+  suspensionDisplay,
+  toRankValue,
+  type RankValue,
+} from '@/services/audit/reportDisplay';
 
 // Brand triad (src/app/globals.css: --color-secondary / --color-primary-container /
 // --color-error) — the same three colors the on-screen report uses for
@@ -95,6 +114,11 @@ function checkIcon(status: IChecklistItem['status'] | string): string {
       <circle cx="12" cy="12" r="10" fill="${BRAND_MID}"/>
       <path d="M12 7v5M12 16h.01" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/>
     </svg>`;
+  if (status === 'Unknown')
+    return `<svg width="20" height="20" viewBox="0 0 24 24" style="flex-shrink:0;">
+      <circle cx="12" cy="12" r="10" fill="#79747E"/>
+      <text x="12" y="16.5" text-anchor="middle" font-size="13" font-weight="700" fill="white">?</text>
+    </svg>`;
   return `<svg width="20" height="20" viewBox="0 0 24 24" style="flex-shrink:0;">
     <circle cx="12" cy="12" r="10" fill="${BRAND_BAD}"/>
     <path d="M15 9l-6 6M9 9l6 6" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/>
@@ -117,90 +141,26 @@ function buildingIcon(): string {
   </svg>`;
 }
 
-function buildStaticMapUrlForPdf(
-  pts: Array<{ lat: number; lng: number; rank: number }>,
-  apiKey: string,
-  gridSpacingKm = 1.5,
-): string {
-  const center = pts[4] ?? pts[0];
-  const zoom = gridSpacingKm <= 1 ? 14 : gridSpacingKm <= 2 ? 13 : 12;
-  const parts: string[] = [
-    `center=${center.lat},${center.lng}`,
-    `zoom=${zoom}`,
-    'size=580x320',
-    'scale=2',
-    'maptype=roadmap',
-    'style=feature:poi%7Celement:labels%7Cvisibility:off',
-    'style=feature:transit%7Cvisibility:off',
-  ];
-  for (let i = 0; i < pts.length; i++) {
-    if (i === 4) continue;
-    const p = pts[i];
-    let color: string; let labelPart = '';
-    if (p.rank <= 5)       { color = '0x22c55e'; if (p.rank <= 9) labelPart = `%7Clabel:${p.rank}`; }
-    else if (p.rank <= 10) { color = '0xf59e0b'; if (p.rank <= 9) labelPart = `%7Clabel:${p.rank}`; }
-    else if (p.rank <= 20) { color = '0xef4444'; }
-    else                   { color = '0x94a3b8'; }
-    parts.push(`markers=color:${color}%7Csize:mid${labelPart}%7C${p.lat},${p.lng}`);
-  }
-  parts.push(`markers=color:0x1d4ed8%7Csize:large%7Clabel:Y%7C${center.lat},${center.lng}`);
-  parts.push(`key=${encodeURIComponent(apiKey)}`);
-  return `https://maps.googleapis.com/maps/api/staticmap?${parts.join('&')}`;
+/** One point per searched location — never padded to a 3×3 grid. */
+function pointValue(p: { rank: number | null; found?: boolean; status?: string }): RankValue {
+  return p.found === undefined && p.status === undefined
+    ? toRankValue(p.rank)
+    : toRankValue({ found: p.found ?? p.rank != null, rank: p.rank, status: p.status });
 }
 
-function renderGeoGridMap(kw: IGeoGridKeyword, mapsApiKey?: string, gridSpacingKm = 1.5): string {
-  const pts = [...kw.points]
-    .sort((a, b) => b.lat - a.lat || a.lng - b.lng)
-    .slice(0, 9);
-  const fallbackLat = pts.reduce((s, p) => s + p.lat, 0) / (pts.length || 1);
-  const fallbackLng = pts.reduce((s, p) => s + p.lng, 0) / (pts.length || 1);
-  while (pts.length < 9) pts.push({ lat: fallbackLat, lng: fallbackLng, rank: 21 });
-
-  const { color: rankColor, display: rankDisplay } = rankMeta(kw.avgRank);
-
-  const cells = pts.map((pt, i) => {
-    const isCenter = i === 4;
-    let bg: string;
-    if (isCenter)            { bg = '#1d4ed8'; }
-    else if (pt.rank <= 5)   { bg = '#22c55e'; }
-    else if (pt.rank <= 10)  { bg = '#f59e0b'; }
-    else if (pt.rank <= 20)  { bg = '#f97316'; }
-    else                     { bg = '#ef4444'; }
-    const disp = pt.rank > 20 ? '20+' : String(pt.rank);
-    const sz = isCenter ? 46 : 38;
-    const fs = disp.length > 2 ? 9 : isCenter ? 13 : 12;
-    const shadow = isCenter
-      ? `box-shadow:0 0 0 3px ${bg}40,0 4px 12px rgba(0,0,0,.4);border:3px solid white;`
-      : `box-shadow:0 2px 6px rgba(0,0,0,.35);border:2px solid rgba(255,255,255,.7);`;
-    return `<div style="display:flex;align-items:center;justify-content:center;">
-      <div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${bg};color:#fff;
-        display:flex;align-items:center;justify-content:center;font-weight:900;font-size:${fs}px;
-        ${shadow}flex-shrink:0;position:relative;">${disp}${isCenter ? `<span style="position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:3px;font-size:7px;font-weight:700;color:#fff;background:#1d4ed8;border-radius:4px;padding:1px 4px;white-space:nowrap;">YOU</span>` : ''}</div>
-    </div>`;
-  }).join('');
-
-  const hasMap = !!mapsApiKey;
-  const mapUrl = hasMap ? buildStaticMapUrlForPdf(pts, mapsApiKey!, gridSpacingKm) : '';
-
-  const mapBg = hasMap
-    ? `background:#e8edf2;`
-    : `background:#e8edf2;background-image:linear-gradient(rgba(148,163,184,.25) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.25) 1px,transparent 1px);background-size:24px 24px;`;
-
-  const mapContent = hasMap
-    ? `<img src="${mapUrl}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" alt="map"/>`
+function renderGeoGridMap(kw: IGeoGridKeyword, mapsApiKey?: string, gridSpacingKm = 1.5, center?: { lat: number; lng: number }): string {
+  const pts = [...kw.points].sort((a, b) => b.lat - a.lat || a.lng - b.lng);
+  const avg: RankValue = kw.avgRank != null ? toRankValue(kw.avgRank) : { state: 'not_found', rank: null };
+  const zoom = gridSpacingKm <= 1 ? 14 : gridSpacingKm <= 2 ? 13 : 12;
+  const mapUrl = mapsApiKey
+    ? buildRankMapUrl({ points: pts, center: center ?? null, apiKey: mapsApiKey, size: '580x320', zoom: center ? zoom : undefined })
     : '';
-
-  const legend = [
-    { bg: '#1d4ed8', label: 'You' },
-    { bg: '#22c55e', label: '1–5' },
-    { bg: '#f59e0b', label: '6–10' },
-    { bg: '#f97316', label: '11–20' },
-    { bg: '#ef4444', label: '20+' },
-  ].map(({ bg, label }) =>
-    `<div style="display:flex;align-items:center;gap:4px;">
-      <div style="width:10px;height:10px;border-radius:50%;background:${bg};flex-shrink:0;"></div>
-      <span style="font-size:10px;color:#64748b;font-weight:600;">${label}</span>
-    </div>`
+  const chips = pts.map((p) => {
+    const v = pointValue(p);
+    return `<span style="display:inline-block;min-width:30px;padding:3px 6px;margin:0 4px 4px 0;border-radius:12px;background:${RANK_BAND_HEX[rankBand(v)]};color:#fff;font-size:10px;font-weight:800;text-align:center;">${h(v.state === 'found' ? String(v.rank) : v.state === 'not_found' ? 'NF' : 'N/A')}</span>`;
+  }).join('');
+  const legend = [{ hex: '#1d4ed8', label: 'You' }, ...RANK_LEGEND].map(({ hex, label }) =>
+    `<div style="display:flex;align-items:center;gap:4px;"><div style="width:10px;height:10px;border-radius:50%;background:${hex};flex-shrink:0;"></div><span style="font-size:10px;color:#64748b;font-weight:600;">${h(label)}</span></div>`,
   ).join('');
 
   return `<div style="border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;break-inside:avoid;display:flex;flex-direction:column;">
@@ -208,16 +168,12 @@ function renderGeoGridMap(kw: IGeoGridKeyword, mapsApiKey?: string, gridSpacingK
     <p style="margin:0 0 2px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.7px;">Keyword</p>
     <p style="margin:0;font-size:13px;font-weight:700;color:#2563eb;line-height:1.3;">${h(kw.keyword)}</p>
     <div style="display:flex;align-items:baseline;gap:5px;margin-top:5px;">
-      <span style="font-size:11px;color:#64748b;">Avg Rank</span>
-      <span style="font-size:20px;font-weight:900;color:${rankColor};">${rankDisplay}</span>
+      <span style="font-size:11px;color:#64748b;">Avg observed rank</span>
+      <span style="font-size:20px;font-weight:900;color:${RANK_BAND_HEX[rankBand(avg)]};">${h(rankLabel(avg))}</span>
     </div>
   </div>
-  <div style="position:relative;flex:1;min-height:220px;${mapBg}">
-    ${mapContent}
-    <div style="position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);padding:${hasMap ? '18px' : '14px'};gap:${hasMap ? '10px' : '8px'};">
-      ${cells}
-    </div>
-  </div>
+  ${mapUrl ? `<img src="${mapUrl}" style="width:100%;display:block;" alt="map"/>` : ''}
+  <div style="padding:8px 14px;border-top:1px solid #e2e8f0;"><div style="font-size:9px;color:#94a3b8;margin-bottom:4px;">Rank at each of the ${pts.length} point${pts.length === 1 ? '' : 's'} searched (NF = not found in the top 20)</div>${chips}</div>
   <div style="padding:8px 14px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
     ${legend}
   </div>
@@ -235,7 +191,11 @@ const BAND_C: Record<string, string> = { HIGH: '#f59e0b', MED: '#f59e0b', LOW: '
 const POT_C: Record<string, string> = { 'HIGHEST POTENTIAL': '#16a34a', 'IMMEDIATE WIN': '#ea580c', 'HIGH POTENTIAL': '#2563eb' };
 const PRI_C: Record<string, string> = { CRITICAL: '#dc2626', HIGH: '#ea580c', MEDIUM: '#ca8a04' };
 
-const fmtR = (r?: number | null) => (r == null ? '—' : r >= 21 ? '20+' : `#${Math.round(r)}`);
+const fmtR = (r?: number | null) => (r == null ? 'Not found' : rankLabel(toRankValue(r)));
+const kwRankValue = (k: any): RankValue =>
+  k.found !== undefined || k.rankStatus !== undefined
+    ? toRankValue({ found: k.found, rank: k.rank ?? k.mapsRank ?? null, status: k.rankStatus })
+    : toRankValue(k.mapsRank ?? null);
 const bar = (n: number, title: string) =>
   `<div style="background:${NAVY};color:#fff;border-radius:10px;padding:12px 16px;font-weight:700;font-size:13px;margin:18px 0 10px;">${n}. ${h(title)}</div>`;
 const card = (inner: string) =>
@@ -247,16 +207,27 @@ const TONE_HEX: Record<string, string> = { good: '#16a34a', warn: '#ca8a04', bad
 
 function renderConsultantSections(
   draft: any,
-  keywordTable: Array<{ keyword: string; volumeBand: string; estimated: boolean; mapsRank: number; searchVolume?: number | null; mapsVolume?: number | null }>,
+  keywordTable: any[],
   businessName: string,
   city: string,
 ): string {
   if (!draft) return '';
   const full = draft.depth === 'full';
+  // Older drafts (no `grounded` marker) may hold AI-invented services,
+  // attributes, Q&A answers and opportunity labels — never rendered.
+  const grounded = !!draft.grounded;
+  const showSearchVol = keywordTable.some((k) => k.searchVolume != null);
   const parts: string[] = [];
   let sn = 0;
   const sec = () => ++sn;
   const showMapsVol = keywordTable.some((k) => k.mapsVolume != null);
+  // Sections are never dropped on a grounded report — an empty one says why.
+  const status = (t: string) => `<p style="font-size:11px;color:#64748b;margin:0;">ⓘ ${h(t)}</p>`;
+  const rankMeasured = keywordTable.some((k) => (k.rankStatus ?? 'ok') === 'ok');
+  const proposed = (draft.proposedKeywords || []).length
+    ? `<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#475569;margin-bottom:4px;">More phrases to track — proposed, not measured</div>${(draft.proposedKeywords || []).map((r: any) => `<span style="display:inline-block;font-size:10px;padding:3px 7px;border-radius:10px;border:1px dashed #94a3b8;color:#475569;margin:0 4px 4px 0;">${h(r.keyword)}</span>`).join('')}</div>`
+    : '';
+  const rankFailed = !rankMeasured && keywordTable.some((k) => k.rankStatus === 'unavailable');
 
   // Performance Snapshot
   if (Array.isArray(draft.performanceSnapshot) && draft.performanceSnapshot.length) {
@@ -270,23 +241,49 @@ function renderConsultantSections(
     parts.push(bar(sec(), 'PERFORMANCE SNAPSHOT') + card(`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">${tiles}</div>`));
   }
 
-  if (draft.keyFinding) {
+  if (draft.keyFinding || grounded) {
     parts.push(card(
       `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#06b34c;margin-bottom:6px;">Key Finding</div>
-       <p style="font-size:12px;color:#374151;line-height:1.6;margin:0;">${h(draft.keyFinding)}</p>`,
+       ${draft.keyFinding ? `<p style="font-size:12px;color:#374151;line-height:1.6;margin:0;">${h(draft.keyFinding)}</p>` : status('No summary could be written from verified facts for this report. The measured results below still apply.')}`,
     ));
   }
 
-  if (full && draft.websiteAssessment) {
+  const ws = draft.websiteSummary;
+  if (ws?.status === 'none') {
+    parts.push(card(
+      `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#06b34c;margin-bottom:6px;">Your Website</div>${status('No website was available for analysis. The rest of this report uses your public Google listing, rankings and reviews.')}`,
+    ));
+  } else if (ws || (full && draft.websiteAssessment)) {
+    const host = ws ? String(ws.url || '').replace(/^https?:\/\//, '') : '';
+    const wsBody = !ws ? ''
+      : ws.status === 'failed'
+        ? status(`Your website (${host}) did not respond when we checked, so nothing from it is used in this report.`)
+        : `<p style="font-size:10px;color:#64748b;margin:0 0 6px;">What your website says (${h(host)}) — taken from your pages, not verified on Google.</p>${
+            (ws.services || []).length
+              ? (ws.services || []).map((s: string) => `<span style="display:inline-block;font-size:10px;padding:3px 7px;border-radius:10px;background:#f1f5f9;color:#0f172a;margin:0 4px 4px 0;">${h(s)}</span>`).join('')
+              : status('No clear list of services was found on the pages we read.')}`;
     parts.push(card(
       `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#06b34c;margin-bottom:6px;">Your Website</div>
-       <p style="font-size:12px;color:#374151;line-height:1.6;margin:0;">${h(draft.websiteAssessment)}</p>`,
+       ${wsBody}
+       ${full && draft.websiteAssessment ? `<p style="font-size:12px;color:#374151;line-height:1.6;margin:6px 0 0;">${h(draft.websiteAssessment)}</p>` : ''}`,
     ));
   }
 
+  if (grounded && draft.criticalGap && !draft.criticalGap.rows?.length) {
+    parts.push(
+      `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:14px;padding:18px;break-inside:avoid;margin-bottom:12px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#92400e;margin-bottom:6px;">Critical Gap — Searches That Are Not Showing You</div>
+        ${status(rankMeasured
+          ? 'You were in the top 5 for every search we measured.'
+          : rankFailed
+            ? 'The ranking check could not be completed for this report, so no search gap can be shown. This is a data problem on our side, not a finding about your business.'
+            : 'Google Maps ranking was not measured for this report, so no search gap can be shown — see Data Required below.')}
+      </div>`,
+    );
+  }
   if (draft.criticalGap?.rows?.length) {
     const rows = draft.criticalGap.rows
-      .map((r: any) => `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px;border-top:1px solid #fde68a;"><span>${h(r.keyword)}</span><span style="color:${RANK_RED};font-weight:700;">${fmtR(r.mapsRank)}</span></div>`)
+      .map((r: any) => `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px;border-top:1px solid #fde68a;"><span>${h(r.keyword)}</span><span style="color:${RANK_RED};font-weight:700;">${h(fmtR(r.mapsRank))}</span></div>`)
       .join('');
     parts.push(
       `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:14px;padding:18px;break-inside:avoid;margin-bottom:12px;">
@@ -298,70 +295,95 @@ function renderConsultantSections(
     );
   }
 
+  if (grounded && !keywordTable.length) {
+    parts.push(bar(sec(), 'KEYWORD SEARCH VOLUME ANALYSIS — GOOGLE MAPS') + card(
+      status('Google Maps ranking and search demand were not measured for this report — see Data Required below for what is needed.') + proposed,
+    ));
+  }
   if (keywordTable.length) {
-    const volCols = showMapsVol
-      ? `<th style="padding:4px 6px;text-align:right;">Search/mo</th><th style="padding:4px 6px;text-align:right;">Maps/mo ~</th>`
-      : '';
+    const volCols = (showMapsVol || showSearchVol) ? `<th style="padding:4px 6px;text-align:right;">Search/mo</th>` : '';
     const rows = keywordTable
-      .map((k) => `<tr style="border-top:1px solid #f1f5f9;">
-        <td style="padding:7px 6px;font-size:11px;color:#374151;">${h(k.keyword)}</td>
-        ${showMapsVol ? `<td style="padding:7px 6px;text-align:right;font-size:10px;color:#64748b;">${k.searchVolume != null ? h(k.searchVolume.toLocaleString('en-IN')) : '—'}</td><td style="padding:7px 6px;text-align:right;font-size:10px;color:#64748b;">${k.mapsVolume != null ? h(`~${k.mapsVolume.toLocaleString('en-IN')}`) : '—'}</td>` : ''}
-        <td style="padding:7px 6px;"><span style="display:inline-block;width:56px;height:5px;border-radius:3px;background:#e2e8f0;vertical-align:middle;overflow:hidden;"><span style="display:block;height:100%;width:${BAND_W[k.volumeBand] || '18%'};background:${BAND_C[k.volumeBand] || '#a78bfa'};"></span></span> <span style="font-size:10px;font-weight:700;color:${BAND_C[k.volumeBand] || '#a78bfa'};">${h(k.volumeBand)}${k.estimated ? '*' : ''}</span></td>
-        <td style="padding:7px 6px;text-align:right;font-weight:700;font-size:11px;color:${k.mapsRank > 5 ? RANK_RED : '#16a34a'};">${fmtR(k.mapsRank)}</td>
-      </tr>`)
+      .map((k) => {
+        const v = kwRankValue(k);
+        const measured = !!k.volumeBand && k.demandStatus !== 'unavailable';
+        const demand = measured
+          ? `<span style="display:inline-block;width:56px;height:5px;border-radius:3px;background:#e2e8f0;vertical-align:middle;overflow:hidden;"><span style="display:block;height:100%;width:${BAND_W[k.volumeBand] || '18%'};background:${BAND_C[k.volumeBand] || '#a78bfa'};"></span></span> <span style="font-size:10px;font-weight:700;color:${BAND_C[k.volumeBand] || '#a78bfa'};">${h(k.volumeBand)}${k.demandStatus === undefined && k.estimated ? '*' : ''}</span>`
+          : `<span style="font-size:10px;color:#94a3b8;">Not available</span>`;
+        return `<tr style="border-top:1px solid #f1f5f9;">
+        <td style="padding:7px 6px;font-size:11px;color:#374151;">${h(k.keyword)}${k.source === 'website_service' ? '<div style="font-size:8px;color:#94a3b8;">from your website</div>' : k.source === 'owner' ? '<div style="font-size:8px;color:#94a3b8;">your service</div>' : ''}</td>
+        ${(showMapsVol || showSearchVol) ? `<td style="padding:7px 6px;text-align:right;font-size:10px;color:#64748b;">${k.searchVolume != null ? h(k.searchVolume.toLocaleString('en-IN')) : 'Not available'}</td>` : ''}
+        <td style="padding:7px 6px;">${demand}</td>
+        <td style="padding:7px 6px;text-align:right;font-weight:700;font-size:11px;color:${RANK_BAND_HEX[rankBand(v)]};">${h(rankLabel(v))}</td>
+      </tr>`;
+      })
       .join('');
     const insights = (draft.keywordInsights || []).map((l: string) => `<li style="font-size:11px;color:#64748b;">${h(l)}</li>`).join('');
     parts.push(bar(sec(), 'KEYWORD SEARCH VOLUME ANALYSIS — GOOGLE MAPS') + card(
-      `<p style="font-size:11px;color:#64748b;margin:0 0 8px;">Phrases people type around ${h(city || 'your area')}. Rank is live Maps data when we have it — never guessed. <span>* = estimated demand${showMapsVol ? ' · ~ Maps volume derived from Google search volume' : ''}</span></p>
+      `<p style="font-size:11px;color:#64748b;margin:0 0 8px;">Phrases people type around ${h(city || 'your area')}. Rank is live Google Maps data measured from your area; demand is Google Ads monthly search volume for the whole country (Google does not report volume for a single town, so local phrases usually show "Not available"). Neither is ever guessed. <span>Not available = Google Ads returned no volume${keywordTable.some((k) => k.demandStatus === undefined && k.estimated) ? ' · * = estimate (older report)' : ''}</span></p>
        <table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;"><th style="padding:4px 6px;">Keyword</th>${volCols}<th style="padding:4px 6px;">Demand</th><th style="padding:4px 6px;text-align:right;">Maps Rank</th></tr></thead><tbody>${rows}</tbody></table>
-       ${insights ? `<ul style="margin:10px 0 0;padding-left:16px;">${insights}</ul>` : ''}`,
+       ${insights ? `<ul style="margin:10px 0 0;padding-left:16px;">${insights}</ul>` : ''}${proposed}`,
     ));
   }
 
+  if (grounded && !draft.competitorLandscape?.length) {
+    parts.push(bar(sec(), 'COMPETITOR LANDSCAPE') + card(status(rankMeasured
+      ? 'No other business was shown above you in the searches we ran.'
+      : rankFailed
+        ? 'Competitors come from the Google Maps searches, which could not be completed for this report.'
+        : 'Competitors come from the Google Maps searches, which were not measured for this report.')));
+  }
   if (draft.competitorLandscape?.length) {
     const rows = draft.competitorLandscape
       .map((c: any) => `<tr style="border-top:1px solid #f1f5f9;vertical-align:top;">
-        <td style="padding:7px 6px;font-size:11px;font-weight:600;color:#0f172a;">${h(c.name)}</td>
-        <td style="padding:7px 6px;font-size:11px;font-weight:700;color:#06b34c;white-space:nowrap;">${fmtR(c.mapsRank)}</td>
+        <td style="padding:7px 6px;font-size:11px;font-weight:600;color:#0f172a;">${h(c.name)}${c.tierLabel ? `<div style="font-size:8px;color:${c.relevance === 'strong' ? '#dc2626' : '#94a3b8'};">${h(c.tierLabel)}</div>` : ''}</td>
+        <td style="padding:7px 6px;font-size:11px;font-weight:700;color:#06b34c;white-space:nowrap;">${c.mapsRank != null ? h(fmtR(c.mapsRank)) : '—'}</td>
         <td style="padding:7px 6px;font-size:11px;color:#64748b;white-space:nowrap;">${c.rating != null ? h(`${c.rating}★`) : '—'}${c.reviewCount != null ? h(` · ${c.reviewCount}`) : ''}</td>
         <td style="padding:7px 6px;font-size:11px;color:#64748b;">${h(c.keyEdge || '')}</td>
       </tr>`)
       .join('');
     parts.push(bar(sec(), 'COMPETITOR LANDSCAPE') + card(
       `<table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;"><th style="padding:4px 6px;">Competitor</th><th style="padding:4px 6px;">Maps Rank</th><th style="padding:4px 6px;">Reviews</th><th style="padding:4px 6px;">Key Edge</th></tr></thead><tbody>${rows}</tbody></table>
+       ${(draft.competitorInsights || []).length ? `<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#0f172a;margin-bottom:6px;">What the businesses above you do differently</div>${(draft.competitorInsights || []).map((ins: any) => `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-bottom:6px;font-size:11px;break-inside:avoid;"><div><b>Fact:</b> ${h(ins.fact)}</div><div style="color:#64748b;"><b style="color:#0f172a;">What it means:</b> ${h(ins.meaning)}</div><div style="color:#64748b;"><b style="color:#0f172a;">Recommended:</b> ${h(ins.recommendation)}</div><div style="font-size:9px;color:#94a3b8;">Source: ${h(ins.basis)}</div></div>`).join('')}</div>` : ''}
        ${draft.competitorCounterPosition ? `<p style="font-size:11px;color:#64748b;margin:10px 0 0;line-height:1.6;">${h(draft.competitorCounterPosition)}</p>` : ''}`,
     ));
   }
 
-  if (draft.gbpGaps?.length || draft.suggestedTitle) {
+  const gbpFailed = (draft.failed || []).includes('gbpDrafts');
+  if (draft.gbpGaps?.length || draft.suggestedTitle || gbpFailed) {
     const mark = (s?: string) => (s === 'ok' ? '✓' : s === 'unverified' ? '?' : '✕');
-    const gaps = (draft.gbpGaps || []).map((g: any) =>
+    const gaps = (gbpFailed ? `<div style="margin-bottom:8px;">${status('Additional AI analysis is temporarily unavailable. The measured results in this report are unaffected.')}</div>` : '') + (draft.gbpGaps || []).map((g: any) =>
       `<div style="margin-bottom:8px;"><div style="font-size:11px;font-weight:600;color:#0f172a;">${mark(g.status)} ${h(g.field)}</div><div style="font-size:10px;color:#94a3b8;">${h(g.whyItMatters || '')}</div><div style="font-size:11px;color:#374151;">${h(g.recommendation || '')}</div></div>`).join('');
     const chips = (arr: string[], bg: string, fg: string) => arr.map((s) => `<span style="display:inline-block;font-size:10px;padding:3px 7px;border-radius:4px;background:${bg};color:${fg};margin:0 4px 4px 0;">${h(s)}</span>`).join('');
-    const services = chips(draft.suggestedServices || [], '#dcfce7', '#166534');
+    const services = grounded ? chips(draft.suggestedServices || [], '#dcfce7', '#166534') : '';
     const cats = chips(draft.suggestedCategories || [], '#f1f5f9', '#475569');
-    const attrs = chips(draft.suggestedAttributes || [], '#dbeafe', '#1e40af');
+    const attrs = grounded ? chips(draft.suggestedAttributes || [], '#dbeafe', '#1e40af') : '';
     const descKw = chips(draft.descriptionKeywords || [], '#f1f5f9', '#475569');
     const platforms = (draft.platformGaps || []).map((p: any) => `<li style="font-size:11px;color:#64748b;"><b style="color:#0f172a;">${h(p.platform)}</b> — ${h(p.why || '')}</li>`).join('');
     parts.push(bar(sec(), 'GBP PROFILE GAP ANALYSIS') + card(
-      `<p style="font-size:11px;color:#64748b;margin:0 0 10px;">Drafts for ${h(businessName)} only. We do not overwrite the live listing from this report.</p>
+      `<p style="font-size:11px;color:#64748b;margin:0 0 10px;">Drafts for ${h(businessName)} only — nothing is changed on your listing from this report. Once connected, GrowwMatics can apply the title and description drafts; categories, services, hours and attributes are changed by you in Google.</p>
        ${gaps}
        ${descKw ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">The 750-char description must embed</div>${descKw}</div>` : ''}
        ${attrs ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};margin-bottom:4px;">GBP attributes to set</div>${attrs}</div>` : ''}
        ${platforms ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">List on these platforms too</div><ul style="margin:0;padding-left:16px;">${platforms}</ul></div>` : ''}
-       ${draft.suggestedTitle ? `<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};">Title is not carrying the keywords</div><div style="font-size:12px;font-weight:600;color:#0f172a;">${h(draft.suggestedTitle)}</div></div>` : ''}
+       ${draft.suggestedTitle ? `<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};">Suggested title — your real business name without the flagged words</div><div style="font-size:12px;font-weight:600;color:#0f172a;">${h(draft.suggestedTitle)}</div></div>` : ''}
        ${draft.suggestedDescription ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};">Description — first 150 characters must be the USP</div><div style="font-size:11px;color:#374151;line-height:1.6;">${h(draft.suggestedDescription)}</div></div>` : ''}
-       ${services ? `<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};margin-bottom:4px;">Services list is thinner than it should be</div>${services}</div>` : ''}
-       ${cats ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">Extra Google categories to add</div>${cats}</div>` : ''}`,
+       ${services ? `<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};margin-bottom:4px;">Services we found on your listing, website or intake — add them in Google</div>${services}</div>` : ''}
+       ${cats ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">Extra Google categories to consider — only if they match services you offer</div>${cats}</div>` : ''}`,
     ));
   }
 
-  if (draft.marketOpportunities?.length) {
+  if (grounded && !draft.marketOpportunities?.length) {
+    parts.push(bar(sec(), 'MARKET OPPORTUNITY GAPS') + card(status('No searched phrase had both measured demand and a rank gap, so no opportunity is labelled. Labels are only given from measured data.')));
+  }
+  if (grounded && draft.marketOpportunities?.length) {
     const rows = draft.marketOpportunities.map((m: any) =>
       `<div style="padding:10px 0;border-top:1px solid #f1f5f9;"><div style="font-size:12px;font-weight:700;color:#0f172a;">${h(m.keyword)}</div><div style="margin:3px 0;">${pill(m.potential || 'HIGH POTENTIAL', POT_C[(m.potential || '').toUpperCase()] || '#2563eb')}</div><div style="font-size:11px;color:#64748b;">${h(m.rationale || '')}</div></div>`).join('');
     parts.push(bar(sec(), 'MARKET OPPORTUNITY GAPS') + card(rows));
   }
 
+  if (grounded && !draft.actionPhases?.length) {
+    parts.push(bar(sec(), 'PRIORITY ACTION PLAN — 30 / 60 / 90 DAYS') + card(status('The plan could not be built from verified facts for this report.')));
+  }
   if (draft.actionPhases?.length) {
     const phases = draft.actionPhases.map((p: any) => {
       const items = (p.items || []).map((it: any, i: number) =>
@@ -371,32 +393,35 @@ function renderConsultantSections(
     parts.push(bar(sec(), 'PRIORITY ACTION PLAN — 30 / 60 / 90 DAYS') + card(phases));
   }
 
+  if (grounded && !draft.weeklyPostThemes?.length) {
+    parts.push(bar(sec(), "THIS WEEK'S GOOGLE POSTS") + card(status('No post ideas could be written from verified services. Tell us your services (Data Required) and posts will be built from them.')));
+  }
   if (draft.weeklyPostThemes?.length) {
     const cards = draft.weeklyPostThemes.map((t: any) =>
       `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:11px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">${h(t.weekday)} · ${h(t.postType)}</div><div style="font-weight:600;color:#0f172a;margin-top:3px;">${h(t.theme)}</div><div style="color:#94a3b8;margin-top:2px;">Keyword: ${h(t.keyword)}</div></div>`).join('');
     parts.push(bar(sec(), "THIS WEEK'S GOOGLE POSTS") + card(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${cards}</div>`));
   }
 
-  if (draft.suggestedQas?.length) {
+  if (grounded && !draft.suggestedQas?.length) {
+    parts.push(bar(sec(), 'SUGGESTED GOOGLE Q&AS') + card(status('No customer questions could be answered from verified facts yet — they need your confirmed services and details.')));
+  }
+  if (grounded && draft.suggestedQas?.length) {
     const qas = draft.suggestedQas.map((qa: any) =>
       `<div style="padding:8px 0;border-top:1px solid #f1f5f9;"><div style="font-size:11px;font-weight:600;color:#0f172a;">${h(qa.q)}</div><div style="font-size:11px;color:#64748b;margin-top:2px;">${h(qa.a)}</div></div>`).join('');
-    parts.push(bar(sec(), 'SUGGESTED GOOGLE Q&AS') + card(qas));
+    parts.push(bar(sec(), 'SUGGESTED GOOGLE Q&AS') + card(`<p style="font-size:11px;color:#64748b;margin:0 0 6px;">For you to add yourself — GrowwMatics does not post Q&amp;As. Answers marked [Owner to confirm] need your facts before use.</p>${qas}`));
   }
 
-  if (Array.isArray(draft.rankTimeline) && draft.rankTimeline.length) {
-    const ms = draft.rankTimeline
-      .map((m: any, i: number) => `<div style="border:1px solid ${i === 0 ? '#fde68a' : '#e2e8f0'};${i === 0 ? 'background:#fffbeb;' : ''}border-radius:10px;padding:12px;text-align:center;">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">${h(m.label)}</div>
-        <div style="font-size:16px;font-weight:800;color:${m.tone ? TONE_HEX[m.tone] || '#0f172a' : '#0f172a'};">${h(m.rank)}</div>
-        <div style="font-size:9px;color:#94a3b8;margin-top:4px;">${h(m.note || '')}</div>
-      </div>`)
-      .join('');
-    parts.push(bar(sec(), 'PROJECTED RANK IMPROVEMENT TIMELINE') + card(
-      `<p style="font-size:11px;color:#64748b;margin:0 0 8px;">Targets for the work, not a promise of position. Google decides ranking.</p><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">${ms}</div>`,
+  // Projected improvement timeline — grounded drafts only (measured today +
+  // work milestones). Older drafts carried fixed rank bands → "What we aim for".
+  if (grounded && draft.rankTimeline?.length) {
+    const ms = draft.rankTimeline.map((m: any, i: number) =>
+      `<div style="border:1px solid ${i === 0 ? '#fde68a' : '#e2e8f0'};${i === 0 ? 'background:#fffbeb;' : ''}border-radius:10px;padding:12px;text-align:center;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">${h(m.label)}</div><div style="font-size:16px;font-weight:800;color:${m.tone ? TONE_HEX[m.tone] || '#0f172a' : '#0f172a'};">${h(i === 0 && m.rank === '20+' ? 'Not found' : m.rank)}</div><div style="font-size:9px;color:#64748b;margin-top:4px;">${h(m.note)}</div></div>`).join('');
+    parts.push(bar(sec(), 'PROJECTED IMPROVEMENT TIMELINE') + card(
+      `<p style="font-size:11px;color:#64748b;margin:0 0 8px;">Work milestones, not a promised position — Google decides ranking. Each stage is re-measured on the same searches.</p><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">${ms}</div>`,
     ));
   } else if (draft.whatWeAimFor) {
     const ms = [
-      `<div style="border:1px solid #fde68a;background:#fffbeb;border-radius:10px;padding:12px;text-align:center;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">Today</div><div style="font-size:20px;font-weight:800;color:${RANK_RED};">${h(draft.whatWeAimFor.todayRank)}</div><div style="font-size:9px;color:#94a3b8;">Live Maps position we measured</div></div>`,
+      `<div style="border:1px solid #fde68a;background:#fffbeb;border-radius:10px;padding:12px;text-align:center;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">Today</div><div style="font-size:20px;font-weight:800;color:${RANK_RED};">${h(draft.whatWeAimFor.todayRank === '20+' ? 'Not found' : draft.whatWeAimFor.todayRank)}</div><div style="font-size:9px;color:#94a3b8;">Live Maps position we measured</div></div>`,
       ...(draft.whatWeAimFor.milestones || []).map((m: any) =>
         `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;text-align:center;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;">${h(m.label)}</div><div style="font-size:9px;color:#64748b;margin-top:6px;">${h(m.text)}</div></div>`),
     ].join('');
@@ -422,7 +447,14 @@ export function buildReportHtml(ctx: ReportContext): string {
 
   // ── Data extraction ──────────────────────────────────────────────────────────
   const overallScore: number = (audit as any).overallScore ?? data.profileScore?.overallScore ?? 0;
-  const seoScore: number = data.seoScore?.score ?? 0;
+  const facts: any = (data as any).facts;
+  const legacy = isLegacyAudit(data);
+  // null = none of the weighted SEO items could be checked → "Not measured".
+  const seoMeasured = typeof data.seoScore?.score === 'number';
+  const seoScore: number = seoMeasured ? (data.seoScore!.score as number) : 0;
+  const seoCoverage: string | null = (data.seoScore as any)?.checkedItems != null
+    ? `Based on ${(data.seoScore as any).checkedItems} of ${(data.seoScore as any).totalItems} checks we could run`
+    : null;
   const completionView = formatProfileCompletionDisplay(data.profileCompletion);
   const completionPct: number = completionView.pct;
   const checklist: IChecklistItem[] = data.profileCompletion?.checklist ?? [];
@@ -430,32 +462,51 @@ export function buildReportHtml(ctx: ReportContext): string {
   // reviewAnalysis entirely rather than leaving hollow zeros, so its presence
   // (not just reviewCount) is the real "do we have review data" signal.
   const hasReviews: boolean = !!data.reviewAnalysis;
-  const reviewCount: number = (audit as any).metadata?.reviewsActualCount ?? data.reviewAnalysis?.reviewCount ?? 0;
-  const avgRating: number = businessRating ?? data.reviewAnalysis?.averageRating ?? 0;
+  // Lifetime Google total. `metadata.reviewsActualCount` is only the synced
+  // analysis window (e.g. last 14 days) and must never be shown as the total.
+  const reviewCount: number = facts
+    ? (data.reviewAnalysis?.reviewCount ?? 0)
+    : ((audit as any).metadata?.reviewsActualCount ?? data.reviewAnalysis?.reviewCount ?? 0);
+  const lifetimeKnown: boolean = facts ? typeof data.reviewAnalysis?.reviewCount === 'number' : reviewCount > 0;
+  // The audit's own lifetime rating (facts) wins over the caller-supplied one.
+  const avgRating: number = (facts ? data.reviewAnalysis?.averageRating : undefined) ?? businessRating ?? data.reviewAnalysis?.averageRating ?? 0;
   const reviewsPerWeek: number = data.reviewAnalysis?.reviewsPerWeek ?? 0;
+  const recentSynced: boolean = facts ? facts.reviews?.recent?.status === 'verified' : hasReviews;
+  const reviewView = reviewDisplay(facts?.reviews, (data.reviewAnalysis as any)?.reviewThemes === 'from-review-text'
+    ? { praises: data.reviewAnalysis?.mostCommonPraises, complaints: data.reviewAnalysis?.mostCommonComplaints }
+    : 'unknown');
+  const breakdown = completionBreakdown(data.profileCompletion?.checklist ?? []);
   const industryAvg: number = data.reviewAnalysis?.industryAverage ?? 2;
-  const responseRateStr: string = data.reviewAnalysis?.responseRate ?? '0%';
-  const responseRatePct: number = parseInt(responseRateStr, 10) || 0;
+  // No sourced benchmark exists for weekly review velocity — new audits
+  // (facts layer present) show the number without grading it.
+  const velocityBenchmark: number | null = (data as any).facts ? null : industryAvg;
+  // null = not computable (no reviews in the synced window) — never "0%".
+  const responseRateStr: string | null = data.reviewAnalysis?.responseRate ?? null;
+  const responseRatePct: number = responseRateStr ? parseInt(responseRateStr, 10) || 0 : 0;
   const reviewPeriodDays: number = (audit as any).reviewPeriodDays ?? (audit as any).metadata?.reviewPeriodDays ?? 14;
-  const visibilityPct: number | undefined = data.geoGridRank?.visibilityPct;
+  const rankHeadline = resolveRankHeadline(data);
+  const visibilityPct: number | undefined = rankHeadline.visibilityPct ?? undefined;
   const thirtyDayPlan: any[] = (data as any).thirtyDayPlan ?? [];
   const ninetyDayPlan: any[] = (data as any).ninetyDayPlan ?? [];
   const actionPlanMeta: any = (data as any).actionPlan ?? {};
   const planDurationDays: number = actionPlanMeta.durationDays ?? (audit as any).actionPlanDurationDays ?? 30;
   const planLabel: string = actionPlanMeta.planLabel ?? `${planDurationDays}-Day Action Plan`;
   const extendedLabel: string = actionPlanMeta.extendedLabel ?? `Beyond ${planDurationDays} Days — Ongoing Roadmap`;
-  const geoGridKeywords: IGeoGridKeyword[] = data.geoGridRank?.keywords?.length
-    ? data.geoGridRank.keywords
-    : ((data.googleSearchRank?.topKeywords ?? []).map((k) => ({
-        keyword: k.keyword,
-        avgRank: k.rank,
-        points: [],
-      })) as IGeoGridKeyword[]);
-  const overallAvgRank: number | undefined =
-    data.geoGridRank?.overallAvgRank
-    ?? (data.googleSearchRank?.averageRank && data.googleSearchRank.averageRank > 0
-      ? data.googleSearchRank.averageRank
-      : undefined);
+  // New audits: every keyword searched, from the facts layer (found /
+  // not found / unavailable). Old audits: their stored grid (21 = not found).
+  const keywordRows: Array<{ keyword: string; value: RankValue }> = facts
+    ? (facts.ranking?.byKeyword ?? []).map((k: any) => ({
+        keyword: k.kind === 'brand' ? `${k.keyword} (your own name — not counted)` : k.keyword,
+        value: k.status === 'unavailable' ? { state: 'unavailable', rank: null } : k.averageObservedRank != null ? { state: 'found', rank: k.averageObservedRank } : { state: 'not_found', rank: null },
+      }))
+    : ((data.geoGridRank?.keywords?.length ? data.geoGridRank.keywords : (data.googleSearchRank?.topKeywords ?? []).map((k) => ({ keyword: k.keyword, avgRank: k.rank })))
+        .map((k: any) => ({ keyword: k.keyword, value: toRankValue(k.avgRank) })));
+  const geoGridKeywords = keywordRows;
+  // Average over FOUND searches only (new audits); undefined when the
+  // ranking check was unavailable so the section says so instead of "20+".
+  const headlineValue: RankValue = rankHeadline.status === 'ok'
+    ? (rankHeadline.value != null && rankHeadline.value <= 20 ? { state: 'found', rank: rankHeadline.value } : { state: 'not_found', rank: null })
+    : { state: rankHeadline.status === 'unavailable' ? 'unavailable' : 'unknown', rank: null };
   const areaSqKm: number = data.geoGridRank?.areaSqKm ?? 9;
   const gridSpacingKm: number = data.geoGridRank?.gridSpacingKm ?? 1.5;
   const localPackComps = (
@@ -472,15 +523,19 @@ export function buildReportHtml(ctx: ReportContext): string {
   const missingOpps: string[] = data.seoScore?.optimizationOpportunities ?? [];
   const missingKeywords: string[] = data.seoScore?.missingKeywords ?? [];
   const hasGeoGrid = geoGridKeywords.length > 0;
+  const competitorFacts: any[] = facts && Array.isArray(data.competitors) ? (data.competitors as any[]) : [];
+  const searchesChecked: number = facts?.competitorsAhead?.searchesChecked ?? 0;
+  const profileFindings: any[] = Array.isArray((data as any).findings) ? (data as any).findings.filter((f: any) => f.category === 'profile') : [];
   const hasMapGrid = (data.geoGridRank?.keywords ?? []).some((k) => (k.points?.length ?? 0) > 0);
 
   // Missing SEO fields
   const missingFields: string[] = [];
   const opLower = missingOpps.map((o) => o.toLowerCase()).join(' ');
-  if (opLower.includes('title')       || missingKeywords.length > 0) missingFields.push('Title');
-  if (opLower.includes('categor')     || missingKeywords.length > 0) missingFields.push('Additional Category');
-  if (opLower.includes('service')     || missingKeywords.length > 0) missingFields.push('Services');
-  if (opLower.includes('description') || missingKeywords.length > 0) missingFields.push('Description');
+  void missingKeywords;
+  if (opLower.includes('title'))       missingFields.push('Title');
+  if (opLower.includes('categor'))     missingFields.push('Additional Category');
+  if (opLower.includes('service'))     missingFields.push('Services');
+  if (opLower.includes('description')) missingFields.push('Description');
   if (missingFields.length === 0 && missingOpps.length > 0) {
     missingFields.push(...missingOpps.slice(0, 4));
   }
@@ -488,19 +543,24 @@ export function buildReportHtml(ctx: ReportContext): string {
   // Services / categories
   const servicesItem   = checklist.find((c) => c.field.toLowerCase().includes('service'));
   const categoriesItem = checklist.find((c) => c.field.toLowerCase().includes('categor'));
-  const servicesOk     = servicesItem?.status === 'Complete';
-  const categoriesOk   = !(categoriesItem?.status === 'Missing' || categoriesItem?.status === 'Unknown');
+  // Unknown (not read from Google) is "Not checked" — never "Poor".
+  const fieldBadge = (st?: string) => (st === 'Complete' || st === 'Partial' ? 'Good' : st === 'Missing' ? 'Poor' : 'Not checked');
+  const servicesItem2   = checklist.find((c) => c.field === 'Services Listed') ?? servicesItem;
+  const categoriesItem2 = checklist.find((c) => c.field === 'Additional Categories') ?? categoriesItem;
   const evidence: Record<string, any> = (data as any).evidence ?? {};
   const servicesCnt    = evidence.servicesCount    ?? null;
   const categoriesCnt  = evidence.categoriesCount  ?? null;
 
-  // Suspension risk — shared with AuditReportGrexa via computeSuspensionRisk
-  // so the two never disagree on Low/Medium/High for the same business.
-  const { level: suspLevel, pct: suspPct } = computeSuspensionRisk(completionPct, reviewCount);
-  const suspColor = suspLevel === 'Low' ? BRAND_GOOD : suspLevel === 'Medium' ? BRAND_MID : BRAND_BAD;
+  // Suspension risk — shared with AuditReportGrexa via resolveSuspensionRisk
+  // so the two never disagree. A category with reasons, never a percentage.
+  const suspension = resolveSuspensionRisk(data, completionPct, reviewCount);
+  // Old reports never ran a policy check → "Not assessed".
+  const suspView = suspension.basis === 'heuristic' ? suspensionDisplay(suspension) : suspensionDisplay(null);
+  const suspLevel = suspView.level;
+  const suspColor = suspLevel === 'Low' ? BRAND_GOOD : suspLevel === 'Medium' ? BRAND_MID : suspLevel === 'High' ? BRAND_BAD : '#79747E';
 
   // Rank + colors
-  const rankM        = rankMeta(overallAvgRank);
+  const rankM        = { color: RANK_BAND_HEX[rankBand(headlineValue)], display: rankLabel(headlineValue) };
   const profileColor = overallScore >= 80 ? BRAND_GOOD : overallScore >= 60 ? BRAND_MID : BRAND_BAD;
   const seoColor     = seoScore    >= 80 ? BRAND_GOOD : seoScore    >= 50 ? BRAND_MID : BRAND_BAD;
   const genDate      = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -553,8 +613,8 @@ export function buildReportHtml(ctx: ReportContext): string {
     <h1 style="font-size:22px;font-weight:800;color:#0f172a;margin-bottom:7px;line-height:1.2;">${h(audit.businessName)}</h1>
     <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:13px;color:#64748b;">
       ${avgRating > 0 ? `<div style="display:flex;align-items:center;gap:2px;">${starRow(avgRating)}</div>
-      <span style="font-weight:700;color:#1e293b;">${avgRating.toFixed(1)}</span>
-      ${reviewCount > 0 ? `<span style="color:#94a3b8;">(${reviewCount})</span>` : ''}` : ''}
+      <span style="font-weight:700;color:#1e293b;">${avgRating.toFixed(1)}</span>` : ''}
+      ${lifetimeKnown ? `<span style="color:#94a3b8;">(${reviewCount} Google review${reviewCount === 1 ? '' : 's'})</span>` : ''}
       ${audit.address ? `${avgRating > 0 ? `<span style="color:#cbd5e1;">|</span>` : ''}
       <span style="color:#64748b;">${h(audit.address)}</span>` : ''}
     </div>
@@ -571,31 +631,19 @@ export function buildReportHtml(ctx: ReportContext): string {
       ${googleSvg(18)}
       <span style="font-size:13px;font-weight:700;color:#374151;">Google Search Rank</span>
     </div>
-    ${hasGeoGrid || (overallAvgRank != null && overallAvgRank > 0) ? `
+    ${rankHeadline.status === 'ok' ? `
     <div style="margin-bottom:5px;">
       <span style="font-size:68px;font-weight:900;line-height:1;letter-spacing:-2px;color:${rankM.color};">${rankM.display}</span>
     </div>
-    <p style="font-size:11px;color:#64748b;line-height:1.6;margin-bottom:16px;">
-      ${(overallAvgRank ?? 0) > 20
-        ? 'Not appearing in Google&#39;s local pack for most tracked keywords'
-        : `Overall average rank for the <strong style="color:#374151;">${geoGridKeywords.length} most searched keywords</strong> on Google for your business`}
-      ${typeof visibilityPct === 'number' ? ` &middot; visible in <strong style="color:#374151;">${visibilityPct}%</strong> of nearby searches` : ''}
+    <p style="font-size:11px;color:#64748b;line-height:1.6;margin-bottom:10px;">
+      ${facts ? 'Average observed position — only searches where you appeared in the top 20 are averaged.' : `Average rank across ${geoGridKeywords.length} tracked keywords.`}
+      ${typeof visibilityPct === 'number' ? ` &middot; visible in <strong style="color:#374151;">${visibilityPct}%</strong> of searches` : ''}
     </p>
-    <div style="display:flex;gap:14px;">
-      <div style="display:flex;align-items:center;gap:5px;">
-        <div style="width:11px;height:11px;border-radius:50%;background:${BRAND_GOOD};flex-shrink:0;"></div>
-        <span style="font-size:11px;color:#374151;">Top 5</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:5px;">
-        <div style="width:11px;height:11px;border-radius:50%;background:${BRAND_MID};flex-shrink:0;"></div>
-        <span style="font-size:11px;color:#374151;">Under 10</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:5px;">
-        <div style="width:11px;height:11px;border-radius:50%;background:${BRAND_BAD};flex-shrink:0;"></div>
-        <span style="font-size:11px;color:#374151;">20+</span>
-      </div>
+    ${facts ? `<table style="margin-bottom:10px;">${rankingStatRows(facts.ranking?.overall).map((r) => `<tr><td style="font-size:10px;color:#94a3b8;padding:1px 0;">${h(r.label)}</td><td style="font-size:10px;font-weight:700;color:#0f172a;text-align:right;">${h(r.value)}</td></tr>`).join('')}</table>` : ''}
+    <div style="display:flex;gap:14px;flex-wrap:wrap;">
+      ${RANK_LEGEND.slice(0, 3).map((l) => `<div style="display:flex;align-items:center;gap:5px;"><div style="width:11px;height:11px;border-radius:50%;background:${l.hex};flex-shrink:0;"></div><span style="font-size:11px;color:#374151;">${h(l.label)}</span></div>`).join('')}
     </div>` : `
-    <div style="font-size:13px;color:#94a3b8;padding:20px 0;text-align:center;">Ranking data unavailable</div>`}
+    <div style="font-size:13px;color:#94a3b8;padding:20px 0;text-align:center;">${rankHeadline.status === 'not_measured' ? 'Not measured — Google lists this business only under a generic category, so there is no customer search term to rank for. Add your main service (or a specific Google category) and re-run.' : rankHeadline.status === 'unavailable' ? 'The ranking check did not complete for this report — position unknown, not bad.' : 'Ranking data unavailable'}</div>`}
   </div>
 
   <!-- Profile Score -->
@@ -608,10 +656,7 @@ export function buildReportHtml(ctx: ReportContext): string {
       ${svgRing(overallScore, profileColor, 120)}
       <div>
         <p style="font-size:11px;color:#64748b;line-height:1.6;margin-bottom:10px;">
-          Based on 25+ parameters — SEO, Reviews, Completion, Rating.
-        </p>
-        <p style="font-size:11px;font-weight:600;color:#374151;">
-          Good businesses score more than 90%
+          Profile completion: ${h(completionSentence(breakdown))}
         </p>
       </div>
     </div>
@@ -628,7 +673,7 @@ export function buildReportHtml(ctx: ReportContext): string {
     <!-- Keywords table -->
     <div style="padding-right:20px;border-right:1px solid #e2e8f0;">
       <p style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;">
-        Your rank for top ${Math.max(geoGridKeywords.length, 1)} keywords
+        Your rank for ${Math.max(geoGridKeywords.length, 1)} keyword${geoGridKeywords.length === 1 ? '' : 's'} searched
       </p>
       ${geoGridKeywords.length > 0 ? `
       <table>
@@ -639,8 +684,8 @@ export function buildReportHtml(ctx: ReportContext): string {
           </tr>
         </thead>
         <tbody>
-          ${geoGridKeywords.slice(0, 5).map((kw) => {
-            const m = rankMeta(kw.avgRank);
+          ${geoGridKeywords.slice(0, 8).map((kw) => {
+            const m = { color: RANK_BAND_HEX[rankBand(kw.value)], display: rankLabel(kw.value) };
             return `<tr style="border-bottom:1px solid #f1f5f9;">
             <td style="padding:10px 12px 10px 0;font-size:12px;color:#2563eb;font-weight:500;">${h(kw.keyword)}</td>
             <td style="padding:10px 0;text-align:right;">
@@ -658,20 +703,23 @@ export function buildReportHtml(ctx: ReportContext): string {
     <!-- Competitors table -->
     <div style="padding-left:20px;">
       <p style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;">
-        Competitors ranking higher at your locations
+        ${facts ? 'Businesses shown above you in these searches' : 'Competitors ranking higher at your locations'}
       </p>
       ${localPackComps.length > 0 ? `
       <table>
         <thead>
           <tr style="border-bottom:2px solid #e2e8f0;">
             <th style="text-align:left;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;padding-bottom:8px;">NAME</th>
-            <th style="text-align:right;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;padding-bottom:8px;">AVG RANK</th>
+            <th style="text-align:right;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;padding-bottom:8px;">${facts ? 'ABOVE YOU IN' : 'AVG RANK'}</th>
           </tr>
         </thead>
         <tbody>
           ${localPackComps.slice(0, 5).map((c: any) => {
             const rank = c.avgRank != null ? Number(c.avgRank) : undefined;
-            const m = rankMeta(rank);
+            const cf = competitorFacts.find((x: any) => x.name === c.name);
+            const m = facts
+              ? { color: '#0f172a', display: cf ? `${cf.searchesAhead} of ${searchesChecked}` : '—' }
+              : rankMeta(rank);
             return `<tr style="border-bottom:1px solid #f1f5f9;">
             <td style="padding:10px 12px 10px 0;">
               <div style="display:flex;align-items:center;gap:8px;">
@@ -701,7 +749,7 @@ export function buildReportHtml(ctx: ReportContext): string {
   let geoGridHtml = '';
   if (hasMapGrid) {
     const mapKws = (data.geoGridRank?.keywords ?? []).filter((k) => (k.points?.length ?? 0) > 0).slice(0, 2);
-    const gridCards = mapKws.map((kw) => renderGeoGridMap(kw, ctx.mapsApiKey, gridSpacingKm));
+    const gridCards = mapKws.map((kw) => renderGeoGridMap(kw, ctx.mapsApiKey, gridSpacingKm, ctx.coordinates));
     const rowContent = gridCards.length === 1
       ? `<div style="max-width:480px;">${gridCards[0]}</div>`
       : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">${gridCards.join('')}</div>`;
@@ -709,9 +757,9 @@ export function buildReportHtml(ctx: ReportContext): string {
 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:14px;">
   <h2 style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:3px;">
     Your Google Search Rank at Nearby Locations
-    <span style="font-size:12px;font-weight:400;color:#64748b;margin-left:6px;">(${areaSqKm} sq. km. area)</span>
+    ${areaSqKm > 0 ? `<span style="font-size:12px;font-weight:400;color:#64748b;margin-left:6px;">(${areaSqKm} sq. km. area)</span>` : ''}
   </h2>
-  <p style="font-size:11px;color:#94a3b8;margin-bottom:14px;margin-top:3px;">Grid spacing: ${gridSpacingKm} km &nbsp;·&nbsp; Showing top ${mapKws.length} keywords</p>
+  <p style="font-size:11px;color:#94a3b8;margin-bottom:14px;margin-top:3px;">${gridSpacingKm > 0 ? `Grid spacing: ${gridSpacingKm} km &nbsp;·&nbsp; ` : ''}Showing ${mapKws.length} keyword${mapKws.length === 1 ? '' : 's'}</p>
   ${rowContent}
 </div>`;
   }
@@ -729,13 +777,20 @@ export function buildReportHtml(ctx: ReportContext): string {
       <p style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:12px;">Profile SEO Score</p>
       <div style="display:flex;align-items:flex-start;gap:16px;">
         <div style="flex-shrink:0;">
-          ${svgRing(seoScore, seoColor, 96)}
-          <p style="font-size:10px;text-align:center;color:#94a3b8;margin-top:5px;">Should be above 80%</p>
+          ${seoMeasured ? svgRing(seoScore, seoColor, 96) : `<div style="width:96px;height:96px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#94a3b8;text-align:center;">Not measured</div>`}
+          <p style="font-size:10px;text-align:center;color:#94a3b8;margin-top:5px;">${h(seoCoverage ?? 'Our target: 80%+')}</p>
         </div>
         <div style="flex:1;padding-top:4px;">
-          <p style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px;">Top searched keywords are missing in</p>
+          <p style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px;">${facts ? 'Profile gaps we verified' : 'Profile gaps found'}</p>
           <ul style="list-style:none;margin:0;padding:0;">
-            ${missingFields.length > 0
+            ${facts
+              ? (profileFindings.length > 0
+                  ? profileFindings.map((f: any) => `<li style="margin-bottom:8px;">
+                <div style="display:flex;align-items:center;gap:8px;"><span style="width:6px;height:6px;border-radius:50%;background:${BRAND_BAD};flex-shrink:0;display:inline-block;"></span><span style="font-size:12px;color:${BRAND_BAD};font-weight:500;">${h(f.title)}</span></div>
+                <div style="font-size:10px;color:#94a3b8;margin-left:14px;">Evidence: ${h(f.evidence)} · ${h(ACTIONABILITY_LABEL[f.actionability] || f.actionability)} · ${h(f.growwmaticsCapability ? `GrowwMatics: ${(GROWWMATICS_CAPABILITIES as any)[f.growwmaticsCapability]?.label}` : 'changed by you in Google')}</div>
+              </li>`).join('')
+                  : `<li style="font-size:12px;color:${BRAND_GOOD};font-weight:500;">No gaps found in the fields we could check</li>`)
+              : missingFields.length > 0
               ? missingFields.map((f) =>
                   `<li style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
                 <span style="width:6px;height:6px;border-radius:50%;background:${BRAND_BAD};flex-shrink:0;display:inline-block;"></span>
@@ -755,18 +810,18 @@ export function buildReportHtml(ctx: ReportContext): string {
           <span style="font-size:13px;font-weight:600;color:#1e293b;">
             ${servicesCnt !== null ? `${servicesCnt} Services Added` : 'Services'}
           </span>
-          ${statusBadge(servicesOk ? 'Good' : 'Poor')}
+          ${statusBadge(fieldBadge(servicesItem2?.status))}
         </div>
-        <p style="font-size:10px;color:#94a3b8;">Should add up to 20 services</p>
+        <p style="font-size:10px;color:#94a3b8;">${servicesItem2?.status === 'Unknown' || !servicesItem2 ? 'Not read from Google in this report' : 'From your Google profile'}</p>
       </div>
       <div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px;flex:1;break-inside:avoid;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
           <span style="font-size:13px;font-weight:600;color:#1e293b;">
-            ${categoriesCnt !== null ? `${categoriesCnt} Categories Added` : 'Categories'}
+            ${categoriesCnt !== null ? `${categoriesCnt} Categories Added` : 'Additional categories'}
           </span>
-          ${statusBadge(categoriesOk ? 'Good' : 'Poor')}
+          ${statusBadge(fieldBadge(categoriesItem2?.status))}
         </div>
-        <p style="font-size:10px;color:#94a3b8;">Should have 5+ categories</p>
+        <p style="font-size:10px;color:#94a3b8;">${categoriesItem2?.status === 'Unknown' || !categoriesItem2 ? 'Not read from Google in this report' : 'From your Google profile'}</p>
       </div>
     </div>
 
@@ -776,51 +831,52 @@ export function buildReportHtml(ctx: ReportContext): string {
        AuditReportGrexa's hasReviews branch: with no reviews synced yet, every
        metric here derives from reviewCount, so showing them would read as
        hollow zeros / a false "High risk" instead of a real finding. -->
-  ${hasReviews ? `
+  ${recentSynced ? `
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
 
     <!-- Reviews Per Week -->
     <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;break-inside:avoid;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <span style="font-size:12px;font-weight:600;color:#374151;">Reviews Per Week</span>
-        ${statusBadge(reviewsPerWeek >= industryAvg ? 'Good' : 'Poor')}
+        ${velocityBenchmark != null ? statusBadge(reviewsPerWeek >= velocityBenchmark ? 'Good' : 'Poor') : ''}
       </div>
       <div style="margin-bottom:4px;">
-        <span style="font-size:38px;font-weight:900;color:#0f172a;">${reviewsPerWeek.toFixed(2)}</span>
-        <span style="font-size:14px;font-weight:600;color:#94a3b8;margin-left:3px;">/Week</span>
+        <span style="font-size:38px;font-weight:900;color:#0f172a;">${facts ? (data.reviewAnalysis?.reviewsPerWeek != null ? Number(data.reviewAnalysis.reviewsPerWeek).toFixed(1) : 'Unknown') : reviewsPerWeek.toFixed(2)}</span>
+        ${!facts || data.reviewAnalysis?.reviewsPerWeek != null ? `<span style="font-size:14px;font-weight:600;color:#94a3b8;margin-left:3px;">/Week</span>` : ''}
       </div>
-      <p style="font-size:10px;color:#94a3b8;">Industry avg <strong style="color:#64748b;">${industryAvg}</strong>/week &middot; based on last ${reviewPeriodDays} days</p>
+      <p style="font-size:10px;color:#94a3b8;">${velocityBenchmark != null ? `Industry avg <strong style="color:#64748b;">${velocityBenchmark}</strong>/week &middot; ` : ''}${facts ? `${h(reviewView.recentCount)} new reviews in the ` : 'based on '}last ${reviewPeriodDays} days</p>
     </div>
 
     <!-- Response Percentage -->
     <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;break-inside:avoid;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <span style="font-size:12px;font-weight:600;color:#374151;">Response Rate</span>
-        ${statusBadge(responseRatePct >= 80 ? 'Good' : 'Poor')}
+        ${responseRateStr != null ? statusBadge(responseRatePct >= 80 ? 'Good' : 'Poor') : ''}
       </div>
       <div style="display:flex;justify-content:center;margin-bottom:6px;">
-        ${svgRing(responseRatePct, responseRatePct >= 80 ? BRAND_GOOD : BRAND_BAD, 80)}
+        ${responseRateStr != null ? svgRing(responseRatePct, responseRatePct >= 80 ? BRAND_GOOD : BRAND_BAD, 80) : `<div style="height:80px;display:flex;align-items:center;font-size:12px;font-weight:700;color:#94a3b8;">${h(reviewView.responseRate)}</div>`}
       </div>
-      <p style="font-size:10px;color:#94a3b8;text-align:center;">Should reply to <strong style="color:#64748b;">80%</strong> of reviews</p>
+      <p style="font-size:10px;color:#94a3b8;text-align:center;">We recommend replying to every review</p>
     </div>
 
     <!-- Suspension Risk -->
     <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;break-inside:avoid;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <span style="font-size:12px;font-weight:600;color:#374151;">Suspension Risk</span>
-        ${statusBadge(suspLevel)}
+        ${suspension.basis === 'heuristic' ? statusBadge(suspLevel) : ''}
       </div>
       <div style="display:flex;justify-content:center;margin-bottom:6px;">
-        ${svgRing(suspPct, suspColor, 80)}
+        <span style="font-size:28px;font-weight:900;color:${suspColor};">${h(suspLevel)}</span>
       </div>
-      <p style="font-size:10px;color:#94a3b8;text-align:center;">0 Policy Violation</p>
+      <p style="font-size:10px;color:#94a3b8;text-align:center;">${h(suspView.note)}</p>
     </div>
   </div>` : `
   <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:10px;break-inside:avoid;">
     <div style="width:8px;height:8px;border-radius:50%;background:${BRAND_MID};flex-shrink:0;"></div>
     <p style="font-size:12px;color:#64748b;margin:0;">
-      Review-based metrics (reviews/week, response rate, suspension risk) will appear once
-      reviews have synced from your newly-connected Google Business Profile.
+      ${facts
+        ? h(`Reviews per week and response rate need synced reviews, which this report doesn't have — they are unknown, not zero.${lifetimeKnown ? ` Lifetime: ${reviewCount} Google reviews${avgRating > 0 ? ` at ${avgRating}★` : ''}.` : ''} Suspension risk: ${suspView.level} — ${suspView.note} ${reviewView.themes}`)
+        : 'Review-based metrics (reviews/week, response rate, suspension risk) will appear once reviews have synced from your newly-connected Google Business Profile.'}
     </p>
   </div>`}
 
@@ -831,9 +887,9 @@ export function buildReportHtml(ctx: ReportContext): string {
   const checklistHtml = `
 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:14px;">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
-    <h2 style="font-size:15px;font-weight:700;color:#0f172a;">Your Profile Completion (${completionPct}% ${completionView.badgeCaption})</h2>
+    <h2 style="font-size:15px;font-weight:700;color:#0f172a;">Your Profile Completion (${facts && breakdown.pct == null ? 'not measured' : `${completionPct}% ${completionView.badgeCaption}`})</h2>
     <div style="display:flex;align-items:center;gap:14px;font-size:11px;color:#374151;flex-wrap:wrap;">
-      <span style="color:#94a3b8;font-weight:500;">${h(completionView.label)}</span>
+      <span style="color:#94a3b8;font-weight:500;">${h(facts ? completionSentence(breakdown) : completionView.label)}</span>
       <div style="display:flex;align-items:center;gap:5px;">
         <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="${BRAND_GOOD}"/><path d="M8 12l3 3 5-5" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
         <span>Complete</span>
@@ -845,6 +901,10 @@ export function buildReportHtml(ctx: ReportContext): string {
       <div style="display:flex;align-items:center;gap:5px;">
         <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="${BRAND_BAD}"/><path d="M15 9l-6 6M9 9l6 6" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
         <span>Incomplete</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#79747E"/><text x="12" y="16.5" text-anchor="middle" font-size="13" font-weight="700" fill="white">?</text></svg>
+        <span>Could not be checked (not counted)</span>
       </div>
     </div>
   </div>
@@ -925,10 +985,11 @@ export function buildReportHtml(ctx: ReportContext): string {
     audit.businessName,
     (audit as any).location?.split(',')[0]?.trim() || '',
   );
+  const monthlyHtml = renderMonthly((data as any).monthly);
   const isFullAudit = (data.seoPlanDraft as any)?.depth === 'full';
   const confidentialFooter = isFullAudit
     ? `<div style="margin-top:14px;padding:14px 18px;background:#1e293b;color:#94a3b8;border-radius:12px;font-size:10px;line-height:1.6;">
-        GrowwMatics AI · Powered by Desun Technology Pvt Ltd<br/>
+        GrowwMatics AI<br/>
         GBP Full Audit Report — ${h(audit.businessName)} · ${genDate}<br/>
         Confidential — prepared exclusively for the client named above.
       </div>`
@@ -967,16 +1028,45 @@ export function buildReportHtml(ctx: ReportContext): string {
 </head>
 <body>
 ${getBrandLogoDataUri() ? `<div class="gm-watermark"><img src="${getBrandLogoDataUri()}" alt="GrowwMatics"/></div>` : ''}
+${legacy ? `<div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:11px;color:#475569;">${h(LEGACY_REPORT_NOTICE)}</div>` : ''}
 ${headerHtml}
 ${heroHtml}
 ${rankAnalyticsHtml}
 ${geoGridHtml}
 ${profileBreakdownHtml}
 ${checklistHtml}
+${monthlyHtml}
 ${consultantHtml}
 ${actionPlanHtml}
 ${ctaHtml}
 ${confidentialFooter}
 </body>
 </html>`;
+}
+
+/** Monthly optimization report (same content as MonthlySections.tsx). Missing data is stated, never filled. */
+function renderMonthly(m: any): string {
+  if (!m) return '';
+  const box = (title: string, body: string) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px;break-inside:avoid;"><div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:6px;">${h(title)}</div>${body}</div>`;
+  const p = (t: string) => `<p style="font-size:11px;color:#64748b;margin:0;">${h(t)}</p>`;
+  const li = (items: string[]) => `<ul style="margin:0;padding-left:16px;font-size:11px;color:#374151;">${items.map((x) => `<li>${h(x)}</li>`).join('')}</ul>`;
+  const r = m.reviews || {};
+  const perf = m.performance?.status === 'unavailable'
+    ? p('Google performance data unavailable for this period.')
+    : li((m.performance?.rows || []).map((x: any) => `${x.metric}: ${x.previous ?? 'not measured'} → ${x.current ?? 'not measured'}${x.pctChange != null ? ` (${x.pctChange > 0 ? '+' : ''}${x.pctChange}%)` : ''}`)) +
+      p(`Current ${m.performance?.currentPeriod || ''}${m.performance?.previousPeriod ? ` · previous ${m.performance.previousPeriod}` : ' · no earlier measured period'} — engagement measurements, not revenue.`);
+  return `<div style="margin:14px 0;">
+    <div style="font-size:14px;font-weight:800;color:#0f172a;margin-bottom:8px;">Monthly optimization report</div>
+    ${box('What changed this month', m.changes?.length ? li(m.changes.map((c: any) => `${c.what}: ${c.previous} → ${c.current} (${c.actor === 'Unknown' ? 'not recorded' : c.actor === 'Owner' ? 'you' : 'GrowwMatics'})`)) : p('No verified profile changes were detected between the two audits.'))}
+    ${box('What GrowwMatics optimized', m.growwmaticsOptimized?.length ? li(m.growwmaticsOptimized.map((x: any) => `${x.count} ${x.what}`)) : p('No GrowwMatics actions reached your Google profile this period.'))}
+    ${box('What you optimized', m.ownerOptimized?.length ? li(m.ownerOptimized.map((x: any) => `${x.count} ${x.what}`)) : p('No owner actions were recorded through GrowwMatics this period.'))}
+    ${box('Google performance', perf)}
+    ${box('Ranking progress', m.ranking?.length ? li(m.ranking.map((x: any) => `${x.metric}: ${x.before} → ${x.after} (${x.change})`)) : p('Ranking data unavailable for comparison.'))}
+    ${box('Review activity', li([`New Google reviews: ${r.newReviews}`, `Rating: ${r.ratingBefore ?? 'unknown'}★ → ${r.ratingAfter ?? 'unknown'}★`, `Replied by GrowwMatics: ${r.repliedByGrowwMatics} · you approved: ${r.repliedByOwnerViaGrowwMatics} · on Google directly: ${r.repliedOnGoogleDirectly}`, `New reviews without a reply: ${r.unanswered}`, `Review requests sent: ${r.reviewRequestsSent}`]))}
+    ${m.contentActivity ? box('Google posts this month', li(contentActivityLines(m.contentActivity))) : ''}
+    ${box('Profile health', p(`${m.profileHealth?.completionPercentage != null ? `${m.profileHealth.completionPercentage}% of checked fields complete` : 'Profile completion not measured'}${m.profileHealth?.missing?.length ? ` · missing: ${m.profileHealth.missing.join(', ')}` : ''}${m.profileHealth?.unknown ? ` · ${m.profileHealth.unknown} could not be checked` : ''}`))}
+    ${box('Completed plan', m.planCompleted?.length ? li(m.planCompleted.map((a: any) => `${a.action} — ${a.status}`)) : p('No plan actions have been completed with evidence yet.'))}
+    ${box('Pending plan', m.planPending?.length ? li(m.planPending.map((a: any) => `${a.action} — ${a.status}${a.statusReason ? ` (${a.statusReason})` : ''}`)) : p('No pending plan actions.'))}
+    ${box('Issues that remain', m.remainingIssues?.length ? li(m.remainingIssues) : p('No verified issues remain in this audit.'))}
+  </div>`;
 }

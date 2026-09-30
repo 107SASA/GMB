@@ -9,8 +9,25 @@ import {
   IGeoGridPoint,
 } from '@/models/Audit';
 import { Download, RefreshCw, Share2, Copy, Check } from 'lucide-react';
-import { formatRank, rankBucket, computeSuspensionRisk } from '@/services/audit/reportMath';
+import { formatRank, rankBucket, resolveRankHeadline, resolveSuspensionRisk } from '@/services/audit/reportMath';
+import { GROWWMATICS_CAPABILITIES } from '@/services/audit/findings';
+import {
+  ACTIONABILITY_LABEL,
+  LEGACY_REPORT_NOTICE,
+  RANK_BAND_HEX,
+  RANK_LEGEND,
+  completionBreakdown,
+  completionSentence,
+  isLegacyAudit,
+  rankBand,
+  rankLabel,
+  rankingStatRows,
+  reviewDisplay,
+  suspensionDisplay,
+  toRankValue,
+} from '@/services/audit/reportDisplay';
 import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
+import MonthlySections from './MonthlySections';
 import ConsultantSections from '@/components/audit/ConsultantSections';
 
 /* ─── Google Logo ───────────────────────────────────────────────────────────── */
@@ -120,6 +137,7 @@ function ChecklistRow({ field, status }: { field: string; status: string }) {
 
 /* ─── Rank colour helpers ───────────────────────────────────────────────────── */
 function rankTextClass(rank: number | null | undefined) {
+  if (rank == null) return 'text-error';
   const bucket = rankBucket(rank);
   if (bucket === 'unranked') return 'text-outline';
   if (bucket === 'good') return 'text-secondary';
@@ -138,7 +156,7 @@ function GeoGridMap({
   auditId: string;
   kwIndex: number;
   keyword: string;
-  avgRank: number;
+  avgRank: number | null;
   points: IGeoGridPoint[];
 }) {
   const [mapOk, setMapOk] = useState(true);
@@ -152,7 +170,7 @@ function GeoGridMap({
           Keyword: <span className="font-bold text-white">{keyword}</span>
         </p>
         <p className="text-sm text-outline">
-          Avg Rank: <span className={`font-black text-base ${rankCls}`}>{formatRank(avgRank)}</span>
+          Avg Rank: <span className={`font-black text-base ${rankCls}`}>{avgRank != null ? formatRank(avgRank) : 'Not found'}</span>
         </p>
       </div>
 
@@ -178,12 +196,7 @@ function GeoGridMap({
 
       {/* Legend */}
       <div className="px-4 py-2.5 bg-surface-container-lowest border-t border-outline-variant flex items-center gap-4 flex-wrap">
-        {[
-          { bg: '#1d4ed8', label: 'You' },
-          { bg: '#0a8a3e', label: '1–5' },
-          { bg: '#fab219', label: '6–10' },
-          { bg: '#ba1a1a', label: '20+' },
-        ].map(({ bg, label }) => (
+        {[{ bg: '#1d4ed8', label: 'You' }, ...RANK_LEGEND.map((l) => ({ bg: l.hex, label: l.label }))].map(({ bg, label }) => (
           <div key={label} className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: bg }} />
             <span className="text-[10px] font-semibold text-on-surface-variant">{label}</span>
@@ -216,24 +229,43 @@ export default function AuditReportGrexa({
   const auditId = String((audit as any)._id ?? '');
 
   /* ── Data extraction ──────────────────────────────────────────────── */
+  const facts: any   = (data as any).facts;
+  const legacy       = isLegacyAudit(data);
   const geoGrid      = data.geoGridRank;
-  const keywords     = geoGrid?.keywords?.length
-    ? geoGrid.keywords
-    : (data.googleSearchRank?.topKeywords ?? []).map((k) => ({
-        keyword: k.keyword,
-        avgRank: k.rank,
-        points: [] as IGeoGridPoint[],
-      }));
+  // New audits: every keyword searched, with found/not-found/unavailable
+  // from the facts layer. Old audits: their stored grid (21 = not found).
+  const keywords: Array<{ keyword: string; avgRank: number | null; points: IGeoGridPoint[]; label: string; band: string }> = facts
+    ? (facts.ranking?.byKeyword ?? []).map((k: any) => {
+        const v = k.status === 'unavailable' ? { state: 'unavailable' as const, rank: null } : k.averageObservedRank != null ? { state: 'found' as const, rank: k.averageObservedRank } : { state: 'not_found' as const, rank: null };
+        // Own-name searches are shown for context but never counted.
+        return { keyword: k.kind === 'brand' ? `${k.keyword} (your own name — not counted)` : k.keyword, avgRank: k.averageObservedRank, points: [], label: rankLabel(v), band: RANK_BAND_HEX[rankBand(v)] };
+      })
+    : (geoGrid?.keywords?.length
+        ? geoGrid.keywords
+        : (data.googleSearchRank?.topKeywords ?? []).map((k) => ({ keyword: k.keyword, avgRank: k.rank, points: [] as IGeoGridPoint[] }))
+      ).map((k: any) => {
+        const v = toRankValue(k.avgRank);
+        return { ...k, label: rankLabel(v), band: RANK_BAND_HEX[rankBand(v)] };
+      });
   // Only show top 2 keywords in the map section (needs real geo points)
   const mapKeywords  = (geoGrid?.keywords ?? []).filter((k) => (k.points?.length ?? 0) > 0).slice(0, 2);
 
-  const overallRank  = geoGrid?.overallAvgRank
-    ?? (data.googleSearchRank?.averageRank && data.googleSearchRank.averageRank > 0
-      ? data.googleSearchRank.averageRank
-      : 0);
-  const visibilityPct = geoGrid?.visibilityPct;
+  // Average over FOUND searches only, visibility separately, "Unavailable"
+  // when the ranking provider failed (new audits — see reportMath.ts).
+  const rankHeadline = resolveRankHeadline(data);
+  const overallRank  = rankHeadline.status === 'ok' ? (rankHeadline.value ?? 21) : 0;
+  const visibilityPct = rankHeadline.visibilityPct ?? undefined;
   const profilePct   = data.profileScore?.overallScore ?? 0;
-  const seoPct       = data.seoScore?.score ?? 0;
+  // New audits: null when not one field could be checked — shown as
+  // "Not measured", never as a 0% gauge.
+  const profileMeasured = !facts || completionBreakdown(data.profileCompletion?.checklist ?? []).pct != null;
+  // null = none of the weighted SEO items could be checked → "Not measured".
+  const seoRaw       = data.seoScore?.score;
+  const seoMeasured  = typeof seoRaw === 'number';
+  const seoPct       = seoMeasured ? (seoRaw as number) : 0;
+  const seoCoverage  = (data.seoScore as any)?.checkedItems != null
+    ? `Based on ${(data.seoScore as any).checkedItems} of ${(data.seoScore as any).totalItems} checks we could run`
+    : null;
   const optOps       = data.seoScore?.optimizationOpportunities ?? [];
   const missingKw    = data.seoScore?.missingKeywords ?? [];
 
@@ -249,13 +281,22 @@ export default function AuditReportGrexa({
   // reviews/week, response rate, or sentiment split. Those specific
   // sub-widgets are hidden below rather than shown as false zeros.
   const estimatedFromPlaces = !!(reviews as any)?.estimatedFromPlaces;
-  const hasReviewDetail     = hasReviews && !estimatedFromPlaces;
+  // Recent-window metrics only exist when reviews were actually synced.
+  const hasReviewDetail     = facts ? facts.reviews?.recent?.status === 'verified' : hasReviews && !estimatedFromPlaces;
   const rating       = reviews?.averageRating ?? 0;
   const reviewCount  = reviews?.reviewCount ?? 0;
+  const lifetimeKnown = typeof reviews?.reviewCount === 'number';
   const rpw          = reviews?.reviewsPerWeek ?? 0;
+  const reviewView   = reviewDisplay(facts?.reviews, (reviews as any)?.reviewThemes === 'from-review-text'
+    ? { praises: reviews?.mostCommonPraises, complaints: reviews?.mostCommonComplaints }
+    : 'unknown');
   const industryAvg  = reviews?.industryAverage ?? 2;
-  const responseStr  = reviews?.responseRate ?? '0%';
-  const responsePct  = parseInt(responseStr.replace('%', '')) || 0;
+  // The 4.2/week "industry average" was a hardcoded number with no source.
+  // New audits (facts layer present) show velocity without grading it.
+  const velocityBenchmark: number | null = (data as any).facts ? null : industryAvg;
+  // null = not computable (no reviews in the synced window) — never "0%".
+  const responseStr: string | null = reviews?.responseRate ?? null;
+  const responsePct  = responseStr ? parseInt(responseStr.replace('%', '')) || 0 : 0;
 
   const completion    = data.profileCompletion;
   const completionView = formatProfileCompletionDisplay(completion);
@@ -267,9 +308,12 @@ export default function AuditReportGrexa({
   // verify," not "of everything" — surfaced so a high number pre-connection
   // isn't read as a fully complete profile.
   const unverifiedCount = completionView.pending;
+  const breakdown = completionBreakdown(checklist);
 
   // Prefer SerpApi local-pack competitors (have real avgRank). Fall back to
   // Places competitors — including ones without a rank (show "—").
+  const competitorFacts: any[] = facts && Array.isArray(data.competitors) ? (data.competitors as any[]) : [];
+  const searchesChecked: number = facts?.competitorsAhead?.searchesChecked ?? 0;
   const localComps: Array<{ name: string; avgRank?: number; rating?: number; reviewCount?: number }> =
     (data.localPackCompetitors?.length
       ? data.localPackCompetitors
@@ -293,13 +337,21 @@ export default function AuditReportGrexa({
   const reviewPeriodDays = (audit as any).reviewPeriodDays ?? (audit as any).metadata?.reviewPeriodDays ?? 14;
 
 
-  /* ── Missing SEO fields ───────────────────────────────────────────── */
+  /* ── Profile gaps ─────────────────────────────────────────────────── */
+  // New audits: the verified profile findings (each with evidence and who
+  // can fix it). Old audits: the stored opportunity text.
+  const profileFindings: any[] = Array.isArray((data as any).findings)
+    ? (data as any).findings.filter((f: any) => f.category === 'profile')
+    : [];
   const missingFields: string[] = [];
   const opLower = optOps.map((o: string) => o.toLowerCase()).join(' ');
-  if (opLower.includes('title')       || missingKw.length > 0) missingFields.push('Title');
-  if (opLower.includes('categor')     || missingKw.length > 0) missingFields.push('Additional Category');
-  if (opLower.includes('service')     || missingKw.length > 0) missingFields.push('Services');
-  if (opLower.includes('description') || missingKw.length > 0) missingFields.push('Description');
+  // Only fields an opportunity actually names — a single keyword note used
+  // to add all four (Title, Category, Services, Description) at once.
+  void missingKw;
+  if (opLower.includes('title'))       missingFields.push('Title');
+  if (opLower.includes('categor'))     missingFields.push('Additional Category');
+  if (opLower.includes('service'))     missingFields.push('Services');
+  if (opLower.includes('description')) missingFields.push('Description');
   // Prefer explicit optimization opportunities labels when the heuristic list is empty
   if (missingFields.length === 0 && optOps.length > 0) {
     missingFields.push(...optOps.slice(0, 4));
@@ -308,8 +360,10 @@ export default function AuditReportGrexa({
   /* ── Services / Categories ────────────────────────────────────────── */
   const servicesItem   = checklist.find((c) => c.field.toLowerCase().includes('service'));
   const categoriesItem = checklist.find((c) => c.field.toLowerCase().includes('categor'));
-  const servicesOk     = servicesItem?.status === 'Complete';
-  const categoriesOk   = !(categoriesItem?.status === 'Missing' || categoriesItem?.status === 'Unknown');
+  // Unknown (not read from Google) is shown as "Not checked" — never "Poor".
+  const statusBadge = (st?: string) => (st === 'Complete' || st === 'Partial' ? 'Good' : st === 'Missing' ? 'Poor' : 'Not checked');
+  const servicesItem2   = checklist.find((c) => c.field === 'Services Listed') ?? servicesItem;
+  const categoriesItem2 = checklist.find((c) => c.field === 'Additional Categories') ?? categoriesItem;
   const evidence: Record<string, any> = (data as any).evidence ?? {};
   // Turns competitorService.ts's internal diagnostic strings (never meant
   // for direct display — see its evidenceSource comments) into a specific,
@@ -326,8 +380,14 @@ export default function AuditReportGrexa({
   const categoriesCnt  = evidence.categoriesCount  ?? null;
 
   /* ── Suspension risk ──────────────────────────────────────────────── */
-  const { level: suspLevel, pct: suspPct } = computeSuspensionRisk(completionPct, reviewCount);
-  const suspColor = suspLevel === 'Low' ? '#0a8a3e' : suspLevel === 'Medium' ? '#fab219' : '#ba1a1a';
+  // A heuristic category with its reasons — never a percentage (there is no
+  // measured suspension probability).
+  const suspension   = resolveSuspensionRisk(data, completionPct, reviewCount);
+  // Old reports never ran a policy check — their level was derived from
+  // completion/review counts, so it is shown as "Not assessed".
+  const suspView     = suspension.basis === 'heuristic' ? suspensionDisplay(suspension) : suspensionDisplay(null);
+  const suspLevel    = suspView.level;
+  const suspColor = suspLevel === 'Low' ? '#0a8a3e' : suspLevel === 'Medium' ? '#fab219' : suspLevel === 'High' ? '#ba1a1a' : '#79747E';
 
   /* ── Checklist display — never invent fake Complete/Missing rows ─── */
   const displayChecklist = checklist;
@@ -338,13 +398,18 @@ export default function AuditReportGrexa({
   /* ── Colors ───────────────────────────────────────────────────────── */
   const profileColor = profilePct >= 80 ? '#0a8a3e' : profilePct >= 60 ? '#fab219' : '#ba1a1a';
   const seoColor     = seoPct    >= 80 ? '#0a8a3e' : seoPct    >= 50 ? '#fab219' : '#ba1a1a';
-  const hasRankData  = overallRank > 0 || keywords.length > 0;
-  const rankDisplay  = hasRankData ? formatRank(overallRank) : '—';
-  const rankClass    = rankTextClass(overallRank);
+  const hasRankData  = rankHeadline.status === 'ok';
+  const rankDisplay  = hasRankData ? rankHeadline.display : rankHeadline.status === 'unavailable' ? 'Unavailable' : '—';
+  const rankClass    = rankTextClass(rankHeadline.status === 'ok' ? rankHeadline.value : undefined);
 
   /* ─── RENDER ──────────────────────────────────────────────────────── */
   return (
     <div className="max-w-5xl mx-auto pb-16 space-y-5 font-sans">
+      {legacy && (
+        <div className="rounded-2xl border border-outline-variant bg-surface-container p-4 text-sm text-on-surface-variant">
+          {LEGACY_REPORT_NOTICE}
+        </div>
+      )}
 
       {/* ══ 1. REPORT HEADER ═══════════════════════════════════════════ */}
       <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant overflow-hidden">
@@ -394,9 +459,9 @@ export default function AuditReportGrexa({
               <>
                 <StarRating rating={rating} />
                 <span className="font-bold text-on-surface">{rating.toFixed(1)}</span>
-                {reviewCount > 0 && <span className="text-outline">({reviewCount} reviews)</span>}
               </>
             )}
+            {lifetimeKnown && <span className="text-outline">({reviewCount} Google review{reviewCount === 1 ? '' : 's'})</span>}
             {audit.address && (
               <>
                 {rating > 0 && <span className="text-outline-variant">|</span>}
@@ -425,43 +490,42 @@ export default function AuditReportGrexa({
                   {rankDisplay}
                 </span>
               </div>
-              <p className="text-xs text-on-surface-variant mb-5 leading-relaxed">
-                {overallRank > 20 ? (
-                  <>
-                    Not appearing in Google&apos;s local pack for most tracked keywords
-                    {typeof visibilityPct === 'number' && (
-                      <> · visible in <strong className="text-on-surface">{visibilityPct}%</strong> of nearby searches</>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    Overall average rank for the{' '}
-                    <strong className="text-on-surface">{keywords.length} most searched keywords</strong>{' '}
-                    on Google for your business
-                    {typeof visibilityPct === 'number' && (
-                      <> · visible in <strong className="text-on-surface">{visibilityPct}%</strong> of nearby searches</>
-                    )}
-                  </>
+              <p className="text-xs text-on-surface-variant mb-3 leading-relaxed">
+                {facts
+                  ? 'Average observed position — only searches where you appeared in the top 20 are averaged.'
+                  : rankHeadline.value != null && rankHeadline.value > 20
+                    ? 'Not appearing in the top 20 for most tracked keywords.'
+                    : `Average rank across ${keywords.length} tracked keywords.`}
+                {typeof visibilityPct === 'number' && (
+                  <> · visible in <strong className="text-on-surface">{visibilityPct}%</strong> of searches</>
                 )}
               </p>
-              <div className="flex gap-4 mt-auto text-xs text-on-surface-variant">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-secondary flex-shrink-0" />
-                  <span>Top 5</span>
+              {facts && (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-4 text-[11px]">
+                  {rankingStatRows(facts.ranking?.overall).map((r) => (
+                    <div key={r.label} className="flex justify-between gap-2">
+                      <span className="text-outline">{r.label}</span>
+                      <span className="font-bold text-on-surface">{r.value}</span>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-warning flex-shrink-0" />
-                  <span>Under 10</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-error flex-shrink-0" />
-                  <span>20+</span>
-                </div>
+              )}
+              <div className="flex gap-4 mt-auto text-xs text-on-surface-variant flex-wrap">
+                {RANK_LEGEND.slice(0, 3).map((l) => (
+                  <div key={l.band} className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: l.hex }} />
+                    <span>{l.label}</span>
+                  </div>
+                ))}
               </div>
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-sm text-outline">
-              Ranking data unavailable — re-run audit with SerpApi configured
+              {rankHeadline.status === 'not_measured'
+                ? 'Not measured — Google lists this business only under a generic category, so there is no customer search term to rank for. Add your main service (or a specific Google category) and re-run.'
+                : rankHeadline.status === 'unavailable'
+                ? "The ranking check didn't complete for this report — your position is unknown, not bad. It is re-measured on the next audit."
+                : 'Ranking data unavailable for this report.'}
             </div>
           )}
         </div>
@@ -475,13 +539,12 @@ export default function AuditReportGrexa({
             <span className="text-sm font-bold text-on-surface">Google Profile Score</span>
           </div>
           <div className="flex items-center gap-5 flex-1">
-            <CircularGauge value={profilePct} size={120} color={profileColor} />
+            {profileMeasured
+              ? <CircularGauge value={profilePct} size={120} color={profileColor} />
+              : <div className="w-[120px] h-[120px] flex items-center justify-center text-sm font-bold text-outline text-center">Not measured</div>}
             <div>
               <p className="text-xs text-on-surface-variant leading-relaxed mb-3">
-                Based on 25+ parameters — SEO, Reviews, Completion, Rating.
-              </p>
-              <p className="text-xs font-semibold text-on-surface">
-                Good businesses score more than 90%
+                Profile completion: {completionSentence(breakdown)}
               </p>
               <div className="mt-3">
                 <div className="h-1.5 rounded-full bg-surface-container overflow-hidden w-32">
@@ -506,7 +569,7 @@ export default function AuditReportGrexa({
             {/* Keywords table */}
             <div>
               <p className="text-[10px] font-bold text-outline uppercase tracking-widest mb-3">
-                Your rank for top {Math.max(keywords.length, 1)} keywords
+                Your rank for {Math.max(keywords.length, 1)} keyword{keywords.length === 1 ? '' : 's'} searched
               </p>
               {keywords.length > 0 ? (
                 <table className="w-full">
@@ -517,14 +580,14 @@ export default function AuditReportGrexa({
                     </tr>
                   </thead>
                   <tbody>
-                    {keywords.slice(0, 5).map((kw: IGeoGridKeyword, i: number) => (
+                    {keywords.slice(0, 8).map((kw, i: number) => (
                       <tr key={i} className="border-b border-outline-variant hover:bg-surface/50 transition-colors">
                         <td className="py-3 pr-4">
                           <span className="text-sm text-primary font-medium leading-snug">{kw.keyword}</span>
                         </td>
                         <td className="py-3 text-right">
-                          <span className={`text-sm font-black ${rankTextClass(kw.avgRank)}`}>
-                            {formatRank(kw.avgRank)}
+                          <span className="text-sm font-black" style={{ color: kw.band }}>
+                            {kw.label}
                           </span>
                         </td>
                       </tr>
@@ -541,18 +604,19 @@ export default function AuditReportGrexa({
             {/* Competitors table */}
             <div>
               <p className="text-[10px] font-bold text-outline uppercase tracking-widest mb-3">
-                Competitors ranking higher at your locations
+                {facts ? 'Businesses shown above you in these searches' : 'Competitors ranking higher at your locations'}
               </p>
               {localComps.length > 0 ? (
                 <table className="w-full">
                   <thead>
                     <tr className="border-b-2 border-outline-variant">
                       <th className="text-left text-[10px] font-bold text-outline uppercase pb-2 tracking-widest">NAME</th>
-                      <th className="text-right text-[10px] font-bold text-outline uppercase pb-2 tracking-widest">AVG RANK</th>
+                      <th className="text-right text-[10px] font-bold text-outline uppercase pb-2 tracking-widest">{facts ? 'ABOVE YOU IN' : 'AVG RANK'}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {localComps.map((c, i) => {
+                      const cf = competitorFacts.find((x: any) => x.name === c.name);
                       const rank = c.avgRank;
                       return (
                         <tr key={i} className="border-b border-outline-variant hover:bg-surface/50 transition-colors">
@@ -565,8 +629,8 @@ export default function AuditReportGrexa({
                             </div>
                           </td>
                           <td className="py-3 text-right">
-                            <span className={`text-sm font-black ${rankTextClass(rank)}`}>
-                              {formatRank(rank)}
+                            <span className={`text-sm font-black ${facts ? 'text-on-surface' : rankTextClass(rank)}`}>
+                              {facts ? (cf ? `${cf.searchesAhead} of ${searchesChecked}` : '—') : formatRank(rank)}
                             </span>
                           </td>
                         </tr>
@@ -614,7 +678,7 @@ export default function AuditReportGrexa({
       {/* ══ 5. PROFILE SCORE DETAILS ════════════════════════════════════ */}
       <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant p-6">
         <h2 className="text-base font-bold text-on-surface mb-5">
-          Your Profile Score ({profilePct}%)
+          Your Profile Score ({profileMeasured ? `${profilePct}%` : 'not measured'})
         </h2>
 
         {/* Row 1: SEO Score + Services/Categories */}
@@ -625,15 +689,32 @@ export default function AuditReportGrexa({
             <p className="text-[10px] font-bold text-outline uppercase tracking-widest mb-4">Profile SEO Score</p>
             <div className="flex items-start gap-6">
               <div className="flex-shrink-0">
-                <CircularGauge value={seoPct} size={96} color={seoColor} />
-                <p className="text-[10px] text-center text-outline mt-2">Should be above 80%</p>
+                {seoMeasured
+                  ? <CircularGauge value={seoPct} size={96} color={seoColor} />
+                  : <div className="w-24 h-24 flex items-center justify-center text-xs font-bold text-outline text-center">Not measured</div>}
+                <p className="text-[10px] text-center text-outline mt-2">{seoCoverage ?? 'Our target: 80%+'}</p>
               </div>
               <div className="flex-1 pt-1">
                 <p className="text-sm font-semibold text-on-surface mb-3">
-                  Top searched keywords are missing in
+                  {facts ? 'Profile gaps we verified' : 'Profile gaps found'}
                 </p>
                 <ul className="space-y-2">
-                  {missingFields.length > 0 ? missingFields.map((f) => (
+                  {facts ? (
+                    profileFindings.length > 0 ? profileFindings.map((f: any) => (
+                      <li key={f.id} className="text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-error flex-shrink-0" />
+                          <span className="text-error font-medium">{f.title}</span>
+                        </div>
+                        <div className="text-[11px] text-outline ml-3.5">
+                          Evidence: {f.evidence} · {ACTIONABILITY_LABEL[f.actionability] || f.actionability} ·{' '}
+                          {f.growwmaticsCapability ? `GrowwMatics: ${GROWWMATICS_CAPABILITIES[f.growwmaticsCapability as keyof typeof GROWWMATICS_CAPABILITIES]?.label}` : 'changed by you in Google'}
+                        </div>
+                      </li>
+                    )) : (
+                      <li className="text-sm text-secondary font-medium">No gaps found in the fields we could check</li>
+                    )
+                  ) : missingFields.length > 0 ? missingFields.map((f) => (
                     <li key={f} className="flex items-center gap-2">
                       <div className="w-1.5 h-1.5 rounded-full bg-error flex-shrink-0" />
                       <span className="text-sm text-error font-medium">{f}</span>
@@ -653,18 +734,18 @@ export default function AuditReportGrexa({
                 <span className="text-sm font-bold text-on-surface leading-tight">
                   {servicesCnt !== null ? `${servicesCnt} Services Added` : 'Services'}
                 </span>
-                <StatusBadge status={servicesOk ? 'Good' : 'Poor'} />
+                <StatusBadge status={statusBadge(servicesItem2?.status)} />
               </div>
-              <p className="text-[11px] text-outline">Should add up to 20 services</p>
+              <p className="text-[11px] text-outline">{servicesItem2?.status === 'Unknown' || !servicesItem2 ? 'Not read from Google in this report' : 'From your Google profile'}</p>
             </div>
             <div className="border border-outline-variant rounded-2xl p-4 bg-surface/40 flex flex-col justify-between h-[calc(50%-6px)]">
               <div className="flex items-start justify-between gap-2 mb-1.5">
                 <span className="text-sm font-bold text-on-surface leading-tight">
-                  {categoriesCnt !== null ? `${categoriesCnt} Categories Added` : 'Categories'}
+                  {categoriesCnt !== null ? `${categoriesCnt} Categories Added` : 'Additional categories'}
                 </span>
-                <StatusBadge status={categoriesOk ? 'Good' : 'Poor'} />
+                <StatusBadge status={statusBadge(categoriesItem2?.status)} />
               </div>
-              <p className="text-[11px] text-outline">Should have 5+ categories</p>
+              <p className="text-[11px] text-outline">{categoriesItem2?.status === 'Unknown' || !categoriesItem2 ? 'Not read from Google in this report' : 'From your Google profile'}</p>
             </div>
           </div>
         </div>
@@ -680,20 +761,22 @@ export default function AuditReportGrexa({
             <div className="border border-outline-variant rounded-2xl p-5 bg-surface/40">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-semibold text-on-surface">Reviews Per Week</span>
-                <StatusBadge status={rpw >= industryAvg ? 'Good' : 'Poor'} />
+                {velocityBenchmark != null && <StatusBadge status={rpw >= velocityBenchmark ? 'Good' : 'Poor'} />}
               </div>
               <div className="mb-1.5">
-                <span className="text-4xl font-black text-on-surface">{rpw.toFixed(2)}</span>
-                <span className="text-sm font-semibold text-outline ml-1">/Week</span>
+                <span className="text-4xl font-black text-on-surface">{facts ? (reviews?.reviewsPerWeek != null ? Number(reviews.reviewsPerWeek).toFixed(1) : 'Unknown') : rpw.toFixed(2)}</span>
+                {(!facts || reviews?.reviewsPerWeek != null) && <span className="text-sm font-semibold text-outline ml-1">/Week</span>}
               </div>
-              <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden mb-2">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${Math.min(100, (rpw / (industryAvg * 1.5)) * 100)}%`, background: rpw >= industryAvg ? '#0a8a3e' : '#ba1a1a' }}
-                />
-              </div>
+              {velocityBenchmark != null && (
+                <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden mb-2">
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${Math.min(100, (rpw / (velocityBenchmark * 1.5)) * 100)}%`, background: rpw >= velocityBenchmark ? '#0a8a3e' : '#ba1a1a' }}
+                  />
+                </div>
+              )}
               <p className="text-[10px] text-outline">
-                Industry avg <strong className="text-on-surface-variant">{industryAvg}</strong>/week · based on last {reviewPeriodDays} days
+                {velocityBenchmark != null && <>Industry avg <strong className="text-on-surface-variant">{velocityBenchmark}</strong>/week · </>}{facts ? `${reviewView.recentCount} new reviews in the ` : 'based on '}last {reviewPeriodDays} days
               </p>
             </div>
 
@@ -701,17 +784,17 @@ export default function AuditReportGrexa({
             <div className="border border-outline-variant rounded-2xl p-5 bg-surface/40">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-semibold text-on-surface">Response Rate</span>
-                <StatusBadge status={responsePct >= 80 ? 'Good' : 'Poor'} />
+                {responseStr != null && <StatusBadge status={responsePct >= 80 ? 'Good' : 'Poor'} />}
               </div>
               <div className="flex justify-center my-1">
-                <CircularGauge
-                  value={responsePct}
-                  size={80}
-                  color={responsePct >= 80 ? '#0a8a3e' : '#ba1a1a'}
-                />
+                {responseStr != null ? (
+                  <CircularGauge value={responsePct} size={80} color={responsePct >= 80 ? '#0a8a3e' : '#ba1a1a'} />
+                ) : (
+                  <div className="h-20 flex items-center text-sm font-bold text-outline">{reviewView.responseRate}</div>
+                )}
               </div>
               <p className="text-[10px] text-outline text-center mt-1">
-                Should reply to <strong className="text-on-surface-variant">80%</strong> of reviews
+                We recommend replying to every review
               </p>
             </div>
 
@@ -719,12 +802,12 @@ export default function AuditReportGrexa({
             <div className="border border-outline-variant rounded-2xl p-5 bg-surface/40">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-semibold text-on-surface">Suspension Risk</span>
-                <StatusBadge status={suspLevel} />
+                {suspension.basis === 'heuristic' && <StatusBadge status={suspLevel} />}
               </div>
-              <div className="flex justify-center my-1">
-                <CircularGauge value={suspPct} size={80} color={suspColor} />
+              <div className="flex justify-center my-2">
+                <span className="text-3xl font-black" style={{ color: suspColor }}>{suspLevel}</span>
               </div>
-              <p className="text-[10px] text-outline text-center mt-1">0 Policy Violation</p>
+              <p className="text-[10px] text-outline text-center mt-1">{suspView.note}</p>
             </div>
 
           </div>
@@ -732,9 +815,11 @@ export default function AuditReportGrexa({
           <div className="border border-outline-variant rounded-2xl p-5 bg-surface/40 flex items-center gap-3">
             <div className="w-2 h-2 rounded-full bg-primary-container shrink-0" />
             <p className="text-sm text-on-surface-variant">
-              {estimatedFromPlaces
-                ? `Reviews/week, response rate and suspension risk need a full review sync — this report's ${reviewCount} reviews / ${rating} rating are a live Google Places snapshot taken at intake, not synced yet.`
-                : 'Review-based metrics (reviews/week, response rate, suspension risk) will appear once reviews have synced from your newly-connected Google Business Profile.'}
+              {facts
+                ? `Reviews per week and response rate need synced reviews, which this report doesn't have — they are unknown, not zero.${lifetimeKnown ? ` Lifetime: ${reviewCount} Google reviews${rating > 0 ? ` at ${rating}★` : ''}.` : ''} Suspension risk: ${suspView.level} — ${suspView.note}`
+                : estimatedFromPlaces
+                  ? `Reviews/week, response rate and suspension risk need a full review sync — this report's ${reviewCount} reviews / ${rating} rating are a live Google Places snapshot taken at intake, not synced yet.`
+                  : 'Review-based metrics (reviews/week, response rate, suspension risk) will appear once reviews have synced from your newly-connected Google Business Profile.'}
             </p>
           </div>
         )}
@@ -755,11 +840,11 @@ export default function AuditReportGrexa({
               />
             </div>
             <p className="mt-2 text-xs text-on-surface-variant max-w-sm">
-              {completionView.label}
+              {facts ? completionSentence(breakdown) : completionView.label}
             </p>
           </div>
           <div className="flex items-center gap-4 text-[11px] text-on-surface-variant flex-wrap">
-            <span className="text-outline font-medium">Should be 100%</span>
+            <span className="text-outline font-medium">? = could not be checked (not counted)</span>
             {[
               { color: '#0a8a3e', icon: <svg className="w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#0a8a3e" /><path d="M8 12l3 3 5-5" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>, label: 'Complete' },
               { color: '#fab219', icon: <svg className="w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#fab219" /><path d="M12 7v5M12 16h.01" stroke="white" strokeWidth="2.2" strokeLinecap="round" fill="none" /></svg>, label: 'Partial' },
@@ -839,6 +924,68 @@ export default function AuditReportGrexa({
           )}
         </div>
       )}
+
+      {/* ══ Measured results baseline (ROI evidence — never projected) ═══ */}
+      {facts && (() => {
+        const pb: any = (data as any).performanceBaseline;
+        const cmp: any = (data as any).comparison;
+        const verified = pb?.status === 'verified';
+        return (
+          <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant shadow-sm p-6">
+            <h2 className="text-base font-bold text-on-surface mb-1">Measured results baseline</h2>
+            <p className="text-xs text-on-surface-variant mb-4">
+              Google&apos;s own customer-action counts. Improvement is shown only as measured before → after — never estimated.
+            </p>
+            {verified ? (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[['Calls', pb.calls], ['Website clicks', pb.websiteClicks], ['Direction requests', pb.directionRequests], ['Profile views', pb.profileViews]].map(([label, v]) => (
+                    <div key={String(label)} className="rounded-xl border border-outline-variant p-3">
+                      <div className="text-[11px] text-on-surface-variant">{label}</div>
+                      <div className="text-xl font-bold text-on-surface">{v}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-outline mt-2">Google Business Profile Performance · {pb.periodStart} to {pb.periodEnd}</p>
+              </>
+            ) : (
+              <p className="text-sm text-on-surface-variant">
+                Baseline not available yet. {pb?.reason || 'Connect Google to collect performance data'} — calls, website clicks and direction requests are measured from Google once connected, before any improvement is claimed.
+              </p>
+            )}
+            {Array.isArray(cmp?.rows) && cmp.rows.length > 0 && (
+              <div className="overflow-x-auto mt-4">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-outline uppercase tracking-wide">
+                      <th className="py-2 pr-2 font-medium">Since previous audit</th>
+                      <th className="py-2 px-2 font-medium">Before</th>
+                      <th className="py-2 px-2 font-medium">After</th>
+                      <th className="py-2 pl-2 font-medium">Change</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cmp.rows.map((r: any, i: number) => (
+                      <tr key={i} className="border-t border-outline-variant align-top">
+                        <td className="py-2 pr-2 text-on-surface">{r.metric}{r.note && <span className="block text-[10px] text-outline">{r.note}</span>}</td>
+                        <td className="py-2 px-2 text-on-surface-variant">{r.before}</td>
+                        <td className="py-2 px-2 text-on-surface-variant">{r.after}</td>
+                        <td className="py-2 pl-2 text-on-surface-variant">
+                          {r.change === 'not_comparable' ? 'Not comparable' : r.change === 'same' ? 'No change' : r.change === 'better' ? 'Improved' : 'Declined'}
+                          {r.pctChange != null && r.change !== 'not_comparable' && ` (${r.pctChange > 0 ? '+' : ''}${r.pctChange}%)`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ══ Monthly optimization report (monthly audits only) ═══════════ */}
+      {(data as any).monthly && <MonthlySections monthly={(data as any).monthly} />}
 
       {/* ══ Consultant sections (Key Finding → Data Required) ══════════ */}
       {data.seoPlanDraft && (

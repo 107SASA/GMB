@@ -83,6 +83,15 @@ type Events = {
   "scheduler/post-unscheduled": {
     data: { postId: string };
   };
+  // Manual account-purge run (Inngest dashboard / admin). Always a dry run
+  // unless the server's ACCOUNT_PURGE_MODE=live — the event can't force a purge.
+  "account/purge.requested": {
+    data: { userId?: string; live?: boolean };
+  };
+  // Owner answered YES to the weekly offer question (api/content/weekly-offer).
+  "content/weekly-offer.answered": {
+    data: { businessId: string; weekKey: string };
+  };
 };
 
 export const inngest = new Inngest({ 

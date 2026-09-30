@@ -22,6 +22,10 @@ export interface INotificationPreferences {
   postPublishedWhatsApp: boolean;
   reviewReplyWhatsApp: boolean;
   reportReadyWhatsApp: boolean;
+  /** Weekly monitoring summary over WhatsApp — only sent when the week has something new or actionable. */
+  weeklyUpdateWhatsApp: boolean;
+  /** Send the weekly summary every week even when nothing changed (explicit opt-in). */
+  weeklyReportAlwaysWhatsApp: boolean;
 }
 
 export interface IUser extends Document {
@@ -97,6 +101,9 @@ export interface IUser extends Document {
   // Soft delete
   isDeleted?: boolean;
   deletedAt?: Date;
+  /** Set by accountHardPurgeCron when the account's personal data was permanently
+   *  erased (the document is then an anonymous tombstone). */
+  purgedAt?: Date;
 
   // ADDITIVE — shadow accounts (see src/lib/shadowAccount.ts). Created
   // automatically, passwordless and unverified, the instant a phone-only
@@ -146,6 +153,8 @@ const NotificationPreferencesSchema = new Schema(
     postPublishedWhatsApp: { type: Boolean, default: true },
     reviewReplyWhatsApp: { type: Boolean, default: true },
     reportReadyWhatsApp: { type: Boolean, default: true },
+    weeklyUpdateWhatsApp: { type: Boolean, default: true },
+    weeklyReportAlwaysWhatsApp: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -223,6 +232,7 @@ const UserSchema: Schema = new Schema(
     // Soft delete
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date },
+    purgedAt: { type: Date },
 
     // ADDITIVE — see isShadowAccount in IUser above.
     isShadowAccount: { type: Boolean, default: false },

@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Modal, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
@@ -20,7 +19,9 @@ import {
 import { useBusiness } from '@/business/BusinessContext';
 import { useDateTimePicker } from '@/components/datetime-picker';
 import { EmptyState, LoadingScreen, Screen, Skeleton, useConfirmSheet, useInfoSheet } from '@/components/ui';
+import { geotagLine } from '@/api/endpoints/content';
 import { formatDateTime } from '@/lib/format';
+import { pickPhotoFromLibrary, takePhotoWithCamera, type PickedPhoto } from '@/lib/photoLocation';
 import { useTheme } from '@/lib/theme';
 
 const CATEGORY_LABEL: Record<GbpMediaCategory, string> = {
@@ -121,6 +122,9 @@ function PreviewModal({ item, onClose }: { item: GbpMediaItem; onClose: () => vo
         {item.failureReason && (
           <Text className="px-5 pb-2 text-center font-sans text-xs text-rose-300">{item.failureReason}</Text>
         )}
+        {!!geotagLine(item.geotag) && (
+          <Text className="px-5 pb-2 text-center font-sans text-xs text-zinc-400">{geotagLine(item.geotag)}</Text>
+        )}
         {item.scheduledFor && isStaged && (
           <Text className="px-5 pb-2 text-center font-sans text-xs text-zinc-400">
             Scheduled to publish on {formatDateTime(item.scheduledFor)}
@@ -200,34 +204,35 @@ export default function AllPhotosScreen() {
 
   const upload = useMutation({
     mutationFn: uploadGbpMedia,
-    onSuccess: () => {
+    onSuccess: (asset) => {
       void queryClient.invalidateQueries({ queryKey: ['gbp-media', activeBusinessId] });
-      info.show('Photo saved', "It's staged — publish or schedule it from the photo's preview.");
+      const geo = geotagLine(asset.geotag);
+      info.show('Photo saved', `It's staged — publish or schedule it from the photo's preview.${geo ? `\n${geo}.` : ''}`);
     },
     onError: (err) => info.show('Upload failed', getApiErrorMessage(err, 'Please try again.')),
   });
 
-  const startUpload = async (category: GbpMediaCategory) => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      info.show('Permission needed', 'Allow photo library access to add business media.');
+  const startUpload = async (category: GbpMediaCategory, from: 'library' | 'camera' = 'library') => {
+    let picked: PickedPhoto | null;
+    try {
+      picked = from === 'camera' ? await takePhotoWithCamera() : await pickPhotoFromLibrary();
+    } catch {
+      info.show(
+        'Permission needed',
+        from === 'camera' ? 'Allow camera access to take a photo for your profile.' : 'Allow photo library access to add business media.'
+      );
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 0.85 });
-    if (result.canceled || result.assets.length === 0) return;
-    const asset = result.assets[0];
-    upload.mutate({
-      uri: asset.uri,
-      mimeType: asset.mimeType ?? 'image/jpeg',
-      fileName: asset.fileName ?? `photo-${Date.now()}.jpg`,
-      category,
-    });
+    if (!picked) return;
+    upload.mutate({ uri: picked.uri, mimeType: picked.mimeType, fileName: picked.fileName, category, location: picked.location });
   };
 
   // Logo/Cover are set from their own dedicated slots on the Photos summary
   // screen (business-assets.tsx) now, so this gallery's "+" only ever adds
   // an additional photo — no more "what kind of photo is this?" prompt.
   const handleAdd = () => void startUpload('ADDITIONAL');
+  // Taken in the app: the phone's position at capture becomes the photo's location.
+  const handleCamera = () => void startUpload('ADDITIONAL', 'camera');
 
   if (media.isLoading) return <LoadingScreen />;
 
@@ -241,9 +246,14 @@ export default function AllPhotosScreen() {
           <Ionicons name="arrow-back" size={22} color={t.text} />
         </Pressable>
         <Text className="font-display-bold text-lg text-white">All Photos</Text>
-        <Pressable onPress={handleAdd} disabled={notConnected || upload.isPending} hitSlop={10}>
-          <Ionicons name="add-circle-outline" size={26} color={notConnected ? t.textFaint : t.brandBright} />
-        </Pressable>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <Pressable onPress={handleCamera} disabled={notConnected || upload.isPending} hitSlop={10} accessibilityLabel="Take a photo">
+            <Ionicons name="camera-outline" size={25} color={notConnected ? t.textFaint : t.brandBright} />
+          </Pressable>
+          <Pressable onPress={handleAdd} disabled={notConnected || upload.isPending} hitSlop={10} accessibilityLabel="Add from gallery">
+            <Ionicons name="add-circle-outline" size={26} color={notConnected ? t.textFaint : t.brandBright} />
+          </Pressable>
+        </View>
       </View>
 
       {notConnected ? (

@@ -34,6 +34,18 @@ export async function requireClient(): Promise<
       };
     }
 
+    // A deleted account can never authenticate again (the delete route also
+    // bumps sessionEpoch; this is the belt to that brace).
+    if ((user as any).isDeleted) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { success: false, error: 'This account has been deleted.', code: 'ACCOUNT_DELETED' },
+          { status: 401 }
+        ),
+      };
+    }
+
     // Server-side session invalidation — a token whose embedded epoch no
     // longer matches the user's current one (password reset, logout-all,
     // role change, …) is rejected here regardless of its 30-day JWT expiry.

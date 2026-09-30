@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { validateApiKey } from '@/middleware/apiKeyAuth';
 import dbConnect from '@/lib/mongodb';
 import Review from '@/models/Review';
-import Business from '@/models/Business';
-import { generateReviewReply } from '@/services/ai/replyEngine';
+import { draftReply } from '@/services/reviews/replyPipeline';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function POST(req: Request) {
@@ -27,29 +26,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Review not found' }, { status: 404 });
     }
 
-    const business = await Business.findById(review.businessId).select('name').lean();
-    const businessName = (business as any)?.name || 'Local Business';
-
-    const { getActiveSeoPlan } = await import('@/services/seoPlan/seoPlanService');
-    const plan = await getActiveSeoPlan(String(review.businessId)).catch(() => null);
-
-    const { reply: aiReply } = await generateReviewReply({
-      reviewText: review.reviewText,
-      rating: review.rating,
-      tone: 'Professional',
-      businessName,
-      uspLine: plan?.uspLine,
-      mustInclude: plan?.reviewReplyMustInclude,
-    });
-
-    review.aiSuggestedReply = aiReply;
-    review.replyTone = 'Professional';
-    await review.save();
+    // Same fact-checked drafting as the dashboard; never publishes.
+    const d = await draftReply(String(review.businessId), String(review._id), { tone: 'Professional' });
+    if (d.error || !d.reply) {
+      return NextResponse.json({ success: false, error: 'Could not draft a reply right now.' }, { status: 502 });
+    }
+    const aiReply = d.reply;
 
     return NextResponse.json({
       success: true,
       reviewId,
       replyText: aiReply,
+      replyStatus: d.status,
+      validation: d.validation,
     });
   } catch (error: any) {
     console.error('[n8n/generate-reply]', error);

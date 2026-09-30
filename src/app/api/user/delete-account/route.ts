@@ -5,6 +5,15 @@ import Business from '@/models/Business';
 import { requireClient } from '@/lib/auth';
 import { destroySession } from '@/lib/session';
 
+/**
+ * Account deletion (Profile → Danger Zone). Immediately: the account is
+ * deactivated and every session on every device is signed out, email/phone
+ * are released, the paid subscription is cancelled with Razorpay so no
+ * further charges happen, and Google access is revoked. The personal data is
+ * then permanently erased PURGE_GRACE_DAYS later by accountHardPurgeCron
+ * (services/account/hardPurge.ts). What this does is described publicly at
+ * /delete-account — keep the two in sync.
+ */
 export async function POST(req: Request) {
   const auth = await requireClient();
   if (!auth.ok) return auth.response;
@@ -24,30 +33,59 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Email does not match your account.' }, { status: 400 });
   }
 
-  // Soft delete all of the user's businesses. Match on `userId` (the source of
-  // truth for ownership) rather than only `businessIds`, which historically was
-  // not always populated — otherwise a deleted user could leave live workspaces
-  // behind.
-  await Business.updateMany(
-    { userId: user._id },
-    { $set: { isDeleted: true } }
-  );
+  const now = new Date();
+  // Soft delete the businesses this user OWNS. Match on `userId` (the source
+  // of truth for ownership); `businessIds` only for legacy workspaces that
+  // predate Business.userId — never a workspace owned by someone else.
+  await Business.updateMany({ userId: user._id }, { $set: { isDeleted: true, deletedAt: now } });
   if (user.businessIds?.length) {
     await Business.updateMany(
-      { _id: { $in: user.businessIds } },
-      { $set: { isDeleted: true } }
+      { _id: { $in: user.businessIds }, userId: { $exists: false } },
+      { $set: { isDeleted: true, deletedAt: now } }
     );
+  }
+  const ownedIds = (await Business.find({ userId: user._id }).select('_id').lean()).map((b: any) => b._id);
+
+  // Stop billing now — a deleted account must never be charged again.
+  // Best-effort: a failure is retried daily by accountHardPurgeCron.
+  try {
+    const { default: Subscription } = await import('@/models/Subscription');
+    const sub: any = await Subscription.findOne({ userId: user._id }).select('razorpaySubscriptionId billingStatus').lean();
+    if (sub?.razorpaySubscriptionId && sub.billingStatus !== 'Canceled') {
+      const { cancelRazorpayForDeletedAccount } = await import('@/lib/billing/deletionCancel');
+      await cancelRazorpayForDeletedAccount(sub.razorpaySubscriptionId);
+    }
+  } catch (err) {
+    console.error('[delete-account] billing cancel failed (will retry):', (err as Error)?.message);
+  }
+
+  // Revoke Google access and drop the stored tokens now (not only at purge).
+  try {
+    const { default: GBPToken } = await import('@/models/GBPToken');
+    const tokens: any[] = await GBPToken.find({ businessId: { $in: ownedIds } }).select('refreshToken').lean();
+    const { decrypt } = await import('@/lib/crypto');
+    for (const t of tokens) {
+      await fetch('https://oauth2.googleapis.com/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ token: decrypt(t.refreshToken) }).toString(),
+      }).catch(() => {});
+    }
+    await GBPToken.deleteMany({ businessId: { $in: ownedIds } });
+    await Business.updateMany({ _id: { $in: ownedIds } }, { $set: { googleConnected: false } });
+  } catch (err) {
+    console.error('[delete-account] Google revoke failed:', (err as Error)?.message);
   }
 
   // Soft delete user. Both `email` AND `phone` carry a UNIQUE index, so BOTH
-  // must be released for the same person to sign up again — previously only the
-  // email was mangled, so re-registration died on the phone unique index with
-  // "some of these details already exist". The `deleted_<ts>_` prefix keeps the
-  // original value recoverable while freeing the indexes.
+  // must be released for the same person to sign up again. The `deleted_<ts>_`
+  // prefix keeps the original value recoverable during the grace period;
+  // accountHardPurgeCron erases it for good afterwards. sessionEpoch++ signs
+  // the account out everywhere (mobile bearer tokens included).
   const stamp = Date.now();
   const deletedSet: Record<string, unknown> = {
     isDeleted: true,
-    deletedAt: new Date(),
+    deletedAt: now,
     email: `deleted_${stamp}_${user.email}`,
   };
   if (user.phone) {
@@ -55,7 +93,7 @@ export async function POST(req: Request) {
   }
   // updateOne (not user.save()) so a drifted legacy field can't block an
   // account deletion — see /api/auth/reset-password.
-  await User.updateOne({ _id: user._id }, { $set: deletedSet });
+  await User.updateOne({ _id: user._id }, { $set: deletedSet, $inc: { sessionEpoch: 1 }, $unset: { pushTokens: 1 } });
 
   await destroySession();
 

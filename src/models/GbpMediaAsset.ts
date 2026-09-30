@@ -54,8 +54,13 @@ export interface IGbpMediaAsset extends Document {
   /** Full v4 resource name once live on Google, e.g. "accounts/x/locations/y/media/z". */
   googleMediaName?: string;
   publishedAt?: Date;
+  /** 'growwmatics' = uploaded by us (live write applied); 'google_sync' = already on Google, reconciled. */
+  publishedVia?: 'growwmatics' | 'google_sync';
   failureReason?: string;
   scheduledFor?: Date;
+  /** What happened to location metadata on upload (lib/imageGeotag.ts): GPS kept from the photo,
+   *  verified Google location added, none, or video left unmodified. */
+  geotag?: { status: string; lat?: number; lng?: number; source?: string; reason?: string; at: string };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,8 +76,10 @@ const GbpMediaAssetSchema: Schema = new Schema(
     status: { type: String, enum: ['staged', 'published', 'failed'], default: 'staged', index: true },
     googleMediaName: { type: String },
     publishedAt: { type: Date },
+    publishedVia: { type: String, enum: ['growwmatics', 'google_sync'] },
     failureReason: { type: String },
     scheduledFor: { type: Date },
+    geotag: { type: Schema.Types.Mixed },
   },
   { timestamps: true }
 );

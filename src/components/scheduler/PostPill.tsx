@@ -19,6 +19,8 @@ const STATUS_COLORS: Record<string, string> = {
   scheduled:  'bg-primary-fixed text-primary border-primary-fixed-dim',
   draft:      'bg-error-container text-on-error-container border-error-container',
   failed:     'bg-error-container text-error border-error-container',
+  publishing: 'bg-primary-fixed text-primary border-primary-fixed-dim',
+  blocked:    'bg-surface-container-high text-on-surface-variant border-outline-variant',
 };
 
 export default function PostPill({ post, onPublish, onEditSave, onEditingChange }: PostPillProps) {
@@ -130,7 +132,12 @@ export default function PostPill({ post, onPublish, onEditSave, onEditingChange 
       className={`p-3 rounded-lg border shadow-sm mb-2 transition-transform hover:-translate-y-0.5 flex flex-col gap-2 ${statusColor} bg-surface-container-lowest bg-opacity-50 hover:bg-opacity-100`}
     >
       <div className="flex justify-between items-start">
-        <span className="text-xs font-bold uppercase tracking-wider">{post.status}</span>
+        <span
+          className="text-xs font-bold uppercase tracking-wider"
+          title={post.status === 'blocked' ? (post.failureReason || 'Scheduled in GrowwMatics — Google publishing has not been executed.') : undefined}
+        >
+          {post.status === 'blocked' ? 'not on Google' : post.status}
+        </span>
         <div className="flex items-center gap-1">
           {post.aiGenerated && (
             <span className="text-[10px] bg-primary-fixed text-primary px-1.5 py-0.5 rounded font-bold">

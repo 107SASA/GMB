@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Info,
 } from 'lucide-react';
+import BrandColorsCard from '@/components/settings/BrandColorsCard';
 
 type Tab = 'business' | 'ai-agent' | 'notifications';
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -158,6 +159,8 @@ export default function SettingsPage() {
     postPublishedWhatsApp: true,
     reviewReplyWhatsApp: true,
     reportReadyWhatsApp: true,
+    weeklyUpdateWhatsApp: true,
+    weeklyReportAlwaysWhatsApp: false,
   });
   const [savedRows, setSavedRows] = useState<Set<string>>(new Set());
 
@@ -551,6 +554,8 @@ export default function SettingsPage() {
             />
           </div>
 
+          <BrandColorsCard />
+
           {bpError && (
             <div className="flex items-center gap-2 text-sm text-error bg-error-container border border-error-container rounded-xl px-4 py-3">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -779,6 +784,18 @@ export default function SettingsPage() {
                   icon: '📄',
                   label: 'Report ready',
                   desc: 'Message me when a new audit report is generated',
+                },
+                {
+                  key: 'weeklyUpdateWhatsApp',
+                  icon: '🗓️',
+                  label: 'Weekly update',
+                  desc: 'A weekly summary when there are new reviews, changes or actions for you',
+                },
+                {
+                  key: 'weeklyReportAlwaysWhatsApp',
+                  icon: '🔁',
+                  label: 'Weekly update every week',
+                  desc: 'Send the weekly summary even in weeks with nothing new',
                 },
                 {
                   key: 'dailyDigestWhatsApp',

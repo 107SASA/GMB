@@ -20,6 +20,8 @@ const DEFAULTS = {
   postPublishedWhatsApp: true,
   reviewReplyWhatsApp: true,
   reportReadyWhatsApp: true,
+  weeklyUpdateWhatsApp: true,
+  weeklyReportAlwaysWhatsApp: false,
 };
 
 export async function GET() {
@@ -52,9 +54,13 @@ export async function PATCH(req: Request) {
     }
   }
 
+  // Merge into what's stored — a client that sends only some keys (the mobile
+  // app shows a subset) must not reset the others (e.g. a WhatsApp opt-out
+  // made on the web) back to their defaults.
+  const current = (await User.findById(auth.userId, 'notificationPreferences').lean() as any)?.notificationPreferences ?? {};
   const user = await User.findByIdAndUpdate(
     auth.userId,
-    { $set: { notificationPreferences: { ...DEFAULTS, ...preferences } } },
+    { $set: { notificationPreferences: { ...DEFAULTS, ...current, ...preferences } } },
     { new: true, select: 'notificationPreferences' }
   ).lean() as any;
 

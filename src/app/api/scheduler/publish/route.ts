@@ -5,7 +5,7 @@ import Post from '@/models/Post';
 import AutomationLog from '@/models/AutomationLog';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
-import { createLocalPost } from '@/lib/gbpClient';
+import { publishPost } from '@/services/content/publishPost';
 import mongoose from 'mongoose';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import { inngest } from '@/services/inngest/client';
@@ -54,40 +54,31 @@ export async function POST(req: Request) {
       }).catch((err) => console.error('[scheduler/publish] post-unscheduled event failed:', err));
     };
 
-    // Pushes the post to the real Google Business Profile. createLocalPost
-    // itself is gated behind GBP_LIVE_WRITES_ENABLED (see src/lib/gbpSafety.ts)
-    // — it no-ops (liveWriteApplied:false) while live writes are disabled, so
-    // this stays a DB-only mock in that case, same as before. Once live writes
-    // are on, this now actually reaches Google — matching the photo-publish
-    // path (gbpMediaService.ts) and the scheduled-publish cron
-    // (processPublishPostJob in services/inngest/functions.ts), which this
-    // route had drifted from by never calling createLocalPost at all.
-    let liveWriteApplied = false;
-    try {
-      const summary = [post.title, post.content].filter(Boolean).join('\n\n').slice(0, 1500);
-      const result = await createLocalPost(ctx.businessId, {
-        summary,
-        mediaUrl: post.imageUrl || undefined,
-      });
-      liveWriteApplied = result.liveWriteApplied;
-    } catch (err: any) {
-      post.status = 'failed';
-      post.failureReason = err.message || 'Failed to publish to Google Business Profile.';
-      await post.save();
-      cancelSleep();
-      return NextResponse.json({ error: post.failureReason }, { status: 502 });
-    }
-
-    post.status = 'published';
-    post.publishedAt = new Date();
-    // The calendar (and other views) place a post using `scheduledDate`, not
-    // `publishedAt`. Without updating this too, a post scheduled for a future
-    // day would still show up under that future date after being published
-    // immediately. Publishing now should supersede any prior schedule.
-    post.scheduledDate = post.publishedAt;
-    post.failureReason = undefined;
-    await post.save();
+    // Same transition as the scheduled cron (services/content/publishPost.ts):
+    // published only when Google confirms; blocked while GBP live writes are
+    // off ("Scheduled in GrowwMatics — Google publishing has not been
+    // executed"); failed with Google's reason otherwise.
+    const result = await publishPost(post._id.toString(), {
+      businessId: ctx.businessId,
+      allowFrom: ['draft', 'approved', 'scheduled', 'failed', 'blocked', 'pending_approval'],
+    });
     cancelSleep();
+    if (result.outcome === 'skipped') {
+      return NextResponse.json({ error: result.reason }, { status: 409 });
+    }
+    const fresh = await Post.findById(post._id);
+    if (result.outcome === 'failed') {
+      return NextResponse.json({ error: result.reason, post: fresh }, { status: 502 });
+    }
+    if (result.outcome === 'blocked') {
+      return NextResponse.json({ success: false, blocked: true, message: result.reason, post: fresh, liveWriteApplied: false }, { status: 200 });
+    }
+    if (fresh) {
+      // The calendar places a post by scheduledDate — publishing now supersedes the old schedule.
+      fresh.scheduledDate = fresh.publishedAt;
+      await fresh.save();
+    }
+    const liveWriteApplied = true;
 
     await AutomationLog.create({
       tenantId: ctx.organizationId,
@@ -99,7 +90,7 @@ export async function POST(req: Request) {
       message: `Manually published post: ${post.title}`,
     });
 
-    return NextResponse.json({ success: true, post, liveWriteApplied }, { status: 200 });
+    return NextResponse.json({ success: true, post: fresh, liveWriteApplied }, { status: 200 });
   } catch (error: any) {
     console.error('Failed to publish post:', error);
     return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });

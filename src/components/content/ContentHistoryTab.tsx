@@ -23,6 +23,9 @@ const STATUS_STYLES: Record<string, string> = {
   scheduled: 'bg-primary-fixed text-primary',
   published: 'bg-secondary-container/40 text-on-secondary-container',
   pending_approval: 'bg-error-container text-on-error-container',
+  failed: 'bg-error-container text-on-error-container',
+  publishing: 'bg-primary-fixed text-primary',
+  blocked: 'bg-surface-container-high text-on-surface-variant',
 };
 
 const PLATFORM_LABELS: Record<string, string> = {
@@ -317,7 +320,7 @@ export default function ContentHistoryTab() {
                       STATUS_STYLES[post.status] ?? 'bg-surface-container text-on-surface-variant'
                     }`}
                   >
-                    {post.status.replace('_', ' ')}
+                    {post.status === 'blocked' ? 'not on Google' : post.status.replace('_', ' ')}
                   </span>
                   <span className="text-xs text-on-surface-variant border border-outline-variant px-2 py-0.5 rounded-md">
                     {platformLabel(post.platform)}

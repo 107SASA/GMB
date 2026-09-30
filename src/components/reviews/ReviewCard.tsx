@@ -53,6 +53,8 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case 'APPROVED': return 'bg-primary-fixed text-primary';
+      case 'DRAFT': return 'bg-primary-fixed text-primary';
+      case 'NEEDS_REVIEW': return 'bg-error-container text-on-error-container';
       case 'POSTED': return 'bg-secondary-container text-on-secondary-container';
       default: return 'bg-error-container text-on-error-container'; // PENDING
     }
@@ -63,7 +65,7 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
   };
 
   const replyStatus: string = review.replyStatus || 'PENDING';
-  const canApprove = editableReply.trim().length > 0 && replyStatus === 'PENDING';
+  const canApprove = editableReply.trim().length > 0 && ['PENDING', 'DRAFT', 'NEEDS_REVIEW', 'FAILED'].includes(replyStatus);
   const canPost = replyStatus === 'APPROVED';
   // Only reviews sourced from the official GBP API carry a real Google review
   // id — a reply can only ever be posted back for those. Reviews shown before
@@ -97,10 +99,15 @@ export default function ReviewCard({ review, onGenerateReply, onApproveReply, on
               {review.sentiment}
             </div>
             <div className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded inline-block max-w-max ${getStatusBadgeColor(replyStatus)}`}>
-              {replyStatus}
+              {replyStatus === 'NEEDS_REVIEW' ? 'NEEDS REVIEW' : replyStatus}
             </div>
-            {replyStatus === 'FAILED' && review.replyFailureReason && (
+            {(replyStatus === 'FAILED' || review.replyPublishStatus === 'blocked') && review.replyFailureReason && (
               <p className="text-[11px] text-error leading-snug max-w-40">{review.replyFailureReason}</p>
+            )}
+            {replyStatus === 'NEEDS_REVIEW' && review.replyValidation?.reasons?.length > 0 && (
+              <ul className="text-[11px] text-error leading-snug max-w-48 list-disc pl-3">
+                {review.replyValidation.reasons.slice(0, 4).map((r: string) => <li key={r}>{r}</li>)}
+              </ul>
             )}
           </div>
         </div>

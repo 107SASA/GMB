@@ -47,13 +47,17 @@ export default function ContactPage() {
             </div>
           </div>
 
-          <div className="flex items-start gap-3">
-            <MaterialIcon name="location_on" size={20} className="text-primary mt-0.5 shrink-0" />
-            <div>
-              <div className="font-semibold text-on-surface">Address</div>
-              <p className="text-on-surface-variant">{COMPANY.address}</p>
+          {COMPANY.address && (
+            <div className="flex items-start gap-3">
+              <MaterialIcon name="location_on" size={20} className="text-primary mt-0.5 shrink-0" />
+              <div>
+                <div className="font-semibold text-on-surface">Registered office</div>
+                <p className="text-on-surface-variant">{COMPANY.legalName}</p>
+                <p className="text-on-surface-variant">{COMPANY.address}</p>
+                <p className="text-on-surface-variant">CIN: {COMPANY.cin}</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </LegalSection>
 

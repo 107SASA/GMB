@@ -15,6 +15,7 @@
 import Link from 'next/link';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import type { ISeoPlanDraft, IKeywordTableRow } from '@/models/Audit';
+import { RANK_BAND_HEX, rankBand, rankLabel, toRankValue } from '@/services/audit/reportDisplay';
 
 const NAVY = '#1e293b';
 const AMBER_BG = '#fffbeb';
@@ -24,9 +25,14 @@ const RANK_RED = '#dc2626';
 const BAND_WIDTH: Record<string, string> = { HIGH: '100%', MED: '66%', LOW: '38%', NICHE: '18%' };
 const BAND_COLOR: Record<string, string> = { HIGH: '#f59e0b', MED: '#f59e0b', LOW: '#60a5fa', NICHE: '#a78bfa' };
 
+/** New rows carry found/rank/rankStatus; old rows only a number (21 = not found). */
+function kwRank(k: { mapsRank?: number | null; rank?: number | null; found?: boolean; rankStatus?: string }) {
+  return k.found !== undefined || k.rankStatus !== undefined
+    ? toRankValue({ found: k.found, rank: k.rank ?? k.mapsRank ?? null, status: k.rankStatus })
+    : toRankValue(k.mapsRank ?? null);
+}
 function fmtRank(r?: number | null) {
-  if (r == null) return '—';
-  return r >= 21 ? '20+' : `#${Math.round(r)}`;
+  return r == null ? 'Not found' : rankLabel(toRankValue(r));
 }
 
 function SectionBar({ num, title }: { num: number; title: string }) {
@@ -47,11 +53,27 @@ function Card({ children }: { children: React.ReactNode }) {
 
 function SupportNote({ what }: { what: string }) {
   return (
-    <p className="text-sm text-on-surface-variant italic">
-      This section ({what}) couldn&apos;t be generated. Contact support and we&apos;ll regenerate it.
+    <p className="text-sm text-on-surface-variant italic" title={what}>
+      Additional AI analysis is temporarily unavailable. The measured results in this report are unaffected.
     </p>
   );
 }
+
+/** Shown in place of a section's content when its data is unavailable —
+ *  sections are never silently removed from a grounded report. */
+function DataStatus({ text }: { text: string }) {
+  return (
+    <p className="text-sm text-on-surface-variant flex items-start gap-2">
+      <MaterialIcon name="info" size={16} className="text-outline shrink-0 mt-0.5" />
+      <span>{text}</span>
+    </p>
+  );
+}
+
+const KW_SOURCE_LABEL: Record<string, string> = {
+  website_service: 'from your website',
+  owner: 'your service',
+};
 
 function Pill({ text, color }: { text: string; color: string }) {
   return (
@@ -110,13 +132,21 @@ export default function ConsultantSections({
   checkoutHref: string;
 }) {
   const failed = new Set(draft.failed || []);
+  // Older drafts (no `grounded` marker) may hold AI-invented services,
+  // attributes, Q&A answers and opportunity labels — never shown.
+  const grounded = !!draft.grounded;
   const table = keywordTable?.length ? keywordTable : [];
   const full = draft.depth === 'full';
   const showMapsVol = table.some((k) => k.mapsVolume != null);
+  const showSearchVol = table.some((k) => k.searchVolume != null);
   // Running section number — JSX below evaluates top-to-bottom, so this
   // stays in step. Free and full tiers number their own sections.
   const counter = { n: 0 };
   const S = () => ++counter.n;
+  // A failed ranking check is "unavailable" — never worded as "not measured"
+  // (a choice) or as a finding about the business.
+  const rankMeasured = table.some((k) => (k.rankStatus ?? 'ok') === 'ok');
+  const rankFailed = !rankMeasured && table.some((k) => k.rankStatus === 'unavailable');
 
   return (
     <div className="space-y-8">
@@ -138,26 +168,62 @@ export default function ConsultantSections({
       )}
 
       {/* KEY FINDING */}
-      {(draft.keyFinding || failed.has('narrative')) && (
+      {(draft.keyFinding || failed.has('narrative') || grounded) && (
         <Card>
           <div className="text-xs font-bold uppercase tracking-wide text-primary mb-2">Key Finding</div>
           {draft.keyFinding ? (
             <p className="text-sm text-on-surface leading-relaxed">{draft.keyFinding}</p>
-          ) : (
+          ) : failed.has('narrative') ? (
             <SupportNote what="Key Finding" />
+          ) : (
+            <DataStatus text="No summary could be written from verified facts for this report. The measured results below still apply." />
           )}
         </Card>
       )}
 
-      {/* WEBSITE ASSESSMENT (full only) */}
-      {full && draft.websiteAssessment && (
+      {/* YOUR WEBSITE — what the business's own site says (source claims) */}
+      {(draft.websiteSummary || (full && draft.websiteAssessment)) && (
         <Card>
           <div className="text-xs font-bold uppercase tracking-wide text-primary mb-2">Your Website</div>
-          <p className="text-sm text-on-surface leading-relaxed">{draft.websiteAssessment}</p>
+          {draft.websiteSummary && (
+            draft.websiteSummary.status === 'none' ? (
+              <DataStatus text="No website was available for analysis. The rest of this report uses your public Google listing, rankings and reviews." />
+            ) : draft.websiteSummary.status === 'failed' ? (
+              <DataStatus text={`Your website (${draft.websiteSummary.url.replace(/^https?:\/\//, '')}) did not respond when we checked, so nothing from it is used in this report.`} />
+            ) : (
+              <div className="mb-3">
+                <p className="text-xs text-on-surface-variant mb-2">
+                  What your website says ({draft.websiteSummary.url.replace(/^https?:\/\//, '')}) — taken from your pages, not verified on Google.
+                </p>
+                {draft.websiteSummary.services.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {draft.websiteSummary.services.map((s, i) => (
+                      <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-surface-container border border-outline-variant text-on-surface">{s}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <DataStatus text="No clear list of services was found on the pages we read." />
+                )}
+              </div>
+            )
+          )}
+          {full && draft.websiteAssessment && <p className="text-sm text-on-surface leading-relaxed">{draft.websiteAssessment}</p>}
         </Card>
       )}
 
       {/* CRITICAL GAP */}
+      {grounded && draft.criticalGap && draft.criticalGap.rows.length === 0 && (
+        <div style={{ background: AMBER_BG, border: `1px solid ${AMBER_BORDER}`, borderRadius: 12 }} className="p-6">
+          <div className="text-xs font-bold uppercase tracking-wide text-on-surface mb-2">
+            Critical Gap — Searches That Are Not Showing You
+          </div>
+          <DataStatus text={rankMeasured
+            ? 'You were in the top 5 for every search we measured.'
+            : rankFailed
+              ? 'The ranking check could not be completed for this report, so no search gap can be shown. This is a data problem on our side, not a finding about your business.'
+              : 'Google Maps ranking was not measured for this report, so no search gap can be shown — see Data Required below.'} />
+        </div>
+      )}
       {draft.criticalGap && draft.criticalGap.rows.length > 0 && (
         <div style={{ background: AMBER_BG, border: `1px solid ${AMBER_BORDER}`, borderRadius: 12 }} className="p-6">
           <div className="text-xs font-bold uppercase tracking-wide text-on-surface mb-2">
@@ -177,27 +243,36 @@ export default function ConsultantSections({
       )}
 
       {/* 1. KEYWORD SEARCH VOLUME ANALYSIS */}
+      {grounded && table.length === 0 && (
+        <div className="space-y-4">
+          <SectionBar num={S()} title="KEYWORD SEARCH VOLUME ANALYSIS — GOOGLE MAPS" />
+          <Card>
+            <DataStatus text="Google Maps ranking and search demand were not measured for this report — see Data Required below for what is needed." />
+            <ProposedKeywords rows={draft.proposedKeywords} />
+          </Card>
+        </div>
+      )}
       {table.length > 0 && (
         <div className="space-y-4">
           <SectionBar num={S()} title="KEYWORD SEARCH VOLUME ANALYSIS — GOOGLE MAPS" />
           <Card>
             <p className="text-sm text-on-surface-variant mb-3">
-              Phrases people type around {city || 'your area'}. Rank is live Maps data when we have it — never guessed. Volume is a band, not a monthly count.
+              Phrases people type around {city || 'your area'}. Rank is live Google Maps data measured from your area; demand is Google Ads monthly search volume for the whole country (Google does not report volume for a single town, so local phrases usually show &quot;Not available&quot;). Neither is ever guessed.
             </p>
             <div className="flex flex-wrap items-center gap-2 mb-4 text-[11px]">
               {['HIGH', 'MED', 'LOW', 'NICHE'].map((b) => (
                 <span key={b} style={{ color: BAND_COLOR[b] }} className="font-bold">{b}</span>
               ))}
-              <span className="text-on-surface-variant ml-2">Red rank = not in a strong position</span>
-              <span className="text-on-surface-variant">* = estimated demand</span>
-              {showMapsVol && <span className="text-on-surface-variant">~ Maps volume derived from Google search volume</span>}
+              <span className="text-on-surface-variant ml-2">Red rank = not in the top 5 · — = ranking check unavailable</span>
+              <span className="text-on-surface-variant">Not available = Google Ads returned no search volume{table.some((k) => k.demandStatus === undefined && k.estimated) ? ' · * = estimate (older report)' : ''}</span>
+              {showMapsVol && <span className="text-on-surface-variant">~ Maps volume derived from Google search volume (older report)</span>}
             </div>
             <div className="overflow-x-auto -mx-2">
               <table className="w-full text-sm min-w-90">
                 <thead>
                   <tr className="text-left text-xs text-outline uppercase tracking-wide">
                     <th className="px-2 py-2 font-medium">Keyword</th>
-                    {showMapsVol && <th className="px-2 py-2 font-medium text-right">Search / mo</th>}
+                    {(showMapsVol || showSearchVol) && <th className="px-2 py-2 font-medium text-right">Search / mo</th>}
                     {showMapsVol && <th className="px-2 py-2 font-medium text-right">Maps / mo ~</th>}
                     <th className="px-2 py-2 font-medium">Demand</th>
                     <th className="px-2 py-2 font-medium text-right">Maps Rank</th>
@@ -206,10 +281,15 @@ export default function ConsultantSections({
                 <tbody>
                   {table.map((k, i) => (
                     <tr key={i} className="border-t border-outline-variant">
-                      <td className="px-2 py-3 text-on-surface">{k.keyword}</td>
-                      {showMapsVol && (
+                      <td className="px-2 py-3 text-on-surface">
+                        {k.keyword}
+                        {k.source && KW_SOURCE_LABEL[k.source] && (
+                          <span className="block text-[10px] text-on-surface-variant">{KW_SOURCE_LABEL[k.source]}</span>
+                        )}
+                      </td>
+                      {(showMapsVol || showSearchVol) && (
                         <td className="px-2 py-3 text-right text-on-surface-variant whitespace-nowrap">
-                          {k.searchVolume != null ? k.searchVolume.toLocaleString('en-IN') : '—'}
+                          {k.searchVolume != null ? k.searchVolume.toLocaleString('en-IN') : 'Not available'}
                         </td>
                       )}
                       {showMapsVol && (
@@ -218,17 +298,21 @@ export default function ConsultantSections({
                         </td>
                       )}
                       <td className="px-2 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-20 h-1.5 rounded-full bg-surface-container overflow-hidden">
-                            <div className="h-full rounded-full" style={{ width: BAND_WIDTH[k.volumeBand], background: BAND_COLOR[k.volumeBand] }} />
+                        {k.volumeBand && !(k.demandStatus === 'unavailable') ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 h-1.5 rounded-full bg-surface-container overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: BAND_WIDTH[k.volumeBand], background: BAND_COLOR[k.volumeBand] }} />
+                            </div>
+                            <span className="text-xs font-bold" style={{ color: BAND_COLOR[k.volumeBand] }}>
+                              {k.volumeBand}{k.demandStatus === undefined && k.estimated ? '*' : ''}
+                            </span>
                           </div>
-                          <span className="text-xs font-bold" style={{ color: BAND_COLOR[k.volumeBand] }}>
-                            {k.volumeBand}{k.estimated ? '*' : ''}
-                          </span>
-                        </div>
+                        ) : (
+                          <span className="text-xs text-on-surface-variant">Not available</span>
+                        )}
                       </td>
-                      <td className="px-2 py-3 text-right font-bold" style={{ color: k.mapsRank > 5 ? RANK_RED : '#16a34a' }}>
-                        {fmtRank(k.mapsRank)}
+                      <td className="px-2 py-3 text-right font-bold whitespace-nowrap" style={{ color: RANK_BAND_HEX[rankBand(kwRank(k))] }}>
+                        {rankLabel(kwRank(k))}
                       </td>
                     </tr>
                   ))}
@@ -242,11 +326,24 @@ export default function ConsultantSections({
                 ))}
               </ul>
             )}
+            <ProposedKeywords rows={draft.proposedKeywords} />
           </Card>
         </div>
       )}
 
       {/* 2. COMPETITOR LANDSCAPE */}
+      {grounded && (draft.competitorLandscape || []).length === 0 && (
+        <div className="space-y-4">
+          <SectionBar num={S()} title="COMPETITOR LANDSCAPE" />
+          <Card>
+            <DataStatus text={rankMeasured
+              ? 'No other business was shown above you in the searches we ran.'
+              : rankFailed
+                ? 'Competitors come from the Google Maps searches, which could not be completed for this report.'
+                : 'Competitors come from the Google Maps searches, which were not measured for this report.'} />
+          </Card>
+        </div>
+      )}
       {(draft.competitorLandscape || []).length > 0 && (
         <div className="space-y-4">
           <SectionBar num={S()} title="COMPETITOR LANDSCAPE" />
@@ -264,8 +361,13 @@ export default function ConsultantSections({
                 <tbody>
                   {draft.competitorLandscape!.map((c, i) => (
                     <tr key={i} className="border-t border-outline-variant align-top">
-                      <td className="px-2 py-3 font-medium text-on-surface">{c.name}</td>
-                      <td className="px-2 py-3 font-bold text-primary whitespace-nowrap">{fmtRank(c.mapsRank)}</td>
+                      <td className="px-2 py-3 font-medium text-on-surface">
+                        {c.name}
+                        {c.tierLabel && (
+                          <span className={`block text-[10px] ${c.relevance === 'strong' ? 'font-semibold text-error' : 'text-on-surface-variant'}`}>{c.tierLabel}</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-3 font-bold text-primary whitespace-nowrap">{c.mapsRank != null ? fmtRank(c.mapsRank) : '—'}</td>
                       <td className="px-2 py-3 text-secondary whitespace-nowrap">
                         {c.rating != null ? `${c.rating}★` : '—'} {c.reviewCount != null ? `· ${c.reviewCount}` : ''}
                       </td>
@@ -275,6 +377,19 @@ export default function ConsultantSections({
                 </tbody>
               </table>
             </div>
+            {(draft.competitorInsights || []).length > 0 && (
+              <div className="mt-5 space-y-3">
+                <div className="text-xs font-bold uppercase tracking-wide text-on-surface">What the businesses above you do differently</div>
+                {draft.competitorInsights!.map((ins, i) => (
+                  <div key={i} className="rounded-lg border border-outline-variant p-3 text-sm space-y-1">
+                    <p><span className="font-semibold text-on-surface">Fact: </span><span className="text-on-surface">{ins.fact}</span></p>
+                    <p><span className="font-semibold text-on-surface">What it means: </span><span className="text-on-surface-variant">{ins.meaning}</span></p>
+                    <p><span className="font-semibold text-on-surface">Recommended: </span><span className="text-on-surface-variant">{ins.recommendation}</span></p>
+                    <p className="text-[11px] text-outline">Source: {ins.basis}</p>
+                  </div>
+                ))}
+              </div>
+            )}
             {draft.competitorCounterPosition && (
               <p className="text-sm text-on-surface-variant mt-4 leading-relaxed">{draft.competitorCounterPosition}</p>
             )}
@@ -288,11 +403,10 @@ export default function ConsultantSections({
           <SectionBar num={S()} title="GBP PROFILE GAP ANALYSIS" />
           <Card>
             <p className="text-sm text-on-surface-variant mb-5">
-              Drafts for {businessName} only. We do not overwrite the live listing from this report. After you subscribe and connect Google, apply them from Google Profile.
+              Drafts for {businessName} only — nothing is changed on your listing from this report. Once you subscribe and connect Google, GrowwMatics can apply the title and description drafts for you; categories, services, hours and attributes are changed by you in Google.
             </p>
-            {failed.has('gbpDrafts') ? (
-              <SupportNote what="GBP drafts" />
-            ) : (
+            {failed.has('gbpDrafts') && <div className="mb-4"><SupportNote what="GBP drafts" /></div>}
+            {failed.has('gbpDrafts') && !(draft.gbpGaps || []).length ? null : (
               <>
                 <div className="space-y-4">
                   {(draft.gbpGaps || []).map((g, i) => (
@@ -317,7 +431,7 @@ export default function ConsultantSections({
                     </div>
                   </div>
                 )}
-                {(draft.suggestedAttributes || []).length > 0 && (
+                {grounded && (draft.suggestedAttributes || []).length > 0 && (
                   <div className="mt-5">
                     <div className="text-xs font-bold uppercase tracking-wide text-error mb-2">GBP attributes to set</div>
                     <div className="flex flex-wrap gap-2">
@@ -342,7 +456,7 @@ export default function ConsultantSections({
 
                 {draft.suggestedTitle && (
                   <div className="mt-6">
-                    <div className="text-xs font-bold uppercase tracking-wide text-error">Title is not carrying the keywords</div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-error">Suggested title — your real business name without the flagged words</div>
                     <p className="text-sm font-semibold text-on-surface mt-1">{draft.suggestedTitle}</p>
                   </div>
                 )}
@@ -352,9 +466,9 @@ export default function ConsultantSections({
                     <p className="text-sm text-on-surface mt-1 leading-relaxed">{draft.suggestedDescription}</p>
                   </div>
                 )}
-                {(draft.suggestedServices || []).length > 0 && (
+                {grounded && (draft.suggestedServices || []).length > 0 && (
                   <div className="mt-5">
-                    <div className="text-xs font-bold uppercase tracking-wide text-error mb-2">Services list is thinner than it should be</div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-error mb-2">Services we found on your listing, website or intake — add them in Google</div>
                     <div className="flex flex-wrap gap-2">
                       {draft.suggestedServices!.map((s, i) => (
                         <span key={i} className="text-xs px-2 py-1 rounded bg-primary-fixed text-primary">{s}</span>
@@ -364,7 +478,7 @@ export default function ConsultantSections({
                 )}
                 {(draft.suggestedCategories || []).length > 0 && (
                   <div className="mt-5">
-                    <div className="text-xs font-bold uppercase tracking-wide text-on-surface-variant mb-2">Extra Google categories to add in Google</div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-on-surface-variant mb-2">Extra Google categories to consider — only if they match services you offer</div>
                     <div className="flex flex-wrap gap-2">
                       {draft.suggestedCategories!.map((c, i) => (
                         <span key={i} className="text-xs px-2 py-1 rounded bg-surface-container text-on-surface-variant">{c}</span>
@@ -379,7 +493,15 @@ export default function ConsultantSections({
       )}
 
       {/* 4. MARKET OPPORTUNITY GAPS */}
-      {(draft.marketOpportunities || []).length > 0 && (
+      {grounded && (draft.marketOpportunities || []).length === 0 && (
+        <div className="space-y-4">
+          <SectionBar num={S()} title="MARKET OPPORTUNITY GAPS" />
+          <Card>
+            <DataStatus text="No searched phrase had both measured demand and a rank gap, so no opportunity is labelled. Labels are only given from measured data." />
+          </Card>
+        </div>
+      )}
+      {grounded && (draft.marketOpportunities || []).length > 0 && (
         <div className="space-y-4">
           <SectionBar num={S()} title="MARKET OPPORTUNITY GAPS" />
           <Card>
@@ -401,6 +523,14 @@ export default function ConsultantSections({
       )}
 
       {/* 5. PRIORITY ACTION PLAN */}
+      {grounded && (draft.actionPhases || []).length === 0 && (
+        <div className="space-y-4">
+          <SectionBar num={S()} title="PRIORITY ACTION PLAN — 30 / 60 / 90 DAYS" />
+          <Card>
+            {failed.has('actionPlan') ? <SupportNote what="Action Plan" /> : <DataStatus text="The plan could not be built from verified facts for this report." />}
+          </Card>
+        </div>
+      )}
       {(draft.actionPhases || []).length > 0 && (
         <div className="space-y-4">
           <SectionBar num={S()} title="PRIORITY ACTION PLAN — 30 / 60 / 90 DAYS" />
@@ -435,6 +565,14 @@ export default function ConsultantSections({
       )}
 
       {/* 6. THIS WEEK'S GOOGLE POSTS */}
+      {grounded && (draft.weeklyPostThemes || []).length === 0 && (
+        <div className="space-y-4">
+          <SectionBar num={S()} title="THIS WEEK'S GOOGLE POSTS" />
+          <Card>
+            <DataStatus text="No post ideas could be written from verified services. Tell us your services (Data Required) and posts will be built from them." />
+          </Card>
+        </div>
+      )}
       {(draft.weeklyPostThemes || []).length > 0 && (
         <div className="space-y-4">
           <SectionBar num={S()} title="THIS WEEK'S GOOGLE POSTS" />
@@ -460,10 +598,21 @@ export default function ConsultantSections({
       )}
 
       {/* 7. SUGGESTED GOOGLE Q&AS */}
-      {(draft.suggestedQas || []).length > 0 && (
+      {grounded && (draft.suggestedQas || []).length === 0 && (
         <div className="space-y-4">
           <SectionBar num={S()} title="SUGGESTED GOOGLE Q&AS" />
           <Card>
+            <DataStatus text="No customer questions could be answered from verified facts yet — they need your confirmed services and details." />
+          </Card>
+        </div>
+      )}
+      {grounded && (draft.suggestedQas || []).length > 0 && (
+        <div className="space-y-4">
+          <SectionBar num={S()} title="SUGGESTED GOOGLE Q&AS" />
+          <Card>
+            <p className="text-sm text-on-surface-variant mb-4">
+              For you to add yourself — GrowwMatics does not post Q&amp;As. Answers marked [Owner to confirm] need your facts before use.
+            </p>
             <div className="divide-y divide-outline-variant">
               {draft.suggestedQas!.map((qa, i) => (
                 <div key={i} className="py-3 first:pt-0 last:pb-0">
@@ -476,13 +625,15 @@ export default function ConsultantSections({
         </div>
       )}
 
-      {/* PROJECTED RANK TIMELINE (both tiers) / WHAT WE AIM FOR (fallback) */}
-      {(draft.rankTimeline || []).length > 0 ? (
+      {/* PROJECTED IMPROVEMENT TIMELINE (grounded drafts: measured today +
+          work milestones, no promised rank). Older stored drafts carried fixed
+          rank bands, so they fall back to "What we aim for". */}
+      {grounded && (draft.rankTimeline || []).length > 0 ? (
         <div className="space-y-4">
-          <SectionBar num={S()} title="PROJECTED RANK IMPROVEMENT TIMELINE" />
+          <SectionBar num={S()} title="PROJECTED IMPROVEMENT TIMELINE" />
           <Card>
             <p className="text-sm text-on-surface-variant mb-4">
-              Targets for the work, not a promise of position. Google decides ranking.
+              Work milestones, not a promised position — Google decides ranking. Each stage is re-measured on the same searches.
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {draft.rankTimeline!.map((m, i) => (
@@ -492,7 +643,9 @@ export default function ConsultantSections({
                   style={i === 0 ? { background: AMBER_BG, borderColor: AMBER_BORDER } : { borderColor: 'var(--color-outline-variant)' }}
                 >
                   <div className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">{m.label}</div>
-                  <div className="font-heading text-xl font-bold mt-1" style={{ color: m.tone ? TONE_COLOR[m.tone] : undefined }}>{m.rank}</div>
+                  <div className="font-heading text-xl font-bold mt-1" style={{ color: m.tone ? TONE_COLOR[m.tone] : undefined }}>
+                    {i === 0 && m.rank === '20+' ? 'Not found' : m.rank}
+                  </div>
                   <div className="text-[11px] text-on-surface-variant mt-1">{m.note}</div>
                 </div>
               ))}
@@ -509,8 +662,10 @@ export default function ConsultantSections({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="rounded-xl p-4 text-center" style={{ background: AMBER_BG, border: `1px solid ${AMBER_BORDER}` }}>
                 <div className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Today</div>
-                <div className="font-heading text-2xl font-bold mt-1" style={{ color: RANK_RED }}>{draft.whatWeAimFor.todayRank}</div>
-                <div className="text-[11px] text-on-surface-variant mt-1">Live Maps position we measured — not a forecast</div>
+                <div className="font-heading text-2xl font-bold mt-1" style={{ color: RANK_RED }}>{draft.whatWeAimFor.todayRank === '20+' ? 'Not found' : draft.whatWeAimFor.todayRank}</div>
+                <div className="text-[11px] text-on-surface-variant mt-1">
+                  {draft.whatWeAimFor.todayRank === 'Unavailable' ? 'Ranking check did not complete for this report' : 'Live Maps position we measured — not a forecast'}
+                </div>
               </div>
               {draft.whatWeAimFor.milestones.map((m, i) => (
                 <div key={i} className="rounded-xl p-4 text-center bg-surface-container border border-outline-variant">
@@ -546,6 +701,24 @@ export default function ConsultantSections({
       >
         Unlock the full plan & platform →
       </Link>
+    </div>
+  );
+}
+
+/** AI-proposed phrases — never measured, so no rank or demand is shown. */
+function ProposedKeywords({ rows }: { rows?: ISeoPlanDraft['proposedKeywords'] }) {
+  if (!rows || rows.length === 0) return null;
+  return (
+    <div className="mt-5">
+      <div className="text-xs font-bold uppercase tracking-wide text-on-surface mb-1">More phrases to track — proposed, not measured</div>
+      <p className="text-[11px] text-on-surface-variant mb-2">Built from your services and area. We have not measured their rank or demand yet.</p>
+      <div className="flex flex-wrap gap-2">
+        {rows.map((r, i) => (
+          <span key={i} title={`Based on: ${r.basis}`} className="text-xs px-2.5 py-1 rounded-full border border-dashed border-outline text-on-surface-variant">
+            {r.keyword}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

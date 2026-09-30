@@ -5,7 +5,8 @@ import Audit from '@/models/Audit';
 import { provisionShadowAccount, CLAIMED_OR_PAID_REUSE_ERROR } from '@/lib/shadowAccount';
 import { createPendingAuditAndDispatch } from '@/lib/startAudit';
 import { normalizePhoneE164 } from '@/lib/phone';
-import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { getClientIp } from '@/lib/rateLimit';
+import { checkDurableRateLimit } from '@/lib/durableRateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
 
 /**
@@ -25,8 +26,11 @@ export async function POST(req: Request) {
     // retrying after a typo, or someone showing the form to a colleague,
     // easily hits 3 attempts) well before any actual abuser would notice a
     // limit exists. Still tight enough to block a scripted hammering loop.
+    // MongoDB-backed (Sep 2026): the in-memory limiter only counted per
+    // server process, so on more than one instance each paid report could be
+    // requested N× the limit.
     const ip = getClientIp(req);
-    const ipRate = checkRateLimit(`free-report-ip:${ip}`, 8, 15 * 60 * 1000);
+    const ipRate = await checkDurableRateLimit(`free-report-ip:${ip}`, 8, 15 * 60 * 1000);
     if (!ipRate.allowed && !isQaTestingMode()) {
       return NextResponse.json(
         { error: 'Too many requests. Please try again in a few minutes.' },
@@ -48,7 +52,7 @@ export async function POST(req: Request) {
 
     // Also cap by phone number so rotating IPs (proxies/VPNs) can't be used
     // to spam reports for the same target number.
-    const phoneRate = checkRateLimit(`free-report-phone:${normalizedPhone}`, 5, 24 * 60 * 60 * 1000);
+    const phoneRate = await checkDurableRateLimit(`free-report-phone:${normalizedPhone}`, 5, 24 * 60 * 60 * 1000);
     if (!phoneRate.allowed && !isQaTestingMode()) {
       return NextResponse.json(
         { error: 'Too many requests for this phone number. Please try again later.' },
@@ -119,8 +123,16 @@ export async function POST(req: Request) {
 
     // Reuse an existing report instead of generating a duplicate one if this
     // phone number has already been through this flow with a completed audit.
+    // A reused report is capped at 30 days old — beyond that the visitor
+    // gets a fresh one (cheap for the same listing: rank, keyword, locality
+    // and narrative data are all cached by Google Place ID).
     if (reused) {
-      const existingAudit = await Audit.findOne({ businessId: business._id, status: 'COMPLETED' })
+      const REUSE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+      const existingAudit = await Audit.findOne({
+        businessId: business._id,
+        status: 'COMPLETED',
+        createdAt: { $gte: new Date(Date.now() - REUSE_MAX_AGE_MS) },
+      })
         .sort({ createdAt: -1 })
         .lean();
       if (existingAudit) {

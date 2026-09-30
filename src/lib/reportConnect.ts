@@ -7,6 +7,46 @@ import { encrypt } from '@/lib/crypto';
 import { provisionShadowAccount } from '@/lib/shadowAccount';
 import { createPendingAuditAndDispatch } from '@/lib/startAudit';
 import { inngest } from '@/services/inngest/client';
+import { GooglePlacesService, type PlaceDetailsResult } from '@/services/google/places';
+import type { ShadowBusinessData } from '@/lib/shadowAccount';
+
+/**
+ * Real listing facts for the chosen location, read once from Places Details
+ * — the same call /free-report makes at intake. Without it this flow stored
+ * only title/address/placeId, so the audit reported phone, website and
+ * category as Missing (they exist on the listing), had no coordinates, and
+ * ran its ranking search for city "Unknown". Best-effort: a failure leaves
+ * the old minimal data, and the audit then reports those fields as unknown.
+ */
+async function listingFacts(placeId?: string): Promise<Partial<ShadowBusinessData>> {
+  if (!placeId) return {};
+  let d: PlaceDetailsResult | null = null;
+  try {
+    d = await GooglePlacesService.getDetails(placeId);
+  } catch (err: any) {
+    console.warn('[reportConnect] Places details lookup failed:', err?.message);
+  }
+  if (!d) return {};
+  const facts: Partial<ShadowBusinessData> = {
+    category: d.primaryCategory,
+    address: d.formattedAddress || undefined,
+    area: d.area,
+    city: d.city,
+    state: d.state,
+    country: d.country,
+    phone: d.phoneNumber || undefined,
+    website: d.website || undefined,
+    googleMapsUrl: d.googleMapsUrl || undefined,
+    coordinates: d.latitude != null && d.longitude != null ? { lat: d.latitude, lng: d.longitude } : undefined,
+    placesRating: d.rating,
+    placesReviewCount: d.totalReviews,
+    editorialSummary: d.editorialSummary,
+    photoCount: d.photoCount,
+    hasHours: d.hasHours,
+    googleTypes: d.categories,
+  };
+  return Object.fromEntries(Object.entries(facts).filter(([, v]) => v !== undefined && v !== '')) as Partial<ShadowBusinessData>;
+}
 
 /**
  * Shared plumbing for the WhatsApp-first "connect your Google Business
@@ -77,6 +117,8 @@ export async function finalizeReportConnection(
   const convo: any = await ReportConversation.findById(reportConversationId);
   if (!convo) throw new Error('Report conversation not found');
 
+  const facts = await listingFacts(location.placeId);
+
   const { user, business, organization } = await provisionShadowAccount({
     phone: convo.leadPhone,
     source: 'whatsapp-report-agent',
@@ -86,8 +128,9 @@ export async function finalizeReportConnection(
     // HTTP form submission.
     phoneVerified: true,
     businessData: {
-      name: location.title,
       address: location.address,
+      ...facts,
+      name: location.title,
       googlePlaceId: location.placeId,
     },
   });
@@ -112,9 +155,13 @@ export async function finalizeReportConnection(
     { upsert: true, new: true }
   );
 
+  // A reused business keeps whatever it was created with, so refresh the
+  // Google-sourced facts on it too (these are Google's data, not owner edits).
+  const { editorialSummary: _summary, ...businessFacts } = facts;
   await Business.findByIdAndUpdate(business._id, {
     googleConnected: true,
     googleLocationId: location.locationId,
+    ...businessFacts,
   });
 
   const audit = await createPendingAuditAndDispatch(business, organization, user);

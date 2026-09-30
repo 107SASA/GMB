@@ -10,6 +10,12 @@ export interface ProviderReview {
   reviewerPhotoUrl?: string;
 }
 
+/** Lifetime totals the provider saw in its own response (not a count of fetched reviews). */
+export interface ProviderReviewTotals {
+  count: number;
+  rating: number | null;
+}
+
 export interface FetchReviewsOptions {
   /**
    * providerReviewIds already stored for this business. When present and

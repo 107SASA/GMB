@@ -158,8 +158,9 @@ export default function ReviewsDashboard() {
       }
       if (data.success) {
         setReviews(prev => prev.map(r =>
-          r._id === reviewId ? { ...r, aiSuggestedReply: data.reply, replyTone: tone } : r
+          r._id === reviewId ? { ...r, aiSuggestedReply: data.reply, replyTone: tone, replyStatus: data.replyStatus ?? r.replyStatus, replyValidation: data.validation } : r
         ));
+        if (data.replyStatus === 'NEEDS_REVIEW') toast.message('Draft saved for review: it did not pass the fact check. Edit it before approving.');
       } else {
         toast.error(data.error || 'Failed to generate reply');
       }
@@ -182,6 +183,7 @@ export default function ReviewsDashboard() {
         ));
         await refreshReviewList();
       } else {
+        if (data.review) setReviews(prev => prev.map(r => (r._id === reviewId ? { ...r, ...data.review } : r)));
         toast.error(data.error || 'Failed to approve reply');
       }
     } catch (error) {
@@ -203,8 +205,12 @@ export default function ReviewsDashboard() {
             : r
         ));
         await refreshReviewList();
+      } else if (data.blocked) {
+        toast.message(data.message);
+        await refreshReviewList();
       } else {
         toast.error(data.error || 'Failed to post reply');
+        await refreshReviewList();
       }
     } catch (error) {
       console.error(error);

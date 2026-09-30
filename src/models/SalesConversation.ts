@@ -13,6 +13,16 @@ export interface ISalesScores {
   profile: number | null;
   seo: number | null;
   review: number | null;
+  /** 'unavailable' when the ranking check failed — `rank: null` then means
+   *  "not measured", not "beyond 20". Absent on records from before Sep 2026. */
+  rankStatus?: 'ok' | 'unavailable';
+  /** Pre-formatted verified values for messages (Sep 2026+). */
+  rankText?: string;
+  profileText?: string;
+  seoText?: string;
+  reviewText?: string;
+  /** Up to 3 verified issue titles from the audit's findings. */
+  verifiedIssues?: string[];
   competitor: string | null;
   missingKeywords: string[];
 }
@@ -64,6 +74,12 @@ const SalesConversationSchema: Schema = new Schema(
       profile: { type: Number, default: null },
       seo: { type: Number, default: null },
       review: { type: Number, default: null },
+      rankStatus: { type: String, enum: ['ok', 'unavailable'] },
+      rankText: { type: String },
+      profileText: { type: String },
+      seoText: { type: String },
+      reviewText: { type: String },
+      verifiedIssues: { type: [String], default: undefined },
       competitor: { type: String, default: null },
       missingKeywords: { type: [String], default: [] },
     },

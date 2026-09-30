@@ -110,6 +110,8 @@ const CHIP_COLORS: Record<string, string> = {
   scheduled: 'bg-primary-fixed text-primary border-l-[3px] border-l-primary',
   draft:     'bg-error-container text-on-error-container border-l-[3px] border-l-error',
   failed:    'bg-error-container text-error border-l-[3px] border-l-error',
+  publishing: 'bg-primary-fixed text-primary border-l-[3px] border-l-primary',
+  blocked:   'bg-surface-container-high text-on-surface-variant border-l-[3px] border-l-outline',
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -117,6 +119,8 @@ const STATUS_BADGE: Record<string, string> = {
   scheduled: 'bg-primary-fixed text-primary',
   draft:     'bg-error-container text-on-error-container',
   failed:    'bg-error-container text-on-error-container',
+  publishing: 'bg-primary-fixed text-primary',
+  blocked:   'bg-surface-container-high text-on-surface-variant',
 };
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -403,6 +407,33 @@ function PostDetailModal({
                   <p className="text-sm text-primary font-medium mt-1">{scheduledLabel}</p>
                 )}
               </div>
+              {post.status === 'blocked' && (
+                <div className="bg-surface-container-high border border-outline-variant rounded-xl px-4 py-3">
+                  <p className="text-xs font-semibold text-on-surface uppercase tracking-wider mb-1">
+                    Not on Google
+                  </p>
+                  <p className="text-sm text-on-surface-variant">
+                    {post.failureReason || 'Scheduled in GrowwMatics — Google publishing has not been executed.'}
+                  </p>
+                </div>
+              )}
+              {post.status === 'draft' && post.contentMeta?.draftReason && (
+                <div className="bg-surface-container-high border border-outline-variant rounded-xl px-4 py-3">
+                  <p className="text-xs font-semibold text-on-surface uppercase tracking-wider mb-1">
+                    Saved as draft for your review
+                  </p>
+                  <p className="text-sm text-on-surface-variant">{post.contentMeta.draftReason}</p>
+                </div>
+              )}
+              {post.contentMeta?.purpose && (
+                <p className="text-xs text-on-surface-variant">
+                  Plan: {String(post.contentMeta.purpose).replace('_', ' ')}
+                  {post.contentMeta.service ? ` · ${post.contentMeta.service}` : ''}
+                  {post.contentMeta.keyword
+                    ? ` · “${post.contentMeta.keyword}” (${post.contentMeta.keywordMeasured ? 'measured keyword' : 'proposed — not measured'})`
+                    : ''}
+                </p>
+              )}
               {post.status === 'failed' && post.failureReason && (
                 <div className="bg-error-container border border-error-container rounded-xl px-4 py-3">
                   <p className="text-xs font-semibold text-on-error-container uppercase tracking-wider mb-1">
@@ -539,12 +570,12 @@ function PostDetailModal({
                   Reschedule
                 </button>
               )}
-              {(post.status === 'scheduled' || post.status === 'failed') && (
+              {(post.status === 'scheduled' || post.status === 'failed' || post.status === 'blocked') && (
                 <button
                   onClick={() => { onPublish(post._id); onClose(); }}
                   className="px-4 py-2.5 text-sm font-semibold text-white bg-secondary hover:bg-secondary rounded-xl transition-colors"
                 >
-                  {post.status === 'failed' ? 'Retry Publish' : 'Publish Now'}
+                  {post.status === 'failed' ? 'Retry Publish' : post.status === 'blocked' ? 'Publish to Google' : 'Publish Now'}
                 </button>
               )}
             </>

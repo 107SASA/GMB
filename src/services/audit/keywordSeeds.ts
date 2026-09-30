@@ -80,6 +80,8 @@ export function buildFreeReportKeywords(
     business.name || business.businessName,
     [business.city, business.area, business.state],
   );
+  // No usable category → no customer search terms (never brand-name searches).
+  if (!rawCat) return { keywords: [], primaryKeyword: '', areasUsed: [] };
   const cat = tidy(rawCat.replace(SELF_PRAISE, ' ')) || 'business';
   const catShort = shortCategory(cat);
   const city = tidy(business.city || '');
@@ -110,9 +112,15 @@ export function buildFreeReportKeywords(
     push(`${cat} ${city}`);
     push(`Best ${catShort} ${city}`);
   }
+  // "<service> near me" — ranked from the business's own location like the
+  // others, and the one phrase type Google Ads reports volume for (Sep 2026:
+  // 0 of 43 town/neighbourhood phrases returned volume across 4 live free
+  // reports, so the paid volume call returned nothing usable without it).
+  push(`${catShort} near me`);
 
-  // 3. brand + city ("Desun Academy Kolkata")
-  if (brand && city) push(`${brand} ${city}`);
+  // (No "brand + city" search: a business's rank for its own name measures
+  // brand lookups, not visibility — see isBrandedKeyword in facts.ts.)
+  void brand;
 
   // 4. category-noun variants around the nearest area
   if (areas[0]) {

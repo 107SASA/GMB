@@ -11,7 +11,6 @@ import Customer from "@/models/Customer";
 import Campaign from "@/models/Campaign";
 import AutomationLog from "@/models/AutomationLog";
 import { generateSalesResponse } from "@/services/ai";
-import { generateAIContent } from "@/services/ai/contentEngine";
 import { GROQ_MODEL } from "@/lib/aiModel";
 import twilio from "twilio";
 import mongoose from "mongoose";
@@ -845,89 +844,31 @@ export const processContentJob = inngest.createFunction(
         }
       }
 
-      const createdScheduled = await step.run(`generate-and-save-buffer`, async () => {
-        const { default: Post } = await import("@/models/Post");
-        const { generateThumbnail } = await import("@/services/ai/imageGenerator");
-        const { isStorageConfigured, rehostImageFromUrl } = await import("@/lib/storage");
-
-        // Keywords / USP / post themes come from the active SeoPlan when the
-        // business has one (the brain), falling back to Business.keywords.
-        const { resolveContentKeywords } = await import("@/services/seoPlan/seoPlanService");
-        const planContent = await resolveContentKeywords(business);
-
-        const aiResponse = await generateAIContent({
-          businessName: business.name || 'Local Business',
-          businessType: business.category || 'Local Business',
-          location: business.address || 'Local Area',
-          keywords: planContent.keywords.length ? planContent.keywords : (business.keywords || ['services']),
-          tone: business.tone || 'Professional',
-          contentTypes: ['GMB Posts'],
-          usp: planContent.uspLine,
-          postThemes: planContent.postThemes,
-        });
-
-        if (!aiResponse || !aiResponse.posts) throw new Error("Empty AI content returned");
-
-        let lastScheduledDate = futurePosts.length > 0
+      const batch = await step.run(`generate-and-save-buffer`, async () => {
+        // Sep 2026 — the weekly engine: SEO-plan slots, verified facts only,
+        // evidence gate with one regeneration, safe DRAFT fallback, customer
+        // photos / customer-branded images, and per-slot idempotency
+        // (unique businessId + batchKey + slot). Still POSTS_PER_WEEK posts.
+        const { generateWeeklyBatch } = await import("@/services/content/weeklyBatch");
+        const { contentWeekKey } = await import("@/services/content/plan");
+        const lastFuture = futurePosts.length > 0
           ? new Date(futurePosts[futurePosts.length - 1].scheduledDate || new Date())
           : new Date();
-
-        // Collected so scheduleSinglePostPublish can be triggered for each
-        // one after this step returns — step.sendEvent can't be called from
-        // inside another step.
-        const created: { postId: string; scheduledDate: string }[] = [];
-
-        for (const generatedPost of aiResponse.posts) {
-           const nextDate = new Date(lastScheduledDate);
-           nextDate.setDate(nextDate.getDate() + daySpacing);
-           lastScheduledDate = nextDate;
-
-           // Thumbnail — best-effort, same generate→watermark→rehost sequence
-           // the manual /api/content/generate route already uses. Failure
-           // here (missing prompt, API error, rehost failure) must never
-           // block the post itself from being created and scheduled — a
-           // text-only post is still far better than none. Done inline
-           // (not deferred like that route's `after()`) since this already
-           // runs as a background Inngest step, not a request that needs to
-           // answer a browser within a gateway timeout.
-           let imageUrl: string | undefined;
-           if (generatedPost.thumbnailPrompt) {
-             try {
-               const generated = await generateThumbnail(generatedPost.thumbnailPrompt);
-               if (generated) {
-                 // Gemini/NanoBanana return a base64 data-URL or a third-party
-                 // hosted URL — Google Business Profile's publish API can only
-                 // fetch a real, ours-to-keep HTTPS URL, so re-host to Spaces
-                 // when configured. Falls back to the raw result otherwise
-                 // (fine for in-app preview; publish may not carry the image).
-                 imageUrl = isStorageConfigured()
-                   ? await rehostImageFromUrl(generated, `post-thumbnails/${business._id}`)
-                   : generated;
-               }
-             } catch (e: any) {
-               console.error(`[processContentJob] thumbnail generation failed for businessId=${business._id}:`, e?.message);
-             }
-           }
-
-           const newPost = await Post.create({
-             tenantId,
-             title: generatedPost.title,
-             content: generatedPost.body,
-             postType: generatedPost.postType,
-             cta: generatedPost.cta,
-             hashtags: generatedPost.hashtags,
-             imageUrl,
-             status: "scheduled",
-             platform: "gmb",
-             aiGenerated: true,
-             scheduledDate: nextDate,
-             businessId: business._id,
-             automationMetadata: {
-               generatedVia: force ? 'manual' : 'cron',
-             }
-           });
-           created.push({ postId: newPost._id.toString(), scheduledDate: nextDate.toISOString() });
-        }
+        const firstDate = new Date(lastFuture.getTime() + daySpacing * 86_400_000);
+        // Autopilot / buffer top-up = one batch per week (a duplicate dispatch
+        // or retry fills only missing slots). An explicit "Generate" click is
+        // its own batch, keyed by the event so a step retry never duplicates it.
+        const batchKey = event.data.autopilot || !force
+          ? contentWeekKey(new Date())
+          : `manual-${(event as any).id || Date.now()}`;
+        const result = await generateWeeklyBatch({
+          business: business.toObject(),
+          tenantId,
+          firstDate,
+          daySpacing,
+          batchKey,
+          generatedVia: force && !event.data.autopilot ? 'manual' : 'cron',
+        });
 
         await AutomationLog.create({
           tenantId,
@@ -937,12 +878,29 @@ export const processContentJob = inngest.createFunction(
           action: 'generate_post_batch',
           status: 'success',
         });
-
-        return created;
+        return result;
       });
+      const createdScheduled = batch.created
+        .filter((p) => p.status === 'scheduled')
+        .map((p) => ({ postId: p.postId, scheduledDate: p.scheduledDate }));
+      const createdDrafts = batch.created.filter((p) => p.status === 'draft').length;
 
+      if (createdDrafts > 0) {
+        await step.run("notify-drafts-need-review", async () => {
+          const { notifyBusinessUsers } = await import("@/services/notifications");
+          await notifyBusinessUsers(business._id.toString(), {
+            type: "content_draft",
+            title: `${createdDrafts} post${createdDrafts === 1 ? '' : 's'} saved as draft for your review`,
+            body: "These posts did not pass our fact check (or AI was unavailable), so a safe version was saved as a draft instead of being scheduled. Review and approve them in Content.",
+            link: "/dashboard/content?tab=schedule",
+          });
+        });
+      }
+
+      if (batch.created.length > 0) {
+        await step.run("increment-post-usage", () => incrementUsage(business._id, 'posts', batch.created.length));
+      }
       if (createdScheduled.length > 0) {
-        await step.run("increment-post-usage", () => incrementUsage(business._id, 'posts', createdScheduled.length));
 
         await step.sendEvent(
           "dispatch-buffer-scheduled-posts",
@@ -982,6 +940,35 @@ export const processContentJob = inngest.createFunction(
     }
 
     return { success: true };
+  }
+);
+
+// Weekly offer (Sep 2026) — the owner's YES answer becomes this week's slot-4
+// post (or one extra offer post when slot 4 already went out). Idempotent via
+// WeeklyOffer.postId; see services/content/weeklyBatch.ts applyWeeklyOffer.
+export const applyWeeklyOfferJob = inngest.createFunction(
+  { id: "apply-weekly-offer", retries: 2, triggers: [{ event: "content/weekly-offer.answered" }] },
+  async ({ event, step }) => {
+    const result = await step.run("apply-offer", async () => {
+      const { applyWeeklyOffer } = await import("@/services/content/weeklyBatch");
+      return await applyWeeklyOffer({ businessId: event.data.businessId, weekKey: event.data.weekKey });
+    });
+    if (result.applied === "created" && result.postId) {
+      const post = await step.run("load-offer-post", async () => {
+        await dbConnect();
+        const { default: Post } = await import("@/models/Post");
+        const p: any = await Post.findById(result.postId).select("status scheduledDate").lean();
+        return p ? { status: p.status as string, scheduledDate: new Date(p.scheduledDate).toISOString() } : null;
+      });
+      await step.run("count-offer-post", async () => {
+        const { incrementUsage } = await import("@/lib/featureGating");
+        await incrementUsage(event.data.businessId, "posts", 1);
+      });
+      if (post?.status === "scheduled") {
+        await step.sendEvent("schedule-offer-post", { name: "scheduler/post-scheduled", data: { postId: result.postId, scheduledDate: post.scheduledDate } });
+      }
+    }
+    return result;
   }
 );
 
@@ -1409,6 +1396,8 @@ export const publishScheduledPostsCron = inngest.createFunction(
       await dbConnect();
       const { default: Post } = await import("@/models/Post");
       const now = new Date();
+      const { sweepStalePublishing } = await import("@/services/content/publishPost");
+      await sweepStalePublishing(now);
       const readyPosts = await Post.find({
         status: "scheduled",
         scheduledDate: { $lte: now }
@@ -1435,59 +1424,15 @@ export const processPublishPostJob = inngest.createFunction(
     await step.run("publish-to-gmb", async () => {
       await dbConnect();
       const { default: Post } = await import("@/models/Post");
-      const post = await Post.findById(postId);
-      if (!post || post.status !== "scheduled") return;
-
-      // SAFETY: pushing a post to a real Google Business Profile is gated behind
-      // GBP_LIVE_WRITES_ENABLED (off by default). While disabled we only mark the
-      // post published in our own DB — nothing reaches the customer's live profile.
-      // Any real Google "localPosts.create" call MUST live inside the enabled branch.
-      const { gbpWritesEnabled } = await import("@/lib/gbpSafety");
-      if (gbpWritesEnabled()) {
-        // Real Google Business Profile localPosts.create (gated ON). The image is
-        // attached only when it's a public http(s) URL — Google fetches it, so a
-        // base64 data-URL thumbnail is skipped (post still publishes, text-only).
-        const { createLocalPost } = await import("@/lib/gbpClient");
-        const summary = [post.title, post.content].filter(Boolean).join('\n\n').slice(0, 1500);
-        try {
-          await createLocalPost(post.businessId.toString(), {
-            summary,
-            mediaUrl: (post as any).imageUrl || undefined,
-          });
-          console.log(`[GBP] Published live post for business ${post.businessId}: ${post.title}`);
-        } catch (err: any) {
-          // Caught here (rather than left to throw and let Inngest's own step
-          // retry kick in) because a rejected post — bad content, an expired
-          // OAuth token, an unverified location — will fail identically on
-          // every retry. Left uncaught, the post would stay status:"scheduled"
-          // forever with scheduledDate in the past: publishScheduledPostsCron
-          // (every 15 min) would keep re-matching and re-dispatching it
-          // indefinitely, retrying silently forever with no visible failure
-          // anywhere. Marking it "failed" here stops that loop and surfaces
-          // the real reason (failureReason, shown as a red chip on the
-          // calendar — same status the manual "Publish" button already uses).
-          post.status = "failed";
-          post.failureReason = err.message || "Failed to publish to Google Business Profile.";
-          await post.save();
-          await AutomationLog.create({
-            tenantId: post.tenantId?.toString(),
-            businessId: post.businessId?.toString(),
-            type: 'inngest_job',
-            workflow: 'publish-cron',
-            action: 'publish_post',
-            status: 'failed',
-            message: post.failureReason,
-          });
-          console.error(`[GBP] Scheduled publish failed for post ${post._id}:`, post.failureReason);
-          return;
-        }
-      } else {
-        console.log(`[MOCK] GBP live writes disabled — marking post published locally only for business ${post.businessId}: ${post.title}`);
-      }
-
-      post.status = "published";
-      post.publishedAt = new Date();
-      await post.save();
+      // scheduled → publishing → published (Google confirmed) | blocked (live
+      // writes off — nothing reached Google) | failed (Google rejected). A
+      // rejected post fails identically on every retry, so failures are
+      // recorded rather than thrown (see services/content/publishPost.ts).
+      const { publishPost } = await import("@/services/content/publishPost");
+      const result = await publishPost(postId);
+      if (result.outcome === "skipped") return;
+      const post: any = await Post.findById(postId);
+      if (!post) return;
 
       await AutomationLog.create({
         tenantId: post.tenantId?.toString(),
@@ -1495,17 +1440,29 @@ export const processPublishPostJob = inngest.createFunction(
         type: 'inngest_job',
         workflow: 'publish-cron',
         action: 'publish_post',
-        status: 'success',
+        status: result.outcome === 'published' ? 'success' : 'failed',
+        ...(result.outcome !== 'published' ? { message: result.reason } : {}),
       });
+      if (result.outcome === "blocked") {
+        console.log(`[GBP] live writes disabled — post ${post._id} blocked (not sent to Google)`);
+        return;
+      }
+      if (result.outcome === "failed") {
+        console.error(`[GBP] Scheduled publish failed for post ${post._id}:`, result.reason);
+        try {
+          const { notifyBusinessUsers } = await import("@/services/notifications");
+          await notifyBusinessUsers(post.businessId.toString(), {
+            type: 'post_failed',
+            title: 'A post could not be published',
+            body: `"${post.title || 'Your post'}" was not accepted by Google: ${result.reason}`.slice(0, 300),
+            link: '/dashboard/content?tab=schedule',
+          });
+        } catch { /* best-effort */ }
+        return;
+      }
+      console.log(`[GBP] Published live post for business ${post.businessId}: ${post.title}`);
 
-      // Mobile push + in-app bell notification — same best-effort pattern as
-      // the critical-review and reply-drafted alerts above. Fires on the
-      // same "published" transition the rest of the app already shows,
-      // whether or not GBP_LIVE_WRITES_ENABLED is on (see the mock/live
-      // branch above) — post.status flips to "published" either way, and
-      // that's the one status every other surface in the app already shows
-      // the user, so the notification isn't saying anything new relative to
-      // what's already displayed elsewhere.
+      // Notifications below fire only on a Google-confirmed publish.
       const businessIdStr = post.businessId.toString();
       try {
         const { sendPushToBusinessUsers } = await import("@/services/push");
@@ -1665,8 +1622,13 @@ export const generateAuditJob = inngest.createFunction(
           return;
         }
         const { syncReviewsForBusiness } = await import('@/services/reviews/syncReviews');
+        const { runWithMeter } = await import('@/lib/providerMeter');
         const tenantId = (audit as any).tenantId ?? (audit as any).businessId.toString();
-        await syncReviewsForBusiness((audit as any).businessId.toString(), tenantId);
+        // Metered here and merged into the audit's providerUsage, so the
+        // SerpApi review calls are part of the report's observed cost.
+        const { counts, reasons } = await runWithMeter(() =>
+          syncReviewsForBusiness((audit as any).businessId.toString(), tenantId));
+        await Audit.updateOne({ _id: auditId }, { $set: { 'metadata.preSyncUsage': { counts, reasons } } });
         console.log(`[generate-audit] Pre-sync complete for businessId=${(audit as any).businessId}`);
       } catch (err: any) {
         console.warn('[generate-audit] Pre-sync failed — proceeding with existing reviews:', err.message);
@@ -1704,8 +1666,10 @@ export const generateAuditJob = inngest.createFunction(
       await dbConnect();
       const { default: Audit } = await import('@/models/Audit');
       const { notifyOwner } = await import('@/services/ownerNotify');
-      const audit: any = await Audit.findById(auditId).select('status fastMode businessId businessName').lean();
+      const audit: any = await Audit.findById(auditId).select('status fastMode businessId businessName auditKind').lean();
       if (!audit || audit.status !== 'COMPLETED' || audit.fastMode) return { skip: true };
+      // Monthly reports send their own verified summary (lifecycle/notify.ts).
+      if (audit.auditKind === 'monthly') return { skip: 'monthly summary sent by the audit' };
       await notifyOwner(audit.businessId.toString(), {
         event: 'report_ready',
         text: `📄 GrowwMatics: your monthly Google Business Profile report for ${audit.businessName || 'your business'} is ready. Open your dashboard to see this month's score and action plan.`,
@@ -1936,47 +1900,19 @@ export const ownerWhatsAppDigestCron = inngest.createFunction(
 // business-initiated WhatsApp send would need an approved template and is
 // left for a follow-up. Opt-out: Business.weeklySummaryOptOut.
 export const seoPlanWeeklySummary = inngest.createFunction(
+  // Id kept so the existing Inngest registration/cron is replaced, not orphaned.
   { id: "seo-plan-weekly-summary", triggers: [{ cron: "0 12 * * 1" }] }, // Mondays ~17:30 IST
   async ({ step }) => {
-    const result = await step.run("send-weekly-summaries", async () => {
-      await dbConnect();
-      const { default: Business } = await import("@/models/Business");
-      const { default: Post } = await import("@/models/Post");
-      const { default: Review } = await import("@/models/Review");
-      const { default: SeoPlan } = await import("@/models/SeoPlan");
-      const { notifyBusinessUsers } = await import("@/services/notifications");
-
-      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const businesses = await Business.find({
-        isDeleted: { $ne: true },
-        subscriptionStatus: "active",
-        weeklySummaryOptOut: { $ne: true },
-      }).select("_id name").lean();
-
-      let sent = 0;
-      for (const b of businesses as any[]) {
-        const plan = await SeoPlan.findOne({ businessId: b._id, status: "active" }).select("version primaryKeywords").lean();
-        if (!plan) continue;
-
-        const [postsPublished, newReviews] = await Promise.all([
-          Post.countDocuments({ businessId: b._id, status: "published", updatedAt: { $gte: weekAgo } }),
-          Review.countDocuments({ businessId: b._id, createdAt: { $gte: weekAgo } }),
-        ]);
-
-        if (postsPublished === 0 && newReviews === 0) continue;
-
-        const kw = (plan as any).primaryKeywords?.[0];
-        await notifyBusinessUsers(b._id.toString(), {
-          type: "seo_plan_summary",
-          title: "Your week on Google",
-          body: `${postsPublished} post${postsPublished === 1 ? "" : "s"} published and ${newReviews} new review${newReviews === 1 ? "" : "s"} this week — all working the current SEO plan${kw ? ` (targeting "${kw}")` : ""}.`,
-          link: "/dashboard/seo-plan",
-        });
-        sent++;
-      }
-      return { sent, total: businesses.length };
+    // Weekly monitoring (Sep 2026): reviews, unanswered reviews, execution
+    // records, measured GBP performance, comparable ranking changes and plan
+    // actions — from data already stored, no paid audit (lifecycle/notify.ts).
+    // In-app notifications only for new/actionable items; WhatsApp only when
+    // the week is meaningful or the owner asked for every week. Idempotent
+    // per business per ISO week (WeeklyMonitor unique index).
+    const result = await step.run("weekly-monitoring", async () => {
+      const { runWeeklyMonitoringAll } = await import("@/services/lifecycle/notify");
+      return await runWeeklyMonitoringAll();
     });
-
     return { success: true, ...result };
   }
 );
@@ -3350,7 +3286,8 @@ export const reportCardDeliver = inngest.createFunction(
           printBackground: true,
           margin: { top: '10mm', right: '12mm', bottom: '10mm', left: '12mm' },
         });
-        pdfUrl = await uploadPublicObject(buffer as Buffer, 'application/pdf', 'report-cards');
+        // Stored under the business so an account purge can find and erase it.
+        pdfUrl = await uploadPublicObject(buffer as Buffer, 'application/pdf', convo.businessId ? `report-cards/${convo.businessId}` : 'report-cards');
       } catch (err: any) {
         console.error('[reportCardDeliver] PDF render failed:', err?.message);
       } finally {
@@ -3447,23 +3384,21 @@ export const processReviewSyncJob = inngest.createFunction(
   }
 );
 
-// 8b. Auto-reply batch — fired two ways: (1) right after a sync, for any
-// newly-fetched reviews, when the business has reviewReplySettings.mode ===
-// 'auto' (see processReviewSyncJob above / syncReviews.ts), and (2) once,
-// covering the FULL existing backlog of unreplied reviews, the moment an
-// owner switches the mode to 'auto' (see reviews/reply-settings/route.ts) —
-// so turning auto-reply on genuinely means "all reviews get a reply", not
-// just ones that happen to arrive afterward.
+// 8b. Review reply batch — fired (1) after a sync for newly fetched reviews
+// without a reply and (2) once for the backlog when an owner switches
+// auto-reply on (reviews/reply-settings/route.ts). Every review gets a
+// fact-checked draft; a reply is PUBLISHED only when the owner switched
+// auto-reply on and the draft passed the check (services/reviews/autoReply.ts).
+// Otherwise the owner is told drafts are waiting for approval.
 //
-// Runs sequentially (not Promise.all) deliberately: each review is one Groq
-// call + one Google API call, and a single AI usage burst across a large
-// backlog is friendlier to rate limits than firing them all at once.
+// Runs sequentially (not Promise.all) deliberately: each review is one or two
+// Groq calls (+ one Google call when publishing).
 export const processAutoReplyBatchJob = inngest.createFunction(
   { id: "process-auto-reply-batch-job", retries: 2, triggers: [{ event: "reviews/auto-reply-batch" }] },
   async ({ event, step }) => {
     const { businessId, reviewIds } = event.data as { businessId: string; reviewIds: string[] };
 
-    const posted = await step.run("auto-reply-reviews", async () => {
+    const result = await step.run("draft-and-maybe-publish", async () => {
       const dbConnect = (await import('@/lib/mongodb')).default;
       await dbConnect();
       const { default: Review } = await import('@/models/Review');
@@ -3472,30 +3407,38 @@ export const processAutoReplyBatchJob = inngest.createFunction(
       for (const reviewId of reviewIds) {
         const review = await Review.findOne({ _id: reviewId, businessId });
         if (!review) continue;
-        await autoReplyToReview(businessId, review);
+        try {
+          await autoReplyToReview(businessId, review);
+        } catch (err: any) {
+          console.error(`[auto-reply] review ${reviewId} failed:`, err?.message);
+        }
       }
-
-      // Count how many of this batch are now actually replied (autoReplyToReview
-      // swallows per-review failures) so the owner digest reflects reality.
-      return await Review.countDocuments({
-        _id: { $in: reviewIds },
-        businessId,
-        replyStatus: 'POSTED',
-      });
+      // Counted from the records: POSTED = Google confirmed.
+      const [posted, awaiting] = await Promise.all([
+        Review.countDocuments({ _id: { $in: reviewIds }, businessId, replyStatus: 'POSTED', replyLiveWriteApplied: true }),
+        Review.find({ _id: { $in: reviewIds }, businessId, replyStatus: { $in: ['DRAFT', 'NEEDS_REVIEW', 'APPROVED'] } }).select('_id').lean(),
+      ]);
+      return { posted, awaiting: (awaiting as any[]).map((r) => String(r._id)) };
     });
 
-    if (posted > 0) {
+    if (result.posted > 0) {
       await step.run("owner-whatsapp-digest", async () => {
         const { notifyOwner } = await import("@/services/ownerNotify");
         await notifyOwner(businessId, {
           event: 'review_reply_sent',
-          text: posted > 1 ? `${posted} review replies posted automatically` : 'A review reply was posted automatically',
-          count: posted,
+          text: result.posted > 1 ? `${result.posted} fact-checked review replies posted automatically` : 'A fact-checked review reply was posted automatically',
+          count: result.posted,
         });
       });
     }
+    if (result.awaiting.length > 0) {
+      await step.sendEvent("notify-drafts-awaiting-approval", {
+        name: "reviews/reply-drafted",
+        data: { businessId, reviewId: result.awaiting[0], count: result.awaiting.length },
+      });
+    }
 
-    return { success: true, count: reviewIds.length, posted };
+    return { success: true, count: reviewIds.length, posted: result.posted, awaitingApproval: result.awaiting.length };
   }
 );
 
@@ -4784,5 +4727,72 @@ export const dataRetentionCleanupCron = inngest.createFunction(
     };
     console.log("[data-retention-cleanup]", JSON.stringify(summary));
     return { success: true, ...summary };
+  }
+);
+
+// ===========================================================================
+// Account hard-purge (Sep 2026) — permanent erasure of a deleted account's
+// personal data PURGE_GRACE_DAYS (30) after the owner deleted it. The
+// promise made publicly at /delete-account.
+//
+// THIS IS THE ONE JOB AUTHORIZED TO DELETE CORE BUSINESS RECORDS (leads,
+// customers, reviews, conversations, audits, …) — every other cleanup job,
+// including dataRetentionCleanupCron above, explicitly never does. That
+// boundary is crossed here on purpose, only for accounts their owner deleted;
+// it is not a precedent to extend elsewhere.
+//
+// Hard safety rails (a bug here destroys a live customer's data) — enforced
+// inside services/account/hardPurge.ts, not by this wrapper:
+//   - SUPER_ADMIN accounts are refused outright, whatever their state.
+//   - Only isDeleted: true AND deletedAt older than the grace period AND not
+//     already purged — re-read from the database per account.
+//   - Only businesses the user OWNS that are themselves deleted.
+//   - Default mode is a DRY RUN (counts only, zero writes). Real deletion
+//     needs ACCOUNT_PURGE_MODE=live on the server; a manual event cannot
+//     force it. Review a dry run against production data before enabling.
+//   - One collection failing never aborts the run; that account stays
+//     un-purged and is retried next day. Tombstones only after success.
+//   - Audit trail: AccountPurgeLog (ids + counts only, no personal data).
+// Also: retries the Razorpay cancellation for deleted accounts (a deleted
+// account must never be charged) and expires billing records of purged
+// accounts after BILLING_RETENTION_YEARS.
+// Runs daily ~03:45 UTC.
+export const accountHardPurgeCron = inngest.createFunction(
+  { id: "account-hard-purge", retries: 1, triggers: [{ cron: "45 3 * * *" }, { event: "account/purge.requested" }] },
+  async ({ event, step }) => {
+    const { purgeModeFromEnv, findUsersDueForPurge, purgeAccount, expireBillingRecords } = await import("@/services/account/hardPurge");
+    const envMode = purgeModeFromEnv();
+    // A manual event may only ask for a dry run of a live-configured server, never the reverse.
+    const requestedLive = (event as any)?.data?.live === true;
+    const mode = envMode === "live" && (event?.name !== "account/purge.requested" || requestedLive) ? "live" : "dry_run";
+    const onlyUser: string | undefined = (event as any)?.data?.userId;
+
+    const billing = await step.run("retry-billing-cancel", async () => {
+      const { retryBillingCancelForDeletedAccounts } = await import("@/lib/billing/deletionCancel");
+      // Stopping charges for deleted accounts is not gated on the purge mode.
+      return retryBillingCancelForDeletedAccounts({ mode: "live" });
+    });
+
+    const due = await step.run("find-due-accounts", async () =>
+      onlyUser ? [onlyUser] : findUsersDueForPurge(new Date())
+    );
+
+    const results: Array<{ userId: string; refused?: string; complete: boolean; errors: number; total: number }> = [];
+    for (const userId of due) {
+      const r = await step.run(`purge-${userId}`, async () => {
+        const res = await purgeAccount(userId, { mode });
+        const total = Object.values(res.counts).reduce((a, n) => a + (n || 0), 0);
+        // Counts only — never the purged data.
+        console.log(`[account-purge] ${mode} user=${userId} businesses=${res.businessIds.length} docs=${total} files=${res.storageObjects}${res.refused ? ` refused=${res.refused}` : ""}${res.errors.length ? ` errors=${res.errors.length}` : ""}`, JSON.stringify(res.counts));
+        return { userId, refused: res.refused, complete: res.complete, errors: res.errors.length, total };
+      });
+      results.push(r);
+    }
+
+    const billingExpired = await step.run("expire-billing-records", () => expireBillingRecords({ mode }));
+
+    const summary = { mode, billing, accounts: results.length, purged: results.filter((r) => r.complete && !r.refused).length, refused: results.filter((r) => r.refused).length, withErrors: results.filter((r) => r.errors > 0).length, billingExpired };
+    console.log("[account-purge]", JSON.stringify(summary));
+    return summary;
   }
 );

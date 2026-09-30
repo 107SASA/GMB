@@ -15,6 +15,7 @@ import {
   type NotificationPrefs,
 } from '@/api/endpoints/account';
 import { disconnectGoogle } from '@/api/endpoints/gbp';
+import { BrandColorsSection } from '@/components/brand-colors-section';
 import { useBusiness } from '@/business/BusinessContext';
 import {
   Chip,
@@ -308,6 +309,9 @@ export default function SettingsScreen() {
         ) : (
           <NotificationsSection key={prefs.dataUpdatedAt} initial={prefs.data} />
         )}
+
+        <SectionLabel>Brand for post images</SectionLabel>
+        <BrandColorsSection />
 
         <SectionLabel>Google Business Profile</SectionLabel>
         {business.isLoading ? (

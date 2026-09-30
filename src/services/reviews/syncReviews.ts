@@ -54,6 +54,26 @@ export async function syncReviewsForBusiness(
   const provider = gbpToken ? new GbpApiReviewProvider() : getReviewProvider();
   const fetchedReviews = await provider.fetchReviews(businessId, { knownReviewIds });
 
+  // Google's lifetime total + rating as reported by the provider itself —
+  // the audit's "Total reviews" source (see auditService.ts). The mock
+  // provider has none, so nothing is written for it.
+  const totals = (provider as { lastTotals?: { count: number; rating: number | null } | null }).lastTotals;
+  if (totals && (provider instanceof GbpApiReviewProvider || provider instanceof SerpApiGoogleProvider)) {
+    await Business.updateOne(
+      { _id: bid },
+      {
+        $set: {
+          googleReviewTotals: {
+            count: totals.count,
+            rating: totals.rating,
+            source: provider instanceof GbpApiReviewProvider ? 'gbp_api' : 'serpapi',
+            capturedAt: new Date(),
+          },
+        },
+      },
+    ).catch((e: any) => console.warn('[syncReviews] could not store review totals:', e?.message));
+  }
+
   // Tags every review upserted below with where it actually came from — the
   // reply-posting flow (post-reply/route.ts) refuses to post anything that
   // isn't 'gbp_api', since only real Google review ids can receive a reply.
@@ -93,6 +113,9 @@ export async function syncReviewsForBusiness(
         // the dedicated postedAt field exists. Existing docs pick it up on
         // their next sync (upsert matches providerReviewId).
         postedAt: new Date(raw.postedAt),
+        // Every provider (GBP API, SerpApi, mock) reads the owner reply, so a
+        // missing reply after this sync genuinely means "no reply".
+        replyCheckedAt: new Date(),
       };
       // If the profile already carries an owner reply (from the GBP API), mirror
       // it so the UI shows the review as answered and we never re-reply to it.
@@ -106,6 +129,11 @@ export async function syncReviewsForBusiness(
         update,
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
+      // A reply we did not post (no GrowwMatics execution record) is the
+      // owner's or someone else's, made directly on Google.
+      if (raw.ownerReply && saved && !(saved as any).replyPostedBy) {
+        await Review.updateOne({ _id: saved._id, replyPostedBy: { $exists: false } }, { $set: { replyPostedBy: 'external' } });
+      }
 
       return { raw, sentimentResult, saved };
     }),
@@ -153,16 +181,22 @@ export async function syncReviewsForBusiness(
     }
   }
 
-  // Auto-reply — only for businesses that opted into it (Review Management
-  // screen). Every review just upserted that still needs a reply (no
-  // existing response, not already posted) gets queued for the background
-  // auto-reply job; see processAutoReplyBatchJob in inngest/functions.ts.
+  // Reply drafting (Sep 2026): every newly synced review without a reply gets
+  // a fact-checked DRAFT for the owner to approve (recent reviews only, so a
+  // first sync of a long history doesn't burn AI calls on years-old reviews).
+  // It is published automatically ONLY when the owner switched auto-reply on
+  // (mode 'auto' + consent) and the draft passed the check — see
+  // services/reviews/autoReply.ts + replyPipeline.ts.
   const business = await Business.findById(bid).select('reviewReplySettings').lean<{
-    reviewReplySettings?: { mode?: string };
+    reviewReplySettings?: { mode?: string; autoPublishConsentAt?: Date };
   }>();
-  if (business?.reviewReplySettings?.mode === 'auto') {
+  {
+    const { isAutoPublishActive } = await import('./replyPipeline');
+    const auto = isAutoPublishActive(business?.reviewReplySettings);
+    const recentCutoff = Date.now() - 30 * 86_400_000;
     const pendingIds = upsertResults
-      .filter(({ saved }) => saved && !saved.response && saved.replyStatus !== 'POSTED')
+      .filter(({ saved }) => saved && !saved.response && (!saved.replyStatus || saved.replyStatus === 'PENDING'))
+      .filter(({ saved }) => auto || new Date((saved as any).postedAt ?? (saved as any).createdAt).getTime() >= recentCutoff)
       .map(({ saved }) => saved!._id.toString());
     if (pendingIds.length > 0) {
       try {

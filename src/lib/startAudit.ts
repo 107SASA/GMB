@@ -14,6 +14,9 @@ interface StartAuditOptions {
   trigger?: string;
 }
 
+export { monthKey, lifecycleOf } from '@/services/lifecycle/period';
+import { lifecycleOf } from '@/services/lifecycle/period';
+
 /**
  * Creates a PENDING Audit for a business and dispatches the existing,
  * unmodified audit/generate.requested Inngest event — the same shape POST
@@ -33,7 +36,11 @@ export async function createPendingAuditAndDispatch(
   const finalLocation = locationStr || business.address || 'Location hidden';
   const effectiveCategory = business.userDefinedCategory || business.category;
 
-  const audit = await Audit.create({
+  const lifecycle = lifecycleOf(fastMode, trigger);
+  let audit: any;
+  try {
+    audit = await Audit.create({
+    ...lifecycle,
     tenantId: organization._id.toString(),
     userId: user._id.toString(),
     organizationId: organization._id.toString(),
@@ -52,7 +59,18 @@ export async function createPendingAuditAndDispatch(
     status: 'PENDING',
     metadata: { userDefinedCategory: effectiveCategory, ...(trigger ? { trigger } : {}) },
     fastMode,
-  });
+    });
+  } catch (err: any) {
+    // Unique (businessId, auditKind, period): this business already has its
+    // connected baseline / this month's report. Return it — no second paid
+    // audit, no dispatch. Callers read audit.$locals.reused.
+    if (err?.code !== 11000 || !lifecycle.period) throw err;
+    const existing = await Audit.findOne({ businessId: business._id, auditKind: lifecycle.auditKind, period: lifecycle.period });
+    if (!existing) throw err;
+    existing.$locals.reused = true;
+    console.log(`[startAudit] ${lifecycle.auditKind} ${lifecycle.period} already exists for business ${business._id} (audit ${existing._id}) — reused, nothing dispatched`);
+    return existing;
+  }
 
   await inngest.send({
     name: 'audit/generate.requested',

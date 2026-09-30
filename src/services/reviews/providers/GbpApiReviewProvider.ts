@@ -1,7 +1,7 @@
 import { getValidToken } from '@/lib/gbpClient';
 import dbConnect from '@/lib/mongodb';
 import GBPToken from '@/models/GBPToken';
-import { ProviderReview, FetchReviewsOptions } from './MockGoogleProvider';
+import { ProviderReview, FetchReviewsOptions, ProviderReviewTotals } from './MockGoogleProvider';
 import { describeGoogleApiError } from '@/lib/googleApiError';
 
 /**
@@ -24,6 +24,9 @@ const PAGE_SIZE = 50;
 const STAR_MAP: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 
 export class GbpApiReviewProvider {
+  /** Lifetime totals from the last fetchReviews() call (see syncReviews.ts). */
+  lastTotals: ProviderReviewTotals | null = null;
+
   async fetchReviews(businessId: string, options?: FetchReviewsOptions): Promise<ProviderReview[]> {
     await dbConnect();
     const tokenDoc = await GBPToken.findOne({ businessId });
@@ -43,6 +46,7 @@ export class GbpApiReviewProvider {
     const reviews: ProviderReview[] = [];
     let pageToken: string | undefined;
     let reachedKnown = false;
+    this.lastTotals = null;
 
     do {
       const params = new URLSearchParams({
@@ -60,6 +64,13 @@ export class GbpApiReviewProvider {
       }
       const data = await res.json();
       const page: any[] = data.reviews ?? [];
+      // Google's own lifetime totals — present on every reviews.list page.
+      if (!this.lastTotals && typeof data.totalReviewCount === 'number') {
+        this.lastTotals = {
+          count: data.totalReviewCount,
+          rating: typeof data.averageRating === 'number' ? Math.round(data.averageRating * 10) / 10 : null,
+        };
+      }
 
       for (const r of page) {
         if (reviews.length >= MAX_REVIEWS) break;

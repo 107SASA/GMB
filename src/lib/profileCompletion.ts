@@ -42,7 +42,8 @@ export const PLACES_COMPLETION_FIELDS = [
 /** Require a connected Google account to verify — excluded from the pre-OAuth
  *  percentage, surfaced separately as "N fields need a Google connection". */
 export const OAUTH_COMPLETION_FIELDS = [
-  'Additional Keywords',
+  'Additional Categories',
+  'Additional Keywords', // legacy name, kept so older stored checklists group correctly
   'Business Description',
   'Services Listed',
   'Social Links',
@@ -59,6 +60,7 @@ export function groupForField(field: string): ChecklistGroup {
 /** Short, human-readable names for the pending OAuth fields, used in the
  *  parenthetical of the LLM prompt fact. */
 const PENDING_FIELD_LABELS: Record<string, string> = {
+  'Additional Categories': 'additional categories',
   'Additional Keywords': 'keywords',
   'Business Description': 'description',
   'Services Listed': 'services',

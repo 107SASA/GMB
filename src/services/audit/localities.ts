@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { meter } from '@/lib/providerMeter';
 import { generateGeoGrid, GRID_SPACING_KM } from './geoGrid';
 
 /**
@@ -38,6 +39,7 @@ async function reverseGeocodeLocality(
   apiKey: string,
 ): Promise<{ locality: string | null; city: string | null }> {
   try {
+    meter('googleGeocoding', 1, 'nearby_area_names');
     const { data } = await axios.get(GEOCODE_URL, {
       params: { latlng: `${lat},${lng}`, key: apiKey },
       timeout: 8000,
@@ -89,6 +91,21 @@ export async function fetchNearbyLocalities(
     return { neighbourhoods: [], resolvedCity: null };
   }
 
+  // ~1 km cell cache (see LocalityCache) — skips 8–9 paid Geocoding calls
+  // for a repeat lookup or a nearby business. Best-effort both ways.
+  const cacheKey = `${Number(center.lat).toFixed(2)},${Number(center.lng).toFixed(2)}`;
+  let LocalityCache: any = null;
+  try {
+    LocalityCache = (await import('@/models/LocalityCache')).default;
+    const hit: any = await LocalityCache.findOne({ key: cacheKey }).lean();
+    if (hit?.neighbourhoods?.length) {
+      meter('geocodeCacheHit', 1, 'nearby_area_names');
+      return { neighbourhoods: hit.neighbourhoods.slice(0, limit), resolvedCity: hit.resolvedCity ?? null };
+    }
+  } catch (err: any) {
+    console.warn('[localities] cache read skipped:', err?.message);
+  }
+
   // Centre + the 8 outer points of a 3×3 grid — a ring roughly 1.5 km out.
   const grid = generateGeoGrid(center.lat, center.lng, opts.spacingKm ?? GRID_SPACING_KM);
   const points = [
@@ -117,6 +134,14 @@ export async function fetchNearbyLocalities(
         }
       }
     }
+  }
+
+  if (LocalityCache && neighbourhoods.length) {
+    await LocalityCache.updateOne(
+      { key: cacheKey },
+      { $set: { key: cacheKey, neighbourhoods, resolvedCity, fetchedAt: new Date() } },
+      { upsert: true },
+    ).catch((err: any) => console.warn('[localities] cache write skipped:', err?.message));
   }
 
   return { neighbourhoods: neighbourhoods.slice(0, limit), resolvedCity };

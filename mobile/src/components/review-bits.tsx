@@ -29,6 +29,10 @@ export function replyStatusBadge(status: Review['replyStatus']): {
       return { label: 'Replied', tone: 'positive' };
     case 'APPROVED':
       return { label: 'Approved', tone: 'info' };
+    case 'DRAFT':
+      return { label: 'Draft ready', tone: 'info' };
+    case 'NEEDS_REVIEW':
+      return { label: 'Needs review', tone: 'warning' };
     case 'REJECTED':
       return { label: 'Rejected', tone: 'negative' };
     case 'FAILED':

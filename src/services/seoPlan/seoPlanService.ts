@@ -18,7 +18,8 @@ export async function getActiveSeoPlan(businessId: string): Promise<ISeoPlan | n
 function splitKeywords(draft: ISeoPlanDraft | undefined, keywordTable: IKeywordTableRow[], cityAreaTerms: string[]) {
   const ranked = (keywordTable || []).slice().sort((a, b) => {
     const band = { HIGH: 0, MED: 1, LOW: 2, NICHE: 3 } as Record<string, number>;
-    return (band[a.volumeBand] ?? 4) - (band[b.volumeBand] ?? 4);
+    // Rows with unavailable demand (volumeBand null) sort last.
+    return (band[a.volumeBand ?? ''] ?? 4) - (band[b.volumeBand ?? ''] ?? 4);
   });
   const all = ranked.map((k) => k.keyword);
   return {

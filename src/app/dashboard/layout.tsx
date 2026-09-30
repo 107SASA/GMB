@@ -5,6 +5,7 @@ import { MobileNavProvider } from "@/context/MobileNavContext";
 import { ProductTourProvider } from "@/context/ProductTourContext";
 import ProductTourOverlay from "@/components/tour/ProductTourOverlay";
 import SuccessStoryPrompt from "@/components/dashboard/SuccessStoryPrompt";
+import WeeklyOfferPrompt from "@/components/dashboard/WeeklyOfferPrompt";
 import WorkspaceLockGate from "@/components/layout/WorkspaceLockGate";
 import { requireClient } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -36,6 +37,7 @@ export default async function DashboardLayout({
             </div>
             <ProductTourOverlay />
             <SuccessStoryPrompt />
+            <WeeklyOfferPrompt />
           </div>
         </ProductTourProvider>
       </BusinessProvider>

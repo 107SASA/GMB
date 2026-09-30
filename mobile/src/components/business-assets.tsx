@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -20,6 +19,7 @@ import { EmptyState, InfoSheet, Skeleton, useInfoSheet } from '@/components/ui';
 import { promptConnectGoogle } from '@/lib/connectGoogle';
 import { formatDateTime } from '@/lib/format';
 import { BRAND_GRADIENT, useTheme } from '@/lib/theme';
+import { pickPhotoFromLibrary, type PickedPhoto } from '@/lib/photoLocation';
 
 const GUIDELINES_URL = 'https://support.google.com/business/answer/6103862';
 
@@ -183,21 +183,18 @@ export function BusinessAssets() {
       promptConnectGoogle(media.error?.message ?? 'Connect your Google Business Profile to add photos.');
       return;
     }
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
+    let picked: PickedPhoto | null;
+    try {
+      picked = await pickPhotoFromLibrary();
+    } catch {
       info.show('Permission needed', 'Allow photo library access to add business media.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 0.85 });
-    if (result.canceled || result.assets.length === 0) return;
-    const asset = result.assets[0];
+    if (!picked) return;
     setUploadingCategory(category);
-    upload.mutate({
-      uri: asset.uri,
-      mimeType: asset.mimeType ?? 'image/jpeg',
-      fileName: asset.fileName ?? `photo-${Date.now()}.jpg`,
-      category,
-    });
+    // The photo's own GPS (if the phone shares it) travels with the upload —
+    // compression here strips it from the file itself.
+    upload.mutate({ uri: picked.uri, mimeType: picked.mimeType, fileName: picked.fileName, category, location: picked.location });
   };
 
   if (media.isLoading) {

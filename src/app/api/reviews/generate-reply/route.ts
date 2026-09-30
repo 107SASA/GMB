@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Review from '@/models/Review';
-import Business from '@/models/Business';
-import { generateReviewReply } from '@/services/ai/replyEngine';
+import { draftReply } from '@/services/reviews/replyPipeline';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { logAIUsage } from '@/lib/logAIUsage';
@@ -51,38 +50,26 @@ export async function POST(req: Request) {
     const review = await Review.findOne({ _id: reviewId, businessId: ctx.businessId });
     if (!review) return NextResponse.json({ error: 'Review not found' }, { status: 404 });
 
-    const business = await Business.findById(ctx.businessId);
-    const businessName = business?.name || 'Local Business';
-
-    const { getActiveSeoPlan } = await import('@/services/seoPlan/seoPlanService');
-    const plan = await getActiveSeoPlan(ctx.businessId).catch(() => null);
-
+    // Verified business + SEO context → AI draft → fact/policy/quality check
+    // (one regeneration) → DRAFT or NEEDS_REVIEW. Never published from here.
     const startMs = Date.now();
-    const { reply: aiReply, promptTokens, completionTokens } = await generateReviewReply({
-      reviewText: review.reviewText,
-      rating: review.rating,
-      tone,
-      businessName,
-      uspLine: plan?.uspLine,
-      mustInclude: plan?.reviewReplyMustInclude,
-    });
+    const d = await draftReply(ctx.businessId, String(review._id), { tone });
+    if (d.error || !d.reply) {
+      return NextResponse.json({ error: 'Could not draft a reply right now — try again.' }, { status: 502 });
+    }
 
     void logAIUsage({
       userId: ctx.userId,
       businessId: ctx.businessId,
       promptType: 'review_reply',
       aiModel: GROQ_MODEL,
-      promptTokens,
-      completionTokens,
+      promptTokens: d.usage?.promptTokens ?? 0,
+      completionTokens: d.usage?.completionTokens ?? 0,
       status: 'success',
       durationMs: Date.now() - startMs,
     });
 
-    review.aiSuggestedReply = aiReply;
-    review.replyTone = tone;
-    await review.save();
-
-    return NextResponse.json({ success: true, reply: aiReply });
+    return NextResponse.json({ success: true, reply: d.reply, replyStatus: d.status, validation: d.validation });
   } catch (error: any) {
     console.error('Failed to generate AI reply:', error);
     return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });

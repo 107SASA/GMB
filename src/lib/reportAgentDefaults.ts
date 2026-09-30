@@ -49,7 +49,10 @@ export const DEFAULT_REPORT_INTRO =
 
 Takes under a minute. Once connected, I'll generate your free report right here. 🚀`;
 
-export const DEFAULT_REPORT_SUMMARY =
+/** Pre-Sep-2026 default. Stored configs still equal to it are upgraded to
+ *  DEFAULT_REPORT_SUMMARY at send time (it printed placeholder scores such
+ *  as "0%" and a "Review Score" nothing computed). */
+export const LEGACY_REPORT_SUMMARY =
 `Great news, {{name}} — I found *{{business}}*! 📊
 
 Here's where you stand:
@@ -58,6 +61,19 @@ Here's where you stand:
 • SEO Score: *{{seo}}%*
 • Review Score: *{{review}}%*
 
+Want to save this report and start fixing the gaps? Set up your free dashboard here: {{dashboardLink}}`;
+
+/** Every value is the report's own verified figure (see leadMessageFacts). */
+export const DEFAULT_REPORT_SUMMARY =
+`Great news, {{name}} — I found *{{business}}*! 📊
+
+Here's what we measured:
+• Google Maps rank: *{{rankText}}*
+• Profile completion: *{{profileText}}*
+• Profile SEO score: *{{seoText}}*
+• Reviews: *{{reviewText}}*
+
+{{issuesBlock}}
 Want to save this report and start fixing the gaps? Set up your free dashboard here: {{dashboardLink}}`;
 
 export function defaultReportAgentConfig(): ReportAgentConfigShape {

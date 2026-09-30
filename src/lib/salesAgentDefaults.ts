@@ -244,7 +244,11 @@ export interface SalesAgentConfigShape {
   knowledge: SalesKnowledge;
 }
 
-export const DEFAULT_FIRST_TEMPLATE =
+/** Pre-Sep-2026 defaults. They asserted problems regardless of the data
+ *  ("visibility is low", "page 3 of Google", "no recent activity makes the
+ *  business look closed"). Stored configs still equal to them are upgraded
+ *  to the fact-based defaults at send time. */
+export const LEGACY_FIRST_TEMPLATE =
 `{{name}}, your business is currently at rank {{rank}}. 📉
 
 That's like being on page 3 of Google—most customers never scroll that far.
@@ -257,7 +261,18 @@ Here's why your visibility is low:
 
 Want to see how we can fix this and get you ahead of competitors like {{competitor}}?`;
 
-export const DEFAULT_FIRST_AI_PROMPT =
+/** Fact-based first message: only measured values and verified issues. */
+export const DEFAULT_FIRST_TEMPLATE =
+`{{name}}, here's what your free Google audit measured for *{{business}}*:
+
+• Google Maps rank: *{{rankText}}*
+• Profile completion: *{{profileText}}*
+• Reviews: *{{reviewText}}*
+
+{{issuesBlock}}
+Want us to walk you through fixing these?`;
+
+export const LEGACY_FIRST_AI_PROMPT =
 `You are a friendly, sharp WhatsApp sales assistant for GrowwMatics AI, which grows local businesses on Google. You message a lead right after their free Google Business Profile audit. Goal: make them feel the problem and want to fix it with us — never pushy, always helpful.
 
 Write ONE WhatsApp message. Rules:
@@ -265,6 +280,17 @@ Write ONE WhatsApp message. Rules:
 - State their Google rank with a vivid, simple analogy (e.g. "page 3 of Google — most customers never scroll that far").
 - Give EXACTLY 3 numbered reasons visibility is low, tied to the real numbers: Profile %, SEO %, Reviews & Replies %. One short sentence each with a relatable analogy. Name the missing keywords if given.
 - End with a warm question offering to fix it and get ahead of a named competitor (if provided).
+- WhatsApp formatting: *bold* with single asterisks, a few tasteful emojis. Tight. No markdown headers, no links.`;
+
+export const DEFAULT_FIRST_AI_PROMPT =
+`You are a friendly, sharp WhatsApp sales assistant for GrowwMatics AI, which grows local businesses on Google. You message a lead right after their free Google Business Profile audit. Goal: help them understand what the audit measured and want to fix the verified gaps with us — never pushy, always honest.
+
+Write ONE WhatsApp message. Rules:
+- Start with the lead's first name.
+- State only the measured values you are given (rank, profile completion, reviews). A value marked "not measured" is unknown — say so or leave it out; never guess it.
+- Mention ONLY the verified issues you are given, in your own words. If there are none, don't invent problems — offer to keep their profile strong.
+- Never claim what caused their ranking, never predict a ranking, never say "page 3 of Google" or similar.
+- End with a warm question offering to help fix the verified issues.
 - WhatsApp formatting: *bold* with single asterisks, a few tasteful emojis. Tight. No markdown headers, no links.`;
 
 export const DEFAULT_AGENT_PROMPT =
@@ -279,24 +305,34 @@ Guidelines:
 - Keep replies short and WhatsApp-friendly (*bold*, a few emojis). One question at a time.
 - Never invent data. If unsure, say you'll help them check it in the dashboard.`;
 
+/** Pre-Sep-2026 follow-up defaults (one claimed competitors "are already
+ *  using tools like this" — unverifiable). Unmodified copies in stored
+ *  configs are upgraded at send time, index for index. */
+export const LEGACY_FOLLOWUP_TEMPLATES: string[] = [
+`Hi {{name}} 👋 Just checking in on your {{business}} Google audit. Your profile is at {{profile}}% and rank {{rank}} — a few quick fixes can change that fast.
+
+Want me to show you how? You can also see the full platform here: {{shopUrl}}`,
+`{{name}}, your competitors like {{competitor}} are already using tools like this to stay ahead 🏃
+
+Whenever you're ready, you can get started here: {{subscribeUrl}} — happy to answer any questions!`,
+];
+
 export const DEFAULT_FOLLOWUPS: SalesFollowUp[] = [
   {
     delayHours: 24,
     mode: 'template',
     onlyIfNoReply: true,
     template:
-`Hi {{name}} 👋 Just checking in on your {{business}} Google audit. Your profile is at {{profile}}% and rank {{rank}} — a few quick fixes can change that fast.
+`Hi {{name}} 👋 Just checking in on your {{business}} Google audit — Google Maps rank: {{rankText}}; profile completion: {{profileText}}.
 
-Want me to show you how? You can also see the full platform here: {{shopUrl}}`,
+Want me to show you how to fix what we found? You can also see the full platform here: {{shopUrl}}`,
   },
   {
     delayHours: 72,
     mode: 'template',
     onlyIfNoReply: true,
     template:
-`{{name}}, your competitors like {{competitor}} are already using tools like this to stay ahead 🏃
-
-Whenever you're ready, you can get started here: {{subscribeUrl}} — happy to answer any questions!`,
+`{{name}}, whenever you're ready to work on your {{business}} Google profile, you can get started here: {{subscribeUrl}} — happy to answer any questions!`,
   },
 ];
 
@@ -332,7 +368,7 @@ export const DEFAULT_SALES_KNOWLEDGE: SalesKnowledge = {
     'Most local customers find a business on Google Search or Maps before they ever visit a website, ' +
     'so GrowwMatics makes that first impression work harder: it audits the profile, generates local ' +
     'SEO content and Google Posts, automates review requests and replies, tracks local ranking, and ' +
-    'runs WhatsApp AI agents that follow up with leads. It is a product of Desun Technology Pvt. Ltd.',
+    'runs WhatsApp AI agents that follow up with leads.',
   idealCustomerProfile:
     'Owner-operated local and service businesses that rely on Google Maps / "near me" search to get ' +
     'found — typically without a dedicated marketing team. Good-fit signals: has an existing verified ' +

@@ -11,6 +11,7 @@ import {
   subscriptionExpiryWorker,
   manualContentGenerate,
   processContentJob,
+  applyWeeklyOfferJob,
   processReviewCampaign,
   reviewAutopollCron,
   processReviewAutopollJob,
@@ -45,7 +46,8 @@ import {
   cleanupAbandonedSignups,
   nurtureSchedulerTick,
   proactiveNbaScheduler,
-  dataRetentionCleanupCron
+  dataRetentionCleanupCron,
+  accountHardPurgeCron
 } from "@/services/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
@@ -61,6 +63,7 @@ export const { GET, POST, PUT } = serve({
     subscriptionExpiryWorker,
     manualContentGenerate,
     processContentJob,
+    applyWeeklyOfferJob,
     processReviewCampaign,
     reviewAutopollCron,
     processReviewAutopollJob,
@@ -96,5 +99,6 @@ export const { GET, POST, PUT } = serve({
     nurtureSchedulerTick,
     proactiveNbaScheduler,
     dataRetentionCleanupCron,
+    accountHardPurgeCron,
   ],
 });

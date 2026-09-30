@@ -1,12 +1,13 @@
-import axios from 'axios';
+import { guardedFetchText } from '@/lib/ssrfGuard';
 
 /**
  * A light read of the business's own website — homepage HTML + sitemap.xml,
  * nothing more. Feeds the "Full Audit Report" depth tier's website
  * assessment ("active, well-structured, 10+ service pages, FAQ, About Us").
  *
- * Two HTTP GETs, 8s timeout each, never throws. Result is stable per domain
- * so it's cached alongside the rank data in PlaceInsightCache.
+ * Two HTTP GETs, 8s timeout each, never throws. The URL is user-supplied,
+ * so every request goes through the SSRF guard (lib/ssrfGuard.ts): public
+ * http(s) hosts only, re-checked on every redirect and at connect time.
  */
 
 export interface WebsiteSignals {
@@ -52,6 +53,9 @@ function normalizeUrl(raw: string): string | null {
 }
 
 const SERVICE_HINT = /\b(service|treatment|course|program|package|solution|repair|fitting|test|consultation|therapy|training|class|menu|product|pricing|price|plan|offer)\b/i;
+/** Call-to-action / navigation labels — never a service ("Book Free
+ *  Consultation" was read as a service in a live Sep 2026 check). */
+const CTA_LABEL = /\b(book|booking|contact|call|get|free|request|schedule|enquir\w*|inquir\w*|login|log in|sign|register|subscribe|download|learn more|read more|click|apply|home|about|blog|faq|careers?|privacy|terms)\b/i;
 const SOCIAL_HOST = /(facebook|instagram|linkedin|youtube|twitter|x\.com|wa\.me|whatsapp|pinterest|t\.me)\b/i;
 
 function textBetween(html: string, tag: string): string | undefined {
@@ -70,21 +74,12 @@ export async function fetchWebsiteSignals(websiteUrl?: string): Promise<WebsiteS
   const url = normalizeUrl(websiteUrl || '');
   if (!url) return EMPTY;
 
-  let html = '';
-  let finalUrl = url;
-  try {
-    const res = await axios.get(url, {
-      timeout: 8000,
-      maxRedirects: 4,
-      responseType: 'text',
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GrowwMaticsAudit/1.0)' },
-      validateStatus: (s) => s >= 200 && s < 400,
-    });
-    html = typeof res.data === 'string' ? res.data : '';
-    finalUrl = res.request?.res?.responseUrl || url;
-  } catch {
+  const page = await guardedFetchText(url, { timeoutMs: 8000, maxRedirects: 4 });
+  if (!page) {
     return { ...EMPTY, structureNote: 'Website is on the listing but did not respond to a request.' };
   }
+  const html = page.body;
+  const finalUrl = page.finalUrl;
 
   const lower = html.toLowerCase();
   const title = textBetween(html, 'title');
@@ -101,6 +96,7 @@ export async function fetchWebsiteSignals(websiteUrl?: string): Promise<WebsiteS
       anchors
         .filter((a) => a.label && a.label.length >= 3 && a.label.length <= 40)
         .filter((a) => SERVICE_HINT.test(`${a.label} ${a.href}`))
+        .filter((a) => !CTA_LABEL.test(a.label))
         .map((a) => a.label),
     ),
   ).slice(0, 20);
@@ -120,8 +116,8 @@ export async function fetchWebsiteSignals(websiteUrl?: string): Promise<WebsiteS
   let pageCount: number | undefined;
   try {
     const base = new URL(finalUrl);
-    const sm = await axios.get(`${base.origin}/sitemap.xml`, { timeout: 6000, responseType: 'text' });
-    const locs = String(sm.data).match(/<loc>/gi);
+    const sm = await guardedFetchText(`${base.origin}/sitemap.xml`, { timeoutMs: 6000, maxRedirects: 2 });
+    const locs = String(sm?.body ?? '').match(/<loc>/gi);
     if (locs) pageCount = Math.min(locs.length, 500);
   } catch {
     /* no sitemap — fine */

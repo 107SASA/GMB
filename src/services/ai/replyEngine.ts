@@ -7,50 +7,68 @@ export interface ReplyResult {
   completionTokens: number;
 }
 
+/** Hard rules for every review reply — the evidence gate (services/reviews/validateReply.ts) enforces them. */
+export const REPLY_FACT_RULES = `RULES (mandatory):
+- Respond to what THIS reviewer actually wrote — mention the specific thing they praised or complained about. No generic paragraph.
+- Use ONLY facts from VERIFIED BUSINESS FACTS or from the review itself. If something is not there, do not say it.
+- Never invent: services, products, offers, discounts, prices, locations or branches, facilities, guarantees, achievements, awards, ratings, promotions, or anything about the reviewer (who they are, how often they visit, what they bought) beyond what they wrote.
+- Never claim a problem was fixed, refunded, replaced or resolved. For a complaint: acknowledge it specifically, apologise where appropriate, and invite them to contact the business directly — do not promise a specific remedy.
+- No sales pitch, no "call now / book now", no competitor comparisons, no mention of Google rankings, search or SEO.
+- Keywords: you MAY use at most one of the KEYWORDS, once, only if it fits naturally, written as normal English (e.g. "your bathroom renovation in Nashik", never "your bathroom renovation Nashik"). Never repeat a keyword or list several.
+- If the review has little or no text, reply with a short, warm thank-you only — no services, keywords or location.
+- 2–4 sentences. No placeholders like [Name]. Sign off as "The {business} Team".
+- Output ONLY the reply text.`;
+
 export async function generateReviewReply(params: {
   reviewText: string;
   rating: number;
   tone: string;
   businessName: string;
-  /** SeoPlan.uspLine — the differentiator to weave in naturally. Optional. */
+  /** Reviewer's display name when Google provides it. */
+  reviewer?: string;
+  /** Verified business facts (name, category, location, services, website/GBP excerpts). */
+  factsBlock?: string;
+  /** SEO plan keywords, labelled measured / proposed. */
+  keywords?: string[];
+  /** An existing reply on this review (conversation context). */
+  previousReply?: string;
+  /** Regeneration: the rejected draft and why it was rejected. */
+  rejected?: { reply: string; reasons: string[] };
+  /** @deprecated kept for callers not yet on the pipeline; ignored when factsBlock is given. */
   uspLine?: string;
-  /** SeoPlan.reviewReplyMustInclude — short phrases (city, a service word,
-   *  the USP theme) to try to include when it reads naturally. Optional. */
+  /** @deprecated see uspLine. */
   mustInclude?: string[];
 }): Promise<ReplyResult> {
-  const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY,
-  });
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-  const uspLine = params.uspLine ? `\nBusiness USP (weave in naturally when it fits): ${params.uspLine}` : '';
-  const mustLine = params.mustInclude && params.mustInclude.length
-    ? `\nTry to include these where it reads naturally (never force all of them): ${params.mustInclude.join(', ')}`
-    : '';
+  const reviewer = params.reviewer && !/^(a google user|anonymous)$/i.test(params.reviewer) ? params.reviewer : null;
+  const facts = params.factsBlock ?? [`Business: ${params.businessName}`, params.uspLine ? `Owner-stated differentiator: ${params.uspLine}` : ''].filter(Boolean).join('\n');
+  const keywords = params.keywords ?? params.mustInclude ?? [];
+  const prompt = `You write replies to Google reviews for "${params.businessName}".
 
-  const prompt = `You are an expert Public Relations and Reputation Management AI for "${params.businessName}".
-A customer left a ${params.rating}-star review.
-Review text: "${params.reviewText}"
+REVIEW (${params.rating}/5)${reviewer ? ` by ${reviewer}` : ''}:
+"${params.reviewText || '(no text — rating only)'}"
+${params.previousReply ? `\nEXISTING REPLY ON THIS REVIEW (keep consistent, do not repeat it):\n"${params.previousReply}"\n` : ''}
+VERIFIED BUSINESS FACTS:
+${facts}
 
-Your task: Generate a direct, human-sounding response to this review.
-Tone requested: ${params.tone}.${uspLine}${mustLine}
+KEYWORDS (optional, at most one, only if natural): ${keywords.length ? keywords.join(', ') : '(none)'}
 
-Guidelines:
-1. Do not use generic corporate jargon (e.g., "We are sorry for the inconvenience").
-2. Be concise (2-4 sentences).
-3. If it is a negative review, acknowledge the issue specifically and offer a path to resolution.
-4. If it is a positive review, show genuine gratitude.
-5. Do NOT include placeholders like [Your Name]. Sign off as "The ${params.businessName} Team".
-6. Output ONLY the response text. No markdown, no quotes around the output, no intro text.`;
+Tone: ${params.tone}.${reviewer ? ` You may greet ${reviewer.split(/\s+/)[0]} by first name.` : ''}
+
+${REPLY_FACT_RULES.replace('{business}', params.businessName)}
+${params.rejected ? `\nYOUR PREVIOUS DRAFT WAS REJECTED:\n"${params.rejected.reply}"\nWhy:\n${params.rejected.reasons.map((r) => `- ${r}`).join('\n')}\nWrite a new reply that removes every rejected claim.` : ''}`;
 
   try {
     const response = await groq.chat.completions.create({
       messages: [{ role: "user", content: prompt }],
       model: GROQ_MODEL,
-      temperature: 0.6,
-      max_tokens: 250,
+      temperature: params.rejected ? 0.3 : 0.5,
+      max_tokens: 700,
     });
 
-    const reply = response.choices[0]?.message?.content?.trim() || "Thank you for your feedback.";
+    const reply = response.choices[0]?.message?.content?.trim().replace(/^["“]|["”]$/g, '') || '';
+    if (!reply) throw new Error('empty reply');
     return {
       reply,
       promptTokens:    response.usage?.prompt_tokens    ?? 0,

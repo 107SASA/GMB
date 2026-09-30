@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from '@aws-sdk/client-s3';
 import crypto from 'crypto';
 
 /**
@@ -116,9 +116,57 @@ export async function rehostImageFromUrl(sourceUrl: string, keyPrefix = 'uploads
   if (dataMatch) {
     return uploadPublicObject(Buffer.from(dataMatch[2], 'base64'), dataMatch[1], keyPrefix);
   }
-  const res = await fetch(sourceUrl);
+  // The URL comes from a third-party image API — refuse internal targets and
+  // never follow a redirect off the checked host.
+  const { checkUrlShape } = await import('@/lib/ssrfGuard');
+  const shape = checkUrlShape(sourceUrl);
+  if (!shape.ok || shape.url.protocol !== 'https:') throw new Error(`Refusing to re-host image from ${sourceUrl.slice(0, 80)}`);
+  const res = await fetch(shape.url.toString(), { redirect: 'error', signal: AbortSignal.timeout(20_000) });
   if (!res.ok) throw new Error(`Failed to fetch image for re-hosting: ${res.status}`);
   const contentType = res.headers.get('content-type') || 'image/jpeg';
   const buf = Buffer.from(await res.arrayBuffer());
   return uploadPublicObject(buf, contentType, keyPrefix);
+}
+
+// ── Deletion (account hard-purge only) ─────────────────────────────────────
+
+/** The object key for a URL this bucket served (CDN or origin host), or null for any other URL. */
+export function keyFromPublicUrl(url: string | null | undefined): string | null {
+  if (!url || !/^https:\/\//i.test(url) || !bucket) return null;
+  for (const base of [cdnBase, publicUrl('')].filter(Boolean)) {
+    const b = base.replace(/\/$/, '') + '/';
+    if (url.startsWith(b)) {
+      const key = decodeURIComponent(url.slice(b.length).split('?')[0]);
+      return key && !key.includes('..') ? key : null;
+    }
+  }
+  return null;
+}
+
+/** Every object key under a prefix (e.g. "gbp-media/<businessId>/"). */
+export async function listKeysUnderPrefix(prefix: string): Promise<string[]> {
+  if (!isStorageConfigured()) return [];
+  const client = getClient();
+  const keys: string[] = [];
+  let token: string | undefined;
+  do {
+    const r: any = await client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }));
+    for (const o of r.Contents || []) if (o.Key) keys.push(o.Key);
+    token = r.IsTruncated ? r.NextContinuationToken : undefined;
+  } while (token);
+  return keys;
+}
+
+/** Delete exact keys (batches of 1000). Returns how many were deleted. */
+export async function deleteKeys(keys: string[]): Promise<number> {
+  if (!isStorageConfigured() || keys.length === 0) return 0;
+  const client = getClient();
+  let deleted = 0;
+  for (let i = 0; i < keys.length; i += 1000) {
+    const batch = keys.slice(i, i + 1000);
+    const r: any = await client.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true } }));
+    if (r.Errors?.length) throw new Error(`storage delete failed for ${r.Errors.length} object(s): ${r.Errors[0]?.Message ?? ''}`);
+    deleted += batch.length;
+  }
+  return deleted;
 }

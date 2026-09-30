@@ -62,6 +62,9 @@ export const NOTIFICATION_PREFS = [
   { key: 'weeklyDigestEmail', label: 'Weekly digest — email' },
   { key: 'campaignCompletedEmail', label: 'Campaign completed — email' },
   { key: 'schedulerLowBufferEmail', label: 'Low post buffer — email' },
+  { key: 'weeklyUpdateWhatsApp', label: 'Weekly update & festival reminders — WhatsApp' },
+  { key: 'reviewReplyWhatsApp', label: 'Review replies — WhatsApp' },
+  { key: 'postPublishedWhatsApp', label: 'Posts published — WhatsApp' },
 ] as const;
 export type NotificationPrefKey = (typeof NOTIFICATION_PREFS)[number]['key'];
 export type NotificationPrefs = Record<NotificationPrefKey, boolean>;
@@ -80,6 +83,7 @@ export async function fetchNotificationPrefs(): Promise<NotificationPrefs> {
   return z.object({ preferences: prefsSchema }).parse(data).preferences;
 }
 
+/** The server merges these keys into the stored preferences (other keys are untouched). */
 export async function updateNotificationPrefs(preferences: NotificationPrefs): Promise<void> {
   await api.patch('/api/user/notifications', { preferences });
 }

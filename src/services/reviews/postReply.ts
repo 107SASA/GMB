@@ -5,7 +5,7 @@ import type { IReview } from '@/models/Review';
  * Pushes a review's `aiSuggestedReply` to the real Google Business Profile.
  * Shared by both reply paths — the manual "Post Reply" button
  * (app/api/reviews/[id]/post-reply/route.ts) and the auto-reply pipeline
- * (autoReply.ts) — so the safety gate and the "only real Google review ids
+ * (autoReply.ts), both via replyPipeline.publishReply (which runs the fact check first) — so the safety gate and the "only real Google review ids
  * are reply-eligible" check can't drift between the two.
  *
  * SAFETY: gated behind GBP_LIVE_WRITES_ENABLED (off by default, see
@@ -15,7 +15,7 @@ import type { IReview } from '@/models/Review';
 export async function postReviewReplyToGoogle(
   businessId: string,
   review: Pick<IReview, 'source' | 'providerReviewId' | 'aiSuggestedReply' | '_id'>
-): Promise<{ liveWriteApplied: boolean }> {
+): Promise<{ liveWriteApplied: boolean; googleResponse?: string }> {
   if (!gbpWritesEnabled()) {
     console.log(`[MOCK] GBP live writes disabled — recording reply locally only for review ${review._id}: "${review.aiSuggestedReply}"`);
     return { liveWriteApplied: false };
@@ -31,6 +31,5 @@ export async function postReviewReplyToGoogle(
   }
 
   const { replyToReview } = await import('@/lib/gbpClient');
-  await replyToReview(businessId, review.providerReviewId, review.aiSuggestedReply!);
-  return { liveWriteApplied: true };
+  return replyToReview(businessId, review.providerReviewId, review.aiSuggestedReply!);
 }

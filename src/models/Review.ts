@@ -15,7 +15,22 @@ export interface IReview extends Document {
   sentimentScore?: number;
   response: string;
   aiSuggestedReply?: string;
-  replyStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'POSTED' | 'FAILED';
+  /**
+   * PENDING (no draft) → DRAFT (AI draft passed the fact check) or NEEDS_REVIEW
+   * (failed it after one regeneration) → APPROVED (owner, or auto-reply with
+   * consent) → POSTED (Google confirmed). REJECTED by the owner; FAILED when
+   * Google rejected the publish.
+   */
+  replyStatus?: 'PENDING' | 'DRAFT' | 'NEEDS_REVIEW' | 'APPROVED' | 'REJECTED' | 'POSTED' | 'FAILED';
+  /** Fact/policy/quality check of the current reply text (services/reviews/validateReply.ts). */
+  replyValidation?: { ok: boolean; reasons: string[]; attempts?: number; checkedAt?: Date };
+  /** Where the facts in the draft came from (business profile, website, SEO plan, …). */
+  replySources?: string[];
+  replyApprovedBy?: 'owner' | 'auto';
+  replyApprovedAt?: Date;
+  /** Last publish attempt: published (Google confirmed) / blocked (live writes off) / failed. */
+  replyPublishStatus?: 'published' | 'blocked' | 'failed';
+  replyGoogleResponse?: string;
   /** Only set when replyStatus is 'FAILED' — cleared on the next successful attempt. */
   replyFailureReason?: string;
   replyTone?: string;
@@ -36,6 +51,21 @@ export interface IReview extends Document {
    * date math (trends, "days since last review") must use postedAt.
    */
   postedAt?: Date;
+  /**
+   * Last sync that READ the owner-reply state for this review (Sep 2026+).
+   * Missing on records synced before reply capture existed — their reply
+   * status is unknown, so they are never counted as unanswered.
+   */
+  replyCheckedAt?: Date;
+  /**
+   * Execution record for a posted reply: 'growwmatics_auto' (auto-reply mode),
+   * 'growwmatics_owner_approved' (owner approved, GrowwMatics posted) or
+   * 'external' (the reply already existed on Google when we synced).
+   */
+  replyPostedBy?: 'growwmatics_auto' | 'growwmatics_owner_approved' | 'external';
+  replyPostedAt?: Date;
+  /** true only when a GrowwMatics-posted reply actually reached Google. */
+  replyLiveWriteApplied?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -55,11 +85,21 @@ const ReviewSchema: Schema = new Schema(
     sentimentScore: { type: Number },
     response: { type: String },
     aiSuggestedReply: { type: String },
-    replyStatus: { type: String, enum: ['PENDING', 'APPROVED', 'REJECTED', 'POSTED', 'FAILED'], default: 'PENDING' },
+    replyStatus: { type: String, enum: ['PENDING', 'DRAFT', 'NEEDS_REVIEW', 'APPROVED', 'REJECTED', 'POSTED', 'FAILED'], default: 'PENDING' },
+    replyValidation: { type: Schema.Types.Mixed },
+    replySources: [{ type: String }],
+    replyApprovedBy: { type: String, enum: ['owner', 'auto'] },
+    replyApprovedAt: { type: Date },
+    replyPublishStatus: { type: String, enum: ['published', 'blocked', 'failed'] },
+    replyGoogleResponse: { type: String },
     replyFailureReason: { type: String },
     replyTone: { type: String },
     sourcePlatform: { type: String, default: 'Google' },
     source: { type: String, enum: ['gbp_api', 'serpapi', 'mock'] },
+    replyCheckedAt: { type: Date },
+    replyPostedBy: { type: String, enum: ['growwmatics_auto', 'growwmatics_owner_approved', 'external'] },
+    replyPostedAt: { type: Date },
+    replyLiveWriteApplied: { type: Boolean },
     postedAt: { type: Date, index: true },
   },
   { timestamps: true }

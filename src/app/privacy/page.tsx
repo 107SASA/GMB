@@ -111,8 +111,9 @@ export default function PrivacyPolicyPage() {
 
       <LegalSection heading="5. Data Retention & Security">
         <p>
-          We retain your information for as long as your account is active or as needed to provide
-          the service and comply with legal obligations. We apply reasonable technical and
+          We retain your information for as long as your account is active. When you delete your
+          account, your personal data is permanently erased 30 days later; billing records are kept,
+          without your name or contact details, for up to 8 years for tax and accounting. We apply reasonable technical and
           organizational measures to protect your data, including encryption of sensitive tokens.
           No method of transmission or storage is completely secure, and we cannot guarantee
           absolute security.
@@ -121,9 +122,14 @@ export default function PrivacyPolicyPage() {
 
       <LegalSection heading="6. Your Rights">
         <p>
-          You may access, correct, or delete your account data, and you may request deletion of
-          your account entirely from within the app or by contacting us. Deleting your account
-          removes your business data and revokes connected integrations.
+          You may access, correct, or delete your account data, and you may delete your account
+          entirely from your dashboard or by contacting us. Deleting your account signs you out
+          everywhere, cancels any paid subscription, revokes our access to your Google Business
+          Profile, and permanently erases your personal and business data after 30 days. See{" "}
+          <Link href="/delete-account" className="text-primary underline">
+            how to delete your account
+          </Link>
+          .
         </p>
       </LegalSection>
 

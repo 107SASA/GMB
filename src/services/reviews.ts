@@ -4,7 +4,7 @@ import Business from '@/models/Business';
 import ReviewMonitorLog from '@/models/ReviewMonitorLog';
 import { getReviewProvider } from './reviews/providers/index';
 import { analyzeSentiment } from './reviews/sentimentEngine';
-import { generateAIReply } from './ai';
+import { draftReply } from './reviews/replyPipeline';
 
 /**
  * Review monitor: fetches new reviews from the active provider (SerpApi when
@@ -46,7 +46,6 @@ export async function processNewReviews(businessId: string) {
       newReviewsDetected++;
       try {
         const sentimentResult = analyzeSentiment(raw.text, raw.rating);
-        const aiReply = await generateAIReply(raw.text, raw.rating, raw.reviewerName, 'Professional');
 
         const saved = await Review.create({
           tenantId: business.organizationId?.toString() || undefined,
@@ -57,12 +56,13 @@ export async function processNewReviews(businessId: string) {
           reviewText: raw.text,
           sentiment: sentimentResult.label,
           sentimentScore: sentimentResult.score,
-          aiSuggestedReply: aiReply,
           replyStatus: 'PENDING',
           replyTone: 'Professional',
           sourcePlatform: 'Google',
           postedAt: new Date(raw.postedAt),
         });
+        // Fact-checked draft (DRAFT or NEEDS_REVIEW) — never published from here.
+        await draftReply(business._id.toString(), saved._id.toString());
 
         aiRepliesGenerated++;
         if (!firstDraftedReviewId) firstDraftedReviewId = saved._id.toString();

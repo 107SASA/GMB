@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { GooglePlacesService } from '@/services/google/places';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { sanitizeSessionToken } from '@/lib/placesSession';
 
 // Must stay unauthenticated: the public signup wizard (/onboarding →
 // StepBusinessSearch) calls this before the account exists. So the quota is
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, data: [] });
     }
 
-    const results = await GooglePlacesService.autocomplete(query);
+    const results = await GooglePlacesService.autocomplete(query, sanitizeSessionToken(searchParams.get('sessiontoken')));
     return NextResponse.json({ success: true, data: results });
   } catch (error: any) {
     console.error("Autocomplete API Error:", error);

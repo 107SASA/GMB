@@ -125,7 +125,9 @@ export async function dispatchAuditForBusiness(business: any, trigger: string): 
       return false;
     }
 
-    await createPendingAuditAndDispatch(business, org, user, { fastMode: false, trigger });
+    const audit: any = await createPendingAuditAndDispatch(business, org, user, { fastMode: false, trigger });
+    // Already has this month's report / its baseline — nothing new was run.
+    if (audit?.$locals?.reused) return false;
     await incrementUsage(business._id.toString(), 'audits').catch(() => {});
     return true;
   } catch (err: any) {

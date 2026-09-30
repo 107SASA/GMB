@@ -22,6 +22,7 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [legacyPaused, setLegacyPaused] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -33,6 +34,7 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
           setSavedMode(json.mode);
           setTone(json.tone);
           setSavedTone(json.tone);
+          setLegacyPaused(!!json.legacyAutoPaused);
         }
       } catch {
         /* keep defaults — not worth blocking the page over */
@@ -55,13 +57,14 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
       if (!res.ok || !json.success) throw new Error(json.error || 'Could not save.');
       setSavedMode(mode);
       setSavedTone(tone);
+      setLegacyPaused(false);
       setMsg({
         ok: true,
         text:
           mode === 'auto' && json.queued > 0
-            ? `Saved — ${json.queued} existing review${json.queued === 1 ? '' : 's'} queued for auto-reply now.`
+            ? `Saved — ${json.queued} existing review${json.queued === 1 ? '' : 's'} queued. Replies that pass the fact check will be posted; the rest wait for you.`
             : mode === 'auto'
-              ? 'Saved — new reviews will now get an AI reply automatically.'
+              ? 'Saved — fact-checked replies to new reviews will be posted automatically; anything that fails the check waits for you.'
               : 'Saved — you\'ll review and approve every AI reply from now on.',
       });
       onModeChanged?.();
@@ -81,6 +84,13 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
         <p className="text-xs text-on-surface-variant mt-0.5">Choose per workspace — you can switch this anytime.</p>
       </div>
 
+      {legacyPaused && (
+        <p className="text-xs text-on-surface-variant bg-surface-container rounded-lg px-3 py-2">
+          Auto-reply was switched on before replies were fact-checked, so it is paused and replies wait for your approval.
+          Choose &quot;Auto-reply&quot; and save to turn it back on under the fact-checked flow.
+        </p>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <button
           type="button"
@@ -94,7 +104,7 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
             <span className="text-sm font-bold text-on-surface">AI drafts, I approve</span>
           </div>
           <p className="text-xs text-on-surface-variant leading-snug">
-            The AI writes a suggested reply for each review. Nothing posts to Google until you review it and hit Post.
+            The AI drafts a fact-checked reply for each new review. Nothing posts to Google until you approve it and hit Post. (Default)
           </p>
         </button>
 
@@ -110,8 +120,8 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
             <span className="text-sm font-bold text-on-surface">Auto-reply to all reviews</span>
           </div>
           <p className="text-xs text-on-surface-variant leading-snug">
-            The AI writes AND posts a reply on its own, for every review — no approval step. Turning this on also
-            replies to your existing unanswered reviews.
+            Replies that pass the fact check are posted without waiting for you. Replies that fail it are kept as
+            drafts for your review. Turning this on also covers your existing unanswered reviews.
           </p>
         </button>
       </div>

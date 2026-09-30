@@ -227,13 +227,58 @@ export const auditSchema = z.object({
   createdAt: z.string().optional(),
   auditData: auditDataSchema,
 });
-export type Audit = z.infer<typeof auditSchema>;
+export type Audit = z.infer<typeof auditSchema> & { mobileView?: MobileReportView | null };
+
+/**
+ * The report exactly as the web shows it — computed server-side from the
+ * verified facts (src/services/audit/mobileView.ts on the server). Present on
+ * completed audits from servers with the evidence-based engine; when absent
+ * the screen falls back to the legacy fields above.
+ */
+const lines = z.array(z.string()).catch([]);
+export const mobileReportViewSchema = z.object({
+  version: z.number().catch(1),
+  legacy: z.boolean().catch(false),
+  legacyNotice: z.string().nullable().catch(null),
+  aiUnavailable: z.boolean().catch(false),
+  headline: z.object({
+    issuesCount: z.number().catch(0),
+    rating: z.string().nullable().catch(null),
+    reviewCount: z.string().nullable().catch(null),
+    averageRank: z.string().catch('Not measured'),
+    rankingStatus: z.string().catch('none'),
+    competitorsAhead: z.number().catch(0),
+    searchesChecked: z.number().catch(0),
+  }),
+  rankingStats: z.array(z.object({ label: z.string(), value: z.string() })).catch([]),
+  keywords: z.array(z.object({ keyword: z.string(), kind: z.string().catch(''), rank: z.string(), demand: z.string().catch('—') })).catch([]),
+  competitors: z.array(z.object({ name: z.string(), rating: z.string(), reviews: z.string(), aboveYou: z.string(), tier: z.string().catch('') })).catch([]),
+  reviews: z.object({
+    lifetimeCount: z.string(), lifetimeRating: z.string(), recentCount: z.string(), recentPeriod: z.string(),
+    reviewsPerWeek: z.string(), responseRate: z.string(), themes: z.string(),
+  }).nullable().catch(null),
+  completion: z.object({ sentence: z.string(), percent: z.number().nullable().catch(null), missing: lines, notChecked: lines }).nullable().catch(null),
+  issues: z.array(z.object({
+    title: z.string(), evidence: z.string().catch(''), severity: z.string().catch(''), actionability: z.string().catch(''),
+    recommendedAction: z.string().catch(''), growwmaticsCan: z.boolean().catch(false),
+  })).catch([]),
+  suspension: z.object({ level: z.string(), note: z.string() }).nullable().catch(null),
+  monthly: z.object({
+    period: z.object({ start: z.string(), end: z.string() }).nullable().catch(null),
+    changes: lines, growwmatics: lines, owner: lines, performance: lines, performanceNote: z.string().catch(''),
+    reviews: lines, contentActivity: lines, profileHealth: z.string().catch(''), planCompleted: lines, planPending: lines, remainingIssues: lines,
+  }).nullable().catch(null),
+});
+export type MobileReportView = z.infer<typeof mobileReportViewSchema>;
 export type AuditData = NonNullable<Audit['auditData']>;
 
 /** GET /api/audit/[id] — wrapped `{ success, audit }`; polled while PENDING. */
 export async function fetchAudit(auditId: string): Promise<Audit> {
   const { data } = await api.get(`/api/audit/${auditId}`);
-  return z.object({ audit: auditSchema }).parse(data).audit;
+  const parsed = z
+    .object({ audit: auditSchema, mobileView: mobileReportViewSchema.nullable().optional().catch(null) })
+    .parse(data);
+  return { ...parsed.audit, mobileView: parsed.mobileView ?? null };
 }
 
 /**

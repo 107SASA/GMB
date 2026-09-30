@@ -23,6 +23,42 @@ export interface IPost extends Document {
   seoScore?: number;
   scheduledDate?: Date;
   publishedAt?: Date;
+  /** true only when the post actually reached Google (live writes on). Execution evidence for monthly reports. */
+  liveWriteApplied?: boolean;
+  /** Location metadata written into the post image (lib/imageGeotag.ts): status, coordinates, source. */
+  imageGeotag?: { status: string; lat?: number; lng?: number; source?: string; reason?: string; at?: string };
+  /** Google's resource name for the created local post — proof the API confirmed it. */
+  gbpPostName?: string;
+  /**
+   * Weekly content batch (Sep 2026): '<ISO week>' for the autopilot batch,
+   * 'manual-<ts>' for an explicit extra batch, 'offer-<week>' for an offer
+   * post. With contentMeta.slot it is unique per business — a retried job
+   * cannot create a second copy of a slot.
+   */
+  batchKey?: string;
+  /** Traceability: SEO plan → theme → service/keyword → evidence → image source. */
+  contentMeta?: {
+    slot?: number;
+    purpose?: string;
+    seoPlanId?: string | null;
+    seoThemeIndex?: number;
+    seoTheme?: string;
+    service?: string;
+    keyword?: string;
+    keywordSource?: string;
+    keywordMeasured?: boolean;
+    festivalKey?: string;
+    festivalName?: string;
+    offerId?: string;
+    evidence?: Array<{ label: string; state: string; sourceUrl?: string }>;
+    websiteIntelligenceId?: string;
+    imageSource?: string;
+    imageNote?: string;
+    imageAssetId?: string;
+    generatedVia?: 'ai' | 'ai_regenerated' | 'template';
+    validation?: { ok: boolean; reasons: string[]; attempts: number };
+    draftReason?: string;
+  };
   failureReason?: string;
   retryCount: number;
   aiMetadata?: any;
@@ -43,7 +79,10 @@ const PostSchema: Schema = new Schema(
     imageUrl: { type: String },
     thumbnailPrompt: { type: String },
     platform: { type: String, default: 'gmb' },
-    status: { type: String, enum: ['draft', 'pending_approval', 'approved', 'rejected', 'scheduled', 'published', 'failed', 'archived'], default: 'draft', index: true },
+    // 'publishing' = the Google call is in flight; 'published' only when Google
+    // confirmed the write; 'blocked' = scheduled in GrowwMatics but Google
+    // publishing was not executed (live writes off / not connected).
+    status: { type: String, enum: ['draft', 'pending_approval', 'approved', 'rejected', 'scheduled', 'publishing', 'published', 'blocked', 'failed', 'archived'], default: 'draft', index: true },
     aiGenerated: { type: Boolean, default: false },
     generationPrompt: { type: String },
     keywords: [{ type: String }],
@@ -55,6 +94,11 @@ const PostSchema: Schema = new Schema(
     seoScore: { type: Number },
     scheduledDate: { type: Date },
     publishedAt: { type: Date },
+    liveWriteApplied: { type: Boolean },
+    gbpPostName: { type: String },
+    imageGeotag: { type: Schema.Types.Mixed },
+    batchKey: { type: String },
+    contentMeta: { type: Schema.Types.Mixed },
     failureReason: { type: String },
     retryCount: { type: Number, default: 0 },
     aiMetadata: { type: Schema.Types.Mixed },
@@ -66,6 +110,11 @@ const PostSchema: Schema = new Schema(
 // The publish cron runs every 15 min: Post.find({ status:'scheduled', scheduledDate:{$lte:now} }).
 // This compound index turns that from a scan into a range lookup.
 PostSchema.index({ status: 1, scheduledDate: 1 });
+// One post per slot per content batch (idempotent weekly generation).
+PostSchema.index(
+  { businessId: 1, batchKey: 1, 'contentMeta.slot': 1 },
+  { unique: true, partialFilterExpression: { batchKey: { $exists: true } }, name: 'uniq_business_batch_slot' },
+);
 // Calendar/list views load one business's posts ordered by date.
 PostSchema.index({ businessId: 1, scheduledDate: 1 });
 

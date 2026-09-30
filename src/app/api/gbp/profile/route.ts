@@ -87,6 +87,10 @@ export async function PATCH(req: Request) {
         title: 'Your Google Business Profile was updated',
         detail: `Updated ${changedFields.join(', ')}`,
         updatedBy: (user as any)?.fullName || 'You',
+        // Execution record for the monthly report: which fields, the values
+        // sent, and whether Google actually received the write (a dry run
+        // with GBP_LIVE_WRITES_ENABLED off is NOT an executed change).
+        metadata: { actor: 'owner', userId: ctx.userId, fields: Object.keys(parsed.data), values: parsed.data, liveWriteApplied },
       });
     }
 

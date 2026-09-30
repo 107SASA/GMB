@@ -28,6 +28,26 @@ const EMPTY: IntakeData = {
 
 const isValidKeyword = (v: string) => /[a-zA-Z]/.test(v);
 
+type SuggestField = 'category' | 'description' | 'services' | 'keywords' | 'uniqueSellingPoints' | 'offers';
+interface Suggestion { value: string; source: 'website' | 'google_listing' | 'measured_report'; sourceUrl?: string; label: string }
+
+/** A sourced suggestion for an empty field — the owner reviews it before use. */
+function SuggestionNote({ s, onUse }: { s?: Suggestion; onUse: () => void }) {
+  if (!s) return null;
+  return (
+    <div className="rounded-lg border border-dashed border-primary/50 bg-primary-fixed/30 p-3 text-xs space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1 font-semibold text-primary">
+          <MaterialIcon name="travel_explore" size={14} /> {s.label}
+        </span>
+        <button type="button" onClick={onUse} className="font-semibold text-primary hover:underline">Use this</button>
+      </div>
+      <p className="text-on-surface">{s.value}</p>
+      {s.sourceUrl && <p className="text-outline break-all">Source: {s.sourceUrl}</p>}
+    </div>
+  );
+}
+
 const inputCls =
   'w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all';
 
@@ -104,6 +124,9 @@ export default function IntakePage() {
   // can even start typing was unnecessary. Any previously-saved answers
   // (resuming a partial fill) backfill a moment later once the GET resolves.
   const [data, setData] = useState<IntakeData>(EMPTY);
+  const [suggestions, setSuggestions] = useState<Partial<Record<SuggestField, Suggestion>>>({});
+  // Suggestions the owner chose to use — recorded as owner-confirmed on save.
+  const [accepted, setAccepted] = useState<Partial<Record<SuggestField, Suggestion>>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -186,7 +209,10 @@ export default function IntakePage() {
           router.replace('/dashboard');
           return;
         }
-        if (json.success) setData({ ...EMPTY, ...json.data });
+        if (json.success) {
+          setData({ ...EMPTY, ...json.data });
+          if (json.suggestions) setSuggestions(json.suggestions);
+        }
       } catch {
         /* keep defaults */
       }
@@ -195,6 +221,14 @@ export default function IntakePage() {
   }, []);
 
   const set = <K extends keyof IntakeData>(k: K, v: IntakeData[K]) => setData((p) => ({ ...p, [k]: v }));
+  const applySuggestion = (field: SuggestField) => {
+    const s = suggestions[field];
+    if (!s) return;
+    if (field === 'keywords') set('keywords', s.value.split(',').map((x) => x.trim()).filter(isValidKeyword));
+    else set(field, s.value as any);
+    setAccepted((p) => ({ ...p, [field]: s }));
+    setSuggestions((p) => { const n = { ...p }; delete n[field]; return n; });
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,7 +250,13 @@ export default function IntakePage() {
       const res = await fetch('/api/onboarding/intake', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          // Only suggestions still used as-is; an edited value is the owner's own answer.
+          acceptedSuggestions: (Object.entries(accepted) as Array<[SuggestField, Suggestion]>)
+            .filter(([field, s]) => (field === 'keywords' ? data.keywords.length > 0 : String(data[field]).trim() === s.value.trim()))
+            .map(([field, s]) => ({ field, source: s.source, ...(s.sourceUrl ? { sourceUrl: s.sourceUrl } : {}) })),
+        }),
         signal: controller.signal,
       });
       const json = await res.json().catch(() => null);
@@ -258,15 +298,19 @@ export default function IntakePage() {
           </div>
           <Field label="Business category *" hint="Your exact category — this drives your audit and content.">
             <input className={inputCls} value={data.category} onChange={(e) => set('category', e.target.value)} placeholder="e.g. Restaurant" />
+            {!data.category.trim() && <SuggestionNote s={suggestions.category} onUse={() => applySuggestion('category')} />}
           </Field>
           <Field label="Business description *" hint="What does your business do, in a sentence or two?">
             <textarea rows={3} className={inputCls} value={data.description} onChange={(e) => set('description', e.target.value)} placeholder="e.g. A family-run bakery in Kolkata offering fresh breads, custom cakes, and daily pastries." />
+            {!data.description.trim() && <SuggestionNote s={suggestions.description} onUse={() => applySuggestion('description')} />}
           </Field>
           <Field label="Services you offer *" hint="Comma-separated is fine.">
             <textarea rows={2} className={inputCls} value={data.services} onChange={(e) => set('services', e.target.value)} placeholder="e.g. Custom cakes, Wedding orders, Daily bread, Catering, Gift hampers" />
+            {!data.services.trim() && <SuggestionNote s={suggestions.services} onUse={() => applySuggestion('services')} />}
           </Field>
           <Field label="Current offers / promotions" hint="Optional — used in promotional posts.">
             <input className={inputCls} value={data.offers} onChange={(e) => set('offers', e.target.value)} placeholder="e.g. 20% off your first order this month" />
+            {!data.offers.trim() && <SuggestionNote s={suggestions.offers} onUse={() => applySuggestion('offers')} />}
           </Field>
         </section>
 
@@ -283,6 +327,7 @@ export default function IntakePage() {
             validate={isValidKeyword}
             placeholder="e.g. best bakery in Kolkata"
           />
+          {data.keywords.length === 0 && <SuggestionNote s={suggestions.keywords} onUse={() => applySuggestion('keywords')} />}
 
           {/* Manual fallback — the effect above fires this automatically a
               little after category (+ ideally description) is filled in,
@@ -368,6 +413,7 @@ export default function IntakePage() {
           </div>
           <Field label="What makes you better than competitors?" hint="Your unique selling points.">
             <textarea rows={2} className={inputCls} value={data.uniqueSellingPoints} onChange={(e) => set('uniqueSellingPoints', e.target.value)} placeholder="e.g. Only bakery in the area using organic flour, same-day delivery guarantee" />
+            {!data.uniqueSellingPoints.trim() && <SuggestionNote s={suggestions.uniqueSellingPoints} onUse={() => applySuggestion('uniqueSellingPoints')} />}
           </Field>
           <TagInput
             label="Main competitors"

@@ -35,6 +35,19 @@ export interface IBusiness extends Document {
    */
   placesRating?: number;
   placesReviewCount?: number;
+  /**
+   * ADDITIVE (Sep 2026) — Google's lifetime review total + current rating,
+   * refreshed on every review sync from the provider's own response (GBP
+   * API totalReviewCount/averageRating, or SerpApi place_info). The audit's
+   * "Total reviews" comes from here (or the Places snapshot above), never
+   * from counting the synced review window.
+   */
+  googleReviewTotals?: {
+    count: number;
+    rating: number | null;
+    source: 'gbp_api' | 'serpapi';
+    capturedAt: Date;
+  };
   placeId?: string;
   serpApiDataId?: string;
   photoCount?: number;
@@ -86,6 +99,10 @@ export interface IBusiness extends Document {
   reviewReplySettings: {
     mode: 'manual' | 'auto';
     tone: string;
+    /** Auto-publish runs only when the owner switched it on under the validated flow (set by
+     *  api/reviews/reply-settings). A legacy mode:'auto' without this stays drafts-only. */
+    autoPublishConsentAt?: Date;
+    autoPublishConsentBy?: string;
   };
   kanbanColumns: string[];
   // ADDITIVE — configurable Lead Stages (sales pipeline). Main stages are
@@ -101,6 +118,9 @@ export interface IBusiness extends Document {
   onboardingCompleted: boolean;
   faqs?: Array<{ question: string; answer: string }>;
   isDeleted?: boolean;
+  deletedAt?: Date;
+  /** Personal data erased by accountHardPurgeCron; only billing identifiers remain. */
+  purgedAt?: Date;
   // ADDITIVE — set only on businesses created via a shadow-account lead-gen
   // flow (see src/lib/shadowAccount.ts), e.g. 'free-report-form'. Undefined
   // for every business created through the normal onboarding wizard.
@@ -139,11 +159,33 @@ export interface IBusiness extends Document {
   // real data instead of empty/garbage fields. `intakeCompleted` gates the
   // dashboard (src/proxy.ts) until the owner fills this in once.
   intakeCompleted?: boolean;
+  /**
+   * Brand used on this business's Google creatives (Sep 2026). Colour source
+   * priority: manual (owner) > logo > website > website theme > neutral.
+   * `manualColors` are only ever set by the owner and never overwritten.
+   */
+  /** The business's location as Google has it (connected profile pin, else Google Places for its
+   *  place id) — the ONLY coordinates ever written into image GPS metadata. Not user-editable. */
+  verifiedLocation?: { lat: number; lng: number; source: 'gbp_location' | 'google_places'; placeId?: string; verifiedAt: Date };
+  brandProfile?: {
+    manualColors?: string[];
+    colors?: string[];
+    colorSource?: 'manual' | 'logo' | 'website' | 'theme' | 'default';
+    logoUrl?: string;
+    logoSource?: 'customer_upload' | 'website';
+    sourceUrl?: string;
+    headings?: string[];
+    excerpt?: string;
+    fetchedAt?: Date;
+  };
   intake?: {
     uniqueSellingPoints?: string;
     targetAudience?: string;
     competitorNames?: string[];
     primaryGoal?: string;
+    /** Intake fields the owner accepted from a sourced suggestion (website /
+     *  Google listing / measured report) — owner-confirmed from then on. */
+    confirmedSuggestions?: Array<{ field: string; source: string; sourceUrl?: string; confirmedAt: Date }>;
   };
   // ADDITIVE — weekly content autopilot anchor (see weeklyContentAutopilot in
   // services/inngest/functions.ts). Set ONCE, the first time this workspace
@@ -224,6 +266,12 @@ const BusinessSchema: Schema = new Schema(
     // ADDITIVE — see placesRating/placesReviewCount in IBusiness above.
     placesRating: { type: Number },
     placesReviewCount: { type: Number },
+    googleReviewTotals: {
+      count: { type: Number },
+      rating: { type: Number },
+      source: { type: String, enum: ['gbp_api', 'serpapi'] },
+      capturedAt: { type: Date },
+    },
     // NOT globally unique — see the compound index at the bottom of this file.
     // A single Google Business Profile can legitimately be managed by more than
     // one tenant (the owner and their agency, for example).
@@ -269,6 +317,8 @@ const BusinessSchema: Schema = new Schema(
     reviewReplySettings: {
       mode: { type: String, enum: ['manual', 'auto'], default: 'manual' },
       tone: { type: String, default: 'Professional' },
+      autoPublishConsentAt: { type: Date },
+      autoPublishConsentBy: { type: String },
     },
     kanbanColumns: [{ type: String }],
     // ADDITIVE — see leadStages in IBusiness above. No default object is
@@ -288,6 +338,8 @@ const BusinessSchema: Schema = new Schema(
     onboardingCompleted: { type: Boolean, default: false },
     faqs: [{ question: { type: String }, answer: { type: String } }],
     isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date },
+    purgedAt: { type: Date },
     // ADDITIVE — see provisionedVia in IBusiness above.
     provisionedVia: { type: String },
     // ADDITIVE — per-workspace subscription gate (see IBusiness above).
@@ -309,11 +361,30 @@ const BusinessSchema: Schema = new Schema(
     weeklySummaryOptOut: { type: Boolean },
     // ADDITIVE — post-payment intake (see IBusiness above).
     intakeCompleted: { type: Boolean, default: false },
+    verifiedLocation: {
+      lat: { type: Number },
+      lng: { type: Number },
+      source: { type: String, enum: ['gbp_location', 'google_places'] },
+      placeId: { type: String },
+      verifiedAt: { type: Date },
+    },
+    brandProfile: {
+      manualColors: [{ type: String }],
+      colors: [{ type: String }],
+      colorSource: { type: String, enum: ['manual', 'logo', 'website', 'theme', 'default'] },
+      logoUrl: { type: String },
+      logoSource: { type: String, enum: ['customer_upload', 'website'] },
+      sourceUrl: { type: String },
+      headings: [{ type: String }],
+      excerpt: { type: String },
+      fetchedAt: { type: Date },
+    },
     intake: {
       uniqueSellingPoints: { type: String },
       targetAudience: { type: String },
       competitorNames: [{ type: String }],
       primaryGoal: { type: String },
+      confirmedSuggestions: [{ field: String, source: String, sourceUrl: String, confirmedAt: Date, _id: false }],
     },
     // ADDITIVE — weekly content autopilot anchor (see IBusiness above).
     autopilotNextRunAt: { type: Date },

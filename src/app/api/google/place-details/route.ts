@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { GooglePlacesService } from '@/services/google/places';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { sanitizeSessionToken } from '@/lib/placesSession';
 
 // Unauthenticated by necessity — the public signup wizard calls this before the
 // account exists. IP rate limit protects GOOGLE_MAPS_API_KEY billing.
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Missing placeId' }, { status: 400 });
     }
 
-    const details = await GooglePlacesService.getDetails(placeId);
+    const details = await GooglePlacesService.getDetails(placeId, sanitizeSessionToken(searchParams.get('sessiontoken')));
     
     if (!details) {
       return NextResponse.json({ success: false, error: 'Details not found' }, { status: 404 });

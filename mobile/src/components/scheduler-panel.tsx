@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
-import { type ContentPost } from '@/api/endpoints/content';
+import { postPlanLine, postStatusView, type ContentPost } from '@/api/endpoints/content';
 import { deletePost, fetchBuffer, publishPost, schedulePost } from '@/api/endpoints/scheduler';
 import { useBusiness } from '@/business/BusinessContext';
 import { useDateTimePicker } from '@/components/datetime-picker';
@@ -66,16 +66,15 @@ function PostRow({
 }) {
   const t = useTheme();
   const isPublished = post.status === 'published';
+  const sv = postStatusView(post);
+  const plan = postPlanLine(post);
   return (
     <View className="mb-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
       <View className="flex-row items-center justify-between gap-2">
         <Text className="flex-1 font-sans-semibold text-base text-white" numberOfLines={1}>
           {post.title || 'Untitled post'}
         </Text>
-        <Badge
-          label={isPublished ? 'Published' : post.scheduledDate ? 'Scheduled' : 'Draft'}
-          tone={isPublished ? 'positive' : post.scheduledDate ? 'info' : 'neutral'}
-        />
+        <Badge label={sv.label} tone={sv.tone} />
       </View>
       <Text className="mt-1 font-sans text-sm text-zinc-400" numberOfLines={2}>
         {post.content}
@@ -87,7 +86,9 @@ function PostRow({
             ? formatDateTime(post.scheduledDate)
             : 'Not scheduled yet'}
       </Text>
-      {!isPublished && (
+      {!!plan && <Text className="mt-1 font-sans text-xs text-zinc-500">{plan}</Text>}
+      {!!sv.note && <Text className="mt-1 font-sans text-xs text-amber-300">{sv.note}</Text>}
+      {!isPublished && post.status !== 'publishing' && (
         <View className="mt-3 flex-row gap-2">
           <Pressable
             onPress={onPublish}
@@ -151,7 +152,10 @@ export function SchedulerPanel({
 
   const publish = useMutation({
     mutationFn: (postId: string) => publishPost(postId),
-    onSuccess: invalidate,
+    onSuccess: (res) => {
+      invalidate();
+      if (res.outcome === 'blocked') info.show('Not sent to Google', res.message);
+    },
     onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not publish the post.')),
   });
 

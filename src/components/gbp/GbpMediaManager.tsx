@@ -14,7 +14,6 @@ import {
   X,
   Clock,
 } from 'lucide-react';
-import { cropAndResizeImage, COVER_TARGET, LOGO_TARGET } from '@/lib/imageResize';
 
 type MediaCategory = 'LOGO' | 'COVER' | 'ADDITIONAL' | 'PROFILE';
 type MediaStatus = 'staged' | 'published' | 'failed';
@@ -31,6 +30,20 @@ interface MediaAsset {
   failureReason?: string;
   scheduledFor?: string;
   createdAt: string;
+  geotag?: { status: string; lat?: number; lng?: number; source?: string; reason?: string };
+}
+
+/** What happened to the file's location metadata on upload — stated as a fact, no ranking promise. */
+function geotagLabel(g?: MediaAsset['geotag']): string | null {
+  if (!g) return null;
+  const at = g.lat != null && g.lng != null ? ` (${g.lat.toFixed(5)}, ${g.lng.toFixed(5)})` : '';
+  switch (g.status) {
+    case 'original_gps_preserved': return `Location: kept from your photo${at}`;
+    case 'business_location_added': return `Location: your Google Business Profile location added${at}`;
+    case 'photo_location_added': return g.source === 'device_at_capture' ? `Location: where the photo was taken (phone location at capture)${at}` : `Location: kept from your photo${at}`;
+    case 'video_unmodified': return g.lat != null ? `Location: kept from your video${at}` : 'Location: none in this video (videos are not modified)';
+    default: return 'Location: none added — Google has not confirmed a location for this business';
+  }
 }
 
 /** datetime-local <input> wants "YYYY-MM-DDTHH:mm" in LOCAL time. */
@@ -141,21 +154,11 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
     setUploadingSlot(slotKey);
     setMsg(null);
     try {
-      // Google enforces a strict aspect ratio/dimension window for the cover
-      // banner and logo — a mismatched photo would otherwise upload fine here
-      // and only fail with a raw API error at publish time. Auto-crop/resize
-      // to Google's recommended dimensions so every upload is compliant.
-      // Best-effort: if the browser can't process it, fall back to the
-      // original file rather than blocking the upload.
-      let toUpload = file;
-      if (category === 'COVER') {
-        toUpload = await cropAndResizeImage(file, COVER_TARGET.width, COVER_TARGET.height).catch(() => file);
-      } else if (category === 'LOGO') {
-        toUpload = await cropAndResizeImage(file, LOGO_TARGET.width, LOGO_TARGET.height).catch(() => file);
-      }
-
+      // Cover/logo are cropped to Google's sizes on the server
+      // (lib/mediaUpload.ts) — a browser canvas crop would strip the photo's
+      // EXIF, including its GPS location.
       const fd = new FormData();
-      fd.append('file', toUpload);
+      fd.append('file', file);
       fd.append('category', category);
       const res = await fetch('/api/gbp/media/upload', { method: 'POST', body: fd });
       const json = await res.json();
@@ -519,6 +522,9 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
             <div className="bg-surface aspect-video">
               <MediaThumb asset={previewAsset} className="w-full h-full object-contain" />
             </div>
+            {geotagLabel(previewAsset.geotag) && (
+              <p className="px-4 pt-3 text-xs text-on-surface-variant">{geotagLabel(previewAsset.geotag)}</p>
+            )}
             {previewAsset.failureReason && (
               <p className="px-4 pt-3 text-xs text-error">{previewAsset.failureReason}</p>
             )}

@@ -2,25 +2,31 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IKeywordRank {
   keyword: string;
-  rank: number;
+  /** Observed position; null = not found (new audits). Old audits used 21. */
+  rank: number | null;
   sourceQuery?: string;
   confidence?: string;
 }
 
 export interface IGoogleSearchRank {
-  averageRank: number;
+  /** Mean over FOUND searches only; null = never found / not measured (new audits). */
+  averageRank: number | null;
   topKeywords: IKeywordRank[];
 }
 
 export interface IGeoGridPoint {
   lat: number;
   lng: number;
-  rank: number;
+  /** Observed position; null = not found or unavailable (new audits). Old audits used 21. */
+  rank: number | null;
+  found?: boolean;
+  status?: 'ok' | 'unavailable';
 }
 
 export interface IGeoGridKeyword {
   keyword: string;
-  avgRank: number;
+  /** Mean over FOUND points only; null = never found (new audits). */
+  avgRank: number | null;
   points: IGeoGridPoint[];
 }
 
@@ -42,7 +48,11 @@ export interface IProfileScore {
 }
 
 export interface ISeoScore {
-  score: number;
+  /** null = no checkable item (new audits) — shown as "Not measured". */
+  score: number | null;
+  /** How many of the weighted items could actually be checked (new audits). */
+  checkedItems?: number;
+  totalItems?: number;
   missingKeywords: string[];
   optimizationOpportunities: string[];
 }
@@ -262,9 +272,18 @@ export interface IKeywordTableRow {
   /** Derived Google-Maps monthly estimate (≈ search × 0.62); null when the
    *  search volume itself is a band estimate. Shown as "~N" and labeled. */
   mapsVolume?: number | null;
-  volumeBand: 'HIGH' | 'MED' | 'LOW' | 'NICHE';
+  /** Band from MEASURED search volume; null = demand unavailable (new audits). */
+  volumeBand: 'HIGH' | 'MED' | 'LOW' | 'NICHE' | null;
+  /** 'measured' = live Google Ads volume. Old audits used 'estimated' city-tier guesses. */
+  demandStatus?: 'measured' | 'unavailable';
   estimated: boolean;
-  mapsRank: number;
+  /** Observed position; null = not found/unavailable (new audits). Old audits used 21. */
+  mapsRank: number | null;
+  rank?: number | null;
+  found?: boolean;
+  rankStatus?: 'ok' | 'unavailable';
+  /** Where the searched phrase came from (Sep 2026+). */
+  source?: 'category' | 'website_service' | 'owner' | 'ai_proposed' | 'brand';
 }
 
 export interface ISeoPlanActionItem {
@@ -291,6 +310,10 @@ export interface ISeoPlanSnapshotTile {
 }
 
 export interface ISeoPlanDraft {
+  /** Set on drafts built from verified facts (Sep 2026+). Older drafts may
+   *  contain AI-invented services/attributes/Q&A answers/labels, which the
+   *  report hides for them. */
+  grounded?: number;
   /** 'free' = cold-lead teaser (fastMode audit); 'full' = the deep paid
    *  audit (post-Google-connect + monthly re-audit). Drives which blocks the
    *  report renders. */
@@ -299,9 +322,15 @@ export interface ISeoPlanDraft {
   keyFinding?: string;
   /** 8-tile "Performance Snapshot" (4 core + 4 offer/USP tiles on 'full'). */
   performanceSnapshot?: ISeoPlanSnapshotTile[];
-  criticalGap?: { intro: string; rows: Array<{ keyword: string; mapsRank: number }>; closer: string };
+  criticalGap?: { intro: string; rows: Array<{ keyword: string; mapsRank: number | null }>; closer: string };
   keywordInsights?: string[];
-  competitorLandscape?: Array<{ name: string; mapsRank?: number; rating?: number; reviewCount?: number; keyEdge: string }>;
+  competitorLandscape?: Array<{
+    name: string; mapsRank?: number; rating?: number; reviewCount?: number; keyEdge: string;
+    /** Measured: strong / moderate / incidental (facts.competitorRelevance). */
+    relevance?: string; searchesAhead?: number; appearances?: number | null;
+    /** reportDisplay.competitorTierLabel — shown under the name. */
+    tierLabel?: string;
+  }>;
   competitorCounterPosition?: string;
   gbpGaps?: ISeoPlanGapItem[];
   suggestedTitle?: string;
@@ -321,14 +350,24 @@ export interface ISeoPlanDraft {
   uspLine?: string;
   reviewReplyMustInclude?: string[];
   whatWeAimFor?: { todayRank: string; milestones: Array<{ label: string; text: string }> };
-  /** 'full' — Today → 14d → 45d → 90d rank bands. */
+  /** Today (measured) → 14d → 45d → 90d work milestones. Since Sep 2026
+   *  only "Today" holds a rank; later stages never promise a position. */
   rankTimeline?: Array<{ label: string; rank: string; note: string; tone?: 'bad' | 'warn' | 'good' }>;
+  /** Deterministic competitor insights: fact (counted) / meaning / recommendation. */
+  competitorInsights?: Array<{ topic: string; fact: string; meaning: string; recommendation: string; basis: string }>;
+  /** AI-proposed search phrases built from verified/website services + real
+   *  locations. NOT measured — no rank or demand exists for them yet. */
+  proposedKeywords?: Array<{ keyword: string; basis: string }>;
+  /** What the business's own website states (SOURCE_CLAIM, not verified on Google). */
+  websiteSummary?: { url: string; services: string[]; description?: string; readAt?: string; status: string };
   /** 'full' — one-paragraph assessment of the business's own website. */
   websiteAssessment?: string;
   dataRequired?: string[];
   /** Per-subsection generation failures — UI shows a support message for
    *  just that block instead of faking it. */
   failed?: string[];
+  /** What the output validator removed (invented businesses/services, GBP claims). */
+  repairs?: string[];
 }
 
 export interface IAudit extends Document {
@@ -366,6 +405,21 @@ export interface IAudit extends Document {
   // review sync in processAuditJob so a brand-new visitor's first report
   // generates fast. Paying customers' dashboard audits are unaffected.
   fastMode?: boolean;
+
+  /**
+   * Lifecycle (Sep 2026): 'free_report' | 'connected_baseline' | 'monthly' |
+   * 'dashboard'. With `period` it is the server-side idempotency key —
+   * one connected_baseline per business ('baseline') and one monthly per
+   * business per calendar month ('YYYY-MM'). A FAILED audit gives its
+   * period up (moved to failedPeriod) so the month can be retried.
+   */
+  auditKind?: 'free_report' | 'connected_baseline' | 'monthly' | 'dashboard';
+  period?: string;
+  failedPeriod?: string;
+  /** The connected baseline this audit is measured against (monthly audits). */
+  baselineAuditId?: mongoose.Types.ObjectId;
+  /** The previous comparable (baseline or monthly) audit. */
+  previousAuditId?: mongoose.Types.ObjectId;
 
   createdAt: Date;
   updatedAt: Date;
@@ -409,11 +463,24 @@ const AuditSchema = new Schema<IAudit>(
 
     // ADDITIVE — see fastMode in IAudit above.
     fastMode: { type: Boolean, default: false },
+    auditKind: { type: String, enum: ['free_report', 'connected_baseline', 'monthly', 'dashboard'] },
+    period: { type: String },
+    failedPeriod: { type: String },
+    baselineAuditId: { type: Schema.Types.ObjectId, ref: 'Audit' },
+    previousAuditId: { type: Schema.Types.ObjectId, ref: 'Audit' },
   },
   { timestamps: true }
 );
 
 AuditSchema.index({ tenantId: 1, businessName: 1 });
+// One connected baseline per business, one monthly report per business per
+// calendar month — enforced by the database, so double clicks, Inngest
+// retries, cron overlap and concurrent requests cannot create a second paid
+// audit. Only audits holding a period take part.
+AuditSchema.index(
+  { businessId: 1, auditKind: 1, period: 1 },
+  { unique: true, partialFilterExpression: { period: { $exists: true } }, name: 'uniq_business_kind_period' },
+);
 
 const Audit: Model<IAudit> = mongoose.models.Audit || mongoose.model<IAudit>('Audit', AuditSchema);
 

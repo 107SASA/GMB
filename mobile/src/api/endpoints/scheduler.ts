@@ -39,9 +39,19 @@ export async function generateBufferPosts(): Promise<void> {
   await api.post('/api/scheduler/generate', {});
 }
 
-/** POST /api/scheduler/publish — publishes a post immediately. */
-export async function publishPost(postId: string): Promise<void> {
-  await api.post('/api/scheduler/publish', { postId });
+export type PublishResult = { outcome: 'published' } | { outcome: 'blocked'; message: string };
+
+/**
+ * POST /api/scheduler/publish — publishes a post immediately. `blocked`
+ * means Google publishing is switched off: the post is NOT on Google.
+ * A Google rejection comes back as an HTTP error (thrown).
+ */
+export async function publishPost(postId: string): Promise<PublishResult> {
+  const { data } = await api.post('/api/scheduler/publish', { postId });
+  if (data?.blocked) {
+    return { outcome: 'blocked', message: typeof data.message === 'string' ? data.message : 'Google publishing has not been executed.' };
+  }
+  return { outcome: 'published' };
 }
 
 /**

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { OnboardingData } from './types';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { newPlacesSessionToken, rotatePlacesSession } from '@/lib/placesSession';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const inputCls =
@@ -56,6 +57,8 @@ export default function StepBusinessSearch({ data, updateData, onNext, onBack }:
   const [error, setError] = useState('');
 
   const skipNextSearchRef = useRef(false);
+  // One Places session per search → the keystroke requests aren't billed individually.
+  const sessionTokenRef = useRef<string>(newPlacesSessionToken());
 
   useEffect(() => {
     if (skipNextSearchRef.current) {
@@ -73,7 +76,7 @@ export default function StepBusinessSearch({ data, updateData, onNext, onBack }:
     const fetchSuggestions = async () => {
       setIsSearching(true);
       try {
-        const res = await fetch(`/api/google/autocomplete?q=${encodeURIComponent(debouncedQuery)}`);
+        const res = await fetch(`/api/google/autocomplete?q=${encodeURIComponent(debouncedQuery)}&sessiontoken=${sessionTokenRef.current}`);
         const json = await res.json();
         if (json.success) {
           setSuggestions(json.data);
@@ -103,7 +106,8 @@ export default function StepBusinessSearch({ data, updateData, onNext, onBack }:
     setError('');
 
     try {
-      const res = await fetch(`/api/google/place-details?placeId=${placeId}`);
+      const sessionToken = rotatePlacesSession(sessionTokenRef);
+      const res = await fetch(`/api/google/place-details?placeId=${placeId}&sessiontoken=${sessionToken}`);
       const json = await res.json();
 
       if (json.success && json.data) {

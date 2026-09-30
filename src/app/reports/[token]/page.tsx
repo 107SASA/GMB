@@ -178,7 +178,7 @@ export default function PublicReportPage() {
             {overallScore > 0 && (
               <div className="flex flex-col items-center">
                 <ScoreRing score={overallScore} />
-                <span className="text-xs text-on-surface-variant mt-1 font-medium">Overall Score</span>
+                <span className="text-xs text-on-surface-variant mt-1 font-medium">{d.facts ? 'Profile completion (checked fields)' : 'Overall Score'}</span>
               </div>
             )}
           </div>
@@ -216,8 +216,9 @@ export default function PublicReportPage() {
                 <div className="text-xs text-on-surface-variant mt-1">Avg Rating</div>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-secondary">{reviews.positivePercent ?? 0}%</div>
-                <div className="text-xs text-on-surface-variant mt-1">Positive</div>
+                {/* null = recent reviews not synced — unknown, never "0%". */}
+                <div className="text-3xl font-bold text-secondary">{typeof reviews.positivePercent === 'number' ? `${reviews.positivePercent}%` : '—'}</div>
+                <div className="text-xs text-on-surface-variant mt-1">Positive (recent)</div>
               </div>
               <div className="text-center">
                 <div className="text-3xl font-bold text-on-surface">{reviews.responseRate ?? '—'}</div>
@@ -257,7 +258,8 @@ export default function PublicReportPage() {
                       <div>
                         <h3 className="font-semibold text-on-surface mb-1">{fix.title}</h3>
                         <p className="text-sm text-on-surface-variant">{fix.reason}</p>
-                        {fix.expectedScoreGain && (
+                        {/* Legacy AI "score gain" guesses are never shown for new audits. */}
+                        {!d.facts && fix.expectedScoreGain && (
                           <span className="inline-block mt-2 text-xs font-bold text-primary bg-primary-fixed px-2 py-0.5 rounded-md">
                             {fix.expectedScoreGain}
                           </span>
@@ -348,7 +350,7 @@ export default function PublicReportPage() {
         <div className="bg-primary rounded-xl p-8 text-center text-on-primary">
           <h2 className="font-heading text-2xl font-bold mb-2">Ready to boost your Google ranking?</h2>
           <p className="text-primary-fixed-dim text-sm mb-6">
-            GrowwMatics AI automates reviews, content, and GBP optimisation — so you show up first.
+            GrowwMatics AI automates review requests, replies, posts and supported profile updates — and re-measures your results every month.
           </p>
           <Link
             href="/"

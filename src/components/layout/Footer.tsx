@@ -19,9 +19,11 @@ export function Footer() {
           <p className="text-on-surface-variant text-sm leading-relaxed mb-4 sm:mb-6 max-w-sm">
             The AI-powered platform for local business growth and Google Business Profile automation.
           </p>
-          <p className="text-on-surface-variant text-xs leading-relaxed max-w-sm">
-            {COMPANY.address}
-          </p>
+          {COMPANY.address && (
+            <p className="text-on-surface-variant text-xs leading-relaxed max-w-sm">
+              {COMPANY.address}
+            </p>
+          )}
         </div>
 
         <div>
@@ -115,6 +117,11 @@ export function Footer() {
               </Link>
             </li>
             <li>
+              <Link href="/delete-account" className="hover:text-primary transition-colors">
+                Delete Your Account
+              </Link>
+            </li>
+            <li>
               <Link href="/contact" className="hover:text-primary transition-colors">
                 Contact Us
               </Link>
@@ -126,6 +133,10 @@ export function Footer() {
       <div className="max-w-container-max mx-auto mt-8 sm:mt-10 md:mt-12 pt-6 sm:pt-8 pb-3 sm:pb-4 border-t border-(--mkt-line) text-center text-outline text-xs space-y-1.5 px-2">
         <p>© {new Date().getFullYear()} GrowwMatics AI. All rights reserved. Built for the future of local SEO.</p>
         <p>{BRAND_ATTRIBUTION}</p>
+        <p>
+          {COMPANY.legalName} · CIN {COMPANY.cin}
+          {COMPANY.address ? ` · Registered office: ${COMPANY.address}` : ''}
+        </p>
       </div>
 
       <GbpBoosterPromo />

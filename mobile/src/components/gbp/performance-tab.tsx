@@ -215,6 +215,25 @@ function CompetitorRows({
   );
 }
 
+/** Verified rows from the server's mobileView (same values as the web report). */
+function VerifiedRows({ rows }: { rows: Array<{ title: string; sub: string; right: string }> }) {
+  return (
+    <View className="overflow-hidden rounded-card border border-surface-border bg-surface-raised">
+      {rows.map((r, i) => (
+        <View key={`${r.title}-${i}`} className="flex-row items-center border-b border-surface-border px-4 py-3">
+          <View className="flex-1 pr-2">
+            <Text className="font-sans-semibold text-base text-white" numberOfLines={1}>
+              {r.title}
+            </Text>
+            {!!r.sub && <Text className="mt-0.5 font-sans text-xs text-zinc-400">{r.sub}</Text>}
+          </View>
+          <Text className="font-sans-bold text-sm text-white">{r.right}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /**
  * GBP → Performance: 30-day stats, latest Google rank, targeted keyword
  * ranks, geo-grid summary, competitors table and review trends — everything
@@ -257,6 +276,8 @@ export function PerformanceTab() {
   });
 
   const data = audit?.auditData ?? null;
+  // Verified display values computed server-side (same as the web report); legacy audits fall back below.
+  const mv = audit?.mobileView ?? null;
   // Same fallback order as the web audit report: geo-grid rank first.
   const avgRank =
     data?.geoGridRank?.overallAvgRank ?? data?.googleSearchRank?.averageRank ?? null;
@@ -357,7 +378,7 @@ export function PerformanceTab() {
         <Text className="font-sans text-sm text-zinc-400">Latest Google Rank</Text>
         <View className="mt-1 flex-row items-center justify-between">
           <Text className="font-display text-3xl text-white">
-            {auditLoading ? '…' : fmtRank(avgRank)}
+            {auditLoading ? '…' : mv ? mv.headline.averageRank : fmtRank(avgRank)}
           </Text>
           <Pressable
             onPress={() => router.push('/audit/run')}
@@ -371,18 +392,10 @@ export function PerformanceTab() {
           </Pressable>
         </View>
         <Text className="mt-1 font-sans text-xs text-zinc-500">
-          Lower is better{auditDate ? ` • Last updated on ${auditDate}` : ' • Run an audit to get your rank'}
+          {mv ? `Average observed rank across ${mv.headline.searchesChecked} searches` : 'Lower is better'}
+          {auditDate ? ` • Last updated on ${auditDate}` : ' • Run an audit to get your rank'}
         </Text>
       </View>
-
-      {!!avgRank && (
-        <View className="mt-3 flex-row items-center gap-2 rounded-full bg-surface-overlay px-4 py-2.5">
-          <GoogleG size={14} />
-          <Text className="flex-1 font-sans text-xs text-zinc-400">
-            Rankings may keep improving as Google processes your changes.
-          </Text>
-        </View>
-      )}
 
       {/* Last 6 months trends */}
       <SectionTitle>Last 6 Months Trends</SectionTitle>
@@ -423,9 +436,23 @@ export function PerformanceTab() {
 
       {/* Competitors ahead of you — moved above Keywords to match the
           reference app's order. */}
-      <SectionTitle>Competitors Ahead of You</SectionTitle>
+      <SectionTitle>{mv ? 'Businesses Above You' : 'Competitors Ahead of You'}</SectionTitle>
       {auditLoading ? (
         <Skeleton className="h-56" />
+      ) : mv ? (
+        mv.competitors.length > 0 ? (
+          <VerifiedRows
+            rows={mv.competitors.map((c) => ({ title: c.name, sub: `${c.rating} · ${c.reviews} reviews${c.tier ? ` · ${c.tier}` : ''}`, right: c.aboveYou }))}
+          />
+        ) : (
+          <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-5">
+            <Text className="font-sans text-sm text-zinc-400">
+              {mv.headline.rankingStatus === 'ok'
+                ? 'No other business was seen above you in the searches we ran.'
+                : 'Ranking was not measured in your latest audit, so no comparison is shown.'}
+            </Text>
+          </View>
+        )
       ) : competitors.length > 0 ? (
         <CompetitorRows
           competitors={competitors}
@@ -455,6 +482,8 @@ export function PerformanceTab() {
       <SectionTitle hint>Rank for Targeted Keywords</SectionTitle>
       {auditLoading ? (
         <Skeleton className="h-48" />
+      ) : mv && mv.keywords.length > 0 ? (
+        <VerifiedRows rows={mv.keywords.map((k) => ({ title: k.keyword, sub: k.demand, right: k.rank }))} />
       ) : keywords.length > 0 ? (
         <KeywordRows keywords={keywords} previousRankByKeyword={previousRankByKeyword} />
       ) : (

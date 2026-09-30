@@ -22,6 +22,13 @@ export const gbpMediaItemSchema = z.object({
   createdAt: z.string().optional(),
   /** Future auto-publish date — only meaningful while status is 'staged'. */
   scheduledFor: z.string().nullable().optional(),
+  mediaType: z.enum(['photo', 'video']).optional().catch('photo'),
+  /** What happened to location metadata on upload (server geotag policy). */
+  geotag: z
+    .object({ status: z.string().catch('none'), lat: z.number().optional(), lng: z.number().optional(), source: z.string().optional() })
+    .nullable()
+    .optional()
+    .catch(null),
 });
 export type GbpMediaItem = z.infer<typeof gbpMediaItemSchema>;
 
@@ -69,11 +76,19 @@ export async function uploadGbpMedia(params: {
   mimeType: string;
   fileName: string;
   category: GbpMediaCategory;
+  /** The photo's own GPS, or the phone's position when taken in the app camera (lib/photoLocation.ts). */
+  location?: { lat: number; lng: number; source: 'photo_exif_app' | 'device_at_capture'; accuracyM?: number } | null;
 }): Promise<GbpMediaItem> {
   const form = new FormData();
   // React Native's FormData accepts this {uri,name,type} shape in place of a Blob.
   form.append('file', { uri: params.uri, name: params.fileName, type: params.mimeType } as unknown as Blob);
   form.append('category', params.category);
+  if (params.location) {
+    form.append('photoLat', String(params.location.lat));
+    form.append('photoLng', String(params.location.lng));
+    form.append('photoLocationSource', params.location.source);
+    if (params.location.accuracyM != null) form.append('photoLocationAccuracy', String(params.location.accuracyM));
+  }
 
   const { data } = await api.post('/api/gbp/media/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },

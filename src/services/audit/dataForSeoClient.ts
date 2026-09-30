@@ -1,10 +1,9 @@
 import axios from 'axios';
+import { meter } from '@/lib/providerMeter';
 
 const DATAFORSEO_LOGIN = process.env.DATAFORSEO_LOGIN;
 const DATAFORSEO_PASSWORD = process.env.DATAFORSEO_PASSWORD;
 const MAPS_LIVE_URL = 'https://api.dataforseo.com/v3/serp/google/maps/live/advanced';
-// DataForSEO's own cap on tasks per POST — batches larger than this are chunked.
-const MAX_TASKS_PER_REQUEST = 100;
 
 export const dataForSeoConfigured = !!(DATAFORSEO_LOGIN && DATAFORSEO_PASSWORD);
 
@@ -69,6 +68,17 @@ export interface MapsLocalResult {
   data_id?: string;
   rating?: number;
   reviews?: number;
+  /** The listing's own Google category, from the same response (no extra cost). */
+  category?: string;
+  address?: string;
+  /** Public listing fields Google shows on Maps — same response, no extra cost. */
+  website?: string;
+  phone?: string;
+  additionalCategories?: string[];
+  hasHours?: boolean;
+  bookingUrl?: string;
+  isClaimed?: boolean;
+  totalPhotos?: number;
 }
 
 export interface MapsQuery {
@@ -91,11 +101,12 @@ function buildTask(q: MapsQuery): Record<string, any> {
   return task;
 }
 
-function extractResults(taskResult: any): MapsLocalResult[] {
+function extractResults(taskResult: any): MapsLocalResult[] | null {
   // Per-task failures (e.g. one bad location) shouldn't blow up the whole
-  // batch — just treat that grid point as "no results" like a failed
-  // individual call used to.
-  if (taskResult?.status_code !== 20000) return [];
+  // batch — but they must stay distinguishable from "searched, not found":
+  // null = this search is unavailable (a data-quality state), [] = a real
+  // search that returned no listings.
+  if (taskResult?.status_code !== 20000) return null;
   const items: any[] = taskResult.result?.[0]?.items || [];
   return items
     .filter((item: any) => item.type === 'maps_search')
@@ -105,61 +116,105 @@ function extractResults(taskResult: any): MapsLocalResult[] {
       data_id: item.cid,
       rating: item.rating?.value,
       reviews: item.rating?.votes_count,
+      category: item.category || undefined,
+      address: item.address || undefined,
+      website: item.url || undefined,
+      phone: item.phone || undefined,
+      additionalCategories: Array.isArray(item.additional_categories) ? item.additional_categories : undefined,
+      hasHours: typeof item.work_hours === 'object' || item.work_hours === true ? true : undefined,
+      bookingUrl: item.book_online_url || undefined,
+      isClaimed: typeof item.is_claimed === 'boolean' ? item.is_claimed : undefined,
+      totalPhotos: typeof item.total_photos === 'number' ? item.total_photos : undefined,
     }));
 }
 
 /**
- * Google Maps local-pack results for many keyword/grid-point combinations in
- * as few HTTP round trips as possible. DataForSEO's Live endpoint accepts an
- * array of tasks in one POST (up to MAX_TASKS_PER_REQUEST) and processes them
- * server-side before responding — so a 45-query geo-grid becomes 1 request
- * instead of 45 individually-throttled ones, which is what made audits slow.
- * Results are returned in the same order as `queries`.
+ * Google Maps local-pack results for many keyword/grid-point combinations.
+ *
+ * ONE TASK PER REQUEST (fixed Sep 2026). DataForSEO's Maps *Live* endpoint
+ * rejects every task after the first in a multi-task POST with status 40000
+ * "You can set only one task at a time" — confirmed live. The previous
+ * batching (up to 100 tasks per POST) meant only the first search of every
+ * batch ever ran: a 45-point grid returned 1 real result and 44 failures,
+ * which the old engine then reported as "not found / 20+". Requests now go
+ * out individually with bounded concurrency.
+ *
+ * Results are returned in the same order as `queries`; a null entry means
+ * that search failed (unavailable), distinct from an empty result. An
+ * account/auth failure aborts the whole call (thrown) — it is never turned
+ * into per-search "not found".
  */
+const MAPS_CONCURRENCY = 20; // well under DataForSEO's 2,000 calls/min limit
+const MAPS_TASK_RETRIES = 2;
+
+async function fetchOneMapsTask(q: MapsQuery, timeout: number): Promise<MapsLocalResult[] | null> {
+  for (let attempt = 0; attempt <= MAPS_TASK_RETRIES; attempt++) {
+    let res;
+    try {
+      res = await axios.post(MAPS_LIVE_URL, [buildTask(q)], {
+        auth: { username: DATAFORSEO_LOGIN!, password: DATAFORSEO_PASSWORD! },
+        timeout,
+      });
+      meter('dataForSeoMapsLiveTask', 1, q.point ? 'rank_search_grid_point' : 'rank_search_city');
+    } catch (err: any) {
+      const e = classifyDataForSeoFailure(err);
+      if (e.category === 'account') throw e;
+      if (attempt < MAPS_TASK_RETRIES) {
+        await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+        continue;
+      }
+      console.warn(`[dataForSeo] Maps task "${q.keyword}" failed (${e.category}): ${e.message}`);
+      return null;
+    }
+    // HTTP 200 with a failed envelope = auth/balance/validation problem for
+    // the whole account → abort (never "business not found").
+    if (res.data?.status_code !== 20000) {
+      const e = classifyDataForSeoStatusCode(res.data?.status_code, res.data?.status_message);
+      if (e.category === 'account') throw e;
+      if (attempt < MAPS_TASK_RETRIES) continue;
+      return null;
+    }
+    const task = res.data.tasks?.[0];
+    // 40102 "No Search Results": the search ran and Google showed no local
+    // results — a real, empty result list (target not found), not a failure.
+    if (task?.status_code === 40102) return [];
+    if (task?.status_code !== 20000) {
+      // Server-side hiccups (5xxxx) are retried; anything else is logged once.
+      if (String(task?.status_code ?? '').startsWith('5') && attempt < MAPS_TASK_RETRIES) continue;
+      console.warn(`[dataForSeo] Maps task "${q.keyword}" failed: ${task?.status_code} ${task?.status_message}`);
+      return null;
+    }
+    return extractResults(task);
+  }
+  return null;
+}
+
 export async function fetchMapsLocalResultsBatch(
   queries: MapsQuery[],
   opts: { timeout?: number } = {},
-): Promise<MapsLocalResult[][]> {
-  if (!dataForSeoConfigured || queries.length === 0) return queries.map(() => []);
+): Promise<Array<MapsLocalResult[] | null>> {
+  // Not configured → every search is unavailable (null), never "not found".
+  if (!dataForSeoConfigured || queries.length === 0) return queries.map(() => null);
 
-  const chunks: MapsQuery[][] = [];
-  for (let i = 0; i < queries.length; i += MAX_TASKS_PER_REQUEST) {
-    chunks.push(queries.slice(i, i + MAX_TASKS_PER_REQUEST));
-  }
-
-  const chunkResults = await Promise.all(
-    chunks.map(async (chunk) => {
-      let res;
+  const timeout = opts.timeout ?? 45000;
+  const out: Array<MapsLocalResult[] | null> = new Array(queries.length).fill(null);
+  let next = 0;
+  let abort: unknown = null;
+  const worker = async () => {
+    while (next < queries.length && !abort) {
+      const i = next++;
       try {
-        res = await axios.post(MAPS_LIVE_URL, chunk.map(buildTask), {
-          auth: { username: DATAFORSEO_LOGIN!, password: DATAFORSEO_PASSWORD! },
-          // Live-batch responses only arrive once every task in the chunk has
-          // resolved server-side, so this needs real headroom over the
-          // single-task timeout, not just chunk-count * 15s.
-          timeout: opts.timeout ?? 60000,
-        });
-      } catch (err: any) {
-        // A real non-2xx HTTP response (confirmed live, Aug 2026: an
-        // unverified DataForSEO account returns HTTP 403 here, not a 200
-        // with a bad status_code — DataForSEO's failure modes aren't
-        // consistent about which layer reports the error).
-        throw classifyDataForSeoFailure(err);
+        out[i] = await fetchOneMapsTask(queries[i], timeout);
+      } catch (err) {
+        abort = err;
       }
-
-      // DataForSEO also returns HTTP 200 for some auth/balance/validation
-      // failures — the real outcome is in status_code (20000 = ok). Without
-      // this check, bad creds would silently look like "business not found"
-      // on every grid point instead of erroring loudly.
-      if (res.data?.status_code !== 20000) {
-        throw classifyDataForSeoStatusCode(res.data?.status_code, res.data?.status_message);
-      }
-
-      const tasks: any[] = res.data.tasks || [];
-      return chunk.map((_, i) => extractResults(tasks[i]));
-    }),
-  );
-
-  return chunkResults.flat();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(MAPS_CONCURRENCY, queries.length) }, worker));
+  if (abort) throw abort;
+  const failed = out.filter((r) => r === null).length;
+  if (failed) console.warn(`[dataForSeo] ${failed}/${queries.length} Maps searches unavailable`);
+  return out;
 }
 
 /** Single-query convenience wrapper over the batch call, for the rare
@@ -167,7 +222,7 @@ export async function fetchMapsLocalResultsBatch(
 export async function fetchMapsLocalResults(
   keyword: string,
   opts: { point?: { lat: number; lng: number }; business?: any; timeout?: number } = {},
-): Promise<MapsLocalResult[]> {
+): Promise<MapsLocalResult[] | null> {
   const [results] = await fetchMapsLocalResultsBatch(
     [{ keyword, point: opts.point, business: opts.business }],
     { timeout: opts.timeout },

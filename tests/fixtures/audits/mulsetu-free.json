@@ -1,0 +1,3503 @@
+{
+ "businessName": "Mulsetu",
+ "location": "Ojhar, Maharashtra",
+ "fastMode": true,
+ "capturedAt": "2026-09-29",
+ "note": "Live audit output (public Google listing data) captured by scripts/report-live-check.ts — used by tests/render.",
+ "auditData": {
+  "profileScore": {
+   "overallScore": 86,
+   "seoScore": 100,
+   "profileCompletionScore": 86
+  },
+  "reviewQualityScore": null,
+  "googleSearchRank": {
+   "averageRank": 1.3,
+   "topKeywords": [
+    {
+     "keyword": "website development ojhar",
+     "rank": 1.7,
+     "found": true,
+     "status": "ok",
+     "sourceQuery": "website development ojhar",
+     "confidence": "High"
+    },
+    {
+     "keyword": "website development Om Sai Nagar",
+     "rank": 1,
+     "found": true,
+     "status": "ok",
+     "sourceQuery": "website development Om Sai Nagar",
+     "confidence": "High"
+    },
+    {
+     "keyword": "website development Valmiki Nagar",
+     "rank": null,
+     "found": false,
+     "status": "ok",
+     "sourceQuery": "website development Valmiki Nagar",
+     "confidence": "Low"
+    },
+    {
+     "keyword": "website development Sinnarkar",
+     "rank": null,
+     "found": false,
+     "status": "ok",
+     "sourceQuery": "website development Sinnarkar",
+     "confidence": "Low"
+    },
+    {
+     "keyword": "website development Siddhaye",
+     "rank": null,
+     "found": false,
+     "status": "ok",
+     "sourceQuery": "website development Siddhaye",
+     "confidence": "Low"
+    },
+    {
+     "keyword": "Best website development Ojhar",
+     "rank": 1,
+     "found": true,
+     "status": "ok",
+     "sourceQuery": "Best website development Ojhar",
+     "confidence": "High"
+    },
+    {
+     "keyword": "website development near Om Sai Nagar",
+     "rank": 1,
+     "found": true,
+     "status": "ok",
+     "sourceQuery": "website development near Om Sai Nagar",
+     "confidence": "High"
+    },
+    {
+     "keyword": "ai and automation ojhar",
+     "rank": null,
+     "found": false,
+     "status": "ok",
+     "sourceQuery": "ai and automation ojhar",
+     "confidence": "Low"
+    },
+    {
+     "keyword": "saas development ojhar",
+     "rank": null,
+     "found": false,
+     "status": "ok",
+     "sourceQuery": "saas development ojhar",
+     "confidence": "Low"
+    }
+   ]
+  },
+  "keywordTable": [
+   {
+    "keyword": "website development ojhar",
+    "searchVolume": null,
+    "mapsVolume": null,
+    "volumeBand": null,
+    "demandStatus": "unavailable",
+    "estimated": true,
+    "mapsRank": 1.7,
+    "rank": 1.7,
+    "found": true,
+    "rankStatus": "ok",
+    "source": "website_service",
+    "measured": true
+   },
+   {
+    "keyword": "website development Om Sai Nagar",
+    "searchVolume": null,
+    "mapsVolume": null,
+    "volumeBand": null,
+    "demandStatus": "unavailable",
+    "estimated": true,
+    "mapsRank": 1,
+    "rank": 1,
+    "found": true,
+    "rankStatus": "ok",
+    "source": "website_service",
+    "measured": true
+   },
+   {
+    "keyword": "website development Valmiki Nagar",
+    "searchVolume": null,
+    "mapsVolume": null,
+    "volumeBand": null,
+    "demandStatus": "unavailable",
+    "estimated": true,
+    "mapsRank": null,
+    "rank": null,
+    "found": false,
+    "rankStatus": "ok",
+    "source": "website_service",
+    "measured": true
+   },
+   {
+    "keyword": "website development Sinnarkar",
+    "searchVolume": null,
+    "mapsVolume": null,
+    "volumeBand": null,
+    "demandStatus": "unavailable",
+    "estimated": true,
+    "mapsRank": null,
+    "rank": null,
+    "found": false,
+    "rankStatus": "ok",
+    "source": "website_service",
+    "measured": true
+   },
+   {
+    "keyword": "website development Siddhaye",
+    "searchVolume": null,
+    "mapsVolume": null,
+    "volumeBand": null,
+    "demandStatus": "unavailable",
+    "estimated": true,
+    "mapsRank": null,
+    "rank": null,
+    "found": false,
+    "rankStatus": "ok",
+    "source": "website_service",
+    "measured": true
+   },
+   {
+    "keyword": "Best website development Ojhar",
+    "searchVolume": null,
+    "mapsVolume": null,
+    "volumeBand": null,
+    "demandStatus": "unavailable",
+    "estimated": true,
+    "mapsRank": 1,
+    "rank": 1,
+    "found": true,
+    "rankStatus": "ok",
+    "source": "website_service",
+    "measured": true
+   },
+   {
+    "keyword": "website development near Om Sai Nagar",
+    "searchVolume": null,
+    "mapsVolume": null,
+    "volumeBand": null,
+    "demandStatus": "unavailable",
+    "estimated": true,
+    "mapsRank": 1,
+    "rank": 1,
+    "found": true,
+    "rankStatus": "ok",
+    "source": "website_service",
+    "measured": true
+   },
+   {
+    "keyword": "ai and automation ojhar",
+    "searchVolume": null,
+    "mapsVolume": null,
+    "volumeBand": null,
+    "demandStatus": "unavailable",
+    "estimated": true,
+    "mapsRank": null,
+    "rank": null,
+    "found": false,
+    "rankStatus": "ok",
+    "source": "website_service",
+    "measured": true
+   },
+   {
+    "keyword": "saas development ojhar",
+    "searchVolume": null,
+    "mapsVolume": null,
+    "volumeBand": null,
+    "demandStatus": "unavailable",
+    "estimated": true,
+    "mapsRank": null,
+    "rank": null,
+    "found": false,
+    "rankStatus": "ok",
+    "source": "website_service",
+    "measured": true
+   }
+  ],
+  "areasChecked": [
+   "Om Sai Nagar",
+   "Valmiki Nagar",
+   "Sinnarkar",
+   "Siddhaye"
+  ],
+  "seoPlanDraft": {
+   "depth": "free",
+   "grounded": 1,
+   "performanceSnapshot": [
+    {
+     "label": "Google Maps rank",
+     "value": "#1.3",
+     "note": "Average where found · top 20 in 6 of 11 searches",
+     "tone": "good"
+    },
+    {
+     "label": "Website",
+     "value": "Live ✓",
+     "note": "www.mulsetu.com",
+     "tone": "good"
+    },
+    {
+     "label": "Google reviews",
+     "value": "3 · 5★",
+     "note": "Median of businesses above you: 6",
+     "tone": "warn"
+    },
+    {
+     "label": "Profile completion",
+     "value": "86%",
+     "note": "9 fields need Google",
+     "tone": "warn"
+    },
+    {
+     "label": "Suspension risk",
+     "value": "Low",
+     "note": "No issues found in the business-title check. Policy compliance could not be fully verified from the available data.",
+     "tone": "good"
+    }
+   ],
+   "rankTimeline": [
+    {
+     "label": "Today",
+     "rank": "#1.3",
+     "note": "Average where found · top 20 in 6 of 11 searches",
+     "tone": "good"
+    },
+    {
+     "label": "After 14 days",
+     "rank": "Fixes live",
+     "note": "Verified listing fixes from this report applied",
+     "tone": "warn"
+    },
+    {
+     "label": "After 45 days",
+     "rank": "Re-measure",
+     "note": "Reviews, replies and weekly posts running; same searches re-checked",
+     "tone": "warn"
+    },
+    {
+     "label": "After 90 days",
+     "rank": "Compare",
+     "note": "Re-audit against today's baseline — the change is measured, not predicted",
+     "tone": "good"
+    }
+   ],
+   "competitorLandscape": [
+    {
+     "name": "AdScapes Digital Marketing Agency",
+     "mapsRank": 1,
+     "rating": 5,
+     "reviewCount": 6,
+     "keyEdge": "shown above you in 3 of 11 searches; in the top 20 in 5; 5★ from 6 reviews.",
+     "relevance": "moderate",
+     "searchesAhead": 3,
+     "appearances": 5
+    },
+    {
+     "name": "Armstrong Dematic (Tech-Center)",
+     "mapsRank": 1,
+     "rating": 4.8,
+     "reviewCount": 18,
+     "keyEdge": "shown above you in 1 of 11 searches; 4.8★ from 18 reviews.",
+     "relevance": "incidental",
+     "searchesAhead": 1,
+     "appearances": 1
+    },
+    {
+     "name": "AMM DigiSol",
+     "mapsRank": 2,
+     "keyEdge": "shown above you in 1 of 11 searches; in the top 20 in 4.",
+     "relevance": "incidental",
+     "searchesAhead": 1,
+     "appearances": 4
+    },
+    {
+     "name": "Megabotic Machines Pvt Ltd",
+     "mapsRank": 2,
+     "rating": 5,
+     "reviewCount": 3,
+     "keyEdge": "shown above you in 1 of 11 searches; 5★ from 3 reviews.",
+     "relevance": "incidental",
+     "searchesAhead": 1,
+     "appearances": 1
+    },
+    {
+     "name": "Binary Labs - Custom Software Developement",
+     "mapsRank": 3,
+     "keyEdge": "shown above you in 1 of 11 searches; in the top 20 in 5.",
+     "relevance": "incidental",
+     "searchesAhead": 1,
+     "appearances": 5
+    },
+    {
+     "name": "Ali Graphics",
+     "mapsRank": 4,
+     "rating": 5,
+     "reviewCount": 6,
+     "keyEdge": "shown above you in 1 of 11 searches; in the top 20 in 4; 5★ from 6 reviews.",
+     "relevance": "incidental",
+     "searchesAhead": 1,
+     "appearances": 4
+    },
+    {
+     "name": "Sunrise Computers",
+     "mapsRank": 5,
+     "rating": 4.5,
+     "reviewCount": 87,
+     "keyEdge": "shown above you in 1 of 11 searches; in the top 20 in 5; 4.5★ from 87 reviews.",
+     "relevance": "incidental",
+     "searchesAhead": 1,
+     "appearances": 5
+    },
+    {
+     "name": "M/s. Chandrama Graphics",
+     "mapsRank": 6,
+     "rating": 4.6,
+     "reviewCount": 5,
+     "keyEdge": "shown above you in 1 of 11 searches; in the top 20 in 5; 4.6★ from 5 reviews.",
+     "relevance": "incidental",
+     "searchesAhead": 1,
+     "appearances": 5
+    },
+    {
+     "name": "thoughtbuild",
+     "mapsRank": 7,
+     "keyEdge": "shown above you in 1 of 11 searches; in the top 20 in 4.",
+     "relevance": "incidental",
+     "searchesAhead": 1,
+     "appearances": 4
+    },
+    {
+     "name": "sky css",
+     "mapsRank": 8,
+     "keyEdge": "shown above you in 1 of 11 searches; in the top 20 in 4.",
+     "relevance": "incidental",
+     "searchesAhead": 1,
+     "appearances": 4
+    }
+   ],
+   "competitorInsights": [
+    {
+     "topic": "reviews",
+     "fact": "5 of the 6 businesses above you that show a review count have more Google reviews than your 3; their median is 6.",
+     "meaning": "Searchers comparing listings side by side see more customer feedback on theirs.",
+     "recommendation": "Ask every recent customer for a Google review and reply to each one (GrowwMatics review requests and replies).",
+     "basis": "the 10 businesses shown above Mulsetu most often in our Google Maps searches"
+    },
+    {
+     "topic": "categories",
+     "fact": "8 of 8 businesses shown above you list additional Google categories; we could not see any on yours.",
+     "meaning": "Additional categories let a listing appear for more of the services it genuinely offers.",
+     "recommendation": "Check your Google Business Profile categories and add any that truly describe your services (you change categories in Google — GrowwMatics cannot).",
+     "basis": "the 10 businesses shown above Mulsetu most often in our Google Maps searches"
+    }
+   ],
+   "websiteSummary": {
+    "url": "https://mulsetu.com",
+    "status": "complete",
+    "services": [
+     "AI & Automation",
+     "Website Development",
+     "SaaS Development",
+     "Custom Software & ERP",
+     "Mobile App Development",
+     "MVP Development"
+    ],
+    "description": "Mulsetu is a technology partner for growing businesses — software development, AI automation, SaaS, ERP, mobile apps, and MVPs, from first build through launch.",
+    "readAt": "2026-09-29T07:27:15.670Z"
+   },
+   "criticalGap": {
+    "intro": "We searched these phrases around Ojhar. Mulsetu is not in the top 5 for them, so those searchers see other businesses first.",
+    "rows": [
+     {
+      "keyword": "website development Valmiki Nagar",
+      "mapsRank": null
+     },
+     {
+      "keyword": "website development Sinnarkar",
+      "mapsRank": null
+     },
+     {
+      "keyword": "website development Siddhaye",
+      "mapsRank": null
+     },
+     {
+      "keyword": "ai and automation ojhar",
+      "mapsRank": null
+     },
+     {
+      "keyword": "saas development ojhar",
+      "mapsRank": null
+     }
+    ],
+    "closer": "Improve the listing with facts that are true of this business — its real services, area served and reviews. Don't invent anything and don't stuff keywords."
+   },
+   "whatWeAimFor": {
+    "todayRank": "#1.3",
+    "milestones": [
+     {
+      "label": "After 14 days",
+      "text": "Apply the verified fixes in this report on the live listing."
+     },
+     {
+      "label": "After 30 days",
+      "text": "Keep weekly posts on real services, answer every review, and ask recent customers for reviews."
+     },
+     {
+      "label": "After 90 days",
+      "text": "Re-audit and compare against this baseline — the change is measured, not predicted."
+     }
+    ]
+   },
+   "dataRequired": [
+    "Google's Places data gave only a generic category (\"Services\"), so we measured ranking for \"Website Development\" — a service your website names. Confirm it is your main service.",
+    "Confirm which services your website lists (AI & Automation, Website Development, SaaS Development, Custom Software & ERP…) should appear on your Google profile — we could not read its service list.",
+    "Connect Google to read the live listing title, description, categories, hours, and attributes.",
+    "Business description (from Google or owner intake).",
+    "Which Google attributes apply (e.g. accessibility, appointments) — we never guess these.",
+    "Owner USPs / credentials (registration, years, licence numbers).",
+    "Google Ads returned no search volume for some phrases — their demand is shown as unavailable, not estimated."
+   ],
+   "failed": [],
+   "keyFinding": "Mulsetu has a strong, technology‑partner positioning with six defined services and an online booking link, plus three 5★ reviews despite a very small sample. The profile is 86% complete and the website lists AI & Automation, Website Development, SaaS Development, Custom Software & ERP, Mobile App Development, and MVP Development. Competitors such as AdScapes Digital Marketing Agency, Armstrong Dematic, AMM DigiSol, Megabotic Machines, Binary Labs, Ali Graphics, Sunrise Computers, and M/s. Chandrama Graphics appeared above Mulsetu in Google Maps results. The strategic gap is the limited number of reviews and lack of verified services, which restricts perceived credibility.",
+   "keywordInsights": [
+    "website development Om Sai Nagar – Maps rank #1",
+    "Best website development Ojhar – Maps rank #1"
+   ],
+   "marketOpportunities": [],
+   "competitorCounterPosition": "Mulsetu can highlight its end‑to‑end tech partnership and the breadth of services—from AI automation to MVP development—while competitors focus on narrower categories like marketing or automation. Emphasizing the online booking option and the clear service list differentiates it in a market where many rivals lack such comprehensive online engagement.",
+   "uspLine": "Mulsetu is a technology partner for growing businesses, offering software development, AI automation, SaaS, ERP, mobile apps, and MVPs from build to launch.",
+   "reviewReplyMustInclude": [
+    "Shivaji Nagar",
+    "Ojhar",
+    "Website Development",
+    "AI Automation"
+   ],
+   "proposedKeywords": [
+    {
+     "keyword": "custom software and erp ojhar",
+     "basis": "service your website names"
+    },
+    {
+     "keyword": "mobile app development ojhar",
+     "basis": "service your website names"
+    },
+    {
+     "keyword": "mvp development ojhar",
+     "basis": "service your website names"
+    },
+    {
+     "keyword": "software partner ojhar",
+     "basis": "Google category"
+    }
+   ],
+   "suggestedDescription": "Mulsetu, a Software company in Shivaji Nagar, Ojhar, Maharashtra, offers AI & Automation, Website Development, SaaS Development, Custom Software & ERP, Mobile App Development, and MVP Development. As a technology partner for growing businesses, Mulsetu supports end‑to‑end software projects from first build through launch. Book online at https://www.mulsetu.com/book. Your website says the business serves India.",
+   "suggestedServices": [
+    "AI & Automation",
+    "Website Development",
+    "SaaS Development",
+    "Custom Software & ERP",
+    "Mobile App Development",
+    "MVP Development"
+   ],
+   "suggestedCategories": [],
+   "gbpGaps": [
+    {
+     "field": "Business Description",
+     "status": "unverified",
+     "whyItMatters": "A clear description helps users understand what you do and improves search relevance.",
+     "recommendation": "Add a concise 1‑2 sentence description that mentions your services, category, and location without inventing facts."
+    },
+    {
+     "field": "Services Listed",
+     "status": "unverified",
+     "whyItMatters": "Listing services lets potential customers see what you offer directly on the profile.",
+     "recommendation": "Verify whether your Google Business Profile lists the six services from your website and add any missing ones."
+    },
+    {
+     "field": "Social Links",
+     "status": "unverified",
+     "whyItMatters": "Social links provide additional trust signals and ways for users to engage.",
+     "recommendation": "Add the three social profile URLs shown on your website to the profile."
+    },
+    {
+     "field": "Videos",
+     "status": "unverified",
+     "whyItMatters": "Videos can showcase your work and attract more attention.",
+     "recommendation": "Consider uploading a short video that highlights your services or client success stories."
+    },
+    {
+     "field": "Logo / Cover Image",
+     "status": "unverified",
+     "whyItMatters": "Visual branding improves recognition and professionalism.",
+     "recommendation": "Upload a high‑resolution logo and a cover image that reflect your brand."
+    },
+    {
+     "field": "Attributes",
+     "status": "unverified",
+     "whyItMatters": "Attributes are facts customers filter on in Google Maps; they must be true for the business.",
+     "recommendation": "Tell us which attributes genuinely apply — we never guess them — and set them in Google Business Profile."
+    },
+    {
+     "field": "Booking / Appointment Link",
+     "status": "unverified",
+     "whyItMatters": "An easy booking link drives conversions directly from search.",
+     "recommendation": "Add the booking link https://www.mulsetu.com/book to the profile if it is not already present."
+    }
+   ],
+   "actionPhases": [
+    {
+     "label": "EMERGENCY",
+     "window": "Week 1-2",
+     "items": [
+      {
+       "title": "Add phone number to Google Business Profile",
+       "detail": "Verify whether your Google Business Profile lists a phone number and add the correct contact number for Mulsetu.",
+       "priority": "CRITICAL"
+      },
+      {
+       "title": "Add booking link to Google listing",
+       "detail": "Verify whether your Google Business Profile shows the booking link https://www.mulsetu.com/book and add it if missing.",
+       "priority": "HIGH"
+      },
+      {
+       "title": "Publish first Google post",
+       "detail": "Create and publish a Google post highlighting one of Mulsetu’s services (e.g., Website Development) to start addressing the medium‑priority issue of not being in the top 20 for nearby‑area searches.",
+       "priority": "MEDIUM"
+      },
+      {
+       "title": "Request initial reviews via WhatsApp",
+       "detail": "Send a WhatsApp message to recent clients asking for a 5★ review, addressing the medium‑priority review count gap.",
+       "priority": "MEDIUM"
+      }
+     ]
+    },
+    {
+     "label": "SHORT-TERM",
+     "window": "Day 15-45",
+     "items": [
+      {
+       "title": "Verify service list on Google profile",
+       "detail": "",
+       "priority": "MEDIUM"
+      },
+      {
+       "title": "Schedule weekly Google posts",
+       "detail": "Create a calendar of Google posts that rotate through the six services and target the nearby areas (Om Sai Nagar, Valmiki Nagar, Sinnarkar, Siddhaye).",
+       "priority": "MEDIUM"
+      },
+      {
+       "title": "Run a second wave of review requests",
+       "detail": "Follow up with additional clients via WhatsApp or email to increase the total review count toward the levels of nearby competitors.",
+       "priority": "MEDIUM"
+      },
+      {
+       "title": "Monthly ranking re‑measurement",
+       "detail": "Set a recurring task to re‑measure Mulsetu’s Maps rankings each month and note any changes.",
+       "priority": "LOW"
+      }
+     ]
+    },
+    {
+     "label": "MEDIUM-TERM",
+     "window": "Day 46-90",
+     "items": [
+      {
+       "title": "Optimize Google post content for target keywords",
+       "detail": "Incorporate keywords such as “website development Ojhar”, “Best website development Ojhar”, and “website development near Om Sai Nagar” into Google posts to reinforce relevance.",
+       "priority": "MEDIUM"
+      },
+      {
+       "title": "Add structured service schema to website",
+       "detail": "Implement schema markup for the six services (AI & Automation, Website Development, SaaS Development, Custom Software & ERP, Mobile App Development, MVP Development) to help Google associate them with the profile.",
+       "priority": "MEDIUM"
+      },
+      {
+       "title": "Create a FAQ page linked from Google profile",
+       "detail": "Develop a FAQ page on the website covering common customer questions (e.g., booking process, service scope) and link to it from the Google Business Profile.",
+       "priority": "LOW"
+      },
+      {
+       "title": "Monitor and adjust review‑request cadence",
+       "detail": "Analyze the impact of review‑request campaigns and adjust frequency to maintain a steady flow of new reviews.",
+       "priority": "LOW"
+      }
+     ]
+    }
+   ],
+   "weeklyPostThemes": [
+    {
+     "weekday": "Monday",
+     "theme": "Showcase a recent Website Development project for a client in Om Sai Nagar.",
+     "keyword": "website development Om Sai Nagar",
+     "postType": "UPDATE"
+    },
+    {
+     "weekday": "Wednesday",
+     "theme": "Highlight AI & Automation solutions that helped a local business in Valmiki Nagar streamline operations.",
+     "keyword": "ai and automation ojhar",
+     "postType": "UPDATE"
+    },
+    {
+     "weekday": "Friday",
+     "theme": "Introduce our Mobile App Development service with a case study from a client in Sinnarkar.",
+     "keyword": "website development Sinnarkar",
+     "postType": "UPDATE"
+    }
+   ],
+   "suggestedQas": [
+    {
+     "q": "What services does Mulsetu provide?",
+     "a": "Mulsetu provides AI & Automation, Website Development, SaaS Development, Custom Software & ERP, Mobile App Development, and MVP Development."
+    },
+    {
+     "q": "Where is Mulsetu located?",
+     "a": "Mulsetu is located in Shivaji Nagar, Ojhar, Maharashtra."
+    },
+    {
+     "q": "How can I book a consultation with Mulsetu?",
+     "a": "You can book online at https://www.mulsetu.com/book."
+    },
+    {
+     "q": "Do you serve areas outside Ojhar?",
+     "a": "Your website says Mulsetu serves India."
+    },
+    {
+     "q": "What types of businesses does Mulsetu work with?",
+     "a": "[Owner to confirm: what is needed]"
+    },
+    {
+     "q": "Can I see examples of your past projects?",
+     "a": "[Owner to confirm: what is needed]"
+    }
+   ],
+   "repairs": [
+    "actionItem: removed an unverified business or service claim"
+   ]
+  },
+  "profileCompletion": {
+   "completionPercentage": 86,
+   "completionScope": "places",
+   "completionLabel": "86% of visible fields complete — 9 more fields need a Google connection to check.",
+   "completionPromptFact": "86% of visible fields complete (9 fields — service area, description, additional categories, services, social links, videos, logo, attributes, booking link — require a Google connection to verify, and are NOT confirmed present)",
+   "checklist": [
+    {
+     "field": "Business Name",
+     "status": "Complete",
+     "group": "places"
+    },
+    {
+     "field": "Primary Category",
+     "status": "Complete",
+     "group": "places"
+    },
+    {
+     "field": "Address",
+     "status": "Complete",
+     "group": "places"
+    },
+    {
+     "field": "Phone",
+     "status": "Missing",
+     "group": "places"
+    },
+    {
+     "field": "Website",
+     "status": "Complete",
+     "group": "places"
+    },
+    {
+     "field": "Business Hours",
+     "status": "Complete",
+     "group": "places"
+    },
+    {
+     "field": "Business Photos",
+     "status": "Complete",
+     "group": "places"
+    },
+    {
+     "field": "Service Area",
+     "status": "Unknown",
+     "group": "places"
+    },
+    {
+     "field": "Business Description",
+     "status": "Unknown",
+     "group": "oauth"
+    },
+    {
+     "field": "Additional Categories",
+     "status": "Unknown",
+     "group": "oauth"
+    },
+    {
+     "field": "Services Listed",
+     "status": "Unknown",
+     "group": "oauth"
+    },
+    {
+     "field": "Social Links",
+     "status": "Unknown",
+     "group": "oauth"
+    },
+    {
+     "field": "Videos",
+     "status": "Unknown",
+     "group": "oauth"
+    },
+    {
+     "field": "Logo / Cover Image",
+     "status": "Unknown",
+     "group": "oauth"
+    },
+    {
+     "field": "Attributes",
+     "status": "Unknown",
+     "group": "oauth"
+    },
+    {
+     "field": "Booking / Appointment Link",
+     "status": "Unknown",
+     "group": "oauth"
+    }
+   ],
+   "placesCompleteCount": 6,
+   "placesTotalCount": 7,
+   "oauthPendingCount": 9,
+   "missingCount": 1,
+   "unknownCount": 9
+  },
+  "seoScore": {
+   "score": 100,
+   "checkedItems": 3,
+   "totalItems": 6,
+   "missingKeywords": [],
+   "optimizationOpportunities": []
+  },
+  "auditConfidence": {
+   "dataQuality": {
+    "profileData": "Complete",
+    "competitorDiscovery": "Complete",
+    "keywordDiscovery": "Complete",
+    "reviewAnalysis": "Unavailable",
+    "websiteAnalysis": "Complete"
+   },
+   "confidenceScore": 80
+  },
+  "businessIntelligence": {
+   "competitivePosition": "Challenger — in the top 20 in 6 of 11 searches",
+   "marketSaturation": "11 businesses observed above you across 11 searches",
+   "reviewGap": 18,
+   "reviewGapImpact": "Businesses ranking near you average 21 reviews; you have 3.",
+   "growthPotential": "Steady review collection and a complete profile are the controllable levers."
+  },
+  "keywordGapAnalysis": [],
+  "reviewAnalysis": {
+   "reviewCount": 3,
+   "averageRating": 5,
+   "reviewsPerWeek": null,
+   "responseRate": null,
+   "industryAverage": null,
+   "positivePercent": null,
+   "neutralPercent": null,
+   "negativePercent": null,
+   "estimatedFields": [
+    "reviewsPerWeek",
+    "responseRate",
+    "positivePercent",
+    "neutralPercent",
+    "negativePercent"
+   ],
+   "recentPeriodDays": 14,
+   "recentReviewCount": null,
+   "mostCommonPraises": [],
+   "mostCommonComplaints": [],
+   "reviewThemes": "unknown",
+   "estimatedFromPlaces": true
+  },
+  "strengths": [
+   {
+    "title": "Strong Google Rating",
+    "observation": "Mulsetu holds a 5‑star rating from 3 verified Google reviews.",
+    "evidenceIds": [
+     "reviews.lifetime"
+    ],
+    "evidence": "5★ from 3 Google reviews"
+   },
+   {
+    "title": "Top Ranking for Primary Keyword",
+    "observation": "The primary keyword \"website development ojhar\" ranks in the top 3 for all 3 searches, with an average position of 1.7.",
+    "evidenceIds": [
+     "ranking.primary"
+    ],
+    "evidence": "\"website development ojhar\": in the top 20 in 3 of 3 searches; average position where found #1.7"
+   },
+   {
+    "title": "Complete Core Profile Fields",
+    "observation": "Business name, primary category, address, website, business hours, and photos are all present on the Google listing.",
+    "evidenceIds": [
+     "profile.business_name",
+     "profile.primary_category",
+     "profile.address",
+     "profile.website",
+     "profile.business_hours",
+     "profile.business_photos"
+    ],
+    "evidence": "Business Name: present; Primary Category: present; Address: present; Website: present; Business Hours: present; Business Photos: present"
+   },
+   {
+    "title": "Low Suspension Risk",
+    "observation": "The listing has a low risk of suspension according to heuristic checks.",
+    "evidenceIds": [
+     "risk.suspension"
+    ],
+    "evidence": "Suspension-risk check: Low"
+   },
+   {
+    "title": "Comprehensive Service Offering on Website",
+    "observation": "The website lists six distinct technology services, showcasing a broad capability set.",
+    "evidenceIds": [
+     "website.services"
+    ],
+    "evidence": "Your website lists: AI & Automation, Website Development, SaaS Development, Custom Software & ERP, Mobile App Development, MVP Development"
+   }
+  ],
+  "weaknesses": [
+   {
+    "title": "Missing Phone Number",
+    "observation": "No phone number is displayed on the Google Business Profile.",
+    "evidenceIds": [
+     "profile.phone"
+    ],
+    "evidence": "Phone: missing"
+   },
+   {
+    "title": "Booking Link Not Shown on Listing",
+    "observation": "The website’s booking page is not displayed on the Google listing.",
+    "evidenceIds": [
+     "website.booking"
+    ],
+    "evidence": "Your website has a booking page: https://www.mulsetu.com/book"
+   },
+   {
+    "title": "Services Not Verified on GBP",
+    "observation": "The six services advertised on the website are not confirmed as listed on the Google profile.",
+    "evidenceIds": [
+     "website.services"
+    ],
+    "evidence": "Your website lists: AI & Automation, Website Development, SaaS Development, Custom Software & ERP, Mobile App Development, MVP Development"
+   }
+  ],
+  "priorityFixes": [
+   {
+    "id": "profile.phone.missing",
+    "title": "No phone number on the Google listing",
+    "reason": "A missing phone number prevents potential customers from contacting Mulsetu directly, which is a high‑severity gap for a service‑focused business.",
+    "evidence": "Phone: not found on the Google listing",
+    "impact": "High",
+    "actionability": "directly_fixable",
+    "growwmaticsCapability": "update_phone",
+    "recommendedAction": "Add the business phone number to the Google Business Profile."
+   },
+   {
+    "id": "ranking.nearby.not_found",
+    "title": "Not in the top 20 for 3 of 5 nearby-area searches",
+    "reason": "Searchers in these nearby areas are shown other businesses first.",
+    "evidence": "Examples: \"website development Valmiki Nagar\", \"website development Sinnarkar\", \"website development Siddhaye\"",
+    "impact": "Medium",
+    "actionability": "indirectly_influenceable",
+    "growwmaticsCapability": "google_posts",
+    "recommendedAction": "Create and publish targeted Google Posts that highlight local keywords and services."
+   },
+   {
+    "id": "reviews.volume_gap",
+    "title": "Fewer reviews than the businesses shown above you",
+    "reason": "Mulsetu has only 3 reviews versus the median of 6 among competitors, reducing social proof strength.",
+    "evidence": "You: 5★ from 3 reviews. Median of 6 businesses above you: 6 reviews at 4.9★",
+    "impact": "Medium",
+    "actionability": "indirectly_influenceable",
+    "growwmaticsCapability": "review_requests",
+    "recommendedAction": "Launch a WhatsApp review‑request campaign to encourage satisfied clients to leave Google reviews."
+   }
+  ],
+  "thirtyDayPlan": [
+   {
+    "week": "Week 1",
+    "tasks": [
+     "Add the business phone number to the Google Business Profile."
+    ],
+    "expectedOutcome": "Potential customers can now call Mulsetu directly from the listing."
+   },
+   {
+    "week": "Week 2",
+    "tasks": [
+     "Create three Google Posts targeting local keywords (e.g., \"website development Ojhar\", \"AI automation Shivaji Nagar\")."
+    ],
+    "expectedOutcome": "Improved visibility for nearby‑area searches."
+   },
+   {
+    "week": "Week 3",
+    "tasks": [
+     "Send a WhatsApp message to recent clients requesting a Google review, including a direct review link."
+    ],
+    "expectedOutcome": "Increase in the number of Google reviews."
+   },
+   {
+    "week": "Week 4",
+    "tasks": [
+     "Manually add the booking page URL to the Google listing (if possible) and verify the six services are listed in the Services section."
+    ],
+    "expectedOutcome": "Enhanced listing completeness and easier appointment scheduling for users."
+   }
+  ],
+  "ninetyDayPlan": [
+   {
+    "month": "Beyond 30 Days — Ongoing Roadmap",
+    "tasks": [
+     "Conduct monthly ranking audits, update Google Posts with seasonal offers, continue systematic review‑request outreach, and periodically audit profile fields for accuracy."
+    ],
+    "focusAreas": [
+     "Sustained ranking monitoring",
+     "Continuous review acquisition",
+     "Profile optimization"
+    ]
+   }
+  ],
+  "actionPlan": {
+   "durationDays": 30,
+   "planLabel": "30-Day Action Plan",
+   "extendedLabel": "Beyond 30 Days — Ongoing Roadmap"
+  },
+  "businessTier": "Small Business",
+  "competitors": [
+   {
+    "key": "pid:ChIJm3rihkzD3TsR6LpivIrszN8",
+    "name": "AdScapes Digital Marketing Agency",
+    "placeId": "ChIJm3rihkzD3TsR6LpivIrszN8",
+    "cid": "16126524446317132520",
+    "category": "Marketing agency",
+    "address": "mig, Vitbhatti, Nivrit Nath Nagar, Ojhar, Nashik, Maharashtra 422206",
+    "rating": 5,
+    "reviewCount": 6,
+    "searchesAhead": 3,
+    "aheadRate": 0.273,
+    "averageObservedRank": 1,
+    "bestObservedRank": 1,
+    "top5Count": 3,
+    "top3Count": 3,
+    "keywords": [
+     "website development ojhar",
+     "website development Sinnarkar"
+    ],
+    "website": "http://www.adscapes.in/",
+    "phone": "+917588558491",
+    "additionalCategories": [
+     "Advertising agency"
+    ],
+    "hasHours": true,
+    "bookingUrl": null,
+    "isClaimed": true,
+    "appearances": 5,
+    "relevance": "moderate",
+    "source": "dataforseo",
+    "similarityScore": null
+   },
+   {
+    "key": "pid:ChIJSY1w0xDD3TsRuXRWcWjVpDE",
+    "name": "Armstrong Dematic (Tech-Center)",
+    "placeId": "ChIJSY1w0xDD3TsRuXRWcWjVpDE",
+    "cid": "3577218648593822905",
+    "category": "Automation company",
+    "address": "near ACEM DRDO, A/p. Jaulke, Armstrong Dematic, opposite Indian Oil Pump Ambe Hill, Maharashtra 422207",
+    "rating": 4.8,
+    "reviewCount": 18,
+    "searchesAhead": 1,
+    "aheadRate": 0.091,
+    "averageObservedRank": 1,
+    "bestObservedRank": 1,
+    "top5Count": 1,
+    "top3Count": 1,
+    "keywords": [
+     "ai and automation ojhar"
+    ],
+    "website": null,
+    "phone": "+919673002942",
+    "additionalCategories": null,
+    "hasHours": true,
+    "bookingUrl": null,
+    "isClaimed": true,
+    "appearances": 1,
+    "relevance": "incidental",
+    "source": "dataforseo",
+    "similarityScore": null
+   },
+   {
+    "key": "pid:ChIJZ8382aU1OmURWeHahNpza1M",
+    "name": "AMM DigiSol",
+    "placeId": "ChIJZ8382aU1OmURWeHahNpza1M",
+    "cid": "6011025510025060697",
+    "category": "Website designer",
+    "address": null,
+    "rating": null,
+    "reviewCount": null,
+    "searchesAhead": 1,
+    "aheadRate": 0.091,
+    "averageObservedRank": 2,
+    "bestObservedRank": 2,
+    "top5Count": 1,
+    "top3Count": 1,
+    "keywords": [
+     "website development Sinnarkar"
+    ],
+    "website": "https://ammdigisol.com/",
+    "phone": "+919028110507",
+    "additionalCategories": [
+     "Service establishment"
+    ],
+    "hasHours": true,
+    "bookingUrl": null,
+    "isClaimed": true,
+    "appearances": 4,
+    "relevance": "incidental",
+    "source": "dataforseo",
+    "similarityScore": null
+   },
+   {
+    "key": "pid:ChIJmT_yv__r3TsRgc7Z64vPvXY",
+    "name": "Megabotic Machines Pvt Ltd",
+    "placeId": "ChIJmT_yv__r3TsRgc7Z64vPvXY",
+    "cid": "8556223066938134145",
+    "category": "Automation company",
+    "address": "Janori- Mohadi-Dindori Road, Ojhar, Jaulakedindori, Maharashtra 422207",
+    "rating": 5,
+    "reviewCount": 3,
+    "searchesAhead": 1,
+    "aheadRate": 0.091,
+    "averageObservedRank": 2,
+    "bestObservedRank": 2,
+    "top5Count": 1,
+    "top3Count": 1,
+    "keywords": [
+     "ai and automation ojhar"
+    ],
+    "website": "http://megaautomations.com/",
+    "phone": "+917038065580",
+    "additionalCategories": [
+     "Manufacturer"
+    ],
+    "hasHours": true,
+    "bookingUrl": null,
+    "isClaimed": true,
+    "appearances": 1,
+    "relevance": "incidental",
+    "source": "dataforseo",
+    "similarityScore": null,
+    "websiteServices": [],
+    "websiteSourceUrl": "http://megaautomations.com/"
+   },
+   {
+    "key": "pid:ChIJ293faXJPDwsRmcBwACtdee4",
+    "name": "Binary Labs - Custom Software Developement",
+    "placeId": "ChIJ293faXJPDwsRmcBwACtdee4",
+    "cid": "17183868292481204377",
+    "category": "Website designer",
+    "address": null,
+    "rating": null,
+    "reviewCount": null,
+    "searchesAhead": 1,
+    "aheadRate": 0.091,
+    "averageObservedRank": 3,
+    "bestObservedRank": 3,
+    "top5Count": 1,
+    "top3Count": 1,
+    "keywords": [
+     "website development Sinnarkar"
+    ],
+    "website": "https://www.binarylabs.in/",
+    "phone": "+918605745168",
+    "additionalCategories": [
+     "Business development service",
+     "Service establishment",
+     "Software company"
+    ],
+    "hasHours": true,
+    "bookingUrl": null,
+    "isClaimed": true,
+    "appearances": 5,
+    "relevance": "incidental",
+    "source": "dataforseo",
+    "similarityScore": null
+   },
+   {
+    "key": "pid:ChIJw_6J5evD3TsRlw2NYowouQs",
+    "name": "Ali Graphics",
+    "placeId": "ChIJw_6J5evD3TsRlw2NYowouQs",
+    "cid": "844750988522622359",
+    "category": "Advertising agency",
+    "address": "Ashiyana Manzil, Azad Nagar, Ojhar, Maharashtra 422206",
+    "rating": 5,
+    "reviewCount": 6,
+    "searchesAhead": 1,
+    "aheadRate": 0.091,
+    "averageObservedRank": 4,
+    "bestObservedRank": 4,
+    "top5Count": 1,
+    "top3Count": 0,
+    "keywords": [
+     "website development Sinnarkar"
+    ],
+    "website": null,
+    "phone": null,
+    "additionalCategories": null,
+    "hasHours": true,
+    "bookingUrl": null,
+    "isClaimed": true,
+    "appearances": 4,
+    "relevance": "incidental",
+    "source": "dataforseo",
+    "similarityScore": null
+   },
+   {
+    "key": "pid:ChIJQWcsvY_D3TsRX24tXfpCG44",
+    "name": "Sunrise Computers",
+    "placeId": "ChIJQWcsvY_D3TsRX24tXfpCG44",
+    "cid": "10239851820829470303",
+    "category": "Website designer",
+    "address": "4, Deshmukh Complex, opp. Ozar Bus Stand Road, Viman Nagar, Ojhar, Maharashtra 422206",
+    "rating": 4.5,
+    "reviewCount": 87,
+    "searchesAhead": 1,
+    "aheadRate": 0.091,
+    "averageObservedRank": 5,
+    "bestObservedRank": 5,
+    "top5Count": 1,
+    "top3Count": 0,
+    "keywords": [
+     "website development Sinnarkar"
+    ],
+    "website": null,
+    "phone": "+919922559992",
+    "additionalCategories": [
+     "Computer software store",
+     "Internet marketing service",
+     "Marketing agency",
+     "Marketing consultant",
+     "Printer ink refill store",
+     "Printer repair service",
+     "Toner cartridge supplier",
+     "Computer repair service"
+    ],
+    "hasHours": true,
+    "bookingUrl": null,
+    "isClaimed": true,
+    "appearances": 5,
+    "relevance": "incidental",
+    "source": "dataforseo",
+    "similarityScore": null
+   },
+   {
+    "key": "pid:ChIJm7_zloXD3TsRikmaBwyd07M",
+    "name": "M/s. Chandrama Graphics",
+    "placeId": "ChIJm7_zloXD3TsRikmaBwyd07M",
+    "cid": "12957873227867769226",
+    "category": "Graphic designer",
+    "address": "Shop No.1, Bhagwati Trade Center, Tambat Lane, Bhagwa Chowk Tal. Niphad, Dist. Nashik, Nashik, Maharashtra 422206",
+    "rating": 4.6,
+    "reviewCount": 5,
+    "searchesAhead": 1,
+    "aheadRate": 0.091,
+    "averageObservedRank": 6,
+    "bestObservedRank": 6,
+    "top5Count": 0,
+    "top3Count": 0,
+    "keywords": [
+     "website development Sinnarkar"
+    ],
+    "website": null,
+    "phone": null,
+    "additionalCategories": [
+     "Digital printing service",
+     "Internet marketing service",
+     "Marketing agency",
+     "Offset Printer",
+     "Print shop",
+     "Screen printing shop"
+    ],
+    "hasHours": true,
+    "bookingUrl": null,
+    "isClaimed": false,
+    "appearances": 5,
+    "relevance": "incidental",
+    "source": "dataforseo",
+    "similarityScore": null
+   },
+   {
+    "key": "pid:ChIJ70mjXQyfSCIRRVnw60zO47E",
+    "name": "thoughtbuild",
+    "placeId": "ChIJ70mjXQyfSCIRRVnw60zO47E",
+    "cid": "12818315794197797189",
+    "category": "Design agency",
+    "address": null,
+    "rating": null,
+    "reviewCount": null,
+    "searchesAhead": 1,
+    "aheadRate": 0.091,
+    "averageObservedRank": 7,
+    "bestObservedRank": 7,
+    "top5Count": 0,
+    "top3Count": 0,
+    "keywords": [
+     "website development Sinnarkar"
+    ],
+    "website": "http://thoughtbuild.in/",
+    "phone": null,
+    "additionalCategories": [
+     "Service establishment"
+    ],
+    "hasHours": true,
+    "bookingUrl": null,
+    "isClaimed": true,
+    "appearances": 4,
+    "relevance": "incidental",
+    "source": "dataforseo",
+    "similarityScore": null
+   },
+   {
+    "key": "pid:ChIJCYLxNdxtRiYR9peg9nK_7zo",
+    "name": "sky css",
+    "placeId": "ChIJCYLxNdxtRiYR9peg9nK_7zo",
+    "cid": "4246823474118563830",
+    "category": "Internet marketing service",
+    "address": null,
+    "rating": null,
+    "reviewCount": null,
+    "searchesAhead": 1,
+    "aheadRate": 0.091,
+    "averageObservedRank": 8,
+    "bestObservedRank": 8,
+    "top5Count": 0,
+    "top3Count": 0,
+    "keywords": [
+     "website development Sinnarkar"
+    ],
+    "website": "https://www.instagram.com/skycss_info",
+    "phone": null,
+    "additionalCategories": [
+     "Service establishment"
+    ],
+    "hasHours": true,
+    "bookingUrl": null,
+    "isClaimed": true,
+    "appearances": 4,
+    "relevance": "incidental",
+    "source": "dataforseo",
+    "similarityScore": null
+   },
+   {
+    "key": "pid:ChIJvRc9oajF3TsRXFZf9sH8Otk",
+    "name": "NSK Digital",
+    "placeId": "ChIJvRc9oajF3TsRXFZf9sH8Otk",
+    "cid": "15653101364871911004",
+    "category": "Marketing agency",
+    "address": "Type 2b 1335, Hal Township, HAL, Ojhar, Maharashtra 422207",
+    "rating": null,
+    "reviewCount": null,
+    "searchesAhead": 1,
+    "aheadRate": 0.091,
+    "averageObservedRank": 9,
+    "bestObservedRank": 9,
+    "top5Count": 0,
+    "top3Count": 0,
+    "keywords": [
+     "website development Sinnarkar"
+    ],
+    "website": null,
+    "phone": null,
+    "additionalCategories": null,
+    "hasHours": true,
+    "bookingUrl": null,
+    "isClaimed": false,
+    "appearances": 4,
+    "relevance": "incidental",
+    "source": "dataforseo",
+    "similarityScore": null
+   }
+  ],
+  "localPackCompetitors": [
+   {
+    "name": "AdScapes Digital Marketing Agency",
+    "avgRank": 1,
+    "rating": 5,
+    "reviewCount": 6,
+    "placeId": "ChIJm3rihkzD3TsR6LpivIrszN8"
+   },
+   {
+    "name": "Armstrong Dematic (Tech-Center)",
+    "avgRank": 1,
+    "rating": 4.8,
+    "reviewCount": 18,
+    "placeId": "ChIJSY1w0xDD3TsRuXRWcWjVpDE"
+   },
+   {
+    "name": "AMM DigiSol",
+    "avgRank": 2,
+    "placeId": "ChIJZ8382aU1OmURWeHahNpza1M"
+   },
+   {
+    "name": "Megabotic Machines Pvt Ltd",
+    "avgRank": 2,
+    "rating": 5,
+    "reviewCount": 3,
+    "placeId": "ChIJmT_yv__r3TsRgc7Z64vPvXY"
+   },
+   {
+    "name": "Binary Labs - Custom Software Developement",
+    "avgRank": 3,
+    "placeId": "ChIJ293faXJPDwsRmcBwACtdee4"
+   },
+   {
+    "name": "Ali Graphics",
+    "avgRank": 4,
+    "rating": 5,
+    "reviewCount": 6,
+    "placeId": "ChIJw_6J5evD3TsRlw2NYowouQs"
+   },
+   {
+    "name": "Sunrise Computers",
+    "avgRank": 5,
+    "rating": 4.5,
+    "reviewCount": 87,
+    "placeId": "ChIJQWcsvY_D3TsRX24tXfpCG44"
+   },
+   {
+    "name": "M/s. Chandrama Graphics",
+    "avgRank": 6,
+    "rating": 4.6,
+    "reviewCount": 5,
+    "placeId": "ChIJm7_zloXD3TsRikmaBwyd07M"
+   },
+   {
+    "name": "thoughtbuild",
+    "avgRank": 7,
+    "placeId": "ChIJ70mjXQyfSCIRRVnw60zO47E"
+   },
+   {
+    "name": "sky css",
+    "avgRank": 8,
+    "placeId": "ChIJCYLxNdxtRiYR9peg9nK_7zo"
+   },
+   {
+    "name": "NSK Digital",
+    "avgRank": 9,
+    "placeId": "ChIJvRc9oajF3TsRXFZf9sH8Otk"
+   }
+  ],
+  "geoGridRank": {
+   "keywords": [
+    {
+     "keyword": "website development ojhar",
+     "avgRank": 1.7,
+     "points": [
+      {
+       "lat": 20.084729,
+       "lng": 73.917741,
+       "rank": 1,
+       "found": true,
+       "status": "ok"
+      },
+      {
+       "lat": 20.084729,
+       "lng": 73.932129,
+       "rank": 2,
+       "found": true,
+       "status": "ok"
+      },
+      {
+       "lat": 20.098242,
+       "lng": 73.917741,
+       "rank": 2,
+       "found": true,
+       "status": "ok"
+      }
+     ]
+    }
+   ],
+   "overallAvgRank": 1.7,
+   "visibilityPct": 100,
+   "gridSpacingKm": 1.5,
+   "areaSqKm": 0,
+   "gridResolution": "reduced"
+  },
+  "evidence": {
+   "competitors": "Real Google Maps results above the business across 11 searches (DataForSEO)",
+   "searchRankings": "3-point grid, 1.5 km spacing | keywords: website development ojhar | found in top 20 in 3 of 3 searches",
+   "profileCompletion": "Calculated from the Google Places listing. Complete ÷ (Complete + Missing); fields Places does not expose (description, categories beyond the primary, services, social links, service area, media, attributes, booking) are Unknown and excluded, not counted as missing.",
+   "reviewAnalysis": "Review count & average rating captured live from Google Places at report intake — reviews-per-week, response rate, and sentiment split require a synced review, not yet performed for this report.",
+   "reviewKeywords": "No reviews available for keyword analysis"
+  },
+  "dataQuality": {
+   "rankSource": "reduced-grid",
+   "reviewSource": "places-snapshot",
+   "rankCacheHit": false,
+   "narrativeCacheHit": false,
+   "auditType": "free_report",
+   "sources": [
+    {
+     "source": "google_places",
+     "status": "ok",
+     "at": "2026-09-29T07:27:13.667Z"
+    },
+    {
+     "source": "dataforseo_maps",
+     "status": "ok",
+     "at": "2026-09-29T07:28:24.585Z"
+    },
+    {
+     "source": "dataforseo_ads_volume",
+     "status": "no_volume_returned",
+     "at": "2026-09-29T07:28:24.585Z"
+    },
+    {
+     "source": "reviews",
+     "status": "lifetime_only",
+     "at": null,
+     "provider": "google_places"
+    },
+    {
+     "source": "website",
+     "status": "complete",
+     "at": "2026-09-29T07:27:15.670Z"
+    },
+    {
+     "source": "gbp_api",
+     "status": "not_connected",
+     "at": null
+    }
+   ],
+   "ranking": {
+    "searches": 11,
+    "found": 6,
+    "notFound": 5,
+    "unavailable": 0,
+    "notRunReason": null
+   },
+   "competitorCount": 11,
+   "competitorsByRelevance": {
+    "moderate": 1,
+    "incidental": 10
+   },
+   "websiteCrawl": {
+    "status": "complete",
+    "pages": 6,
+    "cacheHit": false
+   },
+   "ai": {
+    "analysis": "ok",
+    "analysisError": null,
+    "consultant": "ok",
+    "consultantFailed": [],
+    "validationRepairs": 4
+   },
+   "validation": {
+    "ok": true,
+    "errors": 0,
+    "repairs": 3
+   },
+   "evidenceStates": {
+    "VERIFIED": 13,
+    "UNKNOWN": 9,
+    "INFERRED": 1,
+    "SOURCE_CLAIM": 4
+   },
+   "apiCalls": 37,
+   "estimatedCostUsd": 0.1606,
+   "cache": {
+    "rank": false,
+    "narrative": false
+   }
+  },
+  "facts": {
+   "version": 1,
+   "ranking": {
+    "overall": {
+     "status": "ok",
+     "totalSearches": 11,
+     "testedCount": 11,
+     "unavailableCount": 0,
+     "foundCount": 6,
+     "notFoundCount": 5,
+     "averageObservedRank": 1.3,
+     "bestRank": 1,
+     "visibilityRate": 0.545,
+     "notFoundRate": 0.455,
+     "top3Count": 6,
+     "top3Rate": 0.545,
+     "top5Count": 6,
+     "top5Rate": 0.545,
+     "top10Count": 6,
+     "top10Rate": 0.545
+    },
+    "primary": {
+     "status": "ok",
+     "totalSearches": 3,
+     "testedCount": 3,
+     "unavailableCount": 0,
+     "foundCount": 3,
+     "notFoundCount": 0,
+     "averageObservedRank": 1.7,
+     "bestRank": 1,
+     "visibilityRate": 1,
+     "notFoundRate": 0,
+     "top3Count": 3,
+     "top3Rate": 1,
+     "top5Count": 3,
+     "top5Rate": 1,
+     "top10Count": 3,
+     "top10Rate": 1
+    },
+    "nearby": {
+     "status": "ok",
+     "totalSearches": 5,
+     "testedCount": 5,
+     "unavailableCount": 0,
+     "foundCount": 2,
+     "notFoundCount": 3,
+     "averageObservedRank": 1,
+     "bestRank": 1,
+     "visibilityRate": 0.4,
+     "notFoundRate": 0.6,
+     "top3Count": 2,
+     "top3Rate": 0.4,
+     "top5Count": 2,
+     "top5Rate": 0.4,
+     "top10Count": 2,
+     "top10Rate": 0.4
+    },
+    "discovery": {
+     "status": "ok",
+     "totalSearches": 3,
+     "testedCount": 3,
+     "unavailableCount": 0,
+     "foundCount": 1,
+     "notFoundCount": 2,
+     "averageObservedRank": 1,
+     "bestRank": 1,
+     "visibilityRate": 0.333,
+     "notFoundRate": 0.667,
+     "top3Count": 1,
+     "top3Rate": 0.333,
+     "top5Count": 1,
+     "top5Rate": 0.333,
+     "top10Count": 1,
+     "top10Rate": 0.333
+    },
+    "byKeyword": [
+     {
+      "keyword": "website development ojhar",
+      "kind": "primary",
+      "status": "ok",
+      "totalSearches": 3,
+      "testedCount": 3,
+      "unavailableCount": 0,
+      "foundCount": 3,
+      "notFoundCount": 0,
+      "averageObservedRank": 1.7,
+      "bestRank": 1,
+      "visibilityRate": 1,
+      "notFoundRate": 0,
+      "top3Count": 3,
+      "top3Rate": 1,
+      "top5Count": 3,
+      "top5Rate": 1,
+      "top10Count": 3,
+      "top10Rate": 1
+     },
+     {
+      "keyword": "website development Om Sai Nagar",
+      "kind": "nearby",
+      "status": "ok",
+      "totalSearches": 1,
+      "testedCount": 1,
+      "unavailableCount": 0,
+      "foundCount": 1,
+      "notFoundCount": 0,
+      "averageObservedRank": 1,
+      "bestRank": 1,
+      "visibilityRate": 1,
+      "notFoundRate": 0,
+      "top3Count": 1,
+      "top3Rate": 1,
+      "top5Count": 1,
+      "top5Rate": 1,
+      "top10Count": 1,
+      "top10Rate": 1
+     },
+     {
+      "keyword": "website development Valmiki Nagar",
+      "kind": "nearby",
+      "status": "ok",
+      "totalSearches": 1,
+      "testedCount": 1,
+      "unavailableCount": 0,
+      "foundCount": 0,
+      "notFoundCount": 1,
+      "averageObservedRank": null,
+      "bestRank": null,
+      "visibilityRate": 0,
+      "notFoundRate": 1,
+      "top3Count": 0,
+      "top3Rate": 0,
+      "top5Count": 0,
+      "top5Rate": 0,
+      "top10Count": 0,
+      "top10Rate": 0
+     },
+     {
+      "keyword": "website development Sinnarkar",
+      "kind": "nearby",
+      "status": "ok",
+      "totalSearches": 1,
+      "testedCount": 1,
+      "unavailableCount": 0,
+      "foundCount": 0,
+      "notFoundCount": 1,
+      "averageObservedRank": null,
+      "bestRank": null,
+      "visibilityRate": 0,
+      "notFoundRate": 1,
+      "top3Count": 0,
+      "top3Rate": 0,
+      "top5Count": 0,
+      "top5Rate": 0,
+      "top10Count": 0,
+      "top10Rate": 0
+     },
+     {
+      "keyword": "website development Siddhaye",
+      "kind": "nearby",
+      "status": "ok",
+      "totalSearches": 1,
+      "testedCount": 1,
+      "unavailableCount": 0,
+      "foundCount": 0,
+      "notFoundCount": 1,
+      "averageObservedRank": null,
+      "bestRank": null,
+      "visibilityRate": 0,
+      "notFoundRate": 1,
+      "top3Count": 0,
+      "top3Rate": 0,
+      "top5Count": 0,
+      "top5Rate": 0,
+      "top10Count": 0,
+      "top10Rate": 0
+     },
+     {
+      "keyword": "Best website development Ojhar",
+      "kind": "discovery",
+      "status": "ok",
+      "totalSearches": 1,
+      "testedCount": 1,
+      "unavailableCount": 0,
+      "foundCount": 1,
+      "notFoundCount": 0,
+      "averageObservedRank": 1,
+      "bestRank": 1,
+      "visibilityRate": 1,
+      "notFoundRate": 0,
+      "top3Count": 1,
+      "top3Rate": 1,
+      "top5Count": 1,
+      "top5Rate": 1,
+      "top10Count": 1,
+      "top10Rate": 1
+     },
+     {
+      "keyword": "website development near Om Sai Nagar",
+      "kind": "nearby",
+      "status": "ok",
+      "totalSearches": 1,
+      "testedCount": 1,
+      "unavailableCount": 0,
+      "foundCount": 1,
+      "notFoundCount": 0,
+      "averageObservedRank": 1,
+      "bestRank": 1,
+      "visibilityRate": 1,
+      "notFoundRate": 0,
+      "top3Count": 1,
+      "top3Rate": 1,
+      "top5Count": 1,
+      "top5Rate": 1,
+      "top10Count": 1,
+      "top10Rate": 1
+     },
+     {
+      "keyword": "ai and automation ojhar",
+      "kind": "discovery",
+      "status": "ok",
+      "totalSearches": 1,
+      "testedCount": 1,
+      "unavailableCount": 0,
+      "foundCount": 0,
+      "notFoundCount": 1,
+      "averageObservedRank": null,
+      "bestRank": null,
+      "visibilityRate": 0,
+      "notFoundRate": 1,
+      "top3Count": 0,
+      "top3Rate": 0,
+      "top5Count": 0,
+      "top5Rate": 0,
+      "top10Count": 0,
+      "top10Rate": 0
+     },
+     {
+      "keyword": "saas development ojhar",
+      "kind": "discovery",
+      "status": "ok",
+      "totalSearches": 1,
+      "testedCount": 1,
+      "unavailableCount": 0,
+      "foundCount": 0,
+      "notFoundCount": 1,
+      "averageObservedRank": null,
+      "bestRank": null,
+      "visibilityRate": 0,
+      "notFoundRate": 1,
+      "top3Count": 0,
+      "top3Rate": 0,
+      "top5Count": 0,
+      "top5Rate": 0,
+      "top10Count": 0,
+      "top10Rate": 0
+     }
+    ],
+    "primaryKeyword": "website development ojhar",
+    "notRunReason": null,
+    "brandSearches": {
+     "status": "not_run",
+     "totalSearches": 0,
+     "testedCount": 0,
+     "unavailableCount": 0,
+     "foundCount": 0,
+     "notFoundCount": 0,
+     "averageObservedRank": null,
+     "bestRank": null,
+     "visibilityRate": null,
+     "notFoundRate": null,
+     "top3Count": 0,
+     "top3Rate": null,
+     "top5Count": 0,
+     "top5Rate": null,
+     "top10Count": 0,
+     "top10Rate": null
+    }
+   },
+   "observations": [
+    {
+     "keyword": "website development ojhar",
+     "kind": "primary",
+     "point": {
+      "lat": 20.084729,
+      "lng": 73.917741
+     },
+     "status": "ok",
+     "found": true,
+     "rank": 1,
+     "ahead": [],
+     "target": {
+      "name": "Mulsetu",
+      "placeId": "ChIJ4blskkPD3TsRUq38wbsts6U",
+      "cid": "11939937321526013266",
+      "rating": 5,
+      "reviewCount": 3,
+      "category": "Software company",
+      "address": "Om Sai Nagar, Shivaji Nagar, Ojhar, Maharashtra 422206",
+      "website": "https://www.mulsetu.com/",
+      "phone": null,
+      "additionalCategories": null,
+      "hasHours": true,
+      "bookingUrl": null,
+      "isClaimed": true,
+      "totalPhotos": 2,
+      "position": 1
+     },
+     "others": [
+      {
+       "name": "AdScapes Digital Marketing Agency",
+       "placeId": "ChIJm3rihkzD3TsR6LpivIrszN8",
+       "cid": "16126524446317132520",
+       "position": 2
+      },
+      {
+       "name": "AMM DigiSol",
+       "placeId": "ChIJZ8382aU1OmURWeHahNpza1M",
+       "cid": "6011025510025060697",
+       "position": 3
+      },
+      {
+       "name": "Ali Graphics",
+       "placeId": "ChIJw_6J5evD3TsRlw2NYowouQs",
+       "cid": "844750988522622359",
+       "position": 4
+      },
+      {
+       "name": "Sunrise Computers",
+       "placeId": "ChIJQWcsvY_D3TsRX24tXfpCG44",
+       "cid": "10239851820829470303",
+       "position": 5
+      },
+      {
+       "name": "Binary Labs - Custom Software Developement",
+       "placeId": "ChIJ293faXJPDwsRmcBwACtdee4",
+       "cid": "17183868292481204377",
+       "position": 6
+      },
+      {
+       "name": "NSK Digital",
+       "placeId": "ChIJvRc9oajF3TsRXFZf9sH8Otk",
+       "cid": "15653101364871911004",
+       "position": 7
+      },
+      {
+       "name": "sky css",
+       "placeId": "ChIJCYLxNdxtRiYR9peg9nK_7zo",
+       "cid": "4246823474118563830",
+       "position": 8
+      },
+      {
+       "name": "M/s. Chandrama Graphics",
+       "placeId": "ChIJm7_zloXD3TsRikmaBwyd07M",
+       "cid": "12957873227867769226",
+       "position": 10
+      },
+      {
+       "name": "thoughtbuild",
+       "placeId": "ChIJ70mjXQyfSCIRRVnw60zO47E",
+       "cid": "12818315794197797189",
+       "position": 11
+      }
+     ]
+    },
+    {
+     "keyword": "website development ojhar",
+     "kind": "primary",
+     "point": {
+      "lat": 20.084729,
+      "lng": 73.932129
+     },
+     "status": "ok",
+     "found": true,
+     "rank": 2,
+     "ahead": [
+      {
+       "name": "AdScapes Digital Marketing Agency",
+       "placeId": "ChIJm3rihkzD3TsR6LpivIrszN8",
+       "cid": "16126524446317132520",
+       "rating": 5,
+       "reviewCount": 6,
+       "category": "Marketing agency",
+       "address": "mig, Vitbhatti, Nivrit Nath Nagar, Ojhar, Nashik, Maharashtra 422206",
+       "website": "http://www.adscapes.in/",
+       "phone": "+917588558491",
+       "additionalCategories": [
+        "Advertising agency"
+       ],
+       "hasHours": true,
+       "bookingUrl": null,
+       "isClaimed": true,
+       "totalPhotos": 2,
+       "position": 1
+      }
+     ],
+     "target": {
+      "name": "Mulsetu",
+      "placeId": "ChIJ4blskkPD3TsRUq38wbsts6U",
+      "cid": "11939937321526013266",
+      "rating": 5,
+      "reviewCount": 3,
+      "category": "Software company",
+      "address": "Om Sai Nagar, Shivaji Nagar, Ojhar, Maharashtra 422206",
+      "website": "https://www.mulsetu.com/",
+      "phone": null,
+      "additionalCategories": null,
+      "hasHours": true,
+      "bookingUrl": null,
+      "isClaimed": true,
+      "totalPhotos": 2,
+      "position": 2
+     },
+     "others": [
+      {
+       "name": "Ali Graphics",
+       "placeId": "ChIJw_6J5evD3TsRlw2NYowouQs",
+       "cid": "844750988522622359",
+       "position": 3
+      },
+      {
+       "name": "Binary Labs - Custom Software Developement",
+       "placeId": "ChIJ293faXJPDwsRmcBwACtdee4",
+       "cid": "17183868292481204377",
+       "position": 4
+      },
+      {
+       "name": "Sunrise Computers",
+       "placeId": "ChIJQWcsvY_D3TsRX24tXfpCG44",
+       "cid": "10239851820829470303",
+       "position": 5
+      },
+      {
+       "name": "AMM DigiSol",
+       "placeId": "ChIJZ8382aU1OmURWeHahNpza1M",
+       "cid": "6011025510025060697",
+       "position": 6
+      },
+      {
+       "name": "sky css",
+       "placeId": "ChIJCYLxNdxtRiYR9peg9nK_7zo",
+       "cid": "4246823474118563830",
+       "position": 7
+      },
+      {
+       "name": "NSK Digital",
+       "placeId": "ChIJvRc9oajF3TsRXFZf9sH8Otk",
+       "cid": "15653101364871911004",
+       "position": 8
+      },
+      {
+       "name": "M/s. Chandrama Graphics",
+       "placeId": "ChIJm7_zloXD3TsRikmaBwyd07M",
+       "cid": "12957873227867769226",
+       "position": 10
+      },
+      {
+       "name": "thoughtbuild",
+       "placeId": "ChIJ70mjXQyfSCIRRVnw60zO47E",
+       "cid": "12818315794197797189",
+       "position": 11
+      }
+     ]
+    },
+    {
+     "keyword": "website development ojhar",
+     "kind": "primary",
+     "point": {
+      "lat": 20.098242,
+      "lng": 73.917741
+     },
+     "status": "ok",
+     "found": true,
+     "rank": 2,
+     "ahead": [
+      {
+       "name": "AdScapes Digital Marketing Agency",
+       "placeId": "ChIJm3rihkzD3TsR6LpivIrszN8",
+       "cid": "16126524446317132520",
+       "rating": 5,
+       "reviewCount": 6,
+       "category": "Marketing agency",
+       "address": "mig, Vitbhatti, Nivrit Nath Nagar, Ojhar, Nashik, Maharashtra 422206",
+       "website": "http://www.adscapes.in/",
+       "phone": "+917588558491",
+       "additionalCategories": [
+        "Advertising agency"
+       ],
+       "hasHours": true,
+       "bookingUrl": null,
+       "isClaimed": true,
+       "totalPhotos": 2,
+       "position": 1
+      }
+     ],
+     "target": {
+      "name": "Mulsetu",
+      "placeId": "ChIJ4blskkPD3TsRUq38wbsts6U",
+      "cid": "11939937321526013266",
+      "rating": 5,
+      "reviewCount": 3,
+      "category": "Software company",
+      "address": "Om Sai Nagar, Shivaji Nagar, Ojhar, Maharashtra 422206",
+      "website": "https://www.mulsetu.com/",
+      "phone": null,
+      "additionalCategories": null,
+      "hasHours": true,
+      "bookingUrl": null,
+      "isClaimed": true,
+      "totalPhotos": 2,
+      "position": 2
+     },
+     "others": [
+      {
+       "name": "Ali Graphics",
+       "placeId": "ChIJw_6J5evD3TsRlw2NYowouQs",
+       "cid": "844750988522622359",
+       "position": 3
+      },
+      {
+       "name": "Sunrise Computers",
+       "placeId": "ChIJQWcsvY_D3TsRX24tXfpCG44",
+       "cid": "10239851820829470303",
+       "position": 4
+      },
+      {
+       "name": "AMM DigiSol",
+       "placeId": "ChIJZ8382aU1OmURWeHahNpza1M",
+       "cid": "6011025510025060697",
+       "position": 5
+      },
+      {
+       "name": "Binary Labs - Custom Software Developement",
+       "placeId": "ChIJ293faXJPDwsRmcBwACtdee4",
+       "cid": "17183868292481204377",
+       "position": 6
+      },
+      {
+       "name": "NSK Digital",
+       "placeId": "ChIJvRc9oajF3TsRXFZf9sH8Otk",
+       "cid": "15653101364871911004",
+       "position": 7
+      },
+      {
+       "name": "M/s. Chandrama Graphics",
+       "placeId": "ChIJm7_zloXD3TsRikmaBwyd07M",
+       "cid": "12957873227867769226",
+       "position": 9
+      },
+      {
+       "name": "sky css",
+       "placeId": "ChIJCYLxNdxtRiYR9peg9nK_7zo",
+       "cid": "4246823474118563830",
+       "position": 10
+      },
+      {
+       "name": "thoughtbuild",
+       "placeId": "ChIJ70mjXQyfSCIRRVnw60zO47E",
+       "cid": "12818315794197797189",
+       "position": 11
+      }
+     ]
+    },
+    {
+     "keyword": "website development Om Sai Nagar",
+     "kind": "nearby",
+     "point": {
+      "lat": 20.0847286,
+      "lng": 73.9177409
+     },
+     "status": "ok",
+     "found": true,
+     "rank": 1,
+     "ahead": [],
+     "target": {
+      "name": "Mulsetu",
+      "placeId": "ChIJ4blskkPD3TsRUq38wbsts6U",
+      "cid": "11939937321526013266",
+      "rating": 5,
+      "reviewCount": 3,
+      "category": "Software company",
+      "address": "Om Sai Nagar, Shivaji Nagar, Ojhar, Maharashtra 422206",
+      "website": "https://www.mulsetu.com/",
+      "phone": null,
+      "additionalCategories": null,
+      "hasHours": true,
+      "bookingUrl": null,
+      "isClaimed": true,
+      "totalPhotos": 2,
+      "position": 1
+     }
+    },
+    {
+     "keyword": "website development Valmiki Nagar",
+     "kind": "nearby",
+     "point": {
+      "lat": 20.0847286,
+      "lng": 73.9177409
+     },
+     "status": "ok",
+     "found": false,
+     "rank": null,
+     "ahead": []
+    },
+    {
+     "keyword": "website development Sinnarkar",
+     "kind": "nearby",
+     "point": {
+      "lat": 20.0847286,
+      "lng": 73.9177409
+     },
+     "status": "ok",
+     "found": false,
+     "rank": null,
+     "ahead": [
+      {
+       "name": "AdScapes Digital Marketing Agency",
+       "placeId": "ChIJm3rihkzD3TsR6LpivIrszN8",
+       "cid": "16126524446317132520",
+       "rating": 5,
+       "reviewCount": 6,
+       "category": "Marketing agency",
+       "address": "mig, Vitbhatti, Nivrit Nath Nagar, Ojhar, Nashik, Maharashtra 422206",
+       "website": "http://www.adscapes.in/",
+       "phone": "+917588558491",
+       "additionalCategories": [
+        "Advertising agency"
+       ],
+       "hasHours": true,
+       "bookingUrl": null,
+       "isClaimed": true,
+       "totalPhotos": 2,
+       "position": 1
+      },
+      {
+       "name": "AMM DigiSol",
+       "placeId": "ChIJZ8382aU1OmURWeHahNpza1M",
+       "cid": "6011025510025060697",
+       "rating": null,
+       "reviewCount": null,
+       "category": "Website designer",
+       "address": null,
+       "website": "https://ammdigisol.com/",
+       "phone": "+919028110507",
+       "additionalCategories": [
+        "Service establishment"
+       ],
+       "hasHours": true,
+       "bookingUrl": null,
+       "isClaimed": true,
+       "totalPhotos": 2,
+       "position": 2
+      },
+      {
+       "name": "Binary Labs - Custom Software Developement",
+       "placeId": "ChIJ293faXJPDwsRmcBwACtdee4",
+       "cid": "17183868292481204377",
+       "rating": null,
+       "reviewCount": null,
+       "category": "Website designer",
+       "address": null,
+       "website": "https://www.binarylabs.in/",
+       "phone": "+918605745168",
+       "additionalCategories": [
+        "Business development service",
+        "Service establishment",
+        "Software company"
+       ],
+       "hasHours": true,
+       "bookingUrl": null,
+       "isClaimed": true,
+       "totalPhotos": 1,
+       "position": 3
+      },
+      {
+       "name": "Ali Graphics",
+       "placeId": "ChIJw_6J5evD3TsRlw2NYowouQs",
+       "cid": "844750988522622359",
+       "rating": 5,
+       "reviewCount": 6,
+       "category": "Advertising agency",
+       "address": "Ashiyana Manzil, Azad Nagar, Ojhar, Maharashtra 422206",
+       "website": null,
+       "phone": null,
+       "additionalCategories": null,
+       "hasHours": true,
+       "bookingUrl": null,
+       "isClaimed": true,
+       "totalPhotos": 15,
+       "position": 4
+      },
+      {
+       "name": "Sunrise Computers",
+       "placeId": "ChIJQWcsvY_D3TsRX24tXfpCG44",
+       "cid": "10239851820829470303",
+       "rating": 4.5,
+       "reviewCount": 87,
+       "category": "Website designer",
+       "address": "4, Deshmukh Complex, opp. Ozar Bus Stand Road, Viman Nagar, Ojhar, Maharashtra 422206",
+       "website": null,
+       "phone": "+919922559992",
+       "additionalCategories": [
+        "Computer software store",
+        "Internet marketing service",
+        "Marketing agency",
+        "Marketing consultant",
+        "Printer ink refill store",
+        "Printer repair service",
+        "Toner cartridge supplier",
+        "Computer repair service"
+       ],
+       "hasHours": true,
+       "bookingUrl": null,
+       "isClaimed": true,
+       "totalPhotos": 27,
+       "position": 5
+      },
+      {
+       "name": "M/s. Chandrama Graphics",
+       "placeId": "ChIJm7_zloXD3TsRikmaBwyd07M",
+       "cid": "12957873227867769226",
+       "rating": 4.6,
+       "reviewCount": 5,
+       "category": "Graphic designer",
+       "address": "Shop No.1, Bhagwati Trade Center, Tambat Lane, Bhagwa Chowk Tal. Niphad, Dist. Nashik, Nashik, Maharashtra 422206",
+       "website": null,
+       "phone": null,
+       "additionalCategories": [
+        "Digital printing service",
+        "Internet marketing service",
+        "Marketing agency",
+        "Offset Printer",
+        "Print shop",
+        "Screen printing shop"
+       ],
+       "hasHours": true,
+       "bookingUrl": null,
+       "isClaimed": false,
+       "totalPhotos": 2,
+       "position": 6
+      },
+      {
+       "name": "thoughtbuild",
+       "placeId": "ChIJ70mjXQyfSCIRRVnw60zO47E",
+       "cid": "12818315794197797189",
+       "rating": null,
+       "reviewCount": null,
+       "category": "Design agency",
+       "address": null,
+       "website": "http://thoughtbuild.in/",
+       "phone": null,
+       "additionalCategories": [
+        "Service establishment"
+       ],
+       "hasHours": true,
+       "bookingUrl": null,
+       "isClaimed": true,
+       "totalPhotos": null,
+       "position": 7
+      },
+      {
+       "name": "sky css",
+       "placeId": "ChIJCYLxNdxtRiYR9peg9nK_7zo",
+       "cid": "4246823474118563830",
+       "rating": null,
+       "reviewCount": null,
+       "category": "Internet marketing service",
+       "address": null,
+       "website": "https://www.instagram.com/skycss_info",
+       "phone": null,
+       "additionalCategories": [
+        "Service establishment"
+       ],
+       "hasHours": true,
+       "bookingUrl": null,
+       "isClaimed": true,
+       "totalPhotos": null,
+       "position": 8
+      },
+      {
+       "name": "NSK Digital",
+       "placeId": "ChIJvRc9oajF3TsRXFZf9sH8Otk",
+       "cid": "15653101364871911004",
+       "rating": null,
+       "reviewCount": null,
+       "category": "Marketing agency",
+       "address": "Type 2b 1335, Hal Township, HAL, Ojhar, Maharashtra 422207",
+       "website": null,
+       "phone": null,
+       "additionalCategories": null,
+       "hasHours": true,
+       "bookingUrl": null,
+       "isClaimed": false,
+       "totalPhotos": null,
+       "position": 9
+      }
+     ]
+    },
+    {
+     "keyword": "website development Siddhaye",
+     "kind": "nearby",
+     "point": {
+      "lat": 20.0847286,
+      "lng": 73.9177409
+     },
+     "status": "ok",
+     "found": false,
+     "rank": null,
+     "ahead": []
+    },
+    {
+     "keyword": "Best website development Ojhar",
+     "kind": "discovery",
+     "point": {
+      "lat": 20.0847286,
+      "lng": 73.9177409
+     },
+     "status": "ok",
+     "found": true,
+     "rank": 1,
+     "ahead": [],
+     "target": {
+      "name": "Mulsetu",
+      "placeId": "ChIJ4blskkPD3TsRUq38wbsts6U",
+      "cid": "11939937321526013266",
+      "rating": 5,
+      "reviewCount": 3,
+      "category": "Software company",
+      "address": "Om Sai Nagar, Shivaji Nagar, Ojhar, Maharashtra 422206",
+      "website": "https://www.mulsetu.com/",
+      "phone": null,
+      "additionalCategories": null,
+      "hasHours": true,
+      "bookingUrl": null,
+      "isClaimed": true,
+      "totalPhotos": 2,
+      "position": 1
+     },
+     "others": [
+      {
+       "name": "AdScapes Digital Marketing Agency",
+       "placeId": "ChIJm3rihkzD3TsR6LpivIrszN8",
+       "cid": "16126524446317132520",
+       "position": 2
+      },
+      {
+       "name": "Sunrise Computers",
+       "placeId": "ChIJQWcsvY_D3TsRX24tXfpCG44",
+       "cid": "10239851820829470303",
+       "position": 3
+      },
+      {
+       "name": "Binary Labs - Custom Software Developement",
+       "placeId": "ChIJ293faXJPDwsRmcBwACtdee4",
+       "cid": "17183868292481204377",
+       "position": 4
+      },
+      {
+       "name": "M/s. Chandrama Graphics",
+       "placeId": "ChIJm7_zloXD3TsRikmaBwyd07M",
+       "cid": "12957873227867769226",
+       "position": 6
+      }
+     ]
+    },
+    {
+     "keyword": "website development near Om Sai Nagar",
+     "kind": "nearby",
+     "point": {
+      "lat": 20.0847286,
+      "lng": 73.9177409
+     },
+     "status": "ok",
+     "found": true,
+     "rank": 1,
+     "ahead": [],
+     "target": {
+      "name": "Mulsetu",
+      "placeId": "ChIJ4blskkPD3TsRUq38wbsts6U",
+      "cid": "11939937321526013266",
+      "rating": 5,
+      "reviewCount": 3,
+      "category": "Software company",
+      "address": "Om Sai Nagar, Shivaji Nagar, Ojhar, Maharashtra 422206",
+      "website": "https://www.mulsetu.com/",
+      "phone": null,
+      "additionalCategories": null,
+      "hasHours": true,
+      "bookingUrl": null,
+      "isClaimed": true,
+      "totalPhotos": 2,
+      "position": 1
+     }
+    },
+    {
+     "keyword": "ai and automation ojhar",
+     "kind": "discovery",
+     "point": {
+      "lat": 20.0847286,
+      "lng": 73.9177409
+     },
+     "status": "ok",
+     "found": false,
+     "rank": null,
+     "ahead": [
+      {
+       "name": "Armstrong Dematic (Tech-Center)",
+       "placeId": "ChIJSY1w0xDD3TsRuXRWcWjVpDE",
+       "cid": "3577218648593822905",
+       "rating": 4.8,
+       "reviewCount": 18,
+       "category": "Automation company",
+       "address": "near ACEM DRDO, A/p. Jaulke, Armstrong Dematic, opposite Indian Oil Pump Ambe Hill, Maharashtra 422207",
+       "website": null,
+       "phone": "+919673002942",
+       "additionalCategories": null,
+       "hasHours": true,
+       "bookingUrl": null,
+       "isClaimed": true,
+       "totalPhotos": 4,
+       "position": 1
+      },
+      {
+       "name": "Megabotic Machines Pvt Ltd",
+       "placeId": "ChIJmT_yv__r3TsRgc7Z64vPvXY",
+       "cid": "8556223066938134145",
+       "rating": 5,
+       "reviewCount": 3,
+       "category": "Automation company",
+       "address": "Janori- Mohadi-Dindori Road, Ojhar, Jaulakedindori, Maharashtra 422207",
+       "website": "http://megaautomations.com/",
+       "phone": "+917038065580",
+       "additionalCategories": [
+        "Manufacturer"
+       ],
+       "hasHours": true,
+       "bookingUrl": null,
+       "isClaimed": true,
+       "totalPhotos": 10,
+       "position": 2
+      }
+     ]
+    },
+    {
+     "keyword": "saas development ojhar",
+     "kind": "discovery",
+     "point": {
+      "lat": 20.0847286,
+      "lng": 73.9177409
+     },
+     "status": "ok",
+     "found": false,
+     "rank": null,
+     "ahead": []
+    }
+   ],
+   "competitorsAhead": {
+    "count": 11,
+    "names": [
+     "AdScapes Digital Marketing Agency",
+     "Armstrong Dematic (Tech-Center)",
+     "AMM DigiSol",
+     "Megabotic Machines Pvt Ltd",
+     "Binary Labs - Custom Software Developement",
+     "Ali Graphics",
+     "Sunrise Computers",
+     "M/s. Chandrama Graphics",
+     "thoughtbuild",
+     "sky css",
+     "NSK Digital"
+    ],
+    "searchesChecked": 11
+   },
+   "reviews": {
+    "lifetime": {
+     "status": "verified",
+     "totalCount": 3,
+     "rating": 5,
+     "source": "google_places",
+     "sampleSize": "very_small"
+    },
+    "recent": {
+     "status": "unknown",
+     "periodDays": 14,
+     "newReviewCount": null,
+     "reviewsPerWeek": null,
+     "responseRate": null,
+     "replyUnknownCount": 0,
+     "sentiment": null,
+     "textSampleCount": 0
+    }
+   },
+   "reviewComparison": {
+    "targetCount": 3,
+    "targetRating": 5,
+    "competitorsCompared": 6,
+    "medianCompetitorReviewCount": 6,
+    "medianCompetitorRating": 4.9
+   },
+   "profileFields": {
+    "Business Name": "verified_present",
+    "Primary Category": "verified_present",
+    "Address": "verified_present",
+    "Phone": "verified_missing",
+    "Website": "verified_present",
+    "Business Hours": "verified_present",
+    "Business Photos": "verified_present",
+    "Service Area": "unknown",
+    "Business Description": "unknown",
+    "Additional Categories": "unknown",
+    "Services Listed": "unknown",
+    "Social Links": "unknown",
+    "Videos": "unknown",
+    "Logo / Cover Image": "unknown",
+    "Attributes": "unknown",
+    "Booking / Appointment Link": "unknown"
+   },
+   "suspensionRisk": {
+    "level": "Low",
+    "reasons": [],
+    "basis": "heuristic"
+   },
+   "keywordRows": [
+    {
+     "keyword": "website development ojhar",
+     "volumeBand": null,
+     "estimated": true,
+     "searchVolume": null,
+     "status": "ok",
+     "found": true,
+     "rank": 1.7
+    },
+    {
+     "keyword": "website development Om Sai Nagar",
+     "volumeBand": null,
+     "estimated": true,
+     "searchVolume": null,
+     "status": "ok",
+     "found": true,
+     "rank": 1
+    },
+    {
+     "keyword": "website development Valmiki Nagar",
+     "volumeBand": null,
+     "estimated": true,
+     "searchVolume": null,
+     "status": "ok",
+     "found": false,
+     "rank": null
+    },
+    {
+     "keyword": "website development Sinnarkar",
+     "volumeBand": null,
+     "estimated": true,
+     "searchVolume": null,
+     "status": "ok",
+     "found": false,
+     "rank": null
+    },
+    {
+     "keyword": "website development Siddhaye",
+     "volumeBand": null,
+     "estimated": true,
+     "searchVolume": null,
+     "status": "ok",
+     "found": false,
+     "rank": null
+    },
+    {
+     "keyword": "Best website development Ojhar",
+     "volumeBand": null,
+     "estimated": true,
+     "searchVolume": null,
+     "status": "ok",
+     "found": true,
+     "rank": 1
+    },
+    {
+     "keyword": "website development near Om Sai Nagar",
+     "volumeBand": null,
+     "estimated": true,
+     "searchVolume": null,
+     "status": "ok",
+     "found": true,
+     "rank": 1
+    },
+    {
+     "keyword": "ai and automation ojhar",
+     "volumeBand": null,
+     "estimated": true,
+     "searchVolume": null,
+     "status": "ok",
+     "found": false,
+     "rank": null
+    },
+    {
+     "keyword": "saas development ojhar",
+     "volumeBand": null,
+     "estimated": true,
+     "searchVolume": null,
+     "status": "ok",
+     "found": false,
+     "rank": null
+    }
+   ],
+   "publicProfile": {
+    "observed": true,
+    "category": "Software company",
+    "additionalCategories": null,
+    "website": "https://www.mulsetu.com/",
+    "phone": null,
+    "hasHours": true,
+    "bookingUrl": null,
+    "isClaimed": true,
+    "totalPhotos": 2
+   },
+   "competitorComparison": {
+    "competitorsCompared": 10,
+    "medianRating": 4.9,
+    "medianReviewCount": 6,
+    "withWebsite": 0.6,
+    "withBookingLink": 0,
+    "withAdditionalCategories": 1,
+    "claimed": 0.9,
+    "inTop3Somewhere": 5,
+    "target": {
+     "rating": 5,
+     "reviewCount": 3,
+     "hasWebsite": true,
+     "hasBookingLink": false,
+     "additionalCategories": null,
+     "top3Searches": 6,
+     "top5Searches": 6,
+     "searches": 11
+    }
+   },
+   "websiteSearchTerm": "Website Development",
+   "website": {
+    "origin": "https://mulsetu.com",
+    "status": "complete",
+    "fetchedAt": "2026-09-29T07:27:15.670Z",
+    "pagesCrawled": [
+     {
+      "url": "https://www.mulsetu.com/",
+      "kind": "home",
+      "status": "ok",
+      "title": "Mulsetu | Software Development & AI Automation Partner in India"
+     },
+     {
+      "url": "https://www.mulsetu.com/about",
+      "kind": "about",
+      "status": "ok",
+      "title": "About | How We Work as a Technology Partner | Mulsetu"
+     },
+     {
+      "url": "https://www.mulsetu.com/services",
+      "kind": "services",
+      "status": "ok",
+      "title": "Software Development Services in India | Mulsetu"
+     },
+     {
+      "url": "https://www.mulsetu.com/book",
+      "kind": "contact",
+      "status": "ok",
+      "title": "Book a Free Strategy Call | Mulsetu"
+     },
+     {
+      "url": "https://www.mulsetu.com/services/ai-automation",
+      "kind": "service_detail",
+      "status": "ok",
+      "title": "AI & Automation Services in India | Mulsetu"
+     },
+     {
+      "url": "https://www.mulsetu.com/services/website-development",
+      "kind": "service_detail",
+      "status": "ok",
+      "title": "Website Development for Growing Businesses | Mulsetu"
+     }
+    ],
+    "services": [
+     {
+      "value": "AI & Automation",
+      "sourceUrl": "https://www.mulsetu.com/services"
+     },
+     {
+      "value": "Website Development",
+      "sourceUrl": "https://www.mulsetu.com/services"
+     },
+     {
+      "value": "SaaS Development",
+      "sourceUrl": "https://www.mulsetu.com/services"
+     },
+     {
+      "value": "Custom Software & ERP",
+      "sourceUrl": "https://www.mulsetu.com/services"
+     },
+     {
+      "value": "Mobile App Development",
+      "sourceUrl": "https://www.mulsetu.com/services"
+     },
+     {
+      "value": "MVP Development",
+      "sourceUrl": "https://www.mulsetu.com/services"
+     }
+    ],
+    "description": {
+     "value": "Mulsetu is a technology partner for growing businesses — software development, AI automation, SaaS, ERP, mobile apps, and MVPs, from first build through launch.",
+     "sourceUrl": "https://www.mulsetu.com/"
+    },
+    "serviceAreas": [
+     {
+      "value": "India",
+      "sourceUrl": "https://www.mulsetu.com/"
+     }
+    ],
+    "bookingLinks": [
+     {
+      "value": "https://www.mulsetu.com/book",
+      "sourceUrl": "https://www.mulsetu.com/"
+     }
+    ],
+    "socialProfiles": [
+     {
+      "value": "https://www.linkedin.com/company/mulsetu-agrotech-private-limited",
+      "sourceUrl": "https://www.mulsetu.com/"
+     },
+     {
+      "value": "https://www.instagram.com/mulsetu.in",
+      "sourceUrl": "https://www.mulsetu.com/"
+     },
+     {
+      "value": "https://www.instagram.com/mulsetu.in/",
+      "sourceUrl": "https://www.mulsetu.com/"
+     }
+    ],
+    "credentials": []
+   }
+  },
+  "evidenceItems": [
+   {
+    "id": "profile.business_name",
+    "metric": "profile_field:Business Name",
+    "value": "verified_present",
+    "status": "verified",
+    "source": "google_places",
+    "confidence": "high",
+    "state": "VERIFIED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.primary_category",
+    "metric": "profile_field:Primary Category",
+    "value": "verified_present",
+    "status": "verified",
+    "source": "google_places",
+    "confidence": "high",
+    "state": "VERIFIED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.address",
+    "metric": "profile_field:Address",
+    "value": "verified_present",
+    "status": "verified",
+    "source": "google_places",
+    "confidence": "high",
+    "state": "VERIFIED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.phone",
+    "metric": "profile_field:Phone",
+    "value": "verified_missing",
+    "status": "verified_missing",
+    "source": "google_places",
+    "confidence": "high",
+    "state": "VERIFIED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.website",
+    "metric": "profile_field:Website",
+    "value": "verified_present",
+    "status": "verified",
+    "source": "google_places",
+    "confidence": "high",
+    "state": "VERIFIED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.business_hours",
+    "metric": "profile_field:Business Hours",
+    "value": "verified_present",
+    "status": "verified",
+    "source": "google_places",
+    "confidence": "high",
+    "state": "VERIFIED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.business_photos",
+    "metric": "profile_field:Business Photos",
+    "value": "verified_present",
+    "status": "verified",
+    "source": "google_places",
+    "confidence": "high",
+    "state": "VERIFIED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.service_area",
+    "metric": "profile_field:Service Area",
+    "value": "unknown",
+    "status": "unknown",
+    "source": "google_places",
+    "confidence": "low",
+    "state": "UNKNOWN",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.business_description",
+    "metric": "profile_field:Business Description",
+    "value": "unknown",
+    "status": "unknown",
+    "source": "google_places",
+    "confidence": "low",
+    "state": "UNKNOWN",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.additional_categories",
+    "metric": "profile_field:Additional Categories",
+    "value": "unknown",
+    "status": "unknown",
+    "source": "google_places",
+    "confidence": "low",
+    "state": "UNKNOWN",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.services_listed",
+    "metric": "profile_field:Services Listed",
+    "value": "unknown",
+    "status": "unknown",
+    "source": "google_places",
+    "confidence": "low",
+    "state": "UNKNOWN",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.social_links",
+    "metric": "profile_field:Social Links",
+    "value": "unknown",
+    "status": "unknown",
+    "source": "google_places",
+    "confidence": "low",
+    "state": "UNKNOWN",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.videos",
+    "metric": "profile_field:Videos",
+    "value": "unknown",
+    "status": "unknown",
+    "source": "google_places",
+    "confidence": "low",
+    "state": "UNKNOWN",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.logo_cover_image",
+    "metric": "profile_field:Logo / Cover Image",
+    "value": "unknown",
+    "status": "unknown",
+    "source": "google_places",
+    "confidence": "low",
+    "state": "UNKNOWN",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.attributes",
+    "metric": "profile_field:Attributes",
+    "value": "unknown",
+    "status": "unknown",
+    "source": "google_places",
+    "confidence": "low",
+    "state": "UNKNOWN",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "profile.booking_appointment_link",
+    "metric": "profile_field:Booking / Appointment Link",
+    "value": "unknown",
+    "status": "unknown",
+    "source": "google_places",
+    "confidence": "low",
+    "state": "UNKNOWN",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "title.name",
+    "metric": "business_title",
+    "value": "Mulsetu",
+    "status": "verified",
+    "source": "google_places",
+    "confidence": "high",
+    "state": "VERIFIED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "ranking.primary",
+    "metric": "primary_keyword_ranking",
+    "value": {
+     "status": "ok",
+     "totalSearches": 3,
+     "testedCount": 3,
+     "unavailableCount": 0,
+     "foundCount": 3,
+     "notFoundCount": 0,
+     "averageObservedRank": 1.7,
+     "bestRank": 1,
+     "visibilityRate": 1,
+     "notFoundRate": 0,
+     "top3Count": 3,
+     "top3Rate": 1,
+     "top5Count": 3,
+     "top5Rate": 1,
+     "top10Count": 3,
+     "top10Rate": 1
+    },
+    "keyword": "website development ojhar",
+    "status": "verified",
+    "source": "dataforseo",
+    "confidence": "high",
+    "state": "VERIFIED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "ranking.nearby",
+    "metric": "nearby_area_rankings",
+    "value": {
+     "status": "ok",
+     "totalSearches": 5,
+     "testedCount": 5,
+     "unavailableCount": 0,
+     "foundCount": 2,
+     "notFoundCount": 3,
+     "averageObservedRank": 1,
+     "bestRank": 1,
+     "visibilityRate": 0.4,
+     "notFoundRate": 0.6,
+     "top3Count": 2,
+     "top3Rate": 0.4,
+     "top5Count": 2,
+     "top5Rate": 0.4,
+     "top10Count": 2,
+     "top10Rate": 0.4
+    },
+    "status": "verified",
+    "source": "dataforseo",
+    "confidence": "high",
+    "state": "VERIFIED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "competitors.ahead",
+    "metric": "competitors_ahead",
+    "value": {
+     "count": 11,
+     "names": [
+      "AdScapes Digital Marketing Agency",
+      "Armstrong Dematic (Tech-Center)",
+      "AMM DigiSol",
+      "Megabotic Machines Pvt Ltd",
+      "Binary Labs - Custom Software Developement",
+      "Ali Graphics",
+      "Sunrise Computers",
+      "M/s. Chandrama Graphics",
+      "thoughtbuild",
+      "sky css"
+     ]
+    },
+    "status": "verified",
+    "source": "dataforseo",
+    "confidence": "high",
+    "state": "VERIFIED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "reviews.lifetime",
+    "metric": "lifetime_reviews",
+    "value": {
+     "totalCount": 3,
+     "rating": 5
+    },
+    "status": "verified",
+    "source": "google_places",
+    "confidence": "high",
+    "state": "VERIFIED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "reviews.vs_competitors",
+    "metric": "review_count_vs_competitors_ahead",
+    "value": {
+     "targetCount": 3,
+     "targetRating": 5,
+     "competitorsCompared": 6,
+     "medianCompetitorReviewCount": 6,
+     "medianCompetitorRating": 4.9
+    },
+    "status": "verified",
+    "source": "dataforseo",
+    "confidence": "high",
+    "state": "VERIFIED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "risk.suspension",
+    "metric": "suspension_risk_heuristic",
+    "value": {
+     "level": "Low",
+     "reasons": [],
+     "basis": "heuristic"
+    },
+    "status": "verified",
+    "source": "calculated",
+    "confidence": "low",
+    "state": "INFERRED",
+    "collectedAt": "2026-09-29T07:28:24.585Z",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "website.services",
+    "metric": "website_services",
+    "value": [
+     "AI & Automation",
+     "Website Development",
+     "SaaS Development",
+     "Custom Software & ERP",
+     "Mobile App Development",
+     "MVP Development"
+    ],
+    "status": "verified",
+    "source": "website",
+    "state": "SOURCE_CLAIM",
+    "sourceUrl": "https://www.mulsetu.com/services",
+    "collectedAt": "2026-09-29T07:27:15.670Z",
+    "confidence": "medium",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "website.description",
+    "metric": "website_description",
+    "value": "Mulsetu is a technology partner for growing businesses — software development, AI automation, SaaS, ERP, mobile apps, and MVPs, from first build through launch.",
+    "status": "verified",
+    "source": "website",
+    "state": "SOURCE_CLAIM",
+    "sourceUrl": "https://www.mulsetu.com/",
+    "collectedAt": "2026-09-29T07:27:15.670Z",
+    "confidence": "medium",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "website.booking",
+    "metric": "website_booking_link",
+    "value": "https://www.mulsetu.com/book",
+    "status": "verified",
+    "source": "website",
+    "state": "SOURCE_CLAIM",
+    "sourceUrl": "https://www.mulsetu.com/",
+    "collectedAt": "2026-09-29T07:27:15.670Z",
+    "confidence": "medium",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   },
+   {
+    "id": "website.areas",
+    "metric": "website_service_areas",
+    "value": [
+     "India"
+    ],
+    "status": "verified",
+    "source": "website",
+    "state": "SOURCE_CLAIM",
+    "sourceUrl": "https://www.mulsetu.com/",
+    "collectedAt": "2026-09-29T07:27:15.670Z",
+    "confidence": "medium",
+    "businessId": "6abb6851efb599853817b944",
+    "auditId": "6abb6851615cba599ad4b01e"
+   }
+  ],
+  "findings": [
+   {
+    "id": "profile.phone.missing",
+    "category": "profile",
+    "evidence": "Phone: not found on the Google listing",
+    "evidenceIds": [
+     "profile.phone"
+    ],
+    "source": "google_places",
+    "confidence": "high",
+    "title": "No phone number on the Google listing",
+    "severity": "high",
+    "businessImpact": "Searchers cannot call directly from Google Maps.",
+    "actionability": "directly_fixable",
+    "growwmaticsCapability": "update_phone",
+    "recommendedAction": "Add the business phone number to the Google profile.",
+    "evidenceState": "VERIFIED",
+    "ownerAction": "Provide the phone number customers should call.",
+    "growwmaticsAction": "Update the phone number on Google",
+    "requiresGbpConnection": true,
+    "measurement": "Field status in the next connected audit"
+   },
+   {
+    "id": "ranking.nearby.not_found",
+    "category": "ranking",
+    "title": "Not in the top 20 for 3 of 5 nearby-area searches",
+    "evidence": "Examples: \"website development Valmiki Nagar\", \"website development Sinnarkar\", \"website development Siddhaye\"",
+    "evidenceIds": [
+     "ranking.nearby"
+    ],
+    "source": "dataforseo",
+    "severity": "medium",
+    "confidence": "high",
+    "businessImpact": "Searchers in these nearby areas are shown other businesses first.",
+    "actionability": "indirectly_influenceable",
+    "growwmaticsCapability": "google_posts",
+    "recommendedAction": "Mention the areas actually served in posts and the description, then re-measure.",
+    "evidenceState": "VERIFIED",
+    "ownerAction": "Approve post topics built from your real services and updates.",
+    "growwmaticsAction": "Write and publish Google posts",
+    "requiresGbpConnection": true,
+    "measurement": "The same Google Maps searches, re-run in the next audit"
+   },
+   {
+    "id": "reviews.volume_gap",
+    "category": "reviews",
+    "title": "Fewer reviews than the businesses shown above you",
+    "evidence": "You: 5★ from 3 reviews. Median of 6 businesses above you: 6 reviews at 4.9★",
+    "evidenceIds": [
+     "reviews.lifetime",
+     "reviews.vs_competitors"
+    ],
+    "source": "dataforseo",
+    "severity": "medium",
+    "confidence": "high",
+    "businessImpact": "Searchers comparing listings see far more customer feedback on the others.",
+    "actionability": "indirectly_influenceable",
+    "growwmaticsCapability": "review_requests",
+    "recommendedAction": "Ask recent real customers for reviews on a steady schedule.",
+    "evidenceState": "VERIFIED",
+    "ownerAction": "Provide or approve the list of recent customers and the request message.",
+    "growwmaticsAction": "Send WhatsApp review-request campaigns",
+    "requiresGbpConnection": false,
+    "measurement": "Lifetime review count, rating and reply rate in the next audit"
+   },
+   {
+    "id": "competitors.ahead",
+    "category": "competitors",
+    "title": "11 businesses appeared above you in the searches we ran",
+    "evidence": "Including AdScapes Digital Marketing Agency, Armstrong Dematic (Tech-Center), AMM DigiSol (across 11 searches)",
+    "evidenceIds": [
+     "competitors.ahead"
+    ],
+    "source": "dataforseo",
+    "severity": "low",
+    "confidence": "high",
+    "businessImpact": "These are the listings searchers see before yours.",
+    "actionability": "monitor_only",
+    "growwmaticsCapability": "rank_tracking",
+    "recommendedAction": "Compare your profile with theirs using the other findings in this report.",
+    "evidenceState": "VERIFIED",
+    "ownerAction": "Nothing — measurement only.",
+    "growwmaticsAction": "Re-measure rankings every month",
+    "requiresGbpConnection": false,
+    "measurement": "Businesses shown above you in the same searches"
+   },
+   {
+    "id": "website.booking.not_on_listing",
+    "category": "website",
+    "title": "Your website has a booking page; your Google listing did not show a booking link",
+    "evidence": "Website: https://www.mulsetu.com/book · Google Maps results we read: no booking link shown",
+    "evidenceIds": [
+     "website.booking"
+    ],
+    "source": "website",
+    "severity": "low",
+    "confidence": "medium",
+    "businessImpact": "A booking link on the listing lets searchers book straight from Google Maps.",
+    "actionability": "directly_fixable",
+    "growwmaticsCapability": null,
+    "recommendedAction": "Add https://www.mulsetu.com/book as the appointment link in Google Business Profile.",
+    "evidenceState": "SOURCE_CLAIM",
+    "ownerAction": "Add https://www.mulsetu.com/book as the appointment link in Google Business Profile.",
+    "growwmaticsAction": null,
+    "requiresGbpConnection": false,
+    "measurement": "Website re-read (cached 30 days) and Google profile field status"
+   },
+   {
+    "id": "website.services.verify_on_gbp",
+    "category": "website",
+    "title": "Check your Google profile lists the 6 services your website describes",
+    "evidence": "Website (https://www.mulsetu.com/services): AI & Automation, Website Development, SaaS Development, Custom Software & ERP, Mobile App Development…",
+    "evidenceIds": [
+     "website.services"
+    ],
+    "source": "website",
+    "severity": "low",
+    "confidence": "medium",
+    "businessImpact": "Google matches listings to searches partly by the services listed on them; this report could not read your Google service list.",
+    "actionability": "directly_fixable",
+    "growwmaticsCapability": null,
+    "recommendedAction": "Verify whether your Google Business Profile service list includes: AI & Automation, Website Development, SaaS Development, Custom Software & ERP, Mobile App Development.",
+    "evidenceState": "SOURCE_CLAIM",
+    "ownerAction": "Verify whether your Google Business Profile service list includes: AI & Automation, Website Development, SaaS Development, Custom Software & ERP, Mobile App Development.",
+    "growwmaticsAction": null,
+    "requiresGbpConnection": false,
+    "measurement": "Website re-read (cached 30 days) and Google profile field status"
+   }
+  ],
+  "validation": {
+   "ok": true,
+   "errors": [],
+   "repairs": [
+    "dropped weakness \"Limited Nearby‑Area Visibility\" (claims a cause of ranking)",
+    "dropped weakness \"Fewer Reviews Than Competitors\" (names a business or service not in the facts)",
+    "dropped weakness \"Competitors Ranking Ahead\" (names a business or service not in the facts)"
+   ],
+   "checkedAt": "2026-09-29T07:28:54.900Z"
+  },
+  "auditKind": "free_report",
+  "performanceBaseline": {
+   "status": "not_measured",
+   "reason": "Calls, website clicks and direction requests need a Google connection."
+  },
+  "optimizationPlan": [
+   {
+    "findingId": "profile.phone.missing",
+    "evidence": "Phone: not found on the Google listing",
+    "evidenceState": "VERIFIED",
+    "priority": "high",
+    "action": "Add the business phone number to the Google profile.",
+    "executor": "growwmatics:update_phone",
+    "executedBy": "growwmatics_and_owner",
+    "growwmaticsAction": "Update the phone number on Google",
+    "ownerAction": "Provide the phone number customers should call.",
+    "requiresGbpConnection": true,
+    "requiresOwnerConfirmation": true,
+    "executionStatus": "not_started",
+    "measurement": "Field status in the next connected audit"
+   },
+   {
+    "findingId": "ranking.nearby.not_found",
+    "evidence": "Examples: \"website development Valmiki Nagar\", \"website development Sinnarkar\", \"website development Siddhaye\"",
+    "evidenceState": "VERIFIED",
+    "priority": "medium",
+    "action": "Mention the areas actually served in posts and the description, then re-measure.",
+    "executor": "growwmatics:google_posts",
+    "executedBy": "growwmatics_and_owner",
+    "growwmaticsAction": "Write and publish Google posts",
+    "ownerAction": "Approve post topics built from your real services and updates.",
+    "requiresGbpConnection": true,
+    "requiresOwnerConfirmation": true,
+    "executionStatus": "not_started",
+    "measurement": "The same Google Maps searches, re-run in the next audit"
+   },
+   {
+    "findingId": "reviews.volume_gap",
+    "evidence": "You: 5★ from 3 reviews. Median of 6 businesses above you: 6 reviews at 4.9★",
+    "evidenceState": "VERIFIED",
+    "priority": "medium",
+    "action": "Ask recent real customers for reviews on a steady schedule.",
+    "executor": "growwmatics:review_requests",
+    "executedBy": "growwmatics_and_owner",
+    "growwmaticsAction": "Send WhatsApp review-request campaigns",
+    "ownerAction": "Provide or approve the list of recent customers and the request message.",
+    "requiresGbpConnection": false,
+    "requiresOwnerConfirmation": true,
+    "executionStatus": "not_started",
+    "measurement": "Lifetime review count, rating and reply rate in the next audit"
+   },
+   {
+    "findingId": "website.booking.not_on_listing",
+    "evidence": "Website: https://www.mulsetu.com/book · Google Maps results we read: no booking link shown",
+    "evidenceState": "SOURCE_CLAIM",
+    "priority": "low",
+    "action": "Add https://www.mulsetu.com/book as the appointment link in Google Business Profile.",
+    "executor": "owner_in_google",
+    "executedBy": "owner",
+    "growwmaticsAction": null,
+    "ownerAction": "Add https://www.mulsetu.com/book as the appointment link in Google Business Profile.",
+    "requiresGbpConnection": false,
+    "requiresOwnerConfirmation": true,
+    "executionStatus": "not_started",
+    "measurement": "Website re-read (cached 30 days) and Google profile field status"
+   },
+   {
+    "findingId": "website.services.verify_on_gbp",
+    "evidence": "Website (https://www.mulsetu.com/services): AI & Automation, Website Development, SaaS Development, Custom Software & ERP, Mobile App Development…",
+    "evidenceState": "SOURCE_CLAIM",
+    "priority": "low",
+    "action": "Verify whether your Google Business Profile service list includes: AI & Automation, Website Development, SaaS Development, Custom Software & ERP, Mobile App Development.",
+    "executor": "owner_in_google",
+    "executedBy": "owner",
+    "growwmaticsAction": null,
+    "ownerAction": "Verify whether your Google Business Profile service list includes: AI & Automation, Website Development, SaaS Development, Custom Software & ERP, Mobile App Development.",
+    "requiresGbpConnection": false,
+    "requiresOwnerConfirmation": true,
+    "executionStatus": "not_started",
+    "measurement": "Website re-read (cached 30 days) and Google profile field status"
+   }
+  ],
+  "providerUsage": {
+   "counts": {
+    "websiteFetch": 12,
+    "dataForSeoMapsLiveTask": 11,
+    "googleGeocoding": 9,
+    "dataForSeoAdsVolumeLiveTask": 1,
+    "groqCall": 4,
+    "groqInputToken": 7187,
+    "groqOutputToken": 4168
+   },
+   "calls": [
+    {
+     "provider": "DataForSEO",
+     "endpoint": "Google Ads Search Volume Live",
+     "reason": "keyword_demand (9 uncached keywords)",
+     "units": 1,
+     "listPriceUsd": 0.09
+    },
+    {
+     "provider": "Google Maps Platform",
+     "endpoint": "Geocoding (reverse)",
+     "reason": "nearby_area_names",
+     "units": 9,
+     "listPriceUsd": 0.045
+    },
+    {
+     "provider": "DataForSEO",
+     "endpoint": "SERP Google Maps Live Advanced",
+     "reason": "rank_search_grid_point",
+     "units": 11,
+     "listPriceUsd": 0.022
+    },
+    {
+     "provider": "Groq",
+     "endpoint": "output tokens",
+     "reason": "consultant_sections",
+     "units": 2472,
+     "listPriceUsd": 0.0015
+    },
+    {
+     "provider": "Groq",
+     "endpoint": "output tokens",
+     "reason": "audit_narrative",
+     "units": 1696,
+     "listPriceUsd": 0.001
+    },
+    {
+     "provider": "Groq",
+     "endpoint": "input tokens",
+     "reason": "consultant_sections",
+     "units": 4413,
+     "listPriceUsd": 0.0007
+    },
+    {
+     "provider": "Groq",
+     "endpoint": "input tokens",
+     "reason": "audit_narrative",
+     "units": 2774,
+     "listPriceUsd": 0.0004
+    },
+    {
+     "provider": "Business website",
+     "endpoint": "HTTP GET (SSRF-guarded)",
+     "reason": "website_home",
+     "units": 6,
+     "listPriceUsd": null
+    },
+    {
+     "provider": "Business website",
+     "endpoint": "HTTP GET (SSRF-guarded)",
+     "reason": "website_about",
+     "units": 2,
+     "listPriceUsd": null
+    },
+    {
+     "provider": "Business website",
+     "endpoint": "HTTP GET (SSRF-guarded)",
+     "reason": "website_services",
+     "units": 1,
+     "listPriceUsd": null
+    },
+    {
+     "provider": "Business website",
+     "endpoint": "HTTP GET (SSRF-guarded)",
+     "reason": "website_contact",
+     "units": 1,
+     "listPriceUsd": null
+    },
+    {
+     "provider": "Business website",
+     "endpoint": "HTTP GET (SSRF-guarded)",
+     "reason": "website_service_detail",
+     "units": 2,
+     "listPriceUsd": null
+    },
+    {
+     "provider": "Groq",
+     "endpoint": "chat.completions (gpt-oss-120b)",
+     "reason": "audit_narrative",
+     "units": 1,
+     "listPriceUsd": null
+    },
+    {
+     "provider": "Groq",
+     "endpoint": "chat.completions (gpt-oss-120b)",
+     "reason": "consultant_sections",
+     "units": 3,
+     "listPriceUsd": null
+    }
+   ],
+   "billableCalls": 37,
+   "listPriceUsd": 0.1606,
+   "measuredAt": "2026-09-29T07:28:54.902Z",
+   "note": "List prices, before provider free allowances. Intake Places lookups happen before the audit and are not included."
+  },
+  "aiStatus": {
+   "analysis": "ok",
+   "analysisError": null,
+   "consultant": "ok",
+   "consultantFailed": [],
+   "validationRepairs": 4
+  }
+ }
+}

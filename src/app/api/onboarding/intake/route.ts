@@ -157,6 +157,16 @@ export async function POST(req: Request) {
     console.error('[intake] maybeStartAuditAutopilot failed:', err);
   }
 
+  // Keywords are one of the three conditions weekly content autopilot waits
+  // on — when intake is the last one, start the first batch now instead of
+  // waiting up to an hour for weeklyContentAutopilot's hourly pass.
+  try {
+    const { maybeStartContentAutopilot } = await import('@/lib/contentAutopilot');
+    await maybeStartContentAutopilot(String(ctx.businessId));
+  } catch (err) {
+    console.error('[intake] maybeStartContentAutopilot failed:', err);
+  }
+
   return NextResponse.json({ success: true });
 }
 

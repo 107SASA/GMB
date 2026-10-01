@@ -87,9 +87,19 @@ export const contentPostSchema = z.object({
       service: z.string().nullable().catch(null).optional(),
       keyword: z.string().nullable().catch(null).optional(),
       keywordMeasured: z.boolean().nullable().catch(null).optional(),
+      keywordSource: z.string().nullable().catch(null).optional(),
+      /** Why this keyword was chosen — built only from stored evidence. */
+      keywordReason: z.string().nullable().catch(null).optional(),
       seoTheme: z.string().nullable().catch(null).optional(),
       festivalName: z.string().nullable().catch(null).optional(),
       draftReason: z.string().nullable().catch(null).optional(),
+      /** AI_GENERATED / OWNER_SELECTED / FALLBACK / NONE — where the post image came from. */
+      imageOrigin: z.string().nullable().catch(null).optional(),
+      imageGeneration: z
+        .object({ status: z.string().catch(''), error: z.string().optional() })
+        .nullable()
+        .catch(null)
+        .optional(),
     })
     .nullable()
     .optional()
@@ -144,8 +154,20 @@ export function postPlanLine(p: Pick<ContentPost, 'contentMeta'>): string | null
   return [
     PURPOSE_LABEL[m.purpose] ?? m.purpose,
     m.festivalName || m.service || null,
-    m.keyword ? `“${m.keyword}” (${m.keywordMeasured ? 'measured keyword' : 'proposed — not measured'})` : null,
+    m.keyword
+      ? `“${m.keyword}” (${m.keywordSource === 'search_term' ? 'customer search on Google' : m.keywordMeasured ? 'measured keyword' : 'proposed — not measured'})`
+      : null,
   ].filter(Boolean).join(' · ');
+}
+
+/** Where the post image came from — stated plainly, never calls a fallback "AI-generated". */
+export function imageOriginLine(m: ContentPost['contentMeta']): string | null {
+  switch (m?.imageOrigin) {
+    case 'AI_GENERATED': return 'Image: new AI image made for this post';
+    case 'OWNER_SELECTED': return 'Image: the photo you chose for this post';
+    case 'FALLBACK': return 'Image: branded graphic (the AI image could not be created)';
+    default: return null;
+  }
 }
 
 /** Short description of the image's location metadata, or null. */

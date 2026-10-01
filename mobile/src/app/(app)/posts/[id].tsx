@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
-import { geotagLine, postPlanLine, postStatusView } from '@/api/endpoints/content';
+import { geotagLine, imageOriginLine, postPlanLine, postStatusView } from '@/api/endpoints/content';
 import { deletePost, fetchPost, publishPost, schedulePost } from '@/api/endpoints/scheduler';
 import { useDateTimePicker } from '@/components/datetime-picker';
 import { EditPostModal } from '@/components/gbp/edit-post-modal';
@@ -160,6 +160,12 @@ export default function PostDetailScreen() {
             <Text className="mt-2 font-sans text-sm text-amber-300">{sv.note}</Text>
           )}
           {!!plan && <Text className="mt-2 font-sans text-xs text-zinc-500">Plan: {plan}</Text>}
+          {!!p.contentMeta?.keywordReason && (
+            <Text className="mt-1 font-sans text-xs text-zinc-500">Why this keyword: {p.contentMeta.keywordReason}</Text>
+          )}
+          {!!p.imageUrl && !!imageOriginLine(p.contentMeta) && (
+            <Text className="mt-1 font-sans text-xs text-zinc-500">{imageOriginLine(p.contentMeta)}</Text>
+          )}
           {!!geo && !!p.imageUrl && <Text className="mt-1 font-sans text-xs text-zinc-500">{geo}</Text>}
 
           <View className="mt-3 flex-row items-center gap-1.5">

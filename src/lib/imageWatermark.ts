@@ -82,3 +82,35 @@ export async function brandedGraphic(opts: { headline: string; subline?: string;
   const base = await sharp(Buffer.from(svg)).png().toBuffer();
   return watermarkImageBuffer(base, opts.customerLogo ?? null);
 }
+
+/**
+ * Overlays the owner's EXACT offer text as a band across the top of an image
+ * (drawn here, not by the image model — so the wording can't be altered,
+ * misspelled or embellished). Long text is wrapped to 3 lines and clipped
+ * with "…". The bottom-right logo corner is left untouched.
+ */
+export async function addOfferTextBand(input: Buffer, text: string, colors: string[]): Promise<{ buffer: Buffer; mime: string }> {
+  const sharp = (await import('sharp')).default;
+  const meta = await sharp(input).metadata();
+  const W = meta.width || 1080;
+  const [bg, fg] = [colors[0] || '#1f2937', colors[1] && colors[1] !== colors[0] ? colors[1] : '#ffffff'];
+  const fontSize = Math.round(W * 0.045);
+  const perLine = Math.max(16, Math.floor((W * 0.86) / (fontSize * 0.55)));
+  const lines: string[] = [];
+  for (const w of String(text).replace(/\s+/g, ' ').trim().split(' ')) {
+    const last = lines[lines.length - 1];
+    if (last !== undefined && (last + ' ' + w).length <= perLine) lines[lines.length - 1] = `${last} ${w}`;
+    else lines.push(w);
+  }
+  const shown = lines.slice(0, 3);
+  if (lines.length > 3) shown[2] = `${shown[2].replace(/.{0,2}$/, '')}…`;
+  const pad = Math.round(fontSize * 0.7);
+  const bandH = pad * 2 + shown.length * Math.round(fontSize * 1.3);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${bandH}">
+    <rect width="100%" height="100%" fill="${bg}" opacity="0.88"/>
+    ${shown.map((l, i) => `<text x="${W / 2}" y="${pad + fontSize + i * Math.round(fontSize * 1.3)}" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="700" fill="${fg}" text-anchor="middle">${esc(l)}</text>`).join('')}
+  </svg>`;
+  const band = await sharp(Buffer.from(svg)).png().toBuffer();
+  const buffer = await sharp(input).composite([{ input: band, gravity: 'north' }]).jpeg({ quality: 88 }).toBuffer();
+  return { buffer, mime: 'image/jpeg' };
+}

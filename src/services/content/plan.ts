@@ -8,6 +8,8 @@
  * isn't in the calendar this week, no service that no source states.
  */
 
+import type { KeywordPick } from './keywordPriority.ts';
+
 export type ContentPurpose = 'seo_theme' | 'service' | 'local' | 'education' | 'festival' | 'offer';
 
 export interface ContentFacts {
@@ -35,6 +37,15 @@ export interface ContentSeoPlan {
   measuredKeywords: string[];
   /** AI-proposed keywords (never measured). */
   proposedKeywords: string[];
+  /**
+   * Evidence-based keyword picks for this week (services/content/keywordPriority.ts).
+   * When absent the planner keeps its plain theme rotation.
+   */
+  priorities?: {
+    seo: KeywordPick | null;
+    search: KeywordPick | null;
+    local: KeywordPick | null;
+  };
 }
 
 export interface WeekOffer { text: string; festivalName?: string | null; startsAt?: string | null; endsAt?: string | null; imageId?: string | null }
@@ -44,8 +55,11 @@ export interface PlannedSlot {
   purpose: ContentPurpose;
   service?: string;
   keyword?: string;
-  keywordSource?: 'measured' | 'proposed' | 'category';
+  keywordSource?: 'measured' | 'proposed' | 'category' | 'search_term';
   keywordMeasured: boolean;
+  /** Why this keyword — built only from stored evidence; absent when there is none. */
+  keywordReason?: string;
+  keywordEvidence?: KeywordPick['evidence'];
   seoPlanId: string | null;
   seoThemeIndex?: number;
   seoTheme?: string;
@@ -56,6 +70,17 @@ export interface PlannedSlot {
 }
 
 const norm = (s: string) => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/\s+/g, ' ').trim();
+
+/** Slot keyword fields from an evidence-based pick. */
+function fromPick(p: KeywordPick): Pick<PlannedSlot, 'keyword' | 'keywordSource' | 'keywordMeasured' | 'keywordReason' | 'keywordEvidence'> {
+  return {
+    keyword: p.keyword,
+    keywordSource: p.evidence.source === 'gbp_search_terms' ? 'search_term' : p.evidence.source === 'measured' ? 'measured' : 'proposed',
+    keywordMeasured: p.evidence.source !== 'proposed',
+    ...(p.reason ? { keywordReason: p.reason } : {}),
+    keywordEvidence: p.evidence,
+  };
+}
 
 export function keywordInfo(keyword: string | undefined, plan: ContentSeoPlan): Pick<PlannedSlot, 'keyword' | 'keywordSource' | 'keywordMeasured'> {
   if (!keyword) return { keywordMeasured: false };
@@ -93,26 +118,53 @@ export function planWeeklySlots(input: {
   const service = (offset: number) => (services.length ? services[(weekIndex + offset) % services.length] : undefined);
 
   const slots: PlannedSlot[] = [];
-  // 1 — priority SEO theme (else a verified service, else the category).
-  const t1 = theme(0);
-  const s1 = service(0);
+  // 1 — the highest-value SEO opportunity (evidence-based pick), else the
+  //     priority SEO theme, else a verified service, else the category.
+  const pr = plan.priorities;
+  const serviceFor = (term?: string) => (term ? services.find((x) => norm(x.value) === norm(term)) : undefined);
+  const pick1 = pr?.seo ?? null;
+  const themeFor = (kw: string) => {
+    const i = plan.themes.findIndex((t) => norm(t.keyword) === norm(kw));
+    return i >= 0 ? { t: plan.themes[i], i } : null;
+  };
+  const t1 = pick1 ? themeFor(pick1.keyword) ?? theme(0) : theme(0);
+  const s1 = (pick1 && serviceFor(pick1.evidence.matchedTerm)) || service(0);
   slots.push({
     slot: 1,
     purpose: t1 ? 'seo_theme' : s1 ? 'service' : 'education',
     service: s1?.value,
-    ...keywordInfo(t1?.t.keyword, plan),
+    ...(pick1 ? fromPick(pick1) : keywordInfo(t1?.t.keyword, plan)),
     seoPlanId: plan.seoPlanId,
     ...(t1 ? { seoThemeIndex: t1.i, seoTheme: t1.t.theme } : {}),
     evidence: [...base, ...svcEvidence(s1)],
   });
-  // 2 — another verified service, or an educational post about the category.
-  const s2 = services.length > 1 ? service(1) : undefined;
-  slots.push({ slot: 2, purpose: s2 ? 'service' : 'education', service: s2?.value, keywordMeasured: false, seoPlanId: plan.seoPlanId, evidence: [...base, ...svcEvidence(s2)] });
+  // 2 — a real customer search term from Google (when that data exists), else
+  //     another verified service, or an educational post about the category.
+  const pick2 = pr?.search ?? null;
+  const s2 = (pick2 && serviceFor(pick2.evidence.matchedTerm)) || (services.length > 1 ? service(1) : undefined);
+  slots.push({
+    slot: 2,
+    purpose: s2 ? 'service' : 'education',
+    service: s2?.value,
+    ...(pick2 ? fromPick(pick2) : { keywordMeasured: false }),
+    seoPlanId: plan.seoPlanId,
+    evidence: [...base, ...svcEvidence(s2)],
+  });
   // 3 — local relevance (verified business + location), with a measured local keyword when one exists.
   const cityKws = plan.measuredKeywords.filter((k) => facts.city && norm(k).includes(norm(facts.city)));
   // Prefer a local keyword slot 1 is not already targeting (one keyword per post, no repeats).
   const localKw = cityKws.find((k) => !t1 || norm(k) !== norm(t1.t.keyword)) ?? cityKws[0];
-  slots.push({ slot: 3, purpose: facts.city ? 'local' : 'education', service: service(2)?.value, ...keywordInfo(localKw, plan), seoPlanId: plan.seoPlanId, evidence: [...base, ...svcEvidence(service(2))] });
+  // The best local "service + area" opportunity when the evidence picked one.
+  const pick3 = pr?.local ?? null;
+  const s3 = (pick3 && serviceFor(pick3.evidence.matchedTerm)) || service(2);
+  slots.push({
+    slot: 3,
+    purpose: facts.city ? 'local' : 'education',
+    service: s3?.value,
+    ...(pick3 ? fromPick(pick3) : keywordInfo(localKw, plan)),
+    seoPlanId: plan.seoPlanId,
+    evidence: [...base, ...svcEvidence(s3)],
+  });
   // 4 — the week's opportunity: owner offer > festival > next SEO theme > education.
   const festival = festivals[0] || null;
   if (offer?.text?.trim()) {

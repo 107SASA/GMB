@@ -56,7 +56,27 @@ export interface ContentActivity {
   servicesCovered: string[];
   themesCovered: string[];
   keywords: Array<{ keyword: string; measured: boolean }>;
+  /**
+   * Every keyword targeted by a post due this period (any status), how many
+   * posts targeted it, and where the keyword came from. Rank before/after is
+   * added by buildMonthlyReport from the two audits' measured keyword tables.
+   */
+  keywordsTargeted?: Array<{
+    keyword: string;
+    source: 'measured' | 'search_term' | 'proposed' | 'other';
+    posts: number;
+    published: number;
+    rankBefore?: string | null;
+    rankAfter?: string | null;
+    comparable?: boolean;
+  }>;
   customerPhotosUsed: number;
+  /**
+   * Images on published posts by origin (contentMeta.imageOrigin). Posts from
+   * before origin was recorded are counted from their imageSource only when it
+   * is unambiguous (generate → AI, branded_graphic → fallback).
+   */
+  images?: { aiGenerated: number; ownerSelected: number; fallback: number };
   /** Posts that carry an SEO plan id (planned from the plan) vs how many of those reached Google. */
   seoPlanPosts: { planned: number; published: number };
 }
@@ -294,7 +314,7 @@ export function buildMonthlyReport(input: {
     performance,
     ranking,
     reviews,
-    contentActivity: ex.content && ex.content.planned > 0 ? ex.content : null,
+    contentActivity: ex.content && ex.content.planned > 0 ? withKeywordRanks(ex.content, prevData, curData) : null,
     profileHealth,
     planCompleted: input.actions.filter((a) => a.status === 'VERIFIED' || a.status === 'EXECUTED'),
     planPending: input.actions.filter((a) => a.status === 'PLANNED' || a.status === 'READY' || a.status === 'BLOCKED'),
@@ -349,7 +369,24 @@ export function contentActivityLines(c: ContentActivity | null | undefined): str
   if (c.servicesCovered.length) lines.push(`Services featured: ${c.servicesCovered.join(', ')}`);
   if (c.themesCovered.length) lines.push(`SEO-plan themes covered: ${c.themesCovered.join('; ')}`);
   if (c.seoPlanPosts.planned) lines.push(`SEO-plan posts: ${c.seoPlanPosts.published} of ${c.seoPlanPosts.planned} reached Google`);
-  if (c.keywords.length) lines.push(`Keywords used: ${c.keywords.map((k) => `${k.keyword}${k.measured ? '' : ' (proposed, not measured)'}`).join(', ')}`);
+  if (c.keywordsTargeted?.length) {
+    const label = (k: NonNullable<ContentActivity['keywordsTargeted']>[number]) => {
+      const src = k.source === 'search_term' ? ' (customer search on Google)' : k.source === 'proposed' ? ' (proposed, not measured)' : '';
+      const rank = k.comparable ? `, rank ${k.rankBefore} → ${k.rankAfter}` : k.source === 'measured' ? ', rank change not comparable' : '';
+      return `${k.keyword}${src} — ${k.posts} post${k.posts === 1 ? '' : 's'}${rank}`;
+    };
+    lines.push(`Keywords targeted: ${c.keywordsTargeted.map(label).join('; ')}`);
+  } else if (c.keywords.length) {
+    lines.push(`Keywords used: ${c.keywords.map((k) => `${k.keyword}${k.measured ? '' : ' (proposed, not measured)'}`).join(', ')}`);
+  }
+  if (c.images && (c.images.aiGenerated || c.images.ownerSelected || c.images.fallback)) {
+    const parts = [
+      c.images.aiGenerated && `${c.images.aiGenerated} new AI-generated`,
+      c.images.ownerSelected && `${c.images.ownerSelected} photo${c.images.ownerSelected === 1 ? '' : 's'} you chose`,
+      c.images.fallback && `${c.images.fallback} branded graphic${c.images.fallback === 1 ? '' : 's'} (AI image unavailable)`,
+    ].filter(Boolean);
+    lines.push(`Post images: ${parts.join(', ')}`);
+  }
   if (c.customerPhotosUsed) lines.push(`Your photos used in published posts: ${c.customerPhotosUsed}`);
   return lines;
 }
@@ -363,6 +400,22 @@ export function summarizeContent(rows: Array<{ status: string; liveWriteApplied?
   const kw = new Map<string, boolean>();
   for (const p of pub) if (p.contentMeta?.keyword) kw.set(p.contentMeta.keyword, !!p.contentMeta.keywordMeasured);
   const withPlan = rows.filter((p) => !!p.contentMeta?.seoPlanId);
+  const targeted = new Map<string, { keyword: string; source: 'measured' | 'search_term' | 'proposed' | 'other'; posts: number; published: number }>();
+  for (const p of rows) {
+    const k = p.contentMeta?.keyword;
+    if (!k) continue;
+    const key = String(k).toLowerCase().trim();
+    const src = p.contentMeta?.keywordSource;
+    const e = targeted.get(key) ?? {
+      keyword: k,
+      source: src === 'measured' || src === 'search_term' || src === 'proposed' ? src : (p.contentMeta?.keywordMeasured ? 'measured' : 'other'),
+      posts: 0,
+      published: 0,
+    };
+    e.posts++;
+    if (p.status === 'published' && p.liveWriteApplied === true) e.published++;
+    targeted.set(key, e);
+  }
   return {
     planned: rows.length,
     published: pub.length,
@@ -374,7 +427,43 @@ export function summarizeContent(rows: Array<{ status: string; liveWriteApplied?
     servicesCovered: uniq(pub.map((p) => p.contentMeta?.service)),
     themesCovered: uniq(pub.map((p) => p.contentMeta?.seoTheme)),
     keywords: Array.from(kw.entries()).map(([keyword, measured]) => ({ keyword, measured })),
-    customerPhotosUsed: pub.filter((p) => p.contentMeta?.imageSource === 'customer_photo').length,
+    keywordsTargeted: Array.from(targeted.values()),
+    // Legacy: photos picked automatically before Oct 2026 (no imageOrigin recorded).
+    customerPhotosUsed: pub.filter((p) => !p.contentMeta?.imageOrigin && p.contentMeta?.imageSource === 'customer_photo').length,
+    images: {
+      aiGenerated: pub.filter((p) => (p.contentMeta?.imageOrigin ?? (p.contentMeta?.imageSource === 'generate' ? 'AI_GENERATED' : null)) === 'AI_GENERATED').length,
+      ownerSelected: pub.filter((p) => p.contentMeta?.imageOrigin === 'OWNER_SELECTED').length,
+      fallback: pub.filter((p) => (p.contentMeta?.imageOrigin ?? (p.contentMeta?.imageSource === 'branded_graphic' ? 'FALLBACK' : null)) === 'FALLBACK').length,
+    },
     seoPlanPosts: { planned: withPlan.length, published: withPlan.filter((p) => p.status === 'published' && p.liveWriteApplied === true).length },
+  };
+}
+
+/** "#8" / "not in top 20" from a measured keyword-table row, or null when the check didn't run. */
+function measuredRankText(row: any): string | null {
+  if (!row || (row.rankStatus ?? 'ok') !== 'ok') return null;
+  const r = row.rank ?? row.mapsRank;
+  if (row.found === false) return 'not in top 20';
+  return typeof r === 'number' && r >= 1 && r <= 20 ? `#${Math.round(r * 10) / 10}` : null;
+}
+
+/**
+ * Adds the measured rank before/after to each targeted keyword — only from
+ * the two audits' keyword tables, only when both measured it. No rank is
+ * inferred, and a change is shown as an observation, not as caused by posts.
+ */
+export function withKeywordRanks(content: ContentActivity, prevData: any, curData: any): ContentActivity {
+  if (!content.keywordsTargeted?.length) return content;
+  const table = (d: any) => new Map<string, any>(((d?.keywordTable as any[]) || []).map((r) => [String(r.keyword).toLowerCase().trim(), r]));
+  const prev = table(prevData);
+  const cur = table(curData);
+  return {
+    ...content,
+    keywordsTargeted: content.keywordsTargeted.map((k) => {
+      const key = k.keyword.toLowerCase().trim();
+      const before = measuredRankText(prev.get(key));
+      const after = measuredRankText(cur.get(key));
+      return { ...k, rankBefore: before, rankAfter: after, comparable: before != null && after != null };
+    }),
   };
 }

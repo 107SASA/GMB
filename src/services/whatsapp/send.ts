@@ -80,7 +80,11 @@ export async function sendOutboundMessage(
       // into {{2}}; this is the fallback's own last-resort summary text, not
       // the primary send, so losing line breaks here is an acceptable trade
       // for the message actually arriving.
-      const flatBody = body.replace(/\s*[\r\n\t]+\s*/g, ' ').replace(/ {2,}/g, ' ').trim();
+      // Template parameters can't hold newlines, and WhatsApp caps the whole
+      // template body (~1024 chars incl. the fixed wording) — an over-long
+      // update (e.g. a monthly summary) would otherwise be rejected outright.
+      const flat = body.replace(/\s*[\r\n\t]+\s*/g, ' ').replace(/ {2,}/g, ' ').trim();
+      const flatBody = flat.length > 900 ? `${flat.slice(0, 897).trimEnd()}…` : flat;
       const retry = await sendTemplateMessage(phone, WA_TEMPLATES.notification, { '1': 'there', '2': flatBody }, businessId);
       if (retry.success) return retry;
       return { ...result, error: `${result.error} (template fallback also failed: ${retry.error})` };

@@ -6,6 +6,7 @@ import { getApiErrorMessage } from '@/api/client';
 import { postPlanLine, postStatusView, type ContentPost } from '@/api/endpoints/content';
 import { deletePost, fetchBuffer, publishPost, schedulePost } from '@/api/endpoints/scheduler';
 import { useBusiness } from '@/business/BusinessContext';
+import { ContentStatusStrip } from '@/components/content-status-strip';
 import { useDateTimePicker } from '@/components/datetime-picker';
 import { Badge, EmptyState, SectionLabel, Skeleton, useConfirmSheet, useInfoSheet } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
@@ -216,6 +217,9 @@ export function SchedulerPanel({
 
   const body = (
     <>
+      <View className="px-5">
+        <ContentStatusStrip />
+      </View>
       <View className="px-5">
         <BufferCard
           healthStatus={data!.healthStatus}

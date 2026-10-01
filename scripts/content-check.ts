@@ -97,7 +97,11 @@ async function main() {
 async function run() {
   const sharp = (await import('sharp')).default;
   logoPng = await sharp({ create: { width: 200, height: 200, channels: 4, background: { r: 220, g: 20, b: 60, alpha: 1 } } }).png().toBuffer();
-  const genImage = async () => `data:image/png;base64,${(await sharp({ create: { width: 1200, height: 900, channels: 3, background: { r: 30, g: 90, b: 200 } } }).png().toBuffer()).toString('base64')}`;
+  let genN = 0;
+  const genImage = async () => {
+    genN++;
+    return `data:image/png;base64,${(await sharp({ create: { width: 1200, height: 900, channels: 3, background: { r: (30 + genN * 37) % 256, g: (90 + genN * 53) % 256, b: 200 } } }).png().toBuffer()).toString('base64')}`;
+  };
 
   const dbConnect = (await import('../src/lib/mongodb')).default;
   await dbConnect();
@@ -180,7 +184,7 @@ async function run() {
     `${p1.map((p) => `${p.contentMeta.slot}:${p.contentMeta.purpose}/${p.status}/${p.contentMeta.generatedVia}`).join(', ')}`, 'REAL Groq + in-memory DB');
   const aiOk = p1.filter((p) => p.contentMeta.generatedVia !== 'template');
   check('1b', 'every scheduled post passed the evidence gate', p1.every((p) => p.status !== 'scheduled' || p.contentMeta.validation.ok === true), `scheduled ${p1.filter((p) => p.status === 'scheduled').length}, drafts ${p1.filter((p) => p.status === 'draft').length}, AI copy ${aiOk.length}/4${p1.some((p) => p.contentMeta.draftReason) ? ` · draft reasons: ${p1.filter((p) => p.contentMeta.draftReason).map((p) => p.contentMeta.draftReason.slice(0, 90)).join(' | ')}` : ''}`, 'REAL Groq');
-  check('5', 'customer photos used first (unaltered URL)', p1.filter((p) => p.contentMeta.imageSource === 'customer_photo').length >= 2 && p1.filter((p) => p.contentMeta.imageSource === 'customer_photo').every((p) => /^https:\/\/cdn\.example\.invalid\/photo/.test(p.imageUrl)), p1.map((p) => p.contentMeta.imageSource).join(', '));
+  check('5', 'owner has Photos, but every autopilot post gets its own new AI image (Photos not auto-used)', p1.every((p) => p.contentMeta.imageOrigin === 'AI_GENERATED' && !/cdn\.example\.invalid\/photo/.test(p.imageUrl || '')), p1.map((p) => p.contentMeta.imageOrigin).join(', '));
   const bizA: any = await Business.findById(A._id).lean();
   check('4', 'customer logo drives brand colour (logo > website)', bizA.brandProfile?.colorSource === 'logo' && bizA.brandProfile?.logoSource === 'customer_upload', `colorSource ${bizA.brandProfile?.colorSource}, colors ${bizA.brandProfile?.colors?.join(' ')}, logo ${bizA.brandProfile?.logoSource}`);
   const m1 = p1.find((p) => p.contentMeta.keyword === 'bathroom renovation nashik');
@@ -272,11 +276,11 @@ async function run() {
   const K = await mkBiz({ website: 'https://sahyadri-tiles.example' }); await seedPlan(K);
   await batch(K, { deps: { generate: fakeGen, generateImage: genImage } });
   const pK = await postsOf(K);
-  check('6', 'no customer photos → generated image (not a fake photo of the business)', pK.every((p) => ['generate', 'website_image'].includes(p.contentMeta.imageSource)) && pK.some((p) => p.contentMeta.imageSource === 'generate'), `${pK.map((p) => p.contentMeta.imageSource).join(', ')}${pK[0]?.contentMeta.imageNote ? ` · ${pK[0].contentMeta.imageNote}` : ''}`, 'SIMULATED image generation');
-  const L = await mkBiz({ website: 'https://sahyadri-tiles.example' }); await seedPlan(L);
+  check('6', 'no customer photos → generated image (not a fake photo of the business)', pK.every((p) => p.contentMeta.imageSource === 'generate' && p.contentMeta.imageOrigin === 'AI_GENERATED'), `${pK.map((p) => p.contentMeta.imageSource).join(', ')}${pK[0]?.contentMeta.imageNote ? ` · ${pK[0].contentMeta.imageNote}` : ''}`, 'SIMULATED image generation');
+  const L = await mkBiz({ website: 'https://sahyadri-tiles.example' }); await seedPlan(L); await seedAssets(L, { photos: 5 });
   await batch(L, { deps: { generate: fakeGen, generateImage: async () => { throw new Error('image API 500 (simulated)'); } } });
   const pL = await postsOf(L);
-  check('15', 'image generation fails → plain branded graphic (no invented scene)', pL.filter((p) => p.contentMeta.imageSource !== 'website_image').every((p) => p.contentMeta.imageSource === 'branded_graphic' && /^data:image\//.test(p.imageUrl)), `${pL.map((p) => p.contentMeta.imageSource).join(', ')}${pL[0]?.contentMeta.imageNote ? ` · ${pL[0].contentMeta.imageNote}` : ''}`, 'SIMULATED image failure');
+  check('15', 'TEST G: AI image fails → approved branded fallback, failure recorded, NO customer photo substituted (5 Photos exist)', pL.every((p) => p.contentMeta.imageSource === 'branded_graphic' && p.contentMeta.imageOrigin === 'FALLBACK' && p.contentMeta.imageGeneration?.status === 'failed' && /image API 500/.test(p.contentMeta.imageGeneration?.error || '') && /^data:image\//.test(p.imageUrl) && !/cdn\.example\.invalid\/photo/.test(p.imageUrl)), `${pL.map((p) => p.contentMeta.imageSource).join(', ')}${pL[0]?.contentMeta.imageNote ? ` · ${pL[0].contentMeta.imageNote}` : ''}`, 'SIMULATED image failure');
   const M = await mkBiz({ website: 'https://sahyadri-tiles.example', manualColors: ['#aa0000'] }); await seedPlan(M); await seedAssets(M, { logo: true });
   await batch(M, { deps: { generate: fakeGen } });
   const bM: any = await Business.findById(M._id).lean();
@@ -383,13 +387,16 @@ async function run() {
     const a = await prepareGalleryMedia({ buffer: withGps, mime: 'image/jpeg', category: 'ADDITIONAL', location: loc });
     const assetA: any = await createOrReplaceStagedAsset({ businessId: String(V._id), category: 'ADDITIONAL', url: storeObj(a.buffer, a.mime), geotag: a.geotag });
     await GbpMediaAsset.updateOne({ _id: assetA._id }, { $set: { status: 'published' } });
-    await batch(V, { deps: { generate: fakeGen } });
+    // The owner explicitly chose this photo for this week's offer post.
+    await WeeklyOffer.create({ businessId: V._id, weekKey: contentWeekKey(nowFor(firstDate)), weekStart: new Date(), status: 'YES', text: 'Free site visit this week', imageId: String(assetA._id) });
+    await batch(V, { deps: { generate: async (req: any) => ({ posts: req.slotBriefs.map((b: string, i: number) => (/owner's offer/.test(b) ? { title: 'This week', body: 'Free site visit this week at Sahyadri Tile Works.', cta: 'Call now' } : goodPost(`Tile work ${i}`))) }), generateImage: genImage } });
     const vPosts = await postsOf(V);
     const photoPost = vPosts.find((p) => p.contentMeta.imageAssetId === String(assetA._id));
+    check('geo-A0', 'owner-selected photo is used only for the post the owner chose it for; other posts get new AI images', photoPost?.contentMeta.imageOrigin === 'OWNER_SELECTED' && photoPost?.contentMeta.purpose === 'offer' && vPosts.filter((p) => p !== photoPost).every((p) => p.contentMeta.imageOrigin === 'AI_GENERATED'), vPosts.map((p) => `${p.contentMeta.purpose}:${p.contentMeta.imageOrigin}`).join(', '));
     let googleFetched = '';
     if (photoPost) await publishPost(String(photoPost._id), { deps: { writesEnabled: () => true, createLocalPost: async (_b, input) => { googleFetched = input.mediaUrl || ''; return { liveWriteApplied: true, postName: 'sim/localPosts/1' }; } } });
     const fetchedBytes = bucket.get(googleFetched);
-    check('geo-A', 'gallery photo WITH GPS: original GPS survives upload → processing → storage → weekly post → publish request',
+    check('geo-A', 'gallery photo WITH GPS (owner-selected): original GPS survives upload → processing → storage → post → publish request',
       a.geotag.status === 'original_gps_preserved' && a.buffer.equals(withGps) && !!fetchedBytes && fetchedBytes.equals(withGps) && near(await readImageGps(fetchedBytes!), CAMERA) && photoPost?.imageGeotag?.status === 'original_gps_preserved',
       `stored bytes identical ${a.buffer.equals(withGps)} · Google would fetch ${googleFetched || 'nothing'} · GPS ${JSON.stringify(fetchedBytes ? await readImageGps(fetchedBytes) : null)}`, 'in-memory DB; Google publish SIMULATED');
     const cover = await prepareGalleryMedia({ buffer: withGps, mime: 'image/jpeg', category: 'COVER', location: loc });
@@ -418,6 +425,86 @@ async function run() {
     const genBytes = Buffer.from(String(wPost.imageUrl).split(',')[1] || '', 'base64');
     check('geo-C', 'generated post image carries the verified Google location (recorded on the post)', wPost.contentMeta.imageSource === 'generate' && wPost.imageGeotag?.status === 'business_location_added' && near(await readImageGps(genBytes), PIN),
       `${wPost.imageGeotag?.status} ${JSON.stringify(await readImageGps(genBytes))}`, 'SIMULATED image generation');
+  }
+
+  // ── Weekly autopilot images: tests A–H ──
+  {
+    const { readImageGps } = await import('../src/lib/imageGeotag');
+    const PIN = { lat: 20.00588, lng: 73.76323 };
+    const near = (a: any, b: any) => !!a && Math.abs(a.lat - b.lat) < 1e-4 && Math.abs(a.lng - b.lng) < 1e-4;
+    const decode = (u: string) => Buffer.from(String(u).split(',')[1] || '', 'base64');
+    const prompts: string[] = [];
+    let n = 0;
+    const capture = async (prompt: string) => {
+      prompts.push(prompt);
+      n++;
+      return `data:image/png;base64,${(await sharp({ create: { width: 1200, height: 1200, channels: 3, background: { r: (n * 61) % 256, g: (n * 97) % 256, b: (n * 13) % 256 } } }).png().toBuffer()).toString('base64')}`;
+    };
+    const IA = await mkBiz({ website: 'https://sahyadri-tiles.example' });
+    await seedPlan(IA); await seedAssets(IA, { logo: true, photos: 10 });
+    await Business.updateOne({ _id: IA._id }, { $set: { verifiedLocation: { lat: PIN.lat, lng: PIN.lng, source: 'gbp_location', verifiedAt: new Date() } } });
+    await batch(IA, { deps: { generate: fakeGen, generateImage: capture } });
+    const pI = await postsOf(IA);
+    const photoUrls = (await GbpMediaAsset.find({ businessId: IA._id, category: 'ADDITIONAL' }).select('url').lean() as any[]).map((x) => x.url);
+    const hashes = new Set(pI.map((p) => p.contentMeta.imageGeneration?.hash));
+    check('IMG-A', 'TEST A: 10 Photos exist → 4 posts, 4 NEW AI images, no Photo auto-selected, 4 distinct images',
+      pI.length === 4 && pI.every((p) => p.contentMeta.imageOrigin === 'AI_GENERATED' && !photoUrls.includes(p.imageUrl)) && hashes.size === 4 && prompts.length === 4,
+      `${pI.map((p) => p.contentMeta.imageOrigin).join(', ')} · distinct ${hashes.size} · generator calls ${prompts.length}`, 'SIMULATED image generator');
+    const ok = pI.every((p, i) => {
+      const pr = prompts[i] || '';
+      return pr.includes(p.title) && (!p.contentMeta.keyword || pr.includes(p.contentMeta.keyword)) && (!p.contentMeta.service || pr.includes(p.contentMeta.service)) && (!p.contentMeta.seoTheme || pr.includes(p.contentMeta.seoTheme)) && pr.includes('Gangapur Road, Nashik');
+    });
+    check('IMG-B', 'TEST B: each image request carries that post\'s own theme / keyword / service / area / headline', ok && new Set(prompts.map((x) => x.slice(0, 160))).size === 4,
+      pI.map((p) => `${p.contentMeta.slot}:${p.contentMeta.keyword || p.contentMeta.service || p.contentMeta.purpose}`).join(' | '));
+    const bp: any = (await Business.findById(IA._id).lean() as any).brandProfile;
+    const img0 = decode(pI[0].imageUrl);
+    const meta0 = await sharp(img0).metadata();
+    const corner = await sharp(img0).extract({ left: Math.round(meta0.width! * 0.8), top: Math.round(meta0.height! * 0.8), width: Math.round(meta0.width! * 0.15), height: Math.round(meta0.height! * 0.15) }).stats();
+    check('IMG-C', 'TEST C: customer colours in every prompt, customer logo in the corner, brand recorded (no GrowwMatics mark)',
+      prompts.every((x) => bp.colors.every((c: string) => x.includes(c))) && pI.every((p) => p.contentMeta.brandUsed?.logo === true && p.contentMeta.brandUsed?.colorSource === 'logo') && corner.channels[0].max > 180,
+      `colours ${bp.colors.join(' ')} (${bp.colorSource}) · corner red max ${corner.channels[0].max}`);
+    check('IMG-H', 'TEST H: generated images pass the geotag step → confirmed Google location in EXIF, recorded on the post',
+      (await Promise.all(pI.map(async (p) => near(await readImageGps(decode(p.imageUrl)), PIN)))).every(Boolean) && pI.every((p) => p.imageGeotag?.status === 'business_location_added'),
+      `GPS ${JSON.stringify(await readImageGps(img0))}`);
+    const noOfferPrompts = prompts.join(' ');
+    check('IMG-F', 'TEST F: no offer → no offer post and no promotional/discount image requested', pI.every((p) => p.contentMeta.purpose !== 'offer') && !/promotional visual/.test(noOfferPrompts), pI.map((p) => p.contentMeta.purpose).join(', '));
+
+    // D: owner offer → exact text in the post, NEW AI image, exact text drawn on it.
+    prompts.length = 0;
+    const ID = await mkBiz({ website: 'https://sahyadri-tiles.example' }); await seedPlan(ID); await seedAssets(ID, { logo: true, photos: 10 });
+    const OFFER = 'Free site visit for bathroom renovation enquiries this week';
+    await WeeklyOffer.create({ businessId: ID._id, weekKey: contentWeekKey(nowFor(firstDate)), weekStart: new Date(), status: 'YES', text: OFFER });
+    await batch(ID, { deps: { generate: async (req: any) => ({ posts: req.slotBriefs.map((b: string, i: number) => (/owner's offer/.test(b) ? { title: 'This week', body: `${OFFER}. Call Sahyadri Tile Works.`, cta: 'Call now' } : goodPost(`Tile work ${i}`))) }), generateImage: capture } });
+    const offerPost = (await postsOf(ID)).find((p) => p.contentMeta.purpose === 'offer');
+    const offerPrompt = prompts.find((x) => /promotional visual/.test(x)) || '';
+    const ob = offerPost ? decode(offerPost.imageUrl) : Buffer.alloc(0);
+    const om = ob.length ? await sharp(ob).metadata() : null;
+    const band = om ? await sharp(ob).extract({ left: 0, top: 0, width: om.width!, height: Math.round(om.height! * 0.05) }).stats() : null;
+    const brandBg = ((await Business.findById(ID._id).lean() as any).brandProfile.colors[0] as string);
+    const bgR = parseInt(brandBg.slice(1, 3), 16);
+    check('IMG-D', 'TEST D: offer post uses the stored owner offer word-for-word, gets a NEW AI image, offer text band drawn in brand colour',
+      !!offerPost && offerPost.content.includes(OFFER) && offerPost.contentMeta.imageOrigin === 'AI_GENERATED' && offerPrompt.includes(OFFER) && /Do NOT include any text/.test(offerPrompt) && !!band && Math.abs(band.channels[0].mean - bgR) < 60,
+      offerPost ? `origin ${offerPost.contentMeta.imageOrigin} · band mean R ${band?.channels[0].mean.toFixed(0)} vs brand ${bgR}` : 'no offer post');
+
+    // E: festival week → festival-specific NEW image.
+    prompts.length = 0;
+    const IE = await mkBiz({ website: 'https://sahyadri-tiles.example' }); await seedPlan(IE); await seedAssets(IE, { photos: 10 });
+    await generateWeeklyBatch({ business: IE.toObject(), tenantId: String(IE.organizationId), firstDate: festivalFirst, daySpacing: 2, generatedVia: 'cron', batchKey: contentWeekKey(nowFor(festivalFirst)), now: nowFor(festivalFirst),
+      deps: { generate: async (req: any) => ({ posts: req.slotBriefs.map((b: string, i: number) => (/greeting/.test(b) ? { title: 'Happy Diwali', body: 'Sahyadri Tile Works wishes everyone in Nashik a happy Diwali.', cta: 'Learn more' } : goodPost(`Tile work ${i}`))) }), generateImage: capture } });
+    const fest = (await postsOf(IE)).find((p) => p.contentMeta.purpose === 'festival');
+    check('IMG-E', 'TEST E: festival week → festival post gets a NEW festival-specific AI image (calendar date, no invented offer)',
+      !!fest && fest.contentMeta.imageOrigin === 'AI_GENERATED' && prompts.some((x) => /Diwali greeting design/.test(x)) && !prompts.some((x) => /promotional visual/.test(x)),
+      fest ? `${fest.contentMeta.festivalKey} · ${fest.contentMeta.imageOrigin}` : 'no festival post');
+
+    // Uniqueness: a generator that returns the same picture every time.
+    const same = `data:image/png;base64,${(await sharp({ create: { width: 800, height: 800, channels: 3, background: { r: 9, g: 9, b: 9 } } }).png().toBuffer()).toString('base64')}`;
+    const IU = await mkBiz({ website: 'https://sahyadri-tiles.example' }); await seedPlan(IU);
+    await batch(IU, { deps: { generate: fakeGen, generateImage: async () => same } });
+    const pU = await postsOf(IU);
+    const aiU = pU.filter((p) => p.contentMeta.imageOrigin === 'AI_GENERATED');
+    check('IMG-U', 'same image returned for different posts → used once, the rest flagged "duplicate" and given the fallback (never presented as new)',
+      aiU.length === 1 && pU.filter((p) => p.contentMeta.imageGeneration?.status === 'duplicate' && p.contentMeta.imageOrigin === 'FALLBACK').length === 3 && pU.filter((p) => p.contentMeta.imageGeneration?.status === 'duplicate').every((p) => p.contentMeta.imageGeneration.attempts === 2),
+      pU.map((p) => `${p.contentMeta.imageOrigin}/${p.contentMeta.imageGeneration?.status}`).join(', '));
   }
 
   check('safety', 'storage + WhatsApp interceptors engaged (nothing uploaded, nothing delivered)', intercepted.has('storage') && intercepted.has('whatsapp') && !Object.keys(process.env).some((k) => k.startsWith('DO_SPACES_')), `intercepted: ${Array.from(intercepted).join(', ')}`);

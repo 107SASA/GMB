@@ -240,9 +240,40 @@ export async function GET(request: NextRequest) {
     impressions: k.impressions ?? 0,
   }));
 
+  // Why the Google search-term list is empty, from the last sync's record —
+  // never a guess. And, when it is empty, the searches the business's own
+  // report checked (clearly labelled as that, not as Google search data).
+  const ks: any = tokenDoc?.keywordSync ?? null;
+  const ksErrors: string[] = (ks?.months || []).filter((m: any) => m.error).map((m: any) => m.error);
+  const keywordStatus = monthKeywords.length
+    ? { state: 'ok' as const }
+    : !ks
+      ? { state: 'not_synced' as const, lastSyncAt: tokenDoc?.lastSyncAt ?? null }
+      : ksErrors.length && ksErrors.length === (ks.months || []).length
+        ? { state: 'error' as const, error: ksErrors[0], checkedAt: ks.checkedAt }
+        : {
+            state: 'no_data' as const,
+            checkedAt: ks.checkedAt,
+            monthsChecked: (ks.months || []).map((m: any) => new Date(m.year, m.month - 1, 1).toLocaleString('en-US', { month: 'short', year: 'numeric' })),
+          };
+  let reportKeywords: Array<{ keyword: string; rank: number | null }> = [];
+  if (!monthKeywords.length) {
+    try {
+      const { default: BusinessModel } = await import('@/models/Business');
+      const biz: any = await BusinessModel.findById(ctx.businessId).select('name category userDefinedCategory').lean();
+      const { seoBrainKeywords } = await import('@/services/seoPlan/seoBrainKeywords');
+      reportKeywords = (await seoBrainKeywords(biz ?? { _id: ctx.businessId }))
+        .filter((k) => k.source === 'measured')
+        .slice(0, 10)
+        .map((k) => ({ keyword: k.keyword, rank: k.rank ?? null }));
+    } catch { /* fallback only */ }
+  }
+
   return NextResponse.json({
     connected: true,
     needsSync,
+    keywordStatus,
+    reportKeywords,
     lastSyncAt: tokenDoc?.lastSyncAt ?? null,
     googleEmail: tokenDoc?.googleEmail ?? null,
     summary,

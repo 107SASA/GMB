@@ -28,3 +28,43 @@ export async function answerWeeklyOffer(
 ): Promise<void> {
   await api.post('/api/content/weekly-offer', input);
 }
+
+/** This week's stored offer exactly as the owner entered it (same endpoint, more fields). */
+const offerSchema = z.object({
+  answered: z.string().nullable().catch(null),
+  offer: z
+    .object({
+      text: z.string(),
+      festivalName: z.string().nullable().catch(null),
+      endsAt: z.string().nullable().catch(null),
+      appliedToPost: z.boolean().catch(false),
+    })
+    .nullable()
+    .catch(null),
+});
+export type StoredWeeklyOffer = z.infer<typeof offerSchema>;
+
+export async function fetchStoredWeeklyOffer(): Promise<StoredWeeklyOffer> {
+  const { data } = await api.get('/api/content/weekly-offer');
+  return offerSchema.parse(data);
+}
+
+/**
+ * GET /api/content/autopilot-status — also starts autopilot right away when
+ * the business qualifies (server-side, idempotent). `generating` = a batch
+ * is being made right now; `stalled` = it was started over 75 min ago and
+ * no posts arrived.
+ */
+const autopilotSchema = z.object({
+  hasKeywords: z.boolean().catch(false),
+  qualified: z.boolean().catch(false),
+  nextRunAt: z.string().nullable().catch(null),
+  generating: z.boolean().catch(false),
+  stalled: z.boolean().catch(false),
+});
+export type AutopilotStatus = z.infer<typeof autopilotSchema>;
+
+export async function fetchAutopilotStatus(): Promise<AutopilotStatus> {
+  const { data } = await api.get('/api/content/autopilot-status');
+  return autopilotSchema.parse(data);
+}

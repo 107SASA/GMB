@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useBusiness } from '@/context/BusinessContext';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
@@ -33,11 +33,41 @@ function AutopilotBanner({
   hasKeywords,
   qualified,
   nextRunAt,
+  generating,
+  stalled,
 }: {
   hasKeywords: boolean;
   qualified: boolean;
   nextRunAt?: string;
+  /** A batch was just dispatched and its posts haven't landed yet. */
+  generating?: boolean;
+  /** Dispatched over 75 minutes ago and still no posts. */
+  stalled?: boolean;
 }) {
+  if (stalled) {
+    return (
+      <div className="flex items-start gap-2.5 rounded-xl border border-outline-variant bg-surface-container px-4 py-3 text-sm text-on-surface-variant">
+        <MaterialIcon name="schedule" size={16} className="mt-0.5 shrink-0" />
+        <span>
+          <strong>This week&apos;s posts are taking longer than expected.</strong> Use <strong>Generate extra batch now</strong>{' '}
+          below to create them, or contact support if they still don&apos;t appear.
+        </span>
+      </div>
+    );
+  }
+  if (generating) {
+    return (
+      <div className="flex items-start gap-2.5 rounded-xl border border-primary-fixed-dim bg-primary-fixed px-4 py-3 text-sm text-primary">
+        <MaterialIcon name="progress_activity" size={16} className="mt-0.5 shrink-0 animate-spin" />
+        <span>
+          <strong>Your AI agent is working on this week&apos;s posts</strong> — writing 4 posts from your SEO plan and
+          creating their images. They&apos;ll appear here in a minute or two and are scheduled automatically through the
+          week. No action needed.
+        </span>
+      </div>
+    );
+  }
+
   if (!hasKeywords) {
     return (
       <div className="flex items-start gap-2.5 rounded-xl border border-outline-variant bg-surface-container px-4 py-3 text-sm text-on-surface-variant">
@@ -115,6 +145,49 @@ export default function ContentWorkspace() {
     fetchBuffer();
   }, [fetchBuffer, activeBusiness?._id]);
 
+  // Live autopilot state. Loading it also starts autopilot right away if this
+  // workspace qualifies but hasn't started (see /api/content/autopilot-status).
+  const [autopilot, setAutopilot] = useState<{ hasKeywords: boolean; qualified: boolean; nextRunAt: string | null; generating: boolean; stalled?: boolean } | null>(null);
+  const fetchAutopilot = useCallback(async () => {
+    try {
+      const res = await fetch('/api/content/autopilot-status');
+      const json = await res.json();
+      if (json.success) setAutopilot(json);
+    } catch {
+      // Banner falls back to the workspace fields.
+    }
+  }, []);
+  useEffect(() => {
+    if (!activeBusiness?._id) return;
+    setAutopilot(null);
+    fetchAutopilot();
+  }, [fetchAutopilot, activeBusiness?._id]);
+  // While a batch is being made, re-check every 10s; when it lands, refresh the calendar and the list.
+  useEffect(() => {
+    if (!autopilot?.generating) return;
+    const t = setInterval(() => void fetchAutopilot(), 10_000);
+    return () => clearInterval(t);
+  }, [autopilot?.generating, fetchAutopilot]);
+  // This week's stored offer (exactly what the owner entered), shown so they remember it.
+  const [weekOffer, setWeekOffer] = useState<{ answered: string | null; offer: { text: string; festivalName: string | null; endsAt: string | null; appliedToPost: boolean } | null } | null>(null);
+  useEffect(() => {
+    if (!activeBusiness?._id) return;
+    setWeekOffer(null);
+    fetch('/api/content/weekly-offer')
+      .then((r) => r.json())
+      .then((j) => { if (j.success) setWeekOffer({ answered: j.answered, offer: j.offer }); })
+      .catch(() => {});
+  }, [activeBusiness?._id]);
+
+  const wasGenerating = useRef(false);
+  useEffect(() => {
+    if (wasGenerating.current && autopilot && !autopilot.generating) {
+      fetchBuffer();
+      setHistoryRefreshKey((k) => k + 1);
+    }
+    wasGenerating.current = !!autopilot?.generating;
+  }, [autopilot, fetchBuffer]);
+
   const handleGenerateNow = useCallback(async () => {
     setGenerating(true);
     try {
@@ -176,10 +249,31 @@ export default function ContentWorkspace() {
         <p className="text-on-surface-variant mt-1">Fully automated — new posts generate and schedule themselves every week. Review what's queued, or generate an extra batch anytime.</p>
       </div>
 
+      {weekOffer?.answered === 'YES' && weekOffer.offer && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-sm text-on-surface">
+          <MaterialIcon name="sell" size={16} className="mt-0.5 shrink-0 text-primary" />
+          <span>
+            <strong>This week&apos;s offer (as you entered it):</strong> &ldquo;{weekOffer.offer.text}&rdquo;
+            {weekOffer.offer.festivalName ? ` · for ${weekOffer.offer.festivalName}` : ''}
+            {weekOffer.offer.endsAt ? ` · ends ${new Date(weekOffer.offer.endsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
+            {' · '}
+            {weekOffer.offer.appliedToPost ? 'used in this week’s offer post.' : 'will be used in this week’s offer post.'}
+          </span>
+        </div>
+      )}
+      {weekOffer?.answered === 'NONE' && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-sm text-on-surface-variant">
+          <MaterialIcon name="sell" size={16} className="mt-0.5 shrink-0" />
+          <span>No offer this week — no promotional post will be created.</span>
+        </div>
+      )}
+
       <AutopilotBanner
-        hasKeywords={!!activeBusiness?.keywords?.length}
-        qualified={activeBusiness?.subscriptionStatus === 'active' && !!activeBusiness?.googleConnected}
-        nextRunAt={activeBusiness?.autopilotNextRunAt}
+        hasKeywords={autopilot ? autopilot.hasKeywords : !!activeBusiness?.keywords?.length}
+        qualified={autopilot ? autopilot.qualified : activeBusiness?.subscriptionStatus === 'active' && !!activeBusiness?.googleConnected}
+        nextRunAt={autopilot ? autopilot.nextRunAt ?? undefined : activeBusiness?.autopilotNextRunAt}
+        generating={autopilot?.generating}
+        stalled={autopilot?.stalled}
       />
 
       <div className="flex justify-end">

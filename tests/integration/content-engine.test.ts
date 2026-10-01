@@ -198,32 +198,41 @@ test('case 8/4: logo > website > theme > neutral; invalid hex ignored', () => {
 });
 
 // ── Image choice (cases 5, 6, 15) ──────────────────────────────────────────
+// Oct 2026 requirement: autopilot generates a NEW image per post by default;
+// Photos are used only on an explicit owner choice.
 
-test('case 5: customer photos first, rotating away from recently used ones', () => {
+test('case 5: owning Photos never makes autopilot pick one — a new AI image is the default', () => {
   const s = planWeeklySlots({ facts: facts(), plan: plan(), weekIndex: 0, offer: null, festivals: [] });
-  const photos = [{ id: 'a', url: 'https://x/a.jpg' }, { id: 'b', url: 'https://x/b.jpg' }];
-  const c = chooseImageSource(s[0], { customerPhotos: photos, recentlyUsedPhotoIds: ['a'], websiteImages: [], imageGenerationAvailable: true });
-  assert.deepEqual(c, { kind: 'customer_photo', assetId: 'b', url: 'https://x/b.jpg' });
+  const photos = Array.from({ length: 10 }, (_, i) => ({ id: `p${i}`, url: `https://x/p${i}.jpg` }));
+  for (const slot of s) assert.deepEqual(chooseImageSource(slot, { customerPhotos: photos, imageGenerationAvailable: true }), { kind: 'generate' });
+  assert.deepEqual(
+    chooseImageSource(s[0], { customerPhotos: photos, ownerSelectedPhotoId: 'p3', imageGenerationAvailable: true }),
+    { kind: 'customer_photo', assetId: 'p3', url: 'https://x/p3.jpg' },
+    'only an explicit owner choice uses a Photos image',
+  );
 });
 
-test('case 6/15: no photos → generated image; no generation → branded graphic (never a fake scene)', () => {
+test('case 6/15: no generation available → branded graphic, never a customer or website photo', () => {
   const s = planWeeklySlots({ facts: facts(), plan: plan(), weekIndex: 0, offer: null, festivals: [] });
-  assert.equal(chooseImageSource(s[0], { customerPhotos: [], recentlyUsedPhotoIds: [], websiteImages: [], imageGenerationAvailable: true }).kind, 'generate');
-  assert.equal(chooseImageSource(s[0], { customerPhotos: [], recentlyUsedPhotoIds: [], websiteImages: [], imageGenerationAvailable: false }).kind, 'branded_graphic');
+  const photos = [{ id: 'a', url: 'https://x/a.jpg' }];
+  assert.equal(chooseImageSource(s[0], { customerPhotos: [], imageGenerationAvailable: true }).kind, 'generate');
+  assert.equal(chooseImageSource(s[0], { customerPhotos: photos, imageGenerationAvailable: false }).kind, 'branded_graphic');
 });
 
-test('festival slots never reuse a work photo; offer slot uses the chosen offer photo', () => {
+test('festival slots get a generated image; offer slot uses the photo the owner chose for the offer', () => {
   const photos = [{ id: 'a', url: 'https://x/a.jpg' }, { id: 'o', url: 'https://x/o.jpg' }];
   const fest = planWeeklySlots({ facts: facts(), plan: plan(), weekIndex: 0, offer: null, festivals: [{ key: 'diwali-2026', name: 'Diwali', date: '2026-11-08' }] })[3];
-  assert.equal(chooseImageSource(fest, { customerPhotos: photos, recentlyUsedPhotoIds: [], websiteImages: [], imageGenerationAvailable: false }).kind, 'branded_graphic');
+  assert.equal(chooseImageSource(fest, { customerPhotos: photos, imageGenerationAvailable: true }).kind, 'generate');
+  assert.equal(chooseImageSource(fest, { customerPhotos: photos, imageGenerationAvailable: false }).kind, 'branded_graphic');
   const offer = planWeeklySlots({ facts: facts(), plan: plan(), weekIndex: 0, offer: { text: 'Free site visit' }, festivals: [] })[3];
-  assert.deepEqual(chooseImageSource(offer, { customerPhotos: photos, recentlyUsedPhotoIds: [], websiteImages: [], offerImageId: 'o', imageGenerationAvailable: true }), { kind: 'customer_photo', assetId: 'o', url: 'https://x/o.jpg' });
+  assert.deepEqual(chooseImageSource(offer, { customerPhotos: photos, offerImageId: 'o', imageGenerationAvailable: true }), { kind: 'customer_photo', assetId: 'o', url: 'https://x/o.jpg' });
+  assert.deepEqual(chooseImageSource(offer, { customerPhotos: photos, imageGenerationAvailable: true }), { kind: 'generate' }, 'no owner photo → new image');
 });
 
 test('image prompt forbids text, logos, claims and invented people/projects', () => {
   const s = planWeeklySlots({ facts: facts(), plan: plan(), weekIndex: 0, offer: null, festivals: [] })[1];
   const p = buildImagePrompt(s, facts(), ['#aa0000']).toLowerCase();
-  for (const w of ['text', 'logo', 'rating', 'customers or staff', 'finished project']) assert.ok(p.includes(w), w);
+  for (const w of ['text', 'logo', 'rating', 'real employee or customer', 'finished project', 'discounts', 'awards']) assert.ok(p.includes(w), w);
   assert.ok(p.includes('#aa0000'));
 });
 
@@ -306,4 +315,18 @@ test('case 27: monthly report with no new reviews states zero, with no blame or 
   const wa = composeMonthlyWhatsApp(m, 'Mulsetu Tiles', 'https://app.example.invalid/r');
   assert.match(wa, /New Google reviews: 0/);
   assert.doesNotMatch(wa, /unhappy|losing|revenue|₹/i);
+});
+
+test('monthly: images counted by origin — never calls a fallback or owner photo "AI-generated"', () => {
+  const c = summarizeContent([
+    { status: 'published', liveWriteApplied: true, contentMeta: { purpose: 'seo_theme', imageOrigin: 'AI_GENERATED', imageSource: 'generate' } },
+    { status: 'published', liveWriteApplied: true, contentMeta: { purpose: 'service', imageOrigin: 'FALLBACK', imageSource: 'branded_graphic' } },
+    { status: 'published', liveWriteApplied: true, contentMeta: { purpose: 'offer', imageOrigin: 'OWNER_SELECTED', imageSource: 'customer_photo' } },
+    { status: 'published', liveWriteApplied: true, contentMeta: { purpose: 'local', imageSource: 'customer_photo' } }, // legacy auto-picked photo
+    { status: 'blocked', contentMeta: { purpose: 'local', imageOrigin: 'AI_GENERATED' } }, // never reached Google
+  ]);
+  assert.deepEqual(c.images, { aiGenerated: 1, ownerSelected: 1, fallback: 1 });
+  assert.equal(c.customerPhotosUsed, 1, 'legacy auto-picked photo stays in its own line');
+  const line = contentActivityLines(c).find((l) => l.startsWith('Post images'))!;
+  assert.equal(line, 'Post images: 1 new AI-generated, 1 photo you chose, 1 branded graphic (AI image unavailable)');
 });

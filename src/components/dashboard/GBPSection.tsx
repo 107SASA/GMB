@@ -51,6 +51,14 @@ interface InsightsData {
     keywordMonth: string | null;
     topKeywords: { keyword: string; impressions: number }[];
   };
+  /** Why Google's search-term list is empty (from the last sync record). */
+  keywordStatus?:
+    | { state: 'ok' }
+    | { state: 'not_synced'; lastSyncAt?: string | null }
+    | { state: 'error'; error: string; checkedAt?: string }
+    | { state: 'no_data'; checkedAt?: string; monthsChecked?: string[] };
+  /** Searches the business's report checked on Google Maps (shown only when Google's list is empty). */
+  reportKeywords?: { keyword: string; rank: number | null }[];
 }
 
 function GoogleGLogo({ size = 22 }: { size?: number }) {
@@ -395,13 +403,53 @@ export default function GBPSection({
             ))}
           </div>
         ) : keywords.length === 0 ? (
-          <div className="text-center py-8 text-outline">
-            <p className="text-sm font-medium mb-1">
-              {connected ? 'Keyword data updates monthly' : 'Connect GBP to see search keywords'}
-            </p>
-            <p className="text-xs">
-              {connected ? 'Check back after your first full month of data.' : 'Your top search terms will appear here.'}
-            </p>
+          <div className="space-y-4">
+            <div className="text-center py-4 text-outline">
+              {!connected ? (
+                <>
+                  <p className="text-sm font-medium mb-1">Connect GBP to see search keywords</p>
+                  <p className="text-xs">Your top search terms will appear here.</p>
+                </>
+              ) : data?.keywordStatus?.state === 'error' ? (
+                <>
+                  <p className="text-sm font-medium mb-1">Google didn&apos;t return search-term data</p>
+                  <p className="text-xs break-words">{data.keywordStatus.error}</p>
+                </>
+              ) : data?.keywordStatus?.state === 'no_data' ? (
+                <>
+                  <p className="text-sm font-medium mb-1">Google hasn&apos;t published search terms for your profile yet</p>
+                  <p className="text-xs">
+                    Checked {data.keywordStatus.monthsChecked?.join(', ') || 'recent months'}. Google releases each month&apos;s
+                    search terms a few days after the month ends, and lists only searches with enough volume.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium mb-1">Search terms haven&apos;t been synced from Google yet</p>
+                  <p className="text-xs">They load on the next sync — use Sync above to fetch them now.</p>
+                </>
+              )}
+            </div>
+            {connected && (data?.reportKeywords?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-on-surface-variant mb-2">
+                  Meanwhile — searches your report checked on Google Maps
+                </p>
+                <div className="divide-y divide-outline-variant">
+                  {data!.reportKeywords!.map((k) => (
+                    <div key={k.keyword} className="flex items-center justify-between py-2 text-sm">
+                      <span className="text-on-surface">{k.keyword}</span>
+                      <span className="text-xs font-semibold text-on-surface-variant">
+                        {k.rank != null ? `Your rank #${Math.round(k.rank * 10) / 10}` : 'Not in top 20'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-outline mt-2">
+                  From your latest report — these are searches we checked, not Google&apos;s count of searches that showed your profile.
+                </p>
+              </div>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">

@@ -45,6 +45,8 @@ export type OwnerNotifyEvent =
   | 'monthly_report'
   | 'weekly_update'
   | 'festival_prompt'
+  | 'review_reminder'
+  | 'performance_digest'
   // digest
   | 'post_published'
   | 'photo_published'
@@ -63,6 +65,7 @@ interface EventMeta {
     | 'reviewReplyWhatsApp'
     | 'reportReadyWhatsApp'
     | 'weeklyUpdateWhatsApp'
+    | 'performanceDigestWhatsApp'
     | 'whatsAppNotificationsEnabled';
   /** false → queued to the daily digest instead of sent immediately. */
   immediate: boolean;
@@ -80,6 +83,8 @@ const EVENT_META: Record<OwnerNotifyEvent, EventMeta> = {
   monthly_report: { pref: 'reportReadyWhatsApp', immediate: true },
   weekly_update: { pref: 'weeklyUpdateWhatsApp', immediate: true },
   festival_prompt: { pref: 'weeklyUpdateWhatsApp', immediate: true },
+  review_reminder: { pref: 'weeklyUpdateWhatsApp', immediate: true },
+  performance_digest: { pref: 'performanceDigestWhatsApp', immediate: true },
   post_published: { pref: 'postPublishedWhatsApp', immediate: false },
   photo_published: { pref: 'postPublishedWhatsApp', immediate: false },
   review_reply_sent: { pref: 'reviewReplyWhatsApp', immediate: false },
@@ -100,6 +105,7 @@ export const OWNER_NOTIFY_PREF_DEFAULTS = {
   reportReadyWhatsApp: true,
   weeklyUpdateWhatsApp: true,
   weeklyReportAlwaysWhatsApp: false,
+  performanceDigestWhatsApp: true,
 } as const;
 
 export interface NotifyOwnerInput {

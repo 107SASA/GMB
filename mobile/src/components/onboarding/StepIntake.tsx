@@ -7,6 +7,7 @@ import { getApiErrorMessage } from '@/api/client';
 import {
   EMPTY_INTAKE,
   fetchIntake,
+  type SuggestedKeyword,
   saveIntake,
   suggestKeywords,
   type IntakeData,
@@ -53,11 +54,20 @@ export function StepIntake({ seed, onSaved }: Props) {
   return (
     <IntakeForm
       key={existing.dataUpdatedAt}
-      initial={mergeSeed(existing.data?.data ?? EMPTY_INTAKE, seed)}
+      initial={withKeywordPrefill(mergeSeed(existing.data?.data ?? EMPTY_INTAKE, seed), existing.data?.keywordPrefill ?? [])}
+      prefilledKeywords={!(existing.data?.data.keywords.length) && (existing.data?.keywordPrefill.length ?? 0) > 0}
       onSaved={onSaved}
     />
   );
 }
+
+/** No keywords yet but the report / SEO plan researched some → pre-fill them (removable). */
+function withKeywordPrefill(data: IntakeData, prefill: string[]): IntakeData {
+  if (data.keywords.length || !prefill.length) return data;
+  return { ...data, keywords: prefill.filter(isValidKeyword).slice(0, 10) };
+}
+
+const KW_SOURCE_LABEL: Record<string, string> = { measured: 'in your report', proposed: 'SEO plan', ai: 'AI idea' };
 
 function mergeSeed(data: IntakeData, seed: PlaceDetails | null): IntakeData {
   if (!seed) return data;
@@ -70,12 +80,12 @@ function mergeSeed(data: IntakeData, seed: PlaceDetails | null): IntakeData {
   };
 }
 
-function IntakeForm({ initial, onSaved }: { initial: IntakeData; onSaved: () => void }) {
+function IntakeForm({ initial, onSaved, prefilledKeywords = false }: { initial: IntakeData; onSaved: () => void; prefilledKeywords?: boolean }) {
   const t = useTheme();
   const [form, setForm] = useState<IntakeData>(initial);
   const [keywordInput, setKeywordInput] = useState('');
   const [competitorInput, setCompetitorInput] = useState('');
-  const [suggested, setSuggested] = useState<string[]>([]);
+  const [suggested, setSuggested] = useState<SuggestedKeyword[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const set = <K extends keyof IntakeData>(k: K, v: IntakeData[K]) =>
@@ -88,12 +98,14 @@ function IntakeForm({ initial, onSaved }: { initial: IntakeData; onSaved: () => 
       suggestKeywords({
         category: form.category,
         description: form.description,
+        city: form.city,
+        area: form.area,
         selectedKeywords: form.keywords,
         excludeKeywords: [...shownKeywords],
       }),
-    onSuccess: (keywords) => {
-      keywords.forEach((k) => shownKeywords.add(k));
-      setSuggested(keywords.filter((k) => !form.keywords.includes(k)));
+    onSuccess: (items) => {
+      items.forEach((k) => shownKeywords.add(k.keyword));
+      setSuggested(items.filter((k) => !form.keywords.includes(k.keyword)));
     },
   });
 
@@ -219,16 +231,24 @@ function IntakeForm({ initial, onSaved }: { initial: IntakeData; onSaved: () => 
           {suggest.isPending ? 'Finding keywords…' : 'Suggest keywords for me'}
         </Text>
       </Pressable>
+      {prefilledKeywords && form.keywords.length > 0 && (
+        <Text className="mb-1 font-sans text-xs text-zinc-500">
+          Pre-filled from your report and SEO plan — tap one to remove it, or add your own.
+        </Text>
+      )}
+      {suggest.isError && (
+        <ErrorText>{getApiErrorMessage(suggest.error, "Couldn't load suggestions right now — try again or add your own.")}</ErrorText>
+      )}
       {suggested.length > 0 && (
         <View className="mb-3 mt-1 flex-row flex-wrap gap-2">
           {suggested.map((k) => (
             <Chip
-              key={k}
-              label={`+ ${k}`}
+              key={k.keyword}
+              label={`+ ${k.keyword} · ${KW_SOURCE_LABEL[k.source] ?? ''}`}
               selected={false}
               onPress={() => {
-                set('keywords', [...form.keywords, k]);
-                setSuggested((s) => s.filter((x) => x !== k));
+                set('keywords', [...form.keywords, k.keyword]);
+                setSuggested((s) => s.filter((x) => x.keyword !== k.keyword));
               }}
             />
           ))}

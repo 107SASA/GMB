@@ -35,6 +35,7 @@ export function WeeklyOfferCard() {
     onSuccess: (_d, input) => {
       setDone(input.answer === 'yes' ? "Got it — your offer will be one of this week's Google posts, in your words." : null);
       void queryClient.invalidateQueries({ queryKey: ['weekly-offer', activeBusinessId] });
+      void queryClient.invalidateQueries({ queryKey: ['weekly-offer-stored', activeBusinessId] });
     },
   });
 

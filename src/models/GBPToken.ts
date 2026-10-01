@@ -22,6 +22,7 @@ export interface IGBPToken extends Document {
    * re-run) on every sync once set, so this never repeats for a business.
    */
   historyBackfilledAt?: Date | null;
+  keywordSync?: { checkedAt: Date; months: Array<{ year: number; month: number; count: number; error?: string }> } | null;
 }
 
 const GBPTokenSchema = new Schema<IGBPToken>(
@@ -39,6 +40,8 @@ const GBPTokenSchema = new Schema<IGBPToken>(
     connectedAt: { type: Date, default: Date.now },
     lastSyncAt: { type: Date, default: null },
     historyBackfilledAt: { type: Date, default: null },
+    /** Last search-keyword sync: months asked for, terms returned, Google errors (shown on the dashboard). */
+    keywordSync: { type: Schema.Types.Mixed, default: null },
   },
   { timestamps: true }
 );

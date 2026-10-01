@@ -26,6 +26,8 @@ export interface INotificationPreferences {
   weeklyUpdateWhatsApp: boolean;
   /** Send the weekly summary every week even when nothing changed (explicit opt-in). */
   weeklyReportAlwaysWhatsApp: boolean;
+  /** Google performance numbers (views, calls, clicks, directions) every 15 days. */
+  performanceDigestWhatsApp: boolean;
 }
 
 export interface IUser extends Document {
@@ -155,6 +157,7 @@ const NotificationPreferencesSchema = new Schema(
     reportReadyWhatsApp: { type: Boolean, default: true },
     weeklyUpdateWhatsApp: { type: Boolean, default: true },
     weeklyReportAlwaysWhatsApp: { type: Boolean, default: false },
+    performanceDigestWhatsApp: { type: Boolean, default: true },
   },
   { _id: false }
 );

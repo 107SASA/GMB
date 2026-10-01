@@ -430,9 +430,12 @@ function PostDetailModal({
                   Plan: {String(post.contentMeta.purpose).replace('_', ' ')}
                   {post.contentMeta.service ? ` · ${post.contentMeta.service}` : ''}
                   {post.contentMeta.keyword
-                    ? ` · “${post.contentMeta.keyword}” (${post.contentMeta.keywordMeasured ? 'measured keyword' : 'proposed — not measured'})`
+                    ? ` · “${post.contentMeta.keyword}” (${post.contentMeta.keywordSource === 'search_term' ? 'customer search on Google' : post.contentMeta.keywordMeasured ? 'measured keyword' : 'proposed — not measured'})`
                     : ''}
                 </p>
+              )}
+              {post.contentMeta?.keywordReason && (
+                <p className="text-xs text-on-surface-variant">Why this keyword: {post.contentMeta.keywordReason}</p>
               )}
               {post.status === 'failed' && post.failureReason && (
                 <div className="bg-error-container border border-error-container rounded-xl px-4 py-3">

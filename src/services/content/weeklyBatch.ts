@@ -92,7 +92,53 @@ export async function loadContentContext(business: any) {
     sourceUrl: websiteOk ? wi.brand?.sourceUrl : null,
   });
   const websiteImages = websiteOk ? [wi.brand?.ogImage, ...(wi.brand?.images || [])].filter((u: any) => typeof u === 'string' && u.startsWith('https://')).map((u: string) => ({ url: u, sourceUrl: wi.brand?.sourceUrl })) : [];
+  // ── Evidence-based keyword picks (stored data only — no provider call) ──
+  plan.priorities = await keywordPriorities(business, rows, facts, plan, notes);
+
   return { seo, wi: websiteOk ? wi : null, plan, facts, brand, customerLogo, customerPhotos, websiteImages, location, notes };
+}
+
+/**
+ * Which keyword each slot targets this week: measured audit rank and demand,
+ * Google Business Profile search terms (last synced month), relevance to the
+ * verified services/category and the area, minus keywords targeted in the
+ * last 3 weeks (services/content/keywordPriority.ts).
+ */
+async function keywordPriorities(business: any, rows: any[], facts: ContentFacts, plan: ContentSeoPlan, notes: string[]): Promise<ContentSeoPlan['priorities']> {
+  try {
+    const [{ prioritizeKeywords }, { default: GBPKeyword }, { default: Post }] = await Promise.all([
+      import('./keywordPriority'), import('@/models/GBPKeyword'), import('@/models/Post'),
+    ]);
+    const latest: any = await GBPKeyword.findOne({ businessId: business._id }).sort({ year: -1, month: -1 }).select('year month').lean();
+    const searchTerms: any[] = latest
+      ? await GBPKeyword.find({ businessId: business._id, year: latest.year, month: latest.month, impressions: { $gt: 0 } })
+          .select('keyword impressions year month').sort({ impressions: -1 }).limit(100).lean()
+      : [];
+    const recent: any[] = await Post.find({ businessId: business._id, 'contentMeta.keyword': { $exists: true }, createdAt: { $gte: new Date(Date.now() - 21 * 86_400_000) } })
+      .sort({ createdAt: -1 }).select('contentMeta.keyword').lean();
+    const result = prioritizeKeywords({
+      businessName: business.name || '',
+      serviceTerms: [facts.category, ...facts.ownerServices, ...facts.websiteServices.map((x) => x.value)].filter(Boolean),
+      places: [facts.city, facts.area || ''].filter(Boolean),
+      measured: rows,
+      searchTerms: searchTerms.map((t) => ({ keyword: t.keyword, impressions: t.impressions, year: t.year, month: t.month })),
+      proposed: plan.proposedKeywords,
+      recentlyTargeted: recent.map((p) => p.contentMeta?.keyword).filter(Boolean),
+    });
+    if (!result.seo && rows.length) notes.push('No measured keyword had usable rank or demand evidence this week — the plan theme keyword is used.');
+    return { seo: result.seo, search: result.search, local: result.local };
+  } catch (err: any) {
+    console.warn('[weeklyBatch] keyword prioritisation unavailable — using plan rotation:', err?.message);
+    return undefined;
+  }
+}
+
+/** Image fingerprints used on this business's posts in the last ~8 weeks. */
+async function recentImageHashes(businessId: any): Promise<Set<string>> {
+  const { default: Post } = await import('@/models/Post');
+  const rows: any[] = await Post.find({ businessId, 'contentMeta.imageGeneration.hash': { $exists: true }, createdAt: { $gte: new Date(Date.now() - 56 * 86_400_000) } })
+    .select('contentMeta.imageGeneration.hash').lean();
+  return new Set(rows.map((r) => r.contentMeta?.imageGeneration?.hash).filter(Boolean));
 }
 
 function factsBlockOf(f: ContentFacts, slotEvidence: PlannedSlot['evidence']): string {
@@ -229,7 +275,9 @@ export async function generateWeeklyBatch(opts: {
 
   const ctx = await loadContentContext(business);
   const offerDoc: any = await WeeklyOffer.findOne({ businessId: business._id, weekKey: contentWeekKey(opts.now || new Date()), status: 'YES' }).lean();
-  const offer: WeekOffer | null = offerDoc?.text ? { text: offerDoc.text, festivalName: offerDoc.festivalName, imageId: offerDoc.imageId } : null;
+  // Only this week's offer (weekKey), and never one that has already ended.
+  const offerLive = offerDoc?.text && (!offerDoc.endsAt || new Date(offerDoc.endsAt) >= opts.firstDate);
+  const offer: WeekOffer | null = offerLive ? { text: offerDoc.text, festivalName: offerDoc.festivalName, imageId: offerDoc.imageId } : null;
   // A festival already greeted in an earlier batch is not repeated (batch windows overlap by a day).
   const greeted = new Set<string>(await Post.distinct('contentMeta.festivalKey', { businessId: business._id, batchKey: { $ne: batchKey } }));
   const festivals = festivalsBetween(opts.firstDate, 8).filter((f) => !greeted.has(f.key)).map((f) => ({ key: f.key, name: f.name, date: f.date }));
@@ -249,22 +297,23 @@ export async function generateWeeklyBatch(opts: {
   const deps = opts.deps || {};
   const copies = await writeSlotCopy(ctx, slots, business, deps);
 
-  // Recently used customer photos (rotate, avoid repeats).
-  const recent: any[] = await Post.find({ businessId: business._id, 'contentMeta.imageSource': 'customer_photo' }).sort({ createdAt: -1 }).limit(8).select('contentMeta.imageAssetId').lean();
-  const recentlyUsed = recent.map((p) => p.contentMeta?.imageAssetId).filter(Boolean);
+  // Fingerprints of images already used on this business's recent posts — a
+  // generator returning the same picture is never presented as a new image.
+  const usedImageHashes = await recentImageHashes(business._id);
 
   const created: BatchResult['created'] = [];
   for (let i = 0; i < slots.length; i++) {
     const s = slots[i];
     const { post, status, generatedVia, check, attempts, draftReason, firstRejection } = copies[i];
     const scheduledDate = new Date(opts.firstDate.getTime() + (s.slot - 1) * opts.daySpacing * 86_400_000);
+    // A NEW image for this post, from the same context the text was written from.
+    // Photos-section photos are used only when the owner explicitly chose one (offer photo).
     const image = await imageForSlot({
-      businessId: String(business._id), slot: s, facts: ctx.facts, colors: ctx.brand.colors, customerLogo: ctx.customerLogo,
-      customerPhotos: ctx.customerPhotos, location: ctx.location, recentlyUsedPhotoIds: recentlyUsed, websiteImages: ctx.websiteImages,
+      businessId: String(business._id), slot: s, facts: ctx.facts, colors: ctx.brand.colors, colorSource: ctx.brand.colorSource, customerLogo: ctx.customerLogo,
+      customerPhotos: ctx.customerPhotos, location: ctx.location, post: { title: post.title, body: post.body }, usedImageHashes,
       offerImageId: offer?.imageId, headline: s.purpose === 'festival' ? `Happy ${s.festival?.name}` : s.purpose === 'offer' ? `This week at ${ctx.facts.businessName}` : s.service || ctx.facts.category || ctx.facts.businessName,
       generate: deps.generateImage,
     });
-    if (image.imageAssetId) recentlyUsed.unshift(image.imageAssetId);
 
     try {
       const doc: any = await Post.create({
@@ -286,9 +335,10 @@ export async function generateWeeklyBatch(opts: {
         contentMeta: {
           slot: s.slot, purpose: s.purpose, seoPlanId: s.seoPlanId, seoThemeIndex: s.seoThemeIndex, seoTheme: s.seoTheme,
           service: s.service, keyword: s.keyword, keywordSource: s.keywordSource, keywordMeasured: s.keywordMeasured,
+          keywordReason: s.keywordReason, keywordEvidence: s.keywordEvidence,
           festivalKey: s.festival?.key, festivalName: s.festival?.name, offerId: offerDoc && s.purpose === 'offer' ? String(offerDoc._id) : undefined,
           evidence: s.evidence, websiteIntelligenceId: ctx.wi?._id ? String(ctx.wi._id) : undefined,
-          imageSource: image.imageSource, imageAssetId: image.imageAssetId, imageNote: image.note, generatedVia,
+          imageSource: image.imageSource, imageOrigin: image.imageOrigin, imageGeneration: image.imageGeneration, brandUsed: image.brandUsed, imageAssetId: image.imageAssetId, imageNote: image.note, generatedVia,
           validation: { ok: check.ok, reasons: check.reasons, attempts, ...(firstRejection ? { firstRejection } : {}) }, draftReason,
         },
       });
@@ -319,6 +369,7 @@ export async function applyWeeklyOffer(opts: { businessId: string; weekKey: stri
   const offerDoc: any = await WeeklyOffer.findOne({ businessId: opts.businessId, weekKey: opts.weekKey, status: 'YES' }).lean();
   if (!offerDoc?.text) return { applied: 'no_offer' };
   if (offerDoc.postId) return { applied: 'already', postId: String(offerDoc.postId) };
+  if (offerDoc.endsAt && new Date(offerDoc.endsAt) < now) return { applied: 'no_offer' };
   const business: any = await Business.findById(opts.businessId).lean();
   if (!business) return { applied: 'no_offer' };
 
@@ -332,13 +383,14 @@ export async function applyWeeklyOffer(opts: { businessId: string; weekKey: stri
   const [copy] = await writeSlotCopy(ctx, [slot], business, opts.deps);
   const image = await imageForSlot({
     businessId: String(business._id), slot, facts: ctx.facts, colors: ctx.brand.colors, customerLogo: ctx.customerLogo,
-    customerPhotos: ctx.customerPhotos, location: ctx.location, recentlyUsedPhotoIds: [], websiteImages: [], offerImageId: offer.imageId,
+    colorSource: ctx.brand.colorSource, customerPhotos: ctx.customerPhotos, location: ctx.location, offerImageId: offer.imageId,
+    post: { title: copy.post.title, body: copy.post.body }, usedImageHashes: await recentImageHashes(business._id),
     headline: `This week at ${ctx.facts.businessName}`, generate: opts.deps?.generateImage,
   });
   const contentMeta = {
     slot: 4, purpose: 'offer', seoPlanId: slot.seoPlanId, service: slot.service, keyword: slot.keyword, keywordSource: slot.keywordSource, keywordMeasured: slot.keywordMeasured,
     festivalKey: slot.festival?.key, festivalName: slot.festival?.name, offerId: String(offerDoc._id), evidence: slot.evidence,
-    imageSource: image.imageSource, imageAssetId: image.imageAssetId, imageNote: image.note, generatedVia: copy.generatedVia,
+    imageSource: image.imageSource, imageOrigin: image.imageOrigin, imageGeneration: image.imageGeneration, brandUsed: image.brandUsed, imageAssetId: image.imageAssetId, imageNote: image.note, generatedVia: copy.generatedVia,
     validation: { ok: copy.check.ok, reasons: copy.check.reasons, attempts: copy.attempts }, draftReason: copy.draftReason,
   };
 

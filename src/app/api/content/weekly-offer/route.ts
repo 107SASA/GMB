@@ -38,7 +38,7 @@ export async function GET() {
       eligible,
       weekKey,
       answered: answer ? answer.status : null,
-      offer: answer?.status === 'YES' ? { text: answer.text, festivalName: answer.festivalName ?? null } : null,
+      offer: answer?.status === 'YES' ? { text: answer.text, festivalName: answer.festivalName ?? null, startsAt: answer.startsAt ?? null, endsAt: answer.endsAt ?? null, appliedToPost: !!answer.postId } : null,
       festivals: festivalsBetween(now, 14).map((f) => ({ name: f.name, date: f.date, approximate: !!f.approximate })),
       photos: (photos as any[]).map((p) => ({ id: String(p._id), url: p.url })),
     });

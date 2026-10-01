@@ -7,7 +7,7 @@
  * replaced.
  */
 
-export type PrefillSource = 'website' | 'google_listing' | 'measured_report';
+export type PrefillSource = 'website' | 'google_listing' | 'measured_report' | 'seo_plan';
 
 export interface PrefillSuggestion {
   value: string;
@@ -15,6 +15,8 @@ export interface PrefillSuggestion {
   /** Page / listing the value came from. */
   sourceUrl?: string;
   label: string;
+  /** Keywords only: each keyword with where it came from (measured on Google Maps / proposed by the plan). */
+  items?: Array<{ keyword: string; source: 'measured' | 'proposed'; rank?: number | null }>;
 }
 
 export interface PrefillInput {
@@ -42,6 +44,8 @@ export interface PrefillInput {
   } | null;
   /** Measured, non-brand keyword rows from the latest completed audit. */
   measuredKeywords?: Array<{ keyword: string; source?: string }>;
+  /** The SEO brain's keywords (services/seoPlan/seoBrainKeywords.ts), brand searches already excluded. */
+  brainKeywords?: Array<{ keyword: string; source: 'measured' | 'proposed'; rank?: number | null }>;
   /** Primary category shown on the public Google listing. */
   listingCategory?: string | null;
 }
@@ -76,6 +80,16 @@ export function buildIntakePrefill(input: PrefillInput): Partial<Record<'categor
   const measured = (input.measuredKeywords || []).filter((k) => k.source !== 'brand').map((k) => k.keyword);
   if (kw.length === 0 && measured.length) {
     out.keywords = { value: Array.from(new Set(measured)).slice(0, 8).join(', '), source: 'measured_report', label: 'Searches measured in your report — review' };
+  }
+  // Richer source when available: the SEO brain (measured first, then the plan's proposals).
+  if (kw.length === 0 && input.brainKeywords?.length) {
+    const items = input.brainKeywords.slice(0, 10);
+    out.keywords = {
+      value: items.map((k) => k.keyword).join(', '),
+      source: items.some((k) => k.source === 'measured') ? 'measured_report' : 'seo_plan',
+      label: 'From your report and SEO plan — remove any that don’t fit, or add your own',
+      items,
+    };
   }
 
   const usp = [...(w?.credentials || []), ...(w?.differentiators || [])];

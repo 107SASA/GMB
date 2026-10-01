@@ -1670,9 +1670,24 @@ export const generateAuditJob = inngest.createFunction(
       if (!audit || audit.status !== 'COMPLETED' || audit.fastMode) return { skip: true };
       // Monthly reports send their own verified summary (lifecycle/notify.ts).
       if (audit.auditKind === 'monthly') return { skip: 'monthly summary sent by the audit' };
+      // Share the plan itself — the top open actions from this report's
+      // optimization plan, with who does each (GrowwMatics or the owner).
+      const { default: OptimizationAction } = await import('@/models/OptimizationAction');
+      const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
+      const actions: any[] = (await OptimizationAction.find({ businessId: audit.businessId, status: { $in: ['PLANNED', 'READY'] } })
+        .select('description priority growwmaticsAction').lean() as any[])
+        .sort((a, b) => (order[a.priority] ?? 1) - (order[b.priority] ?? 1))
+        .slice(0, 3);
+      const planLines = actions.map((a, i) => `${i + 1}. ${String(a.description).slice(0, 140)}${a.growwmaticsAction ? ' (GrowwMatics will do this)' : ' (needs you)'}`);
+      const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '');
       await notifyOwner(audit.businessId.toString(), {
         event: 'report_ready',
-        text: `📄 GrowwMatics: your monthly Google Business Profile report for ${audit.businessName || 'your business'} is ready. Open your dashboard to see this month's score and action plan.`,
+        text: [
+          `📄 Your Google Business Profile report for ${audit.businessName || 'your business'} is ready.`,
+          ...(planLines.length ? ['', 'Your plan — top actions:', ...planLines] : []),
+          '',
+          `Full report and plan: ${base}/dashboard/audit/${auditId}`,
+        ].join('\n'),
       });
       return { sent: true };
     });
@@ -1899,6 +1914,22 @@ export const ownerWhatsAppDigestCron = inngest.createFunction(
 // plan. Delivered as an in-app notification (notifyBusinessUsers); a cold
 // business-initiated WhatsApp send would need an approved template and is
 // left for a follow-up. Opt-out: Business.weeklySummaryOptOut.
+// 15-day Google performance update over WhatsApp (Sep 2026) — views,
+// Search/Maps split, calls, website clicks, directions and chats from the
+// stored Google Performance data, compared with the previous 15 days.
+// Measured numbers only (no revenue / customers inferred). Daily pass; each
+// business gets at most one per 15 days (atomic claim in sendPerformanceDigest).
+export const performanceDigestCron = inngest.createFunction(
+  { id: "performance-digest-15-day", triggers: [{ cron: "30 4 * * *" }] }, // daily ~10:00 IST
+  async ({ step }) => {
+    const result = await step.run("send-due-performance-digests", async () => {
+      const { runPerformanceDigestAll } = await import("@/services/lifecycle/notify");
+      return await runPerformanceDigestAll();
+    });
+    return { success: true, ...result };
+  }
+);
+
 export const seoPlanWeeklySummary = inngest.createFunction(
   // Id kept so the existing Inngest registration/cron is replaced, not orphaned.
   { id: "seo-plan-weekly-summary", triggers: [{ cron: "0 12 * * 1" }] }, // Mondays ~17:30 IST
@@ -3933,20 +3964,27 @@ export const gbpSyncWorker = inngest.createFunction(
         )
       );
 
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth() + 1;
-      const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-      const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-
-      const [currentKeywords, prevKeywords] = await Promise.all([
-        fetchSearchKeywords(businessId, currentYear, currentMonth).catch(() => []),
-        fetchSearchKeywords(businessId, prevYear, prevMonth).catch(() => []),
-      ]);
-
-      const allKeywords = [
-        ...currentKeywords.map((k: any) => ({ ...k, year: currentYear, month: currentMonth })),
-        ...prevKeywords.map((k: any) => ({ ...k, year: prevYear, month: prevMonth })),
-      ];
+      // Google publishes a month's search terms only a few days after the
+      // month ends — so the current month is usually empty and, early in a
+      // month, so is the previous one. Ask for the current month and the two
+      // before it (free API), and record what came back (and any Google
+      // error) instead of silently treating an error as "no keywords".
+      const months = [0, 1, 2].map((back) => {
+        const d = new Date(now.getFullYear(), now.getMonth() - back, 1);
+        return { year: d.getFullYear(), month: d.getMonth() + 1 };
+      });
+      const results = await Promise.all(months.map(async (m) => {
+        try {
+          return { ...m, keywords: await fetchSearchKeywords(businessId, m.year, m.month), error: null as string | null };
+        } catch (err: any) {
+          return { ...m, keywords: [] as any[], error: String(err?.message || err).slice(0, 300) };
+        }
+      }));
+      const allKeywords = results.flatMap((r) => r.keywords.map((k: any) => ({ ...k, year: r.year, month: r.month })));
+      await GBPTokenModel.updateOne({ businessId }, { $set: { keywordSync: {
+        checkedAt: now,
+        months: results.map((r) => ({ year: r.year, month: r.month, count: r.keywords.length, ...(r.error ? { error: r.error } : {}) })),
+      } } });
 
       await Promise.all(
         allKeywords.map((k: any) =>

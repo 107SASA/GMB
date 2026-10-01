@@ -63,6 +63,7 @@ export const NOTIFICATION_PREFS = [
   { key: 'campaignCompletedEmail', label: 'Campaign completed — email' },
   { key: 'schedulerLowBufferEmail', label: 'Low post buffer — email' },
   { key: 'weeklyUpdateWhatsApp', label: 'Weekly update & festival reminders — WhatsApp' },
+  { key: 'performanceDigestWhatsApp', label: 'Google performance every 15 days — WhatsApp' },
   { key: 'reviewReplyWhatsApp', label: 'Review replies — WhatsApp' },
   { key: 'postPublishedWhatsApp', label: 'Posts published — WhatsApp' },
 ] as const;

@@ -77,7 +77,7 @@ const intakeSchema = z.object({
   /** Fields the owner filled from a sourced suggestion (kept only if the value was not edited away). */
   acceptedSuggestions: z.array(z.object({
     field: z.enum(['category', 'description', 'services', 'keywords', 'uniqueSellingPoints', 'offers']),
-    source: z.enum(['website', 'google_listing', 'measured_report']),
+    source: z.enum(['website', 'google_listing', 'measured_report', 'seo_plan']),
     sourceUrl: z.string().max(500).optional(),
   })).max(5).optional().default([]),
 });
@@ -186,7 +186,10 @@ async function loadPrefillSuggestions(b: any): Promise<Record<string, PrefillSug
       .lean(),
   ]);
   const rows: any[] = audit?.auditData?.keywordTable || [];
+  const { seoBrainKeywords } = await import('@/services/seoPlan/seoBrainKeywords');
+  const brainKeywords = await seoBrainKeywords(b).catch(() => []);
   return buildIntakePrefill({
+    brainKeywords,
     business: b,
     website,
     measuredKeywords: rows.filter((r) => (r.rankStatus ?? 'ok') === 'ok').map((r) => ({ keyword: r.keyword, source: r.source })),

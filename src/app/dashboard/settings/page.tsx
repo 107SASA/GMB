@@ -161,6 +161,7 @@ export default function SettingsPage() {
     reportReadyWhatsApp: true,
     weeklyUpdateWhatsApp: true,
     weeklyReportAlwaysWhatsApp: false,
+    performanceDigestWhatsApp: true,
   });
   const [savedRows, setSavedRows] = useState<Set<string>>(new Set());
 
@@ -796,6 +797,12 @@ export default function SettingsPage() {
                   icon: '🔁',
                   label: 'Weekly update every week',
                   desc: 'Send the weekly summary even in weeks with nothing new',
+                },
+                {
+                  key: 'performanceDigestWhatsApp',
+                  icon: '📈',
+                  label: 'Google performance every 15 days',
+                  desc: 'Views, calls, website clicks and directions from Google, compared with the previous 15 days',
                 },
                 {
                   key: 'dailyDigestWhatsApp',

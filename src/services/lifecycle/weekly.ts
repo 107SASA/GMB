@@ -131,3 +131,15 @@ export function isoWeekKey(d = new Date()): string {
   const week = Math.ceil(((t.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
   return `${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
+
+/** "No new reviews this week" WhatsApp nudge — states only what the records show. */
+export function reviewReminderText(businessName: string, placeId: string | null, requestsSent: number | null): string {
+  const link = placeId ? `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}` : null;
+  return [
+    `⭐ No new Google reviews for ${businessName} this week.`,
+    requestsSent === 0 ? 'No review requests were sent through GrowwMatics this week.' : requestsSent == null ? 'No new reviews arrived this week.' : `${requestsSent} review request${requestsSent === 1 ? ' was' : 's were'} sent this week — no new reviews yet.`,
+    'Ask 2–3 happy customers today — fresh reviews are an important local visibility signal.',
+    link ? `Your review link to share: ${link}` : 'Send review requests from the Review Requests page in your dashboard.',
+  ].join('\n');
+}
+

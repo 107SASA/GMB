@@ -29,7 +29,19 @@ const EMPTY: IntakeData = {
 const isValidKeyword = (v: string) => /[a-zA-Z]/.test(v);
 
 type SuggestField = 'category' | 'description' | 'services' | 'keywords' | 'uniqueSellingPoints' | 'offers';
-interface Suggestion { value: string; source: 'website' | 'google_listing' | 'measured_report'; sourceUrl?: string; label: string }
+interface Suggestion {
+  value: string;
+  source: 'website' | 'google_listing' | 'measured_report' | 'seo_plan';
+  sourceUrl?: string;
+  label: string;
+  items?: Array<{ keyword: string; source: 'measured' | 'proposed'; rank?: number | null }>;
+}
+
+const KW_SOURCE_LABEL: Record<string, string> = {
+  measured: 'checked in your report',
+  proposed: 'from your SEO plan',
+  ai: 'AI idea',
+};
 
 /** A sourced suggestion for an empty field — the owner reviews it before use. */
 function SuggestionNote({ s, onUse }: { s?: Suggestion; onUse: () => void }) {
@@ -132,6 +144,9 @@ export default function IntakePage() {
 
   // ── AI keyword suggestions ──────────────────────────────────────────────
   const [suggestedKeywords, setSuggestedKeywords] = useState<string[]>([]);
+  const [suggestedSource, setSuggestedSource] = useState<Record<string, string>>({});
+  // Keywords pre-filled from the report / SEO plan (owner can remove or add).
+  const [prefilledFrom, setPrefilledFrom] = useState<string | null>(null);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestError, setSuggestError] = useState(false);
   // Every keyword ever shown (picked or not) across every batch, so "more
@@ -149,6 +164,8 @@ export default function IntakePage() {
         body: JSON.stringify({
           category: data.category,
           description: data.description,
+          city: data.city,
+          area: data.area,
           selectedKeywords: selected,
           excludeKeywords: shownKeywordsRef.current,
         }),
@@ -157,6 +174,9 @@ export default function IntakePage() {
       if (!res.ok || !json.success) throw new Error(json.error || 'Failed to load suggestions');
       shownKeywordsRef.current = [...shownKeywordsRef.current, ...json.keywords];
       setSuggestedKeywords(json.keywords);
+      if (Array.isArray(json.details)) {
+        setSuggestedSource((prev) => ({ ...prev, ...Object.fromEntries(json.details.map((d: any) => [d.keyword, d.source])) }));
+      }
     } catch {
       setSuggestError(true);
     } finally {
@@ -210,8 +230,27 @@ export default function IntakePage() {
           return;
         }
         if (json.success) {
-          setData({ ...EMPTY, ...json.data });
-          if (json.suggestions) setSuggestions(json.suggestions);
+          const loaded = { ...EMPTY, ...json.data };
+          const kwSuggestion: Suggestion | undefined = json.suggestions?.keywords;
+          // No keywords yet but the report / SEO plan already researched some →
+          // pre-fill them as tags; the owner removes any that don't fit or adds their own.
+          if (loaded.keywords.length === 0 && kwSuggestion) {
+            const prefilled = (kwSuggestion.items?.map((i) => i.keyword) ?? kwSuggestion.value.split(','))
+              .map((x) => x.trim())
+              .filter(isValidKeyword);
+            if (prefilled.length) {
+              loaded.keywords = prefilled;
+              setAccepted((p) => ({ ...p, keywords: kwSuggestion }));
+              setPrefilledFrom(kwSuggestion.label);
+              shownKeywordsRef.current = [...shownKeywordsRef.current, ...prefilled];
+            }
+          }
+          setData(loaded);
+          if (json.suggestions) {
+            const rest = { ...json.suggestions };
+            if (loaded.keywords.length) delete rest.keywords;
+            setSuggestions(rest);
+          }
         }
       } catch {
         /* keep defaults */
@@ -328,6 +367,12 @@ export default function IntakePage() {
             placeholder="e.g. best bakery in Kolkata"
           />
           {data.keywords.length === 0 && <SuggestionNote s={suggestions.keywords} onUse={() => applySuggestion('keywords')} />}
+          {prefilledFrom && data.keywords.length > 0 && (
+            <p className="text-xs text-on-surface-variant flex items-center gap-1.5">
+              <MaterialIcon name="travel_explore" size={14} className="text-primary" />
+              Pre-filled from your report and SEO plan — remove any that don&apos;t fit, or add your own.
+            </p>
+          )}
 
           {/* Manual fallback — the effect above fires this automatically a
               little after category (+ ideally description) is filled in,
@@ -391,6 +436,9 @@ export default function IntakePage() {
                     >
                       <MaterialIcon name="add" size={14} />
                       {kw}
+                      {suggestedSource[kw] && (
+                        <span className="text-[10px] font-normal text-outline">· {KW_SOURCE_LABEL[suggestedSource[kw]] ?? ''}</span>
+                      )}
                     </button>
                   ))}
                 </div>

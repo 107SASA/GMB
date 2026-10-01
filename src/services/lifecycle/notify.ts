@@ -3,7 +3,7 @@ import { runWithMeter } from '@/lib/providerMeter';
 import { notifyBusinessUsers } from '@/services/notifications';
 import { notifyOwner, ownerWhatsAppPrefs } from '@/services/ownerNotify';
 import { collectExecutions } from './collect';
-import { buildWeeklySummary, isoWeekKey, type WeeklyInput } from './weekly';
+import { buildWeeklySummary, isoWeekKey, reviewReminderText, type WeeklyInput } from './weekly';
 import { composeMonthlyWhatsApp } from './monthly';
 
 const DAY = 86_400_000;
@@ -45,7 +45,7 @@ export async function runWeeklyMonitoring(businessId: string, now = new Date()):
     throw err;
   }
 
-  const b: any = await Business.findById(businessId).select('name googleConnected googleLocationId googleReviewTotals subscriptionStatus').lean();
+  const b: any = await Business.findById(businessId).select('name googleConnected googleLocationId googleReviewTotals subscriptionStatus googlePlaceId placeId').lean();
   if (!b?.googleConnected) {
     await WeeklyMonitor.updateOne({ businessId, weekKey }, { $set: { status: 'skipped', skipReason: 'Google Business Profile not connected — verified weekly monitoring needs a connection' } });
     return { status: 'skipped', weekKey };
@@ -112,10 +112,18 @@ export async function runWeeklyMonitoring(businessId: string, now = new Date()):
   await contentPrompts(businessId, now, b?.name || 'your business').catch((err) => console.error('[weeklyMonitor] content prompts failed:', err?.message));
   let whatsapp = 'not_sent';
   const prefs = await ownerWhatsAppPrefs(businessId);
+  // A synced week with no new Google reviews → a WhatsApp nudge to ask
+  // customers (only when the review sync actually ran — never a guess).
+  const noReviews = summary.input.reviews.syncedThisWeek && summary.input.reviews.newCount === 0;
+  const reviewNudge = noReviews ? reviewReminderText(b?.name || 'your business', b?.googlePlaceId || b?.placeId || null, summary.input.reviews.requestsSent) : null;
   if (!prefs?.phone) whatsapp = 'no_phone';
-  else if (!summary.meaningful && !prefs.prefs.weeklyReportAlwaysWhatsApp) whatsapp = 'suppressed_nothing_new';
-  else {
-    await notifyOwner(businessId, { event: 'weekly_update', text: `${summary.whatsappText}\n${appUrl()}/dashboard` });
+  else if (!summary.meaningful && !prefs.prefs.weeklyReportAlwaysWhatsApp) {
+    if (reviewNudge) {
+      await notifyOwner(businessId, { event: 'review_reminder', text: reviewNudge });
+      whatsapp = 'review_reminder_sent_if_opted_in';
+    } else whatsapp = 'suppressed_nothing_new';
+  } else {
+    await notifyOwner(businessId, { event: 'weekly_update', text: `${summary.whatsappText}${reviewNudge ? `\n\n${reviewNudge}` : ''}\n${appUrl()}/dashboard` });
     whatsapp = 'sent_if_opted_in';
   }
   const paidCalls = Object.entries(counts).filter(([k]) => !/CacheHit$|Token$/.test(k) && k !== 'websiteFetch').reduce((a, [, n]) => a + (n || 0), 0);
@@ -171,6 +179,54 @@ export async function contentPrompts(businessId: string, now: Date, businessName
     sent.push(f.key);
   }
   return { offerAsked: !answered, festivals: sent };
+}
+
+/**
+ * 15-day Google performance update over WhatsApp. At most once per 15 days
+ * per business (atomic claim on Business.performanceDigestLastSentAt before
+ * sending, so reruns never duplicate). Stored GBPInsights only — no API call.
+ */
+export async function sendPerformanceDigest(businessId: string, now = new Date()): Promise<{ status: string }> {
+  await dbConnect();
+  const [{ default: Business }, { default: GBPInsights }, { buildPerformanceDigest, composePerformanceDigest, DIGEST_DAYS, DATA_LAG_DAYS }] = await Promise.all([
+    import('@/models/Business'), import('@/models/GBPInsights'), import('./performanceDigest'),
+  ]);
+  const b: any = await Business.findById(businessId).select('name performanceDigestLastSentAt').lean();
+  if (!b) return { status: 'no_business' };
+  const since = new Date(now.getTime() - (2 * DIGEST_DAYS + DATA_LAG_DAYS + 2) * DAY);
+  const rows: any[] = await GBPInsights.find({ businessId, date: { $gte: since } })
+    .select('date views viewsSearch viewsMaps callClicks websiteClicks directionRequests conversations').lean();
+  const text = composePerformanceDigest(buildPerformanceDigest(rows, now), b.name || 'your business', `${appUrl()}/dashboard/insights`);
+  if (!text) return { status: 'not_enough_data' };
+  // Claim the 15-day slot first (half a day of slack so a daily cron isn't pushed later each cycle).
+  const due = new Date(now.getTime() - (DIGEST_DAYS * DAY - 12 * 3_600_000));
+  const claimed = await Business.findOneAndUpdate(
+    { _id: businessId, $or: [{ performanceDigestLastSentAt: { $exists: false } }, { performanceDigestLastSentAt: null }, { performanceDigestLastSentAt: { $lte: due } }] },
+    { $set: { performanceDigestLastSentAt: now } },
+  );
+  if (!claimed) return { status: 'not_due' };
+  await notifyOwner(businessId, { event: 'performance_digest', text });
+  return { status: 'sent_if_opted_in' };
+}
+
+/** Daily cron entry: subscribed, Google-connected businesses whose 15-day update is due. */
+export async function runPerformanceDigestAll(now = new Date()): Promise<{ businesses: number; sent: number }> {
+  await dbConnect();
+  const Business = (await import('@/models/Business')).default;
+  const due = new Date(now.getTime() - (15 * DAY - 12 * 3_600_000));
+  const list: any[] = await Business.find({
+    isDeleted: { $ne: true }, subscriptionStatus: 'active', googleConnected: true,
+    $or: [{ performanceDigestLastSentAt: { $exists: false } }, { performanceDigestLastSentAt: null }, { performanceDigestLastSentAt: { $lte: due } }],
+  }).select('_id').lean();
+  let sent = 0;
+  for (const b of list) {
+    try {
+      if ((await sendPerformanceDigest(String(b._id), now)).status === 'sent_if_opted_in') sent++;
+    } catch (err: any) {
+      console.error(`[performanceDigest] business ${b._id} failed:`, err?.message);
+    }
+  }
+  return { businesses: list.length, sent };
 }
 
 /** Weekly cron entry: every subscribed, Google-connected business. */

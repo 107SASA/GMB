@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   IAudit,
   IAuditData,
@@ -223,6 +223,19 @@ export default function AuditReportGrexa({
   onShare?: () => void;
   isSyncing?: boolean;
 }) {
+  // Same source of truth as the dashboard paywall (WorkspaceLockGate):
+  // a subscribed workspace never sees the upgrade button. null = still
+  // checking — the button stays hidden so paying users never see it flash.
+  const [workspaceActive, setWorkspaceActive] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/billing/status')
+      .then((r) => r.json())
+      .then((j) => { if (!cancelled) setWorkspaceActive(j?.workspace ? !!j.workspace.isActive : null); })
+      .catch(() => { if (!cancelled) setWorkspaceActive(null); });
+    return () => { cancelled = true; };
+  }, []);
+
   const data = audit.auditData as IAuditData;
   if (!data) return <div className="p-8 text-center text-on-surface-variant">No audit data available.</div>;
 
@@ -994,7 +1007,7 @@ export default function AuditReportGrexa({
           keywordTable={data.keywordTable || []}
           businessName={audit.businessName}
           city={(audit.location || '').split(',')[0]?.trim() || ''}
-          checkoutHref="/dashboard/upgrade"
+          checkoutHref={workspaceActive === false ? '/dashboard/upgrade' : null}
         />
       )}
 

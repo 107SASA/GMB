@@ -471,37 +471,46 @@ export async function suggestTargetKeywords(
   category: string,
   description: string,
   selectedKeywords: string[] = [],
-  excludeKeywords: string[] = []
+  excludeKeywords: string[] = [],
+  location: { city?: string; area?: string } = {}
 ): Promise<string[]> {
   try {
+    const place = [location.area, location.city].filter(Boolean).join(', ');
     const prompt = `You are a local SEO strategist helping a small business pick Google search keywords.
 
 Business category: ${category || 'Local business'}
 Business description: ${description || 'Not provided'}
+Business location: ${place || 'Not provided'}
 ${selectedKeywords.length > 0
   ? `The business owner has already picked these keywords — suggest MORE keywords in a similar theme (close variations, related services, nearby search intent), not a completely different direction:\n${selectedKeywords.join(', ')}`
   : 'Suggest a good starting mix: a few broad category keywords and a few more specific long-tail ones.'}
 
 Rules:
 - Each keyword is 2-6 words, realistic, and something a real customer would actually type into Google to find a business like this.
-- Local-intent phrasing is good (e.g. "near me", a service + city-style pattern) but don't invent a specific city if none was mentioned.
+- Local-intent phrasing is good (e.g. "near me", "<service> <city>"). Use ONLY the business location given above; if none is given, do not invent a city.
+- Only services that fit the category/description — never invent services the business may not offer. No brand names.
 - Do NOT suggest any of these — they've already been shown:
 ${excludeKeywords.length > 0 ? excludeKeywords.join(', ') : '(none yet)'}
 - Return exactly 8 keywords.
-- Return ONLY a JSON array of strings, no explanation, no markdown fences.
+- Return ONLY JSON: {"keywords": ["keyword one", "keyword two"]}`;
 
-Example format: ["keyword one", "keyword two"]`;
-
-    const completion = await groq.chat.completions.create({
+    // gpt-oss-120b is a reasoning model: its hidden reasoning counts against
+    // max_tokens. The old 300-token cap was used up by reasoning alone, the
+    // answer came back empty, and the "Suggest keywords" button silently did
+    // nothing. Low effort + room for the answer + JSON mode fixes that.
+    const completion: any = await groq.chat.completions.create({
       model: GROQ_MODEL,
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.8,
-      max_tokens: 300,
-    });
+      temperature: 0.7,
+      max_tokens: 2000,
+      reasoning_effort: 'low',
+      response_format: { type: 'json_object' },
+    } as any);
 
-    const raw = completion.choices[0]?.message?.content?.trim() || '[]';
-    const cleaned = raw.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(cleaned);
+    const raw = completion.choices[0]?.message?.content?.trim() || '';
+    if (!raw) throw new Error(`empty AI response (finish_reason=${completion.choices[0]?.finish_reason})`);
+    const json = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    const parsed = Array.isArray(json) ? json : json?.keywords;
     if (!Array.isArray(parsed)) return [];
 
     const excludeLower = new Set([...selectedKeywords, ...excludeKeywords].map((k) => k.toLowerCase().trim()));

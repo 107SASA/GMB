@@ -129,7 +129,8 @@ export default function ConsultantSections({
   keywordTable: IKeywordTableRow[];
   businessName: string;
   city: string;
-  checkoutHref: string;
+  /** Upgrade link; omit to hide the upgrade button (e.g. a subscribed workspace). */
+  checkoutHref?: string | null;
 }) {
   const failed = new Set(draft.failed || []);
   // Older drafts (no `grounded` marker) may hold AI-invented services,
@@ -695,12 +696,14 @@ export default function ConsultantSections({
         </div>
       )}
 
-      <Link
-        href={checkoutHref}
-        className="block w-full text-center py-4 bg-primary text-on-primary rounded-lg font-bold hover:bg-primary-container transition-all card-shadow"
-      >
-        Unlock the full plan & platform →
-      </Link>
+      {checkoutHref && (
+        <Link
+          href={checkoutHref}
+          className="block w-full text-center py-4 bg-primary text-on-primary rounded-lg font-bold hover:bg-primary-container transition-all card-shadow"
+        >
+          Unlock the full plan & platform →
+        </Link>
+      )}
     </div>
   );
 }

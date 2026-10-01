@@ -22,6 +22,7 @@ const DEFAULTS = {
   reportReadyWhatsApp: true,
   weeklyUpdateWhatsApp: true,
   weeklyReportAlwaysWhatsApp: false,
+  performanceDigestWhatsApp: true,
 };
 
 export async function GET() {

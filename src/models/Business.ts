@@ -196,6 +196,8 @@ export interface IBusiness extends Document {
   // genuinely new, or a pre-existing business from before this feature
   // existed — the autopilot cron treats both the same: start on its next pass).
   autopilotNextRunAt?: Date;
+  /** Last 15-day Google performance WhatsApp (claimed atomically before sending). */
+  performanceDigestLastSentAt?: Date;
   // ADDITIVE — automatic audit autopilot anchor (see src/lib/auditAutopilot.ts
   // + auditAutopilotCron in services/inngest/functions.ts). Set the first time
   // this workspace has an active subscription + connected Google Business
@@ -388,6 +390,7 @@ const BusinessSchema: Schema = new Schema(
     },
     // ADDITIVE — weekly content autopilot anchor (see IBusiness above).
     autopilotNextRunAt: { type: Date },
+    performanceDigestLastSentAt: { type: Date },
     // ADDITIVE — automatic audit autopilot (see IBusiness above + src/lib/auditAutopilot.ts).
     auditAutopilotNextRunAt: { type: Date },
     auditAutopilotCategoryNudgedAt: { type: Date },

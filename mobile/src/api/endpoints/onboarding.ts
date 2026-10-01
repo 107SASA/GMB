@@ -113,16 +113,36 @@ export const EMPTY_INTAKE: IntakeData = {
   targetAudience: '', competitorNames: [], primaryGoal: '',
 };
 
+/** Keywords the business's report / SEO plan already researched (server: seoBrainKeywords). */
+const keywordPrefillSchema = z
+  .object({
+    value: z.string().catch(''),
+    label: z.string().catch(''),
+    items: z
+      .array(z.object({ keyword: z.string(), source: z.string().catch('measured') }))
+      .optional()
+      .catch(undefined),
+  })
+  .nullable()
+  .optional()
+  .catch(null);
+
 /** GET /api/onboarding/intake — prefill + whether it's already done. */
-export async function fetchIntake(): Promise<{ intakeCompleted: boolean; data: IntakeData }> {
+export async function fetchIntake(): Promise<{ intakeCompleted: boolean; data: IntakeData; keywordPrefill: string[] }> {
   const { data } = await api.get('/api/onboarding/intake');
-  return z
+  const parsed = z
     .object({
       success: z.boolean().catch(false),
       intakeCompleted: z.boolean().catch(false),
       data: intakeSchema.catch(EMPTY_INTAKE),
+      suggestions: z.object({ keywords: keywordPrefillSchema }).partial().nullable().optional().catch(null),
     })
     .parse(data);
+  const kw = parsed.suggestions?.keywords;
+  const keywordPrefill = (kw?.items?.map((i) => i.keyword) ?? (kw?.value ? kw.value.split(',') : []))
+    .map((k) => k.trim())
+    .filter(Boolean);
+  return { intakeCompleted: parsed.intakeCompleted, data: parsed.data, keywordPrefill };
 }
 
 /** POST /api/onboarding/intake — saves the profile + marks intakeCompleted. */
@@ -130,16 +150,35 @@ export async function saveIntake(input: IntakeData): Promise<void> {
   await api.post('/api/onboarding/intake', input);
 }
 
-/** POST /api/onboarding/suggest-keywords — AI target-keyword suggestions. */
+export interface SuggestedKeyword {
+  keyword: string;
+  /** measured = checked in your report · proposed = from your SEO plan · ai = AI idea */
+  source: 'measured' | 'proposed' | 'ai';
+}
+
+/**
+ * POST /api/onboarding/suggest-keywords — the report / SEO plan keywords
+ * first, then AI ideas to fill the batch. Throws when nothing could be
+ * suggested (the form shows the error instead of silently doing nothing).
+ */
 export async function suggestKeywords(input: {
   category: string;
   description?: string;
+  city?: string;
+  area?: string;
   selectedKeywords?: string[];
   excludeKeywords?: string[];
-}): Promise<string[]> {
+}): Promise<SuggestedKeyword[]> {
   const { data } = await api.post('/api/onboarding/suggest-keywords', input);
-  return z
-    .object({ success: z.boolean().catch(false), keywords: z.array(z.string()).catch([]) })
-    .parse(data)
-    .keywords;
+  const parsed = z
+    .object({
+      success: z.boolean().catch(false),
+      keywords: z.array(z.string()).catch([]),
+      details: z
+        .array(z.object({ keyword: z.string(), source: z.enum(['measured', 'proposed', 'ai']).catch('ai') }))
+        .optional()
+        .catch(undefined),
+    })
+    .parse(data);
+  return parsed.details ?? parsed.keywords.map((keyword) => ({ keyword, source: 'ai' as const }));
 }

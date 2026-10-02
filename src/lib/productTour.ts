@@ -40,7 +40,7 @@ export const PRODUCT_TOUR_STEPS: TourStep[] = [
     route: '/dashboard/content',
     selector: '[data-tour="generate-content"]',
     title: 'Step 3 — Your posts are automated',
-    body: 'A fresh batch of AI-written posts generates and schedules itself every week — no action needed. Use this button anytime you want an extra batch right now.',
+    body: 'Your weekly posts are generated automatically — 4 posts every week from your SEO plan, business information, keywords, offers and relevant festivals, scheduled for you. No action needed.',
   },
   {
     id: 'review-campaigns-tab',

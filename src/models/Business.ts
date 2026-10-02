@@ -111,9 +111,9 @@ export interface IBusiness extends Document {
   // Missing config means "use DEFAULT_LEAD_STAGES" (see src/lib/leadStages.ts).
   leadStages?: {
     initialLabel: string;
-    active: Array<{ name: string; color: string }>;
-    converted: Array<{ name: string; color: string }>;
-    closed: Array<{ name: string; color: string }>;
+    active: Array<{ id?: string; name: string; color: string }>;
+    converted: Array<{ id?: string; name: string; color: string }>;
+    closed: Array<{ id?: string; name: string; color: string }>;
   };
   onboardingCompleted: boolean;
   faqs?: Array<{ question: string; answer: string }>;
@@ -196,6 +196,10 @@ export interface IBusiness extends Document {
   // genuinely new, or a pre-existing business from before this feature
   // existed — the autopilot cron treats both the same: start on its next pass).
   autopilotNextRunAt?: Date;
+  /** Customer CRM ROI: what the owner says they spend per month (marketing / GrowwMatics). Absent → ROI not shown. */
+  crmInvestment?: { monthlyAmount: number; currency: string; updatedAt: Date } | null;
+  /** Customer CRM Monthly Growth Report: last month ('YYYY-MM') whose "report ready" notification was handled (claimed atomically). */
+  crmGrowthReportNotifiedFor?: string | null;
   /** Last 15-day Google performance WhatsApp (claimed atomically before sending). */
   performanceDigestLastSentAt?: Date;
   // ADDITIVE — automatic audit autopilot anchor (see src/lib/auditAutopilot.ts
@@ -237,6 +241,10 @@ export interface IBusiness extends Document {
 // Sub-stage of a main lead stage (see leadStages below).
 const LeadSubStageSchema = new Schema(
   {
+    // Stable id (Customer CRM, Oct 2026): leads reference it as Lead.subStageId,
+    // so renaming or reordering a sub-stage never detaches its leads. Without
+    // this path Mongoose's strict mode would silently drop the id on save.
+    id: { type: String, trim: true },
     name: { type: String, required: true, trim: true },
     color: { type: String, default: 'slate' },
   },
@@ -391,6 +399,12 @@ const BusinessSchema: Schema = new Schema(
     // ADDITIVE — weekly content autopilot anchor (see IBusiness above).
     autopilotNextRunAt: { type: Date },
     performanceDigestLastSentAt: { type: Date },
+    crmInvestment: {
+      monthlyAmount: { type: Number, min: 0 },
+      currency: { type: String, default: 'INR' },
+      updatedAt: { type: Date },
+    },
+    crmGrowthReportNotifiedFor: { type: String, default: null },
     // ADDITIVE — automatic audit autopilot (see IBusiness above + src/lib/auditAutopilot.ts).
     auditAutopilotNextRunAt: { type: Date },
     auditAutopilotCategoryNudgedAt: { type: Date },

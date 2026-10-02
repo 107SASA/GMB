@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Customer from '@/models/Customer';
-import Lead from '@/models/Lead';
+import { buildCustomerLeadIndex, createOrUpdateCustomerLead } from '@/services/crm/customerLeads';
 import mongoose from 'mongoose';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
@@ -27,6 +27,7 @@ export async function POST(req: Request) {
 
     const bid = new mongoose.Types.ObjectId(ctx.businessId);
     const tenantId = ctx.organizationId;
+    const index = await buildCustomerLeadIndex(ctx.businessId);
     let imported = 0;
     let leadsCreated = 0;
 
@@ -59,20 +60,22 @@ export async function POST(req: Request) {
       );
       imported++;
 
-      const leadExists = await Lead.exists(query);
-      if (!leadExists) {
-        await Lead.create({
-          tenantId,
-          businessId: bid,
-          name: customer.name,
-          phone: customer.phone,
-          email: customer.email,
-          source: 'Import',
-          pipelineStage: 'Converted',
-          aiScore: 100
-        });
-        leadsCreated++;
-      }
+      // Canonical Customer CRM path (valid 'Campaign Import' source, schema
+      // validated, deduped by normalized phone/email in this workspace). Past
+      // customers are NOT marked Won: a conversion needs a real deal value,
+      // and fabricating one would distort revenue/ROI. They are tagged instead.
+      const r = await createOrUpdateCustomerLead({
+        businessId: ctx.businessId,
+        organizationId: ctx.organizationId,
+        name: customer.name,
+        phone: customer.phone || null,
+        email: customer.email || null,
+        source: 'Campaign Import',
+        tags: ['Past customer'],
+        createdBy: ctx.userId,
+        bulk: true,
+      }, { index });
+      if (r.created) leadsCreated++;
     }
 
     return NextResponse.json({ success: true, imported, leadsCreated });

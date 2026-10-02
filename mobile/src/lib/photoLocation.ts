@@ -113,3 +113,75 @@ export async function takePhotoWithCamera(): Promise<PickedPhoto | null> {
     ? asPicked(asset, { lat: pos.lat, lng: pos.lng, source: 'device_at_capture', ...(pos.accuracyM != null ? { accuracyM: pos.accuracyM } : {}) }, null)
     : asPicked(asset, null, 'Location permission was not given, so no location was attached from the phone.');
 }
+
+// ── Video — the SAME location rules as photos ─────────────────────────────
+//   - Gallery video → only its OWN location, which phones record inside the
+//     file; the server reads it from the upload. The phone's current location
+//     is never attached (it is not where that video was filmed).
+//   - Video recorded in the app camera → the phone's position at that moment.
+// The server then applies one policy for photos and videos and records the
+// result on the media item.
+
+/** Google Business Profile limits for video (also enforced by the server). */
+export const MAX_VIDEO_BYTES = 75 * 1024 * 1024;
+export const MAX_VIDEO_SECONDS = 30;
+
+export interface PickedVideo extends PickedPhoto {
+  durationMs: number | null;
+  fileSize: number | null;
+}
+
+/** Only MP4 / MOV are accepted by the server; infer from the file name when the picker gives no type. */
+function videoMime(asset: ImagePicker.ImagePickerAsset): string | null {
+  const t = (asset.mimeType || '').toLowerCase();
+  if (t === 'video/mp4' || t === 'video/quicktime') return t;
+  const name = (asset.fileName || asset.uri).toLowerCase();
+  if (name.endsWith('.mp4') || name.endsWith('.m4v')) return 'video/mp4';
+  if (name.endsWith('.mov')) return 'video/quicktime';
+  return null;
+}
+
+/** Why a video can't be uploaded (shown to the owner), or null when it is fine. */
+export function videoProblem(v: PickedVideo): string | null {
+  if (!v.mimeType) return 'Only MP4 or MOV videos can be uploaded.';
+  if (v.fileSize != null && v.fileSize > MAX_VIDEO_BYTES) return 'This video is larger than 75 MB. Please choose a shorter or smaller video.';
+  if (v.durationMs != null && v.durationMs > MAX_VIDEO_SECONDS * 1000 + 500) return `Google accepts videos up to ${MAX_VIDEO_SECONDS} seconds. Please choose a shorter video.`;
+  return null;
+}
+
+const asPickedVideo = (asset: ImagePicker.ImagePickerAsset, location: PhotoLocation | null, note: string | null): PickedVideo => {
+  const mime = videoMime(asset);
+  return {
+    uri: asset.uri,
+    mimeType: mime ?? '',
+    fileName: asset.fileName ?? `video-${Date.now()}.${mime === 'video/quicktime' ? 'mov' : 'mp4'}`,
+    location,
+    locationNote: note,
+    durationMs: asset.duration ?? null,
+    fileSize: asset.fileSize ?? null,
+  };
+};
+
+/** Gallery video. Returns null when cancelled; throws Error('permission') when library access is denied. */
+export async function pickVideoFromLibrary(): Promise<PickedVideo | null> {
+  const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!perm.granted) throw new Error('permission');
+  // iOS exports gallery videos with the Passthrough preset by default: the original
+  // file, including the location the camera recorded in it, is kept.
+  const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'] });
+  if (result.canceled || result.assets.length === 0) return null;
+  return asPickedVideo(result.assets[0], null, 'A location the phone recorded inside the video is kept.');
+}
+
+/** In-app camera video. The phone's position is read while the camera is open (the moment of capture). */
+export async function recordVideoWithCamera(): Promise<PickedVideo | null> {
+  const perm = await ImagePicker.requestCameraPermissionsAsync();
+  if (!perm.granted) throw new Error('permission');
+  const position = devicePosition(); // started now, awaited after recording
+  const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['videos'], videoMaxDuration: MAX_VIDEO_SECONDS });
+  if (result.canceled || result.assets.length === 0) return null;
+  const pos = await position;
+  return pos
+    ? asPickedVideo(result.assets[0], { lat: pos.lat, lng: pos.lng, source: 'device_at_capture', ...(pos.accuracyM != null ? { accuracyM: pos.accuracyM } : {}) }, null)
+    : asPickedVideo(result.assets[0], null, 'Location permission was not given, so no location was attached from the phone.');
+}

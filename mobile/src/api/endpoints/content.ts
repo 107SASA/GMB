@@ -1,63 +1,11 @@
-import axios from 'axios';
 import { z } from 'zod';
 import { api } from '../client';
-import { PlanLimitError } from './reviews';
 
 /**
- * Content Generator — mirrors the web ContentWorkspace:
- *   POST /api/content/generate is synchronous but slow (~30–60s), so that
- *   one call gets its own long timeout. Generated posts are saved server-side
- *   as drafts; history and scheduling reuse the scheduler endpoints.
+ * Content — mirrors the web ContentWorkspace: the weekly posts the autopilot
+ * created (read + manage). There is no client call that generates posts: the
+ * 4 weekly posts are created by the weekly job only.
  */
-
-export const generatedPostSchema = z.object({
-  _id: z.string().nullable().catch(null),
-  title: z.string().catch(''),
-  body: z.string().catch(''),
-  postType: z.string().nullable().catch(null),
-  hashtags: z.array(z.string().catch('')).catch([]),
-  cta: z.string().nullable().catch(null),
-  // Thumbnails are generated in the background AFTER this response returns, so
-  // imageUrl starts null and is filled in by polling fetchPostImages(). A
-  // present thumbnailPrompt means an image IS on the way (show a loader).
-  imageUrl: z.string().nullable().catch(null),
-  thumbnailPrompt: z.string().nullable().catch(null),
-});
-export type GeneratedPost = z.infer<typeof generatedPostSchema>;
-
-const faqSchema = z.object({
-  question: z.string().catch(''),
-  answer: z.string().catch(''),
-});
-export type Faq = z.infer<typeof faqSchema>;
-
-export const generateResultSchema = z.object({
-  posts: z.array(generatedPostSchema.nullable().catch(null)).catch([]),
-  seoDescription: z.string().nullable().catch(null),
-  seoScore: z.number().nullable().catch(null),
-  faqs: z.array(faqSchema.nullable().catch(null)).catch([]),
-});
-export type GenerateResult = z.infer<typeof generateResultSchema>;
-
-export interface GenerateContentInput {
-  tone: string;
-  keywords: string[];
-  contentTypes: string[];
-  topic?: string;
-}
-
-/** POST /api/content/generate — long-running single request (no polling). */
-export async function generateContent(input: GenerateContentInput): Promise<GenerateResult> {
-  try {
-    const { data } = await api.post('/api/content/generate', input, { timeout: 120_000 });
-    return z.object({ data: generateResultSchema }).parse(data).data;
-  } catch (error) {
-    if (axios.isAxiosError(error) && (error.response?.data as any)?.code === 'UPGRADE_REQUIRED') {
-      throw new PlanLimitError("This feature isn't included in your current plan.");
-    }
-    throw error;
-  }
-}
 
 // --- Content history --------------------------------------------------------
 
@@ -177,7 +125,12 @@ export function geotagLine(g: { status: string; source?: string } | null | undef
     case 'original_gps_preserved': return 'Location: kept from your photo';
     case 'photo_location_added': return g.source === 'device_at_capture' ? 'Location: where the photo was taken' : 'Location: kept from your photo';
     case 'business_location_added': return 'Location: your Google Business Profile location';
-    case 'video_unmodified': return 'Video kept as uploaded';
+    case 'video_location_recorded':
+      return g.source === 'video_metadata' ? 'Location: recorded in your video'
+        : g.source === 'device_at_capture' ? 'Location: where the video was recorded'
+        : g.source === 'photo_exif_app' ? 'Location: from your video'
+        : 'Location: your Google Business Profile location';
+    case 'video_unmodified': return 'No location for this video';
     case 'none': return 'No location metadata added';
     default: return null;
   }
@@ -200,18 +153,6 @@ export async function fetchContentPosts(page: number): Promise<ContentPostsPage>
     })
     .parse(data);
   return { ...parsed, posts: parsed.posts.filter((p): p is ContentPost => p !== null) };
-}
-
-/**
- * GET /api/content/posts/images — polls for background-generated thumbnails.
- * Returns { postId -> imageUrl | null } for the caller's own business.
- */
-export async function fetchPostImages(ids: string[]): Promise<Record<string, string | null>> {
-  if (ids.length === 0) return {};
-  const { data } = await api.get('/api/content/posts/images', { params: { ids: ids.join(',') } });
-  return z
-    .object({ images: z.record(z.string(), z.string().nullable()).catch({}) })
-    .parse(data).images;
 }
 
 /**
@@ -249,11 +190,3 @@ export async function createPost(input: CreatePostInput): Promise<ContentPost> {
   return z.object({ message: z.string(), post: contentPostSchema }).parse(data).post;
 }
 
-/**
- * POST /api/content/auto-schedule — schedules the given drafts on alternate
- * days at 9AM after the last scheduled post (keeps the profile active all week).
- */
-export async function autoSchedulePosts(postIds: string[]): Promise<{ count: number }> {
-  const { data } = await api.post('/api/content/auto-schedule', { postIds });
-  return z.object({ count: z.number().catch(postIds.length) }).parse(data);
-}

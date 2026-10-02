@@ -63,7 +63,7 @@ type Events = {
     data: { businessId: string };
   };
   "crm/lead-created": {
-    data: { leadId: string; businessId: string };
+    data: { leadId: string; businessId: string; notifyOwner?: boolean };
   };
   "crm/dispatch-whatsapp": {
     data: { leadId: string; templateType: string; scheduledDate: string };

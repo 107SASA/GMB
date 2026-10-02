@@ -8,6 +8,7 @@ import ReviewCard from './ReviewCard';
 import ReplyModeSettings from './ReplyModeSettings';
 import { useBusiness } from '@/context/BusinessContext';
 import UpgradeLimitModal from '@/components/ui/UpgradeLimitModal';
+import ReviewQrCard from '@/components/reviews/ReviewQrCard';
 
 function SkeletonPulse({ className }: { className: string }) {
   return <div className={`bg-surface-container-high rounded animate-pulse ${className}`} />;
@@ -271,6 +272,8 @@ export default function ReviewsDashboard() {
       </div>
 
       <ReplyModeSettings onModeChanged={refreshReviewList} />
+
+      <ReviewQrCard />
 
       {syncError && (
         <div className="bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container flex items-start gap-2">

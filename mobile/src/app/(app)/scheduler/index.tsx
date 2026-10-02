@@ -1,81 +1,27 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
-import { getApiErrorMessage } from '@/api/client';
-import { generateBufferPosts } from '@/api/endpoints/scheduler';
-import { useBusiness } from '@/business/BusinessContext';
 import { SchedulerPanel } from '@/components/scheduler-panel';
-import { Screen, ScreenTitle, useInfoSheet } from '@/components/ui';
-import { useTheme } from '@/lib/theme';
+import { Screen, ScreenTitle } from '@/components/ui';
+import { useRefreshContentOnFocus } from '@/lib/useRefreshContentOnFocus';
 
+/**
+ * Content Scheduler — the scheduled weekly posts (same data as the web
+ * Content page). No "Generate" action: the 4 weekly posts are created and
+ * scheduled automatically by the weekly job (a manual batch duplicated posts
+ * and AI / image-generation cost; removed Oct 2026).
+ */
 export default function SchedulerScreen() {
-  const { activeBusinessId } = useBusiness();
-  const t = useTheme();
-  const queryClient = useQueryClient();
-  const [generating, setGenerating] = useState(false);
-  const generateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const info = useInfoSheet();
-
-  // The ref above exists specifically so this timer can be cancelled — it
-  // previously wasn't, so navigating away from this screen within the 6s
-  // window still called setGenerating/invalidateQueries against an
-  // unmounted screen.
-  useEffect(() => {
-    return () => {
-      if (generateTimer.current) clearTimeout(generateTimer.current);
-    };
-  }, []);
-
-  const generate = useMutation({
-    mutationFn: generateBufferPosts,
-    onSuccess: () => {
-      // The job runs in the background — refetch once it has had a moment,
-      // same as the web dashboard's delayed refresh.
-      setGenerating(true);
-      generateTimer.current = setTimeout(() => {
-        setGenerating(false);
-        void queryClient.invalidateQueries({ queryKey: ['scheduler-buffer', activeBusinessId] });
-        void queryClient.invalidateQueries({ queryKey: ['content-posts', activeBusinessId] });
-      }, 6000);
-    },
-    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not start generation.')),
-  });
-
+  useRefreshContentOnFocus();
   return (
     <Screen>
-      <View className="flex-row items-center justify-between pr-5">
-        <ScreenTitle>Content Scheduler</ScreenTitle>
-        <Pressable
-          onPress={() => generate.mutate()}
-          disabled={generate.isPending || generating}
-          // No `className` — react-native-css-interop can swallow onPress on
-          // styled Pressables (see components/ui.tsx).
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            borderRadius: 999,
-            paddingHorizontal: 16,
-            paddingVertical: 8,
-            backgroundColor: generate.isPending || generating ? t.brandMuted : t.brand,
-            opacity: generate.isPending || generating ? 0.6 : 1,
-          }}
-        >
-          {generate.isPending || generating ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : (
-            <Ionicons name="sparkles" size={14} color="#ffffff" />
-          )}
-          <Text className="font-sans-bold text-sm text-on-brand">
-            {generating ? 'Generating…' : 'Generate'}
-          </Text>
-        </Pressable>
+      <ScreenTitle>Content Scheduler</ScreenTitle>
+      <View className="px-5 pb-2">
+        <Text className="font-sans text-xs leading-4 text-zinc-400">
+          Your weekly posts are generated automatically — 4 posts every week from your SEO plan, business information,
+          keywords, offers and relevant festivals.
+        </Text>
       </View>
-
       <SchedulerPanel />
-      {info.node}
     </Screen>
   );
 }

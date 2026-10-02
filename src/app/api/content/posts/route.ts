@@ -25,7 +25,10 @@ export async function GET(req: Request) {
     const query = {
       businessId: new mongoose.Types.ObjectId(ctx.businessId),
       aiGenerated: true,
-      status: { $in: ['draft', 'scheduled', 'published', 'pending_approval'] },
+      // Every live state the owner needs to see (web + mobile read this list),
+      // incl. blocked (not on Google) and failed (Google rejected) — only
+      // archived / rejected posts are left out.
+      status: { $in: ['draft', 'pending_approval', 'approved', 'scheduled', 'publishing', 'published', 'blocked', 'failed'] },
     };
 
     const [posts, total] = await Promise.all([

@@ -33,12 +33,10 @@ export default function LeadCard({ lead, onClick }: LeadCardProps) {
     }
   };
 
-  const getScoreColor = (score: number) => {
-    if (!score) return 'bg-surface-container text-on-surface-variant';
-    if (score >= 80) return 'bg-secondary-container text-on-secondary-container';
-    if (score >= 50) return 'bg-error-container text-on-error-container';
-    return 'bg-error-container text-on-error-container';
-  };
+  // Only a recorded value on a Won lead (₹0 shows only if 0 was actually recorded).
+  const dealValue = lead.lifeCycleStage === 'converted' && typeof lead.deal?.value === 'number'
+    ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: lead.deal.currency || 'INR', maximumFractionDigits: 0 }).format(lead.deal.value)
+    : null;
 
   return (
     <div
@@ -60,9 +58,13 @@ export default function LeadCard({ lead, onClick }: LeadCardProps) {
       </div>
 
       <div className="flex items-center justify-between mt-4 pt-3 border-t border-outline-variant">
-        <div className={`text-[10px] font-black px-2 py-0.5 rounded-full ${getScoreColor(lead.aiLeadScore)}`}>
-          SCORE: {lead.aiLeadScore || 'N/A'}
-        </div>
+        {dealValue ? (
+          <div className="text-[10px] font-black px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container">
+            {dealValue}
+          </div>
+        ) : (
+          <span />
+        )}
         <div className="text-[10px] font-medium text-outline">
           {new Date(lead.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
         </div>

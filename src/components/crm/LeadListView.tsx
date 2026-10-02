@@ -5,13 +5,6 @@ interface LeadListViewProps {
   onLeadClick: (lead: any) => void;
 }
 
-const getScoreColor = (score: number) => {
-  if (!score) return 'bg-surface-container text-on-surface-variant';
-  if (score >= 80) return 'bg-secondary-container text-on-secondary-container';
-  if (score >= 50) return 'bg-error-container text-on-error-container';
-  return 'bg-error-container text-on-error-container';
-};
-
 const getSourceBadge = (source: string) => {
   switch (source) {
     case 'WhatsApp': return 'bg-secondary-container text-on-secondary-container';
@@ -73,9 +66,6 @@ export default function LeadListView({ leads, onLeadClick }: LeadListViewProps) 
                   <p className="text-xs text-on-surface-variant truncate">{lead.phone || lead.email || '—'}</p>
                 </div>
               </div>
-              <span className={`text-xs font-black px-2 py-0.5 rounded-full shrink-0 ${getScoreColor(lead.aiLeadScore)}`}>
-                {lead.aiLeadScore || 'N/A'}
-              </span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5 mt-2 ml-12">
               <StageBadge stage={lead.lifeCycleStage} />
@@ -101,8 +91,7 @@ export default function LeadListView({ leads, onLeadClick }: LeadListViewProps) 
           <div className="col-span-2">Phone / Email</div>
           <div className="col-span-2">Source</div>
           <div className="col-span-2">Stage</div>
-          <div className="col-span-1">Pipeline</div>
-          <div className="col-span-1 text-center">AI Score</div>
+          <div className="col-span-2">Deal</div>
           <div className="col-span-1 text-right">Added</div>
         </div>
 
@@ -145,21 +134,16 @@ export default function LeadListView({ leads, onLeadClick }: LeadListViewProps) 
               </div>
 
               {/* Pipeline Stage */}
-              <div className="col-span-1">
-                {lead.pipelineStage ? (
-                  <span className="text-xs font-semibold px-2 py-1 rounded-full bg-primary-fixed text-primary border border-primary-fixed-dim truncate block max-w-20">
-                    {lead.pipelineStage}
+              <div className="col-span-2">
+                {lead.lifeCycleStage === 'converted' && typeof lead.deal?.value === 'number' ? (
+                  <span className="text-xs font-semibold px-2 py-1 rounded-full bg-secondary-container/50 text-on-secondary-container truncate block max-w-24">
+                    {new Intl.NumberFormat('en-IN', { style: 'currency', currency: lead.deal.currency || 'INR', maximumFractionDigits: 0 }).format(lead.deal.value)}
                   </span>
+                ) : lead.lifeCycleStage === 'converted' ? (
+                  <span className="text-xs text-error italic">value missing</span>
                 ) : (
                   <span className="text-xs text-outline italic">—</span>
                 )}
-              </div>
-
-              {/* AI Score */}
-              <div className="col-span-1 flex justify-center">
-                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${getScoreColor(lead.aiLeadScore)}`}>
-                  {lead.aiLeadScore || 'N/A'}
-                </span>
               </div>
 
               {/* Date */}

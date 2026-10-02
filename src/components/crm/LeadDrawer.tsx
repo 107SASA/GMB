@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Phone, MessageCircle } from 'lucide-react';
 import ActivityTimeline from './ActivityTimeline';
 import ChatModal from './ChatModal';
+import DealValueModal, { type DealValue } from './DealValueModal';
+import FollowUpTasks from './FollowUpTasks';
 import { telHref } from '@/lib/phoneLinks';
 import type { LeadStagesConfig, SubStageGroup } from '@/lib/leadStages';
 
@@ -36,9 +38,12 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
   const [updatingStage, setUpdatingStage] = useState(false);
   const [stagesConfig, setStagesConfig] = useState<LeadStagesConfig | null>(null);
   const [showChat, setShowChat] = useState(false);
+  // 'win' = moving to Converted (deal value required); 'edit' = record/edit the value.
+  const [dealPrompt, setDealPrompt] = useState<null | { mode: 'win' | 'edit' }>(null);
+  const [stageError, setStageError] = useState('');
 
   // Close the chat modal whenever the drawer switches to another lead / closes
-  useEffect(() => { setShowChat(false); }, [lead?._id, isOpen]);
+  useEffect(() => { setShowChat(false); setDealPrompt(null); setStageError(''); }, [lead?._id, isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -53,37 +58,53 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
 
   if (!isOpen || !lead) return null;
 
-  const handleStageChange = async (newStage: string) => {
+  /** PATCH a stage / deal change; returns an error message or null. */
+  const patchLead = async (body: Record<string, unknown>): Promise<string | null> => {
     setUpdatingStage(true);
+    setStageError('');
     try {
-      await fetch(`/api/crm/leads/${lead._id}`, {
+      const res = await fetch(`/api/crm/leads/${lead._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        // A stage move invalidates the previous sub-stage
-        body: JSON.stringify({ lifeCycleStage: newStage, subStage: null }),
+        body: JSON.stringify(body),
       });
-      lead.lifeCycleStage = newStage;
-      lead.subStage = null;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return data.error || 'Could not update this lead.';
+      if (data.lead) Object.assign(lead, data.lead);
       onUpdate();
+      return null;
+    } catch {
+      return 'Network error — nothing was changed.';
     } finally {
       setUpdatingStage(false);
     }
   };
 
-  const handleSubStageChange = async (newSubStage: string | null) => {
-    setUpdatingStage(true);
-    try {
-      await fetch(`/api/crm/leads/${lead._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subStage: newSubStage }),
-      });
-      lead.subStage = newSubStage;
-      onUpdate();
-    } finally {
-      setUpdatingStage(false);
-    }
+  const handleStageChange = async (newStage: string) => {
+    if ((lead.lifeCycleStage || 'initial') === newStage) return;
+    // Won needs the deal value first.
+    if (newStage === 'converted' && typeof lead.deal?.value !== 'number') { setDealPrompt({ mode: 'win' }); return; }
+    // A stage move invalidates the previous sub-stage
+    const err = await patchLead({ lifeCycleStage: newStage, subStageId: null, subStage: null });
+    if (err) setStageError(err);
   };
+
+  const handleSubStageChange = async (sub: { id?: string; name: string } | null) => {
+    const err = await patchLead({ lifeCycleStage: lead.lifeCycleStage || 'initial', subStageId: sub?.id ?? null, subStage: sub?.name ?? null });
+    if (err) setStageError(err);
+  };
+
+  const handleDeal = async (deal: DealValue) => {
+    const body = dealPrompt?.mode === 'win'
+      ? { lifeCycleStage: 'converted', subStageId: stagesConfig?.converted?.[0]?.id ?? null, subStage: stagesConfig?.converted?.[0]?.name ?? null, deal }
+      : { deal };
+    const err = await patchLead(body);
+    if (!err) setDealPrompt(null);
+    return err;
+  };
+
+  const fmtMoney = (v: number, c?: string) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: c || 'INR', maximumFractionDigits: 0 }).format(v);
 
   const currentStage: string = lead.lifeCycleStage || 'initial';
   const subStageOptions =
@@ -117,10 +138,6 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
                 {lead.subStage && (
                   <span className="text-xs font-semibold px-2 py-0.5 bg-primary-fixed text-primary rounded-full border border-primary-fixed-dim">{lead.subStage}</span>
                 )}
-                {lead.pipelineStage && (
-                  <span className="text-xs font-bold px-2 py-0.5 bg-primary-fixed text-primary rounded border border-primary-fixed-dim uppercase">{lead.pipelineStage}</span>
-                )}
-                <span className="text-xs font-bold px-2 py-0.5 bg-primary-fixed text-primary rounded uppercase">AI Score: {lead.aiLeadScore || 'N/A'}</span>
               </div>
               <h2 className="text-2xl font-black text-on-surface">{lead.name}</h2>
               <p className="text-sm text-on-surface-variant mt-1">{lead.phone || lead.email || 'No contact info'}</p>
@@ -152,12 +169,23 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
           {/* Body */}
           <div className="flex-1 overflow-y-auto p-6">
 
-            {lead.aiInsights && (
-              <div className="mb-8 p-4 bg-primary-fixed border border-primary-fixed-dim rounded-2xl">
-                <h3 className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-2">
-                  <span>✨ AI Insights</span>
-                </h3>
-                <p className="text-sm text-primary leading-relaxed">{lead.aiInsights}</p>
+            {lead.lifeCycleStage === 'converted' && (
+              <div className="mb-8 p-4 bg-secondary-container/40 border border-secondary-fixed rounded-2xl flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xs font-bold text-on-secondary-container uppercase tracking-wider mb-1">Deal value</h3>
+                  {typeof lead.deal?.value === 'number' ? (
+                    <p className="text-lg font-black text-on-surface">
+                      {fmtMoney(lead.deal.value, lead.deal.currency)}
+                      {lead.deal.closedAt && <span className="text-xs font-medium text-on-surface-variant ml-2">closed {new Date(lead.deal.closedAt).toLocaleDateString('en-IN')}</span>}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-error font-semibold">Not recorded — not counted in revenue.</p>
+                  )}
+                  {lead.deal?.notes && <p className="text-xs text-on-surface-variant mt-1">{lead.deal.notes}</p>}
+                </div>
+                <button onClick={() => setDealPrompt({ mode: 'edit' })} className="px-3 py-1.5 text-xs font-bold bg-surface-container-lowest border border-outline-variant rounded-lg shrink-0">
+                  {typeof lead.deal?.value === 'number' ? 'Edit' : 'Add value'}
+                </button>
               </div>
             )}
 
@@ -203,12 +231,12 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
                       None
                     </button>
                     {subStageOptions.map((sub) => {
-                      const isSelected = lead.subStage === sub.name;
+                      const isSelected = lead.subStageId ? lead.subStageId === sub.id : lead.subStage === sub.name;
                       return (
                         <button
-                          key={sub.name}
+                          key={sub.id ?? sub.name}
                           disabled={updatingStage}
-                          onClick={() => handleSubStageChange(sub.name)}
+                          onClick={() => handleSubStageChange(sub)}
                           className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all disabled:opacity-50 ${
                             isSelected
                               ? 'bg-primary-fixed border-primary-fixed-dim text-primary shadow-sm'
@@ -222,7 +250,10 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
                   </div>
                 </div>
               )}
+              {stageError && <p className="mt-3 text-xs text-error">{stageError}</p>}
             </div>
+
+            <FollowUpTasks leadId={lead._id} onChanged={onUpdate} />
 
             <div className="mb-8">
               <h3 className="text-sm font-bold text-on-surface mb-4">Lead Details</h3>
@@ -259,6 +290,14 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
         </motion.div>
 
         {showChat && <ChatModal lead={lead} onClose={() => setShowChat(false)} />}
+        {dealPrompt && (
+          <DealValueModal
+            leadName={lead.name}
+            initial={lead.deal?.value != null ? { value: lead.deal.value, currency: lead.deal.currency, closedAt: lead.deal.closedAt, notes: lead.deal.notes } : null}
+            onCancel={() => setDealPrompt(null)}
+            onConfirm={handleDeal}
+          />
+        )}
       </div>
     </AnimatePresence>
   );

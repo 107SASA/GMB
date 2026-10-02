@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
-import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 import { requireModule } from '@/lib/moduleGating';
-import { inngest } from '@/services/inngest/client';
-import mongoose from 'mongoose';
+import { buildCustomerLeadIndex, createOrUpdateCustomerLead } from '@/services/crm/customerLeads';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 const MAX_LEADS_PER_CALL = 200;
@@ -36,16 +34,10 @@ export async function POST(req: Request) {
     }
 
     await dbConnect();
-    const businessObjId = new mongoose.Types.ObjectId(ctx.businessId);
-
-    // One fetch of existing phones; dedupe keys compared in JS (stored
-    // formats are inconsistent).
-    const existing = await Lead.find({ businessId: businessObjId, phone: { $ne: null } })
-      .select('phone')
-      .lean();
-    const seenKeys = new Set(
-      existing.map((l: any) => phoneDedupeKey(l.phone)).filter((k): k is string => k !== null)
-    );
+    // One fetch of this workspace's phones/emails for the whole batch; dedupe
+    // keys compared in JS (stored formats are inconsistent).
+    const index = await buildCustomerLeadIndex(ctx.businessId);
+    const seenKeys = new Set(index.byPhone.keys());
 
     let created = 0;
     let skipped = 0;
@@ -64,24 +56,20 @@ export async function POST(req: Request) {
       const email =
         typeof raw.email === 'string' && raw.email.trim() ? raw.email.trim() : undefined;
 
-      const lead = await Lead.create({
-        tenantId: ctx.organizationId,
+      // Canonical Customer CRM path. Imported contacts are scored but never
+      // messaged and never alert the owner (not organic).
+      const r = await createOrUpdateCustomerLead({
+        businessId: ctx.businessId,
         organizationId: ctx.organizationId,
-        businessId: businessObjId,
         name,
         phone,
         email,
         source: 'Contacts Import',
-        pipelineStage: null,
-        lifeCycleStage: 'initial',
-      });
-
-      await inngest.send({
-        name: 'crm/lead-created',
-        data: { leadId: lead._id.toString(), businessId: ctx.businessId.toString() },
-      });
-
-      created++;
+        createdBy: ctx.userId,
+        bulk: true,
+      }, { index });
+      if (r.created) created++;
+      else skipped++;
     }
 
     return NextResponse.json({ success: true, created, skipped });

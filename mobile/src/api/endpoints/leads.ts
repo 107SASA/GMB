@@ -3,8 +3,8 @@ import { api } from '../client';
 
 /**
  * CRM leads — same /api/crm/leads endpoints the web CRM (list + Kanban)
- * uses. Pipeline stages are the business's custom Kanban columns, not a
- * fixed enum.
+ * uses. Stages are the canonical lifeCycleStage + sub-stage (stable id) from
+ * /api/business/lead-stages — see endpoints/crm.ts.
  */
 
 const leadSchema = z.object({
@@ -15,11 +15,22 @@ const leadSchema = z.object({
   source: z.string().catch('Manual'),
   status: z.string().catch('active'),
   lifeCycleStage: z.string().catch('initial'),
+  subStage: z.string().nullable().catch(null),
+  subStageId: z.string().nullable().catch(null),
+  // Legacy display only — older rows; stage writes use lifeCycleStage.
   pipelineStage: z.string().nullable().catch(null),
+  deal: z
+    .object({
+      value: z.number().nullable().catch(null),
+      currency: z.string().catch('INR'),
+      closedAt: z.string().nullable().catch(null),
+      notes: z.string().nullable().optional(),
+      valueMissing: z.boolean().nullable().optional(),
+    })
+    .nullable()
+    .catch(null),
   tags: z.array(z.string()).catch([]),
   notes: z.string().nullable().optional(),
-  aiLeadScore: z.number().nullable().optional(),
-  aiInsights: z.string().nullable().optional(),
   interest: z.string().nullable().optional(),
   // Manually entered estimated deal value (INR) — see models/Lead.ts.
   valuation: z.number().nullable().optional(),
@@ -40,13 +51,17 @@ export async function fetchLeads(): Promise<Lead[]> {
 }
 
 /**
- * PATCH /api/crm/leads/[id] — accepts pipelineStage / notes / status /
- * tags / lifeCycleStage. A pipelineStage change also writes a
- * status_change Activity server-side.
+ * PATCH /api/crm/leads/[id] — notes / status / tags, and stage moves as
+ * lifeCycleStage + subStageId. Moving to converted (Won) needs `deal`
+ * (the server answers 422 DEAL_VALUE_REQUIRED otherwise). Every move writes
+ * a status_change Activity server-side.
  */
-export type LeadPatch = Partial<
-  Pick<Lead, 'pipelineStage' | 'notes' | 'status' | 'tags' | 'lifeCycleStage'>
->;
+export type DealInput = { value: number; currency: string; closedAt?: string; notes?: string };
+export type LeadPatch = Partial<Pick<Lead, 'notes' | 'status' | 'tags' | 'lifeCycleStage'>> & {
+  subStageId?: string | null;
+  subStage?: string | null;
+  deal?: DealInput;
+};
 
 export async function updateLead(id: string, patch: LeadPatch): Promise<void> {
   await api.patch(`/api/crm/leads/${id}`, patch);
@@ -129,13 +144,3 @@ export async function logLeadActivity(
   await api.post(`/api/crm/leads/${leadId}/activity`, entry);
 }
 
-const kanbanColumnsSchema = z.object({
-  success: z.literal(true),
-  kanbanColumns: z.array(z.string()).catch([]),
-});
-
-/** GET /api/business/kanban-columns — the business's pipeline stage names. */
-export async function fetchKanbanColumns(): Promise<string[]> {
-  const { data } = await api.get('/api/business/kanban-columns');
-  return kanbanColumnsSchema.parse(data).kanbanColumns;
-}

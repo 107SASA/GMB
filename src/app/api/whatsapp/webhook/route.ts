@@ -16,6 +16,7 @@ import { sendOutboundMessage } from '@/services/whatsapp/send';
 import { checkRateLimit } from '@/lib/rateLimit';
 import ProcessedWebhookEvent from '@/models/ProcessedWebhookEvent';
 import { SUPPORT_MESSAGE } from '@/lib/whatsappCta';
+import { createOrUpdateCustomerLead, PLATFORM_TENANT } from '@/services/crm/customerLeads';
 
 export const dynamic = 'force-dynamic';
 
@@ -228,30 +229,29 @@ async function processInboundMessage({ business, phone, profileName, body, messa
     return;
   }
 
-  // 1. Fetch or Create Lead
-  let lead = await Lead.findOne({ phone, businessId });
-  if (!lead) {
-    lead = await Lead.create({
-      tenantId,
-      businessId,
+  // 1. Fetch or Create Lead — Customer CRM canonical path: normalized-phone
+  // dedupe inside this workspace, source 'WhatsApp', AI scoring + owner alert.
+  // It never messages the lead (replies come only from the owner's own agent
+  // on the business's own number, below). The platform tenant never reaches
+  // here (it has its own pipeline), but keep it off the customer service.
+  let lead: any;
+  if (tenantId === PLATFORM_TENANT) {
+    lead = await Lead.findOne({ phone, businessId });
+    if (!lead) return;
+  } else {
+    const r = await createOrUpdateCustomerLead({
+      businessId: businessId.toString(),
+      organizationId: tenantId,
       name: profileName || phone,
       phone,
       source: 'WhatsApp',
-      // pipelineStage is the legacy free-Kanban field (business.kanbanColumns);
-      // lifeCycleStage/subStage is the current stage system every other lead
-      // -creation path (quick-add, bulk-import, CSV import) uses. Leaving
-      // pipelineStage unset here keeps this lead consistent with those, and
-      // with the admin CRM Monitor's conversion stats which read lifeCycleStage.
-      pipelineStage: null,
-      lifeCycleStage: 'initial',
-      status: 'active'
     });
-
-    // Trigger CRM module lead creation hook
-    await inngest.send({
-      name: 'crm/lead-created',
-      data: { leadId: lead._id.toString() }
-    });
+    lead = r.lead;
+    if (!lead) return;
+    if (!r.created) {
+      lead.lastContactedAt = new Date();
+      await lead.save();
+    }
   }
 
   // 2. Fetch or Create Conversation Thread

@@ -235,7 +235,7 @@ export function SchedulerPanel({
             <SectionLabel>Upcoming posts</SectionLabel>
             {upcoming.length === 0 ? (
               <Text className="px-1 font-sans text-sm text-zinc-500">
-                Nothing scheduled. Generate posts or schedule drafts from the Content tab.
+                Nothing scheduled yet. Your 4 weekly posts are scheduled here automatically.
               </Text>
             ) : (
               upcoming.map((post) => (

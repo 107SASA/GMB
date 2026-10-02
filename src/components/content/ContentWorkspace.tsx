@@ -8,17 +8,14 @@ import ContentHistoryTab from './ContentHistoryTab';
 import WeeklyCalendar from '@/components/scheduler/WeeklyCalendar';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
-// Single combined page — posting is now fully automated (weekly content
-// autopilot, see lib/contentAutopilot.ts + services/inngest/functions.ts),
-// so the old 3-tab split (Existing Posts / Generate / Schedule) no longer
-// matched what people actually needed to do here: mostly nothing, and
-// occasionally glance at what's queued or nudge out an extra batch. This
-// merges the calendar + buffer health from the old "Schedule" tab and a
-// single manual "Generate extra batch now" action from the old "Generate"
-// form (which asked for business identity/topic/tone/content-type on every
-// use — replaced by the same one-click dispatch the autopilot itself uses,
-// see handleGenerateNow below) into one page, with the post history list
-// underneath.
+// Single combined page — posting is fully automated (weekly content
+// autopilot, see lib/contentAutopilot.ts + services/inngest/functions.ts):
+// exactly 4 posts per business per week, generated and scheduled by the
+// weekly job. This page only READS that state (calendar + post list + offer)
+// and offers the legitimate manual actions on existing posts (view, edit a
+// draft, reschedule, publish). There is deliberately NO button that creates
+// another AI batch (removed Oct 2026: it caused duplicate posts and extra
+// AI / image-generation cost). The same data is shown in the mobile app.
 
 function formatAutopilotDate(iso?: string): string | null {
   if (!iso) return null;
@@ -49,8 +46,8 @@ function AutopilotBanner({
       <div className="flex items-start gap-2.5 rounded-xl border border-outline-variant bg-surface-container px-4 py-3 text-sm text-on-surface-variant">
         <MaterialIcon name="schedule" size={16} className="mt-0.5 shrink-0" />
         <span>
-          <strong>This week&apos;s posts are taking longer than expected.</strong> Use <strong>Generate extra batch now</strong>{' '}
-          below to create them, or contact support if they still don&apos;t appear.
+          <strong>This week&apos;s posts are taking longer than expected.</strong> The weekly job retries automatically —
+          contact support if they still don&apos;t appear.
         </span>
       </div>
     );
@@ -108,7 +105,7 @@ function AutopilotBanner({
         ) : (
           'Starting shortly.'
         )}{' '}
-        No action needed, but you can still generate an extra batch anytime below.
+        No action needed.
       </span>
     </div>
   );
@@ -119,9 +116,7 @@ export default function ContentWorkspace() {
 
   const [bufferData, setBufferData] = useState<any>(null);
   const [bufferLoading, setBufferLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  // Bumped after a manual generate dispatch to force ContentHistoryTab to
-  // refetch a little later, once the async job has actually run.
+  // Bumped when a weekly batch lands so ContentHistoryTab refetches.
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   const fetchBuffer = useCallback(async () => {
@@ -145,8 +140,7 @@ export default function ContentWorkspace() {
     fetchBuffer();
   }, [fetchBuffer, activeBusiness?._id]);
 
-  // Live autopilot state. Loading it also starts autopilot right away if this
-  // workspace qualifies but hasn't started (see /api/content/autopilot-status).
+  // Live autopilot state (read-only — opening this page never generates posts).
   const [autopilot, setAutopilot] = useState<{ hasKeywords: boolean; qualified: boolean; nextRunAt: string | null; generating: boolean; stalled?: boolean } | null>(null);
   const fetchAutopilot = useCallback(async () => {
     try {
@@ -188,25 +182,6 @@ export default function ContentWorkspace() {
     wasGenerating.current = !!autopilot?.generating;
   }, [autopilot, fetchBuffer]);
 
-  const handleGenerateNow = useCallback(async () => {
-    setGenerating(true);
-    try {
-      const res = await fetch('/api/scheduler/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) throw new Error('Generation failed to dispatch');
-      toast.success('Generating 4 new posts — they’ll appear below shortly.');
-      setTimeout(fetchBuffer, 5000);
-      setTimeout(() => setHistoryRefreshKey((k) => k + 1), 8000);
-    } catch {
-      toast.error('Failed to dispatch generation.');
-    } finally {
-      setGenerating(false);
-    }
-  }, [fetchBuffer]);
-
   const handlePublish = async (id: string) => {
     try {
       const res = await fetch('/api/scheduler/publish', {
@@ -246,7 +221,8 @@ export default function ContentWorkspace() {
     <div className="space-y-6">
       <div>
         <h1 className="font-heading text-2xl sm:text-3xl font-bold text-on-surface">Content</h1>
-        <p className="text-on-surface-variant mt-1">Fully automated — new posts generate and schedule themselves every week. Review what's queued, or generate an extra batch anytime.</p>
+        <p className="text-on-surface font-semibold mt-1">Your weekly posts are generated automatically.</p>
+        <p className="text-on-surface-variant mt-0.5">4 posts are planned every week based on your SEO plan, business information, keywords, offers and relevant festivals. Review what&apos;s scheduled below.</p>
       </div>
 
       {weekOffer?.answered === 'YES' && weekOffer.offer && (
@@ -268,6 +244,7 @@ export default function ContentWorkspace() {
         </div>
       )}
 
+      <div data-tour="generate-content">
       <AutopilotBanner
         hasKeywords={autopilot ? autopilot.hasKeywords : !!activeBusiness?.keywords?.length}
         qualified={autopilot ? autopilot.qualified : activeBusiness?.subscriptionStatus === 'active' && !!activeBusiness?.googleConnected}
@@ -275,24 +252,6 @@ export default function ContentWorkspace() {
         generating={autopilot?.generating}
         stalled={autopilot?.stalled}
       />
-
-      <div className="flex justify-end">
-        <button
-          data-tour="generate-content"
-          onClick={handleGenerateNow}
-          disabled={generating}
-          className="flex items-center gap-2 bg-primary hover:bg-primary-container text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors disabled:opacity-60"
-        >
-          {generating ? (
-            <>
-              <MaterialIcon name="progress_activity" size={16} className="animate-spin" /> Generating…
-            </>
-          ) : (
-            <>
-              <MaterialIcon name="auto_awesome" size={16} /> Generate extra batch now
-            </>
-          )}
-        </button>
       </div>
 
       {/* Buffer Health / "Action Required: Low Content Buffer" deliberately

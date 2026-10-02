@@ -271,7 +271,7 @@ export default function ContentHistoryTab() {
         </svg>
         <p className="font-medium text-on-surface">No content generated yet</p>
         <p className="text-sm text-outline mt-1">
-          Generate your first batch of posts to see them here.
+          Your weekly posts appear here automatically once the first batch is ready — 4 posts every week.
         </p>
       </div>
     );

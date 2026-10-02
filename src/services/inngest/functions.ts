@@ -451,6 +451,11 @@ export const processFollowUpJob = inngest.createFunction(
     await dbConnect();
     const lead = await Lead.findById(leadId);
     if (!lead || lead.status === 'Converted' || lead.status === 'Lost') return { skipped: true };
+    // Customer CRM leads (a business's own customers) are never messaged by
+    // the platform — this legacy sender is for platform prospects only.
+    // Any non-platform tenant is a customer lead — including legacy rows saved
+    // before leads carried a businessId.
+    if (lead.tenantId !== 'gmbboost-internal') return { skipped: true, reason: 'customer-crm-lead' };
 
     // P0 FIX — this legacy generic CRM follow-up cron (confirmed still
     // registered and running hourly — see followUpCron above, and
@@ -3588,211 +3593,95 @@ export const reviewReplyDraftedWorker = inngest.createFunction(
   }
 );
 
-// 9. AI Lead Manager Automation Workflow (Module 5)
+// 9. Customer CRM — what happens after a lead is created (Oct 2026).
+//
+// Only the owner's WhatsApp alert for organic leads. No AI call: Customer CRM
+// AI lead scoring was removed (Oct 2026). NOTHING is sent to the lead: the old
+// Day 1 / Day 3 / Day 7 automatic WhatsApp follow-ups were REMOVED — they
+// went out from GrowwMatics' own number (no businessId on the send) to
+// people the business had only imported. Follow-ups are now owner tasks
+// (services/crm/followUps.ts). The function id and the owner-alert step name
+// are kept so runs that were already sleeping toward Day 3 / Day 7 finish
+// without dispatching anything.
 export const scheduleLeadFollowUpsJob = inngest.createFunction(
   { id: "schedule-lead-follow-ups", triggers: [{ event: "crm/lead-created" }] },
   async ({ event, step }) => {
-    const { leadId } = event.data;
+    const { leadId } = event.data as { leadId: string; notifyOwner?: boolean };
 
-    await step.run("ai-lead-scoring", async () => {
-      const dbConnect = (await import("@/lib/mongodb")).default;
-      await dbConnect();
-      const { default: Lead } = await import("@/models/Lead");
-      const { Groq } = await import("groq-sdk");
-
-      const lead = await Lead.findById(leadId);
-      if (!lead) return;
-
-      const scoringPrompt = `You are an AI lead qualification specialist for an education and training business.
-Analyze this lead and return a JSON object with your assessment.
-
-Lead details:
-- Name: ${lead.name}
-- Source: ${lead.source}
-- Interest: ${lead.interest || 'Not specified'}
-- Notes: ${lead.notes || 'None'}
-- Business Type: ${lead.businessType || 'Not specified'}
-
-Return ONLY valid JSON in this exact shape:
-{
-  "score": <integer 0-100>,
-  "insights": "<1-2 sentences explaining the lead's intent and recommended next action>",
-  "urgency": "<High|Medium|Low>",
-  "qualificationStatus": "<Hot|Warm|Cold>"
-}`;
-
-      try {
-        const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-        const response = await groq.chat.completions.create({
-          messages: [{ role: "user", content: scoringPrompt }],
-          model: GROQ_MODEL,
-          temperature: 0.3,
-          max_tokens: 200,
-          response_format: { type: "json_object" },
-        });
-
-        const raw = response.choices[0]?.message?.content?.trim() || "{}";
-        const result = JSON.parse(raw);
-
-        lead.aiLeadScore = typeof result.score === "number" ? Math.min(100, Math.max(0, result.score)) : 60;
-        lead.aiInsights = result.insights || null;
-        lead.urgency = result.urgency || null;
-        lead.qualificationStatus = result.qualificationStatus || null;
-      } catch (e) {
-        // Fallback to rule-based score so the follow-up chain isn't blocked
-        const fallbackScores: Record<string, number> = { WhatsApp: 75, Website: 65, Manual: 50 };
-        lead.aiLeadScore = fallbackScores[lead.source] ?? 55;
-        lead.aiInsights = null;
-      }
-
-      await lead.save();
-    });
-
-    // Owner WhatsApp — immediate, but ONLY for organically-captured inbound
-    // leads. Bulk/CSV imports and manually-typed rows also fire
-    // crm/lead-created (per row) — WhatsApp'ing the owner for each of those
-    // would mean 200 messages on one import. notifyOwner also respects the
-    // owner's newLeadWhatsApp preference and no-ops without a phone.
+    // Owner WhatsApp — immediate, ONLY for organically-captured leads (the
+    // person contacted the business). Imports / manual rows never alert.
     await step.run("owner-whatsapp-new-lead", async () => {
       const dbConnect = (await import("@/lib/mongodb")).default;
       await dbConnect();
       const { default: Lead } = await import("@/models/Lead");
       const { notifyOwner } = await import("@/services/ownerNotify");
+      const { ORGANIC_SOURCES } = await import("@/services/crm/sources");
       const lead: any = await Lead.findById(leadId).select('name source businessId phone tenantId').lean();
       if (!lead || !lead.businessId) return;
-      // Platform-internal prospects have their own admin funnel — not an owner's CRM.
       if (lead.tenantId === 'gmbboost-internal') return;
-      const ORGANIC = new Set(['WhatsApp', 'Website', 'Instagram', 'Facebook', 'Google Business Profile', 'Phone Call', 'Demo Booking']);
-      if (!ORGANIC.has(lead.source)) return;
+      const organic = typeof (event.data as any).notifyOwner === 'boolean' ? (event.data as any).notifyOwner : ORGANIC_SOURCES.has(lead.source);
+      if (!organic) return;
       await notifyOwner(lead.businessId.toString(), {
         event: 'new_lead',
         text: `New lead: ${lead.name || lead.phone || 'someone'} just came in via ${lead.source}. Open your CRM to follow up.`,
       });
     });
 
-    const now = new Date();
-
-    // Day 1
-    const day1 = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    await step.sleepUntil("wait-day-1", day1);
-    await step.sendEvent("dispatch-day-1", {
-      name: "crm/dispatch-whatsapp",
-      data: { leadId, templateType: "Day 1 Follow-Up", scheduledDate: day1.toISOString() }
-    });
-
-    // Day 3
-    const day3 = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
-    await step.sleepUntil("wait-day-3", day3);
-    await step.sendEvent("dispatch-day-3", {
-      name: "crm/dispatch-whatsapp",
-      data: { leadId, templateType: "Day 3 Follow-Up", scheduledDate: day3.toISOString() }
-    });
-
-    // Day 7
-    const day7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    await step.sleepUntil("wait-day-7", day7);
-    await step.sendEvent("dispatch-day-7", {
-      name: "crm/dispatch-whatsapp",
-      data: { leadId, templateType: "Day 7 Final Check", scheduledDate: day7.toISOString() }
-    });
-
-    return { success: true, followUpsScheduled: 3 };
+    return { success: true, autoMessagesToLead: 0 };
   }
 );
 
+// LEGACY consumer of "crm/dispatch-whatsapp" (the removed Day 1/3/7 chain).
+// Kept registered so any event still queued is consumed — and dropped. It
+// must never message a customer's lead (Oct 2026).
 export const dispatchWhatsappFollowUpJob = inngest.createFunction(
   { id: "dispatch-crm-whatsapp", triggers: [{ event: "crm/dispatch-whatsapp" }] },
-  async ({ event, step }) => {
-    const { leadId, templateType } = event.data;
+  async ({ event }) => {
+    const { handleLegacyCrmDispatch } = await import("@/services/crm/legacyDispatch");
+    return handleLegacyCrmDispatch(event.data as any);
+  }
+);
 
-    const dbConnect = (await import("@/lib/mongodb")).default;
-    await dbConnect();
-    const { default: Lead } = await import("@/models/Lead");
-    const { default: Activity } = await import("@/models/Activity");
-    const { default: FollowUp } = await import("@/models/FollowUp");
-
-    const lead = await Lead.findById(leadId);
-    if (!lead || !lead.phone) return { skipped: true, reason: "No phone or lead deleted" };
-
-    if (lead.pipelineStage === 'Converted' || lead.pipelineStage === 'Not Interested') {
-      return { skipped: true, reason: `Lead is ${lead.pipelineStage}` };
-    }
-
-    // P0 FIX (post-implementation-audit) — a second, independent legacy
-    // follow-up sender (Day 1/3/7 CRM chain, scheduled by
-    // scheduleLeadFollowUpsJob on crm/lead-created — fired from real tenant
-    // routes: the WhatsApp webhook, Twilio voice, and every CRM lead-create/
-    // import endpoint) with the exact same gap as processFollowUpJob above:
-    // zero awareness of currentAgent/humanHandoff/nurtureStatus. Tenant-
-    // created leads normally never set currentAgent at all (stays 'NONE'),
-    // so this is a no-op for them — but the Lead schema and this
-    // ownership model are shared platform-wide, so any lead that DID get
-    // marked HUMAN (or opted out) through any path must not still receive
-    // this Groq-composed follow-up. Same shared isHumanOwned/
-    // isOptedOutOrDoNotContact definition as every other guard in this
-    // file — not a new/competing ownership model.
-    const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
-    if (isHumanOwned(lead) || isOptedOutOrDoNotContact(lead)) {
-      return { skipped: true, reason: 'human-owned-or-opted-out' };
-    }
-
-    const msg = await step.run("generate-personalized-message", async () => {
-      const fallbacks: Record<string, string> = {
-        "Day 1 Follow-Up": `Hi ${lead.name}, thanks for your interest! We'd love to help you get started. What questions can we answer for you?`,
-        "Day 3 Follow-Up": `Hi ${lead.name}, just checking in — we're still here to help you take the next step. Would you like to book a quick call?`,
-        "Day 7 Final Check": `Hi ${lead.name}, this is our final check-in. If you're ready to move forward, just reply and we'll set everything up for you!`,
-      };
-
-      if (!lead.interest && !lead.notes) {
-        return fallbacks[templateType] ?? fallbacks["Day 1 Follow-Up"];
-      }
-
-      try {
-        const { Groq } = await import("groq-sdk");
-        const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-        const prompt = `You are a friendly sales assistant for an education and training business.
-Write a single short WhatsApp follow-up message (1-2 sentences, max 30 words) for:
-- Lead name: ${lead.name}
-- Their interest: ${lead.interest || lead.notes || 'our courses'}
-- Follow-up type: ${templateType}
-
-Output only the message text, no quotes, no formatting.`;
-
-        const response = await groq.chat.completions.create({
-          messages: [{ role: "user", content: prompt }],
-          model: GROQ_MODEL,
-          temperature: 0.6,
-          max_tokens: 200,
-        });
-        return response.choices[0]?.message?.content?.trim() || fallbacks[templateType];
-      } catch {
-        return fallbacks[templateType] ?? fallbacks["Day 1 Follow-Up"];
-      }
+// Customer CRM — due follow-up task reminders to the owner/team (in-app +
+// push). Never contacts the lead. Every 15 minutes.
+export const crmFollowUpReminderCron = inngest.createFunction(
+  { id: "crm-follow-up-reminders", triggers: [{ cron: "*/15 * * * *" }] },
+  async ({ step }) => {
+    return await step.run("send-due-reminders", async () => {
+      const { sendDueFollowUpReminders } = await import("@/services/crm/followUps");
+      return await sendDueFollowUpReminders();
     });
+  }
+);
 
-    await step.run("send-twilio-message", async () => {
-      await sendOutboundMessage(lead.phone, msg);
+// Customer CRM — "you haven't followed up with X for 5 days" reminders to the
+// owner/team (in-app + push), from CRM data only: open/active leads with no
+// contact for 5+ days and no pending follow-up task. Once per lead per silent
+// period. Never contacts the lead; no AI. Daily, 10:00 Asia/Kolkata:
+// Inngest evaluates cron triggers in UTC on its own servers (our server's
+// timezone is irrelevant); 04:30 UTC = 10:00 IST all year (India has no DST).
+// Same convention as performanceDigestCron.
+export const crmStaleLeadReminderCron = inngest.createFunction(
+  { id: "crm-stale-lead-reminders", triggers: [{ cron: "30 4 * * *" }] },
+  async ({ step }) => {
+    return await step.run("send-stale-lead-reminders", async () => {
+      const { sendStaleLeadReminders } = await import("@/services/crm/followUps");
+      return await sendStaleLeadReminders();
     });
+  }
+);
 
-    await step.run("log-followup-and-activity", async () => {
-      await FollowUp.create({
-        tenantId: lead.tenantId,
-        leadId: lead._id,
-        scheduledFor: new Date(),
-        status: 'completed',
-        messageTemplate: templateType,
-        completedAt: new Date(),
-      });
-
-      await Activity.create({
-        tenantId: lead.tenantId,
-        leadId: lead._id,
-        type: "WhatsApp",
-        content: `Sent ${templateType}: ${msg}`,
-      });
+// Customer CRM — "Your <Month> Growth Report is ready" (in-app + push), once
+// per business per month after that month has completed in the business's
+// timezone. Daily at 04:45 UTC (10:15 IST) so non-IST businesses are picked up
+// the day their month closes. The report itself is calculated on request.
+export const crmGrowthReportReadyCron = inngest.createFunction(
+  { id: "crm-growth-report-ready", triggers: [{ cron: "45 4 * * *" }] },
+  async ({ step }) => {
+    return await step.run("notify-growth-report-ready", async () => {
+      const { sendGrowthReportReadyNotifications } = await import("@/services/crm/growthReportData");
+      return await sendGrowthReportReadyNotifications();
     });
-
-    return { success: true };
   }
 );
 

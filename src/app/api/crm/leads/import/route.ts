@@ -2,16 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parse } from 'csv-parse/sync';
 import ExcelJS from 'exceljs';
 import dbConnect from '@/lib/mongodb';
-import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
-import { inngest } from '@/services/inngest/client';
-import mongoose from 'mongoose';
+import { phoneDedupeKey } from '@/lib/phone';
+import { buildCustomerLeadIndex, createOrUpdateCustomerLead } from '@/services/crm/customerLeads';
+import { canonicalSource } from '@/services/crm/sources';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export const runtime = 'nodejs';
 
-const VALID_SOURCES = ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking', 'Google Business Profile'];
-const VALID_STAGES = ['initial', 'active', 'closed', 'converted'];
+// 'converted' is not importable: a Won lead needs a real deal value, so such
+// rows land in Open and the owner records the deal from the CRM.
+const VALID_STAGES = ['initial', 'active', 'closed'];
 
 // SEC-13 / SEC-8 — bound the upload and don't trust the browser MIME type.
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -142,7 +143,9 @@ export async function POST(req: NextRequest) {
     if (rawRows.length > MAX_ROWS) return NextResponse.json({ error: `File exceeds the ${MAX_ROWS.toLocaleString()}-row import limit. Please split the file.` }, { status: 400 });
 
     await dbConnect();
-    const businessObjId = new mongoose.Types.ObjectId(ctx.businessId);
+    // One lookup of this workspace's phones/emails for the whole file (not a
+    // scan per row); kept current as rows are created.
+    const index = await buildCustomerLeadIndex(ctx.businessId);
 
     // Deduplicate within the file by phone/email
     const seenKeys = new Set<string>();
@@ -162,58 +165,47 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        // Normalise source
-        const source = VALID_SOURCES.find(s => s.toLowerCase() === row.source.toLowerCase()) || 'Manual';
+        // A recognised source column wins; anything else is a CSV import.
+        const source = row.source ? canonicalSource(row.source, 'CSV Import') : 'CSV Import';
 
-        // Normalise lifeCycleStage
-        const lifeCycleStage = VALID_STAGES.includes(row.lifeCycleStage.toLowerCase())
-          ? row.lifeCycleStage.toLowerCase()
-          : 'initial';
+        const stageIn = row.lifeCycleStage.toLowerCase();
+        const lifeCycleStage = (VALID_STAGES.includes(stageIn) ? stageIn : 'initial') as 'initial' | 'active' | 'closed';
+        if (stageIn === 'converted') {
+          errors.push(`Row ${rowNum}: imported as Open — record the deal value in the CRM to mark it Won.`);
+        }
 
-        // Deduplicate within file
-        const dedupeKey = row.phone || row.email;
+        // Deduplicate within the file (phone by dedupe key, so formats match).
+        const dedupeKey = (row.phone && phoneDedupeKey(row.phone)) || row.email.toLowerCase();
         if (dedupeKey && seenKeys.has(dedupeKey)) {
-          errors.push(`Row ${rowNum}: Duplicate entry for "${dedupeKey}" — skipped.`);
+          errors.push(`Row ${rowNum}: Duplicate entry for "${row.phone || row.email}" — skipped.`);
           skipped++;
           continue;
         }
         if (dedupeKey) seenKeys.add(dedupeKey);
 
-        // Check if lead already exists in this business
-        const existsQuery: Record<string, any> = { businessId: businessObjId };
-        if (row.phone) existsQuery.phone = row.phone;
-        else if (row.email) existsQuery.email = row.email;
-
-        if (row.phone || row.email) {
-          const exists = await Lead.exists(existsQuery);
-          if (exists) {
-            errors.push(`Row ${rowNum}: Lead "${row.name}" (${row.phone || row.email}) already exists — skipped.`);
-            skipped++;
-            continue;
-          }
-        }
-
         const tags = row.tags ? row.tags.split(/[,;|]/).map((t: string) => t.trim()).filter(Boolean) : [];
 
-        const lead = await Lead.create({
-          tenantId: ctx.organizationId,
+        // Canonical Customer CRM path: an existing lead in this workspace (same
+        // phone in any format, or email) is skipped; imported rows are never messaged.
+        const r = await createOrUpdateCustomerLead({
+          businessId: ctx.businessId,
           organizationId: ctx.organizationId,
-          businessId: businessObjId,
           name: row.name,
-          phone: row.phone || undefined,
-          email: row.email || undefined,
+          phone: row.phone || null,
+          email: row.email || null,
           source,
-          interest: row.interest || undefined,
-          notes: row.notes || undefined,
+          interest: row.interest || null,
+          notes: row.notes || null,
           lifeCycleStage,
           tags,
-          pipelineStage: null,
-        });
-
-        await inngest.send({
-          name: 'crm/lead-created',
-          data: { leadId: lead._id.toString(), businessId: ctx.businessId.toString() },
-        });
+          createdBy: ctx.userId,
+          bulk: true,
+        }, { index });
+        if (!r.created) {
+          errors.push(`Row ${rowNum}: Lead "${row.name}" (${row.phone || row.email}) already exists — skipped.`);
+          skipped++;
+          continue;
+        }
 
         created++;
       } catch (err: any) {

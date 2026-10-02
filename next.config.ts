@@ -64,6 +64,13 @@ const noStoreHeaders = [
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
+  experimental: {
+    // src/proxy.ts matches /api/*, and while a proxy runs Next.js buffers the
+    // request body only up to this size (default 10 MB) — a larger upload
+    // reaches the route truncated. Media uploads allow MP4/MOV video up to
+    // 75 MB (Google's limit), so allow that plus multipart overhead.
+    proxyClientMaxBodySize: '80mb',
+  },
   // `next dev`'s built-in cross-origin protection only trusts localhost by
   // default — any request arriving with a different Host header (e.g. a
   // phone on the LAN hitting this machine's IP directly, which the mobile

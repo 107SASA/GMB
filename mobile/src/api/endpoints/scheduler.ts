@@ -34,10 +34,6 @@ export async function fetchBuffer(): Promise<Buffer> {
   return z.object({ data: bufferSchema }).parse(data).data;
 }
 
-/** POST /api/scheduler/generate — dispatches the background generate job. */
-export async function generateBufferPosts(): Promise<void> {
-  await api.post('/api/scheduler/generate', {});
-}
 
 export type PublishResult = { outcome: 'published' } | { outcome: 'blocked'; message: string };
 

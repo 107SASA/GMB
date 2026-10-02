@@ -5,6 +5,7 @@ import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 import {
   Loader2,
   ImagePlus,
+  Video,
   Info,
   CheckCircle2,
   AlertCircle,
@@ -41,7 +42,12 @@ function geotagLabel(g?: MediaAsset['geotag']): string | null {
     case 'original_gps_preserved': return `Location: kept from your photo${at}`;
     case 'business_location_added': return `Location: your Google Business Profile location added${at}`;
     case 'photo_location_added': return g.source === 'device_at_capture' ? `Location: where the photo was taken (phone location at capture)${at}` : `Location: kept from your photo${at}`;
-    case 'video_unmodified': return g.lat != null ? `Location: kept from your video${at}` : 'Location: none in this video (videos are not modified)';
+    case 'video_location_recorded':
+      return g.source === 'video_metadata' ? `Location: recorded in your video${at}`
+        : g.source === 'device_at_capture' ? `Location: where the video was recorded (phone location at capture)${at}`
+        : g.source === 'photo_exif_app' ? `Location: from your video${at}`
+        : `Location: your Google Business Profile location${at}`;
+    case 'video_unmodified': return g.lat != null ? `Location: kept from your video${at}` : 'Location: none — no location in this video and no verified business location';
     default: return 'Location: none added — Google has not confirmed a location for this business';
   }
 }
@@ -111,13 +117,14 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
   const [error, setError] = useState<string | null>(null);
   const [liveWrites, setLiveWrites] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [uploadingSlot, setUploadingSlot] = useState<MediaCategory | 'ADD_PHOTO' | null>(null);
+  const [uploadingSlot, setUploadingSlot] = useState<MediaCategory | 'ADD_PHOTO' | 'ADD_VIDEO' | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
 
   const logoInput = useRef<HTMLInputElement | null>(null);
   const coverInput = useRef<HTMLInputElement | null>(null);
   const addPhotoInput = useRef<HTMLInputElement | null>(null);
+  const addVideoInput = useRef<HTMLInputElement | null>(null);
 
   const loadMedia = useCallback(async () => {
     setLoading(true);
@@ -150,7 +157,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
   const coverPending = find('COVER', ['staged', 'failed']);
   const galleryItems = assets.filter((a) => GALLERY_CATEGORIES.includes(a.category));
 
-  const upload = async (category: MediaCategory, file: File, slotKey: MediaCategory | 'ADD_PHOTO') => {
+  const upload = async (category: MediaCategory, file: File, slotKey: MediaCategory | 'ADD_PHOTO' | 'ADD_VIDEO') => {
     setUploadingSlot(slotKey);
     setMsg(null);
     try {
@@ -163,7 +170,7 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
       const res = await fetch('/api/gbp/media/upload', { method: 'POST', body: fd });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || 'Upload failed.');
-      setMsg({ ok: true, text: 'Uploaded — review it below, then publish when ready.' });
+      setMsg({ ok: true, text: `${file.type.startsWith('video/') ? 'Video' : 'Photo'} uploaded — review it below, then publish when ready.` });
       await loadMedia();
     } catch (err) {
       setMsg({ ok: false, text: friendlyClientMessage(err, 'Upload failed.') });
@@ -380,11 +387,11 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
           <div className="pt-2 border-t border-outline-variant">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-semibold text-outline uppercase tracking-wide">Additional photos &amp; videos</p>
-              <div>
+              <div className="flex flex-wrap items-center gap-2">
                 <input
                   ref={addPhotoInput}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"
+                  accept="image/jpeg,image/png,image/webp"
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -392,23 +399,54 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
                     e.target.value = '';
                   }}
                 />
+                <input
+                  ref={addVideoInput}
+                  type="file"
+                  accept="video/mp4,video/quicktime"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) upload('ADDITIONAL', file, 'ADD_VIDEO');
+                    e.target.value = '';
+                  }}
+                />
                 <button
                   type="button"
                   onClick={() => addPhotoInput.current?.click()}
-                  disabled={uploadingSlot === 'ADD_PHOTO'}
+                  disabled={uploadingSlot === 'ADD_PHOTO' || uploadingSlot === 'ADD_VIDEO'}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold disabled:opacity-60"
                 >
                   {uploadingSlot === 'ADD_PHOTO' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
-                  Add photo / video
+                  Upload Photo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addVideoInput.current?.click()}
+                  disabled={uploadingSlot === 'ADD_PHOTO' || uploadingSlot === 'ADD_VIDEO'}
+                  title="MP4 or MOV, up to 75 MB and 30 seconds"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary text-primary text-xs font-semibold disabled:opacity-60"
+                >
+                  {uploadingSlot === 'ADD_VIDEO' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Video className="w-3.5 h-3.5" />}
+                  {uploadingSlot === 'ADD_VIDEO' ? 'Uploading video…' : 'Upload Video'}
                 </button>
               </div>
             </div>
+            <p className="text-[11px] text-outline -mt-1 mb-3">Videos: MP4 or MOV, up to 75 MB and 30 seconds. Location is recorded the same way as for photos.</p>
 
-            {galleryItems.length === 0 ? (
-              <p className="text-sm text-outline">No additional photos yet.</p>
+            {([
+              { key: 'photos', title: 'Photos', empty: 'No additional photos yet.', items: galleryItems.filter((a) => a.mediaType !== 'video') },
+              { key: 'videos', title: 'Videos', empty: 'No videos yet — use Upload Video above.', items: galleryItems.filter((a) => a.mediaType === 'video') },
+            ]).map((group) => (
+              <div key={group.key} className="mb-5">
+                <p className="text-sm font-bold text-on-surface mb-2 flex items-center gap-1.5">
+                  {group.key === 'videos' ? <Video className="w-4 h-4 text-primary" /> : <ImagePlus className="w-4 h-4 text-primary" />}
+                  {group.title} <span className="text-xs font-semibold text-outline">({group.items.length})</span>
+                </p>
+            {group.items.length === 0 ? (
+              <p className="text-sm text-outline">{group.empty}</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                {galleryItems.map((item) => (
+                {group.items.map((item) => (
                   <div key={item._id} className="border border-outline-variant rounded-xl overflow-hidden bg-surface-container-lowest">
                     <button
                       type="button"
@@ -496,6 +534,8 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
                 ))}
               </div>
             )}
+              </div>
+            ))}
           </div>
         </>
       )}

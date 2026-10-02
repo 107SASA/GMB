@@ -3,7 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
-import { AUTOPILOT_INTERVAL_MS, maybeStartContentAutopilot } from '@/lib/contentAutopilot';
+import { AUTOPILOT_INTERVAL_MS } from '@/lib/contentAutopilot';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export const dynamic = 'force-dynamic';
@@ -12,11 +12,12 @@ export const dynamic = 'force-dynamic';
 const GENERATING_WINDOW_MS = 75 * 60 * 1000;
 
 /**
- * Content tab autopilot state. Opening the tab also starts autopilot right
- * away when the business qualifies (active subscription + Google connected +
- * keywords) but hasn't started yet — instead of waiting up to an hour for the
- * hourly safety-net cron. maybeStartContentAutopilot is idempotent (atomic
- * claim), so calling it on every page load is safe.
+ * Content tab autopilot state — READ-ONLY (web + mobile). Reading it never
+ * generates posts: the first batch is started by the events that make a
+ * business qualify (intake saved, subscription activated, Google connected —
+ * maybeStartContentAutopilot) and, as a safety net, by the hourly
+ * weeklyContentAutopilotCron, which is also the only path for every later
+ * weekly batch.
  *
  * `generating` = a batch was dispatched in the last 75 minutes and its posts
  * haven't appeared yet — the page shows "your AI agent is creating…" and polls.
@@ -27,8 +28,6 @@ export async function GET() {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
     await dbConnect();
-
-    await maybeStartContentAutopilot(ctx.businessId);
 
     const b: any = await Business.findById(ctx.businessId)
       .select('keywords subscriptionStatus googleConnected autopilotNextRunAt')

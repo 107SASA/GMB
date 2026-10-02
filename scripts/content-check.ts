@@ -415,7 +415,12 @@ async function run() {
     check('geo-B2', 'gallery photo WITHOUT GPS and no verified location → still valid, no coordinates added', b2.geotag.status === 'none' && b2.buffer.equals(plain) && (await readImageGps(b2.buffer)) === null && (await sharp(b2.buffer).metadata()).width === 800, b2.geotag.reason ?? '');
     const vid = Buffer.from('....ftypmp42....moov....mdat....');
     const v = await prepareGalleryMedia({ buffer: vid, mime: 'video/mp4', category: 'ADDITIONAL', location: loc });
-    check('geo-video', 'video stored byte-for-byte; no location invented', v.geotag.status === 'video_unmodified' && v.buffer.equals(vid) && v.geotag.lat === undefined, v.geotag.reason ?? '');
+    // Same policy as photos (Oct 2026): the verified business location is RECORDED on the video's
+    // media item; the video file itself is never modified; without a verified location nothing is recorded.
+    const v2 = await prepareGalleryMedia({ buffer: vid, mime: 'video/mp4', category: 'ADDITIONAL', location: null });
+    check('geo-video', 'video stored byte-for-byte; verified location recorded on the item (same rule as photos); nothing invented without one',
+      v.geotag.status === 'video_location_recorded' && v.buffer.equals(vid) && near({ lat: v.geotag.lat!, lng: v.geotag.lng! }, PIN) && v.geotag.source === 'google_places' &&
+      v2.geotag.status === 'video_unmodified' && v2.geotag.lat === undefined && v2.buffer.equals(vid), v.geotag.reason ?? '');
 
     // C: generated image in a weekly post → verified location written, recorded on the post.
     const W = await mkBiz({ website: 'https://sahyadri-tiles.example' }); await seedPlan(W);

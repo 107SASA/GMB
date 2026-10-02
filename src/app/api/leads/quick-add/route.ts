@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
-import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
-import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
+import { normalizePhoneE164 } from '@/lib/phone';
 import { requireModule } from '@/lib/moduleGating';
-import { inngest } from '@/services/inngest/client';
-import mongoose from 'mongoose';
+import { createOrUpdateCustomerLead } from '@/services/crm/customerLeads';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 const ALLOWED_SOURCES = ['Manual', 'Phone Call', 'Contacts Import'] as const;
@@ -44,39 +42,20 @@ export async function POST(req: Request) {
     }
 
     await dbConnect();
-    const businessObjId = new mongoose.Types.ObjectId(ctx.businessId);
-
-    // Stored phones use inconsistent formats, so compare dedupe keys in JS
-    // rather than by exact match. Per-business lead counts keep this cheap.
-    const key = phoneDedupeKey(phone);
-    const candidates = await Lead.find({ businessId: businessObjId, phone: { $ne: null } })
-      .select('phone')
-      .lean();
-    const match = candidates.find((c: any) => phoneDedupeKey(c.phone) === key);
-
-    if (match) {
-      const existing = await Lead.findById(match._id).lean();
-      return NextResponse.json({ success: true, existing: true, lead: existing });
-    }
-
-    const lead = await Lead.create({
-      tenantId: ctx.organizationId,
+    // Canonical Customer CRM path (normalized phone dedupe inside this
+    // workspace; an existing lead is returned, never duplicated).
+    const r = await createOrUpdateCustomerLead({
+      businessId: ctx.businessId,
       organizationId: ctx.organizationId,
-      businessId: businessObjId,
       name,
       phone,
       source,
-      pipelineStage: null,
-      lifeCycleStage: 'initial',
-      valuation,
+      valuation: valuation ?? null,
+      createdBy: ctx.userId,
     });
+    if (!r.lead) return NextResponse.json({ error: r.skippedReason }, { status: 400 });
 
-    await inngest.send({
-      name: 'crm/lead-created',
-      data: { leadId: lead._id.toString(), businessId: ctx.businessId.toString() },
-    });
-
-    return NextResponse.json({ success: true, existing: false, lead }, { status: 201 });
+    return NextResponse.json({ success: true, existing: !r.created, lead: r.lead }, { status: r.created ? 201 : 200 });
   } catch (error: any) {
     return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }

@@ -8,6 +8,7 @@ import CRMFilterBar from '@/components/crm/CRMFilterBar';
 import CRMAnalytics from '@/components/crm/CRMAnalytics';
 import LeadDrawer from '@/components/crm/LeadDrawer';
 import LeadStagesConfig from '@/components/crm/LeadStagesConfig';
+import PendingCallsBanner from '@/components/crm/PendingCallsBanner';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import type { LeadStagesConfig as LeadStagesConfigType } from '@/lib/leadStages';
 import { LayoutList, Columns, Layers, Upload, X, FileUp, CheckCircle, AlertCircle, Download } from 'lucide-react';
@@ -179,7 +180,7 @@ function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImpo
   };
 
   const downloadTemplate = () => {
-    const csv = 'name,phone,email,source,lifeCycleStage,interest,notes,tags\nJane Smith,+447700000000,jane@example.com,Manual,initial,AWS Certification,,tag1;tag2\n';
+    const csv = 'name,phone,email,source,lifeCycleStage,interest,notes,tags\nJane Smith,+919800000000,jane@example.com,Referral,initial,Consultation,,tag1;tag2\n';
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -217,7 +218,7 @@ function ImportLeadsModal({ onClose, onImported }: { onClose: () => void; onImpo
           <div className="text-xs text-on-surface-variant bg-surface border border-outline-variant rounded-xl px-4 py-3 leading-relaxed">
             <span className="font-semibold text-on-surface">Supported columns:</span>{' '}
             name <span className="text-error">*</span>, phone, email, source, lifeCycleStage
-            <span className="text-outline"> (initial / active / closed / converted)</span>,
+            <span className="text-outline"> (initial / active / closed — mark wins in the CRM with the deal value)</span>,
             interest, notes, tags
             <span className="text-outline"> (semicolon-separated)</span>
           </div>
@@ -327,7 +328,7 @@ function Toast({ message, onDone }: { message: string; onDone: () => void }) {
 export default function CRMDashboard() {
   const { activeBusiness } = useBusiness();
   const [leads, setLeads] = useState<any[]>([]);
-  const [stats, setStats] = useState({ total: 0, converted: 0, conversionRate: 0, avgScore: 0 });
+  const [stats, setStats] = useState({ total: 0, followUpsDue: 0, won: 0, revenue: 0, currency: 'INR' });
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   // Default to list view (SSR-safe). On mobile, auto-switch back to list if user resizes down.
@@ -368,21 +369,23 @@ export default function CRMDashboard() {
 
   const fetchLeads = async () => {
     try {
-      const res = await fetch(`/api/crm/leads`);
+      const [res, dueRes] = await Promise.all([
+        fetch(`/api/crm/leads`),
+        // Pending follow-up tasks due by the end of today (incl. overdue).
+        fetch('/api/followups?due=1').catch(() => null),
+      ]);
       const data = await res.json();
+      const due = dueRes && dueRes.ok ? await dueRes.json().catch(() => null) : null;
       if (data.success) {
         setLeads(data.leads);
 
-        const total = data.leads.length;
-        const converted = data.leads.filter((l: any) => l.lifeCycleStage === 'converted' || l.pipelineStage === 'Converted').length;
-        const conversionRate = total > 0 ? Math.round((converted / total) * 100) : 0;
+        const won = data.leads.filter((l: any) => l.lifeCycleStage === 'converted');
+        // Revenue = recorded deal values of Won leads only (never estimated).
+        const withValue = won.filter((l: any) => typeof l.deal?.value === 'number');
+        const revenue = withValue.reduce((acc: number, l: any) => acc + l.deal.value, 0);
+        const currency = withValue[0]?.deal?.currency || 'INR';
 
-        const scoredLeads = data.leads.filter((l: any) => l.aiLeadScore);
-        const avgScore = scoredLeads.length > 0
-          ? Math.round(scoredLeads.reduce((acc: number, l: any) => acc + l.aiLeadScore, 0) / scoredLeads.length)
-          : 0;
-
-        setStats({ total, converted, conversionRate, avgScore });
+        setStats({ total: data.leads.length, followUpsDue: due?.followUps?.length ?? 0, won: won.length, revenue, currency });
       }
     } catch (e) {
       console.error('Failed to fetch leads', e);
@@ -414,7 +417,7 @@ export default function CRMDashboard() {
   const handleLeadCreated = (newLead: any) => {
     setLeads(prev => [newLead, ...prev]);
     setStats(prev => ({ ...prev, total: prev.total + 1 }));
-    setToast(`Lead "${newLead.name}" created — AI scoring in progress…`);
+    setToast(`Lead "${newLead.name}" created.`);
   };
 
   const handleImportDone = () => {
@@ -434,7 +437,7 @@ export default function CRMDashboard() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-8">
           <div>
             <h1 className="font-heading text-2xl sm:text-3xl font-bold text-on-surface tracking-tight">AI Lead Manager</h1>
-            <p className="text-on-surface-variant mt-1">Intelligent CRM with automated follow-ups and LLaMA scoring.</p>
+            <p className="text-on-surface-variant mt-1">Intelligent CRM with smart follow-up reminders.</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -502,6 +505,9 @@ export default function CRMDashboard() {
 
         {/* Stats */}
         <CRMStatsRow stats={stats} />
+
+        {/* Callers not yet saved as leads (telephony provider) */}
+        <PendingCallsBanner key={activeBusiness?._id} leads={leads} onChanged={fetchLeads} />
 
         {/* Filters (Hidden in Analytics & Stage-config Views) */}
         {viewMode !== 'analytics' && viewMode !== 'stages' && (

@@ -71,17 +71,18 @@ export async function POST(req: Request) {
   }
 
   try {
-    // Cover/logo crop (server-side, EXIF kept) + geotag policy: GPS already in
-    // the photo is kept untouched; otherwise the business's verified Google
-    // location is added; without one, nothing is added. Videos are stored as-is.
+    // Cover/logo crop (server-side, EXIF kept) + ONE geotag policy for photos
+    // and videos: the file's own location first, then the location the app
+    // read for it (its own GPS, or the phone's position when captured in the
+    // app), then the business's verified Google location; otherwise none.
+    // Photos get GPS written into EXIF; videos are stored byte-for-byte and the
+    // location is recorded on the asset.
     const prepared = await prepareGalleryMedia({
       buffer: Buffer.from(await file.arrayBuffer()),
       mime: file.type,
       category,
-      location: isVideo ? null : await getVerifiedBusinessLocation(ctx.businessId),
-      // Mobile app: the photo's own GPS (phones strip it when compressing) or the
-      // phone's position when the photo was taken in the app camera.
-      photoLocation: isVideo ? null : photoLocationFromForm(form),
+      location: await getVerifiedBusinessLocation(ctx.businessId),
+      photoLocation: photoLocationFromForm(form),
     });
     const publicUrl = await uploadPublicObject(prepared.buffer, prepared.mime, `gbp-media/${ctx.businessId}`);
 

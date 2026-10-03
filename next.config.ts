@@ -12,8 +12,10 @@ import type { NextConfig } from "next";
  *  - script-src: 'unsafe-inline'/'unsafe-eval' are still required — Next.js
  *    injects inline bootstrap scripts (no nonce wired yet) and Razorpay's
  *    checkout.js needs eval. Tightening this needs the nonce work tracked in
- *    csp.md. Razorpay + Google Maps JS are the only third-party script hosts.
- *  - connect-src: Razorpay (checkout XHR/telemetry) + Google Maps.
+ *    csp.md. Third-party script hosts: Razorpay, Google Maps, and GA4
+ *    (googletagmanager.com).
+ *  - connect-src: Razorpay (checkout XHR/telemetry), Google Maps, and GA4
+ *    collection endpoints.
  *  - frame-src: Razorpay checkout iframe + Google account chooser (OAuth).
  *  - img-src https: — GBP media, DO Spaces CDN, Google user content and
  *    competitor photos all load from many hosts; images can't execute, so a
@@ -22,12 +24,12 @@ import type { NextConfig } from "next";
  */
 const cspReportOnly = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://maps.googleapis.com https://*.gstatic.com",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://maps.googleapis.com https://*.gstatic.com https://www.googletagmanager.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' data: blob: https:",
   "media-src 'self' data: blob: https:",
-  "connect-src 'self' https://*.razorpay.com https://lumberjack.razorpay.com https://maps.googleapis.com https://api.groq.com",
+  "connect-src 'self' https://*.razorpay.com https://lumberjack.razorpay.com https://maps.googleapis.com https://api.groq.com https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com",
   "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://accounts.google.com",
   "frame-ancestors 'self'",
   "base-uri 'self'",

@@ -73,20 +73,50 @@ export type NurtureStatus = 'ACTIVE' | 'PAUSED' | 'STOPPED' | 'OPTED_OUT';
 export type ScoreBand = 'COLD' | 'WARM' | 'HOT' | 'READY';
 
 /**
- * leadScore (0-100) → a coarse band the rule table can key off. Boundaries
- * are a judgment call (not specified by the task) chosen as a simple,
- * documented, editable split rather than buried magic numbers — tune here
- * if real data suggests different cutoffs. Order matches ScoringRuleConfig's
- * biggest single deltas (DEMO_REQUESTED/BOOKED/PURCHASE_INTENT are +20/+20/
- * +25), so a single strong signal from 0 is enough to reach WARM, and two
- * are enough to approach READY.
+ * leadScore (0-100) → temperature band. Target architecture cutoffs:
+ *   0–25 Cold, 26–50 Warm, 51–75 Hot, 76–100 Ready to Buy.
+ *
+ * HARD INVARIANT: leadScore / scoreBand is temperature, not a sales decision.
+ * Score alone must NEVER cause OFFER_SUBSCRIPTION — see
+ * subscriptionOfferAllowed() and decideNextAction. Band may widen the legal
+ * action set (e.g. HOT may allow OFFER_DEMO) but defaults still require
+ * intent, buying signals, objections, demo stage, or ownership context.
  */
 export function computeScoreBand(leadScore: number | undefined | null): ScoreBand {
   const score = typeof leadScore === 'number' ? leadScore : 0;
-  if (score >= 75) return 'READY';
-  if (score >= 45) return 'HOT';
-  if (score >= 15) return 'WARM';
+  if (score >= 76) return 'READY';
+  if (score >= 51) return 'HOT';
+  if (score >= 26) return 'WARM';
   return 'COLD';
+}
+
+/** Buying-signal types that can support a subscription offer (with intent). */
+export const SUBSCRIPTION_BUYING_SIGNAL_TYPES = [
+  'PRICING_QUESTION',
+  'PURCHASE_INTENT',
+  'IMPLEMENTATION_QUESTION',
+] as const;
+
+/**
+ * Whether OFFER_SUBSCRIPTION is allowed for this lead.
+ * Score band alone is NEVER enough — requires purchase-ready intent and/or
+ * a persisted commercial buying signal, or an explicit payment-pending stage.
+ */
+export function subscriptionOfferAllowed(input: {
+  intent?: string | null;
+  buyingSignals?: Array<{ type?: string } | string> | null;
+  currentStage?: string | null;
+}): boolean {
+  if (input.currentStage === 'CONVERSION_PENDING') return true;
+  if (input.intent === 'PURCHASE_INTEREST' || input.intent === 'READY_TO_BUY') return true;
+  const signals = input.buyingSignals || [];
+  for (const s of signals) {
+    const type = typeof s === 'string' ? s : s?.type;
+    if (type && (SUBSCRIPTION_BUYING_SIGNAL_TYPES as readonly string[]).includes(type)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export interface NBARuleInput {
@@ -242,6 +272,25 @@ export const NBA_RULES: NBARule[] = [
     currentStage: 'NURTURING',
     hasOpenObjection: false,
     legalActions: ['EDUCATE', 'SHARE_USE_CASE', 'SHOW_VALUE', 'ANSWER_QUESTION', 'OFFER_DEMO', 'HUMAN_HANDOFF'],
+    defaultAction: 'SHOW_VALUE',
+  },
+  // HOT/READY widen the legal set (demo may be offered) but NEVER default to
+  // OFFER_SUBSCRIPTION from score alone — that requires intent/buying signals
+  // via the purchase-intent row or subscriptionOfferAllowed().
+  {
+    name: 'Hot temperature during nurture — demo is legal, nurture remains default',
+    currentStage: 'NURTURING',
+    scoreBand: 'HOT',
+    hasOpenObjection: false,
+    legalActions: ['EDUCATE', 'SHARE_USE_CASE', 'SHOW_VALUE', 'ANSWER_QUESTION', 'OFFER_DEMO', 'HUMAN_HANDOFF'],
+    defaultAction: 'SHOW_VALUE',
+  },
+  {
+    name: 'Ready temperature during nurture — still nurture/demo, not auto-purchase',
+    currentStage: 'NURTURING',
+    scoreBand: 'READY',
+    hasOpenObjection: false,
+    legalActions: ['EDUCATE', 'SHARE_USE_CASE', 'SHOW_VALUE', 'ANSWER_QUESTION', 'OFFER_DEMO', 'SEND_PRICING', 'HUMAN_HANDOFF'],
     defaultAction: 'SHOW_VALUE',
   },
   {

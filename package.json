@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:integration": "node --test tests/integration/**/*.test.ts"
+    "test:integration": "node --experimental-strip-types --test tests/integration/**/*.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1095.0",

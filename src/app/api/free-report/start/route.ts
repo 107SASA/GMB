@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
-import Lead from '@/models/Lead';
 import Audit from '@/models/Audit';
 import { provisionShadowAccount, CLAIMED_OR_PAID_REUSE_ERROR } from '@/lib/shadowAccount';
 import { createPendingAuditAndDispatch } from '@/lib/startAudit';
@@ -8,6 +7,10 @@ import { normalizePhoneE164 } from '@/lib/phone';
 import { getClientIp } from '@/lib/rateLimit';
 import { checkDurableRateLimit } from '@/lib/durableRateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
+import {
+  fileFreeReportPlatformLead,
+  linkPlatformLeadAudit,
+} from '@/services/leads/platformProspectEntry';
 
 /**
  * Entry point for the "Free Business Report" lead-gen form (/free-report).
@@ -104,22 +107,24 @@ export async function POST(req: Request) {
       },
     });
 
-    // CRM record for this funnel. Upsert on phone within the platform tenant
-    // (same dedupe rule /api/leads/book-demo uses) so a visitor who submits
-    // twice — or already came through book-demo / the WhatsApp agent —
-    // updates one record instead of spawning duplicates, and then wire it
-    // into the Lead Engine funnel (currentAgent SALES / currentStage
-    // NURTURING + a LEAD_CREATED event) so it shows correctly staged on the
-    // SuperAdmin conversion dashboard instead of sitting at NEW forever. The
-    // actual WhatsApp nurture is the existing post-audit sales drip
-    // (sales/nurture.requested, dispatched from generateAuditJob).
-    await fileFreeReportLead({
+    // CRM: upsert Platform Lead immediately at submit (before audit finishes),
+    // apply FREE_REPORT_SUBMITTED, then attach auditId when the audit is known.
+    // WhatsApp nurture still waits on the post-audit sales drip + flags.
+    const leadResult = await fileFreeReportPlatformLead({
       name: user.fullName || businessName,
       phone: normalizedPhone,
       businessName,
     }).catch((err) => {
       console.error('Free Report — CRM lead wiring failed (audit still dispatched):', err);
+      return null;
     });
+
+    const attachAudit = async (auditId: unknown) => {
+      if (!leadResult?.leadId || !auditId) return;
+      await linkPlatformLeadAudit(leadResult.leadId, String(auditId)).catch((err) =>
+        console.warn('[free-report] linkPlatformLeadAudit failed:', (err as Error)?.message)
+      );
+    };
 
     // Reuse an existing report instead of generating a duplicate one if this
     // phone number has already been through this flow with a completed audit.
@@ -136,6 +141,7 @@ export async function POST(req: Request) {
         .sort({ createdAt: -1 })
         .lean();
       if (existingAudit) {
+        await attachAudit((existingAudit as any)._id);
         return NextResponse.json(
           { success: true, businessId: business._id, auditId: (existingAudit as any)._id, reused: true },
           { status: 200 }
@@ -153,6 +159,7 @@ export async function POST(req: Request) {
         const STALE_PENDING_MS = 2 * 60 * 1000;
         const isStale = Date.now() - new Date((pendingAudit as any).createdAt).getTime() > STALE_PENDING_MS;
         if (!isStale) {
+          await attachAudit((pendingAudit as any)._id);
           return NextResponse.json(
             { success: true, businessId: business._id, auditId: (pendingAudit as any)._id, reused: true },
             { status: 200 }
@@ -163,6 +170,7 @@ export async function POST(req: Request) {
     }
 
     const audit = await createPendingAuditAndDispatch(business, organization, user);
+    await attachAudit(audit._id);
 
     return NextResponse.json(
       { success: true, businessId: business._id, auditId: audit._id, reused: false },
@@ -190,69 +198,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-}
-
-interface FreeReportLeadInput {
-  name: string;
-  phone: string; // E.164 with '+'
-  businessName: string;
-}
-
-/**
- * Upserts the platform Lead for a free-report submission and wires it into
- * the Lead Engine funnel. Split out from POST so the whole block is one
- * best-effort unit — a failure here is logged by the caller and never fails
- * the response, because the audit dispatch is what the visitor is waiting on.
- */
-async function fileFreeReportLead(input: FreeReportLeadInput): Promise<void> {
-  const { name, phone, businessName } = input;
-  const notes = `Submitted the Free Business Report form for "${businessName}"`;
-
-  let lead = await Lead.findOne({ phone, tenantId: 'gmbboost-internal' });
-  if (lead) {
-    if (!lead.name || lead.name === lead.phone) lead.name = name;
-    // Don't stomp a 'Demo Booking' source with a weaker 'Website' one.
-    if (!lead.source || lead.source === 'Website') lead.source = 'Website';
-    lead.leadType = 'Platform Prospect';
-    if (!lead.businessType) lead.businessType = businessName;
-    lead.notes = notes;
-    lead.lastActivityAt = new Date();
-    await lead.save();
-  } else {
-    lead = await Lead.create({
-      tenantId: 'gmbboost-internal',
-      name,
-      phone,
-      source: 'Website',
-      leadType: 'Platform Prospect',
-      businessType: businessName,
-      notes,
-      aiLeadScore: 60,
-    });
-  }
-
-  const [{ setLeadOwnership }, { logLeadEvent }] = await Promise.all([
-    import('@/services/leadOwnership/setLeadOwnership'),
-    import('@/services/leadEvents'),
-  ]);
-
-  // Only move a lead that isn't already further along (e.g. it came through
-  // book-demo first and is DEMO-owned) — SALES/NURTURING is the entry stage
-  // for the post-audit sales drip, not a downgrade for a hotter lead.
-  const owner = (lead.currentAgent || 'NONE') as string;
-  if (owner === 'NONE' || owner === 'SALES') {
-    await setLeadOwnership(lead._id, 'SALES', 'free-report-form', 'free-report-form', 'NURTURING').catch(
-      (err: any) => console.warn('[free-report] setLeadOwnership failed:', err?.message)
-    );
-  }
-  if (!lead.intent) {
-    await Lead.updateOne({ _id: lead._id }, { $set: { intent: 'EXPLORING' } }).catch(() => {});
-  }
-
-  await logLeadEvent(
-    'LEAD_CREATED',
-    { channel: 'free-report', businessName },
-    'free-report-form',
-    { leadId: lead._id, phone }
-  );
 }

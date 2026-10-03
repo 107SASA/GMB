@@ -14,6 +14,26 @@ const ObjectionSchema = new Schema(
   { _id: false }
 );
 
+// Buying-signal types match ScoringRuleConfig signals that are evidence of
+// commercial interest — never free-text invented labels. See
+// docs/LEAD_SALES_IMPLEMENTATION_PLAN.md.
+const BUYING_SIGNAL_TYPES = [
+  'PRICING_QUESTION',
+  'IMPLEMENTATION_QUESTION',
+  'DEMO_REQUESTED',
+  'DEMO_BOOKED',
+  'PURCHASE_INTENT',
+] as const;
+
+const BuyingSignalSchema = new Schema(
+  {
+    type: { type: String, enum: BUYING_SIGNAL_TYPES, required: true },
+    note: { type: String },
+    detectedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 export interface ILead extends Document {
   tenantId: string;
   organizationId?: string;
@@ -118,6 +138,12 @@ export interface ILead extends Document {
     detectedAt: Date;
     resolved: boolean;
   }[];
+  /** Persisted commercial-interest signals (pricing, demo, purchase). Merged by type. */
+  buyingSignals?: {
+    type: 'PRICING_QUESTION' | 'IMPLEMENTATION_QUESTION' | 'DEMO_REQUESTED' | 'DEMO_BOOKED' | 'PURCHASE_INTENT';
+    note?: string;
+    detectedAt: Date;
+  }[];
   painPoints?: string[];
   businessProfile?: {
     industry?: string;
@@ -125,6 +151,8 @@ export interface ILead extends Document {
     goals?: string[];
     interestedServices?: string[];
   };
+  /** Explicit Free Report / Audit → Platform Lead link. Set when audit id is known. */
+  auditId?: mongoose.Types.ObjectId;
   lastMeaningfulInteractionAt?: Date;
   // Internal bookkeeping for ScoringRuleConfig's REPLIED signal, which is
   // spec'd as "+3, cap once/day" — not a field the task asked for by name,
@@ -299,6 +327,7 @@ const LeadSchema: Schema = new Schema(
       default: 'EXPLORING',
     },
     objections: { type: [ObjectionSchema], default: [] },
+    buyingSignals: { type: [BuyingSignalSchema], default: [] },
     painPoints: { type: [String], default: [] },
     businessProfile: {
       industry: { type: String },
@@ -306,6 +335,7 @@ const LeadSchema: Schema = new Schema(
       goals: { type: [String], default: [] },
       interestedServices: { type: [String], default: [] },
     },
+    auditId: { type: Schema.Types.ObjectId, ref: 'Audit', index: true },
     lastMeaningfulInteractionAt: { type: Date },
     lastRepliedScoreAt: { type: Date },
     recentExtractionConfidences: { type: [Number], default: [] },

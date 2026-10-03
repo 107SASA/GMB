@@ -103,13 +103,17 @@ export function StageBadge({ stage }: { stage: string | null }) {
 
 export function ScoreBar({ score }: { score: number | null | undefined }) {
   const v = Math.max(0, Math.min(100, score ?? 0));
-  const color = v >= 75 ? 'bg-secondary' : v >= 45 ? 'bg-primary' : v >= 15 ? 'bg-warning' : 'bg-outline';
+  // Bands: 0–25 Cold, 26–50 Warm, 51–75 Hot, 76–100 Ready
+  const band = v >= 76 ? 'READY' : v >= 51 ? 'HOT' : v >= 26 ? 'WARM' : 'COLD';
+  const color =
+    band === 'READY' ? 'bg-secondary' : band === 'HOT' ? 'bg-primary' : band === 'WARM' ? 'bg-warning' : 'bg-outline';
   return (
     <div className="flex items-center gap-2">
       <div className="w-14 h-1.5 rounded-full bg-surface-container overflow-hidden">
         <div className={`h-full ${color}`} style={{ width: `${v}%` }} />
       </div>
       <span className="text-xs tabular-nums text-on-surface-variant">{v}</span>
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-outline">{band}</span>
     </div>
   );
 }

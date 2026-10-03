@@ -69,13 +69,26 @@ async function optOutLeadDoc(
   reason: string,
   actor: string
 ): Promise<{ changed: boolean; leadId: string }> {
-  const alreadyOptedOut = lead.nurtureStatus === 'OPTED_OUT';
+  const alreadyOptedOut =
+    lead.nurtureStatus === 'OPTED_OUT' && lead.currentStage === 'DO_NOT_CONTACT';
   if (alreadyOptedOut) {
     return { changed: false, leadId: String(lead._id) };
   }
 
+  const nurtureStatusFrom = lead.nurtureStatus || 'ACTIVE';
   lead.nurtureStatus = 'OPTED_OUT';
   await lead.save();
+
+  // Also write currentStage DO_NOT_CONTACT via the canonical ownership path
+  // so scheduled actions cancel the same way CUSTOMER does.
+  const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
+  await setLeadOwnership(
+    lead._id,
+    (lead.currentAgent as any) || 'NONE',
+    `opted-out:${reason}`,
+    actor,
+    'DO_NOT_CONTACT'
+  ).catch((err: any) => console.warn('[optOutLead] setLeadOwnership DO_NOT_CONTACT failed:', err?.message));
 
   // Stand down any still-PENDING scheduled nurture for this lead. Idempotent
   // (no-op when there are none). nurtureSchedulerTick / requestOutboundMessage
@@ -85,7 +98,12 @@ async function optOutLeadDoc(
 
   logLeadEvent(
     'OPT_OUT',
-    { reason, nurtureStatusFrom: 'ACTIVE', nurtureStatusTo: 'OPTED_OUT' },
+    {
+      reason,
+      nurtureStatusFrom,
+      nurtureStatusTo: 'OPTED_OUT',
+      stageTo: 'DO_NOT_CONTACT',
+    },
     actor,
     { leadId: lead._id, phone: lead.phone }
   );

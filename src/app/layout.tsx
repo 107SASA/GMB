@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Inter, Public_Sans, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
@@ -100,6 +101,21 @@ export default function RootLayout({
   return (
     <html lang="en" className="scroll-smooth" data-scroll-behavior="smooth">
       <head>
+        {/* Google tag (gtag.js). Measurement ID is public. Loaded from the
+            shared document head so the landing page and every other route
+            send page views. */}
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-SNVHQ3RW4B"
+          strategy="afterInteractive"
+        />
+        <Script id="gtag-init" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-SNVHQ3RW4B');
+          `}
+        </Script>
         {/* Speeds up the external Material Symbols stylesheet below — the
             browser can open the connection before it even parses the <link>
             that needs it, instead of discovering the domain cold. */}

@@ -2103,6 +2103,67 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
     });
     if (stop) break;
   }
+
+  // After the configured drip finishes, wait one more last-delayHours of
+  // silence, then NURTURING → UNRESPONSIVE (pure advanceQuietStage). A later
+  // nurture-scheduler-tick pass moves UNRESPONSIVE → LONG_TERM_NURTURE.
+  const quietCfg = await step.run('load-quiet-stage-config', async () => {
+    const { getSalesAgentConfig } = await import('@/services/sales/salesAgent');
+    const config = await getSalesAgentConfig();
+    const followUps = config.followUps || [];
+    const last = followUps.length ? followUps[followUps.length - 1] : null;
+    return {
+      followUpCount: followUps.length,
+      lastDelayHours: Math.max(1, last?.delayHours || 72),
+    };
+  });
+  if (quietCfg.lastDelayHours > 0) {
+    await step.sleep('wait-quiet-before-unresponsive', `${quietCfg.lastDelayHours}h`);
+  }
+  await step.run('advance-quiet-after-drip', async () => {
+    await applyQuietStageForConversation(conversationId, quietCfg);
+  });
+}
+
+/** Applies advanceQuietStage for a sales conversation's platform lead. */
+async function applyQuietStageForConversation(
+  conversationId: string,
+  quietCfg: { followUpCount: number; lastDelayHours: number }
+): Promise<string | null> {
+  const dbConnect = (await import('@/lib/mongodb')).default;
+  await dbConnect();
+  const { default: SalesConversation } = await import('@/models/SalesConversation');
+  const { default: Lead } = await import('@/models/Lead');
+  const { normalizePhoneE164 } = await import('@/lib/phone');
+  const { advanceQuietStage } = await import('@/services/lifecycle/advanceQuietStage');
+  const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
+
+  const convo: any = await SalesConversation.findById(conversationId);
+  if (!convo) return null;
+  const phone = normalizePhoneE164(convo.leadPhone) || convo.leadPhone;
+  const lead: any = await Lead.findOne({ phone, tenantId: 'gmbboost-internal' });
+  if (!lead) return null;
+
+  const next = advanceQuietStage({
+    currentStage: lead.currentStage,
+    currentAgent: lead.currentAgent,
+    nurtureStatus: lead.nurtureStatus,
+    humanHandoffActive: !!lead.humanHandoff?.active,
+    followUpsSent: convo.followUpsSent || 0,
+    followUpCount: quietCfg.followUpCount,
+    lastDelayHours: quietCfg.lastDelayHours,
+    lastAgentAt: convo.lastAgentAt,
+    lastLeadReplyAt: convo.lastLeadReplyAt,
+  });
+  if (!next) return null;
+  await setLeadOwnership(
+    lead._id,
+    (lead.currentAgent as any) || 'SALES',
+    `quiet-stage:${next}`,
+    'sales-agent-drip',
+    next
+  );
+  return next;
 }
 
 // 7b. WhatsApp Sales Nurture drip (platform → lead, after a free audit).
@@ -2165,8 +2226,28 @@ export const salesNurtureRequested = inngest.createFunction(
       const { normalizePhoneE164, phoneDedupeKey } = await import('@/lib/phone');
       const { default: Lead } = await import('@/models/Lead');
       const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
+      const {
+        ensurePlatformLeadForReportPhone,
+        linkPlatformLeadAudit,
+      } = await import('@/services/leads/platformProspectEntry');
       const normalizedOwnerPhone = normalizePhoneE164(phone) || phone;
-      const existingLead: any = await Lead.findOne({ phone: normalizedOwnerPhone, tenantId: 'gmbboost-internal' });
+      // Ensure a Platform Lead exists before nurture (same upsert as free-report).
+      // Free-report already created it at submit; this covers report-connect /
+      // other audit paths that reach nurture without a prior form submit.
+      let existingLead: any = await Lead.findOne({ phone: normalizedOwnerPhone, tenantId: 'gmbboost-internal' });
+      if (!existingLead) {
+        const leadId = await ensurePlatformLeadForReportPhone({
+          phone: normalizedOwnerPhone,
+          name: owner?.fullName || business.name || normalizedOwnerPhone,
+          businessName: business.name || undefined,
+        });
+        if (leadId) {
+          existingLead = await Lead.findById(leadId);
+        }
+      }
+      if (existingLead && !existingLead.auditId) {
+        await linkPlatformLeadAudit(existingLead._id, audit._id).catch(() => {});
+      }
       if (isHumanOwned(existingLead) || isOptedOutOrDoNotContact(existingLead)) {
         return { skip: 'human-owned-or-opted-out' as const };
       }
@@ -2415,6 +2496,25 @@ export const salesAgentReply = inngest.createFunction(
         if (handoff.handedOff) return;
       }
 
+      // A reply exits silence stages back to NURTURING / SALES (unless human,
+      // opted out, or already CUSTOMER — those are blocked above).
+      if (
+        salesLead &&
+        body &&
+        (salesLead.currentStage === 'UNRESPONSIVE' || salesLead.currentStage === 'LONG_TERM_NURTURE')
+      ) {
+        const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
+        await setLeadOwnership(
+          salesLead._id,
+          'SALES',
+          'lead-replied-resume-nurture',
+          'sales-agent',
+          'NURTURING'
+        ).catch((err: any) => console.warn('[salesAgentReply] resume NURTURING failed:', err?.message));
+        salesLead.currentStage = 'NURTURING';
+        salesLead.currentAgent = 'SALES';
+      }
+
       const config = await getSalesAgentConfig();
       if (!config.enabled) {
         const res = await sendOutboundMessage(convo.leadPhone, AGENT_DISABLED_FALLBACK_MESSAGE, undefined, convo.businessId.toString());
@@ -2461,6 +2561,9 @@ export const salesAgentReply = inngest.createFunction(
       const NBA_OWNS_REPLY = new Set([
         'SEND_PRICING', 'HANDLE_OBJECTION', 'OFFER_DEMO', 'SCHEDULE_DEMO',
         'HUMAN_HANDOFF', 'OFFER_SUBSCRIPTION', 'FOLLOW_UP_AFTER_DEMO', 'REENGAGE',
+        // Stored educate/value/qualify actions must send as decided, not only
+        // via the generic composer fall-through.
+        'EDUCATE', 'SHOW_VALUE', 'SHARE_USE_CASE', 'ANSWER_QUESTION', 'ASK_QUALIFICATION',
       ]);
       if (salesLead && body) {
         const { default: Lead } = await import('@/models/Lead');
@@ -3735,23 +3838,18 @@ export const processDemoBooking = inngest.createFunction(
 
       // Customer Confirmation (WhatsApp bookings may have no email — skip then;
       // the booking agent already sent a WhatsApp confirmation).
+      // Include the real Meet link only when calendar created one — never invent.
       if (booking.email) {
+        const { buildDemoConfirmationEmailHtml } = await import('@/services/demo/demoConfirmationEmail');
         const result = await sendTransactionalEmail(
           booking.email,
           'Demo Booking Confirmed - GrowwMatics AI',
-          `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #2563eb;">Demo Confirmed!</h2>
-              <p>Hi <b>${booking.name}</b>,</p>
-              <p>Your free demo has been successfully booked!</p>
-              <div style="background: #f0f7ff; border-radius: 12px; padding: 20px; margin: 20px 0;">
-                <p style="margin: 0;"><b>Date:</b> ${booking.date}</p>
-                <p style="margin: 8px 0 0;"><b>Time:</b> ${booking.timeSlot}</p>
-              </div>
-              <p>Our team will contact you shortly to confirm the meeting link.</p>
-              <p style="color: #64748b; font-size: 14px;">Team GrowwMatics AI</p>
-            </div>
-          `
+          buildDemoConfirmationEmailHtml({
+            name: booking.name || 'there',
+            date: booking.date || '',
+            timeSlot: booking.timeSlot || '',
+            meetingLink: (booking as any).meetingLink || null,
+          })
         );
         if (!result.success) {
           console.error(`[demo-booking] customer confirmation email to ${booking.email} FAILED:`, (result as any).error);
@@ -4336,7 +4434,69 @@ export const nurtureSchedulerTick = inngest.createFunction(
       else if (outcome === 'skipped') skipped++;
     }
 
-    return { success: true, due: dueIds.length, executed, skipped };
+    // Silence progression: NURTURING → UNRESPONSIVE → LONG_TERM_NURTURE using
+    // SalesAgentConfig's last follow-up delay (not a hardcoded 72).
+    const quietAdvanced = await step.run('advance-quiet-stages', async () => {
+      await dbConnect();
+      const { default: Lead } = await import('@/models/Lead');
+      const { default: SalesConversation } = await import('@/models/SalesConversation');
+      const { getSalesAgentConfig } = await import('@/services/sales/salesAgent');
+      const { advanceQuietStage } = await import('@/services/lifecycle/advanceQuietStage');
+      const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
+      const { normalizePhoneE164, phoneDedupeKey } = await import('@/lib/phone');
+
+      const config = await getSalesAgentConfig();
+      const followUps = config.followUps || [];
+      const lastDelayHours = Math.max(1, followUps[followUps.length - 1]?.delayHours || 72);
+      const followUpCount = followUps.length;
+
+      const candidates = await Lead.find({
+        tenantId: 'gmbboost-internal',
+        currentStage: { $in: ['NURTURING', 'QUALIFYING', 'NEW', 'UNRESPONSIVE'] },
+        nurtureStatus: { $ne: 'OPTED_OUT' },
+        currentAgent: { $nin: ['HUMAN', 'IN_HOUSE'] },
+        'humanHandoff.active': { $ne: true },
+      })
+        .select('_id phone currentStage currentAgent nurtureStatus humanHandoff lastMeaningfulInteractionAt')
+        .limit(100)
+        .lean();
+
+      let advanced = 0;
+      for (const lead of candidates as any[]) {
+        const phone = normalizePhoneE164(lead.phone) || lead.phone;
+        const phoneKey = phone ? phoneDedupeKey(phone) : '';
+        const convo: any = phone
+          ? await SalesConversation.findOne({
+              $or: [{ leadPhone: phone }, ...(phoneKey ? [{ phoneKey }] : [])],
+            })
+              .sort({ updatedAt: -1 })
+              .lean()
+          : null;
+        const next = advanceQuietStage({
+          currentStage: lead.currentStage,
+          currentAgent: lead.currentAgent,
+          nurtureStatus: lead.nurtureStatus,
+          humanHandoffActive: !!lead.humanHandoff?.active,
+          followUpsSent: convo?.followUpsSent || 0,
+          followUpCount,
+          lastDelayHours,
+          lastAgentAt: convo?.lastAgentAt || lead.lastMeaningfulInteractionAt,
+          lastLeadReplyAt: convo?.lastLeadReplyAt || null,
+        });
+        if (!next) continue;
+        await setLeadOwnership(
+          lead._id,
+          (lead.currentAgent as any) || 'SALES',
+          `quiet-stage-tick:${next}`,
+          'nurture-scheduler',
+          next
+        );
+        advanced++;
+      }
+      return advanced;
+    });
+
+    return { success: true, due: dueIds.length, executed, skipped, quietAdvanced };
   }
 );
 

@@ -6,6 +6,7 @@ import {
   explicitHumanRequestAction,
   findMatchingRules,
   NBA_ACTIONS,
+  subscriptionOfferAllowed,
   type NBAAction,
   type NBARuleInput,
 } from './rules';
@@ -116,12 +117,31 @@ export async function decideNextAction(
   // covers all 15 currentStage values), but fall back to WAIT defensively
   // rather than throwing if some future stage value slips through with no
   // matching row — WAIT is always the safe default (never sends anything).
-  const legalActions = absoluteMatch
+  let legalActions = absoluteMatch
     ? [...absoluteMatch.legalActions]
     : matches.length
       ? [...new Set(matches.flatMap((r) => r.legalActions))]
       : (['WAIT'] as NBAAction[]);
-  const fallbackDefault: NBAAction = absoluteMatch?.defaultAction ?? matches[0]?.defaultAction ?? 'WAIT';
+  let fallbackDefault: NBAAction = absoluteMatch?.defaultAction ?? matches[0]?.defaultAction ?? 'WAIT';
+
+  // HARD INVARIANT: leadScore / scoreBand alone must NEVER cause
+  // OFFER_SUBSCRIPTION. Strip it from the legal set (and replace the default)
+  // unless intent, buying signals, or CONVERSION_PENDING support it.
+  const canOfferSubscription = subscriptionOfferAllowed({
+    intent: doc.intent,
+    buyingSignals: doc.buyingSignals,
+    currentStage: doc.currentStage,
+  });
+  if (!canOfferSubscription && !absoluteMatch) {
+    legalActions = legalActions.filter((a) => a !== 'OFFER_SUBSCRIPTION');
+    if (fallbackDefault === 'OFFER_SUBSCRIPTION') {
+      fallbackDefault = legalActions.includes('SHOW_VALUE')
+        ? 'SHOW_VALUE'
+        : legalActions.includes('SEND_PRICING')
+          ? 'SEND_PRICING'
+          : legalActions[0] || 'WAIT';
+    }
+  }
 
   const suggested = llmOutput.suggested_action;
   const confidence = typeof llmOutput.confidence === 'number' ? llmOutput.confidence : 0;
@@ -170,6 +190,12 @@ export async function decideNextAction(
       // real override worth recording.
       overridden = true;
     }
+  }
+
+  // Belt-and-suspenders: never persist OFFER_SUBSCRIPTION when disallowed.
+  if (action === 'OFFER_SUBSCRIPTION' && !canOfferSubscription) {
+    action = fallbackDefault === 'OFFER_SUBSCRIPTION' ? 'SHOW_VALUE' : fallbackDefault;
+    overridden = true;
   }
 
   doc.nextBestAction = action;

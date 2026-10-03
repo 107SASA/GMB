@@ -12,6 +12,14 @@ import {
   behavioralSignature,
   withScoredSignature,
 } from '@/services/leadIntelligence/scoringIdempotency';
+import {
+  VALID_BUYING_SIGNAL_TYPES,
+  mergeBuyingSignalRows,
+  mergeStringList,
+  type BuyingSignalType,
+} from '@/services/leadIntelligence/buyingSignalsMerge';
+
+export { VALID_BUYING_SIGNAL_TYPES, type BuyingSignalType };
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -30,7 +38,11 @@ interface ExtractionResult {
   intent?: string;
   pain_points?: string[];
   objections?: { type?: string; note?: string }[];
-  buying_signals?: string[];
+  /**
+   * Prefer typed entries matching VALID_BUYING_SIGNAL_TYPES. Legacy string
+   * phrases are accepted and mapped via score_signal when possible.
+   */
+  buying_signals?: Array<string | { type?: string; note?: string }>;
   score_signal?: string;
   confidence?: number;
   // Phase 4 addition — the LLM's own guess at what should happen next.
@@ -40,6 +52,13 @@ interface ExtractionResult {
   // engine's own defaultAction wins and an NBA_OVERRIDDEN event is logged.
   // See services/nba/decideNextAction.ts.
   suggested_action?: string;
+  /** Cumulative profile fields — only fill when the message actually states them. */
+  business_profile?: {
+    industry?: string;
+    business_type?: string;
+    goals?: string[];
+    interested_services?: string[];
+  };
 }
 
 export interface ConversationTurn {
@@ -76,15 +95,23 @@ Respond with a SINGLE JSON object and NOTHING else, matching this example shape 
   "intent": "EXPLORING",
   "pain_points": ["short phrase describing a problem they mentioned"],
   "objections": [{"type": "PRICE", "note": "short note on what they said"}],
-  "buying_signals": ["short phrase describing a positive signal"],
+  "buying_signals": [{"type": "PRICING_QUESTION", "note": "asked about monthly cost"}],
   "score_signal": "PRICING_QUESTION",
   "suggested_action": "ANSWER_QUESTION",
-  "confidence": 0.8
+  "confidence": 0.8,
+  "business_profile": {
+    "industry": "restaurant",
+    "business_type": "local restaurant",
+    "goals": ["more Google Maps visibility"],
+    "interested_services": ["GBP optimization"]
+  }
 }
 
 Allowed values for "intent" (pick exactly one): EXPLORING, LEARNING, PROBLEM_AWARE, SOLUTION_AWARE, DEMO_INTEREST, PURCHASE_INTEREST, READY_TO_BUY, NOT_INTERESTED.
 
 Allowed values for each objection's "type" (pick exactly one per objection): PRICE, DECISION_MAKER, TIMING, TRUST, FEATURE_GAP, OTHER.
+
+Allowed values for each buying_signals[].type (pick only when the message clearly shows commercial interest): ${VALID_BUYING_SIGNAL_TYPES.join(', ')}.
 
 Allowed values for "score_signal" (pick exactly one, or the literal string "NONE" if nothing below applies): ${VALID_SIGNALS.join(', ')}, NONE.
 
@@ -93,6 +120,8 @@ Allowed values for "suggested_action" (pick exactly one — your best guess at w
 Rules:
 - "intent" reflects the lead's OVERALL apparent intent given this message and the conversation so far, not just this one line.
 - "pain_points", "objections", and "buying_signals" may be empty arrays ([]) — do not invent content that isn't actually implied by the message. A bare acknowledgment ("ok", "yes", "thanks", a single emoji) with no new information implies none of these and score_signal should be "NONE" — replying at all is not by itself a signal worth scoring unless the reply's CONTENT matches one of the signals above.
+- "buying_signals" must use only the allowed types. Never invent a type. If the message has no commercial-interest evidence, return [].
+- "business_profile" fields are optional — only fill keys the message actually states. Never invent industry/goals/services. Omit the object or use empty arrays when unknown.
 - "score_signal" is the SINGLE most relevant signal for this specific message. Never invent a signal name outside the allowed list above.
 - A question about cost/price/plans (asking WHAT something costs) is "PRICING_QUESTION" and intent "SOLUTION_AWARE" (they're evaluating a specific solution) — reserve PURCHASE_INTENT/READY_TO_BUY for when the lead is asking to actually proceed (sign up, pay, get started).
 - General curiosity with no problem or solution mentioned yet ("what do you guys do?") is "EXPLORING", not "LEARNING" — use LEARNING only once they're asking to understand a specific concept, feature, or how something works in depth.
@@ -209,6 +238,37 @@ async function getScoringRules(): Promise<Record<string, number>> {
   return map;
 }
 
+function mergeBuyingSignals(lead: any, result: ExtractionResult): void {
+  lead.buyingSignals = mergeBuyingSignalRows(
+    lead.buyingSignals,
+    Array.isArray(result.buying_signals) ? result.buying_signals : [],
+    result.score_signal
+  );
+}
+
+function mergeBusinessProfile(
+  lead: any,
+  profile: ExtractionResult['business_profile'] | undefined
+): void {
+  if (!profile || typeof profile !== 'object') return;
+  lead.businessProfile = lead.businessProfile || {
+    industry: undefined,
+    businessType: undefined,
+    goals: [],
+    interestedServices: [],
+  };
+  const bp = lead.businessProfile;
+  if (profile.industry && typeof profile.industry === 'string' && profile.industry.trim()) {
+    // Prefer the latest explicit industry if the lead states one.
+    bp.industry = profile.industry.trim();
+  }
+  if (profile.business_type && typeof profile.business_type === 'string' && profile.business_type.trim()) {
+    bp.businessType = profile.business_type.trim();
+  }
+  bp.goals = mergeStringList(bp.goals, profile.goals);
+  bp.interestedServices = mergeStringList(bp.interestedServices, profile.interested_services);
+}
+
 /**
  * Exported (Phase 6) so services/demo/postDemoAnalysis.ts can reuse the
  * exact same intent/objections/pain-points/score merge logic for its own,
@@ -263,6 +323,12 @@ export async function applyExtraction(lead: any, result: ExtractionResult, messa
     }
     lead.painPoints = merged;
   }
+
+  // --- Buying signals: merge by type (update detectedAt/note; never invent) --
+  mergeBuyingSignals(lead, result);
+
+  // --- Business profile: cumulative merge; never wipe prior useful fields ---
+  mergeBusinessProfile(lead, result.business_profile);
 
   // --- Score: apply the single signal's delta, clamped 0-100 ---------------
   // REPLIED is capped once/day per the ScoringRuleConfig spec — enforced
@@ -344,6 +410,28 @@ export async function applyExtraction(lead: any, result: ExtractionResult, messa
       'lead-intelligence',
       { leadId: lead._id, phone: lead.phone }
     );
+  }
+
+  // Explicit rejection / not interested → LOST (cancels nurture). Silence
+  // never sets LOST — only this path and the same signal via post-demo.
+  if (
+    lead.currentStage !== 'CUSTOMER' &&
+    lead.currentStage !== 'DO_NOT_CONTACT' &&
+    (lead.intent === 'NOT_INTERESTED' || result.score_signal === 'EXPLICIT_REJECTION')
+  ) {
+    try {
+      const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
+      await setLeadOwnership(
+        lead._id,
+        (lead.currentAgent as any) || 'SALES',
+        'explicit-rejection',
+        'lead-intelligence',
+        'LOST'
+      );
+      lead.currentStage = 'LOST';
+    } catch (err: any) {
+      console.warn('[leadIntelligence] LOST stage write failed:', err?.message);
+    }
   }
 
   // Decision-only — see decideNextAction's own doc comment. This computes

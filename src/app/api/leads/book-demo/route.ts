@@ -171,6 +171,10 @@ async function fileDemoRequest(lead: any, input: DemoRequestInput): Promise<void
     await Lead.updateOne({ _id: lead._id }, { $set: { intent: 'DEMO_INTEREST' } }).catch(() => {});
   }
 
+  const { applyFormSignal } = await import('@/services/leadIntelligence/formSignals');
+  await applyFormSignal(lead._id, 'DEMO_REQUESTED', 'book-demo').catch((err: any) =>
+    console.warn('[book-demo] DEMO_REQUESTED signal failed:', err?.message)
+  );
   // A DemoBooking with no real slot yet → "Needs scheduling" on Admin → Demos
   // (that group is exactly `status === 'Pending' && unparseable date`).
   let booking = await DemoBooking.findOne({ leadId: lead._id, status: 'Pending' });

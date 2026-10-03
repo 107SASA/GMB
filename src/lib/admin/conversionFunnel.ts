@@ -172,6 +172,7 @@ export function deriveFunnelStage(lead: {
   if (lead.currentStage === 'DEMO_SCHEDULED') return 'Demo scheduled';
   if (lead.currentStage === 'DEMO_REQUESTED' || lead.intent === 'DEMO_INTEREST') return 'Demo interest';
   if (lead.currentStage === 'NURTURING') return 'Sales nurturing';
-  if (lead.currentStage === 'QUALIFYING' || (lead.leadScore ?? 0) >= 15 || (lead.intent && lead.intent !== 'EXPLORING')) return 'Qualified';
+  // Warm floor is 26 under the target 0–25 / 26–50 / 51–75 / 76–100 bands.
+  if (lead.currentStage === 'QUALIFYING' || (lead.leadScore ?? 0) >= 26 || (lead.intent && lead.intent !== 'EXPLORING')) return 'Qualified';
   return 'New';
 }

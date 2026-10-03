@@ -10,6 +10,7 @@ import SalesConversation from '@/models/SalesConversation';
 import Business from '@/models/Business';
 import ScheduledAction from '@/models/ScheduledAction';
 import { PLATFORM_TENANT, deriveFunnelStage } from '@/lib/admin/conversionFunnel';
+import { computeScoreBand } from '@/services/nba/rules';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,10 +90,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           : null,
         // Intelligence
         leadScore: lead.leadScore ?? 0,
+        scoreBand: computeScoreBand(lead.leadScore ?? 0),
         aiLeadScore: lead.aiLeadScore ?? null,
         aiInsights: lead.aiInsights ?? null,
         intent: lead.intent ?? null,
         painPoints: lead.painPoints ?? [],
+        buyingSignals: (lead.buyingSignals ?? []).map((s: any) => ({
+          type: s.type,
+          note: s.note ?? null,
+          detectedAt: s.detectedAt ?? null,
+        })),
         objections: (lead.objections ?? []).map((o: any) => ({
           type: o.type,
           note: o.note ?? null,
@@ -100,6 +107,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           detectedAt: o.detectedAt ?? null,
         })),
         businessProfile: lead.businessProfile ?? null,
+        auditId: lead.auditId ? String(lead.auditId) : null,
         // Ownership / stage
         currentAgent: lead.currentAgent ?? 'NONE',
         currentStage: lead.currentStage ?? 'NEW',

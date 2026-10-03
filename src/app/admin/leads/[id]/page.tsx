@@ -153,8 +153,20 @@ export default function LeadDetailPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Panel title="Lead intelligence">
           <Field label="Behavioural score"><ScoreBar score={l.leadScore} /></Field>
+          <Field label="Score band">{l.scoreBand || '—'}</Field>
           <Field label="AI qualification score">{l.aiLeadScore != null ? `${l.aiLeadScore}/100` : '—'}</Field>
           <Field label="Intent">{l.intent || '—'}</Field>
+          <Field label="Buying signals">
+            {l.buyingSignals?.length ? (
+              <ul className="text-xs space-y-0.5">
+                {l.buyingSignals.map((s: any, i: number) => (
+                  <li key={i}>
+                    <span className="font-medium">{s.type}</span>{s.note ? ` — ${s.note}` : ''}
+                  </li>
+                ))}
+              </ul>
+            ) : '—'}
+          </Field>
           <Field label="Pain points">
             {l.painPoints?.length ? (
               <ul className="list-disc list-inside text-xs space-y-0.5">{l.painPoints.map((p: string, i: number) => <li key={i}>{p}</li>)}</ul>
@@ -184,11 +196,12 @@ export default function LeadDetailPage() {
         </Panel>
 
         <Panel title="Business profile">
-          {l.businessProfile && (l.businessProfile.industry || l.businessProfile.businessType) ? (
+          {l.businessProfile && (l.businessProfile.industry || l.businessProfile.businessType || l.businessProfile.interestedServices?.length) ? (
             <>
               <Field label="Industry">{l.businessProfile.industry || '—'}</Field>
               <Field label="Business type">{l.businessProfile.businessType || '—'}</Field>
               <Field label="Goals">{(l.businessProfile.goals || []).join(', ') || '—'}</Field>
+              <Field label="Interested services">{(l.businessProfile.interestedServices || []).join(', ') || '—'}</Field>
             </>
           ) : (
             <p className="text-xs text-outline">Not yet extracted from the conversation.</p>
@@ -196,8 +209,28 @@ export default function LeadDetailPage() {
           {l.business && (
             <Field label="Workspace billing">{l.business.subscriptionStatus || '—'}</Field>
           )}
+          {l.auditId && <Field label="Linked audit">{l.auditId}</Field>}
         </Panel>
       </div>
+
+      {/* Last analysis from LeadEvent (NBA_SELECTED / LEAD_SCORE_CHANGED) */}
+      {(() => {
+        const lastAnalysis = [...(d.timeline || [])]
+          .reverse()
+          .find((e) => e.type === 'NBA_SELECTED' || e.type === 'LEAD_SCORE_CHANGED');
+        if (!lastAnalysis) return null;
+        return (
+          <Panel title="Last analysis">
+            <Field label="Event">{EVENT_LABEL[lastAnalysis.type] || lastAnalysis.type}</Field>
+            <Field label="When"><RelTime date={lastAnalysis.at} /></Field>
+            <Field label="Detail">
+              <pre className="text-[11px] whitespace-pre-wrap text-on-surface-variant max-h-28 overflow-auto">
+                {JSON.stringify(lastAnalysis.payload ?? {}, null, 2)}
+              </pre>
+            </Field>
+          </Panel>
+        );
+      })()}
 
       {/* Pending scheduled actions */}
       {d.pendingActions.length > 0 && (

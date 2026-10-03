@@ -554,8 +554,20 @@ async function observeLeadOwnershipShadow(phone: string): Promise<void> {
     const lead = await Lead.findOne({
       phone: normalizePhoneE164(phone) || phone,
       tenantId: 'gmbboost-internal',
-    }).select('_id currentAgent').lean();
+    }).select('_id currentAgent currentStage humanHandoff').lean() as any;
     if (!lead) return;
+
+    // Never overwrite human ownership — shadow sync observes agent routing
+    // only when AI still owns the thread.
+    if (lead.currentAgent === 'HUMAN' || lead.humanHandoff?.active || lead.currentStage === 'HUMAN_HANDOFF') {
+      return;
+    }
+    if (lead.currentStage === 'CUSTOMER' || lead.currentAgent === 'IN_HOUSE') {
+      return;
+    }
+    if (lead.currentStage === 'DO_NOT_CONTACT') {
+      return;
+    }
 
     const { default: BookingConversation } = await import('@/models/BookingConversation');
     const { default: ReportConversation } = await import('@/models/ReportConversation');

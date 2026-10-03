@@ -37,6 +37,19 @@ test('HANDLE_OBJECTION is executable', () => {
   assert.equal(isExecutableNbaAction('HANDLE_OBJECTION'), true);
 });
 
+test('SHOW_VALUE and EDUCATE are executable (NBA_OWNS_REPLY send set)', () => {
+  assert.equal(isExecutableNbaAction('SHOW_VALUE'), true);
+  assert.equal(isExecutableNbaAction('EDUCATE'), true);
+  assert.equal(isExecutableNbaAction('ASK_QUALIFICATION'), true);
+  assert.equal(isExecutableNbaAction('SHARE_USE_CASE'), true);
+  assert.equal(isExecutableNbaAction('ANSWER_QUESTION'), true);
+});
+
+test('OFFER_SUBSCRIPTION is executable but gated by subscriptionOfferAllowed at decide/execute', () => {
+  // Executor can send it; rules/decide strip it unless intent/signals allow.
+  assert.equal(isExecutableNbaAction('OFFER_SUBSCRIPTION'), true);
+});
+
 test('an unknown string is not executable', () => {
   assert.equal(isExecutableNbaAction('TOTALLY_MADE_UP' as any), false);
 });

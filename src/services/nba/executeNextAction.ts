@@ -40,7 +40,7 @@ import { sendOutboundMessage } from '@/services/whatsapp/send';
 import { getSalesAgentConfig } from '@/services/sales/salesAgent';
 import { AGENT_SCOPE_GUARDRAIL } from '@/lib/agentGuardrails';
 import { summariseKnowledge, normaliseUseCases, useCaseLine } from '@/lib/salesAgentDefaults';
-import type { NBAAction } from './rules';
+import { subscriptionOfferAllowed, type NBAAction } from './rules';
 import type { SalesAgentConfigShape } from '@/lib/salesAgentDefaults';
 
 export { EXECUTABLE_NBA_ACTIONS, isExecutableNbaAction } from './executableActions';
@@ -181,8 +181,17 @@ export async function executeNextAction(
       case 'SHOW_VALUE':
         return sendComposed(lead, action, ctx, showValueBrief, knowledgeSummary);
 
-      case 'OFFER_SUBSCRIPTION':
+      case 'OFFER_SUBSCRIPTION': {
+        // Defence in depth: score/temperature alone must never sell.
+        if (!subscriptionOfferAllowed({
+          intent: lead.intent,
+          buyingSignals: lead.buyingSignals,
+          currentStage: lead.currentStage,
+        })) {
+          return skip(lead, action, 'subscription-not-allowed-without-intent-or-signal');
+        }
         return sendComposed(lead, action, ctx, (l, c) => offerSubscriptionBrief(l, c, config), knowledgeSummary);
+      }
 
       case 'FOLLOW_UP_AFTER_DEMO':
         return sendComposed(lead, action, ctx, postDemoBrief, knowledgeSummary);

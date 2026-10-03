@@ -2,9 +2,10 @@
  * Unit tests for the NBA rule engine (src/services/nba/rules.ts) — pure
  * functions, no DB, no `@/` aliases. Locks in the decision behaviour the
  * executor and salesAgentReply depend on:
- *   - score band boundaries
+ *   - score band boundaries (target: 0–25 / 26–50 / 51–75 / 76–100)
  *   - HUMAN / opted-out hard stops win absolutely
  *   - explicit purchase / demo intent overrides stage progression
+ *   - score alone never authorises OFFER_SUBSCRIPTION
  *   - demo-stage rows beat the generic demo-intent override
  *   - every stage resolves to at least one legal action
  *
@@ -17,6 +18,7 @@ import {
   findMatchingRules,
   NBA_ACTIONS,
   NBA_RULES,
+  subscriptionOfferAllowed,
   type NBARuleInput,
 } from '../../src/services/nba/rules.ts';
 
@@ -29,16 +31,65 @@ const base: NBARuleInput = {
   nurtureStatus: 'ACTIVE',
 };
 
-test('computeScoreBand boundaries', () => {
+test('computeScoreBand boundaries (0–25 / 26–50 / 51–75 / 76–100)', () => {
   assert.equal(computeScoreBand(0), 'COLD');
-  assert.equal(computeScoreBand(14), 'COLD');
-  assert.equal(computeScoreBand(15), 'WARM');
-  assert.equal(computeScoreBand(44), 'WARM');
-  assert.equal(computeScoreBand(45), 'HOT');
-  assert.equal(computeScoreBand(74), 'HOT');
-  assert.equal(computeScoreBand(75), 'READY');
+  assert.equal(computeScoreBand(25), 'COLD');
+  assert.equal(computeScoreBand(26), 'WARM');
+  assert.equal(computeScoreBand(50), 'WARM');
+  assert.equal(computeScoreBand(51), 'HOT');
+  assert.equal(computeScoreBand(75), 'HOT');
+  assert.equal(computeScoreBand(76), 'READY');
   assert.equal(computeScoreBand(100), 'READY');
   assert.equal(computeScoreBand(undefined), 'COLD');
+});
+
+test('subscriptionOfferAllowed: score alone is never enough', () => {
+  assert.equal(
+    subscriptionOfferAllowed({ intent: 'EXPLORING', buyingSignals: [], currentStage: 'NURTURING' }),
+    false
+  );
+  assert.equal(
+    subscriptionOfferAllowed({ intent: 'EXPLORING', buyingSignals: [], currentStage: 'NURTURING' }),
+    false,
+    '84 + EXPLORING + no signal must not allow offer (temperature is irrelevant here)'
+  );
+});
+
+test('subscriptionOfferAllowed: purchase intent allows offer', () => {
+  assert.equal(
+    subscriptionOfferAllowed({ intent: 'PURCHASE_INTEREST', buyingSignals: [], currentStage: 'NURTURING' }),
+    true
+  );
+  assert.equal(
+    subscriptionOfferAllowed({ intent: 'READY_TO_BUY', buyingSignals: [], currentStage: 'NURTURING' }),
+    true
+  );
+});
+
+test('subscriptionOfferAllowed: pricing / purchase buying signals allow offer', () => {
+  assert.equal(
+    subscriptionOfferAllowed({
+      intent: 'SOLUTION_AWARE',
+      buyingSignals: [{ type: 'PRICING_QUESTION' }],
+      currentStage: 'NURTURING',
+    }),
+    true
+  );
+  assert.equal(
+    subscriptionOfferAllowed({
+      intent: 'EXPLORING',
+      buyingSignals: [{ type: 'PURCHASE_INTENT' }],
+      currentStage: 'NURTURING',
+    }),
+    true
+  );
+});
+
+test('subscriptionOfferAllowed: CONVERSION_PENDING allows assist/follow-up offer', () => {
+  assert.equal(
+    subscriptionOfferAllowed({ intent: 'EXPLORING', buyingSignals: [], currentStage: 'CONVERSION_PENDING' }),
+    true
+  );
 });
 
 test('HUMAN ownership produces an absolute WAIT-only rule', () => {
@@ -62,6 +113,19 @@ test('explicit purchase intent adds OFFER_SUBSCRIPTION/SEND_PRICING even from an
   const union = new Set(matches.flatMap((r) => r.legalActions));
   assert.ok(union.has('OFFER_SUBSCRIPTION'));
   assert.ok(union.has('SEND_PRICING'));
+});
+
+test('READY band nurture defaults to SHOW_VALUE, not OFFER_SUBSCRIPTION', () => {
+  const matches = findMatchingRules({
+    ...base,
+    currentStage: 'NURTURING',
+    scoreBand: 'READY',
+    intent: 'EXPLORING',
+    hasOpenObjection: false,
+  });
+  const defaults = matches.map((r) => r.defaultAction);
+  assert.ok(defaults.includes('SHOW_VALUE'));
+  assert.ok(!defaults.includes('OFFER_SUBSCRIPTION'), 'score band must not default to subscription');
 });
 
 test('demo-requested stage defaults to SCHEDULE_DEMO, not OFFER_DEMO again', () => {

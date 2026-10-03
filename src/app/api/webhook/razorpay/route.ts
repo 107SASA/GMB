@@ -185,6 +185,28 @@ export async function POST(request: Request) {
         else console.warn(`[billing] ${eventType}: cannot resolve user — ignoring`);
         const businessId = await resolveBusinessId(subEntity ?? notesFallback);
         if (businessId) await markBusinessPastDue(businessId);
+        // Platform Lead: CONVERSION_PENDING on failure — never CUSTOMER.
+        // Does not clear intelligence fields.
+        if (userId || businessId) {
+          try {
+            const { resolveLeadForPayment } = await import('@/services/billing/customerActivation');
+            const { stageOnPaymentFailure } = await import('@/services/billing/paymentLeadStages');
+            const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
+            const lead = await resolveLeadForPayment(userId || '', businessId || null);
+            const nextStage = stageOnPaymentFailure(lead?.currentStage);
+            if (lead && nextStage) {
+              await setLeadOwnership(
+                lead._id,
+                (lead.currentAgent as any) || 'SALES',
+                `razorpay:${eventType}`,
+                'system',
+                nextStage
+              );
+            }
+          } catch (err: any) {
+            console.warn(`[billing] ${eventType}: platform lead stage update failed:`, err?.message);
+          }
+        }
         break;
       }
 

@@ -276,7 +276,13 @@ export function BusinessAssets() {
   const published = all
     .filter((m) => m.status === 'published')
     .sort((a, b) => new Date(b.publishedAt ?? 0).getTime() - new Date(a.publishedAt ?? 0).getTime());
-  const recentPublished = published.slice(0, 8);
+  // Latest gallery items INCLUDING ones not on Google yet — a photo/video just
+  // taken in the app is staged first, and showing only published items made a
+  // fresh upload look like it had vanished.
+  const notPublished = all.filter((m) => m.status !== 'published' && m.category === 'ADDITIONAL');
+  const recentItems = [...notPublished, ...published]
+    .sort((a, b) => new Date(b.publishedAt ?? b.createdAt ?? 0).getTime() - new Date(a.publishedAt ?? a.createdAt ?? 0).getTime())
+    .slice(0, 8);
   const scheduled = all
     .filter((m) => m.status === 'staged' && m.scheduledFor)
     .sort((a, b) => new Date(a.scheduledFor!).getTime() - new Date(b.scheduledFor!).getTime());
@@ -358,18 +364,20 @@ export function BusinessAssets() {
           </View>
         </Pressable>
       </View>
-      <Text className="mb-3 font-sans text-sm text-zinc-500">{published.length} published</Text>
+      <Text className="mb-3 font-sans text-sm text-zinc-500">
+        {published.length} published{notPublished.length > 0 ? ` · ${notPublished.length} not on Google yet` : ''}
+      </Text>
 
-      {recentPublished.length === 0 ? (
+      {recentItems.length === 0 ? (
         <View className="mb-4 items-center rounded-card border border-surface-border bg-surface-raised px-6 py-10">
           <View className="mb-3 h-16 w-16 items-center justify-center rounded-2xl bg-surface-overlay">
             <Ionicons name="image-outline" size={30} color={t.violet} />
           </View>
-          <Text className="font-sans-semibold text-base text-zinc-300">No photos or videos published yet</Text>
+          <Text className="font-sans-semibold text-base text-zinc-300">No photos or videos yet</Text>
         </View>
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2.5 pb-1">
-          {recentPublished.map((item) => (
+          {recentItems.map((item) => (
             <Pressable
               key={item._id}
               onPress={() => router.push('/photos/all' as never)}
@@ -385,7 +393,9 @@ export function BusinessAssets() {
               )}
               <View className="absolute bottom-1.5 left-1.5 flex-row items-center gap-1 rounded-full bg-black/60 px-2 py-1">
                 <Ionicons name={item.mediaType === 'video' ? 'videocam' : 'location'} size={10} color="#ffffff" />
-                <Text className="font-sans-bold text-[10px] text-white">{daysAgo(item.publishedAt)}</Text>
+                <Text className="font-sans-bold text-[10px] text-white">
+                  {item.status === 'published' ? daysAgo(item.publishedAt) : item.status === 'failed' ? 'Publish failed' : item.scheduledFor ? 'Scheduled' : 'Not on Google yet'}
+                </Text>
               </View>
             </Pressable>
           ))}

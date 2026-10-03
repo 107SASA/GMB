@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { requireClient } from '@/lib/auth';
+import { phoneDedupeKey } from '@/lib/phone';
 
 const SAFE_FIELDS =
-  'fullName email phone companyName isEmailVerified isShadowAccount subscriptionPlan lastLoginAt createdAt businessIds';
+  'fullName email phone role companyName isEmailVerified isShadowAccount subscriptionPlan lastLoginAt createdAt businessIds';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -70,19 +71,33 @@ export async function PATCH(req: Request) {
 
   if (phone !== undefined) {
     const phoneStr = String(phone).trim();
-    if (phoneStr && !/^\+[1-9]\d{6,14}$/.test(phoneStr)) {
-      return NextResponse.json(
-        { error: 'Phone must be in E.164 format (e.g. +91XXXXXXXXXX).' },
-        { status: 400 }
-      );
-    }
-    if (phoneStr) {
+    // The phone number IS the login (phone + WhatsApp OTP) — it can never be
+    // changed or cleared here (a typo would lock the owner out). Sending the
+    // same number back (checkout / profile save) is a no-op. Only an old
+    // account that has no phone at all may set one, once.
+    const current = await User.findById(auth.userId, 'phone').lean<{ phone?: string }>();
+    if (!current) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (current.phone) {
+      if (!phoneStr || phoneDedupeKey(phoneStr) !== phoneDedupeKey(current.phone)) {
+        return NextResponse.json(
+          { error: 'Your phone number is your login and cannot be changed. Contact support if you need help.', code: 'PHONE_LOCKED' },
+          { status: 400 }
+        );
+      }
+      // Same number sent back (checkout / profile save) → nothing to change.
+    } else {
+      if (!/^\+[1-9]\d{6,14}$/.test(phoneStr)) {
+        return NextResponse.json(
+          { error: 'Phone must be in E.164 format (e.g. +91XXXXXXXXXX).' },
+          { status: 400 }
+        );
+      }
       const existing = await User.findOne({ phone: phoneStr, _id: { $ne: auth.userId } }).lean();
       if (existing) {
         return NextResponse.json({ error: 'Phone number already in use.' }, { status: 400 });
       }
+      update.phone = phoneStr;
     }
-    update.phone = phoneStr;
   }
 
   const user = await User.findByIdAndUpdate(

@@ -1,4 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import { Platform } from 'react-native';
 
 /**
  * Picks or takes a photo for the Google Business Profile and works out the
@@ -63,11 +65,28 @@ export function gpsFromPickerExif(exif: Record<string, any> | null | undefined):
   return plausible(la, ln) ? { lat: Math.round(la * 1e6) / 1e6, lng: Math.round(ln * 1e6) / 1e6 } : null;
 }
 
+/**
+ * Asks for location permission up front — BEFORE the camera opens. Asking
+ * while the camera was opening put two system screens up at once, and Android
+ * can then drop the camera result (the photo was taken but never came back).
+ */
+async function ensureLocationPermission(): Promise<boolean> {
+  try {
+    const Location = await import('expo-location');
+    const current = await Location.getForegroundPermissionsAsync();
+    if (current.granted) return true;
+    if (!current.canAskAgain) return false;
+    return (await Location.requestForegroundPermissionsAsync()).granted;
+  } catch {
+    return false;
+  }
+}
+
 /** Phone position via expo-location — null if the module is missing (older app build) or permission is denied. */
 async function devicePosition(): Promise<{ lat: number; lng: number; accuracyM?: number } | null> {
   try {
     const Location = await import('expo-location');
-    const perm = await Location.requestForegroundPermissionsAsync();
+    const perm = await Location.getForegroundPermissionsAsync();
     if (!perm.granted) return null;
     const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
     const { latitude, longitude, accuracy } = pos.coords;
@@ -102,8 +121,11 @@ export async function pickPhotoFromLibrary(): Promise<PickedPhoto | null> {
 export async function takePhotoWithCamera(): Promise<PickedPhoto | null> {
   const perm = await ImagePicker.requestCameraPermissionsAsync();
   if (!perm.granted) throw new Error('permission');
-  const position = devicePosition(); // started now, awaited after capture
+  const hasLocation = await ensureLocationPermission();
+  const position = hasLocation ? devicePosition() : Promise.resolve(null); // started now, awaited after capture
+  await markPendingCapture('photo');
   const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85, exif: true });
+  await clearPendingCapture();
   if (result.canceled || result.assets.length === 0) return null;
   const asset = result.assets[0];
   const gps = gpsFromPickerExif(asset.exif as Record<string, any> | null | undefined);
@@ -177,11 +199,66 @@ export async function pickVideoFromLibrary(): Promise<PickedVideo | null> {
 export async function recordVideoWithCamera(): Promise<PickedVideo | null> {
   const perm = await ImagePicker.requestCameraPermissionsAsync();
   if (!perm.granted) throw new Error('permission');
-  const position = devicePosition(); // started now, awaited after recording
+  const hasLocation = await ensureLocationPermission();
+  const position = hasLocation ? devicePosition() : Promise.resolve(null); // started now, awaited after recording
+  await markPendingCapture('video');
   const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['videos'], videoMaxDuration: MAX_VIDEO_SECONDS });
+  await clearPendingCapture();
   if (result.canceled || result.assets.length === 0) return null;
   const pos = await position;
   return pos
     ? asPickedVideo(result.assets[0], { lat: pos.lat, lng: pos.lng, source: 'device_at_capture', ...(pos.accuracyM != null ? { accuracyM: pos.accuracyM } : {}) }, null)
     : asPickedVideo(result.assets[0], null, 'Location permission was not given, so no location was attached from the phone.');
+}
+
+
+// ── Android: recover a capture after the app was closed by the system ─────
+// While the camera app is open, Android may close this app to free memory.
+// The photo/video is then delivered on the NEXT start via
+// ImagePicker.getPendingResultAsync() — without collecting it, the owner took
+// a photo and nothing happened. A small marker (set just before the camera
+// opens) says it came from the Photos & Videos upload, so nothing else is
+// ever uploaded by mistake.
+
+const PENDING_CAPTURE_KEY = 'gbp-media-pending-capture';
+const PENDING_MAX_AGE_MS = 15 * 60 * 1000;
+
+async function markPendingCapture(kind: 'photo' | 'video') {
+  if (Platform.OS !== 'android') return;
+  try { await AsyncStorage.setItem(PENDING_CAPTURE_KEY, JSON.stringify({ kind, at: Date.now() })); } catch { /* best-effort */ }
+}
+async function clearPendingCapture() {
+  if (Platform.OS !== 'android') return;
+  try { await AsyncStorage.removeItem(PENDING_CAPTURE_KEY); } catch { /* best-effort */ }
+}
+
+export type RecoveredCapture = { kind: 'photo'; picked: PickedPhoto } | { kind: 'video'; picked: PickedVideo };
+
+/** A photo/video taken in the app camera before Android restarted the app, or null. Android only. */
+export async function recoverPendingCapture(): Promise<RecoveredCapture | null> {
+  if (Platform.OS !== 'android') return null;
+  let marker: { kind: 'photo' | 'video'; at: number } | null = null;
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_CAPTURE_KEY);
+    marker = raw ? JSON.parse(raw) : null;
+  } catch { /* ignore */ }
+  if (!marker || Date.now() - marker.at > PENDING_MAX_AGE_MS) {
+    await clearPendingCapture();
+    return null;
+  }
+  const result = await ImagePicker.getPendingResultAsync().catch(() => null);
+  await clearPendingCapture();
+  if (!result || !('assets' in result) || result.canceled || !result.assets?.length) return null;
+  const asset = result.assets[0];
+  // The app restarted seconds after the capture — the phone is still where it was taken.
+  const pos = await devicePosition();
+  const atCapture = pos ? { lat: pos.lat, lng: pos.lng, source: 'device_at_capture' as const, ...(pos.accuracyM != null ? { accuracyM: pos.accuracyM } : {}) } : null;
+  if (marker.kind === 'video' || asset.type === 'video') {
+    return { kind: 'video', picked: asPickedVideo(asset, atCapture, atCapture ? null : 'No location was attached from the phone.') };
+  }
+  const gps = gpsFromPickerExif(asset.exif as Record<string, any> | null | undefined);
+  return {
+    kind: 'photo',
+    picked: gps ? asPicked(asset, { ...gps, source: 'photo_exif_app' }, null) : asPicked(asset, atCapture, atCapture ? null : 'No location was attached from the phone.'),
+  };
 }

@@ -8,6 +8,7 @@ import { AppTabBar } from '@/components/app-tab-bar';
 import { BusinessSwitcher } from '@/components/business-switcher';
 import { LoadingScreen, Screen, ScreenTitle } from '@/components/ui';
 import { useTheme } from '@/lib/theme';
+import { PendingCaptureRecovery } from '@/components/pending-capture-recovery';
 
 /** Shown on first login when several businesses exist and none is chosen. */
 function SelectBusinessScreen() {
@@ -53,6 +54,7 @@ export default function AppLayout() {
   if (needsSelection) return <SelectBusinessScreen />;
 
   return (
+    <>
     <Tabs
       // Android back returns to the previously visited tab/screen instead of
       // always jumping to the first tab.
@@ -99,5 +101,9 @@ export default function AppLayout() {
       <Tabs.Screen name="profile" options={{ href: null }} />
       <Tabs.Screen name="notifications" options={{ href: null }} />
     </Tabs>
+    {/* Android: collects a photo/video taken in the app camera if the system
+        closed the app meanwhile (otherwise the capture was silently lost). */}
+    <PendingCaptureRecovery />
+    </>
   );
 }

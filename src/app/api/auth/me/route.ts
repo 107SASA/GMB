@@ -4,7 +4,7 @@ import User from '@/models/User';
 import Subscription from '@/models/Subscription';
 import { requireClient } from '@/lib/auth';
 
-const SAFE_FIELDS = 'fullName email role organizationId activeBusinessId businessIds freemiumAuditGate productTourCompletedAt';
+const SAFE_FIELDS = 'fullName email phone role organizationId activeBusinessId businessIds freemiumAuditGate productTourCompletedAt';
 
 export async function GET() {
   const auth = await requireClient();
@@ -28,6 +28,8 @@ export async function GET() {
       id: (user._id as any).toString(),
       name: (user as any).fullName,
       email: (user as any).email,
+      // The login identity (phone + WhatsApp OTP) — shown instead of a placeholder email.
+      phone: (user as any).phone ?? null,
       role: (user as any).role,
       organizationId: (user as any).organizationId?.toString() ?? null,
       activeBusinessId: (user as any).activeBusinessId?.toString() ?? null,

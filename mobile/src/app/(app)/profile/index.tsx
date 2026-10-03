@@ -26,12 +26,12 @@ function ProfileForm({ initial }: { initial: Profile }) {
   const { refreshUser } = useAuth();
 
   const [fullName, setFullName] = useState(initial.fullName);
-  const [phone, setPhone] = useState(initial.phone ?? '');
   const [companyName, setCompanyName] = useState(initial.companyName ?? '');
   const info = useInfoSheet();
 
   const save = useMutation({
-    mutationFn: () => updateProfile({ fullName: fullName.trim(), phone: phone.trim(), companyName: companyName.trim() }),
+    // phone is never sent — it is the login and can't be changed.
+    mutationFn: () => updateProfile({ fullName: fullName.trim(), companyName: companyName.trim() }),
     onSuccess: () => {
       info.show('Saved', 'Profile updated.');
       void queryClient.invalidateQueries({ queryKey: ['profile'] });
@@ -45,11 +45,10 @@ function ProfileForm({ initial }: { initial: Profile }) {
     <View>
       <LabeledField label="Full name" value={fullName} onChangeText={setFullName} />
       <LabeledField
-        label="Phone (with country code)"
-        value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
-        placeholder="+91…"
+        label="Phone (your login — can't be changed)"
+        value={initial.phone ?? ''}
+        editable={false}
+        selectTextOnFocus={false}
       />
       <LabeledField label="Company" value={companyName} onChangeText={setCompanyName} />
       <PrimaryButton
@@ -141,6 +140,10 @@ function PasswordForm() {
 export default function ProfileScreen() {
   const profile = useQuery({ queryKey: ['profile'], queryFn: fetchProfile });
   const data = profile.data;
+  // Customers sign in with phone + WhatsApp OTP — there is no password to
+  // change. Only GrowwMatics super-admins (web admin login) use a password.
+  const { user } = useAuth();
+  const usesPassword = user?.role === 'SUPER_ADMIN';
 
   return (
     <Screen>
@@ -159,14 +162,18 @@ export default function ProfileScreen() {
               <View className="flex-row items-center gap-3">
                 <View className="h-12 w-12 items-center justify-center rounded-full bg-brand">
                   <Text className="font-sans-bold text-lg text-on-brand">
-                    {(data.fullName || data.email).charAt(0).toUpperCase()}
+                    {(data.fullName || data.phone || '?').charAt(0).toUpperCase()}
                   </Text>
                 </View>
                 <View className="flex-1">
                   <Text className="font-sans-semibold text-base text-white">{data.fullName}</Text>
-                  <Text className="font-sans text-sm text-zinc-400">{data.email}</Text>
+                  {!!data.phone && <Text className="font-sans text-sm text-zinc-400">{data.phone}</Text>}
+                  {/* A real email only — never the free-report placeholder. */}
+                  {!data.isShadowAccount && !!data.email && (
+                    <Text className="font-sans text-xs text-zinc-500">{data.email}</Text>
+                  )}
                 </View>
-                {data.isEmailVerified && (
+                {!data.isShadowAccount && data.isEmailVerified && (
                   <Ionicons name="checkmark-circle" size={18} color="#1db877" />
                 )}
               </View>
@@ -188,8 +195,16 @@ export default function ProfileScreen() {
             <SectionLabel>Edit profile</SectionLabel>
             <ProfileForm key={profile.dataUpdatedAt} initial={data} />
 
-            <SectionLabel>Change password</SectionLabel>
-            <PasswordForm />
+            {usesPassword ? (
+              <>
+                <SectionLabel>Change password</SectionLabel>
+                <PasswordForm />
+              </>
+            ) : (
+              <Text className="mt-6 font-sans text-xs leading-4 text-zinc-500">
+                You sign in with your phone number and a one-time code sent on WhatsApp — there is no password to manage.
+              </Text>
+            )}
           </>
         )}
       </ScrollView>

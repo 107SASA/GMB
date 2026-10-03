@@ -150,7 +150,7 @@ export default function MoreScreen() {
             padding: 16,
           }}
         >
-          <InitialsAvatar name={user?.name ?? user?.email} size={48} />
+          <InitialsAvatar name={user?.name ?? user?.phone ?? user?.email} size={48} />
           <View className="flex-1">
             {!!user?.name && (
               <Text className="font-display-bold text-base text-white" numberOfLines={1}>
@@ -158,7 +158,9 @@ export default function MoreScreen() {
               </Text>
             )}
             <Text className="font-sans text-sm text-zinc-400" numberOfLines={1}>
-              {user?.email}
+              {/* Login is phone + OTP: show the phone. Never show the internal
+                  placeholder email that free-report accounts start with. */}
+              {user?.phone || (user?.email && !user.email.endsWith('@shadow.growwmatics.internal') ? user.email : '')}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={t.textFaint} />

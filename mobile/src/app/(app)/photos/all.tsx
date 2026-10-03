@@ -231,6 +231,8 @@ export default function AllPhotosScreen() {
     mutationFn: uploadGbpMedia,
     onSuccess: (asset) => {
       void queryClient.invalidateQueries({ queryKey: ['gbp-media', activeBusinessId] });
+      // Show the new item even if a category filter (e.g. #Logo) was selected.
+      setFilter('ALL');
       const geo = geotagLine(asset.geotag);
       const kind = asset.mediaType === 'video' ? 'video' : 'photo';
       info.show(kind === 'video' ? 'Video saved' : 'Photo saved', `It's staged — publish or schedule it from the ${kind}'s preview.${geo ? `\n${geo}.` : ''}`);

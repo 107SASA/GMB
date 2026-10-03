@@ -37,6 +37,8 @@ export const currentUserSchema = z.object({
   id: z.string(),
   name: z.string().nullable().optional(),
   email: z.string(),
+  /** Login phone (phone + WhatsApp OTP). Older servers don't send it. */
+  phone: z.string().nullable().optional().catch(null),
   role: z.string(),
   organizationId: z.string().nullable(),
   activeBusinessId: z.string().nullable(),

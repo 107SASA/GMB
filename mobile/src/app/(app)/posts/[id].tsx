@@ -160,6 +160,9 @@ export default function PostDetailScreen() {
             <Text className="mt-2 font-sans text-sm text-amber-300">{sv.note}</Text>
           )}
           {!!plan && <Text className="mt-2 font-sans text-xs text-zinc-500">Plan: {plan}</Text>}
+          {!!p.contentMeta?.seoTheme && (
+            <Text className="mt-1 font-sans text-xs text-zinc-500">SEO theme: {p.contentMeta.seoTheme}</Text>
+          )}
           {!!p.contentMeta?.keywordReason && (
             <Text className="mt-1 font-sans text-xs text-zinc-500">Why this keyword: {p.contentMeta.keywordReason}</Text>
           )}

@@ -50,8 +50,8 @@ export async function fetchStoredWeeklyOffer(): Promise<StoredWeeklyOffer> {
 }
 
 /**
- * GET /api/content/autopilot-status — also starts autopilot right away when
- * the business qualifies (server-side, idempotent). `generating` = a batch
+ * GET /api/content/autopilot-status — read-only (opening a screen never
+ * generates posts; the weekly job does). `generating` = a batch
  * is being made right now; `stalled` = it was started over 75 min ago and
  * no posts arrived.
  */

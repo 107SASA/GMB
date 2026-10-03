@@ -57,3 +57,10 @@ next-env.d.ts
 
 # Local env backups (may contain secrets)
 *.bak
+
+# Customer CRM migration backups (contain lead data — never commit)
+crm-migration-backup-*.jsonl
+
+# Local tool settings and test-run output — never committed
+.claude/
+tmp-*-check/

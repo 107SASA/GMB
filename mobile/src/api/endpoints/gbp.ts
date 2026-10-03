@@ -76,7 +76,7 @@ export async function uploadGbpMedia(params: {
   mimeType: string;
   fileName: string;
   category: GbpMediaCategory;
-  /** The photo's own GPS, or the phone's position when taken in the app camera (lib/photoLocation.ts). */
+  /** The photo's / video's own GPS, or the phone's position when captured in the app camera (lib/photoLocation.ts). */
   location?: { lat: number; lng: number; source: 'photo_exif_app' | 'device_at_capture'; accuracyM?: number } | null;
 }): Promise<GbpMediaItem> {
   const form = new FormData();
@@ -92,6 +92,8 @@ export async function uploadGbpMedia(params: {
 
   const { data } = await api.post('/api/gbp/media/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    // Videos (up to 75 MB) need far longer than the default 30 s on a phone connection.
+    ...(params.mimeType.startsWith('video/') ? { timeout: 5 * 60_000 } : {}),
   });
   return assetResponseSchema.parse(data).asset;
 }

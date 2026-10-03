@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { useBusiness } from '@/context/BusinessContext';
 import { planDisplayLabel, isPaidPlanLabel } from '@/lib/billing/planLabel';
 import { checkPasswordStrength } from '@/lib/passwordPolicy';
-import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import {
   Eye,
   EyeOff,
@@ -153,7 +152,7 @@ export default function ProfilePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fullName: infoForm.fullName,
-          phone: infoForm.phone,
+          // phone omitted — it is the login and can't be changed.
           // companyName intentionally omitted — it's read-only here, sourced
           // from the active Business, not saved back onto the User doc.
         }),
@@ -206,7 +205,8 @@ export default function ProfilePage() {
       const res = await fetch('/api/user/delete-account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: deleteEmail }),
+        // Free-report accounts confirm with their login phone (their email is an internal placeholder).
+        body: JSON.stringify(user?.isShadowAccount ? { phone: deleteEmail } : { email: deleteEmail }),
       });
       const data = await res.json();
       if (!res.ok) { setDeleteError(data.error || 'Delete failed.'); setDeleteLoading(false); return; }
@@ -243,9 +243,12 @@ export default function ProfilePage() {
                 {initials}
               </div>
               <div className="space-y-1 min-w-0">
-                <p className="text-xs font-semibold text-outline uppercase tracking-wider">Email</p>
+                <p className="text-xs font-semibold text-outline uppercase tracking-wider">Login phone</p>
+                <span className="text-sm text-on-surface break-all">{user?.phone || '—'}</span>
+                <p className="text-xs font-semibold text-outline uppercase tracking-wider pt-2">Email</p>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm text-on-surface break-all">{user?.email ?? '—'}</span>
+                  {/* Never show the free-report placeholder (<phone>@shadow.growwmatics.internal). */}
+                  <span className="text-sm text-on-surface break-all">{!user?.isShadowAccount && user?.email ? user.email : 'Not added'}</span>
                   <span className="text-xs bg-surface-container text-on-surface-variant px-2 py-0.5 rounded-full font-medium shrink-0">read-only</span>
                 </div>
                 <p className="text-xs text-outline">Contact support if you need to change your email.</p>
@@ -263,11 +266,12 @@ export default function ProfilePage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Phone</label>
-                <PhoneNumberInput
-                  className="rounded-xl [&_input]:py-2.5 [&_select]:py-2.5"
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Phone (login — can&apos;t be changed)</label>
+                <input
+                  className={inputCls('bg-surface-container disabled:opacity-70 cursor-not-allowed')}
                   value={infoForm.phone}
-                  onChange={v => setInfoForm(p => ({ ...p, phone: v }))}
+                  disabled
+                  readOnly
                 />
               </div>
               <div>
@@ -389,7 +393,9 @@ export default function ProfilePage() {
         {/* ── RIGHT COLUMN ────────────────────────────────────────────── */}
         <div className="space-y-6">
 
-          {/* Change Password card */}
+          {/* Change Password card — super-admins only: customers sign in with
+              phone + WhatsApp OTP and have no password to change. */}
+          {user?.role === 'SUPER_ADMIN' && (
           <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 space-y-5">
             <div>
               <h2 className="text-base font-bold text-on-surface">Change Password</h2>
@@ -511,6 +517,7 @@ export default function ProfilePage() {
               </button>
             </form>
           </div>
+          )}
 
           {/* Danger Zone card */}
           <div className="bg-surface-container-lowest border-2 border-error-container rounded-2xl p-6 space-y-4">
@@ -550,12 +557,12 @@ export default function ProfilePage() {
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-on-surface-variant mb-1">
-                  Type your email address to confirm
+                  {user?.isShadowAccount ? 'Type your login phone number to confirm' : 'Type your email address to confirm'}
                 </label>
                 <input
-                  type="email"
+                  type={user?.isShadowAccount ? 'tel' : 'email'}
                   className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
-                  placeholder={user?.email ?? 'your@email.com'}
+                  placeholder={user?.isShadowAccount ? (user?.phone ?? '+91…') : (user?.email ?? 'your@email.com')}
                   value={deleteEmail}
                   onChange={e => { setDeleteEmail(e.target.value); setDeleteError(''); }}
                   autoComplete="off"
@@ -577,8 +584,9 @@ export default function ProfilePage() {
                   onClick={handleDeleteConfirm}
                   disabled={
                     deleteLoading ||
-                    !user?.email ||
-                    deleteEmail.toLowerCase().trim() !== user.email.toLowerCase()
+                    (user?.isShadowAccount
+                      ? !user?.phone || deleteEmail.replace(/\D/g, '').slice(-10) !== String(user.phone).replace(/\D/g, '').slice(-10)
+                      : !user?.email || deleteEmail.toLowerCase().trim() !== user.email.toLowerCase())
                   }
                   className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-semibold text-sm transition-all"
                 >

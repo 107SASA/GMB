@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -8,11 +8,12 @@ import { getApiErrorMessage } from '@/api/client';
 import type { ContentPost } from '@/api/endpoints/content';
 import { fetchPublishedPosts } from '@/api/endpoints/content';
 import { fetchDashboardStats } from '@/api/endpoints/dashboard';
-import { fetchBuffer, generateBufferPosts } from '@/api/endpoints/scheduler';
+import { fetchBuffer } from '@/api/endpoints/scheduler';
 import { useBusiness } from '@/business/BusinessContext';
 import { SchedulerPanel } from '@/components/scheduler-panel';
-import { PrimaryButton, Skeleton } from '@/components/ui';
+import { Skeleton } from '@/components/ui';
 import { useTheme } from '@/lib/theme';
+import { useRefreshContentOnFocus } from '@/lib/useRefreshContentOnFocus';
 
 const UPCOMING_WINDOW_DAYS = 7;
 
@@ -115,7 +116,7 @@ function RecentPostCard({ post }: { post: ContentPost }) {
 
 /**
  * GBP → Posts: upcoming posts (next 7 days, horizontal carousel) + manual
- * "+" create + AI "Generate Posts" + Recent Posts history (paginated,
+ * "+" create + Recent Posts history (paginated,
  * published only) + the embedded scheduler (buffer health / drafts —
  * upcoming list suppressed there now, see SchedulerPanel's showUpcoming).
  */
@@ -123,7 +124,7 @@ export function PostsTab() {
   const { activeBusinessId } = useBusiness();
   const router = useRouter();
   const t = useTheme();
-  const queryClient = useQueryClient();
+  useRefreshContentOnFocus();
 
   const buffer = useQuery({
     queryKey: ['scheduler-buffer', activeBusinessId],
@@ -144,16 +145,6 @@ export function PostsTab() {
     initialPageParam: 1,
     getNextPageParam: (lastPage, pages) => (lastPage.hasMore ? pages.length + 1 : undefined),
     enabled: !!activeBusinessId,
-  });
-
-  const generate = useMutation({
-    mutationFn: generateBufferPosts,
-    onSuccess: () => {
-      setTimeout(
-        () => void queryClient.invalidateQueries({ queryKey: ['scheduler-buffer'] }),
-        6000
-      );
-    },
   });
 
   const now = Date.now();
@@ -187,19 +178,13 @@ export function PostsTab() {
             <Text className="mb-1 font-sans-semibold text-base text-zinc-300">
               No posts in the next 7 days
             </Text>
-            <Text className="mb-4 text-center font-sans text-sm text-zinc-500">
-              Write one yourself, or let AI generate a week of content.
+            {/* No "generate" button: the 4 weekly posts are created and
+                scheduled automatically (a manual batch duplicated posts and
+                AI / image cost). "+" above still lets the owner write one. */}
+            <Text className="text-center font-sans text-sm text-zinc-500">
+              Your weekly posts are generated automatically — 4 posts every week from your SEO plan, business
+              information, keywords, offers and relevant festivals. Tap + to write one yourself.
             </Text>
-            {/* Full-width — this card is items-center, which otherwise
-                shrink-wraps PrimaryButton to its own content width instead
-                of reading as the card's main CTA. */}
-            <View className="w-full">
-              <PrimaryButton
-                title={generate.isPending ? 'Generating…' : 'Generate Posts'}
-                onPress={() => generate.mutate()}
-                loading={generate.isPending}
-              />
-            </View>
           </View>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="pr-1">
@@ -209,31 +194,6 @@ export function PostsTab() {
           </ScrollView>
         )}
       </View>
-
-      {upcoming.length > 0 && (
-        <Pressable
-          onPress={() => generate.mutate()}
-          disabled={generate.isPending}
-          // No `className` — see note above.
-          style={{
-            marginTop: 12,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: t.border,
-            paddingVertical: 10,
-            opacity: generate.isPending ? 0.6 : 1,
-          }}
-        >
-          <Ionicons name="sparkles" size={14} color={t.brandBright} />
-          <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
-            {generate.isPending ? 'Generating…' : 'Generate more with AI'}
-          </Text>
-        </Pressable>
-      )}
 
       <View
         className="mt-4 flex-row items-center gap-2.5 rounded-card px-4 py-3.5"

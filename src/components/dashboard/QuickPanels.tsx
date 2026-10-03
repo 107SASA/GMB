@@ -73,13 +73,15 @@ export default function QuickPanels({ panels }: QuickPanelsProps) {
                   </div>
                 </div>
                 <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                  lead.pipelineStage === 'Converted'
+                  lead.lifeCycleStage === 'converted'
                     ? 'bg-secondary-container text-on-secondary-container'
-                    : lead.pipelineStage === 'New'
+                    : lead.lifeCycleStage === 'closed'
+                    ? 'bg-error-container text-on-error-container'
+                    : !lead.lifeCycleStage || lead.lifeCycleStage === 'initial'
                     ? 'bg-primary-fixed text-primary'
                     : 'bg-surface-container text-on-surface-variant'
                 }`}>
-                  {lead.pipelineStage || 'New'}
+                  {lead.subStage || ({ converted: 'Won', closed: 'Closed', active: 'Active' } as Record<string, string>)[lead.lifeCycleStage] || 'New'}
                 </span>
               </div>
             ))

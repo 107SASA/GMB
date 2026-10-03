@@ -11,8 +11,8 @@ import { useTheme } from '@/lib/theme';
  * Mirrors the web Content tab header: weekly autopilot state ("Your AI agent
  * is working on this week's posts…" while a batch is being made, then the
  * next batch date) and this week's offer exactly as the owner entered it.
- * Opening it also starts autopilot right away when the business qualifies
- * (server-side). Polls every 10s while a batch is being generated, then
+ * Read-only: opening it never generates posts (the weekly job does). Polls
+ * every 10s while a batch is being generated, then
  * refreshes the post lists once the posts land.
  */
 export function ContentStatusStrip() {

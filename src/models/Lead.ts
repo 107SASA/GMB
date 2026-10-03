@@ -23,14 +23,24 @@ export interface ILead extends Document {
   name: string;
   email?: string;
   phone?: string;
-  source: 'WhatsApp' | 'Website' | 'Manual' | 'Instagram' | 'Facebook' | 'Referral' | 'Demo Booking' | 'Google Business Profile' | 'Phone Call' | 'Contacts Import';
+  source: 'WhatsApp' | 'Website' | 'Manual' | 'Instagram' | 'Facebook' | 'Referral' | 'Demo Booking' | 'Google Business Profile' | 'Phone Call' | 'Contacts Import' | 'CSV Import' | 'Campaign Import' | 'Appointment';
   leadType: 'Client Prospect' | 'Platform Prospect';
   status: 'active' | 'inactive';
   lifeCycleStage: 'initial' | 'active' | 'closed' | 'converted';
   // Sub-stage name inside the current lifeCycleStage, from the business's
   // configurable leadStages (see Business.leadStages). Null = none picked.
   subStage: string | null;
+  /** Stable id of the sub-stage (Business.leadStages[group][].id) — survives renames. */
+  subStageId?: string | null;
+  /** LEGACY free-Kanban column (old mobile builds). Customer CRM rules use lifeCycleStage only. */
   pipelineStage: string | null;
+  /** Won deal — recorded when the lead moves to CONVERTED (Customer CRM ROI). Numeric amount + ISO currency. */
+  deal?: { value: number | null; currency: string; closedAt: Date; notes?: string; recordedBy?: mongoose.Types.ObjectId; valueMissing?: boolean } | null;
+  convertedAt?: Date | null;
+  lostAt?: Date | null;
+  lastContactedAt?: Date | null;
+  /** Customer CRM: when the owner was last reminded that this lead had gone quiet (once per silent period). */
+  followUpNudgedAt?: Date | null;
   tags: string[];
   notes?: string;
   // ADDITIVE — manually entered estimated deal value (INR), set at lead
@@ -196,7 +206,7 @@ const LeadSchema: Schema = new Schema(
     phone: { type: String },
     source: { 
       type: String, 
-      enum: ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking', 'Google Business Profile', 'Phone Call', 'Contacts Import'],
+      enum: ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking', 'Google Business Profile', 'Phone Call', 'Contacts Import', 'CSV Import', 'Campaign Import', 'Appointment'],
       default: 'Manual'
     },
     leadType: {
@@ -211,7 +221,23 @@ const LeadSchema: Schema = new Schema(
       default: 'initial',
     },
     subStage: { type: String, default: null },
+    subStageId: { type: String, default: null },
     pipelineStage: { type: String, default: null },
+    deal: {
+      type: new Schema({
+        value: { type: Number, min: 0, default: null },
+        currency: { type: String, default: 'INR' },
+        closedAt: { type: Date },
+        notes: { type: String, maxlength: 1000 },
+        recordedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        valueMissing: { type: Boolean, default: false },
+      }, { _id: false }),
+      default: null,
+    },
+    convertedAt: { type: Date, default: null },
+    lostAt: { type: Date, default: null },
+    lastContactedAt: { type: Date, default: null },
+    followUpNudgedAt: { type: Date, default: null },
     tags: [{ type: String }],
     notes: { type: String },
     // ADDITIVE — see valuation in ILead above.
@@ -219,6 +245,8 @@ const LeadSchema: Schema = new Schema(
 
     followUpDates: [{ type: Date }],
     
+    // Platform prospects (free report, demo, admin CRM) only — the Customer CRM
+    // has no AI lead scoring and neither reads nor writes these (Oct 2026).
     aiLeadScore: { type: Number },
     aiInsights: { type: String },
     qualificationStatus: { type: String },
@@ -319,5 +347,10 @@ const LeadSchema: Schema = new Schema(
 // alone is already indexed (inline); this compound serves the two-field
 // lookup directly.
 LeadSchema.index({ tenantId: 1, phone: 1 });
+// Customer CRM: list / ROI / dedupe per workspace.
+LeadSchema.index({ businessId: 1, createdAt: -1 });
+LeadSchema.index({ businessId: 1, lifeCycleStage: 1 });
+// Customer CRM dedupe fast path (exact normalized phone inside a workspace).
+LeadSchema.index({ businessId: 1, phone: 1 });
 
 export default mongoose.models.Lead || mongoose.model<ILead>('Lead', LeadSchema);

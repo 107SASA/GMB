@@ -7,7 +7,7 @@ import {
 } from '@expo-google-fonts/public-sans';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
-import { QueryClient } from '@tanstack/react-query';
+import { focusManager, QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import Constants from 'expo-constants';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider, useRouter } from 'expo-router';
@@ -15,7 +15,7 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
-import { useColorScheme, View } from 'react-native';
+import { AppState, Platform, useColorScheme, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
@@ -35,6 +35,13 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 60_000 },
   },
+});
+
+// React Native has no window focus: tell React Query when the app returns to
+// the foreground so stale screens (e.g. the weekly posts) refetch the same
+// backend state the web shows, instead of the copy cached before backgrounding.
+AppState.addEventListener('change', (state) => {
+  if (Platform.OS !== 'web') focusManager.setFocused(state === 'active');
 });
 
 // Persists successful query results to on-device storage so the last-known
@@ -113,6 +120,18 @@ function RootNavigator() {
     // notifications.tsx's LINK_MAP for the in-app notification list.
     if (typeof data?.leadId === 'string' && user?.role === 'SUPER_ADMIN') {
       router.push(`/inbox/${data.leadId}`);
+    } else if (typeof data?.callEventId === 'string') {
+      // Customer CRM: a caller to decide on (Save as Lead / Existing / Dismiss).
+      router.push({ pathname: '/leads/recent-calls', params: { callEventId: data.callEventId } });
+    } else if (typeof data?.crmLeadId === 'string') {
+      // Customer CRM: a follow-up task is due / this lead has gone quiet.
+      router.push(`/leads/${data.crmLeadId}`);
+    } else if (typeof data?.growthReportMonth === 'string') {
+      // Customer CRM: "Your <Month> Growth Report is ready".
+      router.push({ pathname: '/leads/growth-report', params: { month: data.growthReportMonth } });
+    } else if (data?.crmLeads === '1') {
+      // Customer CRM: several leads are overdue for a follow-up.
+      router.push('/leads');
     } else if (typeof data?.reviewId === 'string') {
       router.push(`/reviews/${data.reviewId}`);
     } else if (typeof data?.postId === 'string') {

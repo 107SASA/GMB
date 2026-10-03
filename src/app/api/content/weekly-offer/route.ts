@@ -30,7 +30,7 @@ export async function GET() {
     // Only businesses whose weekly posts run (paid + Google connected) are asked.
     const eligible = business?.subscriptionStatus === 'active' && !!business?.googleConnected;
     const photos = eligible && !answer
-      ? await GbpMediaAsset.find({ businessId: ctx.businessId, category: { $in: ['ADDITIONAL', 'COVER'] }, status: { $in: ['published', 'staged'] }, url: { $regex: '^https://' } })
+      ? await GbpMediaAsset.find({ businessId: ctx.businessId, category: { $in: ['ADDITIONAL', 'COVER'] }, mediaType: { $ne: 'video' }, status: { $in: ['published', 'staged'] }, url: { $regex: '^https://' } })
           .sort({ createdAt: -1 }).limit(8).select('url').lean()
       : [];
     return NextResponse.json({
@@ -83,7 +83,8 @@ export async function POST(req: Request) {
     }
     let imageId: string | undefined;
     if (b.imageId && mongoose.isValidObjectId(b.imageId)) {
-      const asset = await GbpMediaAsset.exists({ _id: b.imageId, businessId: ctx.businessId });
+      // A post image must be a photo — gallery videos are never offered or accepted here.
+      const asset = await GbpMediaAsset.exists({ _id: b.imageId, businessId: ctx.businessId, mediaType: { $ne: 'video' } });
       if (asset) imageId = b.imageId;
     }
     const date = (s?: string) => (s && !Number.isNaN(Date.parse(s)) ? new Date(s) : undefined);

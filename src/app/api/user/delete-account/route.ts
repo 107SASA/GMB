@@ -4,6 +4,7 @@ import User from '@/models/User';
 import Business from '@/models/Business';
 import { requireClient } from '@/lib/auth';
 import { destroySession } from '@/lib/session';
+import { phoneDedupeKey } from '@/lib/phone';
 
 /**
  * Account deletion (Profile → Danger Zone). Immediately: the account is
@@ -20,17 +21,25 @@ export async function POST(req: Request) {
 
   await dbConnect();
 
-  const { email } = await req.json();
+  // Confirmation: the account's email OR its login phone (customers sign in
+  // with phone + OTP; free-report accounts only have an internal placeholder
+  // email they never see).
+  const { email, phone } = await req.json();
 
-  if (!email || typeof email !== 'string') {
-    return NextResponse.json({ error: 'Email confirmation required.' }, { status: 400 });
+  const hasEmail = typeof email === 'string' && email.trim() !== '';
+  const hasPhone = typeof phone === 'string' && phone.trim() !== '';
+  if (!hasEmail && !hasPhone) {
+    return NextResponse.json({ error: 'Confirmation required: type your login phone number or email.' }, { status: 400 });
   }
 
   const user = await User.findById(auth.userId);
   if (!user) return NextResponse.json({ error: 'User not found.' }, { status: 404 });
 
-  if (email.toLowerCase().trim() !== user.email.toLowerCase()) {
-    return NextResponse.json({ error: 'Email does not match your account.' }, { status: 400 });
+  const emailOk = hasEmail && email.toLowerCase().trim() === String(user.email).toLowerCase();
+  const typedKey = hasPhone ? phoneDedupeKey(phone) : null;
+  const phoneOk = !!typedKey && !!user.phone && typedKey === phoneDedupeKey(user.phone);
+  if (!emailOk && !phoneOk) {
+    return NextResponse.json({ error: hasPhone ? 'Phone number does not match your account.' : 'Email does not match your account.' }, { status: 400 });
   }
 
   const now = new Date();

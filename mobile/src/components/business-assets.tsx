@@ -19,7 +19,14 @@ import { EmptyState, InfoSheet, Skeleton, useInfoSheet } from '@/components/ui';
 import { promptConnectGoogle } from '@/lib/connectGoogle';
 import { formatDateTime } from '@/lib/format';
 import { BRAND_GRADIENT, useTheme } from '@/lib/theme';
-import { pickPhotoFromLibrary, type PickedPhoto } from '@/lib/photoLocation';
+import {
+  pickPhotoFromLibrary,
+  pickVideoFromLibrary,
+  recordVideoWithCamera,
+  videoProblem,
+  type PickedPhoto,
+  type PickedVideo,
+} from '@/lib/photoLocation';
 
 const GUIDELINES_URL = 'https://support.google.com/business/answer/6103862';
 
@@ -151,6 +158,9 @@ export function BusinessAssets() {
   // Tracks which slot's upload is in flight — `upload.isPending` alone can't
   // tell the Logo card from the Cover card from the gallery button.
   const [uploadingCategory, setUploadingCategory] = useState<GbpMediaCategory | null>(null);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  // "Upload Video" reveals its two sources (record in the app / choose from the gallery).
+  const [videoChoice, setVideoChoice] = useState(false);
   const info = useInfoSheet();
 
   const media = useQuery({
@@ -162,12 +172,15 @@ export function BusinessAssets() {
 
   const upload = useMutation({
     mutationFn: uploadGbpMedia,
-    onSuccess: () => {
+    onSuccess: (asset) => {
       void queryClient.invalidateQueries({ queryKey: ['gbp-media', activeBusinessId] });
-      info.show('Photo saved', "It's staged — publish or schedule it from View All.");
+      info.show(asset.mediaType === 'video' ? 'Video saved' : 'Photo saved', "It's staged — publish or schedule it from View All.");
     },
     onError: (error) => info.show('Upload failed', getApiErrorMessage(error, 'Please try again.')),
-    onSettled: () => setUploadingCategory(null),
+    onSettled: () => {
+      setUploadingCategory(null);
+      setUploadingVideo(false);
+    },
   });
 
   const notConnected = media.error instanceof GbpNotConnectedError;
@@ -195,6 +208,30 @@ export function BusinessAssets() {
     // The photo's own GPS (if the phone shares it) travels with the upload —
     // compression here strips it from the file itself.
     upload.mutate({ uri: picked.uri, mimeType: picked.mimeType, fileName: picked.fileName, category, location: picked.location });
+  };
+
+  /** Video → the gallery (ADDITIONAL only); location handled exactly like photos (lib/photoLocation.ts). */
+  const uploadVideo = async (from: 'camera' | 'library') => {
+    if (notConnected) {
+      promptConnectGoogle(media.error?.message ?? 'Connect your Google Business Profile to add videos.');
+      return;
+    }
+    let picked: PickedVideo | null;
+    try {
+      picked = from === 'camera' ? await recordVideoWithCamera() : await pickVideoFromLibrary();
+    } catch {
+      info.show('Permission needed', from === 'camera' ? 'Allow camera and microphone access to record a video.' : 'Allow photo and video library access to add business media.');
+      return;
+    }
+    if (!picked) return;
+    const problem = videoProblem(picked);
+    if (problem) {
+      info.show('Video not uploaded', problem);
+      return;
+    }
+    setVideoChoice(false);
+    setUploadingVideo(true);
+    upload.mutate({ uri: picked.uri, mimeType: picked.mimeType, fileName: picked.fileName, category: 'ADDITIONAL', location: picked.location });
   };
 
   if (media.isLoading) {
@@ -239,7 +276,13 @@ export function BusinessAssets() {
   const published = all
     .filter((m) => m.status === 'published')
     .sort((a, b) => new Date(b.publishedAt ?? 0).getTime() - new Date(a.publishedAt ?? 0).getTime());
-  const recentPublished = published.slice(0, 8);
+  // Latest gallery items INCLUDING ones not on Google yet — a photo/video just
+  // taken in the app is staged first, and showing only published items made a
+  // fresh upload look like it had vanished.
+  const notPublished = all.filter((m) => m.status !== 'published' && m.category === 'ADDITIONAL');
+  const recentItems = [...notPublished, ...published]
+    .sort((a, b) => new Date(b.publishedAt ?? b.createdAt ?? 0).getTime() - new Date(a.publishedAt ?? a.createdAt ?? 0).getTime())
+    .slice(0, 8);
   const scheduled = all
     .filter((m) => m.status === 'staged' && m.scheduledFor)
     .sort((a, b) => new Date(a.scheduledFor!).getTime() - new Date(b.scheduledFor!).getTime());
@@ -321,28 +364,38 @@ export function BusinessAssets() {
           </View>
         </Pressable>
       </View>
-      <Text className="mb-3 font-sans text-sm text-zinc-500">{published.length} published</Text>
+      <Text className="mb-3 font-sans text-sm text-zinc-500">
+        {published.length} published{notPublished.length > 0 ? ` · ${notPublished.length} not on Google yet` : ''}
+      </Text>
 
-      {recentPublished.length === 0 ? (
+      {recentItems.length === 0 ? (
         <View className="mb-4 items-center rounded-card border border-surface-border bg-surface-raised px-6 py-10">
           <View className="mb-3 h-16 w-16 items-center justify-center rounded-2xl bg-surface-overlay">
             <Ionicons name="image-outline" size={30} color={t.violet} />
           </View>
-          <Text className="font-sans-semibold text-base text-zinc-300">No photos published yet</Text>
+          <Text className="font-sans-semibold text-base text-zinc-300">No photos or videos yet</Text>
         </View>
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2.5 pb-1">
-          {recentPublished.map((item) => (
+          {recentItems.map((item) => (
             <Pressable
               key={item._id}
               onPress={() => router.push('/photos/all' as never)}
               // No `className` — see note above.
               style={{ width: 132, height: 132, borderRadius: 16, overflow: 'hidden' }}
             >
-              <Image source={{ uri: item.url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+              {item.mediaType === 'video' ? (
+                <View style={{ flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="play-circle" size={40} color="#ffffff" />
+                </View>
+              ) : (
+                <Image source={{ uri: item.url }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+              )}
               <View className="absolute bottom-1.5 left-1.5 flex-row items-center gap-1 rounded-full bg-black/60 px-2 py-1">
-                <Ionicons name="location" size={10} color="#ffffff" />
-                <Text className="font-sans-bold text-[10px] text-white">{daysAgo(item.publishedAt)}</Text>
+                <Ionicons name={item.mediaType === 'video' ? 'videocam' : 'location'} size={10} color="#ffffff" />
+                <Text className="font-sans-bold text-[10px] text-white">
+                  {item.status === 'published' ? daysAgo(item.publishedAt) : item.status === 'failed' ? 'Publish failed' : item.scheduledFor ? 'Scheduled' : 'Not on Google yet'}
+                </Text>
               </View>
             </Pressable>
           ))}
@@ -350,26 +403,65 @@ export function BusinessAssets() {
       )}
 
       {/* Fixed to ADDITIONAL now that Logo/Cover have their own slots above
-          — this button only ever adds to the gallery, matching the
-          website's separate "Add photo" button for the gallery section. */}
+          — these only ever add to the gallery, matching the website's
+          separate "Upload Photo" / "Upload Video" buttons for the gallery. */}
       {!notConnected && (
-        <Pressable
-          onPress={() => void pickAndUpload('ADDITIONAL')}
-          disabled={uploadingCategory === 'ADDITIONAL'}
-          // No `className` — see note above.
-          style={{ marginTop: 16, borderRadius: 16, overflow: 'hidden' }}
-        >
-          <LinearGradient
-            colors={[...BRAND_GRADIENT]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={{ alignItems: 'center', paddingVertical: 16 }}
+        <View style={{ marginTop: 16, flexDirection: 'row', gap: 10 }}>
+          <Pressable
+            onPress={() => void pickAndUpload('ADDITIONAL')}
+            disabled={uploadingCategory === 'ADDITIONAL' || uploadingVideo}
+            accessibilityLabel="Upload photo"
+            // No `className` — see note above.
+            style={{ flex: 1, borderRadius: 16, overflow: 'hidden' }}
           >
-            <Text className="font-sans-bold text-base text-on-brand">
-              {uploadingCategory === 'ADDITIONAL' ? 'Uploading…' : 'Add Gallery Photo'}
+            <LinearGradient
+              colors={[...BRAND_GRADIENT]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 16 }}
+            >
+              <Ionicons name="image-outline" size={17} color="#ffffff" />
+              <Text className="font-sans-bold text-base text-on-brand">
+                {uploadingCategory === 'ADDITIONAL' && !uploadingVideo ? 'Uploading…' : 'Upload Photo'}
+              </Text>
+            </LinearGradient>
+          </Pressable>
+          <Pressable
+            onPress={() => setVideoChoice((v) => !v)}
+            disabled={uploadingVideo || uploadingCategory === 'ADDITIONAL'}
+            accessibilityLabel="Upload video"
+            // No `className` — see note above.
+            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 16, borderWidth: 1, borderColor: t.brandBright, paddingVertical: 16 }}
+          >
+            <Ionicons name="videocam-outline" size={17} color={t.brandBright} />
+            <Text className="font-sans-bold text-base" style={{ color: t.brandBright }}>
+              {uploadingVideo ? 'Uploading…' : 'Upload Video'}
             </Text>
-          </LinearGradient>
-        </Pressable>
+          </Pressable>
+        </View>
+      )}
+      {!notConnected && videoChoice && !uploadingVideo && (
+        <View style={{ marginTop: 10, flexDirection: 'row', gap: 10 }}>
+          {([
+            { label: 'Record video', icon: 'videocam-outline', from: 'camera' },
+            { label: 'Choose from gallery', icon: 'film-outline', from: 'library' },
+          ] as const).map((a) => (
+            <Pressable
+              key={a.from}
+              onPress={() => void uploadVideo(a.from)}
+              // No `className` — see note above.
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: t.border, backgroundColor: t.card, paddingVertical: 10 }}
+            >
+              <Ionicons name={a.icon} size={15} color={t.brandBright} />
+              <Text className="font-sans-semibold text-sm text-zinc-200">{a.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {!notConnected && (videoChoice || uploadingVideo) && (
+        <Text className="mt-2 text-center font-sans text-xs text-zinc-500">
+          {uploadingVideo ? 'Uploading video… this can take a minute on mobile data.' : 'MP4 or MOV, up to 30 seconds and 75 MB.'}
+        </Text>
       )}
 
       <View className="mt-4 items-center">

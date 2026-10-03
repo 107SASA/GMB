@@ -4,7 +4,7 @@ import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
 import { phoneDedupeKey } from '@/lib/phone';
 import { requireModule } from '@/lib/moduleGating';
-import { inngest } from '@/services/inngest/client';
+import { createOrUpdateCustomerLead } from '@/services/crm/customerLeads';
 import mongoose from 'mongoose';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
@@ -20,6 +20,9 @@ export async function GET(req: Request) {
     let leads = await Lead.find({
       businessId: new mongoose.Types.ObjectId(ctx.businessId),
     })
+      // Shared platform score fields: the Customer CRM has no AI scoring, so
+      // old stored values on customer leads are never sent to web/mobile.
+      .select('-aiLeadScore -aiInsights -qualificationStatus -urgency')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -60,27 +63,24 @@ export async function POST(req: Request) {
 
     await dbConnect();
 
-    const lead = await Lead.create({
-      tenantId: ctx.organizationId,
+    // One Customer CRM path: normalize, dedupe by phone/email in this
+    // workspace, default stage, activity, AI scoring — never messages the lead.
+    const r = await createOrUpdateCustomerLead({
+      businessId: ctx.businessId,
       organizationId: ctx.organizationId,
-      businessId: new mongoose.Types.ObjectId(ctx.businessId),
       name: data.name,
       phone: data.phone,
       email: data.email,
       source: data.source || 'Manual',
-      pipelineStage: null,
       notes: data.notes,
       interest: data.interest,
-      lifeCycleStage: data.lifeCycleStage || 'initial',
       valuation,
+      lifeCycleStage: ['initial', 'active', 'closed'].includes(data.lifeCycleStage) ? data.lifeCycleStage : 'initial',
+      createdBy: ctx.userId,
     });
+    if (!r.lead) return NextResponse.json({ error: r.skippedReason }, { status: 400 });
 
-    await inngest.send({
-      name: 'crm/lead-created',
-      data: { leadId: lead._id.toString(), businessId: ctx.businessId.toString() },
-    });
-
-    return NextResponse.json({ success: true, lead }, { status: 201 });
+    return NextResponse.json({ success: true, lead: r.lead, existing: !r.created }, { status: r.created ? 201 : 200 });
   } catch (error: any) {
     return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }

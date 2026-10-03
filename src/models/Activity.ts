@@ -5,7 +5,7 @@ export interface IActivity extends Document {
   organizationId?: string;
   leadId: mongoose.Types.ObjectId;
   
-  type: 'call' | 'WhatsApp' | 'email' | 'note' | 'meeting' | 'status_change';
+  type: 'call' | 'WhatsApp' | 'email' | 'note' | 'meeting' | 'status_change' | 'lead_created' | 'follow_up' | 'appointment' | 'deal_won' | 'deal_lost';
   content: string;
   metadata?: any;
   
@@ -22,7 +22,7 @@ const ActivitySchema: Schema = new Schema(
     
     type: { 
       type: String, 
-      enum: ['call', 'WhatsApp', 'email', 'note', 'meeting', 'status_change'],
+      enum: ['call', 'WhatsApp', 'email', 'note', 'meeting', 'status_change', 'lead_created', 'follow_up', 'appointment', 'deal_won', 'deal_lost'],
       required: true
     },
     content: { type: String, required: true },

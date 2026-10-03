@@ -257,7 +257,7 @@ function StagePanel({
                     onCancel={() => setEditingIndex(null)}
                     onSave={(name, color) => {
                       const next = [...subStages];
-                      next[index] = { name, color };
+                      next[index] = { ...sub, name, color };
                       onChange(next);
                       setEditingIndex(null);
                     }}
@@ -381,6 +381,10 @@ export default function LeadStagesConfig() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leadStages: next }),
       });
+      // Adopt the saved config: it carries the stable ids the server assigned
+      // to newly added sub-stages, so a later rename keeps them.
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.leadStages) setConfig(data.leadStages);
       setSaveState(res.ok ? 'saved' : 'error');
     } catch {
       setSaveState('error');

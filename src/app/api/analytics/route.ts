@@ -35,20 +35,6 @@ export async function GET(req: NextRequest) {
     ]);
     const leadsByStatus = statusesAgg.map(s => ({ name: s._id, value: s.count }));
 
-    // NEW: Qualification Funnel
-    const qualificationAgg = await Lead.aggregate([
-      { $match: { businessId } },
-      { $group: { _id: "$qualificationStatus", count: { $sum: 1 } } }
-    ]);
-    const qualificationFunnel = qualificationAgg.map(q => ({ name: q._id || 'Unqualified', value: q.count }));
-
-    // NEW: Urgency Breakdown
-    const urgencyAgg = await Lead.aggregate([
-      { $match: { businessId } },
-      { $group: { _id: "$urgency", count: { $sum: 1 } } }
-    ]);
-    const urgencyBreakdown = urgencyAgg.map(u => ({ name: u._id || 'None', value: u.count }));
-
     // NEW: Bookings Info
     const totalAppointments = await Appointment.countDocuments({ businessId });
     const completedAppointments = await Appointment.countDocuments({ businessId, status: 'Completed' });
@@ -60,8 +46,6 @@ export async function GET(req: NextRequest) {
       leadSources,
       aiResponseCount,
       leadsByStatus,
-      qualificationFunnel,
-      urgencyBreakdown,
       bookingSuccessRate: bookingSuccessRate.toFixed(1)
     });
 

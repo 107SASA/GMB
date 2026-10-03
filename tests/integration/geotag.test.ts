@@ -132,16 +132,32 @@ test('EXIF parser: southern/western hemispheres and garbage input', async () => 
   assert.equal(parseExifGps(null), null);
 });
 
-test('video: stored unmodified; an existing phone location is detected, never invented', async () => {
+test('video: same precedence as photos, bytes NEVER modified — own location → app location → verified business location → none', async () => {
   const withLoc = Buffer.concat([Buffer.from('....ftypmp42....moov....udta'), Buffer.from([0, 0, 0, 30, 0xa9, 0x78, 0x79, 0x7a, 0, 18, 0x15, 0xc7]), Buffer.from('+19.9975+073.7898/'), Buffer.from('mdat....')]);
-  const r = await geotagMedia(withLoc, 'video/mp4', BUSINESS);
-  assert.equal(r.geotag.status, 'video_unmodified');
-  assert.ok(r.buffer.equals(withLoc));
-  assert.ok(near(readVideoLocation(withLoc), { lat: 19.9975, lng: 73.7898 }));
   const bare = Buffer.from('....ftypqt  ....moov....mdat....');
-  const r2 = await geotagMedia(bare, 'video/quicktime', BUSINESS);
-  assert.equal(r2.geotag.status, 'video_unmodified');
-  assert.equal(r2.geotag.lat, undefined, 'business location is NOT stamped onto video');
+  assert.ok(near(readVideoLocation(withLoc), { lat: 19.9975, lng: 73.7898 }));
+  // 1. The video's own recorded location wins (even over the app's and the business pin).
+  const own = await geotagMedia(withLoc, 'video/mp4', BUSINESS, { ...CAMERA, lat: 10, lng: 10, source: 'device_at_capture', accuracyM: 5 });
+  assert.equal(own.geotag.status, 'video_location_recorded');
+  assert.equal(own.geotag.source, 'video_metadata');
+  assert.ok(near({ lat: own.geotag.lat!, lng: own.geotag.lng! }, { lat: 19.9975, lng: 73.7898 }));
+  assert.ok(own.buffer.equals(withLoc), 'bytes untouched');
+  // 2. Recorded in the app camera → the phone position at capture.
+  const cam = await geotagMedia(bare, 'video/quicktime', BUSINESS, { ...CAMERA, source: 'device_at_capture', accuracyM: 12 });
+  assert.deepEqual([cam.geotag.status, cam.geotag.source, cam.geotag.lat, cam.geotag.lng, cam.geotag.accuracyM], ['video_location_recorded', 'device_at_capture', CAMERA.lat, CAMERA.lng, 12]);
+  assert.ok(cam.buffer.equals(bare), 'bytes untouched');
+  // Same validation as photos: an imprecise phone fix (> 500 m) is not used → business pin.
+  const vague = await geotagMedia(bare, 'video/mp4', BUSINESS, { ...CAMERA, source: 'device_at_capture', accuracyM: 900 });
+  assert.equal(vague.geotag.source, 'gbp_location');
+  // 3. Otherwise the business's VERIFIED Google location.
+  const biz = await geotagMedia(bare, 'video/mp4', BUSINESS);
+  assert.deepEqual([biz.geotag.status, biz.geotag.source, biz.geotag.lat, biz.geotag.lng], ['video_location_recorded', 'gbp_location', BUSINESS.lat, BUSINESS.lng]);
+  assert.ok(biz.buffer.equals(bare));
+  // 4. Nothing verified → nothing recorded, never invented. Implausible app coords ignored.
+  const none = await geotagMedia(bare, 'video/mp4', null, { lat: 0, lng: 0, source: 'device_at_capture' });
+  assert.equal(none.geotag.status, 'video_unmodified');
+  assert.equal(none.geotag.lat, undefined);
+  assert.match(none.geotag.at, /^\d{4}-\d{2}-\d{2}T/);
 });
 
 // ── Location sent by the mobile app ────────────────────────────────────────

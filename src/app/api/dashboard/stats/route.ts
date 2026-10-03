@@ -52,18 +52,9 @@ export async function GET(req: NextRequest) {
                 _id: null,
                 total: { $sum: 1 },
                 converted: {
-                  $sum: {
-                    $cond: [
-                      {
-                        $or: [
-                          { $eq: ['$lifeCycleStage', 'converted'] },
-                          { $eq: ['$pipelineStage', 'Converted'] },
-                        ],
-                      },
-                      1,
-                      0,
-                    ],
-                  },
+                  // Customer CRM: converted = lifeCycleStage 'converted' (the one
+                  // canonical definition; legacy pipelineStage rows are migrated).
+                  $sum: { $cond: [{ $eq: ['$lifeCycleStage', 'converted'] }, 1, 0] },
                 },
               },
             },

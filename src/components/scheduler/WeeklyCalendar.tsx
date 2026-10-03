@@ -428,14 +428,26 @@ function PostDetailModal({
               {post.contentMeta?.purpose && (
                 <p className="text-xs text-on-surface-variant">
                   Plan: {String(post.contentMeta.purpose).replace('_', ' ')}
-                  {post.contentMeta.service ? ` · ${post.contentMeta.service}` : ''}
+                  {post.contentMeta.festivalName || post.contentMeta.service ? ` · ${post.contentMeta.festivalName || post.contentMeta.service}` : ''}
                   {post.contentMeta.keyword
                     ? ` · “${post.contentMeta.keyword}” (${post.contentMeta.keywordSource === 'search_term' ? 'customer search on Google' : post.contentMeta.keywordMeasured ? 'measured keyword' : 'proposed — not measured'})`
                     : ''}
                 </p>
               )}
+              {post.contentMeta?.seoTheme && (
+                <p className="text-xs text-on-surface-variant">SEO theme: {post.contentMeta.seoTheme}</p>
+              )}
               {post.contentMeta?.keywordReason && (
                 <p className="text-xs text-on-surface-variant">Why this keyword: {post.contentMeta.keywordReason}</p>
+              )}
+              {post.imageUrl && post.contentMeta?.imageOrigin && (
+                // Same wording as the mobile app (mobile/src/api/endpoints/content.ts imageOriginLine).
+                <p className="text-xs text-on-surface-variant">
+                  {post.contentMeta.imageOrigin === 'AI_GENERATED' ? 'Image: new AI image made for this post'
+                    : post.contentMeta.imageOrigin === 'OWNER_SELECTED' ? 'Image: the photo you chose for this post'
+                    : post.contentMeta.imageOrigin === 'FALLBACK' ? 'Image: branded graphic (the AI image could not be created)'
+                    : null}
+                </p>
               )}
               {post.status === 'failed' && post.failureReason && (
                 <div className="bg-error-container border border-error-container rounded-xl px-4 py-3">

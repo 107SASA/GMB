@@ -14,7 +14,15 @@ const ACTIVITY_TYPES: { type: ActivityType; label: string; icon: ReactNode; colo
 const TYPE_DOT: Record<string, string> = {
   call: 'bg-secondary', WhatsApp: 'bg-whatsapp', email: 'bg-primary',
   note: 'bg-outline', meeting: 'bg-primary', status_change: 'bg-error',
-  followUp: 'bg-primary',
+  followUp: 'bg-primary', lead_created: 'bg-primary',
+  follow_up: 'bg-primary', appointment: 'bg-primary', deal_won: 'bg-secondary',
+  deal_lost: 'bg-error',
+};
+
+/** Readable labels for system timeline entries. */
+const TYPE_LABEL: Record<string, string> = {
+  status_change: 'Stage', lead_created: 'Created',
+  follow_up: 'Follow-up', appointment: 'Appointment', deal_won: 'Won', deal_lost: 'Lost',
 };
 
 interface ActivityTimelineProps {
@@ -144,7 +152,7 @@ export default function ActivityTimeline({ leadId, onActivityLogged }: ActivityT
                   </p>
                 ) : (
                   <p className="text-sm text-on-surface">
-                    <span className="uppercase text-xs font-bold text-primary mr-2">[{item.type}]</span>
+                    <span className="uppercase text-xs font-bold text-primary mr-2">[{TYPE_LABEL[item.type] || item.type}]</span>
                     {item.content}
                   </p>
                 )}

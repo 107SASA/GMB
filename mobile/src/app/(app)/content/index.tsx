@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Image } from 'expo-image';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -14,355 +13,47 @@ import {
 
 import { getApiErrorMessage } from '@/api/client';
 import {
-  autoSchedulePosts,
   fetchContentPosts,
-  fetchPostImages,
-  generateContent,
   type ContentPost,
-  type GeneratedPost,
-  type GenerateResult,
 } from '@/api/endpoints/content';
-import { PlanLimitError } from '@/api/endpoints/reviews';
 import { deletePost, schedulePost, updatePost } from '@/api/endpoints/scheduler';
 import { useBusiness } from '@/business/BusinessContext';
 import { useDateTimePicker } from '@/components/datetime-picker';
 import {
   Badge,
-  Chip,
   EmptyState,
-  ErrorText,
   Field,
   LabeledField,
   PrimaryButton,
   Screen,
   ScreenTitle,
-  SectionLabel,
-  SegmentedControl,
   Skeleton,
   useConfirmSheet,
   useInfoSheet,
 } from '@/components/ui';
 import { useTheme, withAlpha } from '@/lib/theme';
 import { formatDateTime } from '@/lib/format';
+import { useRefreshContentOnFocus } from '@/lib/useRefreshContentOnFocus';
 
-const TONES = ['Professional', 'Friendly', 'Motivational', 'Luxury', 'Conversational'];
-const CONTENT_TYPES = ['GMB Posts', 'SEO Description', 'FAQs', 'Promotional Posts', 'Festival Posts'];
-
-// --- Generate segment ---------------------------------------------------------
-
-function GeneratedPostCard({ post, imageUrl }: { post: GeneratedPost; imageUrl: string | null }) {
-  // A thumbnail is on the way when the generator returned a prompt but no URL
-  // has landed yet (they arrive via background polling).
-  const pending = !imageUrl && !!post.thumbnailPrompt;
+/**
+ * Content — the weekly posts the autopilot created (4 per week, generated and
+ * scheduled automatically from the SEO plan). Read + manage existing posts
+ * only: there is deliberately no "generate" action here (removed Oct 2026 —
+ * manual batches caused duplicate posts and extra AI / image cost). The web
+ * Content page shows the same posts from the same API.
+ */
+function AutopilotInfo() {
+  const t = useTheme();
   return (
-    <View className="mb-3 overflow-hidden rounded-card border border-surface-border bg-surface-raised">
-      {imageUrl ? (
-        <Image
-          source={{ uri: imageUrl }}
-          style={{ width: '100%', height: 150 }}
-          contentFit="cover"
-          transition={200}
-        />
-      ) : pending ? (
-        <View className="h-[110px] items-center justify-center bg-indigo-500/10">
-          <ActivityIndicator color="#a6c8ff" />
-          <Text className="mt-2 font-sans-semibold text-xs text-indigo-300">
-            Generating thumbnail…
-          </Text>
-        </View>
-      ) : null}
-      <View className="px-4 py-3.5">
-        {!!post.title && (
-          <Text className="font-sans-semibold text-base text-white">{post.title}</Text>
-        )}
-        <Text className="mt-1.5 font-sans text-sm leading-5 text-zinc-300">{post.body}</Text>
-        {post.hashtags.length > 0 && (
-          <Text className="mt-2 font-sans text-xs text-indigo-300">{post.hashtags.join(' ')}</Text>
-        )}
-        {!!post.cta && <Text className="mt-1 font-sans text-xs text-zinc-500">CTA: {post.cta}</Text>}
+    <View className="mx-5 mb-3 flex-row items-start gap-2.5 rounded-card border border-surface-border bg-surface-raised px-4 py-3">
+      <Ionicons name="sparkles-outline" size={16} color={t.brandBright} style={{ marginTop: 2 }} />
+      <View className="flex-1">
+        <Text className="font-sans-semibold text-sm text-white">Your weekly posts are generated automatically.</Text>
+        <Text className="mt-0.5 font-sans text-xs leading-4 text-zinc-400">
+          4 posts are planned every week based on your SEO plan, business information, keywords, offers and relevant festivals.
+        </Text>
       </View>
     </View>
-  );
-}
-
-function GenerateSegment() {
-  const t = useTheme();
-  const queryClient = useQueryClient();
-  const { activeBusinessId } = useBusiness();
-
-  const [topic, setTopic] = useState('');
-  const [tone, setTone] = useState('Professional');
-  const [keywordInput, setKeywordInput] = useState('');
-  const [keywords, setKeywords] = useState<string[]>([]);
-  const [types, setTypes] = useState<string[]>(['GMB Posts', 'SEO Description', 'FAQs']);
-  const [error, setError] = useState('');
-  const [result, setResult] = useState<GenerateResult | null>(null);
-  // Background-generated thumbnails, filled in by polling (postId -> url).
-  const [imageMap, setImageMap] = useState<Record<string, string>>({});
-  const pollAttempts = useRef(0);
-  const info = useInfoSheet();
-
-  const generate = useMutation({
-    mutationFn: () =>
-      generateContent({
-        tone,
-        keywords,
-        contentTypes: types,
-        topic: topic.trim() || undefined,
-      }),
-    onSuccess: (data) => {
-      setResult(data);
-      setImageMap({});
-      pollAttempts.current = 0;
-      // Drafts were saved server-side — history is now stale.
-      void queryClient.invalidateQueries({ queryKey: ['content-posts', activeBusinessId] });
-    },
-    onError: (err) => {
-      setError(
-        err instanceof PlanLimitError
-          ? err.message
-          : getApiErrorMessage(err, 'Generation failed. Try again.')
-      );
-    },
-  });
-
-  const autoSchedule = useMutation({
-    mutationFn: (postIds: string[]) => autoSchedulePosts(postIds),
-    onSuccess: ({ count }) => {
-      info.show('Scheduled', `${count} post${count === 1 ? '' : 's'} scheduled, one per day at 9 AM.`);
-      void queryClient.invalidateQueries({ queryKey: ['content-posts', activeBusinessId] });
-      void queryClient.invalidateQueries({ queryKey: ['scheduler-buffer', activeBusinessId] });
-    },
-    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not schedule the posts.')),
-  });
-
-  function addKeyword() {
-    const value = keywordInput.trim();
-    if (!value || keywords.includes(value)) return;
-    setKeywords([...keywords, value]);
-    setKeywordInput('');
-  }
-
-  // Poll for background-generated thumbnails until every expecting post has one
-  // (or a safety cap), then merge the URLs into the cards.
-  useEffect(() => {
-    const posts = (result?.posts ?? []).filter((p): p is GeneratedPost => p !== null);
-    const pendingIds = () =>
-      posts
-        .filter((p) => p._id && p.thumbnailPrompt && !p.imageUrl && !imageMap[p._id])
-        .map((p) => p._id as string);
-    if (pendingIds().length === 0) return;
-
-    let stopped = false;
-    const MAX = 30; // ~30 × 4s = 2 min ceiling
-    const tick = async () => {
-      const ids = pendingIds();
-      if (ids.length === 0 || pollAttempts.current >= MAX) {
-        stopped = true;
-        return;
-      }
-      pollAttempts.current += 1;
-      try {
-        const images = await fetchPostImages(ids);
-        const resolved = Object.entries(images).filter(([, url]) => !!url) as [string, string][];
-        if (resolved.length) setImageMap((prev) => ({ ...prev, ...Object.fromEntries(resolved) }));
-      } catch {
-        /* transient — retry next tick */
-      }
-    };
-    void tick();
-    const interval = setInterval(() => {
-      if (stopped) {
-        clearInterval(interval);
-        return;
-      }
-      void tick();
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [result, imageMap]);
-
-  const schedulableIds = (result?.posts ?? [])
-    .filter((p): p is GeneratedPost => p !== null && !!p._id)
-    .map((p) => p._id as string);
-
-  return (
-    <>
-    <ScrollView contentContainerClassName="px-5 pb-12" keyboardShouldPersistTaps="handled">
-      <LabeledField
-        label="Topic or theme (optional)"
-        value={topic}
-        onChangeText={setTopic}
-        placeholder="e.g. Summer Sale, Diwali Offers…"
-      />
-
-      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Tone</Text>
-      <View className="mb-3 flex-row flex-wrap gap-2">
-        {TONES.map((t) => (
-          <Chip key={t} label={t} selected={tone === t} onPress={() => setTone(t)} />
-        ))}
-      </View>
-
-      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Target keywords</Text>
-      <View className="mb-2 flex-row gap-2">
-        <View className="flex-1">
-          <Field
-            value={keywordInput}
-            onChangeText={setKeywordInput}
-            placeholder="Add a keyword"
-            onSubmitEditing={addKeyword}
-            returnKeyType="done"
-          />
-        </View>
-        <Pressable
-          onPress={addKeyword}
-          // No `className` — react-native-css-interop can swallow onPress on
-          // styled Pressables (see components/ui.tsx).
-          style={{
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: t.border,
-            backgroundColor: t.card,
-            paddingHorizontal: 16,
-          }}
-        >
-          <Ionicons name="add" size={20} color={t.text} />
-        </Pressable>
-      </View>
-      {keywords.length > 0 && (
-        <View className="mb-3 flex-row flex-wrap gap-2">
-          {keywords.map((k) => (
-            <Chip
-              key={k}
-              label={`${k} ×`}
-              selected
-              onPress={() => setKeywords(keywords.filter((x) => x !== k))}
-            />
-          ))}
-        </View>
-      )}
-
-      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">What to generate</Text>
-      <View className="mb-4 flex-row flex-wrap gap-2">
-        {CONTENT_TYPES.map((t) => (
-          <Chip
-            key={t}
-            label={t}
-            selected={types.includes(t)}
-            onPress={() =>
-              setTypes(types.includes(t) ? types.filter((x) => x !== t) : [...types, t])
-            }
-          />
-        ))}
-      </View>
-
-      {!!error && (
-        <View className="mb-3">
-          <ErrorText>{error}</ErrorText>
-        </View>
-      )}
-
-      <PrimaryButton
-        title={generate.isPending ? 'Generating…' : 'Generate content'}
-        onPress={() => {
-          setError('');
-          setResult(null);
-          generate.mutate();
-        }}
-        loading={generate.isPending}
-        disabled={types.length === 0}
-      />
-      {generate.isPending && (
-        <Text className="mt-2 text-center font-sans text-xs text-zinc-500">
-          This takes 30–60 seconds. Keep the app open.
-        </Text>
-      )}
-
-      {result && (
-        <View>
-          {result.posts.length > 0 && (
-            <View>
-              <View className="flex-row items-center justify-between">
-                <SectionLabel>Generated posts</SectionLabel>
-                {schedulableIds.length > 0 && (
-                  <Pressable
-                    onPress={() => autoSchedule.mutate(schedulableIds)}
-                    disabled={autoSchedule.isPending}
-                    // No `className` — see note above.
-                    style={{
-                      marginTop: 16,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 4,
-                      borderRadius: 999,
-                      backgroundColor: t.brand,
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                    }}
-                  >
-                    {autoSchedule.isPending ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
-                    ) : (
-                      <Ionicons name="calendar-outline" size={13} color="#ffffff" />
-                    )}
-                    <Text className="font-sans-bold text-xs text-on-brand">Auto-schedule all</Text>
-                  </Pressable>
-                )}
-              </View>
-              {result.posts
-                .filter((p): p is GeneratedPost => p !== null)
-                .map((post, i) => (
-                  <GeneratedPostCard
-                    key={post._id ?? i}
-                    post={post}
-                    imageUrl={post.imageUrl || (post._id ? imageMap[post._id] : null) || null}
-                  />
-                ))}
-            </View>
-          )}
-
-          {!!result.seoDescription && (
-            <View>
-              <SectionLabel>SEO description</SectionLabel>
-              <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
-                <Text className="font-sans text-sm leading-5 text-zinc-300">
-                  {result.seoDescription}
-                </Text>
-                {result.seoScore !== null && (
-                  <Text className="mt-2 font-sans text-xs text-zinc-500">
-                    SEO score: {result.seoScore}
-                  </Text>
-                )}
-              </View>
-            </View>
-          )}
-
-          {result.faqs.length > 0 && (
-            <View>
-              <SectionLabel>FAQs</SectionLabel>
-              <View className="gap-2">
-                {result.faqs
-                  .filter((f): f is NonNullable<typeof f> => f !== null)
-                  .map((faq, i) => (
-                    <View
-                      key={i}
-                      className="rounded-card border border-surface-border bg-surface-raised px-4 py-3.5"
-                    >
-                      <Text className="font-sans-semibold text-sm text-white">{faq.question}</Text>
-                      <Text className="mt-1 font-sans text-sm leading-5 text-zinc-400">
-                        {faq.answer}
-                      </Text>
-                    </View>
-                  ))}
-              </View>
-            </View>
-          )}
-        </View>
-      )}
-    </ScrollView>
-    {info.node}
-    </>
   );
 }
 
@@ -587,7 +278,7 @@ function HistorySegment() {
         ListEmptyComponent={
           <EmptyState
             title="No content yet"
-            hint="Posts you generate will show up here as drafts you can schedule."
+            hint="Your weekly posts appear here automatically once the first batch is ready — 4 posts every week."
           />
         }
       />
@@ -604,20 +295,12 @@ function HistorySegment() {
 // --- Screen ---------------------------------------------------------------------
 
 export default function ContentScreen() {
-  const [segment, setSegment] = useState<'generate' | 'history'>('generate');
-
+  useRefreshContentOnFocus();
   return (
     <Screen>
-      <ScreenTitle>Content Generator</ScreenTitle>
-      <SegmentedControl
-        segments={[
-          { id: 'generate', label: 'Generate' },
-          { id: 'history', label: 'History' },
-        ]}
-        value={segment}
-        onChange={setSegment}
-      />
-      {segment === 'generate' ? <GenerateSegment /> : <HistorySegment />}
+      <ScreenTitle>Content</ScreenTitle>
+      <AutopilotInfo />
+      <HistorySegment />
     </Screen>
   );
 }

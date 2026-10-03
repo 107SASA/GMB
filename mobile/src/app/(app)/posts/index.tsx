@@ -12,7 +12,7 @@ import { useTheme } from '@/lib/theme';
 /**
  * Top-level Posts tab — promoted out of the GBP hub's "Posts" sub-tab
  * (src/components/gbp/posts-tab.tsx, unchanged — already includes the
- * upcoming-7-days list, Generate Posts, and the embedded SchedulerPanel) to
+ * upcoming-7-days list, manual "+" create, and the embedded SchedulerPanel) to
  * its own bottom-bar slot. Gated on 'scheduler' (content_studio module),
  * the same surface the standalone Content Scheduler screen and the More
  * menu's "Content Scheduler" row already use — this is that same capability.

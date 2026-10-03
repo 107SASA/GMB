@@ -13,8 +13,10 @@ import sharp from 'sharp';
  *    can be recorded on the asset / post.
  *  - JPEG pixels are never re-encoded to add GPS: only the EXIF segment is
  *    replaced. PNG / WebP are re-encoded (PNG losslessly, WebP at quality 95).
- *  - Videos are stored unmodified (their own location atoms, if any, survive);
- *    adding a location to a video is not implemented.
+ *  - Videos follow the SAME precedence (the video's own recorded location →
+ *    the location the app read for it → the verified business location), but
+ *    the video file itself is stored unmodified: the location is recorded on
+ *    the asset (status 'video_location_recorded'), not written into the file.
  *
  * Geotags are supporting metadata only. Google may strip EXIF from photos it
  * displays and does not document it as a ranking signal — never promise a
@@ -37,7 +39,10 @@ export type GeotagStatus =
   | 'photo_location_added'
   | 'business_location_added'
   | 'none'
-  | 'video_unmodified';
+  /** Video: no location recorded (none in the file, none from the app, no verified business location). */
+  | 'video_unmodified'
+  /** Video: location recorded on the asset with the photo precedence; the file itself is not modified. */
+  | 'video_location_recorded';
 
 export interface GeotagResult {
   status: GeotagStatus;
@@ -247,8 +252,18 @@ export async function geotagMedia(buf: Buffer, mime: string, location: VerifiedL
   const at = new Date().toISOString();
   const m = mime.toLowerCase();
   if (m.startsWith('video/')) {
+    // Same policy and validation as photos; the bytes are never changed.
     const v = readVideoLocation(buf);
-    return { buffer: buf, mime, geotag: { status: 'video_unmodified', ...(v ? { ...v, source: 'video_metadata' as const } : {}), reason: v ? 'video keeps its own recorded location' : 'video has no recorded location; adding one to video is not supported', at } };
+    if (v) return { buffer: buf, mime, geotag: { status: 'video_location_recorded', ...v, source: 'video_metadata', reason: 'location recorded in the video by the device that filmed it', at } };
+    const useApp = photoLocation && isPlausibleCoord(photoLocation.lat, photoLocation.lng)
+      && !(photoLocation.source === 'device_at_capture' && (photoLocation.accuracyM ?? 0) > 500);
+    if (useApp) {
+      return { buffer: buf, mime, geotag: { status: 'video_location_recorded', lat: photoLocation!.lat, lng: photoLocation!.lng, source: photoLocation!.source, ...(photoLocation!.accuracyM != null ? { accuracyM: photoLocation!.accuracyM } : {}), reason: 'location recorded on the media item; the video file is not modified', at } };
+    }
+    if (location && isPlausibleCoord(location.lat, location.lng)) {
+      return { buffer: buf, mime, geotag: { status: 'video_location_recorded', lat: location.lat, lng: location.lng, source: location.source, reason: 'verified business location recorded on the media item; the video file is not modified', at } };
+    }
+    return { buffer: buf, mime, geotag: { status: 'video_unmodified', reason: 'no location in the video, none from the app, and no verified Google location for the business', at } };
   }
   const own = await readImageGps(buf);
   if (own) return { buffer: buf, mime, geotag: { status: 'original_gps_preserved', ...own, source: 'photo_exif', at } };

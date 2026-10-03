@@ -34,6 +34,8 @@ const LINK_MAP: Record<string, { route: string; superAdminOnly?: boolean }> = {
   billing: { route: '/billing' },
   scheduler: { route: '/scheduler' },
   leads: { route: '/leads' },
+  // Customer CRM (web link /dashboard/crm): follow-up due, unsaved callers.
+  crm: { route: '/leads' },
   settings: { route: '/settings' },
   inbox: { route: '/inbox', superAdminOnly: true },
   'gbp-profile': { route: '/gbp' },
@@ -48,17 +50,30 @@ const LINK_MAP: Record<string, { route: string; superAdminOnly?: boolean }> = {
 
 function mobileRouteFor(link: string | null | undefined, isSuperAdmin: boolean): string | null {
   if (!link) return null;
-  const path = link.replace(/^\/dashboard\/?/, '').split('?')[0];
+  const [rawPath, query = ''] = link.replace(/^\/dashboard\/?/, '').split('?');
+  const path = rawPath;
   const [segment, id] = path.split('/');
   const entry = LINK_MAP[segment];
   if (!entry) return null;
   if (entry.superAdminOnly && !isSuperAdmin) return null;
+  // /dashboard/crm/growth-report?month=YYYY-MM → the Monthly Growth Report.
+  if (segment === 'crm' && id === 'growth-report') {
+    const m = query.match(/(?:^|&)month=([0-9]{4}-[0-9]{2}|current)/)?.[1];
+    return m ? `/leads/growth-report?month=${m}` : '/leads/growth-report';
+  }
+  // /dashboard/crm?calls=1 → the calls list (Save as Lead / Existing / Dismiss).
+  if (segment === 'crm' && /(^|&)calls=1(&|$)/.test(query)) return '/leads/recent-calls';
   // /dashboard/audit/<id> → the report itself.
   if (segment === 'audit' && id) return `/audit/${id}`;
   return entry.route;
 }
 
 const TYPE_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
+  crm_follow_up_due: 'alarm-outline',
+  crm_follow_up_overdue: 'alarm-outline',
+  crm_growth_report_ready: 'stats-chart-outline',
+  crm_incoming_call: 'call-outline',
+  crm_missed_call: 'call-outline',
   critical_review: 'alert-circle',
   review_received: 'star',
   reply_drafted: 'chatbubble-ellipses',

@@ -12,6 +12,8 @@ interface Business {
   state?: string;
   userDefinedCategory?: string;
   googlePlaceId?: string;
+  /** Pre-connection Google place id (from onboarding search) — review link fallback. */
+  placeId?: string;
   organizationId: string;
   googleConnected: boolean;
   keywords?: string[];

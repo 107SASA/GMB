@@ -126,7 +126,8 @@ function CheckoutForm() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             fullName: name.trim(),
-            phone,
+            // Only an account without a login phone may set one (server-enforced).
+            ...(originalPhone ? {} : { phone }),
             ...(isShadowAccount ? { email: email.trim() } : {}),
           }),
         });
@@ -284,7 +285,17 @@ function CheckoutForm() {
               </div>
               <div>
                 <label className="block text-sm font-bold text-on-surface mb-1.5">Phone number</label>
-                <PhoneNumberInput value={phone} onChange={setPhone} className={profileLoading ? 'opacity-60 pointer-events-none' : ''} />
+                {originalPhone ? (
+                  // The login phone — shown, never editable here.
+                  <input
+                    value={originalPhone}
+                    disabled
+                    readOnly
+                    className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm bg-surface-container opacity-80 cursor-not-allowed"
+                  />
+                ) : (
+                  <PhoneNumberInput value={phone} onChange={setPhone} className={profileLoading ? 'opacity-60 pointer-events-none' : ''} />
+                )}
               </div>
             </div>
 

@@ -4,6 +4,7 @@ import Activity from '@/models/Activity';
 import FollowUp from '@/models/FollowUp';
 import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
+import { customerLeadFilter } from '@/services/crm/access';
 import { requireModule } from '@/lib/moduleGating';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
@@ -22,18 +23,16 @@ export async function GET(
 
     await dbConnect();
 
-    const lead = await Lead.findOne({
-      _id: id,
-      $or: [
-        { businessId: ctx.businessId },
-        { tenantId: ctx.organizationId },
-      ],
-    }).lean();
+    // Workspace-scoped (legacy rows without a businessId fall back to the organization only).
+    const filter = customerLeadFilter(ctx, id);
+    const lead = filter ? await Lead.findOne(filter).lean() : null;
     if (!lead) return NextResponse.json({ error: 'Lead not found or unauthorized' }, { status: 404 });
 
     const [activities, followUps] = await Promise.all([
       Activity.find({ leadId: id }).sort({ createdAt: -1 }).lean(),
-      FollowUp.find({ leadId: id }).sort({ createdAt: -1 }).lean()
+      // Follow-up TASKS appear through their own activities ("Follow-up scheduled /
+      // completed"); only legacy auto-message rows are listed here, as history.
+      FollowUp.find({ leadId: id, kind: { $ne: 'task' } }).sort({ createdAt: -1 }).lean()
     ]);
 
     const timeline = [

@@ -16,6 +16,7 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import LeadColumn from './LeadColumn';
 import LeadCard from './LeadCard';
+import DealValueModal, { type DealValue } from './DealValueModal';
 import {
   DEFAULT_LEAD_STAGES,
   type LeadStagesConfig,
@@ -41,6 +42,7 @@ interface BoardColumn {
   title: string;
   lifeCycleStage: LifeCycle;
   subStage: string | null;
+  subStageId: string | null;
   /** SUB_STAGE_COLORS token, for the header dot. */
   colorToken?: string;
 }
@@ -65,6 +67,10 @@ export default function KanbanBoard({
   updateEndpoint = '/api/crm/leads',
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
+  // Board state before the drag, so a cancelled / rejected move snaps back.
+  const [snapshot, setSnapshot] = useState<any[] | null>(null);
+  const [pendingWin, setPendingWin] = useState<{ lead: any; col: BoardColumn; before: any[] } | null>(null);
+  const [moveError, setMoveError] = useState('');
   const config = leadStages ?? DEFAULT_LEAD_STAGES;
 
   const sensors = useSensors(
@@ -77,8 +83,9 @@ export default function KanbanBoard({
     const lc: string = lead.lifeCycleStage || 'initial';
     if (lc === 'initial' || !(lc in GROUP_META)) return lc === 'initial' ? 'initial' : `${lc}:__`;
     const subs = config[lc as SubStageGroup] ?? [];
-    if (lead.subStage && subs.some((s) => s.name === lead.subStage)) return `${lc}:${lead.subStage}`;
-    return `${lc}:__`;
+    const hit = (lead.subStageId && subs.find((s) => s.id === lead.subStageId))
+      || (lead.subStage && subs.find((s) => s.name === lead.subStage));
+    return hit ? `${lc}:${hit.name}` : `${lc}:__`;
   };
 
   // ── Group blocks (category → sub-category columns) ─────────────────────────
@@ -88,22 +95,22 @@ export default function KanbanBoard({
       label: config.initialLabel,
       headerClass: 'bg-surface-container-high text-on-surface',
       columns: [
-        { key: 'initial', title: config.initialLabel, lifeCycleStage: 'initial', subStage: null } as BoardColumn,
+        { key: 'initial', title: config.initialLabel, lifeCycleStage: 'initial', subStage: null, subStageId: null } as BoardColumn,
       ],
     };
 
     const subGroups = (['active', 'converted', 'closed'] as SubStageGroup[]).map((g) => {
       const subs = config[g] ?? [];
       const catchAllHasLeads = leads.some((l) => (l.lifeCycleStage || 'initial') === g &&
-        !(l.subStage && subs.some((s) => s.name === l.subStage)));
+        !subs.some((s) => (l.subStageId && s.id === l.subStageId) || (l.subStage && s.name === l.subStage)));
       const columns: BoardColumn[] = [];
       // Show the "unsorted" catch-all only when it's needed (leads with no /
       // stale sub-stage) or when the group has no sub-stages configured.
       if (catchAllHasLeads || subs.length === 0) {
-        columns.push({ key: `${g}:__`, title: `${GROUP_META[g].label} · unsorted`, lifeCycleStage: g, subStage: null });
+        columns.push({ key: `${g}:__`, title: `${GROUP_META[g].label} · unsorted`, lifeCycleStage: g, subStage: null, subStageId: null });
       }
       subs.forEach((s) =>
-        columns.push({ key: `${g}:${s.name}`, title: s.name, lifeCycleStage: g, subStage: s.name, colorToken: s.color })
+        columns.push({ key: `${g}:${s.name}`, title: s.name, lifeCycleStage: g, subStage: s.name, subStageId: s.id ?? null, colorToken: s.color })
       );
       return { id: g, label: GROUP_META[g].label, headerClass: GROUP_META[g].headerClass, columns };
     });
@@ -115,7 +122,11 @@ export default function KanbanBoard({
   const columnByKey = useMemo(() => new Map(allColumns.map((c) => [c.key, c])), [allColumns]);
 
   // ── DnD ──────────────────────────────────────────────────────────────────
-  const handleDragStart = (event: DragStartEvent) => setActiveId(event.active.id as string);
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+    setSnapshot(leads);
+    setMoveError('');
+  };
 
   const targetColumnFor = (overId: string): BoardColumn | null => {
     if (columnByKey.has(overId)) return columnByKey.get(overId)!;
@@ -136,7 +147,7 @@ export default function KanbanBoard({
       const cur = prev[idx];
       if (cur.lifeCycleStage === col.lifeCycleStage && (cur.subStage ?? null) === col.subStage) return prev;
       const next = [...prev];
-      next[idx] = { ...cur, lifeCycleStage: col.lifeCycleStage, subStage: col.subStage };
+      next[idx] = { ...cur, lifeCycleStage: col.lifeCycleStage, subStage: col.subStage, subStageId: col.subStageId };
       return next;
     });
   };
@@ -148,15 +159,43 @@ export default function KanbanBoard({
     const col = targetColumnFor(over.id as string);
     const activeLeadId = active.id as string;
     if (!col || !leads.some((l) => l._id === activeLeadId)) return;
+    const before = snapshot ?? leads;
+    const original = before.find((l) => l._id === activeLeadId);
+    if (!original) return;
+    if ((original.lifeCycleStage || 'initial') === col.lifeCycleStage && (original.subStage ?? null) === col.subStage) return;
 
+    // Won needs the deal value first (revenue/ROI come only from real amounts).
+    if (col.lifeCycleStage === 'converted' && original.lifeCycleStage !== 'converted' && typeof original.deal?.value !== 'number') {
+      setPendingWin({ lead: original, col, before });
+      return;
+    }
+    const err = await saveMove(activeLeadId, col, null);
+    if (err) {
+      setLeads(before);
+      setMoveError(err);
+    }
+  };
+
+  /** PATCH the move; returns an error message or null. */
+  const saveMove = async (leadId: string, col: BoardColumn, deal: DealValue | null): Promise<string | null> => {
     try {
-      await fetch(`${updateEndpoint}/${activeLeadId}`, {
+      const res = await fetch(`${updateEndpoint}/${leadId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lifeCycleStage: col.lifeCycleStage, subStage: col.subStage }),
+        body: JSON.stringify({
+          lifeCycleStage: col.lifeCycleStage,
+          subStageId: col.subStageId,
+          subStage: col.subStage,
+          ...(deal ? { deal } : {}),
+        }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return data.error || 'Could not move this lead.';
+      if (data.lead) setLeads((prev) => prev.map((l) => (l._id === leadId ? { ...l, ...data.lead } : l)));
+      return null;
     } catch (err) {
       console.error('Failed to update lead stage:', err);
+      return 'Network error — the lead was not moved.';
     }
   };
 
@@ -196,6 +235,20 @@ export default function KanbanBoard({
 
         <DragOverlay>{activeLead ? <LeadCard lead={activeLead} onClick={() => {}} /> : null}</DragOverlay>
       </DndContext>
+
+      {moveError && <p className="text-xs text-error mt-2">{moveError}</p>}
+
+      {pendingWin && (
+        <DealValueModal
+          leadName={pendingWin.lead.name}
+          onCancel={() => { setLeads(pendingWin.before); setPendingWin(null); }}
+          onConfirm={async (deal) => {
+            const err = await saveMove(pendingWin.lead._id, pendingWin.col, deal);
+            if (!err) setPendingWin(null);
+            return err;
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -56,14 +56,15 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos so you can upload them to your Google Business Profile.",
-          "cameraPermission": "Allow $(PRODUCT_NAME) to use the camera so you can take photos for your Google Business Profile."
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos and videos so you can upload them to your Google Business Profile.",
+          "cameraPermission": "Allow $(PRODUCT_NAME) to use the camera so you can take photos and record videos for your Google Business Profile.",
+          "microphonePermission": "Allow $(PRODUCT_NAME) to use the microphone so videos you record for your Google Business Profile include sound."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location when you take a photo in the app, so the photo records where it was taken."
+          "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location when you take a photo or record a video in the app, so it records where it was taken."
         }
       ],
       "expo-web-browser",

@@ -14,9 +14,9 @@ import {
 } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
+import { fetchLeadStages, formatMoney, groupLabel, LIFECYCLE_STAGES } from '@/api/endpoints/crm';
 import { fetchThreads } from '@/api/endpoints/inbox';
 import {
-  fetchKanbanColumns,
   fetchLeads,
   fetchLeadTimeline,
   logLeadActivity,
@@ -27,9 +27,10 @@ import {
 } from '@/api/endpoints/leads';
 import { useBusiness } from '@/business/BusinessContext';
 import { useCrmCaptureConsent } from '@/components/consent-sheet';
+import { DealValueSheet } from '@/components/deal-value-sheet';
+import { FollowUpTasks } from '@/components/follow-up-tasks';
 import {
   BackChevron,
-  Badge,
   Chip,
   EmptyState,
   ErrorText,
@@ -41,8 +42,6 @@ import {
 } from '@/components/ui';
 import { formatDateTime, whatsappNumber } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
-
-const UNASSIGNED = 'Unassigned';
 
 function SectionLabel({ children }: { children: string }) {
   return (
@@ -97,18 +96,35 @@ function timelineIcon(entry: TimelineEntry): keyof typeof Ionicons.glyphMap {
       return 'calendar-outline';
     case 'status_change':
       return 'swap-horizontal-outline';
+    case 'follow_up':
+      return 'alarm-outline';
+    case 'appointment':
+      return 'calendar-outline';
+    case 'deal_won':
+      return 'trophy-outline';
+    case 'deal_lost':
+      return 'close-circle-outline';
+    case 'lead_created':
+      return 'person-add-outline';
     default:
       return 'document-text-outline';
   }
 }
 
+const TIMELINE_LABEL: Record<string, string> = {
+  status_change: 'Stage change',
+  lead_created: 'Lead created',
+  follow_up: 'Follow-up',
+  appointment: 'Appointment',
+  deal_won: 'Won',
+  deal_lost: 'Lost',
+};
+
 function TimelineRow({ entry }: { entry: TimelineEntry }) {
   const label =
     entry.timelineType === 'followUp'
       ? `Follow-up${entry.status ? ` · ${entry.status}` : ''}`
-      : entry.type === 'status_change'
-        ? 'Stage change'
-        : entry.type || 'Activity';
+      : (TIMELINE_LABEL[entry.type ?? ''] ?? entry.type ?? 'Activity');
   const body = entry.timelineType === 'followUp' ? entry.messageTemplate : entry.content;
 
   const t = useTheme();
@@ -137,6 +153,8 @@ export default function LeadDetailScreen() {
 
   const [notesDraft, setNotesDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Won needs the deal value: 'win' = moving to converted, 'edit' = record/edit it.
+  const [dealMode, setDealMode] = useState<null | 'win' | 'edit'>(null);
 
   // Plan-A call logging: when a call was started from here, coming back to
   // the foreground opens a "How did the call go?" prompt.
@@ -162,9 +180,9 @@ export default function LeadDetailScreen() {
   });
   const lead = useMemo(() => leads.data?.find((l) => l._id === id) ?? null, [leads.data, id]);
 
-  const columns = useQuery({
-    queryKey: ['kanban-columns', activeBusinessId],
-    queryFn: fetchKanbanColumns,
+  const stagesQuery = useQuery({
+    queryKey: ['lead-stages', activeBusinessId],
+    queryFn: fetchLeadStages,
     enabled: !!activeBusinessId,
   });
   const timeline = useQuery({
@@ -186,10 +204,15 @@ export default function LeadDetailScreen() {
       setError(null);
       await queryClient.cancelQueries({ queryKey: ['crm-leads', activeBusinessId] });
       const previous = queryClient.getQueryData<Lead[]>(['crm-leads', activeBusinessId]);
+      // The deal itself is shaped server-side; optimistic update covers the stage only.
+      const { deal: _deal, ...optimistic } = changes;
       queryClient.setQueryData<Lead[]>(['crm-leads', activeBusinessId], (old) =>
-        old?.map((l) => (l._id === id ? { ...l, ...changes } : l))
+        old?.map((l) => (l._id === id ? { ...l, ...optimistic } : l))
       );
       return { previous };
+    },
+    onSuccess: (_data, changes) => {
+      if (changes.deal) setDealMode(null);
     },
     onError: (err, _changes, context) => {
       if (context?.previous) {
@@ -243,8 +266,24 @@ export default function LeadDetailScreen() {
     );
   }
 
-  const stages = [...(columns.data ?? []), UNASSIGNED];
-  const currentStage = lead.pipelineStage || UNASSIGNED;
+  const stageConfig = stagesQuery.data;
+  const currentGroup = lead.lifeCycleStage || 'initial';
+  const subOptions =
+    stageConfig && currentGroup !== 'initial'
+      ? stageConfig[currentGroup as 'active' | 'converted' | 'closed'] ?? []
+      : [];
+  const currentSubId =
+    subOptions.find((s) => (lead.subStageId ? s.id === lead.subStageId : s.name === lead.subStage))?.id ?? null;
+  const hasDealValue = typeof lead.deal?.value === 'number';
+
+  function moveToGroup(group: string) {
+    if (group === currentGroup || patch.isPending) return;
+    if (group === 'converted' && !hasDealValue) {
+      setDealMode('win');
+      return;
+    }
+    patch.mutate({ lifeCycleStage: group, subStageId: null, subStage: null });
+  }
   const notes = notesDraft ?? lead.notes ?? '';
   const notesDirty = notesDraft !== null && notesDraft !== (lead.notes ?? '');
 
@@ -264,7 +303,6 @@ export default function LeadDetailScreen() {
             {lead.phone ? ` · ${lead.phone}` : ''}
           </Text>
         </View>
-        {lead.aiLeadScore != null && <Badge label={`Score ${lead.aiLeadScore}`} tone="info" />}
       </View>
 
       <ScrollView
@@ -322,43 +360,90 @@ export default function LeadDetailScreen() {
           </View>
         )}
 
-        {/* Pipeline stage */}
-        <SectionLabel>Pipeline stage</SectionLabel>
+        {/* Stage — the same lifeCycleStage + sub-stage model as the web CRM */}
+        <SectionLabel>Stage</SectionLabel>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerClassName="gap-2"
         >
-          {stages.map((stage) => (
+          {LIFECYCLE_STAGES.map((group) => (
             <Chip
-              key={stage}
-              label={stage}
-              selected={currentStage === stage}
-              onPress={() => {
-                if (stage === currentStage || patch.isPending) return;
-                patch.mutate({ pipelineStage: stage === UNASSIGNED ? null : stage });
-              }}
+              key={group}
+              label={groupLabel(stageConfig, group)}
+              selected={currentGroup === group}
+              onPress={() => moveToGroup(group)}
             />
           ))}
         </ScrollView>
+        {subOptions.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerClassName="gap-2 pt-2"
+          >
+            {subOptions.map((sub) => (
+              <Chip
+                key={sub.id ?? sub.name}
+                label={sub.name}
+                selected={currentSubId === sub.id}
+                onPress={() => {
+                  if (patch.isPending || currentSubId === sub.id) return;
+                  patch.mutate({ lifeCycleStage: currentGroup, subStageId: sub.id ?? null, subStage: sub.name });
+                }}
+              />
+            ))}
+          </ScrollView>
+        )}
+
+        {/* Deal value (Won leads) */}
+        {currentGroup === 'converted' && (
+          <View className="mt-3 flex-row items-center justify-between rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
+            <View className="flex-1">
+              <Text className="font-sans-bold text-xs uppercase tracking-wider text-zinc-500">Deal value</Text>
+              <Text className="mt-1 font-display-bold text-lg text-white">
+                {hasDealValue ? formatMoney(lead.deal!.value, lead.deal!.currency) : 'Not recorded'}
+              </Text>
+              {!hasDealValue && (
+                <Text className="font-sans text-xs text-zinc-500">Not counted in revenue until you add it.</Text>
+              )}
+            </View>
+            <Pressable onPress={() => setDealMode('edit')} hitSlop={8}>
+              <Text className="font-sans-semibold text-sm text-indigo-300">{hasDealValue ? 'Edit' : 'Add value'}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        <DealValueSheet
+          visible={dealMode !== null}
+          leadName={lead.name}
+          initial={lead.deal ? { value: lead.deal.value, currency: lead.deal.currency } : null}
+          saving={patch.isPending}
+          error={dealMode ? error : null}
+          onCancel={() => setDealMode(null)}
+          onConfirm={(deal) => {
+            if (dealMode === 'win') {
+              const first = stageConfig?.converted?.[0];
+              patch.mutate({ lifeCycleStage: 'converted', subStageId: first?.id ?? null, subStage: first?.name ?? null, deal });
+            } else {
+              patch.mutate({ deal });
+            }
+          }}
+        />
+
+        {/* Follow-up tasks (reminders for you — never sent to the lead) */}
+        <SectionLabel>Follow-ups</SectionLabel>
+        <FollowUpTasks leadId={lead._id} businessId={activeBusinessId} />
 
         {/* Details */}
-        {(lead.interest || lead.aiInsights) && (
+        {!!lead.interest && (
           <>
             <SectionLabel>Details</SectionLabel>
             <View className="gap-2 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
-              {!!lead.interest && (
-                <Text className="font-sans text-sm text-zinc-300">
-                  <Text className="font-sans-semibold text-zinc-400">Interest: </Text>
-                  {lead.interest}
-                </Text>
-              )}
-              {!!lead.aiInsights && (
-                <Text className="font-sans text-sm text-zinc-300">
-                  <Text className="font-sans-semibold text-zinc-400">AI insights: </Text>
-                  {lead.aiInsights}
-                </Text>
-              )}
+              <Text className="font-sans text-sm text-zinc-300">
+                <Text className="font-sans-semibold text-zinc-400">Interest: </Text>
+                {lead.interest}
+              </Text>
             </View>
           </>
         )}

@@ -185,6 +185,8 @@ export const profileSchema = z.object({
   phone: z.string().nullable().catch(null),
   companyName: z.string().nullable().catch(null),
   isEmailVerified: z.boolean().catch(false),
+  /** Free-report account whose email is still the internal placeholder. */
+  isShadowAccount: z.boolean().catch(false),
   subscriptionPlan: z.string().nullable().catch(null),
   lastLoginAt: z.string().nullable().catch(null),
   createdAt: z.string().nullable().catch(null),
@@ -196,10 +198,9 @@ export async function fetchProfile(): Promise<Profile> {
   return z.object({ user: profileSchema }).parse(data).user;
 }
 
-/** PATCH /api/user/profile — phone must be E.164 (server-validated). */
+/** PATCH /api/user/profile — name / company only. The phone is the login and can't be changed. */
 export async function updateProfile(patch: {
   fullName: string;
-  phone: string;
   companyName: string;
 }): Promise<void> {
   await api.patch('/api/user/profile', patch);

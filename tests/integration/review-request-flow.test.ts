@@ -1,0 +1,295 @@
+/**
+ * Review-request flow rules: tokens, template variables, delivery records,
+ * redirect click counting, eligibility, and the business/admin split.
+ *
+ * Pure functions plus source checks. No database and no Twilio.
+ *
+ * Run with: node --test tests/integration/review-request-flow.test.ts
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import {
+  REVIEW_SEND_COOLDOWN_ENFORCED,
+  aggregateReviewRequestMetrics,
+  applyClick,
+  buildGoogleReviewUrl,
+  buildLegacyReviewVariables,
+  buildUtilityReviewVariables,
+  businessStatusLabel,
+  choosePrimaryReviewSend,
+  chooseReviewTemplateRetry,
+  decideReviewSendEligibility,
+  existingCustomerSendOffer,
+  generateReviewRequestToken,
+  interpretTwilioStatus,
+  isSafeReviewToken,
+  readTimestamps,
+  syncFailureFields,
+  toAdminReviewDiagnostics,
+  toBusinessReviewSummary,
+} from '../../src/lib/reviewRequestFlow.ts';
+import { resolveReviewFollowUpSettingsWithGlobal } from '../../src/lib/reviewFollowUpSettings.ts';
+
+const PLACE_ID = 'ChIJ4blskkPD3TsRUq38wbsts6U';
+const TOKEN = 'AbC123XyTokenValue';
+
+test('tokens are opaque, url-safe, and unique', () => {
+  const tokens = new Set<string>();
+  for (let i = 0; i < 500; i++) tokens.add(generateReviewRequestToken());
+  assert.equal(tokens.size, 500);
+  for (const token of tokens) {
+    assert.equal(isSafeReviewToken(token), true);
+    assert.equal(token.includes(PLACE_ID), false);
+  }
+});
+
+test('a malformed token is rejected before lookup', () => {
+  assert.equal(isSafeReviewToken(''), false);
+  assert.equal(isSafeReviewToken('../admin'), false);
+  assert.equal(isSafeReviewToken('a'.repeat(200)), false);
+  assert.equal(isSafeReviewToken('test123'), true);
+});
+
+test('google review url keeps the existing place id formula', () => {
+  assert.equal(
+    buildGoogleReviewUrl({ placeId: PLACE_ID, name: 'Mulsetu' }),
+    `https://search.google.com/local/writereview?placeid=${PLACE_ID}`
+  );
+  assert.equal(
+    buildGoogleReviewUrl({ googleMapsUrl: 'https://maps.example/biz', name: 'Mulsetu' }),
+    'https://maps.example/biz'
+  );
+  assert.match(buildGoogleReviewUrl(null), /google\.com\/search\?q=/);
+});
+
+test('the first click is counted once and is not a review', () => {
+  const first = applyClick({ clicked: false, clickCount: 0 });
+  assert.equal(first.incrementCampaignClicked, true);
+  assert.equal(first.setClickedAt, true);
+  assert.equal(first.markReviewReceived, false);
+  const second = applyClick({ clicked: true, clickCount: first.clickCount });
+  assert.equal(second.incrementCampaignClicked, false);
+  assert.equal(second.setClickedAt, false);
+  assert.equal(second.clickCount, 2);
+  assert.equal(second.markReviewReceived, false);
+});
+
+test('the utility template receives the token and not the place id', () => {
+  const vars = buildUtilityReviewVariables('Priya', 'Mulsetu', TOKEN);
+  assert.equal(vars['1'], 'Priya');
+  assert.equal(vars['2'], 'Mulsetu');
+  assert.equal(vars['3'], TOKEN);
+  assert.notEqual(vars['3'], PLACE_ID);
+  assert.equal(JSON.stringify(vars).includes(PLACE_ID), false);
+
+  const chosen = choosePrimaryReviewSend({
+    utilitySid: 'HX5ac75bff43238d0c253a1dd15cca746c',
+    token: TOKEN,
+    customerName: 'Priya',
+    businessName: 'Mulsetu',
+  });
+  assert.equal(chosen.mode, 'utility');
+  if (chosen.mode !== 'utility') return;
+  assert.equal(chosen.variables['3'], TOKEN);
+  assert.equal(chosen.contentSid, 'HX5ac75bff43238d0c253a1dd15cca746c');
+});
+
+test('the legacy template still receives the place id when the utility template is unset', () => {
+  const primary = choosePrimaryReviewSend({
+    utilitySid: '',
+    token: TOKEN,
+    customerName: 'Priya',
+    businessName: 'Mulsetu',
+  });
+  assert.equal(primary.mode, 'legacy-free-text');
+
+  const fallback = chooseReviewTemplateRetry({
+    errorCode: '63016',
+    alreadyTemplate: false,
+    utilitySid: '',
+    legacySid: 'HXlegacy',
+    token: TOKEN,
+    placeId: PLACE_ID,
+    customerName: 'Priya',
+    businessName: 'Mulsetu',
+  });
+  assert.equal(fallback.mode, 'legacy');
+  if (fallback.mode !== 'legacy') return;
+  assert.deepEqual(fallback.variables, buildLegacyReviewVariables('Priya', 'Mulsetu', PLACE_ID));
+  assert.equal(fallback.variables['3'], PLACE_ID);
+});
+
+test('63049 is stored in full and is not retried', () => {
+  const now = new Date('2026-10-04T03:00:00.000Z');
+  const message = 'Meta chose not to deliver this WhatsApp marketing message';
+  const sync = syncFailureFields(63049, message, now);
+  assert.equal(sync.errorCode, '63049');
+  assert.equal(sync.errorMessage, message);
+  assert.equal(sync.failedReason, message);
+  assert.equal(sync.failedAt.toISOString(), now.toISOString());
+
+  const asyncFailure = interpretTwilioStatus('failed', '63049', message);
+  assert.equal(asyncFailure.kind, 'failed');
+  if (asyncFailure.kind !== 'failed') return;
+  assert.equal(asyncFailure.errorCode, '63049');
+  assert.equal(asyncFailure.errorMessage, message);
+
+  const retry = chooseReviewTemplateRetry({
+    errorCode: '63049',
+    alreadyTemplate: true,
+    utilitySid: 'HX5ac75bff43238d0c253a1dd15cca746c',
+    legacySid: 'HXlegacy',
+    token: TOKEN,
+    placeId: PLACE_ID,
+    customerName: 'Priya',
+    businessName: 'Mulsetu',
+  });
+  assert.equal(retry.mode, 'none');
+});
+
+test('a read receipt keeps deliveredAt and adds readAt', () => {
+  const deliveredAt = new Date('2026-10-04T03:00:00.000Z');
+  const readAt = new Date('2026-10-04T03:05:00.000Z');
+  const read = readTimestamps(readAt, deliveredAt);
+  assert.equal(read.status, 'Read');
+  assert.equal(read.readAt, readAt);
+  assert.equal(read.deliveredAt, deliveredAt);
+
+  const readWithoutDelivery = readTimestamps(readAt, null);
+  assert.equal(readWithoutDelivery.deliveredAt, readAt);
+  assert.equal(interpretTwilioStatus('delivered', null, null).kind, 'delivered');
+  assert.equal(interpretTwilioStatus('read', null, null).kind, 'read');
+});
+
+test('business status hides provider errors and admin diagnostics keep them', () => {
+  const row = {
+    _id: 'req1',
+    customerId: 'cust1',
+    businessId: 'biz1',
+    status: 'Failed',
+    errorCode: '63049',
+    errorMessage: 'Meta chose not to deliver this WhatsApp marketing message',
+    failedReason: 'Meta chose not to deliver this WhatsApp marketing message',
+    templateSid: 'HXlegacy',
+    lastMessageSid: 'SM123',
+    token: TOKEN,
+    sentAt: '2026-10-04T03:00:00.000Z',
+    failedAt: '2026-10-04T03:01:00.000Z',
+  };
+  const business = toBusinessReviewSummary(row);
+  assert.equal(business.statusLabel, 'Unable to deliver');
+  assert.equal(businessStatusLabel(row), 'Unable to deliver');
+  assert.equal('errorCode' in business, false);
+  assert.equal('errorMessage' in business, false);
+  assert.equal('templateSid' in business, false);
+  assert.equal('lastMessageSid' in business, false);
+  assert.equal('token' in business, false);
+  assert.equal(JSON.stringify(business).includes('63049'), false);
+  assert.equal(JSON.stringify(business).includes('SM123'), false);
+
+  const admin = toAdminReviewDiagnostics(row);
+  assert.equal(admin.errorCode, '63049');
+  assert.equal(admin.errorMessage, row.errorMessage);
+  assert.equal(admin.lastMessageSid, 'SM123');
+  assert.equal(admin.templateSid, 'HXlegacy');
+  assert.equal(admin.provider, 'Twilio');
+  assert.equal(admin.reviewRequestId, 'req1');
+});
+
+test('analytics count delivery states and ignore click-as-review', () => {
+  const metrics = aggregateReviewRequestMetrics([
+    { status: 'Sent', sentAt: '2026-10-01' },
+    { status: 'Delivered', sentAt: '2026-10-01', deliveredAt: '2026-10-01' },
+    { status: 'Read', sentAt: '2026-10-01', deliveredAt: '2026-10-01', readAt: '2026-10-01' },
+    { status: 'Delivered', sentAt: '2026-10-01', deliveredAt: '2026-10-01', clickedAt: '2026-10-02', reviewReceived: true },
+    { status: 'Failed', sentAt: '2026-10-01' },
+    { status: 'Pending' },
+    { status: 'Cancelled' },
+  ]);
+  assert.deepEqual(metrics, { reviewRequests: 5, delivered: 3, read: 1, clicked: 1, failed: 1 });
+  assert.equal('reviewsReceived' in metrics, false);
+});
+
+test('an opted-out customer cannot be sent a review request', () => {
+  const decision = decideReviewSendEligibility({
+    source: 'manual',
+    optedOut: true,
+    hasPhone: true,
+    hasPlaceId: true,
+    dailyLimitReached: false,
+    hasActiveCampaignRequest: false,
+    cooldownActive: REVIEW_SEND_COOLDOWN_ENFORCED,
+  });
+  assert.equal(decision.allowed, false);
+  assert.equal(decision.code, 'OPTED_OUT');
+});
+
+test('an existing customer can be selected for another request, without a new cooldown', () => {
+  assert.equal(REVIEW_SEND_COOLDOWN_ENFORCED, false);
+  const offer = existingCustomerSendOffer('cust1');
+  assert.equal(offer.create, false);
+  assert.equal(offer.message, 'Customer already exists');
+  assert.equal(offer.message.toLowerCase().includes('already registered'), false);
+  const decision = decideReviewSendEligibility({
+    source: 'manual',
+    optedOut: false,
+    hasPhone: true,
+    hasPlaceId: true,
+    dailyLimitReached: false,
+    hasActiveCampaignRequest: true,
+    cooldownActive: REVIEW_SEND_COOLDOWN_ENFORCED,
+  });
+  assert.equal(decision.allowed, true);
+});
+
+test('campaign follow-up timing is unchanged when a future global config is passed', () => {
+  const resolved = resolveReviewFollowUpSettingsWithGlobal(null, {
+    enabled: true,
+    initialFollowUpDelayDays: 9,
+    maximumFollowUps: 1,
+    minimumIntervalDays: 1,
+    stopOnOptOut: true,
+    stopOnClick: true,
+    stopOnReview: true,
+  });
+  assert.equal(resolved.reminder1AfterDays, 2);
+  assert.equal(resolved.reminder2AfterDays, 5);
+  assert.equal(resolved.source, 'campaign-defaults');
+});
+
+test('old redirect routes stay, and the new route is token based', () => {
+  const go = readFileSync(new URL('../../src/app/go/[id]/route.ts', import.meta.url), 'utf8');
+  const track = readFileSync(new URL('../../src/app/api/campaigns/track/[requestId]/route.ts', import.meta.url), 'utf8');
+  const review = readFileSync(new URL('../../src/app/review/[token]/route.ts', import.meta.url), 'utf8');
+  assert.match(go, /handleReviewRedirect\(/);
+  assert.doesNotMatch(go, /handleReviewRedirectByToken/);
+  assert.match(track, /handleReviewRedirect\(/);
+  assert.match(review, /handleReviewRedirectByToken/);
+  assert.match(review, /302/);
+});
+
+test('web and mobile read the same review-request endpoint', () => {
+  const web = readFileSync(new URL('../../src/components/reviews/CampaignsDashboard.tsx', import.meta.url), 'utf8');
+  const mobile = readFileSync(new URL('../../mobile/src/api/endpoints/review-requests.ts', import.meta.url), 'utf8');
+  assert.match(web, /\/api\/review-requests/);
+  assert.match(mobile, /\/api\/review-requests/);
+});
+
+test('business route does not select provider errors, and admin can filter them', () => {
+  const business = readFileSync(new URL('../../src/app/api/review-requests/route.ts', import.meta.url), 'utf8');
+  const admin = readFileSync(new URL('../../src/app/api/admin/review-requests/route.ts', import.meta.url), 'utf8');
+  const customers = readFileSync(new URL('../../src/app/api/customers/route.ts', import.meta.url), 'utf8');
+  assert.match(business, /toBusinessReviewSummary/);
+  assert.doesNotMatch(business, /errorCode/);
+  assert.match(admin, /requireSuperAdmin/);
+  assert.match(admin, /errorCode/);
+  assert.match(customers, /Customer already exists/);
+  assert.doesNotMatch(customers, /already registered/i);
+});
+
+test('click autopoll no longer marks a request as a received review', () => {
+  const worker = readFileSync(new URL('../../src/services/inngest/functions.ts', import.meta.url), 'utf8');
+  assert.match(worker, /clicks are not reviews/);
+  assert.doesNotMatch(worker, /reviewReceived = true/);
+});

@@ -7,6 +7,11 @@ import Campaign from '@/models/Campaign';
 import Business from '@/models/Business';
 import Customer from '@/models/Customer';
 import { validateTwilioSignature } from '@/lib/twilioSignature';
+import {
+  chooseReviewTemplateRetry,
+  interpretTwilioStatus,
+  readTimestamps,
+} from '@/lib/reviewRequestFlow';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,48 +33,66 @@ export const dynamic = 'force-dynamic';
  * payload.sid = the Twilio SID (see client.ts), so that's the join key back
  * to whichever higher-level record (ReviewRequest, Conversation) needs to
  * reflect the real outcome.
+ *
+ * Read is stored separately from delivered. Error code and error message are
+ * both stored. 63049 is a terminal failure for that attempt. 63016 on a
+ * free-text send can still fall back to a template once.
  */
-/**
- * Retries a review request as the approved `growwmatics_review_request`
- * Content Template after learning — only via this async callback — that the
- * free-text send it replaces actually failed outside the 24h window. Mirrors
- * the sync-path fallback in sendReviewRequest() (functions.ts): same
- * requirements (Place ID on file, template configured), same template, same
- * variables. Returns false (leaving the caller to record a real failure) for
- * anything that isn't safely retryable — never retries a message that was
- * already a template (would loop), and never retries without a Place ID.
- */
+
 async function retryAsApprovedTemplate(
-  r: { _id: any; businessId: any; customerId: any },
-  failedSid: string
+  r: { _id: any; businessId: any; customerId: any; token?: string },
+  failedSid: string,
+  errorCode?: string
 ): Promise<boolean> {
   try {
     const originalLog = await MessageQueue.findOne({ 'payload.sid': failedSid })
       .select('payload.contentSid')
       .lean<{ payload?: { contentSid?: string } }>();
-    if (originalLog?.payload?.contentSid) return false; // already a template — don't loop
+    const alreadyTemplate = !!originalLog?.payload?.contentSid;
 
     const [business, customer] = await Promise.all([
       Business.findById(r.businessId).select('name placeId').lean<{ name?: string; placeId?: string }>(),
       Customer.findById(r.customerId).select('name phone').lean<{ name?: string; phone?: string }>(),
     ]);
-    if (!business?.placeId || !customer?.phone) return false;
+    if (!customer?.phone) return false;
 
     const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
-    if (!WA_TEMPLATES.reviewRequest) return false;
+    const choice = chooseReviewTemplateRetry({
+      errorCode,
+      alreadyTemplate,
+      utilitySid: WA_TEMPLATES.reviewRequestUtility,
+      legacySid: WA_TEMPLATES.reviewRequest,
+      token: r.token || '',
+      placeId: business?.placeId || '',
+      customerName: customer.name || 'there',
+      businessName: business?.name || 'our business',
+    });
+    if (choice.mode === 'none') return false;
 
     const { sendTemplateMessage } = await import('@/services/twilio/client');
-    const retry = await sendTemplateMessage(customer.phone, WA_TEMPLATES.reviewRequest, {
-      '1': customer.name || 'there',
-      '2': business.name || 'our business',
-      '3': business.placeId,
-    }, r.businessId.toString());
-
+    const retry = await sendTemplateMessage(customer.phone, choice.contentSid, choice.variables, r.businessId.toString());
     if (!retry.success) return false;
 
-    // Back to Sent, tracking the retry's SID — this same webhook will get a
-    // fresh receipt for it (delivered, or a real failure this time).
-    await ReviewRequest.updateOne({ _id: r._id }, { status: 'Sent', lastMessageSid: retry.sid, $unset: { failedReason: '' } });
+    await ReviewRequest.updateOne(
+      { _id: r._id },
+      {
+        status: 'Sent',
+        lastMessageSid: retry.sid,
+        templateSid: choice.contentSid,
+        $unset: { failedReason: '', errorCode: '', errorMessage: '', failedAt: '' },
+        $push: {
+          messageSids: retry.sid,
+          messageHistory: {
+            sid: retry.sid,
+            templateSid: choice.contentSid,
+            templateKind: choice.mode,
+            stage: 'retry',
+            sentAt: new Date(),
+            status: 'Sent',
+          },
+        },
+      }
+    );
     return true;
   } catch (e) {
     console.error('[twilio-status-webhook] async template retry failed:', e);
@@ -93,7 +116,7 @@ async function retryGenericAsNotificationTemplate(failedSid: string): Promise<bo
     const log = await MessageQueue.findOne({ 'payload.sid': failedSid })
       .select('payload')
       .lean<{ payload?: { phone?: string; body?: string; contentSid?: string } }>();
-    if (!log?.payload || log.payload.contentSid) return false; // already a template — don't loop
+    if (!log?.payload || log.payload.contentSid) return false;
     const { phone, body } = log.payload;
     if (!phone || !body) return false;
 
@@ -125,83 +148,132 @@ export async function POST(req: Request) {
 
     await dbConnect();
 
-    const isFailure = messageStatus === 'failed' || messageStatus === 'undelivered';
-    const isDelivered = messageStatus === 'delivered' || messageStatus === 'read';
-    const reason = errorMessageRaw || (errorCode ? `Twilio error ${errorCode}` : 'Delivery failed');
+    const interpreted = interpretTwilioStatus(messageStatus, errorCode, errorMessageRaw);
+    const now = new Date();
 
-    // Generic outbound log — every Twilio send goes through here regardless
-    // of which feature triggered it (review campaign, OTP, AI conversation reply...).
-    if (isFailure) {
-      await MessageQueue.updateMany({ 'payload.sid': messageSid }, { status: 'FAILED', failedReason: reason });
-    }
-
-    // Inbox/AI-conversation thread status (mirrors applyMetaStatus in
-    // src/app/api/whatsapp/webhook/route.ts, same field, same convention).
-    if (isDelivered || isFailure) {
-      await Conversation.updateMany({ twilioSid: messageSid }, { messageStatus: isFailure ? 'failed' : messageStatus });
-    }
-
-    // Review-campaign truth: this is what the owner and the customer actually
-    // care about. Only move a request that's still in-flight (Sent) — never
-    // overwrite a terminal state (Cancelled, or a Failed/Delivered from an
-    // earlier receipt for this same SID).
-    if (isDelivered) {
-      await ReviewRequest.updateMany(
-        { lastMessageSid: messageSid, status: 'Sent' },
-        { status: 'Delivered' }
+    if (interpreted.kind === 'failed') {
+      await MessageQueue.updateMany(
+        { 'payload.sid': messageSid },
+        { status: 'FAILED', failedReason: interpreted.failedReason, errorCode: interpreted.errorCode }
       );
-    } else if (isFailure) {
-      const errorCodeNum = errorCode ? parseInt(errorCode, 10) : undefined;
-      const affected = await ReviewRequest.find({ lastMessageSid: messageSid, status: 'Sent' })
-        .select('_id businessId customerId campaignId followUpStage')
-        .lean();
-      if (affected.length) {
-        for (const r of affected as any[]) {
-          // Twilio doesn't always catch "outside the 24h window" synchronously
-          // — sometimes it accepts a free-text send's API call optimistically
-          // and only rejects it later, right here, via this same callback. By
-          // then sendReviewRequest() (src/services/inngest/functions.ts) has
-          // already returned "success" and moved on, so its template-fallback
-          // never got a chance to run. Retry it now, from the one place that
-          // actually knows the send failed.
-          const retried = errorCodeNum === 63016
-            ? await retryAsApprovedTemplate(r, messageSid)
-            : false;
+    }
 
-          if (!retried) {
-            await ReviewRequest.updateOne(
-              { _id: r._id },
-              { status: 'Failed', failedReason: reason, automationStatus: 'Stopped' }
-            );
-            // The "delivered" counter on the campaign was incremented optimistically
-            // at send time for the initial message only (see processReviewCampaign) —
-            // correct it now that we know it never actually arrived. Reminders never
-            // incremented it, so only followUpStage 0 needs the compensating decrement.
-            if (r.campaignId && r.followUpStage === 0) {
-              await Campaign.findByIdAndUpdate(r.campaignId, { $inc: { delivered: -1 } });
-            }
-            // Mirrors the sync-failure branch in processReviewCampaign's initial
-            // send — surfaces the failure on the customer row too, which is what
-            // makes the dashboard's "Retry" button appear. Only for the initial
-            // message, matching that same convention (a reminder's async failure
-            // doesn't flip it — the initial send already succeeded by then).
-            if (r.followUpStage === 0) {
-              await Customer.findByIdAndUpdate(r.customerId, { reviewStatus: 'Failed' });
-            }
-          }
+    if (interpreted.kind === 'delivered' || interpreted.kind === 'read' || interpreted.kind === 'failed') {
+      await Conversation.updateMany(
+        { twilioSid: messageSid },
+        { messageStatus: interpreted.kind === 'failed' ? 'failed' : messageStatus }
+      );
+    }
+
+    const affected = interpreted.kind === 'ignore'
+      ? []
+      : await ReviewRequest.find({
+          $or: [{ lastMessageSid: messageSid }, { messageSids: messageSid }],
+        }).select('_id businessId customerId campaignId followUpStage status lastMessageSid deliveredAt readAt token');
+
+    for (const r of affected as any[]) {
+      const isLatest = !r.lastMessageSid || r.lastMessageSid === messageSid;
+      const historySet: Record<string, unknown> = {};
+
+      if (interpreted.kind === 'delivered') {
+        if (!isLatest || r.status === 'Failed' || r.status === 'Read' || r.status === 'Cancelled') {
+          historySet['messageHistory.$[entry].status'] = 'Delivered';
+          await ReviewRequest.updateOne(
+            { _id: r._id },
+            { $set: historySet },
+            { arrayFilters: [{ 'entry.sid': messageSid }] }
+          );
+          continue;
         }
-      } else if (errorCodeNum === 63016) {
-        // Not a review request — OTP, an AI-agent reply, etc. Same async
-        // "accepted then rejected" gap, different feature. Best-effort retry;
-        // MessageQueue above already recorded the real failure either way.
-        await retryGenericAsNotificationTemplate(messageSid);
+        await ReviewRequest.updateOne(
+          { _id: r._id, status: { $in: ['Sent', 'Delivered'] } },
+          {
+            $set: {
+              status: 'Delivered',
+              ...(r.deliveredAt ? {} : { deliveredAt: now }),
+              'messageHistory.$[entry].status': 'Delivered',
+            },
+          },
+          { arrayFilters: [{ 'entry.sid': messageSid }] }
+        );
+      } else if (interpreted.kind === 'read') {
+        if (!isLatest || r.status === 'Failed' || r.status === 'Cancelled') {
+          await ReviewRequest.updateOne(
+            { _id: r._id },
+            { $set: { 'messageHistory.$[entry].status': 'Read' } },
+            { arrayFilters: [{ 'entry.sid': messageSid }] }
+          );
+          continue;
+        }
+        const stamps = readTimestamps(now, r.deliveredAt);
+        await ReviewRequest.updateOne(
+          { _id: r._id, status: { $in: ['Sent', 'Delivered', 'Read'] } },
+          {
+            $set: {
+              status: 'Read',
+              readAt: r.readAt || stamps.readAt,
+              deliveredAt: r.deliveredAt || stamps.deliveredAt,
+              'messageHistory.$[entry].status': 'Read',
+            },
+          },
+          { arrayFilters: [{ 'entry.sid': messageSid }] }
+        );
+      } else if (interpreted.kind === 'failed') {
+        const retried = isLatest && r.status === 'Sent'
+          ? await retryAsApprovedTemplate(r, messageSid, interpreted.errorCode)
+          : false;
+
+        if (retried) continue;
+
+        if (isLatest && r.status === 'Sent') {
+          await ReviewRequest.updateOne(
+            { _id: r._id },
+            {
+              $set: {
+                status: 'Failed',
+                failedReason: interpreted.failedReason,
+                errorCode: interpreted.errorCode,
+                errorMessage: interpreted.errorMessage,
+                failedAt: now,
+                automationStatus: 'Stopped',
+                'messageHistory.$[entry].status': 'Failed',
+                'messageHistory.$[entry].errorCode': interpreted.errorCode,
+                'messageHistory.$[entry].errorMessage': interpreted.errorMessage,
+                'messageHistory.$[entry].failedAt': now,
+              },
+            },
+            { arrayFilters: [{ 'entry.sid': messageSid }] }
+          );
+          if (r.campaignId && r.followUpStage === 0) {
+            await Campaign.findByIdAndUpdate(r.campaignId, { $inc: { delivered: -1 } });
+          }
+          if (r.followUpStage === 0) {
+            await Customer.findByIdAndUpdate(r.customerId, { reviewStatus: 'Failed' });
+          }
+        } else {
+          await ReviewRequest.updateOne(
+            { _id: r._id },
+            {
+              $set: {
+                'messageHistory.$[entry].status': 'Failed',
+                'messageHistory.$[entry].errorCode': interpreted.errorCode,
+                'messageHistory.$[entry].errorMessage': interpreted.errorMessage,
+                'messageHistory.$[entry].failedAt': now,
+              },
+            },
+            { arrayFilters: [{ 'entry.sid': messageSid }] }
+          );
+        }
       }
+    }
+
+    if (!affected.length && interpreted.kind === 'failed' && interpreted.errorCode === '63016') {
+      await retryGenericAsNotificationTemplate(messageSid);
     }
 
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('[twilio-status-webhook] error:', error);
-    // Still 200 — a malformed/unexpected callback shouldn't make Twilio retry forever.
     return NextResponse.json({ ok: true });
   }
 }

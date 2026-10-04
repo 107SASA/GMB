@@ -7,6 +7,7 @@ export interface IMessageQueue extends Document {
   scheduledAt?: Date;
   sentAt?: Date;
   failedReason?: string;
+  errorCode?: string;
   payload: any;
   createdAt: Date;
   updatedAt: Date;
@@ -25,6 +26,7 @@ const MessageQueueSchema: Schema = new Schema(
     scheduledAt: { type: Date },
     sentAt: { type: Date },
     failedReason: { type: String },
+    errorCode: { type: String },
     payload: { type: Schema.Types.Mixed, required: true },
   },
   { timestamps: true }

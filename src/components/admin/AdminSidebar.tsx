@@ -66,6 +66,7 @@ const adminGroups = [
       { name: 'Audit Monitor', icon: 'analytics', href: '/admin/audits' },
       { name: 'Content Monitor', icon: 'campaign', href: '/admin/content' },
       { name: 'Review Monitor', icon: 'star', href: '/admin/reviews' },
+      { name: 'Review Requests', icon: 'rate_review', href: '/admin/review-requests' },
       { name: 'WhatsApp Monitor', icon: 'chat', href: '/admin/whatsapp' },
     ],
   },

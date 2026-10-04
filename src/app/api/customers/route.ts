@@ -4,6 +4,8 @@ import Customer from '@/models/Customer';
 import mongoose from 'mongoose';
 import { requireBusinessContext } from '@/lib/tenant';
 import { normalizePhoneE164 } from '@/lib/phone';
+import { evaluateReviewSendEligibility } from '@/lib/reviewSendEligibility';
+import { existingCustomerSendOffer } from '@/lib/reviewRequestFlow';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,6 +85,7 @@ export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
 
+  let normalizedPhone: string | null = null;
   try {
     await dbConnect();
     const body = await req.json();
@@ -93,6 +96,7 @@ export async function POST(req: Request) {
     }
 
     const phone = normalizePhoneE164(String(body.phone ?? ''));
+    normalizedPhone = phone;
     if (!phone) {
       return NextResponse.json(
         { success: false, message: 'A valid phone number is required (e.g. +919876543210 or 9876543210)' },
@@ -102,7 +106,20 @@ export async function POST(req: Request) {
 
     const existing = await Customer.findOne({ businessId: ctx.businessId, phone });
     if (existing) {
-      return NextResponse.json({ success: false, message: 'A customer with this phone number already exists' }, { status: 409 });
+      const offer = existingCustomerSendOffer(existing._id.toString());
+      const eligibility = await evaluateReviewSendEligibility({
+        source: 'manual',
+        businessId: ctx.businessId,
+        userId: ctx.userId,
+        customer: existing,
+      });
+      return NextResponse.json({
+        success: false,
+        code: offer.code,
+        message: offer.message,
+        customerId: offer.customerId,
+        eligibility: { allowed: eligibility.allowed, code: eligibility.code, message: eligibility.message },
+      }, { status: 409 });
     }
 
     const customer = await Customer.create({
@@ -118,6 +135,29 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, customer }, { status: 201 });
   } catch (error: any) {
+    if (error?.code === 11000 && normalizedPhone) {
+      const existing = await Customer.findOne({ businessId: ctx.businessId, phone: normalizedPhone });
+      if (existing) {
+        const eligibility = await evaluateReviewSendEligibility({
+          source: 'manual',
+          businessId: ctx.businessId,
+          userId: ctx.userId,
+          customer: existing,
+        });
+        return NextResponse.json({
+          success: false,
+          code: 'CUSTOMER_EXISTS',
+          message: 'Customer already exists',
+          customerId: existing._id.toString(),
+          eligibility: { allowed: eligibility.allowed, code: eligibility.code, message: eligibility.message },
+        }, { status: 409 });
+      }
+      return NextResponse.json({
+        success: false,
+        code: 'CUSTOMER_EXISTS',
+        message: 'Customer already exists',
+      }, { status: 409 });
+    }
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
 }

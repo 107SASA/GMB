@@ -16,6 +16,13 @@ import twilio from "twilio";
 import mongoose from "mongoose";
 import { sendOutboundMessage } from "@/services/whatsapp/send";
 import { AGENT_SCOPE_GUARDRAIL } from "@/lib/agentGuardrails";
+import {
+  choosePrimaryReviewSend,
+  chooseReviewTemplateRetry,
+  generateReviewRequestToken,
+  syncFailureFields,
+} from "@/lib/reviewRequestFlow";
+import { resolveReviewFollowUpSettings } from "@/lib/reviewFollowUpSettings";
 
 const FALLBACK_MESSAGE = "I'm having a little trouble connecting to my brain right now. Please hold on or call our main line!";
 
@@ -1019,8 +1026,8 @@ async function sendReviewRequest(
   phone: string,
   freeTextMsg: string,
   businessId: string,
-  vars: { name: string; business: string; placeId: string }
-): Promise<{ success: boolean; error?: string; sid?: string }> {
+  vars: { name: string; business: string; placeId: string; token?: string }
+): Promise<{ success: boolean; error?: string; errorCode?: string; sid?: string; templateSid?: string; templateKind?: 'utility' | 'legacy' | 'free_text' }> {
   // ADDITIVE (Sep 2026) — maxWhatsAppMessagesPerDay was configurable in the
   // admin UI and shown to customers as a real cap, but nothing ever enforced
   // or counted it. Checked/incremented here since every review-campaign
@@ -1040,26 +1047,57 @@ async function sendReviewRequest(
   const { sendOutboundMessage: sendViaTwilio, sendTemplateMessage } = await import('@/services/twilio/client');
   const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
 
+  const primary = choosePrimaryReviewSend({
+    utilitySid: WA_TEMPLATES.reviewRequestUtility,
+    token: vars.token || '',
+    customerName: vars.name,
+    businessName: vars.business,
+  });
+
+  if (primary.mode === 'utility') {
+    const sent = await sendTemplateMessage(phone, primary.contentSid, primary.variables, businessId);
+    if (sent.success && business?.userId) await incrementUsage(businessId, 'whatsappMessages');
+    return {
+      ...sent,
+      templateSid: primary.contentSid,
+      templateKind: 'utility',
+    };
+  }
+
   const result = await sendViaTwilio(phone, freeTextMsg, undefined, businessId);
   if (result.success) {
     if (business?.userId) await incrementUsage(businessId, 'whatsappMessages');
-    return result;
+    return { ...result, templateKind: 'free_text' };
   }
 
-  if (result.outsideWindow && result.isPlatformDefault && vars.placeId && WA_TEMPLATES.reviewRequest) {
-    const retry = await sendTemplateMessage(phone, WA_TEMPLATES.reviewRequest, {
-      '1': vars.name,
-      '2': vars.business,
-      '3': vars.placeId,
-    }, businessId);
-    if (retry.success) {
-      if (business?.userId) await incrementUsage(businessId, 'whatsappMessages');
-      return retry;
+  if (result.outsideWindow && result.isPlatformDefault) {
+    const fallback = chooseReviewTemplateRetry({
+      errorCode: '63016',
+      alreadyTemplate: false,
+      utilitySid: WA_TEMPLATES.reviewRequestUtility,
+      legacySid: WA_TEMPLATES.reviewRequest,
+      token: vars.token || '',
+      placeId: vars.placeId,
+      customerName: vars.name,
+      businessName: vars.business,
+    });
+    if (fallback.mode !== 'none') {
+      const retry = await sendTemplateMessage(phone, fallback.contentSid, fallback.variables, businessId);
+      if (retry.success) {
+        if (business?.userId) await incrementUsage(businessId, 'whatsappMessages');
+        return { ...retry, templateSid: fallback.contentSid, templateKind: fallback.mode };
+      }
+      return {
+        success: false,
+        error: `${result.error} (review-template fallback also failed: ${retry.error})`,
+        errorCode: retry.errorCode || result.errorCode,
+        templateSid: fallback.contentSid,
+        templateKind: fallback.mode,
+      };
     }
-    return { success: false, error: `${result.error} (review-template fallback also failed: ${retry.error})` };
   }
 
-  return result;
+  return { ...result, templateKind: 'free_text' };
 }
 
 // ISO date of the next moment inside the business-hours window, or null if already inside it.
@@ -1082,28 +1120,9 @@ export const processReviewCampaign = inngest.createFunction(
 
     // 1. Load the owner's campaign settings (defaults for one-off sends)
     const config = await step.run("load-config", async () => {
-      const defaults = {
-        initialMessage: '',
-        reminder1Enabled: true, reminder1AfterDays: 2, reminder1Message: '',
-        reminder2Enabled: true, reminder2AfterDays: 5, reminder2Message: '',
-        stopOnReview: true, sendOnlyBizHours: false, bizHoursStart: 9, bizHoursEnd: 20,
-      };
-      if (!campaignId) return defaults;
+      if (!campaignId) return resolveReviewFollowUpSettings(null);
       const campaign: any = await Campaign.findById(campaignId).lean();
-      if (!campaign) return defaults;
-      return {
-        initialMessage: campaign.initialMessage || '',
-        reminder1Enabled: campaign.reminder1Enabled ?? true,
-        reminder1AfterDays: campaign.reminder1AfterDays ?? 2,
-        reminder1Message: campaign.reminder1Message || '',
-        reminder2Enabled: campaign.reminder2Enabled ?? true,
-        reminder2AfterDays: campaign.reminder2AfterDays ?? 5,
-        reminder2Message: campaign.reminder2Message || '',
-        stopOnReview: campaign.stopOnReview ?? true,
-        sendOnlyBizHours: campaign.sendOnlyBizHours ?? false,
-        bizHoursStart: campaign.bizHoursStart ?? 9,
-        bizHoursEnd: campaign.bizHoursEnd ?? 20,
-      };
+      return resolveReviewFollowUpSettings(campaign);
     });
 
     // 2. Fetch customer + business name; WhatsApp-only so a phone is required
@@ -1126,6 +1145,7 @@ export const processReviewCampaign = inngest.createFunction(
         channel: 'whatsapp',
         message: 'pending generation',
         status: 'Pending',
+        token: generateReviewRequestToken(),
         ...(campaignId && { campaignId })
       });
       return req.toObject();
@@ -1179,19 +1199,50 @@ export const processReviewCampaign = inngest.createFunction(
     //    is marked Failed (never "Sent") and the reminder sequence is skipped.
     const initialSend = await step.run("send-initial-message", async () => {
       const result = await sendReviewRequest(customer.phone, initialMessage, businessId, {
-        name: templateVars.name, business: businessName, placeId,
+        name: templateVars.name, business: businessName, placeId, token: reviewRequest.token,
       });
 
       if (!result.success) {
+        const failure = syncFailureFields(result.errorCode, result.error, new Date());
         await ReviewRequest.findByIdAndUpdate(reviewRequest._id, {
-          status: 'Failed',
-          automationStatus: 'Stopped',
+          ...failure,
+          ...(result.templateSid ? { templateSid: result.templateSid } : {}),
+          $push: {
+            messageHistory: {
+              sid: result.sid,
+              templateSid: result.templateSid,
+              templateKind: result.templateKind,
+              stage: 'initial',
+              status: 'Failed',
+              errorCode: failure.errorCode,
+              errorMessage: failure.errorMessage,
+              failedAt: failure.failedAt,
+            },
+            ...(result.sid ? { messageSids: result.sid } : {}),
+          },
         });
         await Customer.findByIdAndUpdate(customerId, { reviewStatus: 'Failed' });
         return { sent: false, error: result.error };
       }
 
-      await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { status: 'Sent', sentAt: new Date(), followUpStage: 0, lastMessageSid: result.sid });
+      await ReviewRequest.findByIdAndUpdate(reviewRequest._id, {
+        status: 'Sent',
+        sentAt: new Date(),
+        followUpStage: 0,
+        lastMessageSid: result.sid,
+        ...(result.templateSid ? { templateSid: result.templateSid } : {}),
+        $push: {
+          ...(result.sid ? { messageSids: result.sid } : {}),
+          messageHistory: {
+            sid: result.sid,
+            templateSid: result.templateSid,
+            templateKind: result.templateKind,
+            stage: 'initial',
+            sentAt: new Date(),
+            status: 'Sent',
+          },
+        },
+      });
       await Customer.findByIdAndUpdate(customerId, {
         reviewStatus: 'Requested',
         lastMessageAt: new Date(),
@@ -1243,13 +1294,45 @@ export const processReviewCampaign = inngest.createFunction(
           }
           const msg = fillTemplate(tpl.trim() || DEFAULT_REMINDER_1, templateVars);
           const result = await sendReviewRequest(customer.phone, msg, businessId, {
-            name: templateVars.name, business: businessName, placeId,
+            name: templateVars.name, business: businessName, placeId, token: reviewRequest.token,
           });
           if (!result.success) {
+            const failure = syncFailureFields(result.errorCode, result.error, new Date());
+            await ReviewRequest.findByIdAndUpdate(reviewRequest._id, {
+              $push: {
+                messageHistory: {
+                  sid: result.sid,
+                  templateSid: result.templateSid,
+                  templateKind: result.templateKind,
+                  stage: 'reminder1',
+                  status: 'Failed',
+                  errorCode: failure.errorCode,
+                  errorMessage: failure.errorMessage,
+                  failedAt: failure.failedAt,
+                },
+                ...(result.sid ? { messageSids: result.sid } : {}),
+              },
+            });
             console.warn(`[reviewCampaign] Reminder 1 failed for request ${reviewRequest._id}: ${result.error}`);
             return;
           }
-          await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { followUpStage: 1, status: 'Sent', lastMessageSid: result.sid });
+          await ReviewRequest.findByIdAndUpdate(reviewRequest._id, {
+            followUpStage: 1,
+            status: 'Sent',
+            lastMessageSid: result.sid,
+            ...(result.templateSid ? { templateSid: result.templateSid } : {}),
+            $push: {
+              ...(result.sid ? { messageSids: result.sid } : {}),
+              messageHistory: {
+                sid: result.sid,
+                templateSid: result.templateSid,
+                templateKind: result.templateKind,
+                stage: 'reminder1',
+                sentAt: new Date(),
+                status: 'Sent',
+              },
+            },
+          });
           await Customer.findByIdAndUpdate(customerId, { lastMessageAt: new Date(), $inc: { totalMessagesSent: 1 } });
         });
       }
@@ -1274,13 +1357,45 @@ export const processReviewCampaign = inngest.createFunction(
           }
           const msg = fillTemplate(tpl.trim() || DEFAULT_REMINDER_2, templateVars);
           const result = await sendReviewRequest(customer.phone, msg, businessId, {
-            name: templateVars.name, business: businessName, placeId,
+            name: templateVars.name, business: businessName, placeId, token: reviewRequest.token,
           });
           if (!result.success) {
+            const failure = syncFailureFields(result.errorCode, result.error, new Date());
+            await ReviewRequest.findByIdAndUpdate(reviewRequest._id, {
+              $push: {
+                messageHistory: {
+                  sid: result.sid,
+                  templateSid: result.templateSid,
+                  templateKind: result.templateKind,
+                  stage: 'reminder2',
+                  status: 'Failed',
+                  errorCode: failure.errorCode,
+                  errorMessage: failure.errorMessage,
+                  failedAt: failure.failedAt,
+                },
+                ...(result.sid ? { messageSids: result.sid } : {}),
+              },
+            });
             console.warn(`[reviewCampaign] Final reminder failed for request ${reviewRequest._id}: ${result.error}`);
             return;
           }
-          await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { followUpStage: 2, status: 'Sent', lastMessageSid: result.sid });
+          await ReviewRequest.findByIdAndUpdate(reviewRequest._id, {
+            followUpStage: 2,
+            status: 'Sent',
+            lastMessageSid: result.sid,
+            ...(result.templateSid ? { templateSid: result.templateSid } : {}),
+            $push: {
+              ...(result.sid ? { messageSids: result.sid } : {}),
+              messageHistory: {
+                sid: result.sid,
+                templateSid: result.templateSid,
+                templateKind: result.templateKind,
+                stage: 'reminder2',
+                sentAt: new Date(),
+                status: 'Sent',
+              },
+            },
+          });
           await Customer.findByIdAndUpdate(customerId, { lastMessageAt: new Date(), $inc: { totalMessagesSent: 1 } });
         });
       }
@@ -1298,55 +1413,21 @@ export const processReviewCampaign = inngest.createFunction(
 // 5. Review Autopoll
 export const reviewAutopollCron = inngest.createFunction(
   { id: "review-autopoll-cron", triggers: [{ cron: "0 * * * *" }] },
-  async ({ step }) => {
-    // Heuristic: a request whose link was clicked >2h ago and never followed
-    // up counts as a received review (no GBP API to match against yet).
-    const events = await step.run("fetch-clicked-requests", async () => {
-      await dbConnect();
-      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-      const clicked = await ReviewRequest.find({
-        clicked: true,
-        reviewReceived: { $ne: true },
-        clickedAt: { $lte: twoHoursAgo }
-      }).lean();
-      return clicked.map(c => ({ name: "scheduler/review-autopoll", data: { requestId: c._id.toString() } }));
-    });
-
-    if (events.length > 0) {
-      await step.sendEvent("dispatch-autopoll", events);
-    }
-    return { success: true };
+  async () => {
+    // A click is not a submitted Google review. This job used to mark
+    // clicked requests as reviewReceived two hours later. That guess is
+    // no longer written. The function stays registered so existing schedules
+    // do not error.
+    return { success: true, skipped: 'clicks are not reviews' };
   }
 );
 
 export const processReviewAutopollJob = inngest.createFunction(
   { id: "process-review-autopoll-job", retries: 3, triggers: [{ event: "scheduler/review-autopoll" }] },
-  async ({ event, step }) => {
-    await step.run("mark-reviewed", async () => {
-      await dbConnect();
-      const req = await ReviewRequest.findById(event.data.requestId);
-      if (!req || req.reviewReceived) return;
-
-      req.reviewReceived = true;
-      req.reviewedAt = new Date();
-      req.automationStatus = 'Completed';
-      await req.save();
-
-      await Customer.findByIdAndUpdate(req.customerId, { reviewStatus: 'Completed' });
-      if (req.campaignId) {
-        await Campaign.findByIdAndUpdate(req.campaignId, { $inc: { reviewsReceived: 1 } });
-      }
-
-      const customer: any = await Customer.findById(req.customerId).select('name').lean();
-      const { notifyBusinessUsers } = await import("@/services/notifications");
-      await notifyBusinessUsers(req.businessId.toString(), {
-        type: 'review_received',
-        title: 'Review request converted',
-        body: `${customer?.name || 'A customer'} followed your review link — a new review is likely in.`,
-        link: '/dashboard/reviews',
-      });
-    });
-    return { success: true };
+  async () => {
+    // In-flight events from the old heuristic must not mark a click as a
+    // review or notify the owner that a review was submitted.
+    return { success: true, skipped: 'clicks are not reviews' };
   }
 );
 

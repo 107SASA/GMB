@@ -84,6 +84,46 @@ interface CustomerStats {
   optedOut: number;
 }
 
+interface RequestMetrics {
+  reviewRequests: number;
+  delivered: number;
+  read: number;
+  clicked: number;
+  failed: number;
+}
+
+interface RequestSummary {
+  statusLabel: string;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  readAt: string | null;
+  clickedAt: string | null;
+  lastRequestAt: string | null;
+  followUpLabel: string;
+}
+
+const EMPTY_METRICS: RequestMetrics = { reviewRequests: 0, delivered: 0, read: 0, clicked: 0, failed: 0 };
+
+function formatWhen(value?: string | null): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+}
+
+function rowStatus(customer: Customer, summary?: RequestSummary): string {
+  if (summary?.statusLabel) return summary.statusLabel;
+  if (customer.reviewStatus === 'Failed') return 'Unable to deliver';
+  if (customer.reviewStatus === 'Requested' || customer.reviewStatus === 'Completed') return 'Sent';
+  return 'Pending';
+}
+
+function statusBadgeClass(label: string): string {
+  if (label === 'Unable to deliver') return STATUS_BADGE.Failed;
+  if (label === 'Clicked' || label === 'Read' || label === 'Delivered') return STATUS_BADGE.Completed;
+  if (label === 'Sent') return STATUS_BADGE.Requested;
+  return STATUS_BADGE.Pending;
+}
+
 interface CrmLead {
   _id: string;
   name: string;
@@ -160,6 +200,9 @@ export default function CampaignsDashboard() {
   const [addForm, setAddForm] = useState({ name: '', phone: '', service: '', serviceDate: '', tags: '' });
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [existingSend, setExistingSend] = useState<{ customerId: string; allowed: boolean; message: string } | null>(null);
+  const [requestMetrics, setRequestMetrics] = useState<RequestMetrics>(EMPTY_METRICS);
+  const [latestByCustomer, setLatestByCustomer] = useState<Record<string, RequestSummary>>({});
   const [importingLeads, setImportingLeads] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [showCrmPicker, setShowCrmPicker] = useState(false);
@@ -201,6 +244,19 @@ export default function CampaignsDashboard() {
     }
   }, [page, search, statusFilter, tagFilter]);
 
+  const fetchRequestMetrics = useCallback(async () => {
+    try {
+      const res = await fetch('/api/review-requests');
+      const json = await res.json();
+      if (json.success) {
+        setRequestMetrics(json.metrics);
+        setLatestByCustomer(json.latestByCustomer || {});
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   const fetchTags = useCallback(async () => {
     try {
       const res = await fetch('/api/customers/tags');
@@ -228,8 +284,9 @@ export default function CampaignsDashboard() {
     if (!bizLoading && activeBusiness) {
       fetchCustomers();
       fetchTags();
+      fetchRequestMetrics();
     }
-  }, [fetchCustomers, fetchTags, bizLoading, activeBusiness]);
+  }, [fetchCustomers, fetchTags, fetchRequestMetrics, bizLoading, activeBusiness]);
 
   useEffect(() => {
     if (!bizLoading && activeBusiness && activeTab === 'campaigns') fetchCampaigns();
@@ -245,6 +302,7 @@ export default function CampaignsDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId })
       });
+      const json = await res.json().catch(() => ({}));
       if (res.ok) {
         const wasPending = customers.find(c => c._id === customerId)?.reviewStatus === 'Pending';
         setCustomers(prev => prev.map(c => c._id === customerId ? { ...c, reviewStatus: 'Requested' as const } : c));
@@ -253,9 +311,13 @@ export default function CampaignsDashboard() {
           pending: wasPending ? prev.pending - 1 : prev.pending,
           requested: prev.requested + 1
         }));
+        fetchRequestMetrics();
+      } else {
+        toast.error(typeof json.error === 'string' ? json.error : 'Could not send the review request');
       }
     } catch (e) {
       console.error(e);
+      toast.error('Could not send the review request');
     } finally {
       setSendingId(null);
     }
@@ -315,6 +377,7 @@ export default function CampaignsDashboard() {
     if (!addForm.name.trim() || !addForm.phone.trim()) return;
     setAddSaving(true);
     setAddError(null);
+    setExistingSend(null);
     try {
       const res = await fetch('/api/customers', {
         method: 'POST',
@@ -331,8 +394,16 @@ export default function CampaignsDashboard() {
       if (json.success) {
         setShowAddCustomer(false);
         setAddForm({ name: '', phone: '', service: '', serviceDate: '', tags: '' });
+        setExistingSend(null);
         fetchCustomers();
         fetchTags();
+      } else if (json.code === 'CUSTOMER_EXISTS') {
+        setAddError('Customer already exists');
+        setExistingSend(json.customerId ? {
+          customerId: json.customerId,
+          allowed: !!json.eligibility?.allowed,
+          message: json.eligibility?.allowed ? '' : (json.eligibility?.message || ''),
+        } : null);
       } else {
         setAddError(json.message || 'Could not add customer');
       }
@@ -578,7 +649,7 @@ export default function CampaignsDashboard() {
               <Import className="w-4 h-4" /> From CRM
             </button>
             <button
-              onClick={() => { setShowAddCustomer(true); setAddError(null); }}
+              onClick={() => { setShowAddCustomer(true); setAddError(null); setExistingSend(null); }}
               className="flex items-center gap-2 bg-surface-container-lowest hover:bg-surface text-on-surface text-sm font-bold rounded-xl px-4 py-2.5 shadow-sm transition-all border border-outline-variant"
             >
               <UserPlus className="w-4 h-4" /> Add Customer
@@ -611,6 +682,20 @@ export default function CampaignsDashboard() {
               </button>
             </div>
           )}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            {[
+              { label: 'Review Requests', value: requestMetrics.reviewRequests },
+              { label: 'Delivered', value: requestMetrics.delivered },
+              { label: 'Read', value: requestMetrics.read },
+              { label: 'Clicked', value: requestMetrics.clicked },
+              { label: 'Failed', value: requestMetrics.failed },
+            ].map(({ label, value }) => (
+              <div key={label} className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant card-shadow">
+                <span className="text-xs font-bold text-on-surface-variant">{label}</span>
+                <p className="text-2xl font-bold text-on-surface mt-1">{value.toLocaleString()}</p>
+              </div>
+            ))}
+          </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { label: 'Total Customers', value: stats.total, icon: Users, color: 'text-primary' },
@@ -664,23 +749,29 @@ export default function CampaignsDashboard() {
               <table className="w-full text-left text-sm text-on-surface-variant">
                 <thead className="bg-surface-container-low border-b border-outline-variant text-xs uppercase font-bold text-outline">
                   <tr>
-                    <th className="px-6 py-4">Customer</th>
-                    <th className="px-6 py-4">Service</th>
-                    <th className="px-6 py-4">Groups</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
+                    <th className="px-4 py-4">Customer</th>
+                    <th className="px-4 py-4">Service</th>
+                    <th className="px-4 py-4">Groups</th>
+                    <th className="px-4 py-4">Request status</th>
+                    <th className="px-4 py-4">Sent</th>
+                    <th className="px-4 py-4">Delivered</th>
+                    <th className="px-4 py-4">Read</th>
+                    <th className="px-4 py-4">Clicked</th>
+                    <th className="px-4 py-4">Last request</th>
+                    <th className="px-4 py-4">Follow-up</th>
+                    <th className="px-4 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant">
                   {custLoading ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-10 text-center">
+                      <td colSpan={11} className="px-6 py-10 text-center">
                         <Loader2 className="w-5 h-5 animate-spin text-outline mx-auto" />
                       </td>
                     </tr>
                   ) : customers.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center">
+                      <td colSpan={11} className="px-6 py-12 text-center">
                         <div className="flex flex-col items-center">
                           <div className="w-12 h-12 bg-primary-fixed text-primary rounded-full flex items-center justify-center mb-3">
                             <Users className="w-6 h-6" />
@@ -720,10 +811,10 @@ export default function CampaignsDashboard() {
                               </button>
                             </div>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-4 py-4">
                             <div className="flex flex-wrap gap-1.5">
-                              <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold ${STATUS_BADGE[c.reviewStatus] || STATUS_BADGE.Pending}`}>
-                                {c.reviewStatus}
+                              <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold ${statusBadgeClass(rowStatus(c, latestByCustomer[c._id]))}`}>
+                                {rowStatus(c, latestByCustomer[c._id])}
                               </span>
                               {c.optedOut && (
                                 <span className="inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold bg-error-container text-on-error-container">
@@ -732,6 +823,12 @@ export default function CampaignsDashboard() {
                               )}
                             </div>
                           </td>
+                          <td className="px-4 py-4 whitespace-nowrap">{formatWhen(latestByCustomer[c._id]?.sentAt)}</td>
+                          <td className="px-4 py-4 whitespace-nowrap">{formatWhen(latestByCustomer[c._id]?.deliveredAt)}</td>
+                          <td className="px-4 py-4 whitespace-nowrap">{formatWhen(latestByCustomer[c._id]?.readAt)}</td>
+                          <td className="px-4 py-4 whitespace-nowrap">{formatWhen(latestByCustomer[c._id]?.clickedAt)}</td>
+                          <td className="px-4 py-4 whitespace-nowrap">{formatWhen(latestByCustomer[c._id]?.lastRequestAt)}</td>
+                          <td className="px-4 py-4">{latestByCustomer[c._id]?.followUpLabel || '—'}</td>
                           <td className="px-6 py-4">
                             <div className="flex items-center justify-end gap-2">
                               {!c.optedOut && (c.reviewStatus === 'Pending' || c.reviewStatus === 'Failed') && c.phone && (
@@ -767,7 +864,7 @@ export default function CampaignsDashboard() {
                         </tr>
                         {suggestions?.customerId === c._id && (
                           <tr>
-                            <td colSpan={5} className="px-6 pb-4">
+                            <td colSpan={11} className="px-6 pb-4">
                               <div className="bg-primary-fixed border border-primary-fixed-dim rounded-xl p-4">
                                 <div className="flex items-center justify-between mb-3">
                                   <p className="text-sm font-bold text-primary flex items-center gap-1.5">
@@ -881,7 +978,6 @@ export default function CampaignsDashboard() {
                         <span>Total: <strong className="text-on-surface">{camp.stats.total}</strong></span>
                         <span>Sent: <strong className="text-on-surface">{camp.stats.sent}</strong></span>
                         <span>Clicked: <strong className="text-on-surface">{camp.stats.clicked}</strong></span>
-                        <span>Reviewed: <strong className="text-on-surface">{camp.stats.reviewed}</strong></span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -1089,7 +1185,23 @@ export default function CampaignsDashboard() {
                 />
               </div>
               {addError && (
-                <p className="text-sm text-on-error-container bg-error-container border border-error rounded-xl px-4 py-2.5">{addError}</p>
+                <div className="text-sm text-on-error-container bg-error-container border border-error rounded-xl px-4 py-2.5 space-y-2">
+                  <p>{addError}</p>
+                  {existingSend && !existingSend.allowed && existingSend.message && <p>{existingSend.message}</p>}
+                  {existingSend?.allowed && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddCustomer(false);
+                        setExistingSend(null);
+                        void handleSendRequest(existingSend.customerId);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg"
+                    >
+                      <Send className="w-3.5 h-3.5" /> Send Review Request
+                    </button>
+                  )}
+                </div>
               )}
             </div>
             <div className="p-6 border-t border-outline-variant flex justify-end gap-3">

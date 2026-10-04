@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Campaign from '@/models/Campaign';
 import Customer from '@/models/Customer';
-import ReviewRequest from '@/models/ReviewRequest';
 import { inngest } from '@/services/inngest/client';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { requirePlaceIdForReviews } from '@/lib/reviewCampaignGuard';
+import { evaluateReviewSendEligibility } from '@/lib/reviewSendEligibility';
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireBusinessContext();
@@ -59,23 +59,32 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
 
     // Skip customers who already have an active request for this campaign
     const events: Array<{ name: 'campaigns/review.request.start'; data: Record<string, string> }> = [];
+    let limitMessage = '';
     for (const customer of customers) {
-      const hasActive = await ReviewRequest.exists({
-        campaignId: campaign._id,
-        customerId: customer._id,
-        automationStatus: 'Active'
+      const eligibility = await evaluateReviewSendEligibility({
+        source: 'campaign',
+        businessId: ctx.businessId,
+        userId: ctx.userId,
+        customer,
+        campaignId: campaign._id.toString(),
       });
-      if (!hasActive) {
-        events.push({
-          name: 'campaigns/review.request.start',
-          data: {
-            customerId: customer._id.toString(),
-            businessId: ctx.businessId,
-            tenantId: ctx.organizationId,
-            campaignId: campaign._id.toString()
-          }
-        });
+      if (!eligibility.allowed) {
+        if (eligibility.code === 'DAILY_LIMIT') limitMessage = eligibility.message;
+        continue;
       }
+      events.push({
+        name: 'campaigns/review.request.start',
+        data: {
+          customerId: customer._id.toString(),
+          businessId: ctx.businessId,
+          tenantId: ctx.organizationId,
+          campaignId: campaign._id.toString()
+        }
+      });
+    }
+
+    if (events.length === 0 && limitMessage) {
+      return NextResponse.json({ success: false, message: limitMessage }, { status: 400 });
     }
 
     if (events.length > 0) {

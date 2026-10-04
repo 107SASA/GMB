@@ -57,6 +57,8 @@ export interface SendResult {
   success: boolean;
   sid?: string;
   error?: string;
+  /** Twilio numeric error code when the API rejects the send, e.g. "63016". */
+  errorCode?: string;
   /**
    * True when the failure is Twilio error 63016 — "Failed to send freeform
    * message because you are outside the allowed window. Please use a
@@ -185,11 +187,13 @@ export async function sendOutboundMessage(
   } catch (e: any) {
     msgLog.status = 'FAILED';
     msgLog.failedReason = e.message;
+    msgLog.errorCode = e.code != null ? String(e.code) : undefined;
     await msgLog.save();
     console.error('Twilio Error:', e);
     return {
       success: false,
       error: e.message,
+      errorCode: e.code != null ? String(e.code) : undefined,
       outsideWindow: e.code === 63016,
       isPlatformDefault: creds.isPlatformDefault,
     };
@@ -295,8 +299,13 @@ export async function sendTemplateMessage(
   } catch (e: any) {
     msgLog.status = 'FAILED';
     msgLog.failedReason = e.message;
+    msgLog.errorCode = e.code != null ? String(e.code) : undefined;
     await msgLog.save();
     console.error('Twilio Error:', e);
-    return { success: false, error: e.message };
+    return {
+      success: false,
+      error: e.message,
+      errorCode: e.code != null ? String(e.code) : undefined,
+    };
   }
 }

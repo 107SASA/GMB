@@ -2,32 +2,61 @@ import dbConnect from '@/lib/mongodb';
 import ReviewRequest from '@/models/ReviewRequest';
 import Business from '@/models/Business';
 import Campaign from '@/models/Campaign';
+import {
+  GENERIC_REVIEW_REDIRECT,
+  applyClick,
+  buildGoogleReviewUrl,
+  isSafeReviewToken,
+} from '@/lib/reviewRequestFlow';
 
+async function resolveClickedRedirect(reviewRequest: {
+  clicked?: boolean;
+  clickCount?: number;
+  clickedAt?: Date;
+  businessId: unknown;
+  campaignId?: unknown;
+  save: () => Promise<unknown>;
+}): Promise<string> {
+  const business = await Business.findById(reviewRequest.businessId).select('placeId googleMapsUrl name').lean() as {
+    placeId?: string;
+    googleMapsUrl?: string;
+    name?: string;
+  } | null;
+
+  const reviewUrl = buildGoogleReviewUrl(business);
+  const click = applyClick(reviewRequest);
+  reviewRequest.clickCount = click.clickCount;
+  if (click.setClickedAt) {
+    reviewRequest.clicked = true;
+    reviewRequest.clickedAt = new Date();
+  }
+  await reviewRequest.save();
+
+  if (click.incrementCampaignClicked && reviewRequest.campaignId) {
+    await Campaign.findByIdAndUpdate(reviewRequest.campaignId, { $inc: { clicked: 1 } });
+  }
+
+  return reviewUrl;
+}
+
+/** Existing /go/[id] and /api/campaigns/track/[requestId] lookup. */
 export async function handleReviewRedirect(requestId: string): Promise<string> {
   await dbConnect();
 
   const reviewRequest = await ReviewRequest.findById(requestId);
-  if (!reviewRequest) {
-    return 'https://google.com';
-  }
+  if (!reviewRequest) return GENERIC_REVIEW_REDIRECT;
+  return resolveClickedRedirect(reviewRequest);
+}
 
-  const business = await Business.findById(reviewRequest.businessId).select('placeId googleMapsUrl name').lean() as any;
+/**
+ * Public /review/[token] lookup. An unknown or malformed token redirects to
+ * a generic Google URL and does not describe why.
+ */
+export async function handleReviewRedirectByToken(token: string): Promise<string> {
+  if (!isSafeReviewToken(token)) return GENERIC_REVIEW_REDIRECT;
 
-  const reviewUrl = business?.placeId
-    ? `https://search.google.com/local/writereview?placeid=${business.placeId}`
-    : business?.googleMapsUrl
-    ? business.googleMapsUrl
-    : `https://google.com/search?q=${encodeURIComponent(business?.name || 'business review')}`;
-
-  if (!reviewRequest.clicked) {
-    reviewRequest.clicked = true;
-    reviewRequest.clickedAt = new Date();
-    await reviewRequest.save();
-
-    if (reviewRequest.campaignId) {
-      await Campaign.findByIdAndUpdate(reviewRequest.campaignId, { $inc: { clicked: 1 } });
-    }
-  }
-
-  return reviewUrl;
+  await dbConnect();
+  const reviewRequest = await ReviewRequest.findOne({ token });
+  if (!reviewRequest) return GENERIC_REVIEW_REDIRECT;
+  return resolveClickedRedirect(reviewRequest);
 }

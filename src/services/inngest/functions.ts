@@ -22,7 +22,9 @@ import {
   generateReviewRequestToken,
   syncFailureFields,
 } from "@/lib/reviewRequestFlow";
-import { resolveReviewFollowUpSettings } from "@/lib/reviewFollowUpSettings";
+import { decideFollowUpEligibility, resolveReviewFollowUpSettingsWithGlobal } from "@/lib/reviewFollowUpSettings";
+import { loadReviewFollowUpPolicy } from "@/lib/reviewFollowUpPolicyStore";
+import { evaluateReviewSendEligibility } from "@/lib/reviewSendEligibility";
 
 const FALLBACK_MESSAGE = "I'm having a little trouble connecting to my brain right now. Please hold on or call our main line!";
 
@@ -1118,11 +1120,16 @@ export const processReviewCampaign = inngest.createFunction(
 
     await dbConnect();
 
-    // 1. Load the owner's campaign settings (defaults for one-off sends)
+    // 1. Read the persisted Super Admin policy once, when this run starts.
+    //    Inngest memoizes this step. A run that already passed it keeps the
+    //    delays it loaded. Saving a new policy does not rewrite that run or
+    //    existing ReviewRequest documents. Campaign message text may still be
+    //    used; campaign delays are not.
     const config = await step.run("load-config", async () => {
-      if (!campaignId) return resolveReviewFollowUpSettings(null);
+      const policy = await loadReviewFollowUpPolicy();
+      if (!campaignId) return resolveReviewFollowUpSettingsWithGlobal(null, policy);
       const campaign: any = await Campaign.findById(campaignId).lean();
-      return resolveReviewFollowUpSettings(campaign);
+      return resolveReviewFollowUpSettingsWithGlobal(campaign, policy);
     });
 
     // 2. Fetch customer + business name; WhatsApp-only so a phone is required
@@ -1258,27 +1265,74 @@ export const processReviewCampaign = inngest.createFunction(
       return { success: false, reason: `WhatsApp send failed: ${initialSend.error}` };
     }
 
-    // Reminder gate: no reminder once the customer opted out, clicked the
-    // link, left a review (when stopOnReview), the campaign was paused, or
-    // (via the Twilio status webhook) we've since learned the last message
-    // genuinely failed to deliver — no point re-sending to a dead number.
-    const shouldRemind = async () => {
-      const req: any = await ReviewRequest.findById(reviewRequest._id).lean();
-      const cust: any = await Customer.findById(customerId).lean();
-      if (!req || !cust || cust.optedOut || req.clicked) return false;
-      if (req.status === 'Failed') return false;
-      if (config.stopOnReview && req.reviewReceived) return false;
+    // Follow-up gate. A click is not a review and does not stop the sequence.
+    // reviewReceived is not a verified Google signal, so it is not consulted.
+    // The sleep duration stays the one captured in load-config. This check
+    // only decides whether that already-scheduled follow-up may still send.
+    const followUpStillEligible = async (stage: 1 | 2) => {
+      const [policy, req, cust, business] = await Promise.all([
+        loadReviewFollowUpPolicy(),
+        ReviewRequest.findById(reviewRequest._id).select('status automationStatus followUpStage messageHistory businessId').lean() as Promise<any>,
+        Customer.findById(customerId).select('optedOut phone businessId').lean() as Promise<any>,
+        Business.findById(businessId).select('placeId').lean() as Promise<{ placeId?: string } | null>,
+      ]);
+      const gate = await evaluateReviewSendEligibility({
+        source: 'manual',
+        businessId,
+        customer: {
+          _id: customerId,
+          optedOut: !!cust?.optedOut,
+          phone: cust?.phone,
+        },
+      });
+      const stageName = stage === 1 ? 'reminder1' : 'reminder2';
+      const alreadySent = Array.isArray(req?.messageHistory)
+        && req.messageHistory.some((entry: { stage?: string; status?: string }) => entry.stage === stageName && entry.status === 'Sent');
+      const requestOpen = !!req
+        && req.status !== 'Failed'
+        && req.status !== 'Cancelled'
+        && req.automationStatus !== 'Stopped';
+      const businessMatches = !!cust && String(cust.businessId) === String(req?.businessId || reviewRequest.businessId);
       if (campaignId) {
         const camp: any = await Campaign.findById(campaignId).select('status').lean();
         if (camp && camp.status !== 'ACTIVE') return false;
       }
-      return true;
+      const decision = decideFollowUpEligibility({
+        stage,
+        policy,
+        customerExists: !!cust,
+        hasPhone: !!cust?.phone,
+        optedOut: !!cust?.optedOut,
+        hasPlaceId: !!business?.placeId,
+        businessMatches,
+        dailyLimitReached: gate.code === 'DAILY_LIMIT',
+        dailyLimitMessage: gate.message,
+        requestOpen,
+        followUpStage: req?.followUpStage ?? 0,
+        alreadySentThisStage: alreadySent,
+      });
+      return decision.send;
     };
 
-    // 7. Reminder 1 — after the owner's configured number of days
+    const claimFollowUp = async (stageName: 'reminder1' | 'reminder2', targetStage: number) => {
+      return ReviewRequest.findOneAndUpdate(
+        {
+          _id: reviewRequest._id,
+          followUpStage: { $lt: targetStage },
+          messageHistory: { $not: { $elemMatch: { stage: stageName, status: 'Sent' } } },
+          $or: [{ followUpClaim: { $exists: false } }, { followUpClaim: null }],
+        },
+        { $set: { followUpClaim: stageName } },
+        { new: true }
+      );
+    };
+
+    // 7. First follow-up. The sleep is the delay captured in load-config.
+    //    Saving a new policy does not change this wait. The second delay is
+    //    validated to be at least the minimum interval before it is stored.
     if (config.reminder1Enabled) {
       await step.sleep("wait-reminder-1", `${config.reminder1AfterDays}d`);
-      const sendRem1 = await step.run("check-status-1", shouldRemind);
+      const sendRem1 = await step.run("check-status-1", () => followUpStillEligible(1));
       if (sendRem1) {
         if (config.sendOnlyBizHours) {
           const wakeAt = await step.run("compute-rem1-send-time", async () =>
@@ -1286,6 +1340,15 @@ export const processReviewCampaign = inngest.createFunction(
           if (wakeAt) await step.sleepUntil("wait-biz-hours-rem1", wakeAt);
         }
         await step.run("send-reminder-1", async () => {
+          if (!await followUpStillEligible(1)) return;
+          const claimed = await claimFollowUp('reminder1', 1);
+          if (!claimed) return;
+          const currentCustomer: any = await Customer.findById(customerId).select('phone').lean();
+          const phone = currentCustomer?.phone;
+          if (!phone) {
+            await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { $unset: { followUpClaim: '' } });
+            return;
+          }
           // Re-read the template so owner edits made after launch still apply
           let tpl = config.reminder1Message;
           if (campaignId) {
@@ -1293,12 +1356,13 @@ export const processReviewCampaign = inngest.createFunction(
             if (camp) tpl = camp.reminder1Message || '';
           }
           const msg = fillTemplate(tpl.trim() || DEFAULT_REMINDER_1, templateVars);
-          const result = await sendReviewRequest(customer.phone, msg, businessId, {
+          const result = await sendReviewRequest(phone, msg, businessId, {
             name: templateVars.name, business: businessName, placeId, token: reviewRequest.token,
           });
           if (!result.success) {
             const failure = syncFailureFields(result.errorCode, result.error, new Date());
             await ReviewRequest.findByIdAndUpdate(reviewRequest._id, {
+              $unset: { followUpClaim: '' },
               $push: {
                 messageHistory: {
                   sid: result.sid,
@@ -1321,6 +1385,7 @@ export const processReviewCampaign = inngest.createFunction(
             status: 'Sent',
             lastMessageSid: result.sid,
             ...(result.templateSid ? { templateSid: result.templateSid } : {}),
+            $unset: { followUpClaim: '' },
             $push: {
               ...(result.sid ? { messageSids: result.sid } : {}),
               messageHistory: {
@@ -1341,7 +1406,7 @@ export const processReviewCampaign = inngest.createFunction(
     // 8. Reminder 2 (final) — delay counts from reminder 1
     if (config.reminder2Enabled) {
       await step.sleep("wait-reminder-2", `${config.reminder2AfterDays}d`);
-      const sendRem2 = await step.run("check-status-2", shouldRemind);
+      const sendRem2 = await step.run("check-status-2", () => followUpStillEligible(2));
       if (sendRem2) {
         if (config.sendOnlyBizHours) {
           const wakeAt = await step.run("compute-rem2-send-time", async () =>
@@ -1349,6 +1414,15 @@ export const processReviewCampaign = inngest.createFunction(
           if (wakeAt) await step.sleepUntil("wait-biz-hours-rem2", wakeAt);
         }
         await step.run("send-reminder-2", async () => {
+          if (!await followUpStillEligible(2)) return;
+          const claimed = await claimFollowUp('reminder2', 2);
+          if (!claimed) return;
+          const currentCustomer: any = await Customer.findById(customerId).select('phone').lean();
+          const phone = currentCustomer?.phone;
+          if (!phone) {
+            await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { $unset: { followUpClaim: '' } });
+            return;
+          }
           // Re-read the template so owner edits made after launch still apply
           let tpl = config.reminder2Message;
           if (campaignId) {
@@ -1356,12 +1430,13 @@ export const processReviewCampaign = inngest.createFunction(
             if (camp) tpl = camp.reminder2Message || '';
           }
           const msg = fillTemplate(tpl.trim() || DEFAULT_REMINDER_2, templateVars);
-          const result = await sendReviewRequest(customer.phone, msg, businessId, {
+          const result = await sendReviewRequest(phone, msg, businessId, {
             name: templateVars.name, business: businessName, placeId, token: reviewRequest.token,
           });
           if (!result.success) {
             const failure = syncFailureFields(result.errorCode, result.error, new Date());
             await ReviewRequest.findByIdAndUpdate(reviewRequest._id, {
+              $unset: { followUpClaim: '' },
               $push: {
                 messageHistory: {
                   sid: result.sid,
@@ -1384,6 +1459,7 @@ export const processReviewCampaign = inngest.createFunction(
             status: 'Sent',
             lastMessageSid: result.sid,
             ...(result.templateSid ? { templateSid: result.templateSid } : {}),
+            $unset: { followUpClaim: '' },
             $push: {
               ...(result.sid ? { messageSids: result.sid } : {}),
               messageHistory: {
@@ -2044,15 +2120,67 @@ export const seoPlanWeeklySummary = inngest.createFunction(
 async function runSalesFollowUpDrip(step: any, conversationId: string, followUpCount: number) {
   for (let i = 0; i < followUpCount; i++) {
     const cfg = await step.run(`load-followup-${i}`, async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: SalesConversation } = await import('@/models/SalesConversation');
+      const { followUpDelayMinutes } = await import('@/services/nurture/nurtureSchedule');
+      const convo: any = await SalesConversation.findById(conversationId).select('nurtureTiming').lean();
+      const snap = convo?.nurtureTiming?.followUps?.[i];
+      if (snap) {
+        if (snap.enabled === false) return { skip: true as const };
+        return {
+          delayMinutes: followUpDelayMinutes(snap),
+          onlyIfNoReply: snap.onlyIfNoReply !== false,
+          quietHours: convo.nurtureTiming.quietHours,
+          timezone: convo.nurtureTiming.timezone,
+          minimumMessageGapMinutes: convo.nurtureTiming.minimumMessageGapMinutes || 0,
+          maxNurtureMessages: convo.nurtureTiming.maxNurtureMessages,
+        };
+      }
       const { getSalesAgentConfig } = await import('@/services/sales/salesAgent');
       const config = await getSalesAgentConfig();
       const f = config.followUps[i];
-      return f ? { delayHours: Math.max(0, f.delayHours || 0), onlyIfNoReply: f.onlyIfNoReply } : null;
+      return f
+        ? { delayHours: Math.max(0, f.delayHours || 0), delayMinutes: followUpDelayMinutes(f), onlyIfNoReply: f.onlyIfNoReply }
+        : null;
     });
-    if (!cfg) break;
+    if (!cfg || ('skip' in cfg && cfg.skip)) continue;
+    const row = cfg as {
+      delayMinutes?: number;
+      delayHours?: number;
+      onlyIfNoReply?: boolean;
+      quietHours?: { enabled?: boolean; start?: string; end?: string };
+      minimumMessageGapMinutes?: number;
+      maxNurtureMessages?: number;
+    };
+    if (typeof row.maxNurtureMessages === 'number' && i >= row.maxNurtureMessages) break;
 
-    if (cfg.delayHours > 0) {
-      await step.sleep(`wait-followup-${i}`, `${cfg.delayHours}h`);
+    const delayMinutes = row.delayMinutes ?? Math.round((row.delayHours || 0) * 60);
+    if (delayMinutes > 0) {
+      await step.sleep(`wait-followup-${i}`, `${delayMinutes}m`);
+    }
+
+    const quietMinutes = await step.run(`quiet-gap-followup-${i}`, async () => {
+      if (!row.quietHours?.enabled) {
+        if (!row.minimumMessageGapMinutes) return 0;
+      }
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: SalesConversation } = await import('@/models/SalesConversation');
+      const { minutesUntilSendable } = await import('@/services/nurture/nurtureSchedule');
+      const convo: any = await SalesConversation.findById(conversationId).select('lastAgentAt nurtureTiming').lean();
+      const timing = convo?.nurtureTiming;
+      if (!timing?.quietHours && !timing?.minimumMessageGapMinutes) return 0;
+      return minutesUntilSendable({
+        now: new Date(),
+        quietHours: timing.quietHours || { enabled: false, start: '21:00', end: '09:00' },
+        timezone: timing.timezone || 'Asia/Kolkata',
+        minimumMessageGapMinutes: timing.minimumMessageGapMinutes || 0,
+        lastAgentAt: convo?.lastAgentAt || null,
+      });
+    });
+    if (quietMinutes > 0) {
+      await step.sleep(`quiet-wait-followup-${i}`, `${quietMinutes}m`);
     }
 
     const stop = await step.run(`send-followup-${i}`, async () => {
@@ -2065,7 +2193,7 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
       const convo: any = await SalesConversation.findById(conversationId);
       if (!convo || convo.status !== 'active') return true; // stop drip
       // If the lead engaged, hand off to the live agent — stop the drip.
-      if (cfg.onlyIfNoReply && convo.lastLeadReplyAt && convo.firstSentAt && convo.lastLeadReplyAt > convo.firstSentAt) {
+      if (row.onlyIfNoReply && convo.lastLeadReplyAt && convo.firstSentAt && convo.lastLeadReplyAt > convo.firstSentAt) {
         return true;
       }
 
@@ -2098,8 +2226,38 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
         return true; // stop drip — do not send this or any later follow-up in the loop
       }
 
+      const { genericFollowUpSkipReason } = await import('@/services/nurture/nurtureSchedule');
+      const intelligenceSkip = genericFollowUpSkipReason({
+        intent: dripLead?.intent,
+        nextBestAction: dripLead?.nextBestAction,
+        currentAgent: dripLead?.currentAgent,
+        currentStage: dripLead?.currentStage,
+        nurtureStatus: dripLead?.nurtureStatus,
+        humanHandoffActive: !!dripLead?.humanHandoff?.active,
+      });
+      if (intelligenceSkip) {
+        const { logLeadEvent } = await import('@/services/leadEvents');
+        logLeadEvent(
+          'NURTURE_ACTION_SKIPPED',
+          { reason: intelligenceSkip, agent: 'sales-agent-drip' },
+          'sales-agent',
+          { leadId: dripLead?._id, phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id }
+        );
+        return true;
+      }
+
       const config = await getSalesAgentConfig();
-      const f = config.followUps[i];
+      const snapFollowUp = convo.nurtureTiming?.followUps?.[i];
+      const live = config.followUps[i];
+      const f = snapFollowUp
+        ? {
+            mode: snapFollowUp.mode || live?.mode || 'template',
+            template: typeof snapFollowUp.template === 'string' ? snapFollowUp.template : live?.template || '',
+            aiSystemPrompt: typeof snapFollowUp.aiSystemPrompt === 'string' ? snapFollowUp.aiSystemPrompt : live?.aiSystemPrompt || '',
+            delayHours: (snapFollowUp.delayMinutes || 0) / 60,
+            onlyIfNoReply: snapFollowUp.onlyIfNoReply !== false,
+          }
+        : live;
       if (!f) return true;
 
       // --- Phase 5 gate: LEAD_ENGINE_V2 + cohort, per-lead --------------------
@@ -2153,7 +2311,7 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
           const { logLeadEvent } = await import('@/services/leadEvents');
           logLeadEvent(
             'NURTURE_ACTION_SCHEDULED',
-            { followUpIndex: i, delayHours: cfg.delayHours, gated: true, source: 'V2_NURTURE' },
+            { followUpIndex: i, delayMinutes: row.delayMinutes ?? null, gated: true, source: 'V2_NURTURE' },
             'sales-agent',
             { leadId: gatedLeadId, phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id }
           );
@@ -2336,6 +2494,8 @@ export const salesNurtureRequested = inngest.createFunction(
       const phoneKey = phoneDedupeKey(phone);
       const priorContact = await hasPhoneMessagedPlatformBefore(phoneKey);
       const scores = extractScores(audit, business);
+      const { snapshotFromStoredAgent } = await import('@/services/nurture/nurtureSchedule');
+      const nurtureTiming = snapshotFromStoredAgent(config);
       const convo = await SalesConversation.create({
         businessId: business._id,
         auditId: audit._id,
@@ -2345,6 +2505,8 @@ export const salesNurtureRequested = inngest.createFunction(
         status: 'active',
         consentStatus: priorContact ? 'not_required' : 'pending',
         scores,
+        nurtureConfigVersion: nurtureTiming.version,
+        nurtureTiming,
       });
       // Send-once guard so re-runs don't double-message.
       await Business.updateOne({ _id: business._id }, { $set: { auditNurtureSentAt: new Date() } });
@@ -2363,6 +2525,28 @@ export const salesNurtureRequested = inngest.createFunction(
 
     if (prep.firstDelayMinutes > 0) {
       await step.sleep('wait-before-first', `${prep.firstDelayMinutes}m`);
+    }
+
+    const quietBeforeFirst = await step.run('quiet-before-first', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: SalesConversation } = await import('@/models/SalesConversation');
+      const { minutesUntilSendable } = await import('@/services/nurture/nurtureSchedule');
+      const convo: any = await SalesConversation.findById(prep.conversationId).select('nurtureTiming lastAgentAt').lean();
+      const timing = convo?.nurtureTiming;
+      if (!timing) return 0;
+      if (timing.firstMessage?.enabled === false) return -1;
+      return minutesUntilSendable({
+        now: new Date(),
+        quietHours: timing.quietHours || { enabled: false, start: '21:00', end: '09:00' },
+        timezone: timing.timezone || 'Asia/Kolkata',
+        minimumMessageGapMinutes: timing.minimumMessageGapMinutes || 0,
+        lastAgentAt: convo.lastAgentAt || null,
+      });
+    });
+    if (quietBeforeFirst < 0) return { skipped: 'first-message-disabled' };
+    if (quietBeforeFirst > 0) {
+      await step.sleep('quiet-wait-before-first', `${quietBeforeFirst}m`);
     }
 
     if (prep.needsConsent) {

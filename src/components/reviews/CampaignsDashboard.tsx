@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback, Fragment } from 'react';
 import { toast } from 'sonner';
 import {
   UploadCloud, Users, Send, TrendingUp, MessageSquare, Search, X,
-  Loader2, Star, Pause, Play, Trash2, Plus, AlertTriangle, Mail,
-  Sparkles, ChevronLeft, ChevronRight, Pencil, Tag, Clock, Wand2, UserPlus, Import, Ban
+  Loader2, Star, Trash2, Mail, Sparkles, ChevronLeft, ChevronRight, Tag, UserPlus, Import
 } from 'lucide-react';
 import CustomerUploadModal from '@/components/campaigns/CustomerUploadModal';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
@@ -22,59 +21,6 @@ interface Customer {
   reviewStatus: 'Pending' | 'Requested' | 'Completed' | 'Failed';
   optedOut: boolean;
 }
-
-interface CampaignStats { total: number; sent: number; clicked: number; reviewed: number; }
-interface Campaign {
-  id: string;
-  name: string;
-  channel: string;
-  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
-  targetTags: string[];
-  initialMessage: string;
-  reminder1Enabled: boolean;
-  reminder1AfterDays: number;
-  reminder1Message: string;
-  reminder2Enabled: boolean;
-  reminder2AfterDays: number;
-  reminder2Message: string;
-  stopOnReview: boolean;
-  sendOnlyBizHours: boolean;
-  bizHoursStart: number;
-  bizHoursEnd: number;
-  stats: CampaignStats;
-}
-
-interface CampaignForm {
-  name: string;
-  targetTags: string[];
-  initialMessage: string;
-  reminder1Enabled: boolean;
-  reminder1AfterDays: number;
-  reminder1Message: string;
-  reminder2Enabled: boolean;
-  reminder2AfterDays: number;
-  reminder2Message: string;
-  stopOnReview: boolean;
-  sendOnlyBizHours: boolean;
-  bizHoursStart: number;
-  bizHoursEnd: number;
-}
-
-const EMPTY_FORM: CampaignForm = {
-  name: '',
-  targetTags: [],
-  initialMessage: '',
-  reminder1Enabled: true,
-  reminder1AfterDays: 2,
-  reminder1Message: '',
-  reminder2Enabled: true,
-  reminder2AfterDays: 5,
-  reminder2Message: '',
-  stopOnReview: true,
-  sendOnlyBizHours: true,
-  bizHoursStart: 9,
-  bizHoursEnd: 20,
-};
 
 interface CustomerStats {
   total: number;
@@ -140,13 +86,6 @@ const LEAD_STAGE_BADGE: Record<string, string> = {
 
 interface Suggestion { rating: number; text: string; }
 
-type AiDraftType = 'initial' | 'reminder1' | 'reminder2';
-const DRAFT_FIELD: Record<AiDraftType, keyof CampaignForm> = {
-  initial: 'initialMessage',
-  reminder1: 'reminder1Message',
-  reminder2: 'reminder2Message',
-};
-
 function maskPhone(phone: string): string {
   if (!phone || phone.length < 7) return phone;
   return phone.slice(0, 3) + 'X'.repeat(Math.max(0, phone.length - 6)) + phone.slice(-3);
@@ -158,22 +97,11 @@ const STATUS_BADGE: Record<string, string> = {
   Completed: 'bg-secondary-container/40 text-secondary',
   Failed: 'bg-error-container text-on-error-container',
 };
-const CAMPAIGN_STATUS_BADGE: Record<string, string> = {
-  DRAFT: 'bg-surface-container text-on-surface-variant',
-  ACTIVE: 'bg-secondary-container/40 text-secondary',
-  PAUSED: 'bg-error-container text-error',
-  COMPLETED: 'bg-primary-fixed text-primary',
-  CANCELLED: 'bg-error-container text-on-error-container',
-};
-
-const PLACEHOLDER_HELP = 'Placeholders: {{name}} = customer, {{service}} = their service, {{business}} = your business, {{link}} = review link (added automatically if missing)';
 
 export default function CampaignsDashboard() {
   const { activeBusiness, loading: bizLoading } = useBusiness();
 
-  const [activeTab, setActiveTab] = useState<'customers' | 'campaigns'>('customers');
-
-  // --- Customer tab state ---
+  // --- Customer list ---
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [stats, setStats] = useState<CustomerStats>({ total: 0, pending: 0, requested: 0, completed: 0, optedOut: 0 });
   const [custLoading, setCustLoading] = useState(true);
@@ -210,18 +138,6 @@ export default function CampaignsDashboard() {
   const [crmLoading, setCrmLoading] = useState(false);
   const [crmSearch, setCrmSearch] = useState('');
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
-
-  // --- Campaign tab state ---
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [campLoading, setCampLoading] = useState(true);
-  const [showEditor, setShowEditor] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<CampaignForm>(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
-  const [aiDrafting, setAiDrafting] = useState<AiDraftType | null>(null);
-  const [launchConfirm, setLaunchConfirm] = useState<{ id: string; name: string; targetTags: string[] } | null>(null);
-  const [launching, setLaunching] = useState(false);
-  const [launchResult, setLaunchResult] = useState<number | null>(null);
 
   const fetchCustomers = useCallback(async () => {
     setCustLoading(true);
@@ -267,19 +183,6 @@ export default function CampaignsDashboard() {
     }
   }, []);
 
-  const fetchCampaigns = useCallback(async () => {
-    setCampLoading(true);
-    try {
-      const res = await fetch('/api/campaigns');
-      const json = await res.json();
-      if (json.success) setCampaigns(json.campaigns);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setCampLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     if (!bizLoading && activeBusiness) {
       fetchCustomers();
@@ -287,10 +190,6 @@ export default function CampaignsDashboard() {
       fetchRequestMetrics();
     }
   }, [fetchCustomers, fetchTags, fetchRequestMetrics, bizLoading, activeBusiness]);
-
-  useEffect(() => {
-    if (!bizLoading && activeBusiness && activeTab === 'campaigns') fetchCampaigns();
-  }, [activeTab, fetchCampaigns, bizLoading, activeBusiness]);
 
   useEffect(() => { setPage(1); }, [search, statusFilter, tagFilter]);
 
@@ -498,149 +397,9 @@ export default function CampaignsDashboard() {
     }
   };
 
-  // --- Campaign editor ---
-  const openCreate = () => {
-    setEditingId(null);
-    setForm(EMPTY_FORM);
-    setShowEditor(true);
-  };
-
-  const openEdit = (camp: Campaign) => {
-    setEditingId(camp.id);
-    setForm({
-      name: camp.name,
-      targetTags: camp.targetTags ?? [],
-      initialMessage: camp.initialMessage ?? '',
-      reminder1Enabled: camp.reminder1Enabled,
-      reminder1AfterDays: camp.reminder1AfterDays,
-      reminder1Message: camp.reminder1Message ?? '',
-      reminder2Enabled: camp.reminder2Enabled,
-      reminder2AfterDays: camp.reminder2AfterDays,
-      reminder2Message: camp.reminder2Message ?? '',
-      stopOnReview: camp.stopOnReview,
-      sendOnlyBizHours: camp.sendOnlyBizHours,
-      bizHoursStart: camp.bizHoursStart,
-      bizHoursEnd: camp.bizHoursEnd,
-    });
-    setShowEditor(true);
-  };
-
-  const handleSaveCampaign = async () => {
-    if (!form.name.trim()) return;
-    setSaving(true);
-    try {
-      const res = await fetch(editingId ? `/api/campaigns/${editingId}` : '/api/campaigns', {
-        method: editingId ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form)
-      });
-      const json = await res.json();
-      if (json.success) {
-        setShowEditor(false);
-        setForm(EMPTY_FORM);
-        setEditingId(null);
-        fetchCampaigns();
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleAIDraft = async (type: AiDraftType) => {
-    setAiDrafting(type);
-    try {
-      const res = await fetch('/api/campaigns/generate-message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type })
-      });
-      const json = await res.json();
-      if (json.success) {
-        setForm(p => ({ ...p, [DRAFT_FIELD[type]]: json.draft }));
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setAiDrafting(null);
-    }
-  };
-
-  const toggleTargetTag = (tag: string) => {
-    setForm(p => ({
-      ...p,
-      targetTags: p.targetTags.includes(tag)
-        ? p.targetTags.filter(t => t !== tag)
-        : [...p.targetTags, tag]
-    }));
-  };
-
-  const handleLaunch = async () => {
-    if (!launchConfirm) return;
-    setLaunching(true);
-    setLaunchResult(null);
-    try {
-      const res = await fetch(`/api/campaigns/${launchConfirm.id}/launch`, { method: 'POST' });
-      const json = await res.json();
-      if (json.success) {
-        setLaunchResult(json.requestsQueued);
-        fetchCampaigns();
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLaunching(false);
-    }
-  };
-
-  const handlePause = async (id: string) => {
-    await fetch(`/api/campaigns/${id}/pause`, { method: 'PATCH' });
-    fetchCampaigns();
-  };
-
-  // Terminal: a cancelled campaign stops all pending reminders and can never
-  // be resumed — it stays visible for history.
-  const handleCancel = async (id: string) => {
-    await fetch(`/api/campaigns/${id}/cancel`, { method: 'PATCH' });
-    fetchCampaigns();
-  };
-
-  const handleDelete = async (id: string) => {
-    await fetch(`/api/campaigns/${id}`, { method: 'DELETE' });
-    fetchCampaigns();
-  };
-
-  const scheduleSummary = (camp: Campaign) => {
-    const parts: string[] = ['Day 0: request'];
-    let day = 0;
-    if (camp.reminder1Enabled) {
-      day += camp.reminder1AfterDays;
-      parts.push(`Day ${day}: reminder 1`);
-    }
-    if (camp.reminder2Enabled) {
-      day += camp.reminder2AfterDays;
-      parts.push(`Day ${day}: final reminder`);
-    }
-    return parts.join(' → ');
-  };
-
   return (
     <div className="space-y-6">
-      {/* Sub-tab header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex gap-1 bg-surface-container p-1 rounded-xl w-fit">
-          {(['customers', 'campaigns'] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-5 py-2 text-sm font-bold rounded-lg transition-all capitalize ${activeTab === tab ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-        {activeTab === 'customers' ? (
+      <div className="flex flex-col sm:flex-row justify-end items-start sm:items-center gap-4">
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={openCrmPicker}
@@ -661,18 +420,8 @@ export default function CampaignsDashboard() {
               <UploadCloud className="w-4 h-4" /> Import CSV
             </button>
           </div>
-        ) : (
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 bg-primary hover:bg-primary-container text-white text-sm font-bold rounded-xl px-5 py-2.5 shadow-sm transition-all"
-          >
-            <Plus className="w-4 h-4" /> New Campaign
-          </button>
-        )}
       </div>
 
-      {/* ===== CUSTOMERS TAB ===== */}
-      {activeTab === 'customers' && (
         <>
           {importMsg && (
             <div className="flex items-center justify-between bg-primary-fixed border border-primary-fixed-dim text-primary text-sm font-medium rounded-xl px-4 py-3">
@@ -925,120 +674,6 @@ export default function CampaignsDashboard() {
             </div>
           )}
         </>
-      )}
-
-      {/* ===== CAMPAIGNS TAB ===== */}
-      {activeTab === 'campaigns' && (
-        <>
-          {campLoading ? (
-            <div className="flex justify-center py-20">
-              <Loader2 className="w-6 h-6 animate-spin text-outline" />
-            </div>
-          ) : campaigns.length === 0 ? (
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-12 text-center">
-              <div className="w-12 h-12 bg-primary-fixed text-primary rounded-full flex items-center justify-center mx-auto mb-3">
-                <MessageSquare className="w-6 h-6" />
-              </div>
-              <p className="font-bold text-on-surface mb-1">No campaigns yet</p>
-              <p className="text-sm text-on-surface-variant mb-4">Create a campaign to start sending automated WhatsApp review requests to your customers.</p>
-              <button
-                onClick={openCreate}
-                className="inline-flex items-center gap-2 bg-primary hover:bg-primary-container text-white text-sm font-bold rounded-xl px-5 py-2.5 shadow-sm transition-all"
-              >
-                <Plus className="w-4 h-4" /> New Campaign
-              </button>
-            </div>
-          ) : (
-            <div className="grid gap-4">
-              {campaigns.map(camp => (
-                <div key={camp.id} className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="font-bold text-on-surface">{camp.name}</h3>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container uppercase">WhatsApp</span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${CAMPAIGN_STATUS_BADGE[camp.status]}`}>{camp.status}</span>
-                        {camp.targetTags?.length > 0 ? (
-                          camp.targetTags.map(t => (
-                            <span key={t} className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary-fixed text-primary">
-                              {t}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant">All customers</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-outline mb-2 flex items-center gap-1.5">
-                        <Clock className="w-3 h-3" />
-                        {scheduleSummary(camp)}
-                        {camp.sendOnlyBizHours && ` · sends ${camp.bizHoursStart}:00–${camp.bizHoursEnd}:00 only`}
-                        {camp.stopOnReview && ' · stops on review'}
-                      </p>
-                      <div className="flex gap-4 text-xs text-on-surface-variant">
-                        <span>Total: <strong className="text-on-surface">{camp.stats.total}</strong></span>
-                        <span>Sent: <strong className="text-on-surface">{camp.stats.sent}</strong></span>
-                        <span>Clicked: <strong className="text-on-surface">{camp.stats.clicked}</strong></span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {camp.status !== 'CANCELLED' && (
-                        <button
-                          onClick={() => openEdit(camp)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface hover:bg-surface-container text-on-surface text-xs font-bold rounded-xl transition-colors border border-outline-variant"
-                        >
-                          <Pencil className="w-3.5 h-3.5" /> Edit
-                        </button>
-                      )}
-                      {camp.status === 'DRAFT' && (
-                        <button
-                          onClick={() => { setLaunchConfirm({ id: camp.id, name: camp.name, targetTags: camp.targetTags }); setLaunchResult(null); }}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-secondary hover:bg-secondary text-white text-xs font-bold rounded-lg transition-colors"
-                        >
-                          <Play className="w-3.5 h-3.5" /> Launch
-                        </button>
-                      )}
-                      {camp.status === 'ACTIVE' && (
-                        <button
-                          onClick={() => handlePause(camp.id)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-error-container hover:bg-error-container text-on-error-container text-xs font-bold rounded-xl transition-colors border border-error-container"
-                        >
-                          <Pause className="w-3.5 h-3.5" /> Pause
-                        </button>
-                      )}
-                      {camp.status === 'PAUSED' && (
-                        <button
-                          onClick={() => { setLaunchConfirm({ id: camp.id, name: camp.name, targetTags: camp.targetTags }); setLaunchResult(null); }}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-fixed hover:bg-primary-fixed text-primary text-xs font-bold rounded-xl transition-colors border border-primary-fixed-dim"
-                        >
-                          <Play className="w-3.5 h-3.5" /> Resume
-                        </button>
-                      )}
-                      {(camp.status === 'ACTIVE' || camp.status === 'PAUSED') && (
-                        <button
-                          onClick={() => handleCancel(camp.id)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-error-container hover:bg-error-container text-on-error-container text-xs font-bold rounded-xl transition-colors border border-error-container"
-                          title="Cancel campaign — stops all pending reminders, cannot be resumed"
-                        >
-                          <Ban className="w-3.5 h-3.5" /> Cancel
-                        </button>
-                      )}
-                      {camp.status === 'DRAFT' && (
-                        <button
-                          onClick={() => handleDelete(camp.id)}
-                          className="p-2 text-outline hover:text-error hover:bg-error-container rounded-xl transition-colors border border-outline-variant"
-                          title="Delete draft campaign"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
 
       {/* Customer Upload Modal */}
       {showUpload && (
@@ -1256,7 +891,7 @@ export default function CampaignsDashboard() {
                   ))}
                 </div>
               )}
-              <p className="text-xs text-outline">Campaigns can target one or more groups. A customer can be in several groups.</p>
+              <p className="text-xs text-outline">A customer can belong to more than one group.</p>
             </div>
             <div className="p-6 border-t border-outline-variant flex justify-end gap-3">
               <button onClick={() => setEditTagsFor(null)} className="px-5 py-2.5 text-sm font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high rounded-xl">
@@ -1275,296 +910,6 @@ export default function CampaignsDashboard() {
         </div>
       )}
 
-      {/* Campaign Editor Modal (create + edit) */}
-      {showEditor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/50 backdrop-blur-sm p-4">
-          <div className="bg-surface-container-lowest rounded-2xl card-shadow w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center p-6 border-b border-outline-variant shrink-0">
-              <h2 className="text-lg font-bold text-on-surface">{editingId ? 'Edit Campaign' : 'New Campaign'}</h2>
-              <button onClick={() => setShowEditor(false)} className="text-outline hover:text-on-surface-variant">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-6 overflow-y-auto">
-              {/* Name */}
-              <div>
-                <label className="block text-sm font-bold text-on-surface mb-1.5">Campaign Name</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                  placeholder="e.g. Q3 Review Drive"
-                  className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              {/* Target groups */}
-              <div>
-                <label className="block text-sm font-bold text-on-surface mb-1.5">Send To</label>
-                {availableTags.length === 0 ? (
-                  <p className="text-xs text-outline bg-surface rounded-xl p-3">
-                    No groups yet — all customers will be targeted. Assign groups to customers from the Customers tab (tag icon).
-                  </p>
-                ) : (
-                  <>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => setForm(p => ({ ...p, targetTags: [] }))}
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${form.targetTags.length === 0 ? 'bg-primary text-white border-primary' : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:border-primary-fixed-dim'}`}
-                      >
-                        All customers
-                      </button>
-                      {availableTags.map(t => (
-                        <button
-                          key={t}
-                          onClick={() => toggleTargetTag(t)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${form.targetTags.includes(t) ? 'bg-primary text-white border-primary' : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:border-primary-fixed-dim'}`}
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-xs text-outline mt-1.5">Pick one or more groups, or "All customers".</p>
-                  </>
-                )}
-              </div>
-
-              {/* Initial message */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-sm font-bold text-on-surface">First WhatsApp Message</label>
-                  <button
-                    onClick={() => handleAIDraft('initial')}
-                    disabled={aiDrafting !== null}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary-fixed hover:bg-primary-fixed text-primary text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    {aiDrafting === 'initial' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                    Generate with AI
-                  </button>
-                </div>
-                <textarea
-                  value={form.initialMessage}
-                  onChange={e => setForm(p => ({ ...p, initialMessage: e.target.value }))}
-                  rows={4}
-                  placeholder={'Leave empty to let AI write a fresh message for each customer, or write your own, e.g.:\nHi {{name}}, thanks for choosing {{business}} for your {{service}}! We\'d love your feedback: {{link}}\nReply STOP to opt-out.'}
-                  className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-mono"
-                />
-                <p className="text-xs text-outline mt-1">{PLACEHOLDER_HELP}</p>
-              </div>
-
-              {/* Reminder 1 */}
-              <div className={`rounded-xl border p-4 space-y-3 ${form.reminder1Enabled ? 'border-primary-fixed-dim bg-primary-fixed/30' : 'border-outline-variant bg-surface/50'}`}>
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.reminder1Enabled}
-                      onChange={e => setForm(p => ({ ...p, reminder1Enabled: e.target.checked }))}
-                      className="w-4 h-4 rounded accent-primary"
-                    />
-                    <span className="text-sm font-bold text-on-surface">Reminder 1</span>
-                  </label>
-                  <div className="flex items-center gap-2 text-sm text-on-surface-variant">
-                    <span>after</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={60}
-                      value={form.reminder1AfterDays}
-                      onChange={e => setForm(p => ({ ...p, reminder1AfterDays: Math.max(1, Math.min(60, Number(e.target.value) || 1)) }))}
-                      disabled={!form.reminder1Enabled}
-                      className="w-16 px-2 py-1.5 text-sm text-center border border-outline-variant rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
-                    />
-                    <span>day(s)</span>
-                  </div>
-                </div>
-                {form.reminder1Enabled && (
-                  <>
-                    <div className="flex justify-end">
-                      <button
-                        onClick={() => handleAIDraft('reminder1')}
-                        disabled={aiDrafting !== null}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary-fixed hover:bg-primary-fixed text-primary text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        {aiDrafting === 'reminder1' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                        Generate with AI
-                      </button>
-                    </div>
-                    <textarea
-                      value={form.reminder1Message}
-                      onChange={e => setForm(p => ({ ...p, reminder1Message: e.target.value }))}
-                      rows={3}
-                      placeholder={'Leave empty for the default:\nHi {{name}}, just a quick reminder! We\'d really appreciate a review of your recent {{service}}: {{link}}'}
-                      className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-mono bg-surface-container-lowest"
-                    />
-                  </>
-                )}
-              </div>
-
-              {/* Reminder 2 */}
-              <div className={`rounded-xl border p-4 space-y-3 ${form.reminder2Enabled ? 'border-primary-fixed-dim bg-primary-fixed/30' : 'border-outline-variant bg-surface/50'}`}>
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.reminder2Enabled}
-                      onChange={e => setForm(p => ({ ...p, reminder2Enabled: e.target.checked }))}
-                      className="w-4 h-4 rounded accent-primary"
-                    />
-                    <span className="text-sm font-bold text-on-surface">Final Reminder</span>
-                  </label>
-                  <div className="flex items-center gap-2 text-sm text-on-surface-variant">
-                    <span>after another</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={60}
-                      value={form.reminder2AfterDays}
-                      onChange={e => setForm(p => ({ ...p, reminder2AfterDays: Math.max(1, Math.min(60, Number(e.target.value) || 1)) }))}
-                      disabled={!form.reminder2Enabled}
-                      className="w-16 px-2 py-1.5 text-sm text-center border border-outline-variant rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
-                    />
-                    <span>day(s)</span>
-                  </div>
-                </div>
-                {form.reminder2Enabled && (
-                  <>
-                    <div className="flex justify-end">
-                      <button
-                        onClick={() => handleAIDraft('reminder2')}
-                        disabled={aiDrafting !== null}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary-fixed hover:bg-primary-fixed text-primary text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        {aiDrafting === 'reminder2' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                        Generate with AI
-                      </button>
-                    </div>
-                    <textarea
-                      value={form.reminder2Message}
-                      onChange={e => setForm(p => ({ ...p, reminder2Message: e.target.value }))}
-                      rows={3}
-                      placeholder={'Leave empty for the default:\nHi {{name}}, last bother from us! A review would mean the world to our team at {{business}}: {{link}}'}
-                      className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-mono bg-surface-container-lowest"
-                    />
-                  </>
-                )}
-              </div>
-
-              {/* Behavior settings */}
-              <div className="space-y-3">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.stopOnReview}
-                    onChange={e => setForm(p => ({ ...p, stopOnReview: e.target.checked }))}
-                    className="w-4 h-4 rounded accent-primary"
-                  />
-                  <span className="text-sm text-on-surface">Stop reminders once the customer leaves a review</span>
-                </label>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.sendOnlyBizHours}
-                      onChange={e => setForm(p => ({ ...p, sendOnlyBizHours: e.target.checked }))}
-                      className="w-4 h-4 rounded accent-primary"
-                    />
-                    <span className="text-sm text-on-surface">Send only during business hours</span>
-                  </label>
-                  {form.sendOnlyBizHours && (
-                    <div className="flex items-center gap-2 text-sm text-on-surface-variant">
-                      <input
-                        type="number"
-                        min={0}
-                        max={23}
-                        value={form.bizHoursStart}
-                        onChange={e => setForm(p => ({ ...p, bizHoursStart: Math.max(0, Math.min(23, Number(e.target.value) || 0)) }))}
-                        className="w-16 px-2 py-1.5 text-sm text-center border border-outline-variant rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                      />
-                      <span>:00 to</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={24}
-                        value={form.bizHoursEnd}
-                        onChange={e => setForm(p => ({ ...p, bizHoursEnd: Math.max(1, Math.min(24, Number(e.target.value) || 24)) }))}
-                        className="w-16 px-2 py-1.5 text-sm text-center border border-outline-variant rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                      />
-                      <span>:00</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="p-6 border-t border-outline-variant flex justify-end gap-3 shrink-0">
-              <button onClick={() => setShowEditor(false)} className="px-5 py-2.5 text-sm font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high rounded-xl">
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveCampaign}
-                disabled={saving || !form.name.trim()}
-                className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-primary hover:bg-primary-container rounded-xl disabled:opacity-50"
-              >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : editingId ? <Pencil className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                {editingId ? 'Save Changes' : 'Create Campaign'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Launch Confirmation Modal */}
-      {launchConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/50 backdrop-blur-sm p-4">
-          <div className="bg-surface-container-lowest rounded-2xl card-shadow w-full max-w-sm p-6 text-center">
-            {launchResult !== null ? (
-              <>
-                <div className="w-12 h-12 bg-secondary-container text-secondary rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Play className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-bold text-on-surface mb-1">Campaign Launched!</h3>
-                <p className="text-sm text-on-surface-variant mb-5">
-                  <strong>{launchResult}</strong> WhatsApp review request{launchResult !== 1 ? 's' : ''} queued for delivery.
-                </p>
-                <button
-                  onClick={() => { setLaunchConfirm(null); setLaunchResult(null); }}
-                  className="w-full px-5 py-2.5 text-sm font-bold text-white bg-primary hover:bg-primary-container rounded-xl"
-                >
-                  Done
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="w-12 h-12 bg-error-container text-error rounded-full flex items-center justify-center mx-auto mb-3">
-                  <AlertTriangle className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-bold text-on-surface mb-1">Launch "{launchConfirm.name}"?</h3>
-                <p className="text-sm text-on-surface-variant mb-5">
-                  {launchConfirm.targetTags?.length > 0
-                    ? <>WhatsApp review requests will go to customers in <strong>{launchConfirm.targetTags.join(', ')}</strong> who have a phone number and haven't opted out.</>
-                    : <>WhatsApp review requests will go to all customers with a phone number who haven't opted out.</>}
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setLaunchConfirm(null)}
-                    className="flex-1 px-5 py-2.5 text-sm font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-high rounded-xl"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleLaunch}
-                    disabled={launching}
-                    className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-secondary hover:bg-secondary rounded-xl disabled:opacity-50"
-                  >
-                    {launching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                    {launching ? 'Launching…' : 'Launch'}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import {
   GENERIC_REVIEW_REDIRECT,
   applyClick,
   buildGoogleReviewUrl,
+  extractReviewToken,
   isSafeReviewToken,
 } from '@/lib/reviewRequestFlow';
 
@@ -53,10 +54,11 @@ export async function handleReviewRedirect(requestId: string): Promise<string> {
  * a generic Google URL and does not describe why.
  */
 export async function handleReviewRedirectByToken(token: string): Promise<string> {
-  if (!isSafeReviewToken(token)) return GENERIC_REVIEW_REDIRECT;
+  const reviewToken = extractReviewToken(token);
+  if (!isSafeReviewToken(reviewToken)) return GENERIC_REVIEW_REDIRECT;
 
   await dbConnect();
-  const reviewRequest = await ReviewRequest.findOne({ token });
+  const reviewRequest = await ReviewRequest.findOne({ token: reviewToken });
   if (!reviewRequest) return GENERIC_REVIEW_REDIRECT;
   return resolveClickedRedirect(reviewRequest);
 }

@@ -6,8 +6,11 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Customer tap target for the utility WhatsApp template.
- * Records the first click, then redirects to the business's Google review URL.
- * No page is rendered.
+ * Records the first click, then 302s to the existing Google review URL.
+ * No page is rendered. No Twilio or AI work happens here.
+ *
+ * The path is the ReviewRequest token. A query such as ?src=wa is ignored
+ * and is not stored as part of the token.
  */
 export async function GET(
   _: Request,

@@ -23,13 +23,19 @@ import {
   existingCustomerSendOffer,
   generateReviewRequestToken,
   interpretTwilioStatus,
+  extractReviewToken,
   isSafeReviewToken,
   readTimestamps,
   syncFailureFields,
   toAdminReviewDiagnostics,
   toBusinessReviewSummary,
 } from '../../src/lib/reviewRequestFlow.ts';
-import { resolveReviewFollowUpSettingsWithGlobal } from '../../src/lib/reviewFollowUpSettings.ts';
+import {
+  decideFollowUpEligibility,
+  resolveReviewFollowUpSettingsWithGlobal,
+  validateGlobalReviewFollowUpSettings,
+  type GlobalReviewFollowUpSettings,
+} from '../../src/lib/reviewFollowUpSettings.ts';
 
 const PLACE_ID = 'ChIJ4blskkPD3TsRUq38wbsts6U';
 const TOKEN = 'AbC123XyTokenValue';
@@ -42,6 +48,35 @@ test('tokens are opaque, url-safe, and unique', () => {
     assert.equal(isSafeReviewToken(token), true);
     assert.equal(token.includes(PLACE_ID), false);
   }
+});
+
+test('/review/{token}?src=wa uses the path token and still redirects to Google', () => {
+  const raw = 'BSzrQO?src=wa';
+  const token = extractReviewToken(raw);
+  assert.equal(token, 'BSzrQO');
+  assert.equal(token.includes('src'), false);
+  assert.equal(token.includes('?'), false);
+  assert.equal(isSafeReviewToken(token), true);
+  assert.equal(isSafeReviewToken(raw), false);
+  assert.equal(extractReviewToken('BSzrQO'), 'BSzrQO');
+  assert.equal(extractReviewToken(decodeURIComponent('BSzrQO%3Fsrc%3Dwa')), 'BSzrQO');
+  assert.equal(
+    buildGoogleReviewUrl({ placeId: PLACE_ID, name: 'Mulsetu' }),
+    `https://search.google.com/local/writereview?placeid=${PLACE_ID}`
+  );
+  const route = readFileSync(new URL('../../src/app/review/[token]/route.ts', import.meta.url), 'utf8');
+  const redirect = readFileSync(new URL('../../src/lib/reviewRedirect.ts', import.meta.url), 'utf8');
+  assert.match(redirect, /extractReviewToken/);
+  assert.match(route, /handleReviewRedirectByToken/);
+  assert.match(route, /302/);
+  const click = applyClick({ clicked: false, clickCount: 0 });
+  assert.equal(click.setClickedAt, true);
+  assert.equal(click.incrementCampaignClicked, true);
+  assert.equal(click.markReviewReceived, false);
+  const again = applyClick({ clicked: true, clickCount: 1 });
+  assert.equal(again.setClickedAt, false);
+  assert.equal(again.incrementCampaignClicked, false);
+  assert.equal(again.clickCount, 2);
 });
 
 test('a malformed token is rejected before lookup', () => {
@@ -243,19 +278,126 @@ test('an existing customer can be selected for another request, without a new co
   assert.equal(decision.allowed, true);
 });
 
-test('campaign follow-up timing is unchanged when a future global config is passed', () => {
-  const resolved = resolveReviewFollowUpSettingsWithGlobal(null, {
-    enabled: true,
-    initialFollowUpDelayDays: 9,
-    maximumFollowUps: 1,
-    minimumIntervalDays: 1,
-    stopOnOptOut: true,
-    stopOnClick: true,
-    stopOnReview: true,
+const GLOBAL_ON: GlobalReviewFollowUpSettings = {
+  enabled: true,
+  initialFollowUpDelayDays: 7,
+  secondFollowUpDelayDays: 14,
+  maximumFollowUps: 2,
+  minimumIntervalDays: 7,
+  stopOnOptOut: true,
+  stopOnClick: false,
+  stopOnReview: false,
+};
+
+function eligibleFollowUp(overrides: Partial<Parameters<typeof decideFollowUpEligibility>[0]> = {}) {
+  return decideFollowUpEligibility({
+    stage: 1,
+    policy: GLOBAL_ON,
+    customerExists: true,
+    hasPhone: true,
+    optedOut: false,
+    hasPlaceId: true,
+    businessMatches: true,
+    dailyLimitReached: false,
+    requestOpen: true,
+    followUpStage: 0,
+    alreadySentThisStage: false,
+    ...overrides,
   });
-  assert.equal(resolved.reminder1AfterDays, 2);
-  assert.equal(resolved.reminder2AfterDays, 5);
-  assert.equal(resolved.source, 'campaign-defaults');
+}
+
+test('global follow-ups disabled schedules no follow-up', () => {
+  const resolved = resolveReviewFollowUpSettingsWithGlobal(null, { ...GLOBAL_ON, enabled: false });
+  assert.equal(resolved.reminder1Enabled, false);
+  assert.equal(resolved.reminder2Enabled, false);
+  assert.equal(resolved.source, 'global');
+  assert.equal(eligibleFollowUp({ policy: { ...GLOBAL_ON, enabled: false } }).send, false);
+});
+
+test('global follow-ups enabled schedules the configured first follow-up', () => {
+  const resolved = resolveReviewFollowUpSettingsWithGlobal(null, GLOBAL_ON);
+  assert.equal(resolved.reminder1Enabled, true);
+  assert.equal(resolved.reminder1AfterDays, 7);
+  assert.equal(resolved.source, 'global');
+  assert.equal(eligibleFollowUp().code, 'OK');
+});
+
+test('second follow-up uses the configured delay and not a campaign delay', () => {
+  const resolved = resolveReviewFollowUpSettingsWithGlobal(
+    { reminder1AfterDays: 2, reminder2AfterDays: 5 },
+    GLOBAL_ON
+  );
+  assert.equal(resolved.reminder2Enabled, true);
+  assert.equal(resolved.reminder2AfterDays, 14);
+  assert.equal(resolved.reminder1AfterDays, 7);
+  const second = eligibleFollowUp({ stage: 2, followUpStage: 1 });
+  assert.equal(second.send, true);
+});
+
+test('maximum follow-ups stops another send, including a repeated stage', () => {
+  assert.equal(eligibleFollowUp({ stage: 2, policy: { ...GLOBAL_ON, maximumFollowUps: 1 }, followUpStage: 1 }).code, 'MAX_FOLLOW_UPS');
+  assert.equal(eligibleFollowUp({ stage: 2, followUpStage: 2 }).code, 'ALREADY_SENT');
+  assert.equal(eligibleFollowUp({ stage: 1, alreadySentThisStage: true }).code, 'ALREADY_SENT');
+  const capped = resolveReviewFollowUpSettingsWithGlobal(null, { ...GLOBAL_ON, maximumFollowUps: 2 });
+  assert.equal(capped.reminder2Enabled, true);
+  const one = resolveReviewFollowUpSettingsWithGlobal(null, { ...GLOBAL_ON, maximumFollowUps: 1 });
+  assert.equal(one.reminder2Enabled, false);
+});
+
+test('an opted-out customer is not followed up', () => {
+  assert.equal(eligibleFollowUp({ optedOut: true }).code, 'OPTED_OUT');
+});
+
+test('an ineligible customer is not followed up', () => {
+  assert.equal(eligibleFollowUp({ hasPhone: false }).code, 'NO_PHONE');
+  assert.equal(eligibleFollowUp({ customerExists: false }).code, 'CUSTOMER_MISSING');
+  assert.equal(eligibleFollowUp({ businessMatches: false }).code, 'BUSINESS_MISMATCH');
+  assert.equal(eligibleFollowUp({ hasPlaceId: false }).code, 'NO_PLACE_ID');
+  assert.equal(eligibleFollowUp({ requestOpen: false }).code, 'REQUEST_CLOSED');
+});
+
+test('a later global policy does not rewrite a schedule that already started', () => {
+  const started = resolveReviewFollowUpSettingsWithGlobal(null, GLOBAL_ON);
+  const updated = resolveReviewFollowUpSettingsWithGlobal(null, {
+    ...GLOBAL_ON,
+    initialFollowUpDelayDays: 5,
+    secondFollowUpDelayDays: 9,
+  });
+  assert.equal(started.reminder1AfterDays, 7);
+  assert.equal(started.reminder2AfterDays, 14);
+  assert.equal(updated.reminder1AfterDays, 5);
+  const tooSoon = eligibleFollowUp({
+    stage: 2,
+    followUpStage: 1,
+    earliestSendAt: '2026-10-10T00:00:00.000Z',
+    now: '2026-10-09T00:00:00.000Z',
+  });
+  assert.equal(tooSoon.code, 'INTERVAL');
+});
+
+test('invalid follow-up settings are rejected', () => {
+  assert.equal(validateGlobalReviewFollowUpSettings({ ...GLOBAL_ON, initialFollowUpDelayDays: -1 }).ok, false);
+  assert.equal(validateGlobalReviewFollowUpSettings({ ...GLOBAL_ON, maximumFollowUps: 3 }).ok, false);
+  assert.equal(validateGlobalReviewFollowUpSettings({ ...GLOBAL_ON, secondFollowUpDelayDays: 3, minimumIntervalDays: 7 }).ok, false);
+  assert.equal(validateGlobalReviewFollowUpSettings({ ...GLOBAL_ON, stopOnClick: true }).ok, false);
+  assert.equal(validateGlobalReviewFollowUpSettings({ ...GLOBAL_ON, stopOnReview: true }).ok, false);
+  const saved = validateGlobalReviewFollowUpSettings(GLOBAL_ON);
+  assert.equal(saved.ok, true);
+});
+
+test('the review worker reads the persisted global policy and does not stop on a click', () => {
+  const worker = readFileSync(new URL('../../src/services/inngest/functions.ts', import.meta.url), 'utf8');
+  const admin = readFileSync(new URL('../../src/app/api/admin/review-follow-up/route.ts', import.meta.url), 'utf8');
+  const dashboard = readFileSync(new URL('../../src/components/reviews/CampaignsDashboard.tsx', import.meta.url), 'utf8');
+  assert.match(worker, /loadReviewFollowUpPolicy/);
+  assert.match(worker, /resolveReviewFollowUpSettingsWithGlobal/);
+  assert.match(worker, /followUpClaim/);
+  assert.match(worker, /decideFollowUpEligibility/);
+  assert.doesNotMatch(worker, /req\.clicked/);
+  assert.match(admin, /requireSuperAdmin/);
+  assert.match(admin, /available: false/);
+  assert.doesNotMatch(dashboard, /Create Campaign/);
+  assert.doesNotMatch(dashboard, /No campaigns yet/);
 });
 
 test('old redirect routes stay, and the new route is token based', () => {
@@ -274,6 +416,9 @@ test('web and mobile read the same review-request endpoint', () => {
   const mobile = readFileSync(new URL('../../mobile/src/api/endpoints/review-requests.ts', import.meta.url), 'utf8');
   assert.match(web, /\/api\/review-requests/);
   assert.match(mobile, /\/api\/review-requests/);
+  assert.doesNotMatch(web, /No campaigns yet/);
+  assert.doesNotMatch(web, /Create Campaign/);
+  assert.doesNotMatch(web, /Campaign Name/);
 });
 
 test('business route does not select provider errors, and admin can filter them', () => {

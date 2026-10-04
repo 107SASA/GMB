@@ -136,7 +136,48 @@ export async function PUT(req: Request) {
   // so a save from a UI that doesn't include the knowledge editor never wipes
   // configured knowledge.
   const { knowledge, ...rest } = parsed.data;
-  const update: Record<string, unknown> = { key: 'default', ...rest };
+  const existing = await SalesAgentConfig.findOne({ key: 'default' }).lean() as any;
+  const priorFollowUps = Array.isArray(existing?.followUps) ? existing.followUps : [];
+  // This editor owns copy and hour-level delays. Keep the nurture-page fields
+  // (step id, enabled, description, first-message enabled) and mirror the
+  // submitted delay into delayMinutes so a later drip does not prefer a stale minute value.
+  const followUps = rest.followUps.map((step, index) => {
+    const prior = priorFollowUps[index] || {};
+    return {
+      delayHours: step.delayHours,
+      mode: step.mode,
+      template: step.template,
+      aiSystemPrompt: step.aiSystemPrompt,
+      onlyIfNoReply: step.onlyIfNoReply,
+      id: typeof prior.id === 'string' && prior.id ? prior.id : `follow-up-${index + 1}`,
+      enabled: prior.enabled !== false,
+      delayMinutes: Math.round(step.delayHours * 60),
+      description: typeof prior.description === 'string' ? prior.description : '',
+    };
+  });
+  const firstMessage = {
+    ...rest.firstMessage,
+    enabled: existing?.firstMessage?.enabled !== false,
+  };
+  const timingChanged = !!existing && (
+    existing.firstMessage?.delayMinutes !== firstMessage.delayMinutes
+    || priorFollowUps.length !== followUps.length
+    || followUps.some((step, index) => {
+      const prior = priorFollowUps[index];
+      return !prior || prior.delayHours !== step.delayHours || prior.onlyIfNoReply !== step.onlyIfNoReply;
+    })
+  );
+  const nextVersion = (typeof existing?.nurtureConfigVersion === 'number' ? existing.nurtureConfigVersion : 1) + (timingChanged ? 1 : 0);
+  const update: Record<string, unknown> = {
+    key: 'default',
+    ...rest,
+    firstMessage,
+    followUps,
+  };
+  if (timingChanged) {
+    update.nurtureConfigVersion = nextVersion;
+    update.nurtureUpdatedBy = auth.userId;
+  }
   if (knowledge !== undefined) update.knowledge = knowledge;
 
   await SalesAgentConfig.findOneAndUpdate(
@@ -144,6 +185,19 @@ export async function PUT(req: Request) {
     { $set: update },
     { upsert: true, setDefaultsOnInsert: true }
   );
+
+  if (timingChanged) {
+    const { default: NurtureConfigAudit } = await import('@/models/NurtureConfigAudit');
+    await NurtureConfigAudit.create({
+      version: nextVersion,
+      previousVersion: typeof existing?.nurtureConfigVersion === 'number' ? existing.nurtureConfigVersion : 1,
+      actorUserId: auth.userId,
+      changes: [
+        'Timing was changed from the Sales Agent editor.',
+        `Config version: ${typeof existing?.nurtureConfigVersion === 'number' ? existing.nurtureConfigVersion : 1} → ${nextVersion}`,
+      ],
+    });
+  }
 
   return NextResponse.json({ success: true });
 }

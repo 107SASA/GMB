@@ -36,6 +36,26 @@ export function isSafeReviewToken(token: string): boolean {
   return typeof token === 'string' && token.length > 0 && token.length <= 128 && /^[A-Za-z0-9_-]+$/.test(token);
 }
 
+/**
+ * Path token for /review/{token}. A query such as ?src=wa is not part of
+ * the token. The utility template body is
+ * https://growwmatics.com/review/{{3}}?src=wa
+ */
+export function extractReviewToken(pathToken: string): string {
+  if (typeof pathToken !== 'string') return '';
+  let token = pathToken.trim();
+  try {
+    token = decodeURIComponent(token);
+  } catch {
+    token = pathToken.trim();
+  }
+  const query = token.indexOf('?');
+  if (query >= 0) token = token.slice(0, query);
+  const hash = token.indexOf('#');
+  if (hash >= 0) token = token.slice(0, hash);
+  return token;
+}
+
 export function buildGoogleReviewUrl(
   business: { placeId?: string | null; googleMapsUrl?: string | null; name?: string | null } | null | undefined
 ): string {

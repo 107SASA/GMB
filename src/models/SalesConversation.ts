@@ -100,6 +100,10 @@ const SalesConversationSchema: Schema = new Schema(
     lastAgentAt: { type: Date },
     lastLeadReplyAt: { type: Date },
     followUpsSent: { type: Number, default: 0 },
+    // Frozen when the nurture sequence is created. Later admin edits do not
+    // rewrite this copy, so an in-flight drip keeps the timing it started with.
+    nurtureConfigVersion: { type: Number },
+    nurtureTiming: { type: Schema.Types.Mixed },
   },
   { timestamps: true }
 );

@@ -214,6 +214,11 @@ export function summariseKnowledge(
 export interface SalesFollowUp {
   /** Hours to wait (since the previous agent message) before sending this. */
   delayHours: number;
+  /** Minute-precision delay. When set, nurture scheduling prefers this over delayHours. */
+  delayMinutes?: number;
+  id?: string;
+  enabled?: boolean;
+  description?: string;
   mode: SalesMessageMode;
   template: string;
   aiSystemPrompt?: string;
@@ -227,6 +232,7 @@ export interface SalesAgentConfigShape {
     mode: SalesMessageMode;
     /** Minutes to wait after the audit completes before the first message. */
     delayMinutes: number;
+    enabled?: boolean;
     template: string;
     aiSystemPrompt: string;
   };
@@ -242,6 +248,12 @@ export interface SalesAgentConfigShape {
    * without a null check.
    */
   knowledge: SalesKnowledge;
+  timezone?: string;
+  quietHours?: { enabled: boolean; start: string; end: string };
+  minimumMessageGapMinutes?: number;
+  maxNurtureMessages?: number;
+  nurtureConfigVersion?: number;
+  nurtureUpdatedBy?: string;
 }
 
 /** Pre-Sep-2026 defaults. They asserted problems regardless of the data

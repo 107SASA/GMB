@@ -84,7 +84,7 @@ export function ReviewStatCards() {
         )}
       </View>
       <View className="flex-1 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
-        <Text className="font-sans text-sm text-zinc-400">Reviews</Text>
+        <Text className="font-sans text-sm text-zinc-400">Google Reviews</Text>
         <Text className="mt-1 font-display text-2xl text-white">
           {stats.data?.metrics.totalReviews ?? insights.total}
         </Text>

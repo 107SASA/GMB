@@ -5,7 +5,7 @@ import { requireBusinessContext } from '@/lib/tenant';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { inngest } from '@/services/inngest/client';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
-import { requirePlaceIdForReviews } from '@/lib/reviewCampaignGuard';
+import { evaluateReviewSendEligibility } from '@/lib/reviewSendEligibility';
 
 /**
  * Mobile "Add Customer" quick-add: create (or reuse) a Customer from just a
@@ -51,31 +51,21 @@ export async function POST(req: Request) {
       });
     }
 
-    if (customer.optedOut) {
+    const eligibility = await evaluateReviewSendEligibility({
+      source: 'quick-add',
+      businessId: ctx.businessId,
+      userId: ctx.userId,
+      customer,
+    });
+    if (!eligibility.allowed) {
       return NextResponse.json(
         {
           success: true,
           existing,
           customer,
           reviewRequestSent: false,
-          reason: 'This customer previously opted out of messages.',
+          reason: eligibility.message,
         },
-        { status: 200 }
-      );
-    }
-    if (!customer.phone) {
-      // Unreachable in practice (phone is required above), kept for parity
-      // with /api/campaigns/send's own guard.
-      return NextResponse.json(
-        { success: true, existing, customer, reviewRequestSent: false, reason: 'No phone number on file.' },
-        { status: 200 }
-      );
-    }
-
-    const placeIdError = await requirePlaceIdForReviews(ctx.businessId);
-    if (placeIdError) {
-      return NextResponse.json(
-        { success: true, existing, customer, reviewRequestSent: false, reason: placeIdError },
         { status: 200 }
       );
     }

@@ -66,23 +66,8 @@ export async function POST(req: Request) {
       }
 
       case 'review-autopoll': {
-        const { default: ReviewRequest } = await import('@/models/ReviewRequest');
-        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-        const clicked = await ReviewRequest.find({
-          status: 'CLICKED',
-          clickedAt: { $lte: twoHoursAgo },
-        })
-          .select('_id')
-          .lean();
-        if (clicked.length > 0) {
-          await inngest.send(
-            clicked.map((c: any) => ({
-              name: 'scheduler/review-autopoll' as const,
-              data: { requestId: c._id.toString() },
-            }))
-          );
-        }
-        eventsSent = clicked.length;
+        // A click is not evidence that a Google review was submitted.
+        eventsSent = 0;
         break;
       }
 

@@ -12,8 +12,18 @@
  *                     Quick-reply button "YES" — no URL variable.
  *  - reportReady:    {{1}} lead name, {{2}} business name,
  *                     {{3}} auditId (button URL: /free-report/result?auditId={{3}}).
- *  - reviewRequest:  {{1}} customer name, {{2}} business name,
- *                     {{3}} Google Place ID (button URL: google.com/local/writereview?placeid={{3}}).
+ *  - reviewRequest:  LEGACY marketing template. {{1}} customer name,
+ *                     {{2}} business name, {{3}} Google Place ID
+ *                     (button URL: google.com/local/writereview?placeid={{3}}).
+ *                     Used only when TWILIO_TEMPLATE_REVIEW_REQUEST_UTILITY
+ *                     is unset.
+ *  - reviewRequestUtility: approved Utility template. {{1}} customer name,
+ *                     {{2}} business name, {{3}} ReviewRequest token
+ *                     (button URL: https://growwmatics.com/review/{{3}}).
+ *                     {{3}} is never the Place ID. Set
+ *                     TWILIO_TEMPLATE_REVIEW_REQUEST_UTILITY to send new
+ *                     review requests through it. Leaving it empty keeps
+ *                     the legacy template.
  *  - notification:   {{1}} recipient name, {{2}} free-text body.
  *                     Generic fallback for any business-initiated message
  *                     that doesn't have its own approved template — owner
@@ -67,6 +77,7 @@ export const WA_TEMPLATES = {
   salesIntro: process.env.TWILIO_TEMPLATE_SALES_INTRO || '',
   reportReady: process.env.TWILIO_TEMPLATE_REPORT_READY || '',
   reviewRequest: process.env.TWILIO_TEMPLATE_REVIEW_REQUEST || '',
+  reviewRequestUtility: process.env.TWILIO_TEMPLATE_REVIEW_REQUEST_UTILITY || '',
   notification: process.env.TWILIO_TEMPLATE_NOTIFICATION || '',
   invoiceReady: process.env.TWILIO_TEMPLATE_INVOICE_READY || '',
   welcomeCustomer: process.env.TWILIO_TEMPLATE_WELCOME_CUSTOMER || '',

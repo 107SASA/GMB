@@ -5,7 +5,7 @@ import Customer from '@/models/Customer';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
-import { requirePlaceIdForReviews } from '@/lib/reviewCampaignGuard';
+import { evaluateReviewSendEligibility } from '@/lib/reviewSendEligibility';
 
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
@@ -25,17 +25,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
     }
 
-    if (customer.optedOut) {
-      return NextResponse.json({ error: 'Customer has opted out' }, { status: 400 });
-    }
-
-    if (!customer.phone) {
-      return NextResponse.json({ error: 'Customer has no phone number (WhatsApp required)' }, { status: 400 });
-    }
-
-    const placeIdError = await requirePlaceIdForReviews(ctx.businessId);
-    if (placeIdError) {
-      return NextResponse.json({ error: placeIdError }, { status: 400 });
+    const eligibility = await evaluateReviewSendEligibility({
+      source: customer.reviewStatus === 'Failed' ? 'retry' : 'manual',
+      businessId: ctx.businessId,
+      userId: ctx.userId,
+      customer,
+    });
+    if (!eligibility.allowed) {
+      return NextResponse.json({ error: eligibility.message }, { status: 400 });
     }
 
     await inngest.send({

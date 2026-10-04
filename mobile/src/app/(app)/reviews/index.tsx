@@ -9,6 +9,7 @@ import { fetchReviews, ReviewsNotConnectedError, syncReviews, type Review } from
 import { useBusiness } from '@/business/BusinessContext';
 import { AppHeader } from '@/components/app-header';
 import { AddCustomerCard } from '@/components/home/add-customer-card';
+import { ReviewRequestStatus } from '@/components/review-request-status';
 import { ReviewStatCards, ReviewTrendsChart } from '@/components/gbp/review-trends-section';
 import { GoogleG } from '@/components/google-g';
 import { replyStatusBadge, RatingPill, sentimentTone } from '@/components/review-bits';
@@ -244,6 +245,7 @@ function OverviewTab({ onRefresh, refreshing }: { onRefresh: () => void; refresh
       <View className="mt-4">
         <AddCustomerBanner />
       </View>
+      <ReviewRequestStatus />
 
       <Text className="mb-3 mt-6 font-display-bold text-lg text-white">Review Trends — last 8 weeks</Text>
       <ReviewTrendsChart />

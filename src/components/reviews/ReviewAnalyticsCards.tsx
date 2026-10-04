@@ -16,7 +16,7 @@ export default function ReviewAnalyticsCards({ analytics }: ReviewAnalyticsCards
     { label: 'Avg Rating', value: analytics.avgRating, suffix: ' / 5.0', color: 'text-error' },
     { label: 'Response Rate', value: analytics.responseRate, suffix: '%', color: 'text-primary' },
     { label: 'Sentiment Score', value: analytics.sentimentScore, suffix: '/100', color: analytics.sentimentScore > 70 ? 'text-secondary' : 'text-error' },
-    { label: 'Total Reviews', value: analytics.totalReviews, suffix: '', color: 'text-on-surface' },
+    { label: 'Google Reviews', value: analytics.totalReviews, suffix: '', color: 'text-on-surface' },
     { label: 'Unanswered', value: analytics.unansweredCount, suffix: '', color: 'text-error' },
     { label: 'Critical / 1-Star', value: analytics.criticalReviews, suffix: '', color: 'text-on-error-container' },
   ];

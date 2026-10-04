@@ -72,7 +72,7 @@ const WORKFLOWS = [
   {
     id: 'review-autopoll',
     label: 'Review Autopoll',
-    description: 'Hourly · marks clicked review requests as reviewed',
+    description: 'Hourly · no longer treats a click as a submitted review',
     trigger: 'review-autopoll' as const,
     needsBusinessId: false,
     matchWorkflow: 'review-autopoll',

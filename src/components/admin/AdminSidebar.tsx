@@ -29,6 +29,7 @@ const adminGroups = [
     links: [
       { name: 'Conversion Overview', icon: 'trending_up', href: '/admin/pipeline' },
       { name: 'Leads & Pipeline', icon: 'filter_alt', href: '/admin/leads' },
+      { name: 'Nurturing', icon: 'schedule', href: '/admin/nurture-config' },
       { name: 'Demos', icon: 'event_available', href: '/admin/demo-bookings' },
       { name: 'Analytics', icon: 'query_stats', href: '/admin/conversion-analytics' },
     ],
@@ -67,6 +68,7 @@ const adminGroups = [
       { name: 'Content Monitor', icon: 'campaign', href: '/admin/content' },
       { name: 'Review Monitor', icon: 'star', href: '/admin/reviews' },
       { name: 'Review Requests', icon: 'rate_review', href: '/admin/review-requests' },
+      { name: 'Review Follow-ups', icon: 'schedule', href: '/admin/review-follow-up' },
       { name: 'WhatsApp Monitor', icon: 'chat', href: '/admin/whatsapp' },
     ],
   },

@@ -10,7 +10,7 @@ type Tab = 'monitor' | 'campaigns';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'monitor', label: 'Monitor Reviews', icon: Star },
-  { id: 'campaigns', label: 'Review Campaigns', icon: Megaphone },
+  { id: 'campaigns', label: 'Review Requests', icon: Megaphone },
 ];
 
 export default function ReviewManagementPage() {
@@ -23,7 +23,7 @@ export default function ReviewManagementPage() {
         {/* Page header */}
         <div>
           <h1 className="font-heading text-3xl font-bold text-on-surface tracking-tight">Review Management</h1>
-          <p className="text-on-surface-variant mt-1">Monitor incoming reviews and run campaigns to acquire new ones.</p>
+          <p className="text-on-surface-variant mt-1">Monitor incoming reviews and send WhatsApp review requests.</p>
         </div>
 
         {/* Quick single-number review request (desktop parity with the mobile card) */}

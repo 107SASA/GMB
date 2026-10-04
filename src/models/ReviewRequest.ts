@@ -28,6 +28,8 @@ export interface IReviewRequest extends Document {
   reviewedAt?: Date;
   rating?: number;
   followUpStage: number; // 0=Initial, 1=Reminder 1, 2=Reminder 2
+  /** Set while a follow-up send is in progress so a retried job cannot send it twice. */
+  followUpClaim?: 'reminder1' | 'reminder2' | null;
   automationStatus: 'Active' | 'Completed' | 'Stopped';
   inngestEventId?: string;
   campaignId?: mongoose.Types.ObjectId;
@@ -87,6 +89,7 @@ const ReviewRequestSchema = new Schema(
     reviewedAt: { type: Date },
     rating: { type: Number },
     followUpStage: { type: Number, default: 0 },
+    followUpClaim: { type: String, enum: ['reminder1', 'reminder2'] },
     automationStatus: {
       type: String,
       enum: ['Active', 'Completed', 'Stopped'],

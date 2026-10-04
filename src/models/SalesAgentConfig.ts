@@ -9,7 +9,11 @@ export interface ISalesAgentConfig extends SalesAgentConfigShape, Document {
 
 const FollowUpSchema = new Schema(
   {
+    id: { type: String },
+    enabled: { type: Boolean, default: true },
     delayHours: { type: Number, default: 24 },
+    delayMinutes: { type: Number },
+    description: { type: String, default: '' },
     mode: { type: String, enum: ['ai', 'template'], default: 'template' },
     template: { type: String, default: '' },
     aiSystemPrompt: { type: String, default: '' },
@@ -63,6 +67,7 @@ const SalesAgentConfigSchema: Schema = new Schema(
     enabled: { type: Boolean, default: false },
     firstMessage: {
       mode: { type: String, enum: ['ai', 'template'], default: 'ai' },
+      enabled: { type: Boolean, default: true },
       delayMinutes: { type: Number, default: 2 },
       template: { type: String, default: '' },
       aiSystemPrompt: { type: String, default: '' },
@@ -72,6 +77,19 @@ const SalesAgentConfigSchema: Schema = new Schema(
     subscribeUrl: { type: String, default: '' },
     shopUrl: { type: String, default: '' },
     knowledge: { type: KnowledgeSchema, default: () => ({}) },
+    // Nurture schedule. Absent on configs saved before this screen existed.
+    // Readers treat a missing quiet-hours block as disabled, so deploying
+    // this schema does not change an already-stored sales-agent document.
+    timezone: { type: String, default: 'Asia/Kolkata' },
+    quietHours: {
+      enabled: { type: Boolean, default: false },
+      start: { type: String, default: '21:00' },
+      end: { type: String, default: '09:00' },
+    },
+    minimumMessageGapMinutes: { type: Number, default: 0 },
+    maxNurtureMessages: { type: Number, default: 5 },
+    nurtureConfigVersion: { type: Number, default: 1 },
+    nurtureUpdatedBy: { type: String },
   },
   { timestamps: true }
 );

@@ -18,12 +18,12 @@
  *                     Used only when TWILIO_TEMPLATE_REVIEW_REQUEST_UTILITY
  *                     is unset.
  *  - reviewRequestUtility: approved Utility template. {{1}} customer name,
- *                     {{2}} business name, {{3}} ReviewRequest token
- *                     (button URL: https://growwmatics.com/review/{{3}}).
- *                     {{3}} is never the Place ID. Set
- *                     TWILIO_TEMPLATE_REVIEW_REQUEST_UTILITY to send new
- *                     review requests through it. Leaving it empty keeps
- *                     the legacy template.
+ *                     {{2}} business name, {{3}} ReviewRequest token.
+ *                     Body link: https://growwmatics.com/review/{{3}}?src=wa
+ *                     ?src=wa is not part of the token. {{3}} is never the
+ *                     Place ID. The SID comes only from
+ *                     TWILIO_TEMPLATE_REVIEW_REQUEST_UTILITY. Leaving that
+ *                     unset keeps the legacy marketing template.
  *  - notification:   {{1}} recipient name, {{2}} free-text body.
  *                     Generic fallback for any business-initiated message
  *                     that doesn't have its own approved template — owner

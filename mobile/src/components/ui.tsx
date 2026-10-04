@@ -328,6 +328,9 @@ export function SegmentedControl<T extends string>({
           }}
         >
           <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
             className={`font-sans-semibold text-sm ${
               value === segment.id ? 'text-on-brand' : 'text-zinc-500'
             }`}

@@ -72,9 +72,9 @@ export async function POST(req: Request) {
 
   try {
     // Cover/logo crop (server-side, EXIF kept) + ONE geotag policy for photos
-    // and videos: the file's own location first, then the location the app
-    // read for it (its own GPS, or the phone's position when captured in the
-    // app), then the business's verified Google location; otherwise none.
+    // and videos: the file's own location first, then the photo's own EXIF
+    // reported by the app, then the business's verified Google location.
+    // The phone's current GPS is not used when that verified location exists.
     // Photos get GPS written into EXIF; videos are stored byte-for-byte and the
     // location is recorded on the asset.
     const prepared = await prepareGalleryMedia({

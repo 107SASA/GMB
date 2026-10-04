@@ -10,6 +10,7 @@ import { useBusiness } from '@/business/BusinessContext';
 import { AppHeader } from '@/components/app-header';
 import { AddCustomerCard } from '@/components/home/add-customer-card';
 import { ReviewRequestStatus } from '@/components/review-request-status';
+import { ReviewRequestsPanel } from '@/components/review-requests-panel';
 import { ReviewStatCards, ReviewTrendsChart } from '@/components/gbp/review-trends-section';
 import { GoogleG } from '@/components/google-g';
 import { replyStatusBadge, RatingPill, sentimentTone } from '@/components/review-bits';
@@ -22,6 +23,7 @@ import { timeAgo } from '@/lib/format';
 import { computeRatingDistribution } from '@/lib/review-insights';
 
 type ScreenTab = 'overview' | 'all';
+type ReviewsSection = 'current' | 'requests';
 type Filter = 'all' | 'needs-reply' | 'replied';
 type RatingFilter = 'all' | 5 | 4 | 3 | 2 | 1;
 
@@ -237,6 +239,7 @@ function OverviewTab({ onRefresh, refreshing }: { onRefresh: () => void; refresh
 
   return (
     <ScrollView
+      style={{ flex: 1 }}
       contentContainerClassName="px-5 pb-10 pt-4"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.brandBright} />}
     >
@@ -286,6 +289,7 @@ function AllReviewsTab({
   const t = useTheme();
   return (
     <FlatList
+      style={{ flex: 1 }}
       data={filtered}
       keyExtractor={(r) => r._id}
       renderItem={({ item }) => <ReviewCard review={item} />}
@@ -350,10 +354,11 @@ function AllReviewsTab({
   );
 }
 
-export default function ReviewsScreen({ embedded = false }: { embedded?: boolean } = {}) {
+export default function ReviewsScreen() {
   const locked = useSurfaceLocked('reviews');
   const { activeBusinessId } = useBusiness();
   const queryClient = useQueryClient();
+  const [section, setSection] = useState<ReviewsSection>('current');
   const [tab, setTab] = useState<ScreenTab>('overview');
   const [filter, setFilter] = useState<Filter>('all');
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all');
@@ -390,53 +395,50 @@ export default function ReviewsScreen({ embedded = false }: { embedded?: boolean
     });
   }, [reviews.data, filter, ratingFilter]);
 
-  // After all hooks (rules-of-hooks) — matches the dashboard/GBP-hub pattern.
-  // Note: with `embedded`, the parent (media.tsx) already gates the whole
-  // combined tab on this same lock, so this is belt-and-suspenders, not the
-  // only guard — kept anyway so this screen is still safe to render
-  // standalone (its own /reviews route is still reachable via deep links).
+  // After all hooks (rules-of-hooks). reviews/_layout.tsx also locks this
+  // stack on the same Reviews & Reputation module.
   if (locked) return <LockedScreen surface="reviews" />;
-
-  // This tab's own Overview/All sub-navigation — distinct from, and nested
-  // one level under, the Media tab's Reviews/Photos switch above it when
-  // `embedded` (see media.tsx).
-  const body = (
-    <>
-      <SegmentedControl
-        segments={[
-          { id: 'overview', label: 'Overview' },
-          { id: 'all', label: 'All Reviews' },
-        ]}
-        value={tab}
-        onChange={setTab}
-      />
-      {tab === 'overview' ? (
-        <OverviewTab onRefresh={() => sync.mutate()} refreshing={reviews.isRefetching || sync.isPending} />
-      ) : (
-        <AllReviewsTab
-          reviews={reviews}
-          filtered={filtered}
-          filter={filter}
-          setFilter={setFilter}
-          ratingFilter={ratingFilter}
-          setRatingFilter={setRatingFilter}
-          onSync={() => sync.mutate()}
-          syncing={sync.isPending}
-        />
-      )}
-      {info.node}
-    </>
-  );
-
-  // Embedded inside media.tsx: that screen already owns the single
-  // Screen/AppHeader for the combined tab — nesting another SafeAreaView
-  // (Screen) + header here would double up on both.
-  if (embedded) return body;
 
   return (
     <Screen>
       <AppHeader title="Reviews" />
-      {body}
+      <SegmentedControl
+        segments={[
+          { id: 'current', label: 'Current' },
+          { id: 'requests', label: 'Review Requests' },
+        ]}
+        value={section}
+        onChange={setSection}
+      />
+      {section === 'requests' ? (
+        <ReviewRequestsPanel />
+      ) : (
+        <>
+          <SegmentedControl
+            segments={[
+              { id: 'overview', label: 'Overview' },
+              { id: 'all', label: 'All Reviews' },
+            ]}
+            value={tab}
+            onChange={setTab}
+          />
+          {tab === 'overview' ? (
+            <OverviewTab onRefresh={() => sync.mutate()} refreshing={reviews.isRefetching || sync.isPending} />
+          ) : (
+            <AllReviewsTab
+              reviews={reviews}
+              filtered={filtered}
+              filter={filter}
+              setFilter={setFilter}
+              ratingFilter={ratingFilter}
+              setRatingFilter={setRatingFilter}
+              onSync={() => sync.mutate()}
+              syncing={sync.isPending}
+            />
+          )}
+          {info.node}
+        </>
+      )}
     </Screen>
   );
 }

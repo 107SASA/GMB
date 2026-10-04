@@ -173,7 +173,7 @@ export function HomeStatList() {
       title: `${publishedPhotos} Photos/Videos Published`,
       subtitle: stagedPhotos > 0 ? `${stagedPhotos} staged, ready to publish` : 'No photos staged',
       badge: stagedPhotos > 0 ? { text: 'Needs action', tone: 'warning' } : undefined,
-      href: '/photos',
+      href: '/posts?tab=photos',
     },
     {
       key: 'reviews',

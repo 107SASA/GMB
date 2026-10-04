@@ -132,7 +132,7 @@ test('EXIF parser: southern/western hemispheres and garbage input', async () => 
   assert.equal(parseExifGps(null), null);
 });
 
-test('video: same precedence as photos, bytes NEVER modified — own location → app location → verified business location → none', async () => {
+test('video: same precedence as photos, bytes NEVER modified — own location → verified business location → phone GPS only if unverified → none', async () => {
   const withLoc = Buffer.concat([Buffer.from('....ftypmp42....moov....udta'), Buffer.from([0, 0, 0, 30, 0xa9, 0x78, 0x79, 0x7a, 0, 18, 0x15, 0xc7]), Buffer.from('+19.9975+073.7898/'), Buffer.from('mdat....')]);
   const bare = Buffer.from('....ftypqt  ....moov....mdat....');
   assert.ok(near(readVideoLocation(withLoc), { lat: 19.9975, lng: 73.7898 }));
@@ -142,10 +142,12 @@ test('video: same precedence as photos, bytes NEVER modified — own location �
   assert.equal(own.geotag.source, 'video_metadata');
   assert.ok(near({ lat: own.geotag.lat!, lng: own.geotag.lng! }, { lat: 19.9975, lng: 73.7898 }));
   assert.ok(own.buffer.equals(withLoc), 'bytes untouched');
-  // 2. Recorded in the app camera → the phone position at capture.
+  // 2. The phone's current GPS does not replace a verified business location.
   const cam = await geotagMedia(bare, 'video/quicktime', BUSINESS, { ...CAMERA, source: 'device_at_capture', accuracyM: 12 });
-  assert.deepEqual([cam.geotag.status, cam.geotag.source, cam.geotag.lat, cam.geotag.lng, cam.geotag.accuracyM], ['video_location_recorded', 'device_at_capture', CAMERA.lat, CAMERA.lng, 12]);
+  assert.deepEqual([cam.geotag.status, cam.geotag.source, cam.geotag.lat, cam.geotag.lng], ['video_location_recorded', 'gbp_location', BUSINESS.lat, BUSINESS.lng]);
   assert.ok(cam.buffer.equals(bare), 'bytes untouched');
+  const phoneOnly = await geotagMedia(bare, 'video/quicktime', null, { ...CAMERA, source: 'device_at_capture', accuracyM: 12 });
+  assert.deepEqual([phoneOnly.geotag.status, phoneOnly.geotag.source, phoneOnly.geotag.lat, phoneOnly.geotag.lng, phoneOnly.geotag.accuracyM], ['video_location_recorded', 'device_at_capture', CAMERA.lat, CAMERA.lng, 12]);
   // Same validation as photos: an imprecise phone fix (> 500 m) is not used → business pin.
   const vague = await geotagMedia(bare, 'video/mp4', BUSINESS, { ...CAMERA, source: 'device_at_capture', accuracyM: 900 });
   assert.equal(vague.geotag.source, 'gbp_location');
@@ -170,11 +172,14 @@ test('app-reported photo EXIF location is written when the phone stripped it; re
   assert.ok(near(await readImageGps(r.buffer), CAMERA), 'photo location wins over the business pin');
 });
 
-test('in-app camera: phone position at capture is used; an imprecise fix (> 500 m) falls back to the business pin', async () => {
+test('in-app camera: phone position does not replace a verified business location; an imprecise fix is ignored', async () => {
   const img = await plainJpeg();
   const good = await geotagMedia(img, 'image/jpeg', BUSINESS, { ...CAMERA, source: 'device_at_capture', accuracyM: 12 });
-  assert.equal(good.geotag.status, 'photo_location_added');
-  assert.equal(good.geotag.accuracyM, 12);
+  assert.equal(good.geotag.status, 'business_location_added');
+  assert.ok(near(await readImageGps(good.buffer), BUSINESS));
+  const phoneOnly = await geotagMedia(img, 'image/jpeg', null, { ...CAMERA, source: 'device_at_capture', accuracyM: 12 });
+  assert.equal(phoneOnly.geotag.status, 'photo_location_added');
+  assert.equal(phoneOnly.geotag.accuracyM, 12);
   const vague = await geotagMedia(img, 'image/jpeg', BUSINESS, { ...CAMERA, source: 'device_at_capture', accuracyM: 2500 });
   assert.equal(vague.geotag.status, 'business_location_added');
   assert.ok(near(await readImageGps(vague.buffer), BUSINESS));

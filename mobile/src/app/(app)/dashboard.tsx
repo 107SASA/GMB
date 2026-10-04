@@ -227,7 +227,7 @@ export default function HomeScreen() {
 
       {/* Amber "attention needed" nudge pinned above the tab bar */}
       {showFreshPhotosBanner && (
-        <Pressable onPress={() => router.push('/photos')}>
+        <Pressable onPress={() => router.push('/posts?tab=photos')}>
           <LinearGradient
             colors={[...AMBER_GRADIENT]}
             start={{ x: 0, y: 0 }}

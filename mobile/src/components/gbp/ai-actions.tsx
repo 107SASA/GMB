@@ -145,7 +145,7 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
       sortTime: new Date(a.createdAt).getTime(),
       title: a.title,
       bullets: [a.detail, `Updated By: ${a.updatedBy}`].filter((b): b is string => !!b),
-      onPress: () => router.push((a.type === 'photo_published' ? '/photos' : '/gbp') as never),
+      onPress: () => router.push((a.type === 'photo_published' ? '/posts?tab=photos' : '/gbp') as never),
     });
   });
 

@@ -6,9 +6,12 @@ import sharp from 'sharp';
  *
  * Policy:
  *  - GPS already in a customer's photo is kept exactly as it is (bytes untouched).
+ *  - The photo's own EXIF, when the app reports it because the file lost it,
+ *    is written next.
  *  - Otherwise the business's VERIFIED Google location (the connected profile's
- *    map pin, or Google Places for its place id) may be written — never an
- *    estimate, never a guess. Without a verified location nothing is added.
+ *    map pin, or Google Places for its place id) is written. The employee's
+ *    current phone GPS is not a substitute for that pin. It is used only when
+ *    Google has not confirmed a business location. Nothing is invented.
  *  - Every result says what happened (status + coordinates + source), so it
  *    can be recorded on the asset / post.
  *  - JPEG pixels are never re-encoded to add GPS: only the EXIF segment is
@@ -52,6 +55,8 @@ export interface GeotagResult {
   source?: 'photo_exif' | 'video_metadata' | PhotoLocation['source'] | VerifiedLocation['source'];
   /** Reported accuracy (metres) of a phone-supplied location. */
   accuracyM?: number;
+  /** Place id of the verified business location, when that pin was written. */
+  placeId?: string;
   reason?: string;
   at: string;
 }
@@ -251,30 +256,42 @@ export function readVideoLocation(buf: Buffer): GeoPoint | null {
 export async function geotagMedia(buf: Buffer, mime: string, location: VerifiedLocation | null, photoLocation: PhotoLocation | null = null): Promise<{ buffer: Buffer; mime: string; geotag: GeotagResult }> {
   const at = new Date().toISOString();
   const m = mime.toLowerCase();
+  const verified = location && isPlausibleCoord(location.lat, location.lng) ? location : null;
+  const reported = photoLocation && isPlausibleCoord(photoLocation.lat, photoLocation.lng) ? photoLocation : null;
+  const precisePhone = reported?.source === 'device_at_capture' && (reported.accuracyM ?? 0) <= 500 ? reported : null;
+  const photoOwn = reported && reported.source !== 'device_at_capture' ? reported : null;
+
   if (m.startsWith('video/')) {
     // Same policy and validation as photos; the bytes are never changed.
     const v = readVideoLocation(buf);
     if (v) return { buffer: buf, mime, geotag: { status: 'video_location_recorded', ...v, source: 'video_metadata', reason: 'location recorded in the video by the device that filmed it', at } };
-    const useApp = photoLocation && isPlausibleCoord(photoLocation.lat, photoLocation.lng)
-      && !(photoLocation.source === 'device_at_capture' && (photoLocation.accuracyM ?? 0) > 500);
-    if (useApp) {
-      return { buffer: buf, mime, geotag: { status: 'video_location_recorded', lat: photoLocation!.lat, lng: photoLocation!.lng, source: photoLocation!.source, ...(photoLocation!.accuracyM != null ? { accuracyM: photoLocation!.accuracyM } : {}), reason: 'location recorded on the media item; the video file is not modified', at } };
+    if (photoOwn) {
+      return { buffer: buf, mime, geotag: { status: 'video_location_recorded', lat: photoOwn.lat, lng: photoOwn.lng, source: photoOwn.source, ...(photoOwn.accuracyM != null ? { accuracyM: photoOwn.accuracyM } : {}), reason: 'location recorded on the media item; the video file is not modified', at } };
     }
-    if (location && isPlausibleCoord(location.lat, location.lng)) {
-      return { buffer: buf, mime, geotag: { status: 'video_location_recorded', lat: location.lat, lng: location.lng, source: location.source, reason: 'verified business location recorded on the media item; the video file is not modified', at } };
+    if (verified) {
+      return { buffer: buf, mime, geotag: { status: 'video_location_recorded', lat: verified.lat, lng: verified.lng, source: verified.source, ...(verified.placeId ? { placeId: verified.placeId } : {}), reason: 'verified business location recorded on the media item; the video file is not modified', at } };
+    }
+    if (precisePhone) {
+      return { buffer: buf, mime, geotag: { status: 'video_location_recorded', lat: precisePhone.lat, lng: precisePhone.lng, source: precisePhone.source, ...(precisePhone.accuracyM != null ? { accuracyM: precisePhone.accuracyM } : {}), reason: 'location recorded on the media item; the video file is not modified', at } };
     }
     return { buffer: buf, mime, geotag: { status: 'video_unmodified', reason: 'no location in the video, none from the app, and no verified Google location for the business', at } };
   }
   const own = await readImageGps(buf);
   if (own) return { buffer: buf, mime, geotag: { status: 'original_gps_preserved', ...own, source: 'photo_exif', at } };
-  // The photo's own location reported by the app beats the business pin; an
-  // imprecise phone fix (> 500 m) is not written.
-  const usePhoto = photoLocation && isPlausibleCoord(photoLocation.lat, photoLocation.lng)
-    && !(photoLocation.source === 'device_at_capture' && (photoLocation.accuracyM ?? 0) > 500);
-  if (!usePhoto && (!location || !isPlausibleCoord(location.lat, location.lng))) {
+  // The photo's own EXIF beats the business pin. The phone's current GPS does
+  // not: a verified business location is the publishing location.
+  const chosen = photoOwn
+    ? { lat: photoOwn.lat, lng: photoOwn.lng, fromPhoto: true as const }
+    : verified
+      ? { lat: verified.lat, lng: verified.lng, fromPhoto: false as const }
+      : precisePhone
+        ? { lat: precisePhone.lat, lng: precisePhone.lng, fromPhoto: true as const }
+        : null;
+  if (!chosen) {
     return { buffer: buf, mime, geotag: { status: 'none', reason: 'no GPS in the image and no verified Google location for the business', at } };
   }
-  const point = usePhoto ? { lat: photoLocation!.lat, lng: photoLocation!.lng } : { lat: location!.lat, lng: location!.lng };
+  const point = { lat: chosen.lat, lng: chosen.lng };
+  const usePhoto = chosen.fromPhoto;
   try {
     let out: Buffer | null = null;
     if (m === 'image/jpeg' || m === 'image/jpg') out = await jpegWithGps(buf, point);
@@ -289,7 +306,7 @@ export async function geotagMedia(buf: Buffer, mime: string, location: VerifiedL
       mime,
       geotag: usePhoto
         ? { status: 'photo_location_added', ...point, source: photoLocation!.source, ...(photoLocation!.accuracyM != null ? { accuracyM: photoLocation!.accuracyM } : {}), at }
-        : { status: 'business_location_added', ...point, source: location!.source, at },
+        : { status: 'business_location_added', ...point, source: location!.source, ...(location!.placeId ? { placeId: location!.placeId } : {}), at },
     };
   } catch (err: any) {
     return { buffer: buf, mime, geotag: { status: 'none', reason: `GPS write failed: ${String(err?.message || err).slice(0, 120)}`, at } };

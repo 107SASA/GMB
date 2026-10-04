@@ -1,13 +1,18 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
 
 import { AppHeader } from '@/components/app-header';
 import { PostsTab } from '@/components/gbp/posts-tab';
 import { LockedScreen } from '@/components/locked';
-import { Screen } from '@/components/ui';
+import { Screen, SegmentedControl } from '@/components/ui';
 import { useSurfaceLocked } from '@/entitlements/entitlements';
 import { useTheme } from '@/lib/theme';
+
+import PhotosScreen from '../photos/index';
+
+type PostsSection = 'posts' | 'photos';
 
 /**
  * Top-level Posts tab — promoted out of the GBP hub's "Posts" sub-tab
@@ -19,9 +24,15 @@ import { useTheme } from '@/lib/theme';
  */
 export default function PostsScreen() {
   const locked = useSurfaceLocked('scheduler');
+  const params = useLocalSearchParams<{ tab?: string }>();
   const queryClient = useQueryClient();
   const t = useTheme();
   const [refreshing, setRefreshing] = useState(false);
+  const [section, setSection] = useState<PostsSection>(params.tab === 'photos' ? 'photos' : 'posts');
+
+  useEffect(() => {
+    if (params.tab === 'photos' || params.tab === 'posts') setSection(params.tab);
+  }, [params.tab]);
 
   if (locked) return <LockedScreen surface="scheduler" />;
 
@@ -33,15 +44,28 @@ export default function PostsScreen() {
 
   return (
     <Screen>
-      <ScrollView
-        contentContainerClassName="pb-10"
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={t.brandBright} />
-        }
-      >
-        <AppHeader title="Posts" />
-        <PostsTab />
-      </ScrollView>
+      <AppHeader title="Posts" />
+      <SegmentedControl
+        segments={[
+          { id: 'posts', label: 'Posts' },
+          { id: 'photos', label: 'Photos' },
+        ]}
+        value={section}
+        onChange={setSection}
+      />
+      {section === 'photos' ? (
+        <PhotosScreen embedded />
+      ) : (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerClassName="pb-10"
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={t.brandBright} />
+          }
+        >
+          <PostsTab />
+        </ScrollView>
+      )}
     </Screen>
   );
 }

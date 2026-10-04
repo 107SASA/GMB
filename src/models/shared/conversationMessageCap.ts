@@ -28,17 +28,14 @@ export const CONVERSATION_MESSAGE_CAP = 500;
 const SLACK = 100; // only trim once an array is meaningfully over the cap
 
 export function applyConversationMessageCap(schema: Schema): void {
-  // `schema.pre('save', …)` — cast to sidestep Mongoose 9's overload
-  // resolution (it otherwise falls through to the query-middleware overload
-  // and rejects the "save" string). Runtime behaviour is standard.
-  (schema as { pre: (hook: string, fn: (next: (err?: unknown) => void) => void) => void }).pre(
-    'save',
-    function (this: { get(p: string): unknown; set(p: string, v: unknown): void }, next) {
-      const msgs = this.get('messages');
-      if (Array.isArray(msgs) && msgs.length > CONVERSATION_MESSAGE_CAP + SLACK) {
-        this.set('messages', msgs.slice(-CONVERSATION_MESSAGE_CAP));
-      }
-      next();
+  // Mongoose 9 document pre('save') receives SaveOptions as its first
+  // argument and does not pass a next callback (PreSaveMiddlewareFunction).
+  // Calling that argument throws "is not a function" and aborts the save.
+  // Returning normally — sync or as a promise — is the supported form.
+  schema.pre('save', function () {
+    const msgs = this.get('messages');
+    if (Array.isArray(msgs) && msgs.length > CONVERSATION_MESSAGE_CAP + SLACK) {
+      this.set('messages', msgs.slice(-CONVERSATION_MESSAGE_CAP));
     }
-  );
+  });
 }

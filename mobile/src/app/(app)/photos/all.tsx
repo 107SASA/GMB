@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Linking, Modal, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Linking, Modal, Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/api/client';
 import {
@@ -120,17 +121,21 @@ function PreviewModal({ item, onClose }: { item: GbpMediaItem; onClose: () => vo
   };
 
   const isStaged = item.status === 'staged';
+  const insets = useSafeAreaInsets();
+  const failure = item.failureReason && /mongodb|twilio|stack|internal server|meta error|graph api/i.test(item.failureReason)
+    ? 'This item could not be published. Please try again.'
+    : item.failureReason;
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)' }}>
-        <View className="flex-row items-center justify-between px-4 pt-14">
-          <Text className="font-sans-bold text-sm text-white">{itemLabel(item)}</Text>
-          <Pressable onPress={onClose} hitSlop={10}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', paddingTop: insets.top }}>
+        <View className="flex-row items-center justify-between px-4">
+          <Text className="flex-1 font-sans-bold text-sm text-white" numberOfLines={2}>{itemLabel(item)}</Text>
+          <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Close" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="close" size={26} color="#ffffff" />
           </Pressable>
         </View>
-        <View className="flex-1 items-center justify-center px-4">
+        <View className="min-h-[120px] flex-1 items-center justify-center px-4">
           {isVideo(item) ? (
             <Pressable
               onPress={() => void Linking.openURL(item.url)}
@@ -144,8 +149,8 @@ function PreviewModal({ item, onClose }: { item: GbpMediaItem; onClose: () => vo
             <Image source={{ uri: item.url }} style={{ width: '100%', aspectRatio: 1 }} contentFit="contain" />
           )}
         </View>
-        {item.failureReason && (
-          <Text className="px-5 pb-2 text-center font-sans text-xs text-rose-300">{item.failureReason}</Text>
+        {!!failure && (
+          <Text className="px-5 pb-2 text-center font-sans text-xs" style={{ color: t.rose }}>{failure}</Text>
         )}
         {!!geotagLine(item.geotag) && (
           <Text className="px-5 pb-2 text-center font-sans text-xs text-zinc-400">{geotagLine(item.geotag)}</Text>
@@ -155,14 +160,18 @@ function PreviewModal({ item, onClose }: { item: GbpMediaItem; onClose: () => vo
             Scheduled to publish on {formatDateTime(item.scheduledFor)}
           </Text>
         )}
-        <View className="gap-2.5 px-5 pb-10 pt-2">
+        <ScrollView
+          style={{ flexGrow: 0, maxHeight: '48%' }}
+          contentContainerStyle={{ gap: 10, paddingHorizontal: 20, paddingTop: 8, paddingBottom: Math.max(insets.bottom, 16) }}
+          keyboardShouldPersistTaps="handled"
+        >
           {isStaged && (
             <Pressable
               onPress={() => publish.mutate()}
               disabled={publish.isPending}
               // No `className` — react-native-css-interop can swallow onPress
               // on styled Pressables (see components/ui.tsx).
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 999, backgroundColor: t.brand, paddingVertical: 14, opacity: publish.isPending ? 0.6 : 1 }}
+              style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 999, backgroundColor: t.brand, paddingVertical: 12, opacity: publish.isPending ? 0.6 : 1 }}
             >
               <Ionicons name="cloud-upload-outline" size={17} color="#ffffff" />
               <Text className="font-sans-bold text-base text-on-brand">
@@ -179,7 +188,7 @@ function PreviewModal({ item, onClose }: { item: GbpMediaItem; onClose: () => vo
               }
               disabled={schedule.isPending}
               // No `className` — see note above.
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingVertical: 14 }}
+              style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingVertical: 12 }}
             >
               <Ionicons name="calendar-outline" size={17} color={t.text} />
               <Text className="font-sans-bold text-base text-white">
@@ -191,14 +200,14 @@ function PreviewModal({ item, onClose }: { item: GbpMediaItem; onClose: () => vo
             onPress={confirmDelete}
             disabled={remove.isPending}
             // No `className` — see note above.
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,99,99,0.4)', paddingVertical: 14 }}
+            style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 999, borderWidth: 1, borderColor: t.rose, paddingVertical: 12 }}
           >
-            <Ionicons name="trash-outline" size={17} color="#ff6b6b" />
-            <Text className="font-sans-bold text-base" style={{ color: '#ff6b6b' }}>
+            <Ionicons name="trash-outline" size={17} color={t.rose} />
+            <Text className="font-sans-bold text-base" style={{ color: t.rose }}>
               {remove.isPending ? 'Deleting…' : 'Delete'}
             </Text>
           </Pressable>
-        </View>
+        </ScrollView>
       </View>
       {picker.element}
       {info.node}
@@ -214,6 +223,11 @@ function PreviewModal({ item, onClose }: { item: GbpMediaItem; onClose: () => vo
 export default function AllPhotosScreen() {
   const router = useRouter();
   const t = useTheme();
+  const { width } = useWindowDimensions();
+  const stackUpload = width < 380;
+  const tileGap = 10;
+  const tileColumns = width >= 400 ? 3 : 2;
+  const tileSize = Math.floor((width - 32 - tileGap * (tileColumns - 1)) / tileColumns);
   const { activeBusinessId } = useBusiness();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<FilterTag>('ALL');
@@ -298,7 +312,9 @@ export default function AllPhotosScreen() {
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="arrow-back" size={22} color={t.text} />
         </Pressable>
-        <Text className="font-display-bold text-lg text-white">Photos & Videos</Text>
+        <Text className="mx-2 flex-1 text-center font-display-bold text-lg" style={{ color: t.text }} numberOfLines={1}>
+          Photos & Videos
+        </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           <Pressable onPress={handleCamera} disabled={notConnected || upload.isPending} hitSlop={10} accessibilityLabel="Take a photo">
             <Ionicons name="camera-outline" size={25} color={notConnected ? t.textFaint : t.brandBright} />
@@ -312,7 +328,7 @@ export default function AllPhotosScreen() {
 
       {/* Upload — photos and videos, both from the camera or the gallery. */}
       {!notConnected && (
-        <View className="flex-row gap-2.5 px-4 pb-3">
+        <View className="gap-2.5 px-4 pb-3" style={{ flexDirection: stackUpload ? 'column' : 'row' }}>
           {([
             { key: 'photo', title: 'Upload Photo', icon: 'image-outline', camera: { label: 'Take photo', icon: 'camera-outline', run: handleCamera }, gallery: { label: 'Choose photo', icon: 'images-outline', run: handleAdd } },
             { key: 'video', title: 'Upload Video', icon: 'videocam-outline', camera: { label: 'Record video', icon: 'videocam-outline', run: () => void startVideoUpload('camera') }, gallery: { label: 'Choose video', icon: 'film-outline', run: () => void startVideoUpload('library') } },
@@ -329,10 +345,10 @@ export default function AllPhotosScreen() {
                   disabled={upload.isPending}
                   accessibilityLabel={a.label}
                   // No `className` — see note above.
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingHorizontal: 10, paddingVertical: 7, marginTop: 6, opacity: upload.isPending ? 0.5 : 1 }}
+                  style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingHorizontal: 10, paddingVertical: 10, marginTop: 6, opacity: upload.isPending ? 0.5 : 1 }}
                 >
-                  <Ionicons name={a.icon} size={14} color={t.brandBright} />
-                  <Text className="font-sans-semibold text-xs text-zinc-200">{a.label}</Text>
+                  <Ionicons name={a.icon} size={16} color={t.brandBright} />
+                  <Text numberOfLines={1} className="font-sans-semibold text-sm text-zinc-200">{a.label}</Text>
                 </Pressable>
               ))}
             </View>
@@ -356,7 +372,7 @@ export default function AllPhotosScreen() {
             >
               <Ionicons name="warning-outline" size={16} color={t.amber} style={{ marginTop: 1 }} />
               <Text className="flex-1 font-sans text-xs leading-4" style={{ color: t.amber }}>
-                Couldn't refresh from Google — showing saved photos only. {media.data.liveSyncError}
+                Couldn&apos;t refresh from Google — showing saved photos only.
               </Text>
             </View>
           )}
@@ -412,6 +428,9 @@ export default function AllPhotosScreen() {
                 <Text className="mt-3 font-sans-semibold text-base text-zinc-300">
                   {filter === 'VIDEO' ? 'No videos yet' : 'No photos in this category yet'}
                 </Text>
+                <Text className="mt-1.5 text-center font-sans text-sm leading-5 text-zinc-500">
+                  Use Upload Photo or Upload Video above to add one.
+                </Text>
               </View>
             ) : (
               <View className="flex-row flex-wrap gap-2.5">
@@ -420,7 +439,7 @@ export default function AllPhotosScreen() {
                     key={item._id}
                     onPress={() => setPreview(item)}
                     // No `className` — see note above.
-                    style={{ width: 108, height: 108, borderRadius: 16, overflow: 'hidden' }}
+                    style={{ width: tileSize, height: tileSize, borderRadius: 16, overflow: 'hidden' }}
                   >
                     {isVideo(item) ? (
                       <View style={{ flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' }}>

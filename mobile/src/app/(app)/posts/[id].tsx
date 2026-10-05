@@ -3,14 +3,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { geotagLine, imageOriginLine, postPlanLine, postStatusView } from '@/api/endpoints/content';
 import { deletePost, fetchPost, publishPost, schedulePost } from '@/api/endpoints/scheduler';
+import { useBusiness } from '@/business/BusinessContext';
 import { useDateTimePicker } from '@/components/datetime-picker';
 import { EditPostModal } from '@/components/gbp/edit-post-modal';
-import { Badge, LoadingScreen, Screen, Skeleton, useConfirmSheet, useInfoSheet } from '@/components/ui';
+import { Badge, BottomSheet, LoadingScreen, Screen, Skeleton, useConfirmSheet, useInfoSheet } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
@@ -44,7 +45,7 @@ function OptionsMenu({
       }}
       // No `className` — react-native-css-interop can swallow onPress on
       // styled Pressables (see components/ui.tsx).
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 4 }}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48, paddingVertical: 12, paddingHorizontal: 4 }}
     >
       <Ionicons name={icon} size={18} color={danger ? t.rose : t.text} />
       <Text className="font-sans-semibold text-base" style={{ color: danger ? t.rose : t.text }}>
@@ -53,9 +54,7 @@ function OptionsMenu({
     </Pressable>
   );
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={onClose} />
-      <View className="rounded-t-3xl border-t border-surface-border bg-surface px-5 pb-8 pt-3">
+    <BottomSheet visible={visible} onClose={onClose}>
         <View className="mb-2 self-center h-1 w-10 rounded-full bg-surface-overlay" />
         {!isPublished && row('pencil-outline', 'Edit', onEdit)}
         {!isPublished && row('calendar-outline', 'Reschedule', onReschedule)}
@@ -66,13 +65,13 @@ function OptionsMenu({
             This post is already live — published posts can&apos;t be edited, rescheduled, or deleted.
           </Text>
         )}
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { activeBusinessId } = useBusiness();
   const router = useRouter();
   const t = useTheme();
   const queryClient = useQueryClient();
@@ -83,19 +82,23 @@ export default function PostDetailScreen() {
   const confirmSheet = useConfirmSheet();
 
   const post = useQuery({
-    queryKey: ['post', id],
-    queryFn: () => fetchPost(id!),
-    enabled: !!id,
+    queryKey: ['post', activeBusinessId, id],
+    queryFn: () => fetchPost(id!, activeBusinessId!),
+    enabled: !!id && !!activeBusinessId,
+    staleTime: 0,
   });
 
   const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ['post', id] });
-    void queryClient.invalidateQueries({ queryKey: ['scheduler-buffer'] });
-    void queryClient.invalidateQueries({ queryKey: ['published-posts'] });
+    void queryClient.invalidateQueries({ queryKey: ['post', activeBusinessId, id] });
+    void queryClient.invalidateQueries({ queryKey: ['scheduler-buffer', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['published-posts', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['scheduled-posts', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['scheduled-posts-count', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['dashboard-stats', activeBusinessId] });
   };
 
   const publish = useMutation({
-    mutationFn: () => publishPost(id!),
+    mutationFn: () => publishPost(id!, activeBusinessId!),
     onSuccess: (res) => {
       invalidate();
       if (res.outcome === 'blocked') info.show('Not sent to Google', res.message);
@@ -103,12 +106,12 @@ export default function PostDetailScreen() {
     onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not publish the post.')),
   });
   const reschedule = useMutation({
-    mutationFn: (date: Date) => schedulePost(id!, date),
+    mutationFn: (date: Date) => schedulePost(id!, date, activeBusinessId!),
     onSuccess: invalidate,
     onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not reschedule.')),
   });
   const remove = useMutation({
-    mutationFn: () => deletePost(id!),
+    mutationFn: () => deletePost(id!, activeBusinessId!),
     onSuccess: () => {
       invalidate();
       router.back();

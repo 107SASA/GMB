@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Linking, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Linking, Modal, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchNotifications } from '@/api/endpoints/notifications';
 import { useBusiness } from '@/business/BusinessContext';
@@ -51,6 +52,9 @@ export function AppHeader({ title }: { title: string }) {
   const { activeBusiness } = useBusiness();
   const router = useRouter();
   const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const compact = width < 360;
   const [switcherOpen, setSwitcherOpen] = useState(false);
   // Themed in-app dialog (InfoSheet) instead of the native Alert.alert —
   // that rendered as a plain grey OS popup, jarring against this app's dark
@@ -70,14 +74,20 @@ export function AppHeader({ title }: { title: string }) {
   const location = activeBusiness?.address
     ? activeBusiness.address.split(',').slice(-2).join(',').trim()
     : (activeBusiness?.category ?? '');
+  const businessName = activeBusiness?.name?.trim() ?? '';
+  const place = location.trim();
+  const subtitle =
+    businessName && place && !place.toLowerCase().includes(businessName.toLowerCase())
+      ? `${businessName} · ${place}`
+      : businessName || place || 'Select business';
 
   return (
     <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
-        paddingHorizontal: 16,
+        gap: compact ? 8 : 12,
+        paddingHorizontal: compact ? 12 : 16,
         paddingBottom: 12,
         paddingTop: 8,
         backgroundColor: t.bg,
@@ -91,28 +101,23 @@ export function AppHeader({ title }: { title: string }) {
           on a near-white circle in light mode. This also keeps one small
           brand-green accent in the header, matching the "green only as
           small accents" direction. */}
-      <InitialsAvatar name={activeBusiness?.name} size={44} imageUrl={activeBusiness?.logoUrl} />
+      <InitialsAvatar name={activeBusiness?.name} size={compact ? 36 : 44} imageUrl={activeBusiness?.logoUrl} />
 
-      <View className="flex-1">
+      <View style={{ flex: 1, minWidth: 0 }}>
         <Text className="font-display text-xl tracking-tight" style={{ color: t.text }} numberOfLines={1}>
           {title}
         </Text>
         <Pressable
           onPress={() => setSwitcherOpen(true)}
+          accessibilityLabel={`Switch business, ${subtitle}`}
           // No `className` on Pressable — react-native-css-interop can
           // swallow onPress on styled Pressables (see ui.tsx PrimaryButton).
-          // alignSelf: 'flex-start' used to let this row shrink to its own
-          // content width — but Views default to overflow: visible in RN,
-          // so a long business name/address wasn't actually clipped by
-          // numberOfLines, it just visually overflowed past this row's own
-          // box, running underneath the Help button next to it. Now stretches
-          // to fill the parent's already-bounded flex-1 width instead, so
-          // the Text's numberOfLines={1} ellipsis has a real width to
-          // truncate against.
-          style={{ marginTop: 2, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+          // minWidth: 0 lets the row shrink inside the flex column so a long
+          // business name ellipsizes instead of pushing Help off screen.
+          style={{ marginTop: 2, flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0, alignSelf: 'stretch' }}
         >
-          <Text className="shrink font-sans-semibold text-sm" style={{ color: t.textDim }} numberOfLines={1}>
-            {location || activeBusiness?.name || 'Select business'}
+          <Text className="font-sans-semibold text-sm" style={{ color: t.textDim, flex: 1 }} numberOfLines={1}>
+            {subtitle}
           </Text>
           <Ionicons name="chevron-down" size={14} color={t.textFaint} />
         </Pressable>
@@ -151,20 +156,29 @@ export function AppHeader({ title }: { title: string }) {
         // it does, which a logo/icon alone left to guesswork. Still filled
         // with WhatsApp's own brand green (not the app's) as a secondary,
         // reinforcing signal that it opens WhatsApp specifically.
+        accessibilityLabel="Help"
+        hitSlop={6}
         style={{
           height: 40,
+          minWidth: compact ? 40 : undefined,
           borderRadius: 999,
-          paddingHorizontal: 16,
+          paddingHorizontal: compact ? 0 : 14,
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: WHATSAPP_GREEN,
         }}
       >
-        <Text className="font-sans-bold text-sm text-white">Help</Text>
+        {compact ? (
+          <Ionicons name="logo-whatsapp" size={20} color="#ffffff" />
+        ) : (
+          <Text className="font-sans-bold text-sm text-white">Help</Text>
+        )}
       </Pressable>
 
       <Pressable
         onPress={() => router.push('/notifications')}
+        hitSlop={6}
+        accessibilityLabel="Notifications"
         // No `className` — see note above.
         style={{ height: 40, width: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 999 }}
       >
@@ -182,6 +196,8 @@ export function AppHeader({ title }: { title: string }) {
 
       <Pressable
         onPress={() => router.push('/more')}
+        hitSlop={6}
+        accessibilityLabel="Menu"
         // No `className` — see note above.
         style={{ height: 40, width: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 999 }}
       >
@@ -199,9 +215,21 @@ export function AppHeader({ title }: { title: string }) {
           style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}
           onPress={() => setSwitcherOpen(false)}
         />
-        <View className="max-h-[70%] rounded-t-3xl border-t border-surface-border bg-surface p-5 pb-8">
+        <View
+          style={{
+            maxHeight: Math.round(height * 0.75),
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            borderTopWidth: 1,
+            borderColor: t.border,
+            backgroundColor: t.bg,
+            paddingHorizontal: 20,
+            paddingTop: 20,
+            paddingBottom: Math.max(insets.bottom, 16),
+          }}
+        >
           <View className="mb-4 flex-row items-center justify-between">
-            <Text className="font-display-bold text-lg text-white">Your businesses</Text>
+            <Text className="font-display-bold text-lg" style={{ color: t.text }}>Your businesses</Text>
             <Pressable
               onPress={() => setSwitcherOpen(false)}
               // No `className` — see note above.
@@ -210,7 +238,7 @@ export function AppHeader({ title }: { title: string }) {
               <Ionicons name="close" size={18} color={t.textDim} />
             </Pressable>
           </View>
-          <ScrollView>
+          <ScrollView style={{ maxHeight: Math.round(height * 0.55) }} keyboardShouldPersistTaps="handled">
             <BusinessSwitcher />
           </ScrollView>
         </View>

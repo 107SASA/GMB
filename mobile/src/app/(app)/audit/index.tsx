@@ -71,7 +71,7 @@ export default function AuditListScreen() {
   // includes the business id so a workspace switch refreshes it.
   const audits = useQuery({
     queryKey: ['audits', activeBusinessId],
-    queryFn: fetchAudits,
+    queryFn: () => fetchAudits(activeBusinessId!),
     enabled: !!activeBusinessId,
   });
 

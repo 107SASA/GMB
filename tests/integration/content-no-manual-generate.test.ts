@@ -68,9 +68,14 @@ test('opening Content never generates: every read API is free of generation / AI
 });
 
 test('web and mobile read the SAME posting state (same endpoints, no platform-specific posting logic)', () => {
-  const web = read('src/components/content/ContentWorkspace.tsx') + read('src/components/content/ContentHistoryTab.tsx');
-  const mobile = read('mobile/src/api/endpoints/scheduler.ts') + read('mobile/src/api/endpoints/content.ts') + read('mobile/src/api/endpoints/weeklyOffer.ts');
-  for (const ep of ['/api/scheduler/buffer', '/api/content/posts', '/api/content/autopilot-status', '/api/content/weekly-offer']) {
+  const web = read('src/components/content/ContentWorkspace.tsx')
+    + read('src/components/content/ContentHistoryTab.tsx')
+    + read('src/components/content/CreatePostForm.tsx');
+  const mobile = read('mobile/src/api/endpoints/scheduler.ts')
+    + read('mobile/src/api/endpoints/content.ts')
+    + read('mobile/src/api/endpoints/weeklyOffer.ts')
+    + read('mobile/src/app/(app)/posts/create.tsx');
+  for (const ep of ['/api/scheduler/buffer', '/api/posts', '/api/scheduler/publish', '/api/scheduler/schedule', '/api/content/autopilot-status', '/api/content/weekly-offer']) {
     assert.ok(web.includes(ep), `web reads ${ep}`);
     assert.ok(mobile.includes(ep), `mobile reads ${ep}`);
   }

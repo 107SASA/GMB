@@ -135,7 +135,7 @@ function RootNavigator() {
     } else if (typeof data?.reviewId === 'string') {
       router.push(`/reviews/${data.reviewId}`);
     } else if (typeof data?.postId === 'string') {
-      router.push('/content');
+      router.push(`/posts/${data.postId}`);
     }
   }, [lastResponse, isHydrating, isAuthenticated, user, router]);
 
@@ -172,11 +172,29 @@ function RootLayout() {
         persistOptions={{
           persister,
           maxAge: 24 * 60 * 60 * 1000,
-          buster: Constants.expoConfig?.version,
+          // Version plus a posts-cache generation so a build that changed the
+          // post/audit shape never rehydrates the previous app's responses.
+          buster: `${Constants.expoConfig?.version ?? '0'}:posts-2`,
           // Only persist queries that actually resolved — an errored or
           // still-pending query has nothing useful to show from a cold start.
+          // Post and audit queries are omitted: restoring them painted the
+          // previous session's posts (or an empty list) before the business
+          // header was ready, and a later empty/error response replaced them.
           dehydrateOptions: {
-            shouldDehydrateQuery: (query) => query.state.status === 'success',
+            shouldDehydrateQuery: (query) => {
+              const root = String(query.queryKey[0] ?? '');
+              const volatile = root === 'published-posts'
+                || root === 'scheduled-posts'
+                || root === 'scheduled-posts-count'
+                || root === 'scheduler-buffer'
+                || root === 'content-posts'
+                || root === 'post'
+                || root === 'audits'
+                || root === 'audit'
+                || root === 'audit-detail'
+                || root === 'dashboard-stats';
+              return query.state.status === 'success' && !volatile;
+            },
           },
         }}
       >

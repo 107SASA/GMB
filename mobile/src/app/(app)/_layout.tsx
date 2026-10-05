@@ -13,7 +13,7 @@ import { PendingCaptureRecovery } from '@/components/pending-capture-recovery';
 /** Shown on first login when several businesses exist and none is chosen. */
 function SelectBusinessScreen() {
   return (
-    <Screen>
+    <Screen safeBottom>
       <ScreenTitle>Choose a business</ScreenTitle>
       <View className="px-5 pb-4">
         <Text className="font-sans text-sm leading-5 text-zinc-400">

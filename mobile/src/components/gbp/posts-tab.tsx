@@ -1,29 +1,33 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
-import type { ContentPost } from '@/api/endpoints/content';
-import { fetchPublishedPosts } from '@/api/endpoints/content';
-import { fetchDashboardStats } from '@/api/endpoints/dashboard';
-import { fetchBuffer } from '@/api/endpoints/scheduler';
+import {
+  fetchPublishedPosts,
+  fetchUpcomingPosts,
+  postStatusView,
+  type ContentPost,
+} from '@/api/endpoints/content';
 import { useBusiness } from '@/business/BusinessContext';
-import { SchedulerPanel } from '@/components/scheduler-panel';
-import { Skeleton } from '@/components/ui';
+import { Badge, PrimaryButton, Skeleton } from '@/components/ui';
+import { formatDateTime } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 import { useRefreshContentOnFocus } from '@/lib/useRefreshContentOnFocus';
 
-const UPCOMING_WINDOW_DAYS = 7;
+const POST_QUERY_OPTIONS = {
+  staleTime: 0,
+  refetchOnMount: 'always' as const,
+};
 
-/** Badge shown on every post card — same "Update Post" vs. real postType
- *  logic the old inline card used. */
 function PostBadge({ post }: { post: ContentPost }) {
+  const t = useTheme();
   const isUpdate = (post.postType ?? '').toLowerCase().includes('update') || !post.postType;
   return (
     <View className="flex-row items-center gap-1.5 self-start rounded-full bg-warning-container px-3 py-1.5">
-      <Ionicons name="newspaper-outline" size={13} color="#f5a524" />
+      <Ionicons name="newspaper-outline" size={13} color={t.amber} />
       <Text className="font-sans-bold text-xs text-on-warning-container">
         {isUpdate ? 'Update Post' : post.postType}
       </Text>
@@ -31,14 +35,19 @@ function PostBadge({ post }: { post: ContentPost }) {
   );
 }
 
-/** Fixed-width card for the horizontal "Upcoming Posts" carousel. */
-function UpcomingPostCard({ post }: { post: ContentPost }) {
+function StatusLine({ post }: { post: ContentPost }) {
+  const sv = postStatusView(post);
+  return <Badge label={sv.label} tone={sv.tone} />;
+}
+
+/** Card for the horizontal "Upcoming Posts" carousel. Width follows the phone. */
+function UpcomingPostCard({ post, width }: { post: ContentPost; width: number }) {
   const t = useTheme();
   const router = useRouter();
   return (
     <View
       className="mr-3 overflow-hidden rounded-card border border-surface-border bg-surface-raised"
-      style={{ width: 260 }}
+      style={{ width }}
     >
       <View className="h-40 bg-surface-overlay">
         {post.imageUrl && <Image source={{ uri: post.imageUrl }} style={{ width: '100%', height: '100%' }} contentFit="cover" />}
@@ -50,11 +59,14 @@ function UpcomingPostCard({ post }: { post: ContentPost }) {
         <Text className="font-sans-bold text-base leading-6 text-white" numberOfLines={2}>
           {post.title || post.content?.slice(0, 80) || 'Untitled post'}
         </Text>
+        <View className="mt-2">
+          <StatusLine post={post} />
+        </View>
         {!!post.scheduledDate && (
           <View className="mt-2 flex-row items-center gap-1.5">
             <Ionicons name="calendar-outline" size={13} color={t.textFaint} />
-            <Text className="font-sans text-xs text-zinc-500">
-              Scheduled for: {new Date(post.scheduledDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+            <Text className="flex-1 font-sans text-xs text-zinc-500" numberOfLines={2}>
+              Scheduled for: {formatDateTime(post.scheduledDate)}
             </Text>
           </View>
         )}
@@ -65,7 +77,7 @@ function UpcomingPostCard({ post }: { post: ContentPost }) {
           style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: t.border, paddingTop: 12, alignItems: 'center' }}
         >
           <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
-            View Post
+            View / Edit
           </Text>
         </Pressable>
       </View>
@@ -87,22 +99,24 @@ function RecentPostCard({ post }: { post: ContentPost }) {
       </View>
       <View className="p-4">
         <Text className="font-sans-bold text-base leading-6 text-white" numberOfLines={2}>
-          {post.title || 'Untitled post'}
+          {post.title || post.content?.slice(0, 80) || 'Untitled post'}
         </Text>
         {!!post.content && (
           <Text className="mt-1 font-sans text-sm text-zinc-400" numberOfLines={2}>
             {post.content}
           </Text>
         )}
+        <View className="mt-2">
+          <StatusLine post={post} />
+        </View>
         <View className="mt-2 flex-row items-center gap-1.5">
           <Ionicons name="calendar-outline" size={13} color={t.textFaint} />
-          <Text className="font-sans text-xs text-zinc-500">
-            Posted on: {new Date(post.publishedAt ?? post.createdAt ?? '').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+          <Text className="flex-1 font-sans text-xs text-zinc-500" numberOfLines={2}>
+            Posted on: {formatDateTime(post.publishedAt ?? post.createdAt)}
           </Text>
         </View>
         <Pressable
           onPress={() => router.push(`/posts/${post._id}` as never)}
-          // No `className` — see note above.
           style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: t.border, paddingTop: 12, alignItems: 'center' }}
         >
           <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
@@ -114,73 +128,106 @@ function RecentPostCard({ post }: { post: ContentPost }) {
   );
 }
 
+function CountBadge({
+  pending,
+  count,
+}: {
+  pending: boolean;
+  count: number | null;
+}) {
+  if (pending || count == null) {
+    return <Skeleton className="h-6 w-8 rounded-full" />;
+  }
+  return (
+    <View className="h-6 min-w-6 items-center justify-center rounded-full bg-surface-overlay px-1.5">
+      <Text className="font-sans-bold text-xs text-zinc-300">{count}</Text>
+    </View>
+  );
+}
+
+function SectionError({
+  title,
+  hint,
+  onRetry,
+}: {
+  title: string;
+  hint: string;
+  onRetry: () => void;
+}) {
+  return (
+    <View className="items-center rounded-card border border-surface-border bg-surface-raised px-5 py-8">
+      <Text className="mb-1 text-center font-sans-semibold text-base text-zinc-300">{title}</Text>
+      <Text className="mb-4 text-center font-sans text-sm text-zinc-500">{hint}</Text>
+      <PrimaryButton title="Try again" onPress={onRetry} />
+    </View>
+  );
+}
+
 /**
- * GBP → Posts: upcoming posts (next 7 days, horizontal carousel) + manual
- * "+" create + Recent Posts history (paginated,
- * published only) + the embedded scheduler (buffer health / drafts —
- * upcoming list suppressed there now, see SchedulerPanel's showUpcoming).
+ * Posts tab: upcoming (every scheduled post for this business) + manual "+"
+ * create + published history. Counts stay hidden until that query has
+ * actually resolved. Automatic weekly posts show up here once they are
+ * scheduled, then under Recent after Google confirms them.
  */
 export function PostsTab() {
   const { activeBusinessId } = useBusiness();
   const router = useRouter();
   const t = useTheme();
+  const { width } = useWindowDimensions();
+  const upcomingCardWidth = Math.min(280, Math.max(220, width - 72));
   useRefreshContentOnFocus();
 
-  const buffer = useQuery({
-    queryKey: ['scheduler-buffer', activeBusinessId],
-    queryFn: fetchBuffer,
+  const upcomingQuery = useInfiniteQuery({
+    queryKey: ['scheduled-posts', activeBusinessId],
+    queryFn: ({ pageParam }) => fetchUpcomingPosts(activeBusinessId!, pageParam),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, pages) => (lastPage.hasMore ? pages.length + 1 : undefined),
     enabled: !!activeBusinessId,
-  });
-  // Real total ("Recent Posts 319") — same number Home's stat list already
-  // shows, so the two never disagree.
-  const stats = useQuery({
-    queryKey: ['dashboard-stats', activeBusinessId],
-    queryFn: () => fetchDashboardStats(30),
-    enabled: !!activeBusinessId,
+    ...POST_QUERY_OPTIONS,
   });
 
   const recent = useInfiniteQuery({
     queryKey: ['published-posts', activeBusinessId],
-    queryFn: ({ pageParam }) => fetchPublishedPosts(pageParam),
+    queryFn: ({ pageParam }) => fetchPublishedPosts(activeBusinessId!, pageParam),
     initialPageParam: 1,
     getNextPageParam: (lastPage, pages) => (lastPage.hasMore ? pages.length + 1 : undefined),
     enabled: !!activeBusinessId,
+    ...POST_QUERY_OPTIONS,
   });
 
-  const now = Date.now();
-  const windowEnd = now + UPCOMING_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-  const upcoming = (buffer.data?.upcomingPosts ?? []).filter((p) => {
-    if (!p.scheduledDate) return false;
-    const ts = new Date(p.scheduledDate).getTime();
-    return ts >= now - 60 * 60 * 1000 && ts <= windowEnd;
-  });
+  const upcoming = upcomingQuery.data?.pages.flatMap((p) => p.posts) ?? [];
+  const upcomingTotal = upcomingQuery.data?.pages[0]?.total;
   const recentPosts = recent.data?.pages.flatMap((p) => p.posts) ?? [];
+  const recentTotal = recent.data?.pages[0]?.total;
 
   return (
     <View className="px-4">
       <View className="flex-row items-center justify-between pt-2">
         <View className="flex-row items-center gap-2">
           <Text className="font-display-bold text-lg text-white">Upcoming Posts</Text>
-          <View className="h-6 min-w-6 items-center justify-center rounded-full bg-surface-overlay px-1.5">
-            <Text className="font-sans-bold text-xs text-zinc-300">{upcoming.length}</Text>
-          </View>
+          <CountBadge pending={upcomingQuery.isPending} count={upcomingQuery.isSuccess ? (upcomingTotal ?? upcoming.length) : null} />
         </View>
-        <Pressable onPress={() => router.push('/posts/create' as never)} hitSlop={10}>
-          <Ionicons name="add-circle-outline" size={26} color={t.brandBright} />
+        <Pressable
+          onPress={() => router.push('/posts/create' as never)}
+          accessibilityLabel="Create post"
+          style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Ionicons name="add-circle" size={28} color={t.brandBright} />
         </Pressable>
       </View>
 
       <View className="mt-4">
-        {buffer.isLoading ? (
+        {upcomingQuery.isPending ? (
           <Skeleton className="h-64 rounded-card" />
+        ) : upcomingQuery.isError ? (
+          <SectionError
+            title="Couldn't load upcoming posts"
+            hint={getApiErrorMessage(upcomingQuery.error, 'Pull down to try again.')}
+            onRetry={() => void upcomingQuery.refetch()}
+          />
         ) : upcoming.length === 0 ? (
           <View className="items-center rounded-card border border-surface-border bg-surface-raised px-5 py-8">
-            <Text className="mb-1 font-sans-semibold text-base text-zinc-300">
-              No posts in the next 7 days
-            </Text>
-            {/* No "generate" button: the 4 weekly posts are created and
-                scheduled automatically (a manual batch duplicated posts and
-                AI / image cost). "+" above still lets the owner write one. */}
+            <Text className="mb-1 font-sans-semibold text-base text-zinc-300">No posts scheduled</Text>
             <Text className="text-center font-sans text-sm text-zinc-500">
               Your weekly posts are generated automatically — 4 posts every week from your SEO plan, business
               information, keywords, offers and relevant festivals. Tap + to write one yourself.
@@ -189,40 +236,46 @@ export function PostsTab() {
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="pr-1">
             {upcoming.map((post) => (
-              <UpcomingPostCard key={post._id} post={post} />
+              <UpcomingPostCard key={post._id} post={post} width={upcomingCardWidth} />
             ))}
           </ScrollView>
         )}
+        {upcomingQuery.hasNextPage && upcomingQuery.isSuccess && (
+          <Pressable
+            onPress={() => void upcomingQuery.fetchNextPage()}
+            disabled={upcomingQuery.isFetchingNextPage}
+            style={{ alignItems: 'center', paddingVertical: 12 }}
+          >
+            <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
+              {upcomingQuery.isFetchingNextPage ? 'Loading…' : 'Load more'}
+            </Text>
+          </Pressable>
+        )}
       </View>
 
-      <View
-        className="mt-4 flex-row items-center gap-2.5 rounded-card px-4 py-3.5"
-        style={{ backgroundColor: `${t.brand}1f`, borderWidth: 1, borderColor: `${t.brand}44` }}
-      >
-        <Text className="text-base">✨</Text>
-        <Text className="flex-1 font-sans text-sm leading-5 text-zinc-200">
-          Posts will be published once our AI finalizes keywords & optimizations
-        </Text>
-      </View>
-
-      {/* Recent Posts — real publish history, not just this week's calendar window. */}
       <View className="mt-8 flex-row items-center gap-2">
         <Text className="font-display-bold text-lg text-white">Recent Posts</Text>
-        <View className="h-6 min-w-6 items-center justify-center rounded-full bg-surface-overlay px-1.5">
-          <Text className="font-sans-bold text-xs text-zinc-300">
-            {stats.data?.metrics.postsPublished ?? recentPosts.length}
-          </Text>
-        </View>
+        <CountBadge pending={recent.isPending} count={recent.isSuccess ? (recentTotal ?? recentPosts.length) : null} />
       </View>
       <View className="mt-3">
-        {recent.isLoading ? (
+        {recent.isPending ? (
           <>
             <Skeleton className="mb-3 h-64 rounded-card" />
             <Skeleton className="h-64 rounded-card" />
           </>
+        ) : recent.isError ? (
+          <SectionError
+            title="Couldn't load recent posts"
+            hint={getApiErrorMessage(recent.error, 'Pull down to try again.')}
+            onRetry={() => void recent.refetch()}
+          />
         ) : recentPosts.length === 0 ? (
-          <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-6">
-            <Text className="font-sans text-sm text-zinc-400">No posts published yet.</Text>
+          <View className="items-center rounded-card border border-surface-border bg-surface-raised px-5 py-8">
+            <Text className="mb-1 font-sans-semibold text-base text-zinc-300">No recent posts</Text>
+            <Text className="mb-4 text-center font-sans text-sm text-zinc-500">
+              You haven&apos;t published any posts yet.
+            </Text>
+            <PrimaryButton title="Create Post" onPress={() => router.push('/posts/create' as never)} />
           </View>
         ) : (
           <>
@@ -233,7 +286,6 @@ export function PostsTab() {
               <Pressable
                 onPress={() => void recent.fetchNextPage()}
                 disabled={recent.isFetchingNextPage}
-                // No `className` — see note above.
                 style={{ alignItems: 'center', paddingVertical: 12 }}
               >
                 <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
@@ -243,12 +295,6 @@ export function PostsTab() {
             )}
           </>
         )}
-      </View>
-
-      {/* Buffer health + unscheduled drafts (upcoming list suppressed —
-          already shown richer, above). */}
-      <View className="-mx-4 mt-4 border-t border-surface-border pt-2">
-        <SchedulerPanel scrollable={false} showUpcoming={false} />
       </View>
     </View>
   );

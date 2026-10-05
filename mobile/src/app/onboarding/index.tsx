@@ -56,7 +56,7 @@ export default function OnboardingWizard() {
   if (phase === 'done') return <LoadingScreen />;
 
   return (
-    <Screen>
+    <Screen safeBottom>
       <View className="px-5 pb-2 pt-4">
         <Text className="font-display text-[26px] leading-[32px] text-white">
           Finish setting up

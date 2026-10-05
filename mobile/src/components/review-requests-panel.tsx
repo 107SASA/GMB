@@ -49,7 +49,9 @@ function MetricCard({ label, value, hint }: { label: string; value: string; hint
   return (
     <View style={{ width: '48%' }} className="rounded-card border border-surface-border bg-surface-raised px-3.5 py-3">
       <Text className="font-sans text-xs text-zinc-400">{label}</Text>
-      <Text className="mt-1 font-display text-2xl text-white">{value}</Text>
+      <Text className="mt-1 font-display text-2xl text-white" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+        {value}
+      </Text>
       <Text className="mt-1 font-sans text-[11px] leading-4 text-zinc-500">{hint}</Text>
     </View>
   );
@@ -242,7 +244,9 @@ export function ReviewRequestsPanel() {
             onSend={() => send.mutate(item._id)}
           />
         )}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28, flexGrow: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 28, flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
         refreshControl={
           <RefreshControl
             refreshing={requests.isRefetching || customers.isRefetching}

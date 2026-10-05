@@ -1,7 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
+import { Pressable, Text } from 'react-native';
 
+import { BottomSheet } from '@/components/ui';
 import { useTheme } from '@/lib/theme';
 
 const CONSENT_KEY = 'crm_capture_consent_v1';
@@ -45,11 +46,9 @@ export function useCrmCaptureConsent(): {
   }, []);
 
   const consentSheet = (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={() => settle(false)}>
-      <View className="flex-1 justify-end bg-black/60">
-        <View className="rounded-t-3xl border border-surface-border bg-surface-raised px-6 pb-10 pt-6">
-          <Text className="font-display-bold text-lg text-white">Save contacts to your CRM</Text>
-          <Text className="mt-2 font-sans text-sm leading-5 text-zinc-400">
+    <BottomSheet visible={visible} onClose={() => settle(false)}>
+          <Text className="font-display-bold text-lg" style={{ color: t.text }}>Save contacts to your CRM</Text>
+          <Text className="mt-2 font-sans text-sm leading-5" style={{ color: t.textDim }}>
             Contacts and call details you explicitly select are saved to your business CRM so
             you and your team can follow up. Nothing is read or uploaded automatically — only
             the entries you choose.
@@ -58,16 +57,14 @@ export function useCrmCaptureConsent(): {
             onPress={() => settle(true)}
             // No `className` — react-native-css-interop can swallow onPress
             // on styled Pressables (see components/ui.tsx).
-            style={{ marginTop: 20, alignItems: 'center', borderRadius: 999, backgroundColor: t.brand, paddingVertical: 14 }}
+            style={{ marginTop: 20, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: t.brand, paddingVertical: 12 }}
           >
             <Text className="font-sans-bold text-base text-on-brand">Continue</Text>
           </Pressable>
-          <Pressable onPress={() => settle(false)} style={{ marginTop: 8, alignItems: 'center', paddingVertical: 12 }}>
-            <Text className="font-sans-semibold text-sm text-zinc-400">Not now</Text>
+          <Pressable onPress={() => settle(false)} style={{ marginTop: 8, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+            <Text className="font-sans-semibold text-sm" style={{ color: t.textDim }}>Not now</Text>
           </Pressable>
-        </View>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 
   return { ensureConsent, consentSheet };

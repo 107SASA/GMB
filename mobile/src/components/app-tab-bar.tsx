@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 // package (see components/app-tab-bar.tsx doc comment below for why this
 // file exists at all).
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs';
-import { Pressable, Text, useColorScheme, View } from 'react-native';
+import { Pressable, Text, useColorScheme, useWindowDimensions, View } from 'react-native';
 
 import { useTheme } from '@/lib/theme';
 
@@ -40,6 +40,9 @@ const ICONS: Record<string, { outline: keyof typeof Ionicons.glyphMap; filled: k
 export function AppTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
   const t = useTheme();
   const scheme = useColorScheme() === 'light' ? 'light' : 'dark';
+  const { width } = useWindowDimensions();
+  const narrow = width < 360;
+  const pillPad = narrow ? 10 : width < 400 ? 14 : 18;
 
   return (
     <View
@@ -80,11 +83,11 @@ export function AppTabBar({ state, descriptors, navigation, insets }: BottomTabB
             accessibilityLabel={label}
             // No `className` here — see components/ui.tsx PrimaryButton for
             // why Pressable + className is unsafe in this app.
-            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 4 }}
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minHeight: 44, paddingVertical: 2, paddingHorizontal: 2 }}
           >
             <View
               style={{
-                paddingHorizontal: 18,
+                paddingHorizontal: pillPad,
                 paddingVertical: 4,
                 borderRadius: 999,
                 backgroundColor: focused ? SECONDARY_CONTAINER[scheme] : 'transparent',
@@ -92,7 +95,7 @@ export function AppTabBar({ state, descriptors, navigation, insets }: BottomTabB
             >
               <Ionicons
                 name={focused ? icon.filled : icon.outline}
-                size={24}
+                size={narrow ? 22 : 24}
                 color={focused ? ACTIVE_TINT[scheme] : t.textFaint}
               />
             </View>
@@ -109,9 +112,9 @@ export function AppTabBar({ state, descriptors, navigation, insets }: BottomTabB
               adjustsFontSizeToFit
               minimumFontScale={0.8}
               style={{
-                fontSize: 11,
+                fontSize: narrow ? 10 : 11,
                 fontFamily: 'Inter_700Bold',
-                letterSpacing: 0.5,
+                letterSpacing: width < 400 ? 0 : 0.3,
                 color: focused ? ACTIVE_TINT[scheme] : t.textFaint,
                 textAlign: 'center',
                 maxWidth: '100%',

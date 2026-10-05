@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import type { DealInput } from '@/api/endpoints/leads';
-import { Chip, ErrorText, Field, PrimaryButton } from '@/components/ui';
+import { BottomSheet, Chip, ErrorText, Field, PrimaryButton } from '@/components/ui';
+import { useTheme } from '@/lib/theme';
 
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED'];
 
@@ -31,6 +32,7 @@ export function DealValueSheet({
   const [currency, setCurrency] = useState('INR');
   const [notes, setNotes] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
+  const t = useTheme();
 
   useEffect(() => {
     if (!visible) return;
@@ -50,11 +52,9 @@ export function DealValueSheet({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <View className="flex-1 justify-end bg-black/60">
-        <View className="rounded-t-3xl border border-surface-border bg-surface-raised px-6 pb-10 pt-6">
-          <Text className="font-display-bold text-lg text-white">Deal won 🎉</Text>
-          <Text className="mt-1 font-sans text-sm text-zinc-400">
+    <BottomSheet visible={visible} onClose={onCancel}>
+          <Text className="font-display-bold text-lg" style={{ color: t.text }}>Deal won</Text>
+          <Text className="mt-1 font-sans text-sm" style={{ color: t.textDim }}>
             What was the deal value for {leadName}?
           </Text>
           <View className="mt-4 flex-row flex-wrap gap-2">
@@ -76,11 +76,9 @@ export function DealValueSheet({
           <View className="mt-4">
             <PrimaryButton title="Mark as won" loading={saving} onPress={submit} />
           </View>
-          <Pressable onPress={onCancel} style={{ marginTop: 8, alignItems: 'center', paddingVertical: 12 }}>
-            <Text className="font-sans-semibold text-sm text-zinc-400">Cancel</Text>
+          <Pressable onPress={onCancel} style={{ marginTop: 8, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+            <Text className="font-sans-semibold text-sm" style={{ color: t.textDim }}>Cancel</Text>
           </Pressable>
-        </View>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 }

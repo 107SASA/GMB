@@ -7,6 +7,7 @@ import { AppHeader } from '@/components/app-header';
 import { PostsTab } from '@/components/gbp/posts-tab';
 import { LockedScreen } from '@/components/locked';
 import { Screen, SegmentedControl } from '@/components/ui';
+import { useBusiness } from '@/business/BusinessContext';
 import { useSurfaceLocked } from '@/entitlements/entitlements';
 import { useTheme } from '@/lib/theme';
 
@@ -24,6 +25,7 @@ type PostsSection = 'posts' | 'photos';
  */
 export default function PostsScreen() {
   const locked = useSurfaceLocked('scheduler');
+  const { activeBusinessId } = useBusiness();
   const params = useLocalSearchParams<{ tab?: string }>();
   const queryClient = useQueryClient();
   const t = useTheme();
@@ -63,7 +65,7 @@ export default function PostsScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={t.brandBright} />
           }
         >
-          <PostsTab />
+          <PostsTab key={activeBusinessId ?? 'none'} />
         </ScrollView>
       )}
     </Screen>

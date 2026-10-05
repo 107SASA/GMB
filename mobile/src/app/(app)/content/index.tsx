@@ -4,9 +4,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Pressable,
-  ScrollView,
   Text,
   View,
 } from 'react-native';
@@ -21,6 +19,7 @@ import { useBusiness } from '@/business/BusinessContext';
 import { useDateTimePicker } from '@/components/datetime-picker';
 import {
   Badge,
+  BottomSheet,
   EmptyState,
   Field,
   LabeledField,
@@ -152,11 +151,8 @@ function EditPostModal({
 
   return (
     <>
-    <Modal transparent animationType="slide" onRequestClose={onClose}>
-      <View className="flex-1 justify-end bg-black/60">
-        <View className="max-h-[85%] rounded-t-2xl border-t border-surface-border bg-surface px-5 pb-8 pt-4">
+    <BottomSheet visible onClose={onClose}>
           <Text className="mb-3 font-display-bold text-lg text-white">Edit post</Text>
-          <ScrollView keyboardShouldPersistTaps="handled">
             <LabeledField label="Title" value={title} onChangeText={setTitle} />
             <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Content</Text>
             <Field
@@ -172,13 +168,10 @@ function EditPostModal({
               loading={save.isPending}
               disabled={!content.trim()}
             />
-            <Pressable onPress={onClose} style={{ marginTop: 12, alignItems: 'center', paddingVertical: 8 }}>
+            <Pressable onPress={onClose} style={{ marginTop: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
               <Text className="font-sans-semibold text-sm text-zinc-400">Cancel</Text>
             </Pressable>
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    </BottomSheet>
     {info.node}
     </>
   );
@@ -195,7 +188,7 @@ function HistorySegment() {
 
   const history = useInfiniteQuery({
     queryKey: ['content-posts', activeBusinessId],
-    queryFn: ({ pageParam }) => fetchContentPosts(pageParam),
+    queryFn: ({ pageParam }) => fetchContentPosts(activeBusinessId!, pageParam),
     initialPageParam: 1,
     getNextPageParam: (last, pages) => (last.hasMore ? pages.length + 1 : undefined),
     enabled: !!activeBusinessId,

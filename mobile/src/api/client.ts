@@ -54,6 +54,11 @@ export function setActiveBusinessIdHeader(businessId: string | null): void {
   activeBusinessId = businessId;
 }
 
+/** Pins a request to one business even if the active workspace changes before it is sent. */
+export function businessHeaders(businessId: string): { headers: { 'x-business-id': string } } {
+  return { headers: { 'x-business-id': businessId } };
+}
+
 /** AuthContext registers its logout handler here. */
 export function setUnauthorizedHandler(handler: (() => void) | null): void {
   onUnauthorized = handler;
@@ -81,7 +86,11 @@ api.interceptors.request.use((config) => {
   if (authToken) {
     config.headers.set('Authorization', `Bearer ${authToken}`);
   }
-  if (activeBusinessId) {
+  // A caller that already set x-business-id (from the query key) wins. The
+  // module-level id can change mid-flight when the user switches businesses;
+  // overwriting the request's own id stored the other business's posts
+  // under the wrong cache key.
+  if (!config.headers.get('x-business-id') && activeBusinessId) {
     config.headers.set('x-business-id', activeBusinessId);
   }
   return config;
@@ -104,6 +113,20 @@ api.interceptors.response.use(
   }
 );
 
+/** Hide stack traces, driver errors, and vendor codes from business-facing copy. */
+function presentableError(message: string, fallback: string): string {
+  const trimmed = message.trim();
+  if (!trimmed || trimmed.length > 220) return fallback;
+  if (
+    /mongodb|mongoose|twilio|E11000|CastError|BSON|stack trace|internal server|graph api|meta error|#\d{4,}|\bat\s+\S+\s+\(|status code \d{3}/i.test(
+      trimmed,
+    )
+  ) {
+    return fallback;
+  }
+  return trimmed;
+}
+
 /** Extracts the backend's `{ error: string }` message when present. */
 export function getApiErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
@@ -112,7 +135,7 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
       return "This feature isn't included in your current plan.";
     }
     const data = error.response?.data as { error?: string } | undefined;
-    if (data?.error) return data.error;
+    if (typeof data?.error === 'string') return presentableError(data.error, fallback);
     if (!error.response) return 'Cannot reach the server. Check your connection and API URL.';
   } else {
     // Not an axios error at all — the request itself likely succeeded but

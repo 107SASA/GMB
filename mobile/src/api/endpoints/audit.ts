@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { z } from 'zod';
-import { api } from '../client';
+import { api, businessHeaders } from '../client';
 import { PlanLimitError } from './reviews';
 
 /**
@@ -23,9 +23,10 @@ export const auditListItemSchema = z.object({
 });
 export type AuditListItem = z.infer<typeof auditListItemSchema>;
 
-/** GET /api/audit — bare array, newest first. */
-export async function fetchAudits(): Promise<AuditListItem[]> {
-  const { data } = await api.get('/api/audit');
+/** GET /api/audit — bare array, newest first, for this business. */
+export async function fetchAudits(businessId?: string): Promise<AuditListItem[]> {
+  const { data } = await api.get('/api/audit', businessId ? businessHeaders(businessId) : undefined);
+  if (!Array.isArray(data)) throw new Error('Unexpected audits response');
   return z
     .array(auditListItemSchema.nullable().catch(null))
     .parse(data)
@@ -273,8 +274,8 @@ export type MobileReportView = z.infer<typeof mobileReportViewSchema>;
 export type AuditData = NonNullable<Audit['auditData']>;
 
 /** GET /api/audit/[id] — wrapped `{ success, audit }`; polled while PENDING. */
-export async function fetchAudit(auditId: string): Promise<Audit> {
-  const { data } = await api.get(`/api/audit/${auditId}`);
+export async function fetchAudit(auditId: string, businessId?: string): Promise<Audit> {
+  const { data } = await api.get(`/api/audit/${auditId}`, businessId ? businessHeaders(businessId) : undefined);
   const parsed = z
     .object({ audit: auditSchema, mobileView: mobileReportViewSchema.nullable().optional().catch(null) })
     .parse(data);

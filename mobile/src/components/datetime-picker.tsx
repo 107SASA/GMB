@@ -1,6 +1,9 @@
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useCallback, useState } from 'react';
 import { Modal, Platform, Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useTheme } from '@/lib/theme';
 
 /**
  * Imperative date+time picking shared by the content and scheduler screens.
@@ -19,6 +22,8 @@ export function useDateTimePicker() {
   const open = useCallback((initial: Date, onPick: (date: Date) => void) => {
     setState({ value: initial, step: 'date', onPick });
   }, []);
+  const insets = useSafeAreaInsets();
+  const t = useTheme();
 
   const handleAndroidChange = (event: DateTimePickerEvent, selected?: Date) => {
     if (!state) return;
@@ -48,10 +53,13 @@ export function useDateTimePicker() {
     element = (
       <Modal transparent animationType="slide" onRequestClose={() => setState(null)}>
         <View className="flex-1 justify-end bg-black/60">
-          <View className="rounded-t-2xl border-t border-surface-border bg-surface-raised pb-8">
-            <View className="flex-row items-center justify-between px-5 py-3">
-              <Pressable onPress={() => setState(null)}>
-                <Text className="font-sans-semibold text-base text-zinc-400">Cancel</Text>
+          <View
+            className="rounded-t-2xl border-t border-surface-border bg-surface-raised"
+            style={{ paddingBottom: Math.max(insets.bottom, 12) }}
+          >
+            <View className="flex-row items-center justify-between px-4">
+              <Pressable onPress={() => setState(null)} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}>
+                <Text className="font-sans-semibold text-base" style={{ color: t.textDim }}>Cancel</Text>
               </Pressable>
               <Pressable
                 onPress={() => {
@@ -60,8 +68,9 @@ export function useDateTimePicker() {
                   setState(null);
                   onPick(picked);
                 }}
+                style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}
               >
-                <Text className="font-sans-bold text-base text-indigo-300">Done</Text>
+                <Text className="font-sans-bold text-base" style={{ color: t.brandBright }}>Done</Text>
               </Pressable>
             </View>
             <DateTimePicker

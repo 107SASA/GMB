@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { api } from '../client';
+import { api, businessHeaders } from '../client';
 
 /**
  * GET /api/dashboard/stats — same aggregate the web dashboard renders.
@@ -135,13 +135,16 @@ export async function syncGbpInsights(): Promise<void> {
 }
 
 /**
- * GET /api/posts?status=scheduled — the posts API returns a bare page of
- * posts (no total), so the dashboard shows the count of the first page,
- * capped at 99.
+ * GET /api/posts?status=scheduled&meta=1 — the real scheduled-post total
+ * for this business. A non-matching body throws so the UI can show an
+ * error instead of a fake 0.
  */
-export async function fetchScheduledPostsCount(): Promise<number> {
+export async function fetchScheduledPostsCount(businessId: string): Promise<number> {
   const { data } = await api.get('/api/posts', {
-    params: { status: 'scheduled', page: 1, limit: 99 },
+    params: { status: 'scheduled', page: 1, limit: 1, meta: '1' },
+    ...businessHeaders(businessId),
   });
-  return Array.isArray(data) ? data.length : 0;
+  const parsed = z.object({ total: z.number() }).safeParse(data);
+  if (!parsed.success) throw new Error('Unexpected posts response');
+  return parsed.data.total;
 }

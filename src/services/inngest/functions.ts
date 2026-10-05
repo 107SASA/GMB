@@ -822,8 +822,7 @@ export const processContentJob = inngest.createFunction(
     // Alert Admin if buffer is low during cron check
     if (!force && futurePosts.length < 4) {
       await step.run("alert-admin-low-buffer", async () => {
-        const msg = `⚠️ *Marketing Alert*\nBuffer for ${business.name} is running critically low (${futurePosts.length} posts remaining). Generating new content now.`;
-        if (business.phone) await sendOutboundMessage(business.phone, msg);
+        console.error(`⚠️ Marketing Alert: buffer for ${business.name} is running critically low (${futurePosts.length} posts remaining). Generating new content now.`);
       });
     }
 
@@ -936,8 +935,7 @@ export const processContentJob = inngest.createFunction(
       }
     } catch (error: any) {
       await step.run("alert-admin-generation-failed", async () => {
-        const msg = `❌ *Marketing Alert*\nFailed to generate content for ${business.name}. Please check the dashboard.`;
-        if (business.phone) await sendOutboundMessage(business.phone, msg);
+        console.error(`❌ Marketing Alert: failed to generate content for ${business.name}.`);
 
         const tenantIdForLog = business.organizationId?.toString() ?? business._id.toString();
         await AutomationLog.create({
@@ -4138,7 +4136,11 @@ export const gbpNightlySyncScheduler = inngest.createFunction(
     await dbConnect();
 
     const connectedBusinesses = await BusinessModel.find(
-      { googleConnected: true, isDeleted: { $ne: true } },
+      {
+        googleConnected: true,
+        googleLocationId: { $exists: true, $nin: [null, ''] },
+        isDeleted: { $ne: true },
+      },
       { _id: 1 }
     ).lean();
 
@@ -4271,8 +4273,13 @@ export const gbpSyncWorker = inngest.createFunction(
     // insights/keywords do. Best-effort: a failure here shouldn't fail the
     // insights/keywords sync that already succeeded above.
     await step.run("sync-gbp-reviews", async () => {
+      const dbConnect = (await import("@/lib/mongodb")).default;
       const { default: BusinessModel } = await import("@/models/Business");
+      const { default: GBPTokenModel } = await import("@/models/GBPToken");
       const { syncReviewsForBusiness } = await import("@/services/reviews/syncReviews");
+      await dbConnect();
+      const token = await GBPTokenModel.findOne({ businessId }).select('_id').lean();
+      if (!token) return { skipped: true, reason: "No token" };
       const business = await BusinessModel.findById(businessId).select('organizationId').lean() as any;
       const tenantId = business?.organizationId?.toString() ?? businessId;
       try {

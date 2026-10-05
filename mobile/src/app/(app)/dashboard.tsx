@@ -168,7 +168,7 @@ export default function HomeScreen() {
   // Days since the last published post → the "Add Fresh Photos" banner.
   const buffer = useQuery({
     queryKey: ['scheduler-buffer', activeBusinessId],
-    queryFn: fetchBuffer,
+    queryFn: () => fetchBuffer(activeBusinessId!),
     enabled: !!activeBusinessId && !locked,
   });
   const lastPublishedAt = (buffer.data?.allPosts ?? [])

@@ -142,13 +142,16 @@ export function SchedulerPanel({
 
   const buffer = useQuery({
     queryKey: ['scheduler-buffer', activeBusinessId],
-    queryFn: fetchBuffer,
+    queryFn: () => fetchBuffer(activeBusinessId!),
     enabled: !!activeBusinessId,
   });
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['scheduler-buffer', activeBusinessId] });
     void queryClient.invalidateQueries({ queryKey: ['content-posts', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['published-posts', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['scheduled-posts', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['scheduled-posts-count', activeBusinessId] });
   };
 
   const publish = useMutation({

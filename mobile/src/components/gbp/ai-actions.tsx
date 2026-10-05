@@ -55,7 +55,7 @@ export function AiActionsCard({ showViewAll = true }: { showViewAll?: boolean })
 
   const buffer = useQuery({
     queryKey: ['scheduler-buffer', activeBusinessId],
-    queryFn: fetchBuffer,
+    queryFn: () => fetchBuffer(activeBusinessId!),
     enabled: !!activeBusinessId,
   });
   // Real profile-change events (profile edits, photo publishes) — see

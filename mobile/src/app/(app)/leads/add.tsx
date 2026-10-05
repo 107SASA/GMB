@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { logLeadActivity, quickAddLead } from '@/api/endpoints/leads';
@@ -114,7 +114,12 @@ export default function AddLeadScreen() {
         </Text>
       </View>
 
-      <ScrollView contentContainerClassName="gap-3 px-5 pt-4" keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView
+        contentContainerClassName="gap-3 px-4 pb-16 pt-4"
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+      >
         {/* Paste chip */}
         {Platform.OS === 'android' && clipboardPhone && clipboardPhone !== phone ? (
           <Pressable
@@ -216,6 +221,7 @@ export default function AddLeadScreen() {
           If this number already exists, you'll be taken to the existing lead.
         </Text>
       </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }

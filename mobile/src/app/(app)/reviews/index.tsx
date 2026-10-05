@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, RefreshControl, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/api/client';
 import { fetchReviews, ReviewsNotConnectedError, syncReviews, type Review } from '@/api/endpoints/reviews';
@@ -50,6 +51,7 @@ function RatingFilterPicker({
   onChange: (v: RatingFilter) => void;
 }) {
   const t = useTheme();
+  const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const current = RATING_FILTERS.find((f) => f.id === value)!;
 
@@ -77,7 +79,10 @@ function RatingFilterPicker({
       </Pressable>
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={() => setOpen(false)} />
-        <View className="rounded-t-3xl border-t border-surface-border bg-surface px-5 pb-8 pt-3">
+        <View
+          className="rounded-t-3xl border-t border-surface-border bg-surface px-5 pt-3"
+          style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+        >
           <View className="mb-2 self-center h-1 w-10 rounded-full bg-surface-overlay" />
           {RATING_FILTERS.map((f) => (
             <Pressable

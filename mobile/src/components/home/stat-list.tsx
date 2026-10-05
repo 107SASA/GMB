@@ -86,7 +86,7 @@ export function HomeStatList() {
   });
   const scheduledCount = useQuery({
     queryKey: ['scheduled-posts-count', activeBusinessId],
-    queryFn: fetchScheduledPostsCount,
+    queryFn: () => fetchScheduledPostsCount(activeBusinessId!),
     enabled: !!activeBusinessId,
   });
   const media = useQuery({
@@ -162,8 +162,11 @@ export function HomeStatList() {
       key: 'posts',
       icon: 'newspaper-outline',
       iconTint: 'amber',
-      title: `${stats.data?.metrics.postsPublished ?? 0} Posts Published`,
-      subtitle: `${scheduledCount.data ?? 0} scheduled`,
+      title: stats.isError && stats.data == null ? 'Posts' : `${stats.data?.metrics.postsPublished ?? 0} Posts Published`,
+      subtitle:
+        scheduledCount.isError && scheduledCount.data == null
+          ? "Couldn't load scheduled posts"
+          : `${scheduledCount.data ?? 0} scheduled`,
       href: '/posts',
     },
     {

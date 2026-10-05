@@ -125,10 +125,22 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   }, [restored, isFetching, businesses, activeBusinessId, user]);
 
   const selectBusiness = useCallback(async (businessId: string) => {
-    setActiveBusinessId(businessId);
+    setActiveBusinessId((previous) => {
+      if (previous && previous !== businessId) {
+        // Drop in-flight requests for the business we're leaving so a late
+        // response cannot be stored against that workspace after the header moves.
+        void queryClient.cancelQueries({ predicate: (query) => query.queryKey.includes(previous) });
+      }
+      return businessId;
+    });
     setActiveBusinessIdHeader(businessId);
+    // Mark this workspace's cached screens stale so Posts, audits and stats
+    // refetch instead of showing the last visit's copy.
+    void queryClient.invalidateQueries({
+      predicate: (query) => query.queryKey.includes(businessId),
+    });
     await SecureStore.setItemAsync(BUSINESS_KEY, businessId).catch(() => {});
-  }, []);
+  }, [queryClient]);
 
   const deleteBusiness = useCallback(
     async (businessId: string) => {

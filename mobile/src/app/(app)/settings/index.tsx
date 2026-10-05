@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
-import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import {
@@ -288,7 +288,8 @@ export default function SettingsScreen() {
   return (
     <Screen>
       <ScreenTitle>Settings</ScreenTitle>
-      <ScrollView contentContainerClassName="px-5 pb-12" keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerClassName="px-4 pb-16" keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <SectionLabel>Business profile</SectionLabel>
         {business.isLoading ? (
           <Skeleton className="h-64" />
@@ -322,6 +323,7 @@ export default function SettingsScreen() {
           </View>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }

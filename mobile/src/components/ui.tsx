@@ -6,27 +6,56 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type TextInputProps,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BRAND_GRADIENT, useTheme } from '@/lib/theme';
 
-/** Full-height dark screen wrapper with safe-area padding. */
-export function Screen({ children, className = '' }: { children: ReactNode; className?: string }) {
+/**
+ * Full-height screen wrapper. Top/side safe areas only by default — tab
+ * screens sit above a tab bar that already pads the gesture area, so a
+ * bottom inset here leaves a dead gap. Pass `safeBottom` on screens that
+ * are not sitting above that bar (login, onboarding, business picker).
+ */
+export function Screen({
+  children,
+  className = '',
+  safeBottom = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  safeBottom?: boolean;
+}) {
   return (
-    <SafeAreaView className={`flex-1 bg-surface ${className}`}>{children}</SafeAreaView>
+    <SafeAreaView
+      edges={safeBottom ? ['top', 'bottom', 'left', 'right'] : ['top', 'left', 'right']}
+      className={`flex-1 bg-surface ${className}`}
+    >
+      {children}
+    </SafeAreaView>
   );
 }
 
 export function ScreenTitle({ children }: { children: ReactNode }) {
+  const t = useTheme();
+  const { width } = useWindowDimensions();
+  const compact = width < 360;
   return (
-    <Text className="px-5 pb-2 pt-4 font-display text-[28px] leading-[34px] text-white">
+    <Text
+      numberOfLines={2}
+      className="px-4 pb-2 pt-4 font-display"
+      style={{ color: t.text, fontSize: compact ? 24 : 28, lineHeight: compact ? 30 : 34 }}
+    >
       {children}
     </Text>
   );
@@ -133,12 +162,14 @@ export function PrimaryButton({
         // an empty-state card) instead shrink-wraps it to just the text
         // width, with no breathing room — reads as a cramped sliver of
         // color rather than a proper pill CTA.
-        style={{ alignItems: 'center', paddingVertical: 15, paddingHorizontal: 32 }}
+        style={{ alignItems: 'center', justifyContent: 'center', minHeight: 48, paddingVertical: 12, paddingHorizontal: 24 }}
       >
         {loading ? (
           <ActivityIndicator color="#ffffff" />
         ) : (
-          <Text className="font-sans-bold text-base text-on-brand">{title}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} className="font-sans-bold text-base text-on-brand">
+            {title}
+          </Text>
         )}
       </LinearGradient>
     </Pressable>
@@ -164,15 +195,20 @@ export function SecondaryButton({
       // react-native-css-interop can swallow onPress on styled Pressables.
       style={{
         alignItems: 'center',
+        justifyContent: 'center',
         borderRadius: 999,
         borderWidth: 1,
         borderColor: t.brand,
         backgroundColor: t.card,
-        paddingVertical: 14,
+        minHeight: 48,
+        paddingVertical: 12,
+        paddingHorizontal: 24,
         opacity: disabled ? 0.5 : 1,
       }}
     >
-      <Text className="font-sans-bold text-base text-brand">{title}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} className="font-sans-bold text-base text-brand">
+        {title}
+      </Text>
     </Pressable>
   );
 }
@@ -222,10 +258,17 @@ export function EmptyState({
   hint?: string;
   action?: ReactNode;
 }) {
+  const t = useTheme();
   return (
-    <View className="flex-1 items-center justify-center gap-2 px-8 py-16">
-      <Text className="text-center font-display-bold text-lg text-white">{title}</Text>
-      {!!hint && <Text className="text-center font-sans text-sm text-zinc-400">{hint}</Text>}
+    <View className="w-full flex-1 items-center justify-center gap-2 px-6 py-10">
+      <Text className="text-center font-display-bold text-lg" style={{ color: t.text }}>
+        {title}
+      </Text>
+      {!!hint && (
+        <Text className="text-center font-sans text-sm leading-5" style={{ color: t.textDim }}>
+          {hint}
+        </Text>
+      )}
       {action}
     </View>
   );
@@ -313,7 +356,7 @@ export function SegmentedControl<T extends string>({
 }) {
   const t = useTheme();
   return (
-    <View className="mx-5 mb-3 flex-row rounded-full border border-surface-border bg-surface-raised p-1">
+    <View className="mx-4 mb-3 flex-row rounded-full border border-surface-border bg-surface-raised p-1">
       {segments.map((segment) => (
         <Pressable
           key={segment.id}
@@ -322,12 +365,18 @@ export function SegmentedControl<T extends string>({
           style={{
             flex: 1,
             alignItems: 'center',
+            justifyContent: 'center',
             borderRadius: 999,
+            minHeight: 36,
             paddingVertical: 8,
+            paddingHorizontal: 4,
             backgroundColor: value === segment.id ? t.brand : 'transparent',
           }}
         >
           <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
             className={`font-sans-semibold text-sm ${
               value === segment.id ? 'text-on-brand' : 'text-zinc-500'
             }`}
@@ -437,13 +486,63 @@ export function InitialsAvatar({
 }
 
 /**
+ * Shared bottom sheet shell: scrolls when the copy is long, stays above the
+ * gesture bar, and lifts with the keyboard. Backdrop is a sibling so a tap
+ * outside dismisses without swallowing taps on the card.
+ */
+export function BottomSheet({
+  visible,
+  onClose,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1, justifyContent: 'flex-end' }}
+      >
+        <Pressable
+          onPress={onClose}
+          accessibilityLabel="Close"
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.6)' }}
+        />
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+          style={{
+            flexGrow: 0,
+            maxHeight: Math.round(height * 0.88),
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            borderWidth: 1,
+            borderColor: t.border,
+            backgroundColor: t.card,
+          }}
+          contentContainerStyle={{
+            paddingTop: 20,
+            paddingHorizontal: 20,
+            paddingBottom: Math.max(insets.bottom, 16),
+          }}
+        >
+          {children}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+/**
  * Themed bottom sheet for a one-off explanation + "Got it" dismiss — the
  * app's own dark card style instead of the OS's native `Alert.alert`, which
  * renders as a plain system dialog (default font, no theme awareness) that
- * clashed with the rest of the UI (Aug 2026 feedback). Same backdrop-as-
- * sibling idiom as the business-switcher sheet in app-header.tsx: a
- * full-bleed Pressable behind a separate content View, so a tap anywhere
- * outside the card dismisses it without needing stopPropagation tricks.
+ * clashed with the rest of the UI (Aug 2026 feedback).
  */
 export function InfoSheet({
   visible,
@@ -458,21 +557,22 @@ export function InfoSheet({
 }) {
   const t = useTheme();
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={onClose} />
-      <View className="rounded-t-3xl border border-surface-border bg-surface-raised px-6 pb-10 pt-6">
-        <Text className="font-display-bold text-lg text-white">{title}</Text>
-        <Text className="mt-2 font-sans text-sm leading-5 text-zinc-400">{message}</Text>
-        <Pressable
-          onPress={onClose}
-          // No `className` — react-native-css-interop can swallow onPress
-          // on styled Pressables (see PrimaryButton above).
-          style={{ marginTop: 20, alignItems: 'center', borderRadius: 999, backgroundColor: t.brand, paddingVertical: 14 }}
-        >
-          <Text className="font-sans-bold text-base text-on-brand">Got it</Text>
-        </Pressable>
-      </View>
-    </Modal>
+    <BottomSheet visible={visible} onClose={onClose}>
+      <Text className="font-display-bold text-lg" style={{ color: t.text }}>
+        {title}
+      </Text>
+      <Text className="mt-2 font-sans text-sm leading-5" style={{ color: t.textDim }}>
+        {message}
+      </Text>
+      <Pressable
+        onPress={onClose}
+        // No `className` — react-native-css-interop can swallow onPress
+        // on styled Pressables (see PrimaryButton above).
+        style={{ marginTop: 20, alignItems: 'center', justifyContent: 'center', minHeight: 48, borderRadius: 999, backgroundColor: t.brand, paddingVertical: 12 }}
+      >
+        <Text className="font-sans-bold text-base text-on-brand">Got it</Text>
+      </Pressable>
+    </BottomSheet>
   );
 }
 
@@ -507,58 +607,70 @@ export function ConfirmSheet({
 }) {
   const t = useTheme();
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={onCancel} />
-      <View className="rounded-t-3xl border border-surface-border bg-surface-raised px-6 pb-10 pt-6">
-        <Text className="font-display-bold text-lg text-white">{title}</Text>
-        <Text className="mt-2 font-sans text-sm leading-5 text-zinc-400">{message}</Text>
-        <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
-          <Pressable
-            onPress={onCancel}
-            disabled={loading}
-            // No `className` — see PrimaryButton above: react-native-css-interop
-            // can swallow onPress on styled Pressables.
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: t.textDim,
-              paddingVertical: 14,
-              opacity: loading ? 0.5 : 1,
-            }}
-          >
-            <Text className="font-sans-bold text-base text-white">{cancelLabel}</Text>
-          </Pressable>
-          <Pressable
-            onPress={onConfirm}
-            disabled={loading}
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              borderRadius: 999,
-              backgroundColor: destructive ? t.errorContainer : t.brand,
-              paddingVertical: 14,
-              opacity: loading ? 0.5 : 1,
-            }}
-          >
-            {loading ? (
-              <ActivityIndicator color={destructive ? t.onErrorContainer : '#ffffff'} />
-            ) : (
-              <Text
-                className="font-sans-bold text-base"
-                // Fixed #FFFFFF for the non-destructive case — same as the
-                // `on-brand` Tailwind token (tailwind.config.js), which isn't
-                // exposed on the theme.ts Palette object to read here.
-                style={{ color: destructive ? t.onErrorContainer : '#ffffff' }}
-              >
-                {confirmLabel}
-              </Text>
-            )}
-          </Pressable>
-        </View>
+    <BottomSheet visible={visible} onClose={onCancel}>
+      <Text className="font-display-bold text-lg" style={{ color: t.text }}>
+        {title}
+      </Text>
+      <Text className="mt-2 font-sans text-sm leading-5" style={{ color: t.textDim }}>
+        {message}
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+        <Pressable
+          onPress={onCancel}
+          disabled={loading}
+          // No `className` — see PrimaryButton above: react-native-css-interop
+          // can swallow onPress on styled Pressables.
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: 48,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: t.border,
+            paddingVertical: 12,
+            paddingHorizontal: 12,
+            opacity: loading ? 0.5 : 1,
+          }}
+        >
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} className="font-sans-bold text-base" style={{ color: t.text }}>
+            {cancelLabel}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onConfirm}
+          disabled={loading}
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: 48,
+            borderRadius: 999,
+            backgroundColor: destructive ? t.errorContainer : t.brand,
+            paddingVertical: 12,
+            paddingHorizontal: 12,
+            opacity: loading ? 0.5 : 1,
+          }}
+        >
+          {loading ? (
+            <ActivityIndicator color={destructive ? t.onErrorContainer : '#ffffff'} />
+          ) : (
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              className="font-sans-bold text-base"
+              // Fixed #FFFFFF for the non-destructive case — same as the
+              // `on-brand` Tailwind token (tailwind.config.js), which isn't
+              // exposed on the theme.ts Palette object to read here.
+              style={{ color: destructive ? t.onErrorContainer : '#ffffff' }}
+            >
+              {confirmLabel}
+            </Text>
+          )}
+        </Pressable>
       </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 

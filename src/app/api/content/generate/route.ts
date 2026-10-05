@@ -23,6 +23,16 @@ export const maxDuration = 120;
 // redeploy.
 const { limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS } = getRateLimitConfig('CONTENT_GENERATE', 10, 10 * 60 * 1000);
 
+/** Bytes of a generated thumbnail, whether Gemini returned a data-URL or the generator returned a hosted URL. */
+async function bytesForGeotag(imageUrl: string): Promise<{ buffer: Buffer; mime: string } | null> {
+  const data = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(imageUrl);
+  if (data) return { buffer: Buffer.from(data[2], 'base64'), mime: data[1] };
+  const { guardedFetchBuffer } = await import('@/lib/ssrfGuard');
+  const fetched = await guardedFetchBuffer(imageUrl, { maxBytes: 8_000_000 });
+  if (!fetched || !/^image\//i.test(fetched.contentType)) return null;
+  return { buffer: fetched.body, mime: fetched.contentType.split(';')[0].trim() || 'image/jpeg' };
+}
+
 const generateContentSchema = z.object({
   businessName: z.string().min(2).optional(),
   businessType: z.string().min(2).optional(),
@@ -160,7 +170,7 @@ export async function POST(req: Request) {
     // Now the content returns immediately and images populate into the Post docs
     // in the background; the posts pages read them from the DB once ready.
     after(async () => {
-      const { isStorageConfigured, rehostImageFromUrl, uploadPublicObject } = await import('@/lib/storage');
+      const { isStorageConfigured, uploadPublicObject } = await import('@/lib/storage');
       const { geotagMedia } = await import('@/lib/imageGeotag');
       const { getVerifiedBusinessLocation } = await import('@/lib/verifiedLocation');
       const location = await getVerifiedBusinessLocation(ctx.businessId);
@@ -178,15 +188,14 @@ export async function POST(req: Request) {
           let imageGeotag: any = { status: 'none', reason: 'image not re-hosted (storage not configured)' };
           if (isStorageConfigured()) {
             try {
-              // Generated thumbnails are data-URLs: geotag (verified Google location only), then host.
-              const data = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(imageUrl);
-              if (data) {
-                const g = await geotagMedia(Buffer.from(data[2], 'base64'), data[1], location);
+              // Data-URL or hosted generator URL: write the verified business
+              // location into the file, then store that file. A hosted URL is
+              // not copied through unchanged.
+              const hosted = await bytesForGeotag(imageUrl);
+              if (hosted) {
+                const g = await geotagMedia(hosted.buffer, hosted.mime, location);
                 finalUrl = await uploadPublicObject(g.buffer, g.mime, `post-thumbnails/${ctx.businessId}`);
                 imageGeotag = g.geotag;
-              } else {
-                finalUrl = await rehostImageFromUrl(imageUrl, `post-thumbnails/${ctx.businessId}`);
-                imageGeotag = { status: 'none', reason: 'remote image re-hosted without processing' };
               }
             } catch (e) {
               console.error(`[content/generate] thumbnail re-host failed for ${savedDrafts[i]._id}, using original:`, e);

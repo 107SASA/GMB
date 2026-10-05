@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { FlatList, Modal, Pressable, RefreshControl, Text, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getApiErrorMessage } from '@/api/client';
 import { actOnCall, fetchCalls, type CallAction, type CallEvent } from '@/api/endpoints/crm';
@@ -54,6 +55,8 @@ function stateLabel(c: CallEvent): string {
 export default function RecentCallsScreen() {
   const router = useRouter();
   const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
   const queryClient = useQueryClient();
   const { activeBusinessId } = useBusiness();
   const { callEventId } = useLocalSearchParams<{ callEventId?: string }>();
@@ -185,23 +188,37 @@ export default function RecentCallsScreen() {
       )}
 
       <Modal visible={!!linkFor} transparent animationType="fade" onRequestClose={() => setLinkFor(null)}>
-        <View className="flex-1 justify-end bg-black/60">
-          <View className="max-h-[75%] rounded-t-3xl border border-surface-border bg-surface-raised px-5 pb-8 pt-5">
-            <Text className="font-display-bold text-lg text-white">Link to an existing lead</Text>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
+          <Pressable style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={() => setLinkFor(null)} />
+          <View
+            style={{
+              maxHeight: Math.round(height * 0.75),
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              borderWidth: 1,
+              borderColor: t.border,
+              backgroundColor: t.card,
+              paddingHorizontal: 20,
+              paddingTop: 20,
+              paddingBottom: Math.max(insets.bottom, 16),
+            }}
+          >
+            <Text className="font-display-bold text-lg" style={{ color: t.text }}>Link to an existing lead</Text>
             <View className="mt-3">
               <Field value={linkSearch} onChangeText={setLinkSearch} placeholder="Search name or phone" autoCorrect={false} />
             </View>
             <FlatList
-              style={{ marginTop: 8 }}
+              style={{ marginTop: 8, maxHeight: Math.round(height * 0.42) }}
+              keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets
               data={linkOptions}
               keyExtractor={(l) => l._id}
-              keyboardShouldPersistTaps="handled"
               renderItem={({ item: l }) => (
                 <Pressable
                   onPress={() => linkFor && act.mutate({ id: linkFor, body: { action: 'link', leadId: l._id } })}
-                  style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: t.border }}
+                  style={{ minHeight: 48, justifyContent: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: t.border }}
                 >
-                  <Text className="font-sans-semibold text-sm text-zinc-200">{l.name}</Text>
+                  <Text className="font-sans-semibold text-sm" style={{ color: t.text }} numberOfLines={1}>{l.name}</Text>
                   {!!l.phone && <Text className="font-sans text-xs text-zinc-500">{l.phone}</Text>}
                 </Pressable>
               )}
@@ -211,11 +228,11 @@ export default function RecentCallsScreen() {
                 </Text>
               }
             />
-            <Pressable onPress={() => setLinkFor(null)} style={{ marginTop: 8, alignItems: 'center', paddingVertical: 12 }}>
-              <Text className="font-sans-semibold text-sm text-zinc-400">Cancel</Text>
+            <Pressable onPress={() => setLinkFor(null)} style={{ marginTop: 8, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+              <Text className="font-sans-semibold text-sm" style={{ color: t.textDim }}>Cancel</Text>
             </Pressable>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </Screen>
   );

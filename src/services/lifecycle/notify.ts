@@ -216,6 +216,7 @@ export async function runPerformanceDigestAll(now = new Date()): Promise<{ busin
   const due = new Date(now.getTime() - (15 * DAY - 12 * 3_600_000));
   const list: any[] = await Business.find({
     isDeleted: { $ne: true }, subscriptionStatus: 'active', googleConnected: true,
+    googleLocationId: { $exists: true, $nin: [null, ''] },
     $or: [{ performanceDigestLastSentAt: { $exists: false } }, { performanceDigestLastSentAt: null }, { performanceDigestLastSentAt: { $lte: due } }],
   }).select('_id').lean();
   let sent = 0;
@@ -233,7 +234,10 @@ export async function runPerformanceDigestAll(now = new Date()): Promise<{ busin
 export async function runWeeklyMonitoringAll(now = new Date()): Promise<{ businesses: number; done: number; skipped: number; alreadyRan: number }> {
   await dbConnect();
   const Business = (await import('@/models/Business')).default;
-  const list: any[] = await Business.find({ isDeleted: { $ne: true }, subscriptionStatus: 'active', googleConnected: true }).select('_id').lean();
+  const list: any[] = await Business.find({
+    isDeleted: { $ne: true }, subscriptionStatus: 'active', googleConnected: true,
+    googleLocationId: { $exists: true, $nin: [null, ''] },
+  }).select('_id').lean();
   let done = 0; let skipped = 0; let alreadyRan = 0;
   for (const b of list) {
     try {

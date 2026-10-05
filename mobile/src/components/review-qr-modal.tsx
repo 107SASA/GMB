@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Modal, Pressable, Share, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Share, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -82,8 +83,11 @@ const POSTER_H = 460;
  * dark/light setting, the same way the reference design does.
  */
 function ReviewPoster({ businessName, reviewUrl }: { businessName: string; reviewUrl: string }) {
+  const { width } = useWindowDimensions();
+  const scale = Math.min(1, Math.max(0.7, (width - 72) / POSTER_W));
   return (
-    <View style={{ width: POSTER_W, height: POSTER_H, borderRadius: 24, overflow: 'hidden', backgroundColor: '#ffffff' }}>
+    <View style={{ width: POSTER_W * scale, height: POSTER_H * scale }}>
+    <View style={{ width: POSTER_W, height: POSTER_H, borderRadius: 24, overflow: 'hidden', backgroundColor: '#ffffff', transform: [{ scale }], transformOrigin: 'top left' }}>
       <Svg width={POSTER_W} height={POSTER_H} style={{ position: 'absolute' }}>
         <CornerBlob cx={0} cy={0} r={110} color="#FBBC05" />
         <CornerBlob cx={POSTER_W} cy={0} r={110} color="#EA4335" />
@@ -161,6 +165,7 @@ function ReviewPoster({ businessName, reviewUrl }: { businessName: string; revie
         </View>
       </View>
     </View>
+    </View>
   );
 }
 
@@ -177,6 +182,8 @@ export function ReviewQrModal({
 }) {
   const t = useTheme();
   const info = useInfoSheet();
+  const insets = useSafeAreaInsets();
+  const { height, width } = useWindowDimensions();
   const reviewUrl = placeId ? buildReviewUrl(placeId) : null;
 
   async function handleShare() {
@@ -193,12 +200,18 @@ export function ReviewQrModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View className="flex-1 items-center justify-center bg-black/70 px-6">
-        <View className="w-full max-w-sm items-center rounded-3xl border border-surface-border bg-surface-raised p-6">
+      <View className="flex-1 items-center justify-center bg-black/70 px-4" style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}>
+        <ScrollView
+          style={{ width: '100%', maxWidth: 420, maxHeight: height - insets.top - insets.bottom - 24 }}
+          contentContainerStyle={{ alignItems: 'center' }}
+          bounces={false}
+        >
+        <View className="w-full items-center rounded-3xl border border-surface-border bg-surface-raised p-5" style={{ maxWidth: Math.min(420, width - 32) }}>
           <Pressable
             onPress={onClose}
             hitSlop={8}
-            style={{ position: 'absolute', right: 16, top: 16, zIndex: 1 }}
+            accessibilityLabel="Close"
+            style={{ position: 'absolute', right: 8, top: 8, zIndex: 1, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
           >
             <Ionicons name="close" size={22} color={t.textDim} />
           </Pressable>
@@ -227,6 +240,7 @@ export function ReviewQrModal({
                   borderRadius: 999,
                   backgroundColor: t.brand,
                   paddingHorizontal: 24,
+                  minHeight: 48,
                   paddingVertical: 12,
                 }}
               >
@@ -240,6 +254,7 @@ export function ReviewQrModal({
             </>
           )}
         </View>
+        </ScrollView>
       </View>
       {info.node}
     </Modal>

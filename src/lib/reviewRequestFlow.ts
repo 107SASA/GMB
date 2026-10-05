@@ -56,14 +56,44 @@ export function extractReviewToken(pathToken: string): string {
   return token;
 }
 
-export function buildGoogleReviewUrl(
-  business: { placeId?: string | null; googleMapsUrl?: string | null; name?: string | null } | null | undefined
-): string {
-  if (business?.placeId) {
-    return `https://search.google.com/local/writereview?placeid=${business.placeId}`;
+/** A stored Google Place ID. Resource names and URLs are not place IDs. */
+export function isGooglePlaceId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{10,200}$/.test(value.trim()) && value.trim() === value;
+}
+
+/**
+ * Place ID already stored for this business. The connected Google location's
+ * place id wins, then the listing place id, then the review-send place id.
+ */
+export function canonicalReviewPlaceId(business: {
+  placeId?: string | null;
+  googlePlaceId?: string | null;
+  verifiedLocation?: { placeId?: string | null } | null;
+} | null | undefined): string | null {
+  if (!business) return null;
+  const candidates = [business.verifiedLocation?.placeId, business.googlePlaceId, business.placeId];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && isGooglePlaceId(candidate.trim())) return candidate.trim();
   }
-  if (business?.googleMapsUrl) return business.googleMapsUrl;
-  return `https://google.com/search?q=${encodeURIComponent(business?.name || 'business review')}`;
+  return null;
+}
+
+/**
+ * Direct Google "Write a review" URL. A missing Place ID uses the same
+ * generic fallback as an unknown token. Maps and search URLs are not used.
+ */
+export function buildGoogleReviewUrl(
+  business: {
+    placeId?: string | null;
+    googlePlaceId?: string | null;
+    verifiedLocation?: { placeId?: string | null } | null;
+    googleMapsUrl?: string | null;
+    name?: string | null;
+  } | null | undefined
+): string {
+  const placeId = canonicalReviewPlaceId(business);
+  if (!placeId) return GENERIC_REVIEW_REDIRECT;
+  return `https://search.google.com/local/writereview?placeid=${placeId}`;
 }
 
 export function applyClick(current: { clicked?: boolean; clickCount?: number }): {

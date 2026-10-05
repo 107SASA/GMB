@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Contact, ContactField, requestPermissionsAsync } from 'expo-contacts';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Linking, Modal, Pressable, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState, Field, LoadingScreen } from '@/components/ui';
 import { parsePhoneCandidate } from '@/lib/phone';
@@ -98,10 +99,12 @@ export function ContactPickerModal({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View className="flex-1 bg-surface pt-14">
+      <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={['top', 'bottom', 'left', 'right']}>
         <View className="flex-row items-center gap-3 border-b border-surface-border px-4 pb-3">
-          <Text className="flex-1 font-display-bold text-lg text-white">Pick a contact</Text>
-          <Pressable onPress={onClose} hitSlop={8}>
+          <Text className="flex-1 font-display-bold text-lg" style={{ color: t.text }} numberOfLines={1}>
+            Pick a contact
+          </Text>
+          <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Close" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="close" size={22} color={t.text} />
           </Pressable>
         </View>
@@ -141,16 +144,16 @@ export function ContactPickerModal({
               renderItem={({ item }) => (
                 <Pressable
                   onPress={() => onPick({ name: item.name, phone: item.phone })}
-                  style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: t.border }}
+                  style={{ minHeight: 56, justifyContent: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: t.border }}
                 >
-                  <Text className="font-sans-semibold text-base text-white">{item.name}</Text>
-                  <Text className="mt-0.5 font-sans text-sm text-zinc-400">{item.phone}</Text>
+                  <Text className="font-sans-semibold text-base" style={{ color: t.text }} numberOfLines={1}>{item.name}</Text>
+                  <Text className="mt-0.5 font-sans text-sm" style={{ color: t.textDim }}>{item.phone}</Text>
                 </Pressable>
               )}
             />
           </>
         )}
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }

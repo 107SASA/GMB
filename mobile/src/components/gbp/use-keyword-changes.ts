@@ -25,7 +25,7 @@ export function useKeywordChanges(): {
 
   const list = useQuery({
     queryKey: ['audits', activeBusinessId],
-    queryFn: fetchAudits,
+    queryFn: () => fetchAudits(activeBusinessId!),
     enabled: !!activeBusinessId,
   });
 
@@ -33,8 +33,8 @@ export function useKeywordChanges(): {
   const previousId = completed[1]?._id ?? null;
 
   const previous = useQuery({
-    queryKey: ['audit-detail', previousId],
-    queryFn: () => fetchAudit(previousId!),
+    queryKey: ['audit-detail', activeBusinessId, previousId],
+    queryFn: () => fetchAudit(previousId!, activeBusinessId!),
     enabled: !!previousId,
   });
 

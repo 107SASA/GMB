@@ -3,6 +3,7 @@ import Business from '@/models/Business';
 import User from '@/models/User';
 import OwnerNotifyDigest from '@/models/OwnerNotifyDigest';
 import { sendOutboundMessage } from '@/services/whatsapp/send';
+import { isBillingOwnerEvent, ownerBusinessWhatsAppAllowed, type OwnerBusinessEvent } from '@/services/ownerNotifyEligibility';
 
 /**
  * Owner-facing WhatsApp notification layer.
@@ -32,27 +33,7 @@ import { sendOutboundMessage } from '@/services/whatsapp/send';
  * the workflow that produced the activity.
  */
 
-export type OwnerNotifyEvent =
-  // immediate
-  | 'new_lead'
-  | 'demo_booking'
-  | 'critical_review'
-  | 'report_ready'
-  | 'billing_activated'
-  | 'billing_past_due'
-  | 'billing_canceled'
-  | 'profile_incomplete'
-  | 'monthly_report'
-  | 'weekly_update'
-  | 'festival_prompt'
-  | 'review_reminder'
-  | 'performance_digest'
-  // digest
-  | 'post_published'
-  | 'photo_published'
-  | 'review_reply_sent'
-  | 'content_batch_generated'
-  | 'review_reply_drafted';
+export type OwnerNotifyEvent = OwnerBusinessEvent;
 
 interface EventMeta {
   /** notificationPreferences key gating this event. */
@@ -122,12 +103,22 @@ interface ResolvedOwner {
   userId?: string;
   phone?: string;
   prefs: Record<string, boolean>;
+  subscriptionStatus?: string;
+  googleConnected?: boolean;
+  googleLocationId?: string;
 }
 
 async function resolveOwner(businessId: string): Promise<ResolvedOwner | null> {
   const business = await Business.findById(businessId)
-    .select('name userId phone')
-    .lean<{ name?: string; userId?: { toString(): string }; phone?: string }>();
+    .select('name userId phone subscriptionStatus googleConnected googleLocationId')
+    .lean<{
+      name?: string;
+      userId?: { toString(): string };
+      phone?: string;
+      subscriptionStatus?: string;
+      googleConnected?: boolean;
+      googleLocationId?: string;
+    }>();
   if (!business) return null;
 
   let phone = business.phone || undefined;
@@ -146,7 +137,16 @@ async function resolveOwner(businessId: string): Promise<ResolvedOwner | null> {
     }
   }
 
-  return { businessId, businessName: business.name || 'your workspace', userId, phone, prefs };
+  return {
+    businessId,
+    businessName: business.name || 'your workspace',
+    userId,
+    phone,
+    prefs,
+    subscriptionStatus: business.subscriptionStatus,
+    googleConnected: business.googleConnected,
+    googleLocationId: business.googleLocationId,
+  };
 }
 
 /** Whether the owner has opted into this specific event over WhatsApp. */
@@ -188,13 +188,12 @@ export async function sendPendingOwnerDigests(): Promise<{ businesses: number; s
       const rowIds = rows.map((r) => r._id);
 
       const owner = await resolveOwner(businessId.toString());
-      // Always clear the rows even when we can't/won't send — a stale backlog
-      // helps nobody, and every underlying event is also on the in-app bell
-      // + push. Only send when the owner has a phone and both the master and
-      // the daily-digest switches are on.
+      // A free-report lead is not a customer. Drop the queued lines instead of
+      // sending them later, the day they subscribe.
       if (
         !owner ||
         !owner.phone ||
+        !ownerBusinessWhatsAppAllowed(owner, 'post_published') ||
         owner.prefs.whatsAppNotificationsEnabled === false ||
         owner.prefs.dailyDigestWhatsApp === false
       ) {
@@ -247,7 +246,9 @@ export async function notifyOwner(businessId: string, input: NotifyOwnerInput): 
 
     const owner = await resolveOwner(businessId);
     if (!owner) return;
-    if (!isOptedIn(owner.prefs, meta)) return;
+    if (!ownerBusinessWhatsAppAllowed(owner, input.event)) return;
+    // Billing reminders are not business-activity notifications.
+    if (!isBillingOwnerEvent(input.event) && !isOptedIn(owner.prefs, meta)) return;
 
     if (meta.immediate) {
       if (!owner.phone) return;

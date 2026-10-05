@@ -168,7 +168,7 @@ export default function HomeScreen() {
   // Days since the last published post → the "Add Fresh Photos" banner.
   const buffer = useQuery({
     queryKey: ['scheduler-buffer', activeBusinessId],
-    queryFn: fetchBuffer,
+    queryFn: () => fetchBuffer(activeBusinessId!),
     enabled: !!activeBusinessId && !locked,
   });
   const lastPublishedAt = (buffer.data?.allPosts ?? [])
@@ -227,7 +227,7 @@ export default function HomeScreen() {
 
       {/* Amber "attention needed" nudge pinned above the tab bar */}
       {showFreshPhotosBanner && (
-        <Pressable onPress={() => router.push('/photos')}>
+        <Pressable onPress={() => router.push('/posts?tab=photos')}>
           <LinearGradient
             colors={[...AMBER_GRADIENT]}
             start={{ x: 0, y: 0 }}

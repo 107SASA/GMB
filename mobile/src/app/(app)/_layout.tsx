@@ -13,7 +13,7 @@ import { PendingCaptureRecovery } from '@/components/pending-capture-recovery';
 /** Shown on first login when several businesses exist and none is chosen. */
 function SelectBusinessScreen() {
   return (
-    <Screen>
+    <Screen safeBottom>
       <ScreenTitle>Choose a business</ScreenTitle>
       <View className="px-5 pb-4">
         <Text className="font-sans text-sm leading-5 text-zinc-400">
@@ -68,28 +68,20 @@ export default function AppLayout() {
         sceneStyle: { backgroundColor: t.bg },
       }}
     >
-      {/* Flat 5-tab layout: Home · Performance · Posts · Media · CRM.
-          (Sep 2026: Photos + Reviews merged into one "Media" tab — see
-          media.tsx — to free up a slot for CRM, i.e. the existing Leads
-          section promoted from More onto the bar.) Each screen gates its
-          own entitlement lock now (see LockedScreen usage inside them)
-          rather than the tab bar hiding itself — same convention Home/GBP
-          always used. */}
+      {/* Flat 5-tab layout: Home · Performance · Posts · Reviews · CRM.
+          Posts contains Posts and Photos. Reviews contains Current reviews
+          and Review Requests. The old Media tab redirects to Reviews. */}
       <Tabs.Screen name="dashboard" options={{ title: 'Home' }} />
       <Tabs.Screen name="performance" options={{ title: 'Performance' }} />
       <Tabs.Screen name="posts" options={{ title: 'Posts' }} />
-      <Tabs.Screen name="media" options={{ title: 'Media' }} />
+      <Tabs.Screen name="reviews" options={{ title: 'Reviews' }} />
       <Tabs.Screen name="leads" options={{ title: 'CRM' }} />
       {/* Hidden sections — reachable from the header (gear/More) and in-app
-          links. `gbp` is now just Business Profile fields (see gbp/index.tsx)
-          — its Performance/Posts/Reviews/Photos sub-tabs moved to the flat
-          tabs above. `photos`/`reviews` are now embedded inside the `media`
-          tab above (see media.tsx) rather than tabs of their own, but stay
-          registered (hidden) so existing deep links to /photos, /photos/all,
-          /reviews and /reviews/[id] elsewhere in the app keep working. */}
+          links. `photos` stays registered so /photos and /photos/all deep
+          links keep working; the Photos UI also renders under Posts. */}
       <Tabs.Screen name="gbp" options={{ href: null }} />
       <Tabs.Screen name="photos" options={{ href: null }} />
-      <Tabs.Screen name="reviews" options={{ href: null }} />
+      <Tabs.Screen name="media" options={{ href: null }} />
       <Tabs.Screen name="audit" options={{ href: null }} />
       <Tabs.Screen name="inbox" options={{ href: null }} />
       <Tabs.Screen name="more" options={{ href: null }} />

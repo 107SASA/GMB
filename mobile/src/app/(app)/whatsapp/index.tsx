@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   FlatList,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -33,6 +32,7 @@ import {
   Badge,
   Chip,
   EmptyState,
+  BottomSheet,
   Field,
   LabeledField,
   PrimaryButton,
@@ -320,12 +320,10 @@ function CancelModal({
 
   return (
     <>
-    <Modal transparent animationType="fade" onRequestClose={onClose}>
-      <View className="flex-1 items-center justify-center bg-black/60 px-6">
-        <View className="w-full rounded-card border border-surface-border bg-surface px-5 py-5">
+    <BottomSheet visible onClose={onClose}>
           <Text className="font-display-bold text-lg text-white">Cancel appointment</Text>
           <Text className="mt-1 font-sans text-sm text-zinc-400">
-            {appointment.customerName} · {appointment.date} {appointment.time}
+            {`${appointment.customerName} · ${appointment.date} ${appointment.time}`}
           </Text>
           <View className="mt-3">
             <Field value={reason} onChangeText={setReason} placeholder="Reason (optional)" />
@@ -334,7 +332,7 @@ function CancelModal({
             <Pressable
               onPress={onClose}
               // No `className` — see components/ui.tsx PrimaryButton note.
-              style={{ flex: 1, alignItems: 'center', borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingVertical: 12 }}
+              style={{ flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingVertical: 12, paddingHorizontal: 8 }}
             >
               <Text className="font-sans-semibold text-sm text-zinc-300">Keep it</Text>
             </Pressable>
@@ -342,16 +340,14 @@ function CancelModal({
               onPress={() => cancel.mutate()}
               disabled={cancel.isPending}
               // No `className` — see note above.
-              style={{ flex: 1, alignItems: 'center', borderRadius: 999, backgroundColor: t.errorContainer, paddingVertical: 12 }}
+              style={{ flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: t.errorContainer, paddingVertical: 12, paddingHorizontal: 8 }}
             >
               <Text className="font-sans-bold text-sm text-on-error-container">
                 {cancel.isPending ? 'Cancelling…' : 'Cancel it'}
               </Text>
             </Pressable>
           </View>
-        </View>
-      </View>
-    </Modal>
+    </BottomSheet>
     {info.node}
     </>
   );

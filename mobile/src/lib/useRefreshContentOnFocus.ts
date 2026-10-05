@@ -21,7 +21,7 @@ export function useRefreshContentOnFocus() {
         firstFocus.current = false;
         return;
       }
-      for (const key of ['content-posts', 'scheduler-buffer', 'published-posts', 'autopilot-status', 'weekly-offer-stored']) {
+      for (const key of ['content-posts', 'scheduler-buffer', 'published-posts', 'scheduled-posts', 'scheduled-posts-count', 'dashboard-stats', 'autopilot-status', 'weekly-offer-stored']) {
         void queryClient.invalidateQueries({ queryKey: [key, activeBusinessId] });
       }
     }, [queryClient, activeBusinessId])

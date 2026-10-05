@@ -86,7 +86,7 @@ export function AiAgentCard() {
             </Text>
           </View>
           <Pressable
-            onPress={() => router.push('/photos')}
+            onPress={() => router.push('/posts?tab=photos')}
             // No `className` — react-native-css-interop can swallow onPress
             // on styled Pressables (see components/ui.tsx).
             style={{ borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: t.brand }}

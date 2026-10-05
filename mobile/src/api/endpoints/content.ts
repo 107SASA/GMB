@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { api } from '../client';
+import { api, businessHeaders } from '../client';
 
 /**
  * Content — mirrors the web ContentWorkspace: the weekly posts the autopilot
@@ -142,51 +142,103 @@ export interface ContentPostsPage {
   hasMore: boolean;
 }
 
+/**
+ * Parse a list of posts. A non-array body is a failure (do not turn it into
+ * an empty list). Individual rows that cannot be read are dropped; if every
+ * row fails, that is also a failure so the UI shows an error instead of "0".
+ */
+export function parsePostList(data: unknown): ContentPost[] {
+  if (!Array.isArray(data)) {
+    throw new Error('Unexpected posts response');
+  }
+  const posts: ContentPost[] = [];
+  for (const item of data) {
+    const parsed = contentPostSchema.safeParse(item);
+    if (parsed.success) posts.push(parsed.data);
+  }
+  if (data.length > 0 && posts.length === 0) {
+    throw new Error('Posts could not be read');
+  }
+  return posts;
+}
+
 /** GET /api/content/posts — paged, AI-generated posts for this business. */
-export async function fetchContentPosts(page: number): Promise<ContentPostsPage> {
-  const { data } = await api.get('/api/content/posts', { params: { page, limit: 20 } });
+export async function fetchContentPosts(businessId: string, page: number): Promise<ContentPostsPage> {
+  const { data } = await api.get('/api/content/posts', { params: { page, limit: 20 }, ...businessHeaders(businessId) });
   const parsed = z
     .object({
-      posts: z.array(contentPostSchema.nullable().catch(null)).catch([]),
-      total: z.number().catch(0),
-      hasMore: z.boolean().catch(false),
+      posts: z.array(z.unknown()),
+      total: z.number(),
+      hasMore: z.boolean(),
     })
     .parse(data);
-  return { ...parsed, posts: parsed.posts.filter((p): p is ContentPost => p !== null) };
+  return { posts: parsePostList(parsed.posts), total: parsed.total, hasMore: parsed.hasMore };
+}
+
+export interface PostsPage {
+  posts: ContentPost[];
+  total: number;
+  hasMore: boolean;
 }
 
 /**
- * GET /api/posts?status=published — paginated post history for "Recent
- * Posts". Deliberately NOT /api/content/posts (that route hardcodes
- * aiGenerated:true, which would hide manually-created posts — see
- * createPost below). This route returns a bare array (two existing callers,
- * web's history page and fetchScheduledPostsCount, already depend on that
- * shape — not changing it), so there's no `total` here; pair this with
- * fetchDashboardStats().metrics.postsPublished for the real total count.
+ * GET /api/posts?meta=1 — posts for one status (or a comma-separated set),
+ * scoped to `businessId`. Includes manual posts. `/api/content/posts` is
+ * AI-only and is not the Recent/Upcoming source.
  */
-export async function fetchPublishedPosts(page: number, limit = 20): Promise<{ posts: ContentPost[]; hasMore: boolean }> {
-  const { data } = await api.get('/api/posts', { params: { status: 'published', page, limit } });
-  const posts = z
-    .array(contentPostSchema.nullable().catch(null))
-    .catch([])
-    .parse(data)
-    .filter((p): p is ContentPost => p !== null);
-  return { posts, hasMore: posts.length === limit };
+export async function fetchPostsPage(
+  businessId: string,
+  status: string,
+  page: number,
+  limit = 20,
+): Promise<PostsPage> {
+  const { data } = await api.get('/api/posts', {
+    params: { status, page, limit, meta: '1' },
+    ...businessHeaders(businessId),
+  });
+  const parsed = z
+    .object({
+      posts: z.array(z.unknown()),
+      total: z.number(),
+      hasMore: z.boolean(),
+    })
+    .parse(data);
+  return { posts: parsePostList(parsed.posts), total: parsed.total, hasMore: parsed.hasMore };
+}
+
+/** Published posts for Recent Posts. */
+export async function fetchPublishedPosts(businessId: string, page: number, limit = 20): Promise<PostsPage> {
+  return fetchPostsPage(businessId, 'published', page, limit);
+}
+
+/** Scheduled (and in-flight) posts for Upcoming Posts — not limited to 7 days. */
+export async function fetchUpcomingPosts(businessId: string, page: number, limit = 20): Promise<PostsPage> {
+  return fetchPostsPage(businessId, 'scheduled,publishing', page, limit);
 }
 
 export interface CreatePostInput {
-  title: string;
+  title?: string;
   content: string;
-  postType?: string;
-  scheduledDate?: string;
+  imageBase64?: string;
+  imageMime?: string;
 }
 
-/** POST /api/posts — manual post creation (not AI-generated). */
-export async function createPost(input: CreatePostInput): Promise<ContentPost> {
-  const { data } = await api.post('/api/posts', {
-    ...input,
-    status: input.scheduledDate ? 'scheduled' : 'draft',
-  });
+/**
+ * POST /api/posts — creates a draft only. Publish with /api/scheduler/publish
+ * or schedule with /api/scheduler/schedule so manual posts use the same
+ * Google write and the same scheduled worker as automatic posts.
+ */
+export async function createPost(businessId: string, input: CreatePostInput): Promise<ContentPost> {
+  const { data } = await api.post(
+    '/api/posts',
+    {
+      title: input.title,
+      content: input.content,
+      imageBase64: input.imageBase64,
+      imageMime: input.imageMime,
+    },
+    businessHeaders(businessId),
+  );
   return z.object({ message: z.string(), post: contentPostSchema }).parse(data).post;
 }
 

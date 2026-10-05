@@ -14,6 +14,7 @@ import {
   aggregateReviewRequestMetrics,
   applyClick,
   buildGoogleReviewUrl,
+  canonicalReviewPlaceId,
   buildLegacyReviewVariables,
   buildUtilityReviewVariables,
   businessStatusLabel,
@@ -86,16 +87,22 @@ test('a malformed token is rejected before lookup', () => {
   assert.equal(isSafeReviewToken('test123'), true);
 });
 
-test('google review url keeps the existing place id formula', () => {
+test('google review url opens Write a review for the verified place id', () => {
+  const expected = `https://search.google.com/local/writereview?placeid=${PLACE_ID}`;
+  assert.equal(buildGoogleReviewUrl({ placeId: PLACE_ID, name: 'Mulsetu' }), expected);
+  assert.equal(buildGoogleReviewUrl({ googlePlaceId: PLACE_ID, name: 'Mulsetu' }), expected);
   assert.equal(
-    buildGoogleReviewUrl({ placeId: PLACE_ID, name: 'Mulsetu' }),
-    `https://search.google.com/local/writereview?placeid=${PLACE_ID}`
+    buildGoogleReviewUrl({ verifiedLocation: { placeId: PLACE_ID }, googleMapsUrl: 'https://maps.example/biz', name: 'Mulsetu' }),
+    expected
   );
   assert.equal(
-    buildGoogleReviewUrl({ googleMapsUrl: 'https://maps.example/biz', name: 'Mulsetu' }),
-    'https://maps.example/biz'
+    canonicalReviewPlaceId({ verifiedLocation: { placeId: PLACE_ID }, googlePlaceId: 'ChIJotherplace', placeId: 'ChIJthirdplace' }),
+    PLACE_ID
   );
-  assert.match(buildGoogleReviewUrl(null), /google\.com\/search\?q=/);
+  assert.equal(buildGoogleReviewUrl({ googleMapsUrl: 'https://maps.example/biz', name: 'Mulsetu' }), 'https://google.com');
+  assert.equal(buildGoogleReviewUrl({ placeId: 'locations/123', googleMapsUrl: 'https://maps.google.com/?cid=1' }), 'https://google.com');
+  assert.equal(buildGoogleReviewUrl(null), 'https://google.com');
+  assert.equal(buildGoogleReviewUrl({ name: 'Mulsetu' }).includes('writereview'), false);
 });
 
 test('the first click is counted once and is not a review', () => {

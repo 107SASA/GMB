@@ -242,7 +242,9 @@ export async function provisionShadowAccount(
       googlePlaceId: input.businessData.googlePlaceId || undefined,
       googleMapsUrl: input.businessData.googleMapsUrl,
       coordinates: input.businessData.coordinates,
-      googleConnected: !!input.businessData.googlePlaceId,
+      // A Place ID from the free-report form is the public listing they asked
+      // about. It is not an OAuth connection to their Google Business Profile.
+      googleConnected: false,
       placesRating: input.businessData.placesRating,
       placesReviewCount: input.businessData.placesReviewCount,
       photoCount: input.businessData.photoCount,

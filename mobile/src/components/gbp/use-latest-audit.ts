@@ -11,25 +11,29 @@ import { useBusiness } from '@/business/BusinessContext';
 export function useLatestAudit(): {
   audit: Audit | null;
   isLoading: boolean;
+  isError: boolean;
 } {
   const { activeBusinessId } = useBusiness();
 
   const list = useQuery({
     queryKey: ['audits', activeBusinessId],
-    queryFn: fetchAudits,
+    queryFn: () => fetchAudits(activeBusinessId!),
     enabled: !!activeBusinessId,
+    staleTime: 0,
   });
 
   const latestId = (list.data ?? []).find((a) => a.status === 'COMPLETED')?._id ?? null;
 
   const detail = useQuery({
-    queryKey: ['audit-detail', latestId],
-    queryFn: () => fetchAudit(latestId!),
-    enabled: !!latestId,
+    queryKey: ['audit-detail', activeBusinessId, latestId],
+    queryFn: () => fetchAudit(latestId!, activeBusinessId!),
+    enabled: !!latestId && !!activeBusinessId,
+    staleTime: 0,
   });
 
   return {
     audit: detail.data ?? null,
-    isLoading: list.isLoading || (!!latestId && detail.isLoading),
+    isLoading: list.isPending || (!!latestId && detail.isPending),
+    isError: list.isError || detail.isError,
   };
 }

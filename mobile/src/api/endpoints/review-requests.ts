@@ -25,6 +25,7 @@ const reviewRequestsSchema = z.object({
     clicked: z.number().catch(0),
     failed: z.number().catch(0),
   }),
+  latestByCustomer: z.record(z.string(), summarySchema).catch({}),
   recent: z.array(z.object({
     customerName: z.string().catch('Customer'),
   }).merge(summarySchema)).catch([]),

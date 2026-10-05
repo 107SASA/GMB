@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import {
@@ -23,6 +23,7 @@ import {
   pickPhotoFromLibrary,
   pickVideoFromLibrary,
   recordVideoWithCamera,
+  takePhotoWithCamera,
   videoProblem,
   type PickedPhoto,
   type PickedVideo,
@@ -161,6 +162,9 @@ export function BusinessAssets() {
   const [uploadingVideo, setUploadingVideo] = useState(false);
   // "Upload Video" reveals its two sources (record in the app / choose from the gallery).
   const [videoChoice, setVideoChoice] = useState(false);
+  const [photoChoice, setPhotoChoice] = useState(false);
+  const { width } = useWindowDimensions();
+  const stackActions = width < 380;
   const info = useInfoSheet();
 
   const media = useQuery({
@@ -191,19 +195,23 @@ export function BusinessAssets() {
    * of photo is this?" prompt in between. Matches the website's
    * GbpMediaManager, which has the same three fixed upload entry points.
    */
-  const pickAndUpload = async (category: GbpMediaCategory) => {
+  const pickAndUpload = async (category: GbpMediaCategory, from: 'camera' | 'library' = 'library') => {
     if (notConnected) {
       promptConnectGoogle(media.error?.message ?? 'Connect your Google Business Profile to add photos.');
       return;
     }
     let picked: PickedPhoto | null;
     try {
-      picked = await pickPhotoFromLibrary();
+      picked = from === 'camera' ? await takePhotoWithCamera() : await pickPhotoFromLibrary();
     } catch {
-      info.show('Permission needed', 'Allow photo library access to add business media.');
+      info.show(
+        'Permission needed',
+        from === 'camera' ? 'Allow camera access to take a photo.' : 'Allow photo library access to add business media.',
+      );
       return;
     }
     if (!picked) return;
+    setPhotoChoice(false);
     setUploadingCategory(category);
     // The photo's own GPS (if the phone shares it) travels with the upload —
     // compression here strips it from the file itself.
@@ -308,7 +316,7 @@ export function BusinessAssets() {
         >
           <Ionicons name="warning-outline" size={16} color={t.amber} style={{ marginTop: 1 }} />
           <Text className="flex-1 font-sans text-xs leading-4" style={{ color: t.amber }}>
-            Couldn't refresh from Google — showing saved photos only. {media.data.liveSyncError}
+            Couldn&apos;t refresh from Google — showing saved photos only.
           </Text>
         </View>
       )}
@@ -374,6 +382,9 @@ export function BusinessAssets() {
             <Ionicons name="image-outline" size={30} color={t.violet} />
           </View>
           <Text className="font-sans-semibold text-base text-zinc-300">No photos or videos yet</Text>
+          <Text className="mt-1.5 text-center font-sans text-sm leading-5 text-zinc-500">
+            Add a photo or video below to keep your Google profile active.
+          </Text>
         </View>
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2.5 pb-1">
@@ -382,7 +393,12 @@ export function BusinessAssets() {
               key={item._id}
               onPress={() => router.push('/photos/all' as never)}
               // No `className` — see note above.
-              style={{ width: 132, height: 132, borderRadius: 16, overflow: 'hidden' }}
+              style={{
+                width: Math.round(Math.min(148, Math.max(104, (width - 48) / 2.3))),
+                height: Math.round(Math.min(148, Math.max(104, (width - 48) / 2.3))),
+                borderRadius: 16,
+                overflow: 'hidden',
+              }}
             >
               {item.mediaType === 'video' ? (
                 <View style={{ flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' }}>
@@ -406,13 +422,16 @@ export function BusinessAssets() {
           — these only ever add to the gallery, matching the website's
           separate "Upload Photo" / "Upload Video" buttons for the gallery. */}
       {!notConnected && (
-        <View style={{ marginTop: 16, flexDirection: 'row', gap: 10 }}>
+        <View style={{ marginTop: 16, flexDirection: stackActions ? 'column' : 'row', gap: 10 }}>
           <Pressable
-            onPress={() => void pickAndUpload('ADDITIONAL')}
+            onPress={() => {
+              setVideoChoice(false);
+              setPhotoChoice((open) => !open);
+            }}
             disabled={uploadingCategory === 'ADDITIONAL' || uploadingVideo}
             accessibilityLabel="Upload photo"
             // No `className` — see note above.
-            style={{ flex: 1, borderRadius: 16, overflow: 'hidden' }}
+            style={{ flex: 1, borderRadius: 16, overflow: 'hidden', minHeight: 48 }}
           >
             <LinearGradient
               colors={[...BRAND_GRADIENT]}
@@ -421,23 +440,46 @@ export function BusinessAssets() {
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 16 }}
             >
               <Ionicons name="image-outline" size={17} color="#ffffff" />
-              <Text className="font-sans-bold text-base text-on-brand">
+              <Text numberOfLines={1} className="font-sans-bold text-base text-on-brand">
                 {uploadingCategory === 'ADDITIONAL' && !uploadingVideo ? 'Uploading…' : 'Upload Photo'}
               </Text>
             </LinearGradient>
           </Pressable>
           <Pressable
-            onPress={() => setVideoChoice((v) => !v)}
+            onPress={() => {
+              setPhotoChoice(false);
+              setVideoChoice((v) => !v);
+            }}
             disabled={uploadingVideo || uploadingCategory === 'ADDITIONAL'}
             accessibilityLabel="Upload video"
             // No `className` — see note above.
-            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 16, borderWidth: 1, borderColor: t.brandBright, paddingVertical: 16 }}
+            style={{ flex: 1, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 16, borderWidth: 1, borderColor: t.brandBright, paddingVertical: 16 }}
           >
             <Ionicons name="videocam-outline" size={17} color={t.brandBright} />
-            <Text className="font-sans-bold text-base" style={{ color: t.brandBright }}>
+            <Text numberOfLines={1} className="font-sans-bold text-base" style={{ color: t.brandBright }}>
               {uploadingVideo ? 'Uploading…' : 'Upload Video'}
             </Text>
           </Pressable>
+        </View>
+      )}
+      {!notConnected && photoChoice && !uploadingVideo && uploadingCategory !== 'ADDITIONAL' && (
+        <View style={{ marginTop: 10, flexDirection: 'row', gap: 10 }}>
+          {([
+            { label: 'Take photo', icon: 'camera-outline', from: 'camera' },
+            { label: 'Choose photo', icon: 'images-outline', from: 'library' },
+          ] as const).map((a) => (
+            <Pressable
+              key={a.from}
+              onPress={() => void pickAndUpload('ADDITIONAL', a.from)}
+              accessibilityLabel={a.label}
+              style={{ flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: t.border, backgroundColor: t.card, paddingVertical: 10, paddingHorizontal: 8 }}
+            >
+              <Ionicons name={a.icon} size={15} color={t.brandBright} />
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} className="font-sans-semibold text-sm text-zinc-200">
+                {a.label}
+              </Text>
+            </Pressable>
+          ))}
         </View>
       )}
       {!notConnected && videoChoice && !uploadingVideo && (
@@ -450,10 +492,12 @@ export function BusinessAssets() {
               key={a.from}
               onPress={() => void uploadVideo(a.from)}
               // No `className` — see note above.
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: t.border, backgroundColor: t.card, paddingVertical: 10 }}
+              style={{ flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: t.border, backgroundColor: t.card, paddingVertical: 10, paddingHorizontal: 8 }}
             >
               <Ionicons name={a.icon} size={15} color={t.brandBright} />
-              <Text className="font-sans-semibold text-sm text-zinc-200">{a.label}</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} className="font-sans-semibold text-sm text-zinc-200">
+                {a.label}
+              </Text>
             </Pressable>
           ))}
         </View>

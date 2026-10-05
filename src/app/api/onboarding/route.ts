@@ -207,7 +207,8 @@ export async function POST(req: Request) {
           body.latitude && body.longitude
             ? { lat: body.latitude, lng: body.longitude }
             : undefined,
-        googleConnected: !!body.googlePlaceId,
+        // Picking a listing is not a connected Google Business Profile.
+        googleConnected: false,
         organizationId: newOrg._id,
         userId: newUser._id,
         metaBusinessProfileUrl: body.metaBusinessProfileUrl,

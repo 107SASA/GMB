@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { changePassword, fetchProfile, updateProfile, type Profile } from '@/api/endpoints/account';
@@ -148,7 +148,8 @@ export default function ProfileScreen() {
   return (
     <Screen>
       <ScreenTitle>Profile</ScreenTitle>
-      <ScrollView contentContainerClassName="px-5 pb-12" keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerClassName="px-4 pb-16" keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         {profile.isLoading ? (
           <Skeleton className="h-40" />
         ) : profile.isError || !data ? (
@@ -208,6 +209,7 @@ export default function ProfileScreen() {
           </>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }

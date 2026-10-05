@@ -30,6 +30,7 @@ export default function PhotosScreen({ embedded = false }: { embedded?: boolean 
 
   const body = (
     <ScrollView
+      style={{ flex: 1 }}
       contentContainerClassName="pt-4 pb-10"
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={t.brandBright} />
@@ -39,8 +40,7 @@ export default function PhotosScreen({ embedded = false }: { embedded?: boolean 
     </ScrollView>
   );
 
-  // Embedded inside media.tsx: that screen already owns the single
-  // Screen/AppHeader for the combined tab.
+  // Embedded under Posts → Photos. That screen already owns the header.
   if (embedded) return body;
 
   return (

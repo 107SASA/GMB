@@ -1,11 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import type { ContentPost } from '@/api/endpoints/content';
 import { updatePost } from '@/api/endpoints/scheduler';
-import { Field, PrimaryButton, SecondaryButton, useInfoSheet } from '@/components/ui';
+import { useBusiness } from '@/business/BusinessContext';
+import { BottomSheet, Field, PrimaryButton, SecondaryButton, useInfoSheet } from '@/components/ui';
+import { useTheme } from '@/lib/theme';
 
 /**
  * Modal form for editing a scheduled/draft post's title/content — shared by
@@ -15,16 +17,19 @@ import { Field, PrimaryButton, SecondaryButton, useInfoSheet } from '@/component
  */
 export function EditPostModal({ post, onClose }: { post: ContentPost; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const { activeBusinessId } = useBusiness();
   const [title, setTitle] = useState(post.title);
   const [content, setContent] = useState(post.content);
   const info = useInfoSheet();
+  const t = useTheme();
 
   const save = useMutation({
-    mutationFn: () => updatePost(post._id, { title: title.trim(), content: content.trim() }),
+    mutationFn: () => updatePost(post._id, { title: title.trim(), content: content.trim() }, activeBusinessId ?? undefined),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['scheduler-buffer'] });
-      void queryClient.invalidateQueries({ queryKey: ['post', post._id] });
-      void queryClient.invalidateQueries({ queryKey: ['published-posts'] });
+      void queryClient.invalidateQueries({ queryKey: ['scheduler-buffer', activeBusinessId] });
+      void queryClient.invalidateQueries({ queryKey: ['post', activeBusinessId, post._id] });
+      void queryClient.invalidateQueries({ queryKey: ['published-posts', activeBusinessId] });
+      void queryClient.invalidateQueries({ queryKey: ['scheduled-posts', activeBusinessId] });
       onClose();
     },
     onError: (error) =>
@@ -33,10 +38,8 @@ export function EditPostModal({ post, onClose }: { post: ContentPost; onClose: (
 
   return (
     <>
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} onPress={onClose} />
-      <View className="rounded-t-3xl border-t border-surface-border bg-surface p-5 pb-8">
-        <Text className="mb-4 font-display-bold text-lg text-white">Edit Post</Text>
+    <BottomSheet visible onClose={onClose}>
+        <Text className="mb-4 font-display-bold text-lg" style={{ color: t.text }}>Edit Post</Text>
         <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Title</Text>
         <Field value={title} onChangeText={setTitle} placeholder="Post title" />
         <Text className="mb-1.5 mt-3 px-1 font-sans-semibold text-xs text-zinc-400">Content</Text>
@@ -58,8 +61,7 @@ export function EditPostModal({ post, onClose }: { post: ContentPost; onClose: (
           />
           <SecondaryButton title="Cancel" onPress={onClose} />
         </View>
-      </View>
-    </Modal>
+    </BottomSheet>
     {info.node}
     </>
   );

@@ -11,7 +11,7 @@ import {
   type AppNotification,
 } from '@/api/endpoints/notifications';
 import { useAuth } from '@/auth/AuthContext';
-import { EmptyState, Screen, ScreenTitle, Skeleton, useInfoSheet } from '@/components/ui';
+import { EmptyState, PrimaryButton, Screen, Skeleton, useInfoSheet } from '@/components/ui';
 import { timeAgo } from '@/lib/format';
 import { useTheme, withAlpha } from '@/lib/theme';
 
@@ -44,7 +44,7 @@ const LINK_MAP: Record<string, { route: string; superAdminOnly?: boolean }> = {
   // review nudges to review requests (reviews screen here), monthly reports to the audit.
   '': { route: '/dashboard' },
   'review-requests': { route: '/reviews' },
-  posts: { route: '/scheduler' },
+  posts: { route: '/posts' },
   audit: { route: '/audit' },
 };
 
@@ -114,19 +114,21 @@ function NotificationRow({
       <View className="h-9 w-9 items-center justify-center rounded-xl bg-surface-overlay">
         <Ionicons name={TYPE_ICON[item.type] ?? 'notifications-outline'} size={17} color={t.brandBright} />
       </View>
-      <View className="flex-1">
-        <View className="flex-row items-center justify-between gap-2">
-          <Text className="flex-1 font-sans-semibold text-sm text-white" numberOfLines={1}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View className="flex-row items-start justify-between gap-2">
+          <Text className="flex-1 font-sans-semibold text-sm" style={{ color: t.text }}>
             {item.title}
           </Text>
-          {!item.read && <View className="h-2 w-2 rounded-full bg-brand" />}
+          {!item.read && (
+            <View className="mt-1.5 h-2 w-2 rounded-full bg-brand" accessibilityLabel="Unread" />
+          )}
         </View>
         {!!item.body && (
-          <Text className="mt-0.5 font-sans text-xs leading-4 text-zinc-400" numberOfLines={2}>
+          <Text className="mt-0.5 font-sans text-xs leading-4" style={{ color: t.textDim }}>
             {item.body}
           </Text>
         )}
-        <Text className="mt-1 font-sans text-[11px] text-zinc-500">{timeAgo(item.createdAt)}</Text>
+        <Text className="mt-1 font-sans text-[11px]" style={{ color: t.textFaint }}>{timeAgo(item.createdAt)}</Text>
       </View>
     </Pressable>
   );
@@ -167,10 +169,17 @@ export default function NotificationsScreen() {
 
   return (
     <Screen>
-      <View className="flex-row items-center justify-between px-5 pb-2 pt-4">
-        <ScreenTitle>Notifications</ScreenTitle>
-        {unread > 0 && (
-          <Pressable onPress={() => markAll.mutate()} disabled={markAll.isPending} style={{ paddingBottom: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
+        <Text className="flex-1 font-display" style={{ color: t.text, fontSize: 24, lineHeight: 30 }} numberOfLines={1}>
+          Notifications
+        </Text>
+        {unread > 0 && !notifications.isLoading && (
+          <Pressable
+            onPress={() => markAll.mutate()}
+            disabled={markAll.isPending}
+            accessibilityLabel="Mark all read"
+            style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}
+          >
             <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
               {markAll.isPending ? 'Marking…' : 'Mark all read'}
             </Text>
@@ -179,7 +188,7 @@ export default function NotificationsScreen() {
       </View>
 
       {notifications.isLoading ? (
-        <View className="gap-2.5 px-5">
+        <View className="gap-2.5 px-4">
           <Skeleton className="h-20" />
           <Skeleton className="h-20" />
           <Skeleton className="h-20" />
@@ -187,14 +196,15 @@ export default function NotificationsScreen() {
       ) : notifications.isError ? (
         <EmptyState
           title="Couldn't load notifications"
-          hint={getApiErrorMessage(notifications.error, 'Pull down to retry.')}
+          hint={getApiErrorMessage(notifications.error, 'Something went wrong. Please try again.')}
+          action={<PrimaryButton title="Retry" onPress={() => void notifications.refetch()} />}
         />
       ) : (
         <FlatList
           data={notifications.data?.notifications ?? []}
           keyExtractor={(n) => n._id}
           renderItem={({ item }) => <NotificationRow item={item} onPress={handlePress} />}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24, flexGrow: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, flexGrow: 1 }}
           refreshControl={
             <RefreshControl
               refreshing={notifications.isRefetching}

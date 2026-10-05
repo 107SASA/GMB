@@ -30,10 +30,21 @@ function fmtRank(rank: number | null): string {
 }
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
+  const t = useTheme();
   return (
-    <View className="flex-1 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
-      <Text className="font-sans text-sm text-zinc-400">{label}</Text>
-      <Text className="mt-1 font-display text-2xl text-white">{value}</Text>
+    <View className="min-w-0 flex-1 rounded-card border border-surface-border bg-surface-raised px-3 py-4">
+      <Text className="font-sans text-sm text-zinc-400" numberOfLines={1}>
+        {label}
+      </Text>
+      <Text
+        className="mt-1 font-display text-2xl"
+        style={{ color: t.text }}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
@@ -244,7 +255,7 @@ export function PerformanceTab() {
   const router = useRouter();
   const t = useTheme();
   const queryClient = useQueryClient();
-  const { audit, isLoading: auditLoading } = useLatestAudit();
+  const { audit, isLoading: auditLoading, isError: auditError } = useLatestAudit();
   const { previousRankByKeyword } = useKeywordChanges();
   const [trendMetric, setTrendMetric] = useState<TrendMetric>('views');
   const [infoVisible, setInfoVisible] = useState(false);
@@ -381,8 +392,12 @@ export function PerformanceTab() {
             {auditLoading ? '…' : mv ? mv.headline.averageRank : fmtRank(avgRank)}
           </Text>
           <Pressable
-            onPress={() => router.push('/audit/run')}
-            // No `className` — see note above.
+            onPress={() => {
+              void queryClient.invalidateQueries({ queryKey: ['audits', activeBusinessId] });
+              void queryClient.invalidateQueries({ queryKey: ['audit-detail'] });
+              void queryClient.invalidateQueries({ queryKey: ['gbp-insights', activeBusinessId] });
+              void queryClient.invalidateQueries({ queryKey: ['dashboard-stats', activeBusinessId] });
+            }}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
           >
             <Ionicons name="refresh" size={16} color={t.brandBright} />
@@ -392,8 +407,12 @@ export function PerformanceTab() {
           </Pressable>
         </View>
         <Text className="mt-1 font-sans text-xs text-zinc-500">
-          {mv ? `Average observed rank across ${mv.headline.searchesChecked} searches` : 'Lower is better'}
-          {auditDate ? ` • Last updated on ${auditDate}` : ' • Run an audit to get your rank'}
+          {auditError && !audit
+            ? "Couldn't load the latest audit. Tap Refresh to try again."
+            : mv
+              ? `Average observed rank across ${mv.headline.searchesChecked} searches`
+              : 'Lower is better'}
+          {!auditError && (auditDate ? ` • Last updated on ${auditDate}` : auditLoading ? '' : ' • Rank appears after the monthly audit')}
         </Text>
       </View>
 

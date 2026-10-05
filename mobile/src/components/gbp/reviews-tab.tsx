@@ -4,12 +4,13 @@ import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import { getApiErrorMessage } from '@/api/client';
 import { fetchDashboardStats } from '@/api/endpoints/dashboard';
 import { fetchReviews, type Review } from '@/api/endpoints/reviews';
 import { useBusiness } from '@/business/BusinessContext';
 import { WeeklyBars } from '@/components/charts';
 import { replyStatusBadge, sentimentTone, Stars } from '@/components/review-bits';
-import { Badge, Skeleton } from '@/components/ui';
+import { Badge, PrimaryButton, Skeleton } from '@/components/ui';
 import { timeAgo } from '@/lib/format';
 import { computeReviewInsights } from '@/lib/review-insights';
 import { useTheme } from '@/lib/theme';
@@ -103,10 +104,20 @@ export function ReviewsTab() {
 
       {reviews.isLoading ? (
         <Skeleton className="mt-3 h-64" />
+      ) : reviews.isError ? (
+        <View className="mt-3 items-center rounded-card border border-surface-border bg-surface-raised px-5 py-8">
+          <Text className="mb-1 text-center font-sans-semibold text-base text-zinc-300">Couldn&apos;t load reviews</Text>
+          <Text className="mb-4 text-center font-sans text-sm text-zinc-500">
+            {getApiErrorMessage(reviews.error, 'Something went wrong. Please try again.')}
+          </Text>
+          <PrimaryButton title="Retry" onPress={() => void reviews.refetch()} />
+        </View>
       ) : insights ? (
         <>
           <View className="mt-3 flex-row items-center justify-between rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
-            <Text className="font-sans text-base text-zinc-300">Your Avg. Reviews</Text>
+            <Text className="flex-1 font-sans text-base text-zinc-300" numberOfLines={1}>
+              Your Avg. Reviews
+            </Text>
             <Text className="font-display text-xl text-white">
               {avgPerWeek} <Text className="font-sans-semibold text-sm text-zinc-500">/ Week</Text>
             </Text>
@@ -179,8 +190,8 @@ export function ReviewsTab() {
       )}
 
       <View className="pb-4">
-        {reviews.isLoading ? (
-          <Skeleton className="h-40" />
+        {reviews.isLoading || reviews.isError ? (
+          reviews.isLoading ? <Skeleton className="h-40" /> : null
         ) : filtered.length === 0 ? (
           <View className="items-center rounded-card border border-surface-border bg-surface-raised px-5 py-8">
             <Text className="text-center font-sans text-sm text-zinc-400">

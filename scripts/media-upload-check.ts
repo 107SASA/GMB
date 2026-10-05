@@ -77,12 +77,12 @@ const check = (t: string, what: string, pass: boolean, detail = '') => { results
     const near = (a: any, b: { lat: number; lng: number }) => !!a && Math.abs(a.lat - b.lat) < 1e-4 && Math.abs(a.lng - b.lng) < 1e-4;
 
     as(biz);
-    // Photo — existing behaviour unchanged.
+    // The phone's current GPS does not replace the verified business pin.
     const p1 = await send({ bytes: jpeg, type: 'image/jpeg', name: 'p.jpg' }, app(PHONE, 'device_at_capture', 15));
     const pStored = stored[stored.length - 1];
-    check('P1', 'photo (app camera): phone position at capture written into EXIF and recorded on the asset (unchanged behaviour)',
-      p1.status === 200 && p1.body.asset.mediaType === 'photo' && p1.body.asset.geotag.status === 'photo_location_added' &&
-      p1.body.asset.geotag.source === 'device_at_capture' && near(await readImageGps(pStored.bytes), PHONE));
+    check('P1', 'photo (app camera): verified business location is written, not the phone GPS',
+      p1.status === 200 && p1.body.asset.mediaType === 'photo' && p1.body.asset.geotag.status === 'business_location_added' &&
+      p1.body.asset.geotag.source === 'gbp_location' && near(await readImageGps(pStored.bytes), PIN));
     const p2 = await send({ bytes: jpeg, type: 'image/jpeg', name: 'g.jpg' });
     check('P2', 'photo (no location from the app): verified business location written (unchanged behaviour)',
       p2.status === 200 && p2.body.asset.geotag.status === 'business_location_added' && near(await readImageGps(stored[stored.length - 1].bytes), PIN));
@@ -90,9 +90,9 @@ const check = (t: string, what: string, pass: boolean, detail = '') => { results
     // Video — same flow, same structure.
     const v1 = await send({ bytes: bareMp4, type: 'video/mp4', name: 'v.mp4' }, app(PHONE, 'device_at_capture', 15));
     const g1 = v1.body.asset?.geotag;
-    check('V1', 'video recorded in the app: same location rule as photos (phone position at capture) recorded on the asset; video bytes untouched',
+    check('V1', 'video recorded in the app: verified business location is recorded, not the phone GPS; video bytes untouched',
       v1.status === 200 && v1.body.asset.mediaType === 'video' && v1.body.asset.category === 'ADDITIONAL' &&
-      g1.status === 'video_location_recorded' && g1.source === 'device_at_capture' && near(g1, PHONE) && g1.accuracyM === 15 && !!g1.at &&
+      g1.status === 'video_location_recorded' && g1.source === 'gbp_location' && near(g1, PIN) && !!g1.at &&
       stored[stored.length - 1].bytes.equals(bareMp4) && stored[stored.length - 1].mime === 'video/mp4',
       JSON.stringify(g1));
     const v2 = await send({ bytes: locMov, type: 'video/quicktime', name: 'v.mov' }, app(PHONE, 'device_at_capture', 15));
@@ -106,6 +106,12 @@ const check = (t: string, what: string, pass: boolean, detail = '') => { results
     const v5 = await send({ bytes: bareMp4, type: 'video/mp4', name: 'v.mp4' }, { photoLat: '999', photoLng: '0', photoLocationSource: 'device_at_capture' });
     check('V5', 'implausible coordinates from the client are rejected (same validation)', v5.body.asset.geotag.source === 'gbp_location');
     as(noPin);
+    const phonePhoto = await send({ bytes: jpeg, type: 'image/jpeg', name: 'p.jpg' }, app(PHONE, 'device_at_capture', 15));
+    check('P3', 'phone GPS is used only when Google has not confirmed a business location',
+      phonePhoto.status === 200 && phonePhoto.body.asset.geotag.source === 'device_at_capture' && near(await readImageGps(stored[stored.length - 1].bytes), PHONE));
+    const phoneVideo = await send({ bytes: bareMp4, type: 'video/mp4', name: 'v.mp4' }, app(PHONE, 'device_at_capture', 15));
+    check('V0', 'phone GPS on a video is used only when Google has not confirmed a business location',
+      phoneVideo.status === 200 && phoneVideo.body.asset.geotag.source === 'device_at_capture' && near(phoneVideo.body.asset.geotag, PHONE));
     const v6 = await send({ bytes: bareMp4, type: 'video/mp4', name: 'v.mp4' });
     check('V6', 'no location anywhere → nothing recorded, never invented', v6.status === 200 && v6.body.asset.geotag.status === 'video_unmodified' && v6.body.asset.geotag.lat == null);
     as(biz);

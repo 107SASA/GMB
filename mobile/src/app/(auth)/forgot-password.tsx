@@ -101,7 +101,7 @@ export default function ForgotPasswordScreen() {
   }
 
   return (
-    <Screen>
+    <Screen safeBottom>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
         <ScrollView
           contentContainerClassName="flex-grow justify-center px-6 py-10"

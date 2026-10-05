@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useBusiness } from '@/context/BusinessContext';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
@@ -14,6 +14,7 @@ interface HistoryPost {
   cta?: string;
   status: string;
   scheduledDate?: string;
+  publishedAt?: string;
   createdAt: string;
   imageUrl?: string;
 }
@@ -100,31 +101,40 @@ export default function ContentHistoryTab() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+  const requestRef = useRef(0);
 
   const fetchPosts = async (pg: number, append: boolean) => {
+    const requestId = ++requestRef.current;
     if (pg === 1) setLoading(true);
     else setLoadingMore(true);
 
     try {
-      const res = await fetch(`/api/content/posts?page=${pg}&limit=20`);
+      setError('');
+      // Published posts only — drafts and scheduled posts stay in Upcoming.
+      // meta=1 returns { posts, total, hasMore } for this business.
+      const res = await fetch(`/api/posts?status=published&page=${pg}&limit=20&meta=1`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to load history');
-      setPosts((prev) => (append ? [...prev, ...data.posts] : data.posts));
-      setTotal(data.total);
-      setHasMore(data.hasMore);
+      if (requestId !== requestRef.current) return;
+      if (!res.ok) throw new Error(data.error || data.message || 'Failed to load history');
+      const posts = Array.isArray(data) ? data : Array.isArray(data.posts) ? data.posts : null;
+      if (!posts) throw new Error('Failed to load history');
+      setPosts((prev) => (append ? [...prev, ...posts] : posts));
+      setTotal(typeof data.total === 'number' ? data.total : posts.length);
+      setHasMore(typeof data.hasMore === 'boolean' ? data.hasMore : posts.length === 20);
       setPage(pg);
     } catch (err: any) {
+      if (requestId !== requestRef.current) return;
       setError(friendlyClientMessage(err));
     } finally {
+      if (requestId !== requestRef.current) return;
       setLoading(false);
       setLoadingMore(false);
     }
   };
 
-  // /api/content/posts is scoped to the active business server-side, but this
-  // fetch previously ran once on mount only — switching workspaces (this
-  // component is rendered from ContentWorkspace without remounting) left it
-  // showing the PREVIOUS workspace's content history.
+  // /api/posts is scoped to the active business. This component stays mounted
+  // across a workspace switch, so a late response from the previous business
+  // is ignored (requestRef) and must not replace the current list.
   useEffect(() => {
     if (!activeBusiness?._id) return;
     fetchPosts(1, false);
@@ -269,9 +279,9 @@ export default function ContentHistoryTab() {
             d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
           />
         </svg>
-        <p className="font-medium text-on-surface">No content generated yet</p>
+        <p className="font-medium text-on-surface">No posts published yet</p>
         <p className="text-sm text-outline mt-1">
-          Your weekly posts appear here automatically once the first batch is ready — 4 posts every week.
+          Published Google Business Profile posts show up here. Scheduled posts stay under Upcoming Posts until they go live.
         </p>
       </div>
     );
@@ -281,9 +291,9 @@ export default function ContentHistoryTab() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h3 className="text-xl font-bold text-on-surface">Content History</h3>
+          <h3 className="text-xl font-bold text-on-surface">Recent Posts</h3>
           <p className="text-on-surface-variant text-sm mt-1">
-            {total} AI-generated {total === 1 ? 'post' : 'posts'} for this business.
+            {total} published {total === 1 ? 'post' : 'posts'} for this business.
           </p>
         </div>
       </div>
@@ -337,13 +347,9 @@ export default function ContentHistoryTab() {
                 </p>
 
                 <p className="text-xs text-outline mt-auto">
-                  Created {formatDate(post.createdAt)}
-                  {post.scheduledDate && (
-                    <>
-                      {' · '}
-                      {post.status === 'published' ? 'Published' : 'Scheduled for'} {formatDate(post.scheduledDate)}
-                    </>
-                  )}
+                  {post.status === 'published'
+                    ? `Published ${formatDate(post.publishedAt || post.scheduledDate || post.createdAt)}`
+                    : `Created ${formatDate(post.createdAt)}`}
                 </p>
               </div>
 
@@ -358,12 +364,14 @@ export default function ContentHistoryTab() {
                 >
                   {expandedId === post._id ? 'Hide' : 'View'}
                 </button>
-                <button
-                  onClick={() => startEdit(post)}
-                  className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap"
-                >
-                  Edit
-                </button>
+                {!isPublished && (
+                  <button
+                    onClick={() => startEdit(post)}
+                    className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap"
+                  >
+                    Edit
+                  </button>
+                )}
                 {!isPublished && (
                   <button
                     onClick={() => startSchedule(post)}

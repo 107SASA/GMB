@@ -3053,7 +3053,17 @@ async function handleSlotSelection(convo: any, body: string, config: any): Promi
   const { sendOutboundMessage } = await import('@/services/whatsapp/send');
 
   const offeredSlots = (convo.offeredSlots || []).map((s: any) => ({ ...s, startUtc: new Date(s.startUtc) }));
-  const picked = pickSlotFromReply(body, offeredSlots);
+  const { parseRequestedDateTime } = await import('@/services/calendar/demoScheduling');
+  const requested = parseRequestedDateTime(body, new Date(), config.timezone || 'Asia/Kolkata');
+  const picked = requested && !/^\s*\d{1,2}\s*$/.test(body || '')
+    ? null
+    : pickSlotFromReply(body, offeredSlots);
+  if (!picked && requested) {
+    const outcome = await bookConfirmedSlot(convo, requested, config);
+    const res = await sendOutboundMessage(convo.leadPhone, outcome.message, convo.leadId?.toString());
+    if (res.success) convo.messages.push({ role: 'agent', text: outcome.message, at: new Date() });
+    return;
+  }
 
   if (!picked) {
     const clarify = `Sorry, I didn't catch that. Please reply with just the number of the time that works:\n${formatOfferedSlots(offeredSlots)}`;
@@ -3078,8 +3088,10 @@ async function bookConfirmedSlot(
   slot: { date: string; time: string; startUtc: Date },
   config: any
 ): Promise<{ message: string; success: boolean }> {
-  const { createDemoEvent, CalendarError } = await import('@/services/calendar/googleCalendar');
-  const { renderConfirmation } = await import('@/services/booking/bookingAgent');
+  const { CalendarError, SlotUnavailableError } = await import('@/services/calendar/googleCalendar');
+  const { bookDemoOnCalendar, suggestWhenBusy } = await import('@/services/calendar/bookDemoOnCalendar');
+  const { confirmationCopy } = await import('@/services/calendar/demoScheduling');
+  const { renderConfirmation, formatOfferedSlots } = await import('@/services/booking/bookingAgent');
   const { default: DemoBooking } = await import('@/models/DemoBooking');
   const { default: Activity } = await import('@/models/Activity');
   const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
@@ -3088,30 +3100,57 @@ async function bookConfirmedSlot(
 
   const details = convo.details || {};
   const name = details.name || convo.leadName || convo.leadPhone;
-  const durationMinutes = 30;
+  const durationMinutes = config.demoDurationMinutes || 30;
 
   let eventId: string;
   let meetingLink: string;
+  let bookedMeta: { salespersonUserId?: string; googleEmail?: string; calendarId?: string; idempotencyKey?: string } = {};
   try {
-    const created = await createDemoEvent({
+    const created = await bookDemoOnCalendar({
+      leadId: String(convo.leadId),
+      name,
+      phone: convo.leadPhone,
+      dateLabel: friendlyDateLabel(slot.date),
+      timeLabel: friendlyTimeLabel(slot.time),
       title: `GrowwMatics Demo — ${details.businessName || name}`,
-      startTime: slot.startUtc,
+      description: `Lead: ${name}\nBusiness: ${details.businessName || ''}\nPhone: ${convo.leadPhone}\nBooked by the GrowwMatics demo agent.`,
+      start: slot.startUtc,
       durationMinutes,
       attendeeEmail: details.email || undefined,
+      preferredUserId: (slot as any).salespersonUserId,
     });
     eventId = created.eventId;
     meetingLink = created.meetingLink;
+    bookedMeta = created;
+    if (!confirmationCopy({ whenLabel: `${friendlyDateLabel(slot.date)} at ${friendlyTimeLabel(slot.time)}`, meetingLink })) {
+      throw new CalendarError('Calendar event created but no Meet link was returned');
+    }
   } catch (err) {
     // createDemoEvent() only ever throws CalendarError (per its own doc
     // comment) — re-throwing anything else here would be a bug surfacing
     // as a silent human-handoff instead of a loud failure, so this checks
     // the type explicitly rather than treating every catch as "the
     // calendar failed."
+    if (err instanceof SlotUnavailableError) {
+      const alternatives = await suggestWhenBusy(slot.startUtc).catch(() => []);
+      if (alternatives.length) {
+        convo.offeredSlots = alternatives.map((item) => ({ date: item.date, time: item.time, startUtc: item.startUtc }));
+        convo.status = 'awaiting_slot_selection';
+        return {
+          success: false,
+          message: `${friendlyTimeLabel(slot.time)} is not available. I can offer:\n${formatOfferedSlots(convo.offeredSlots)}\n\nWhich works better?`,
+        };
+      }
+      return {
+        success: false,
+        message: `I couldn't confirm ${friendlyDateLabel(slot.date)} at ${friendlyTimeLabel(slot.time)} — no open calendar slot was found. A team member will help find another time.`,
+      };
+    }
     if (!(err instanceof CalendarError)) throw err;
 
     // Never fabricate a link/time — hand off to a human instead, per the
     // task's explicit requirement.
-    console.warn('[bookingAgent] createDemoEvent failed:', err.message);
+    console.warn('[bookingAgent] calendar booking failed:', err.message);
     if (convo.leadId) {
       await setLeadOwnership(convo.leadId, 'HUMAN', 'calendar-api-failure', 'demo-agent');
       logLeadEvent(
@@ -3131,7 +3170,10 @@ async function bookConfirmedSlot(
   const dateStr = friendlyDateLabel(slot.date);
   const timeStr = friendlyTimeLabel(slot.time);
 
-  let booking: any = convo.bookingId ? await DemoBooking.findById(convo.bookingId) : null;
+  let booking: any = bookedMeta.idempotencyKey
+    ? await DemoBooking.findOne({ idempotencyKey: bookedMeta.idempotencyKey })
+    : null;
+  if (!booking && convo.bookingId) booking = await DemoBooking.findById(convo.bookingId);
   if (booking) {
     // Reschedule path — reuse the existing DemoBooking row.
     booking.date = dateStr;
@@ -3139,6 +3181,13 @@ async function bookConfirmedSlot(
     booking.status = 'Confirmed';
     booking.calendarEventId = eventId;
     booking.meetingLink = meetingLink;
+    booking.startUtc = slot.startUtc;
+    booking.endUtc = new Date(slot.startUtc.getTime() + durationMinutes * 60 * 1000);
+    booking.timezone = 'Asia/Kolkata';
+    if (bookedMeta.salespersonUserId) booking.salespersonUserId = bookedMeta.salespersonUserId;
+    if (bookedMeta.googleEmail) booking.googleEmail = bookedMeta.googleEmail;
+    if (bookedMeta.calendarId) booking.calendarId = bookedMeta.calendarId;
+    if (bookedMeta.idempotencyKey) booking.idempotencyKey = bookedMeta.idempotencyKey;
   } else {
     booking = new DemoBooking({
       leadId: convo.leadId,
@@ -3155,11 +3204,16 @@ async function bookConfirmedSlot(
       channel: 'whatsapp',
       calendarEventId: eventId,
       meetingLink,
+      salespersonUserId: bookedMeta.salespersonUserId,
+      googleEmail: bookedMeta.googleEmail,
+      calendarId: bookedMeta.calendarId,
+      startUtc: slot.startUtc,
+      endUtc: new Date(slot.startUtc.getTime() + durationMinutes * 60 * 1000),
+      timezone: 'Asia/Kolkata',
+      idempotencyKey: bookedMeta.idempotencyKey,
     });
   }
 
-  const reminderActionIds = await scheduleDemoReminders(convo.leadId, booking, slot.startUtc, durationMinutes);
-  booking.reminderActionIds = reminderActionIds;
   await booking.save();
 
   if (!convo.bookingId) {
@@ -3182,6 +3236,12 @@ async function bookConfirmedSlot(
   if (convo.leadId) {
     await setLeadOwnership(convo.leadId, 'DEMO', 'demo-scheduled', 'demo-agent', 'DEMO_SCHEDULED');
   }
+
+  // After ownership: setLeadOwnership cancels pending actions when the stage
+  // changes, so reminders created before that call would be cancelled immediately.
+  const reminderActionIds = await scheduleDemoReminders(convo.leadId, booking, slot.startUtc, durationMinutes);
+  booking.reminderActionIds = reminderActionIds;
+  await booking.save();
 
   logLeadEvent(
     'DEMO_SCHEDULED',
@@ -3210,9 +3270,10 @@ async function scheduleDemoReminders(
   const { default: ScheduledAction } = await import('@/models/ScheduledAction');
   const ids: any[] = [];
 
-  const reminderSpecs: { reminderType: '24h' | '1h'; dueAt: Date }[] = [
+  const reminderSpecs: { reminderType: '24h' | '1h' | '15m'; dueAt: Date }[] = [
     { reminderType: '24h', dueAt: new Date(startUtc.getTime() - 24 * 60 * 60 * 1000) },
     { reminderType: '1h', dueAt: new Date(startUtc.getTime() - 60 * 60 * 1000) },
+    { reminderType: '15m', dueAt: new Date(startUtc.getTime() - 15 * 60 * 1000) },
   ];
 
   for (const spec of reminderSpecs) {
@@ -3223,9 +3284,9 @@ async function scheduleDemoReminders(
         actionType: 'DEMO_REMINDER',
         dueAt: spec.dueAt,
         status: 'PENDING',
-        idempotencyKey: `${leadId}-DEMO_REMINDER-${spec.reminderType}-${booking._id}`,
+        idempotencyKey: `${leadId}-DEMO_REMINDER-${spec.reminderType}-${booking._id}-${startUtc.toISOString()}`,
         createdBy: 'demo-agent',
-        payload: { bookingId: booking._id.toString(), reminderType: spec.reminderType },
+        payload: { bookingId: booking._id.toString(), reminderType: spec.reminderType, startUtc: startUtc.toISOString() },
       });
       ids.push(action._id);
     } catch (err: any) {
@@ -3240,7 +3301,7 @@ async function scheduleDemoReminders(
       actionType: 'NO_SHOW_CHECK',
       dueAt: noShowCheckAt,
       status: 'PENDING',
-      idempotencyKey: `${leadId}-NO_SHOW_CHECK-${booking._id}`,
+        idempotencyKey: `${leadId}-NO_SHOW_CHECK-${booking._id}-${startUtc.toISOString()}`,
       createdBy: 'demo-agent',
       payload: { bookingId: booking._id.toString() },
     });
@@ -3305,11 +3366,11 @@ async function handleBookedReply(convo: any, body: string, config: any): Promise
 /** Cancels a booking's calendar event (best-effort — a Calendar failure here doesn't block the reschedule/cancel from proceeding on the WhatsApp/DB side) and its reminder + no-show ScheduledActions. */
 async function cancelBookingCalendarAndReminders(booking: any): Promise<void> {
   if (booking.calendarEventId) {
-    const { cancelDemoEvent } = await import('@/services/calendar/googleCalendar');
+    const { cancelBookedEvent } = await import('@/services/calendar/bookDemoOnCalendar');
     try {
-      await cancelDemoEvent(booking.calendarEventId);
+      await cancelBookedEvent(booking);
     } catch (err: any) {
-      console.warn('[bookingAgent] cancelDemoEvent failed (proceeding anyway):', err?.message);
+      console.warn('[bookingAgent] cancelBookedEvent failed (proceeding anyway):', err?.message);
     }
   }
   const { cancelScheduledActions } = await import('@/services/scheduler/cancelScheduledActions');
@@ -4883,11 +4944,14 @@ async function buildMessageForAction(action: any): Promise<string> {
     const booking: any = await DemoBooking.findById(bookingId);
     // Only a still-scheduled demo deserves a "your demo is tomorrow" nudge —
     // a demo marked Completed early, or Cancelled / No Show, must not.
-    if (!booking || ['Cancelled', 'Completed', 'No Show'].includes(booking.status)) {
+    if (!booking || ['Cancelled', 'Completed', 'No Show', 'Rescheduled'].includes(booking.status)) {
       throw new Error(`DEMO_REMINDER references a missing or no-longer-scheduled DemoBooking (${booking?.status ?? 'missing'}): ${bookingId}`);
     }
+    if (action.payload?.startUtc && booking.startUtc && new Date(booking.startUtc).toISOString() !== action.payload.startUtc) {
+      throw new Error('DEMO_REMINDER is for a previous booking time');
+    }
     const { firstName } = await import('@/services/booking/bookingAgent');
-    const when = reminderType === '1h' ? 'in about an hour' : 'tomorrow';
+    const when = reminderType === '15m' ? 'in about 15 minutes' : reminderType === '1h' ? 'in about an hour' : 'tomorrow';
     const linkLine = booking.meetingLink ? `\n\nJoin here: ${booking.meetingLink}` : '';
     return `Hi ${firstName(booking.name)}! Just a reminder that your GrowwMatics demo is ${when} (${booking.date} at ${booking.timeSlot}).${linkLine}`;
   }

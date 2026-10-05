@@ -57,6 +57,14 @@ export class CalendarError extends Error {
   }
 }
 
+/** The time cannot be booked. Callers offer another slot and must not claim a confirmation. */
+export class SlotUnavailableError extends CalendarError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SlotUnavailableError';
+  }
+}
+
 let cachedClient: calendar_v3.Calendar | null = null;
 
 function getCalendarId(): string {

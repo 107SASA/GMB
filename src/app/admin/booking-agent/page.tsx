@@ -7,6 +7,23 @@ interface Config {
   enabled: boolean;
   agentSystemPrompt: string;
   confirmationMessage: string;
+  automatedBookingEnabled?: boolean;
+  demoDurationMinutes?: number;
+  timezone?: string;
+  openingTime?: string;
+  closingTime?: string;
+  minAdvanceMinutes?: number;
+  maxDaysAhead?: number;
+  bufferMinutes?: number;
+  assignmentStrategy?: 'first-available' | 'round-robin';
+}
+
+interface CalendarConnection {
+  userId: string;
+  googleEmail: string | null;
+  status: string;
+  connected: boolean;
+  lastCheckedAt: string | null;
 }
 
 const cls = 'w-full px-3 py-2 rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary focus:border-primary text-sm';
@@ -30,6 +47,7 @@ export default function BookingAgentAdminPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [calendars, setCalendars] = useState<CalendarConnection[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -37,6 +55,8 @@ export default function BookingAgentAdminPage() {
         const res = await fetch('/api/admin/booking-agent');
         const json = await res.json();
         if (json.success) { setConfig(json.config); setVars(json.variables || []); }
+        const connections = await fetch('/api/admin/calendar/connections').then((r) => r.json());
+        if (connections.success) setCalendars(connections.connections || []);
       } finally { setLoading(false); }
     })();
   }, []);
@@ -90,6 +110,47 @@ export default function BookingAgentAdminPage() {
           Variables for the confirmation message: {vars.map((v) => <code key={v} className="mx-0.5 px-1 bg-surface-container-lowest border border-outline-variant rounded">{v}</code>)}
         </div>
       </div>
+
+      <section className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-5 mb-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-on-surface">Salesperson Google Calendars</h2>
+          <a href="/api/admin/calendar/connect" className="text-sm font-semibold text-primary">Connect my calendar</a>
+        </div>
+        <p className="text-xs text-on-surface-variant">Each salesperson connects their own Google account. This is separate from a customer&apos;s Google Business Profile connection. Tokens stay on the server.</p>
+        <label className="flex items-center justify-between text-sm">
+          <span>Automated booking from a time reply (for example, “10:30 today”)</span>
+          <Toggle on={!!config.automatedBookingEnabled} onChange={(v) => setConfig({ ...config, automatedBookingEnabled: v })} />
+        </label>
+        {calendars.length === 0 && <p className="text-xs text-outline">No calendar is connected. A demo will not be confirmed until one is.</p>}
+        <ul className="text-sm space-y-2">
+          {calendars.map((row) => (
+            <li key={row.userId} className="flex items-center justify-between gap-3">
+              <span>{row.connected ? 'Connected' : 'Not connected'} · {row.googleEmail || 'Google account'} · {row.status}{row.lastCheckedAt ? ` · checked ${new Date(row.lastCheckedAt).toLocaleString()}` : ''}</span>
+              {row.connected && (
+                <button type="button" className="text-xs text-error" onClick={async () => {
+                  await fetch('/api/admin/calendar/connections', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: row.userId }) });
+                  setCalendars((list) => list.map((item) => item.userId === row.userId ? { ...item, connected: false, status: 'revoked' } : item));
+                }}>Disconnect</button>
+              )}
+            </li>
+          ))}
+        </ul>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <label>Duration (minutes)<input className={cls} type="number" value={config.demoDurationMinutes ?? 30} onChange={(e) => setConfig({ ...config, demoDurationMinutes: Number(e.target.value) })} /></label>
+          <label>Timezone<input className={cls} value={config.timezone || 'Asia/Kolkata'} onChange={(e) => setConfig({ ...config, timezone: e.target.value })} /></label>
+          <label>Opens<input className={cls} value={config.openingTime || '10:00'} onChange={(e) => setConfig({ ...config, openingTime: e.target.value })} /></label>
+          <label>Closes<input className={cls} value={config.closingTime || '18:00'} onChange={(e) => setConfig({ ...config, closingTime: e.target.value })} /></label>
+          <label>Minimum notice (minutes)<input className={cls} type="number" value={config.minAdvanceMinutes ?? 60} onChange={(e) => setConfig({ ...config, minAdvanceMinutes: Number(e.target.value) })} /></label>
+          <label>Max days ahead<input className={cls} type="number" value={config.maxDaysAhead ?? 14} onChange={(e) => setConfig({ ...config, maxDaysAhead: Number(e.target.value) })} /></label>
+          <label>Buffer (minutes)<input className={cls} type="number" value={config.bufferMinutes ?? 15} onChange={(e) => setConfig({ ...config, bufferMinutes: Number(e.target.value) })} /></label>
+          <label>Assignment
+            <select className={cls} value={config.assignmentStrategy || 'first-available'} onChange={(e) => setConfig({ ...config, assignmentStrategy: e.target.value as Config['assignmentStrategy'] })}>
+              <option value="first-available">First available</option>
+              <option value="round-robin">Round robin</option>
+            </select>
+          </label>
+        </div>
+      </section>
 
       {/* Agent persona */}
       <section className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-5 mb-5 space-y-3">

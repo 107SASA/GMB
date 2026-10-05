@@ -255,8 +255,14 @@ export default function LeadDetailPage() {
                 <div>
                   <span className="font-medium text-on-surface">{dm.date} · {dm.timeSlot}</span>
                   <span className="text-xs text-on-surface-variant ml-2">{dm.channel}</span>
-                  {dm.meetingLink && <a href={dm.meetingLink} target="_blank" rel="noreferrer" className="text-xs text-primary ml-2 underline">meeting link</a>}
+                  {dm.timezone && <span className="text-xs text-on-surface-variant ml-2">{dm.timezone}</span>}
+                  {dm.googleEmail && <span className="text-xs text-on-surface-variant ml-2">{dm.googleEmail}</span>}
+                  {dm.meetingLink && <a href={dm.meetingLink} target="_blank" rel="noreferrer" className="text-xs text-primary ml-2 underline">Google Meet</a>}
+                  {dm.calendarEventId && <span className="text-xs text-outline ml-2">event {dm.calendarEventId}</span>}
                   {!dm.calendarEventId && <span className="text-xs text-outline ml-2">(calendar not linked)</span>}
+                  {Array.isArray(dm.reminderActionIds) && dm.reminderActionIds.length > 0 && (
+                    <span className="text-xs text-outline ml-2">{dm.reminderActionIds.length} reminders</span>
+                  )}
                 </div>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-surface-container text-on-surface-variant">{dm.status}</span>
               </li>

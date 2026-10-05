@@ -27,6 +27,18 @@ export interface BookingAgentConfigShape {
   agentSystemPrompt: string;
   /** Sent once the booking is confirmed. Supports the template vars above. */
   confirmationMessage: string;
+  /** When true, a sales-thread time reply such as "10:30 today" can book. Stays off until a Super Admin turns it on. */
+  automatedBookingEnabled: boolean;
+  demoDurationMinutes: number;
+  timezone: string;
+  openingTime: string;
+  closingTime: string;
+  workingDays: number[];
+  minAdvanceMinutes: number;
+  maxDaysAhead: number;
+  bufferMinutes: number;
+  assignmentStrategy: 'first-available' | 'round-robin';
+  reminderLeadMinutes: number[];
 }
 
 export const DEFAULT_BOOKING_AGENT_PROMPT =
@@ -54,6 +66,17 @@ export function defaultBookingAgentConfig(): BookingAgentConfigShape {
     enabled: false,
     agentSystemPrompt: DEFAULT_BOOKING_AGENT_PROMPT,
     confirmationMessage: DEFAULT_BOOKING_CONFIRMATION,
+    automatedBookingEnabled: false,
+    demoDurationMinutes: 30,
+    timezone: 'Asia/Kolkata',
+    openingTime: '10:00',
+    closingTime: '18:00',
+    workingDays: [1, 2, 3, 4, 5],
+    minAdvanceMinutes: 60,
+    maxDaysAhead: 14,
+    bufferMinutes: 15,
+    assignmentStrategy: 'first-available',
+    reminderLeadMinutes: [24 * 60, 60, 15],
   };
 }
 

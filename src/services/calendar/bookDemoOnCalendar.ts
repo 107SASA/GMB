@@ -58,7 +58,7 @@ function scheduleFromStored(raw: any): DemoScheduleConfig {
   };
 }
 
-async function loadSchedule(): Promise<{ config: DemoScheduleConfig; cursor: number }> {
+export async function loadSchedule(): Promise<{ config: DemoScheduleConfig; cursor: number }> {
   await dbConnect();
   const raw = await BookingAgentConfig.findOne({ key: 'default' }).lean() as any;
   return { config: scheduleFromStored(raw), cursor: typeof raw?.roundRobinCursor === 'number' ? raw.roundRobinCursor : 0 };

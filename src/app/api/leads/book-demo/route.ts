@@ -4,6 +4,7 @@ import Lead from '@/models/Lead';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
+import type { FormSlotOutcome } from '@/services/demo/bookFromForm';
 
 /**
  * Entry point for the /book-demo page — the business/phone/budget form
@@ -46,7 +47,9 @@ export async function POST(req: Request) {
     await dbConnect();
     const body = await req.json();
 
-    const name = String(body.name || '').trim();
+    // contactName = the person; `name` kept as a fallback for older callers
+    // that sent only a business name.
+    const name = String(body.contactName || body.name || '').trim();
     if (!name) {
       return NextResponse.json({ error: 'Please enter your name.' }, { status: 400 });
     }
@@ -65,6 +68,32 @@ export async function POST(req: Request) {
         { error: 'Too many requests for this phone number. Please try again later.' },
         { status: 429 }
       );
+    }
+
+    const email = body.email ? String(body.email).trim().toLowerCase() : undefined;
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
+    }
+
+    // Optional slot picked on the form. Re-checked server-side against the
+    // same availability the picker used, BEFORE any record is written, so a
+    // slot taken in the meantime returns a clean 409 instead of a half-filed lead.
+    let slot: { date: string; time: string } | undefined;
+    if (body.date || body.time) {
+      const date = String(body.date || '');
+      const time = String(body.time || '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+        return NextResponse.json({ error: 'Please choose a valid date and time.' }, { status: 400 });
+      }
+      const { listOpenSlots } = await import('@/services/calendar/publicSlots');
+      const open = await listOpenSlots(date);
+      if (!open.slots.some((s) => s.time === time)) {
+        return NextResponse.json(
+          { error: 'That time is no longer available — please pick another.', code: 'slot_unavailable' },
+          { status: 409 }
+        );
+      }
+      slot = { date, time };
     }
 
     // Free-text business name the visitor typed/selected on the /book-demo
@@ -116,17 +145,30 @@ export async function POST(req: Request) {
     // 2-4. Best-effort: surface the request on every admin view and kick off
     // the WhatsApp booking conversation. Never fails the response — the Lead
     // above is already saved.
-    await fileDemoRequest(lead, {
+    const outcome = await fileDemoRequest(lead, {
       name,
       phone: normalizedPhone,
+      email,
       businessName,
       budget,
       origin,
+      slot,
     }).catch((err) => {
       console.error('Book Demo — post-lead wiring failed (lead was still saved):', err);
+      return null;
     });
 
-    return NextResponse.json({ success: true, leadId: String(lead._id) }, { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        leadId: String(lead._id),
+        // 'confirmed' | 'requested' | 'slot_taken' | 'none' — drives the form's confirmation screen.
+        bookingStatus: outcome?.status ?? 'none',
+        whenLabel: outcome && 'whenLabel' in outcome ? outcome.whenLabel : undefined,
+        meetingLink: outcome && outcome.status === 'confirmed' ? outcome.meetingLink : undefined,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Book Demo Lead Error:', error);
     return NextResponse.json(
@@ -139,9 +181,11 @@ export async function POST(req: Request) {
 interface DemoRequestInput {
   name: string;
   phone: string; // E.164 with '+'
+  email?: string;
   businessName?: string;
   budget?: string;
   origin?: string;
+  slot?: { date: string; time: string };
 }
 
 /**
@@ -150,8 +194,8 @@ interface DemoRequestInput {
  * single best-effort unit — any throw here is caught by the caller and only
  * logged, because the Lead is already persisted by that point.
  */
-async function fileDemoRequest(lead: any, input: DemoRequestInput): Promise<void> {
-  const { name, phone, businessName, budget, origin } = input;
+async function fileDemoRequest(lead: any, input: DemoRequestInput): Promise<FormSlotOutcome | null> {
+  const { name, phone, email, businessName, budget, origin, slot } = input;
 
   const [{ default: DemoBooking }, { default: BookingConversation }, { setLeadOwnership }, { logLeadEvent }, { inngest }] =
     await Promise.all([
@@ -175,13 +219,33 @@ async function fileDemoRequest(lead: any, input: DemoRequestInput): Promise<void
   await applyFormSignal(lead._id, 'DEMO_REQUESTED', 'book-demo').catch((err: any) =>
     console.warn('[book-demo] DEMO_REQUESTED signal failed:', err?.message)
   );
-  // A DemoBooking with no real slot yet → "Needs scheduling" on Admin → Demos
-  // (that group is exactly `status === 'Pending' && unparseable date`).
-  let booking = await DemoBooking.findOne({ leadId: lead._id, status: 'Pending' });
+  // With a chosen slot -> book it (Confirmed + Meet link, or Pending-with-slot
+  // when no calendar is connected). Without one -> a Pending booking that lands
+  // in "Needs scheduling" on Admin -> Demos.
+  let outcome: FormSlotOutcome | null = null;
+  let booking: any = null;
+  if (slot) {
+    const { bookDemoSlotFromForm } = await import('@/services/demo/bookFromForm');
+    outcome = await bookDemoSlotFromForm({
+      leadId: String(lead._id),
+      name,
+      phone,
+      email,
+      businessName,
+      budget,
+      date: slot.date,
+      time: slot.time,
+    });
+    if (outcome.status !== 'slot_taken') booking = outcome.booking;
+  }
+  if (!booking) {
+    booking = await DemoBooking.findOne({ leadId: lead._id, status: 'Pending' });
+  }
   if (!booking) {
     booking = await DemoBooking.create({
       leadId: lead._id,
       name,
+      email,
       phone,
       company: businessName,
       challenges: budget ? `Monthly marketing budget: ${budget}` : undefined,
@@ -197,9 +261,10 @@ async function fileDemoRequest(lead: any, input: DemoRequestInput): Promise<void
   const phoneKey = phoneDedupeKey(phone);
   const existingConvo = await BookingConversation.findOne({ phoneKey, status: 'active' });
 
-  const openingLine = businessName
+  const wantedSlot = outcome && 'whenLabel' in outcome ? ` I'd like ${outcome.whenLabel}.` : '';
+  const openingLine = (businessName
     ? `Hi, I just requested a demo for ${businessName} through the website${budget ? ` (budget: ${budget})` : ''}.`
-    : `Hi, I just requested a demo through the website.`;
+    : `Hi, I just requested a demo through the website.`) + wantedSlot;
 
   let convo = existingConvo;
   const isNewConvo = !existingConvo;
@@ -239,9 +304,66 @@ async function fileDemoRequest(lead: any, input: DemoRequestInput): Promise<void
   // 24h-window / template rules allow a business-initiated message. Only for
   // a freshly-created thread — if the prospect already has an active booking
   // conversation, they're mid-flow and shouldn't be interrupted.
+  if (outcome?.status === 'confirmed') {
+    await finishConfirmedBooking({ lead, booking, convo, outcome, phone, inngest, setLeadOwnership, logLeadEvent });
+    return outcome;
+  }
+
   if (isNewConvo) {
     await inngest
       .send({ name: 'booking/agent.reply', data: { conversationId: String(convo._id), body: openingLine } })
       .catch((err: any) => console.warn('[book-demo] inngest booking/agent.reply dispatch failed:', err?.message));
+  }
+  return outcome;
+}
+
+/**
+ * Everything the WhatsApp booking agent does after it confirms a slot, for a
+ * demo confirmed straight from the form: ownership -> DEMO_SCHEDULED, reminders,
+ * admin/customer email, and a WhatsApp confirmation with the Meet link.
+ */
+async function finishConfirmedBooking(ctx: {
+  lead: any; booking: any; convo: any; phone: string;
+  outcome: Extract<FormSlotOutcome, { status: 'confirmed' }>;
+  inngest: any; setLeadOwnership: any; logLeadEvent: any;
+}): Promise<void> {
+  const { lead, booking, convo, outcome, phone, inngest, setLeadOwnership, logLeadEvent } = ctx;
+
+  convo.status = 'booked';
+  convo.bookedAt = new Date();
+  convo.bookingId = booking._id;
+  const confirmation = `Your GrowwMatics demo is confirmed for ${outcome.whenLabel}.\n\nYou'll meet with our team via Google Meet.\n\nJoin here: ${outcome.meetingLink}\n\nWe'll remind you before the demo. Reply here anytime to reschedule or cancel.`;
+  convo.messages.push({ role: 'agent', text: confirmation, at: new Date() });
+  await convo.save();
+
+  await setLeadOwnership(lead._id, 'DEMO', 'demo-scheduled', 'book-demo-form', 'DEMO_SCHEDULED').catch((err: any) =>
+    console.warn('[book-demo] DEMO_SCHEDULED ownership failed:', err?.message)
+  );
+
+  // After ownership: setLeadOwnership cancels pending actions on a stage change.
+  try {
+    const { scheduleDemoReminders } = await import('@/services/inngest/functions');
+    booking.reminderActionIds = await scheduleDemoReminders(lead._id, booking, outcome.startUtc, outcome.durationMinutes);
+    await booking.save();
+  } catch (err: any) {
+    console.warn('[book-demo] scheduling reminders failed:', err?.message);
+  }
+
+  await logLeadEvent(
+    'DEMO_SCHEDULED',
+    { date: booking.date, timeSlot: booking.timeSlot, bookingId: booking._id, meetingLink: outcome.meetingLink, channel: 'website-form' },
+    'book-demo-form',
+    { leadId: lead._id, phone, conversationType: 'booking', conversationId: convo._id }
+  );
+
+  await inngest
+    .send({ name: 'demo/booked', data: { bookingId: String(booking._id) } })
+    .catch((err: any) => console.warn('[book-demo] demo/booked dispatch failed:', err?.message));
+
+  try {
+    const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+    await sendOutboundMessage(phone, confirmation, String(lead._id));
+  } catch (err: any) {
+    console.warn('[book-demo] WhatsApp confirmation failed (booking is still confirmed):', err?.message);
   }
 }

@@ -3261,7 +3261,7 @@ async function bookConfirmedSlot(
  * booking itself (the booking is already real at this point; a missing
  * reminder is a lesser failure than an unbooked demo).
  */
-async function scheduleDemoReminders(
+export async function scheduleDemoReminders(
   leadId: any,
   booking: any,
   startUtc: Date,

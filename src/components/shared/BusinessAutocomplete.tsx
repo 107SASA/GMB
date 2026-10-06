@@ -71,6 +71,10 @@ export function BusinessAutocomplete({
   const [isSearching, setIsSearching] = useState(false);
   const [isFetchingDetails, setIsFetchingDetails] = useState(false);
   const [fetchError, setFetchError] = useState('');
+  // Set when the search itself fails (Google key/billing/quota/network) so the
+  // visitor sees why nothing appeared and can still type the name manually,
+  // instead of a silent dead input that blocks the whole form.
+  const [searchError, setSearchError] = useState('');
 
   // See free-report's original comment: skips the very next debounced search
   // so the place-details fetch racing the 300ms debounce can't reopen the
@@ -89,6 +93,7 @@ export function BusinessAutocomplete({
     if (debouncedQuery.length < 3 || selected) {
       setSuggestions([]);
       setShowDropdown(false);
+      setSearchError('');
       return;
     }
     (async () => {
@@ -99,13 +104,16 @@ export function BusinessAutocomplete({
         if (json.success) {
           setSuggestions(json.data);
           setShowDropdown(true);
+          setSearchError('');
         } else {
           setSuggestions([]);
           setShowDropdown(false);
+          setSearchError(res.status === 429 ? 'Too many searches — please wait a moment.' : 'Business search is unavailable right now.');
         }
       } catch {
         setSuggestions([]);
         setShowDropdown(false);
+        setSearchError('Could not reach business search. Check your connection.');
       } finally {
         setIsSearching(false);
       }
@@ -154,6 +162,16 @@ export function BusinessAutocomplete({
     } finally {
       setIsFetchingDetails(false);
     }
+  };
+
+  const typed = query.trim();
+  // Manual entry: always offered once 3+ chars are typed, so a missing listing
+  // or a search outage never stops the visitor from continuing.
+  const pickManual = () => {
+    setShowDropdown(false);
+    setSearchError('');
+    setQuery('');
+    onSelect({ name: typed });
   };
 
   if (selected) {
@@ -210,7 +228,7 @@ export function BusinessAutocomplete({
           enterKeyHint="search"
         />
       </div>
-      {showDropdown && suggestions.length > 0 && (
+      {typed.length >= 3 && !isFetchingDetails && (showDropdown || searchError) && (
         <div className="absolute w-full mt-2 bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow z-50 max-h-[min(280px,45vh)] overflow-y-auto overscroll-contain">
           {suggestions.map((item, idx) => (
             <button
@@ -228,6 +246,15 @@ export function BusinessAutocomplete({
               </div>
             </button>
           ))}
+          {searchError && <p className="px-4 py-3 text-xs text-error">{searchError}</p>}
+          <button
+            type="button"
+            onClick={pickManual}
+            className="w-full text-left px-3.5 sm:px-5 py-3.5 hover:bg-surface-container-low flex items-center gap-3 text-sm text-on-surface min-h-[52px]"
+          >
+            <MaterialIcon name="edit" size={18} className="text-on-surface-variant shrink-0" />
+            <span className="break-words">Can’t find it? Use “<strong>{typed}</strong>” as my business name</span>
+          </button>
         </div>
       )}
       {fetchError && <p className="text-xs text-error mt-1.5">{fetchError}</p>}

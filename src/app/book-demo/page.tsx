@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
@@ -34,7 +34,18 @@ function BookDemoForm() {
   const origin = searchParams.get('origin') || 'book-demo-page';
 
   const [business, setBusiness] = useState<SelectedBusiness | null>(null);
+  const [contactName, setContactName] = useState('');
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('+91');
+  // Demo slot picker (optional — with no slot the request goes to the team's
+  // "Needs scheduling" queue and the WhatsApp agent finishes the booking).
+  const [slotDate, setSlotDate] = useState('');
+  const [slotTime, setSlotTime] = useState('');
+  const [slots, setSlots] = useState<{ time: string; label: string }[]>([]);
+  const [bounds, setBounds] = useState<{ min: string; max: string } | null>(null);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState('');
+  const [result, setResult] = useState<{ bookingStatus: string; whenLabel?: string; meetingLink?: string } | null>(null);
   const [budget, setBudget] = useState<string>(BUDGET_OPTIONS[1]);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -54,10 +65,48 @@ function BookDemoForm() {
     }
   };
 
+  // Loads open times for a day. On the first load (autoAdvance) it walks
+  // forward to the first day that actually has a free slot.
+  const loadSlots = useCallback(async (date: string, autoAdvance = false) => {
+    setSlotsLoading(true);
+    setSlotsError('');
+    try {
+      let day = date;
+      for (let i = 0; i < (autoAdvance ? 10 : 1); i++) {
+        const res = await fetch(`/api/leads/book-demo/slots?date=${day}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'failed');
+        setBounds({ min: json.minDate, max: json.maxDate });
+        if (json.slots.length > 0 || !autoAdvance || day >= json.maxDate) {
+          setSlotDate(day);
+          setSlots(json.slots);
+          setSlotTime((cur) => (json.slots.some((x: { time: string }) => x.time === cur) ? cur : ''));
+          return;
+        }
+        const next = new Date(`${day}T00:00:00Z`);
+        next.setUTCDate(next.getUTCDate() + 1);
+        day = next.toISOString().slice(0, 10);
+      }
+    } catch {
+      setSlots([]);
+      setSlotsError('Could not load available times. You can still submit and we will confirm a time on WhatsApp.');
+    } finally {
+      setSlotsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSlots(new Date().toLocaleDateString('en-CA'), true);
+  }, [loadSlots]);
+
   const handleSubmit = async () => {
     setError('');
     if (!business) {
-      setError('Please search for and select your business.');
+      setError('Please search for and select your business, or type its name and choose “Use … as my business name”.');
+      return;
+    }
+    if (!contactName.trim()) {
+      setError('Please enter your name.');
       return;
     }
     if (!phone || phone.replace(/\D/g, '').length < 8) {
@@ -70,17 +119,40 @@ function BookDemoForm() {
       const res = await fetch('/api/leads/book-demo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: business.name, businessName: business.name, phone, budget, origin }),
+        body: JSON.stringify({
+          contactName: contactName.trim(),
+          businessName: business.name,
+          email: email.trim() || undefined,
+          phone,
+          budget,
+          origin,
+          date: slotTime ? slotDate : undefined,
+          time: slotTime || undefined,
+        }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
         setError(json.error || 'Something went wrong. Please try again.');
+        if (json.code === 'slot_unavailable') {
+          setSlotTime('');
+          loadSlots(slotDate);
+        }
         setSubmitting(false);
         return;
       }
+      if (json.bookingStatus === 'slot_taken') {
+        setError('That time was just taken. Please pick another time and submit again.');
+        setSlotTime('');
+        loadSlots(slotDate);
+        setSubmitting(false);
+        return;
+      }
+      setResult(json);
       setSubmitted(true);
       setSubmitting(false);
-      setTimeout(() => goToWhatsApp(false), 1800);
+      // Only the no-slot path hands straight off to WhatsApp; a booked or
+      // requested slot stays on this confirmation screen.
+      if (json.bookingStatus === 'none') setTimeout(() => goToWhatsApp(false), 1800);
     } catch {
       setError('Network error. Please try again.');
       setSubmitting(false);
@@ -137,19 +209,45 @@ function BookDemoForm() {
             {submitted ? (
               <div className="text-center py-4">
                 <div className="w-16 h-16 rounded-xl bg-[#e8f8ee] flex items-center justify-center mx-auto mb-5">
-                  <MaterialIcon name="check" size={32} className="text-[#006e2c]" />
+                  <MaterialIcon name={result?.bookingStatus === 'confirmed' ? 'event_available' : 'check'} size={32} className="text-[#006e2c]" />
                 </div>
-                <h2 className="font-mkt-display text-xl font-semibold text-[#101613] mb-2">Thank you!</h2>
-                <p className="text-[#3d4a3d] text-sm mb-6">
-                  Taking you to WhatsApp to finish booking your demo…
-                </p>
+                {result?.bookingStatus === 'confirmed' ? (
+                  <>
+                    <h2 className="font-mkt-display text-xl font-semibold text-[#101613] mb-2">Your demo is booked!</h2>
+                    <p className="text-[#3d4a3d] text-sm mb-1">{result.whenLabel} (IST)</p>
+                    <p className="text-[#3d4a3d] text-sm mb-6">We also sent the details on WhatsApp.</p>
+                    {result.meetingLink && (
+                      <a
+                        href={result.meetingLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full mb-3 py-3 bg-[#006e2c] text-white rounded-lg font-bold hover:bg-[#005a24] transition-all flex items-center justify-center gap-2"
+                      >
+                        <MaterialIcon name="videocam" size={18} className="text-white" />
+                        Open Google Meet link
+                      </a>
+                    )}
+                  </>
+                ) : result?.bookingStatus === 'requested' ? (
+                  <>
+                    <h2 className="font-mkt-display text-xl font-semibold text-[#101613] mb-2">Request received!</h2>
+                    <p className="text-[#3d4a3d] text-sm mb-6">
+                      We’ve noted {result.whenLabel} (IST). Our team will confirm it on WhatsApp shortly.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="font-mkt-display text-xl font-semibold text-[#101613] mb-2">Thank you!</h2>
+                    <p className="text-[#3d4a3d] text-sm mb-6">Taking you to WhatsApp to finish booking your demo…</p>
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={() => goToWhatsApp(true)}
                   className="w-full py-3 bg-[#25D366] text-white rounded-lg font-bold hover:opacity-90 transition-all flex items-center justify-center gap-2"
                 >
                   <WhatsAppIcon size={18} />
-                  Continue Now
+                  {result?.bookingStatus === 'confirmed' || result?.bookingStatus === 'requested' ? 'Chat with us on WhatsApp' : 'Continue Now'}
                 </button>
               </div>
             ) : (
@@ -165,8 +263,56 @@ function BookDemoForm() {
                   </div>
 
                   <div>
+                    <label className="mkt-label block text-[#101613] mb-2">Your Name *</label>
+                    <input type="text" value={contactName} onChange={(e) => setContactName(e.target.value)} autoComplete="name" placeholder="Full name" className="w-full px-4 py-3.5 bg-surface border border-outline-variant rounded-lg focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none text-base" />
+                  </div>
+
+                  <div>
                     <label className="mkt-label block text-[#101613] mb-2">Phone Number *</label>
                     <PhoneNumberInput value={phone} onChange={setPhone} />
+                  </div>
+
+                  <div>
+                    <label className="mkt-label block text-[#101613] mb-2">Email <span className="normal-case font-normal text-[#6b756f]">(optional — for the calendar invite)</span></label>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" placeholder="you@company.com" className="w-full px-4 py-3.5 bg-surface border border-outline-variant rounded-lg focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none text-base" />
+                  </div>
+
+                  <div>
+                    <label className="mkt-label block text-[#101613] mb-2">Pick a demo time <span className="normal-case font-normal text-[#6b756f]">(IST)</span></label>
+                    <input
+                      type="date"
+                      value={slotDate}
+                      min={bounds?.min}
+                      max={bounds?.max}
+                      onChange={(e) => { setSlotDate(e.target.value); setSlotTime(''); if (e.target.value) loadSlots(e.target.value); }}
+                      className="w-full px-4 py-3.5 bg-surface border border-outline-variant rounded-lg focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none text-base mb-3"
+                    />
+                    {slotsLoading ? (
+                      <p className="text-xs text-[#3d4a3d]">Checking available times…</p>
+                    ) : slotsError ? (
+                      <p className="text-xs text-[#3d4a3d]">{slotsError}</p>
+                    ) : slots.length === 0 ? (
+                      <p className="text-xs text-[#3d4a3d]">No times left on this day — try another date, or just submit and we’ll arrange a time on WhatsApp.</p>
+                    ) : (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2" role="radiogroup" aria-label="Available demo times">
+                        {slots.map((sl) => (
+                          <button
+                            key={sl.time}
+                            type="button"
+                            role="radio"
+                            aria-checked={slotTime === sl.time}
+                            onClick={() => setSlotTime(slotTime === sl.time ? '' : sl.time)}
+                            className={`py-2.5 rounded-lg border text-sm font-semibold transition-colors min-h-[44px] ${
+                              slotTime === sl.time
+                                ? 'border-[#006e2c] bg-[#006e2c] text-white'
+                                : 'border-(--mkt-line) text-[#101613] hover:bg-(--mkt-surface)'
+                            }`}
+                          >
+                            {sl.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -218,7 +364,7 @@ function BookDemoForm() {
                       <MaterialIcon name="progress_activity" size={16} className="animate-spin text-white" />
                     ) : (
                       <>
-                        Submit
+                        {slotTime ? 'Book my demo' : 'Submit'}
                         <MaterialIcon name="arrow_forward" size={16} className="text-white" />
                       </>
                     )}

@@ -2902,7 +2902,7 @@ export const bookingAgentReply = inngest.createFunction(
       const { sendOutboundMessage } = await import('@/services/whatsapp/send');
 
       const convo: any = await BookingConversation.findById(conversationId);
-      if (!convo || convo.status === 'stopped') return;
+      if (!convo || convo.status === 'stopped' || convo.schedulingHandoffAt) return;
 
       // Human-handoff / opt-out stop — BEFORE anything else, including the
       // config-disabled fallback below. A lead who was handed to a human (or
@@ -2972,79 +2972,165 @@ export const bookingAgentReply = inngest.createFunction(
   }
 );
 
-/** `active` (collecting name/businessName/etc via the LLM contract) → either stays collecting, or transitions to real slot-offering once enough is known. */
-async function handleCollecting(convo: any, body: string, config: any, Lead: any, Activity: any): Promise<void> {
-  const { composeAgentReply } = await import('@/services/booking/bookingAgent');
+/** `active` — ask for a time, then check salesperson calendars. Known lead/audit fields are reused and are not asked again. */
+async function handleCollecting(convo: any, body: string, config: any, Lead: any, _activity: any): Promise<void> {
   const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+  const { friendlyTimeLabel } = await import('@/services/whatsapp-agent/dateTimeUtils');
+  const { parseDemoTimeRequest } = await import('@/services/calendar/demoScheduling');
+  const { findSalespersonAvailability } = await import('@/services/calendar/bookDemoOnCalendar');
+  const { DEMO_TIME_ASK, DEMO_TIME_CLARIFY, slotAvailableCopy, alternativesCopy } = await import('@/services/whatsapp/prospectChoice');
 
-  const { reply, readyForSlots, details } = await composeAgentReply(config, convo);
-  convo.details = { ...convo.details, ...details };
+  await hydrateBookingDetails(convo, Lead);
+  const lead = await ensureBookingLead(convo, Lead);
+  const timezone = config.timezone || 'Asia/Kolkata';
+  const requested = parseDemoTimeRequest(body || '', new Date(), timezone);
 
-  if (!readyForSlots) {
-    const res = await sendOutboundMessage(convo.leadPhone, reply, convo.leadId?.toString());
+  if (!requested) {
+    const alreadyAsked = (convo.messages || []).some((message: any) => message.role === 'agent' && message.text === DEMO_TIME_ASK);
+    const reply = alreadyAsked ? DEMO_TIME_CLARIFY : DEMO_TIME_ASK;
+    const res = await sendOutboundMessage(convo.leadPhone, reply, lead?._id?.toString());
     if (res.success) convo.messages.push({ role: 'agent', text: reply, at: new Date() });
     return;
   }
 
-  // File the CRM lead now — enough is known (name + business) even before
-  // a specific time is picked, same point the legacy flow filed it at.
-  const tenantId = 'gmbboost-internal';
-  const phone = convo.leadPhone;
-  const name = details.name || convo.leadName || phone;
+  const found = await findSalespersonAvailability(requested);
+  if (!found.connected || (!found.exact && !found.alternatives.length)) {
+    await pauseAutomatedScheduling(convo, 'no-salesperson-calendar');
+    return;
+  }
 
-  let lead: any = await Lead.findOne({ phone, tenantId });
+  if (found.exact) {
+    convo.offeredSlots = [found.exact];
+    convo.status = 'awaiting_slot_selection';
+    const reply = slotAvailableCopy(friendlyTimeLabel(found.exact.time));
+    const res = await sendOutboundMessage(convo.leadPhone, reply, lead?._id?.toString());
+    if (res.success) convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+    return;
+  }
+
+  convo.offeredSlots = found.alternatives;
+  convo.status = 'awaiting_slot_selection';
+  const { friendlyDateLabel } = await import('@/services/whatsapp-agent/dateTimeUtils');
+  const reply = alternativesCopy(
+    friendlyTimeLabel(requested.time),
+    found.alternatives.map((slot) => (
+      slot.date === requested.date
+        ? friendlyTimeLabel(slot.time)
+        : `${friendlyDateLabel(slot.date)} at ${friendlyTimeLabel(slot.time)}`
+    ))
+  );
+  const res = await sendOutboundMessage(convo.leadPhone, reply, lead?._id?.toString());
+  if (res.success) convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+}
+
+async function hydrateBookingDetails(convo: any, Lead: any): Promise<void> {
+  const details = {
+    name: '', businessName: '', businessType: '', location: '',
+    email: '', preferredDate: '', preferredTime: '', notes: '',
+    ...(convo.details || {}),
+  };
+  const { normalizePhoneE164 } = await import('@/lib/phone');
+  const phone = normalizePhoneE164(convo.leadPhone) || convo.leadPhone;
+  const lead: any = convo.leadId
+    ? await Lead.findById(convo.leadId).lean()
+    : await Lead.findOne({ phone, tenantId: 'gmbboost-internal' }).lean();
+  if (lead) {
+    if (!details.name && lead.name && lead.name !== 'New User' && lead.name !== phone) details.name = lead.name;
+    if (!details.businessName && lead.businessType && lead.businessType !== phone) details.businessName = lead.businessType;
+    if (lead.auditId && (!details.businessName || !details.location)) {
+      const { default: Audit } = await import('@/models/Audit');
+      const audit: any = await Audit.findById(lead.auditId).select('businessName city location address').lean();
+      if (audit?.businessName && !details.businessName) details.businessName = audit.businessName;
+      if (!details.location) details.location = audit?.city || audit?.location || audit?.address || '';
+    }
+  }
+  if (!details.name && convo.leadName && convo.leadName !== 'New User') details.name = convo.leadName;
+  convo.details = details;
+}
+
+async function ensureBookingLead(convo: any, Lead: any): Promise<any> {
+  const { normalizePhoneE164 } = await import('@/lib/phone');
+  const { isConvertedCustomer } = await import('@/services/agentHandoff/isHumanOwned');
+  const phone = normalizePhoneE164(convo.leadPhone) || convo.leadPhone;
+  const tenantId = 'gmbboost-internal';
+  let lead: any = convo.leadId ? await Lead.findById(convo.leadId) : await Lead.findOne({ phone, tenantId });
   if (!lead) {
     lead = await Lead.create({
-      tenantId, name, email: details.email || undefined, phone,
-      source: 'Demo Booking', leadType: 'Platform Prospect',
-      pipelineStage: 'New Request', status: 'active',
-      businessType: details.businessType || undefined,
-      aiLeadScore: 85,
+      tenantId,
+      name: convo.details?.name || convo.leadName || phone,
+      phone,
+      source: 'WhatsApp',
+      leadType: 'Platform Prospect',
+      status: 'active',
+      businessType: convo.details?.businessName || undefined,
     });
-  } else {
-    lead.pipelineStage = 'New Request';
-    lead.source = 'Demo Booking';
-    await lead.save();
   }
   convo.leadId = lead._id;
+  if (lead.currentAgent !== 'DEMO' && lead.currentAgent !== 'HUMAN' && !isConvertedCustomer(lead)) {
+    const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
+    await setLeadOwnership(lead._id, 'DEMO', 'demo-requested', 'demo-agent', 'DEMO_REQUESTED').catch((err: any) => {
+      console.warn('[bookingAgent] demo ownership failed:', err?.message);
+    });
+  }
+  return lead;
+}
 
-  const offer = await offerRealSlots(convo);
-  const outboundText = offer.available ? `${reply}\n\n${offer.message}` : offer.message;
-  const res = await sendOutboundMessage(convo.leadPhone, outboundText, lead._id.toString());
-  if (res.success) convo.messages.push({ role: 'agent', text: outboundText, at: new Date() });
-  if (offer.available) convo.status = 'awaiting_slot_selection';
+/** Marks the lead human-owned and stops further automated booking replies. Does not send. */
+async function markSchedulingPaused(convo: any, reason: string): Promise<void> {
+  if (convo.schedulingHandoffAt) return;
+  convo.schedulingHandoffAt = new Date();
+  if (!convo.leadId) return;
+  const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
+  const { default: Lead } = await import('@/models/Lead');
+  const { logLeadEvent } = await import('@/services/leadEvents');
+  await setLeadOwnership(convo.leadId, 'HUMAN', reason, 'demo-agent').catch((err: any) => {
+    console.warn('[bookingAgent] scheduling handoff ownership failed:', err?.message);
+  });
+  await Lead.updateOne(
+    { _id: convo.leadId },
+    { $set: { humanHandoff: { active: true, reason, since: new Date() } } }
+  );
+  logLeadEvent(
+    'HUMAN_HANDOFF',
+    { reason },
+    'demo-agent',
+    { leadId: convo.leadId, phone: convo.leadPhone, conversationType: 'booking', conversationId: convo._id }
+  );
+}
+
+/** Sends the scheduling handoff once, then marks the lead human-owned so later replies stay silent. */
+async function pauseAutomatedScheduling(convo: any, reason: string): Promise<void> {
+  if (convo.schedulingHandoffAt) return;
+  const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+  const { SCHEDULE_HANDOFF_ONCE } = await import('@/services/whatsapp/prospectChoice');
+  const res = await sendOutboundMessage(convo.leadPhone, SCHEDULE_HANDOFF_ONCE, convo.leadId?.toString());
+  if (res.success) convo.messages.push({ role: 'agent', text: SCHEDULE_HANDOFF_ONCE, at: new Date() });
+  await markSchedulingPaused(convo, reason);
 }
 
 /**
- * Queries real Calendar availability and snapshots the offered slots onto
- * the conversation (so the deterministic pick step below has something
- * concrete to match against without a second query). Returns a
- * user-presentable message either way — including the honest "nothing came
- * up, a team member will help schedule this" case if the calendar has zero
- * open slots in the search window, which is a legitimate outcome, not an
- * error.
+ * Offers real salesperson-calendar slots. Used when a booked lead asks to
+ * reschedule and has not named a time yet. Does not consult the shared
+ * service-account calendar.
  */
-async function offerRealSlots(convo: any): Promise<{ available: boolean; message: string }> {
-  const { getAvailableSlots, isCalendarConfigured } = await import('@/services/calendar/googleCalendar');
-  const { formatOfferedSlots } = await import('@/services/booking/bookingAgent');
-
-  if (!isCalendarConfigured()) {
-    return { available: false, message: `A team member will reach out shortly to find a time that works for you.` };
+async function offerRealSlots(convo: any): Promise<{ available: boolean; needsHandoff: boolean; message: string }> {
+  const { findSalespersonAvailability } = await import('@/services/calendar/bookDemoOnCalendar');
+  const { friendlyDateLabel, friendlyTimeLabel } = await import('@/services/whatsapp-agent/dateTimeUtils');
+  const { SCHEDULE_HANDOFF_ONCE } = await import('@/services/whatsapp/prospectChoice');
+  const found = await findSalespersonAvailability(null);
+  if (!found.connected || !found.alternatives.length) {
+    return { available: false, needsHandoff: true, message: SCHEDULE_HANDOFF_ONCE };
   }
-
-  const rangeStart = new Date();
-  const rangeEnd = new Date(rangeStart.getTime() + 14 * 24 * 60 * 60 * 1000); // 2-week search window
-  try {
-    const slots = await getAvailableSlots(rangeStart, rangeEnd, 30);
-    if (!slots.length) {
-      return { available: false, message: `I couldn't find an open slot right now — a team member will reach out shortly to find a time that works for you.` };
-    }
-    convo.offeredSlots = slots.map((s) => ({ date: s.date, time: s.time, startUtc: s.startUtc }));
-    return { available: true, message: `Here are some times that work:\n${formatOfferedSlots(convo.offeredSlots)}\n\nJust reply with the number! 🙂` };
-  } catch (err: any) {
-    console.warn('[bookingAgent] getAvailableSlots failed:', err?.message);
-    return { available: false, message: `A team member will reach out shortly to find a time that works for you.` };
-  }
+  convo.offeredSlots = found.alternatives;
+  const lines = found.alternatives.map((slot, index) => {
+    const mark = ['1️⃣', '2️⃣', '3️⃣'][index] || `${index + 1}.`;
+    return `${mark} ${friendlyDateLabel(slot.date)} at ${friendlyTimeLabel(slot.time)}`;
+  });
+  return {
+    available: true,
+    needsHandoff: false,
+    message: `Here are times I can book:\n\n${lines.join('\n')}\n\nWhich works best for you?`,
+  };
 }
 
 /** `awaiting_slot_selection` — deterministic pick against the real offered slots, then books via Calendar. On any Calendar failure: human handoff, never a fabricated link/time (task requirement). */
@@ -3053,8 +3139,15 @@ async function handleSlotSelection(convo: any, body: string, config: any): Promi
   const { sendOutboundMessage } = await import('@/services/whatsapp/send');
 
   const offeredSlots = (convo.offeredSlots || []).map((s: any) => ({ ...s, startUtc: new Date(s.startUtc) }));
-  const { parseRequestedDateTime } = await import('@/services/calendar/demoScheduling');
-  const requested = parseRequestedDateTime(body, new Date(), config.timezone || 'Asia/Kolkata');
+  const { confirmsSingleSlot } = await import('@/services/whatsapp/prospectChoice');
+  if (offeredSlots.length === 1 && confirmsSingleSlot(body || '')) {
+    const outcome = await bookConfirmedSlot(convo, offeredSlots[0], config);
+    const res = await sendOutboundMessage(convo.leadPhone, outcome.message, convo.leadId?.toString());
+    if (res.success) convo.messages.push({ role: 'agent', text: outcome.message, at: new Date() });
+    return;
+  }
+  const { parseDemoTimeRequest } = await import('@/services/calendar/demoScheduling');
+  const requested = parseDemoTimeRequest(body, new Date(), config.timezone || 'Asia/Kolkata');
   const picked = requested && !/^\s*\d{1,2}\s*$/.test(body || '')
     ? null
     : pickSlotFromReply(body, offeredSlots);
@@ -3141,25 +3234,16 @@ async function bookConfirmedSlot(
           message: `${friendlyTimeLabel(slot.time)} is not available. I can offer:\n${formatOfferedSlots(convo.offeredSlots)}\n\nWhich works better?`,
         };
       }
-      return {
-        success: false,
-        message: `I couldn't confirm ${friendlyDateLabel(slot.date)} at ${friendlyTimeLabel(slot.time)} — no open calendar slot was found. A team member will help find another time.`,
-      };
+      const { SCHEDULE_HANDOFF_ONCE } = await import('@/services/whatsapp/prospectChoice');
+      await markSchedulingPaused(convo, 'no-open-slot');
+      return { success: false, message: SCHEDULE_HANDOFF_ONCE };
     }
     if (!(err instanceof CalendarError)) throw err;
 
     // Never fabricate a link/time — hand off to a human instead, per the
     // task's explicit requirement.
     console.warn('[bookingAgent] calendar booking failed:', err.message);
-    if (convo.leadId) {
-      await setLeadOwnership(convo.leadId, 'HUMAN', 'calendar-api-failure', 'demo-agent');
-      logLeadEvent(
-        'HUMAN_HANDOFF',
-        { reason: 'calendar-api-failure', attemptedSlot: slot },
-        'demo-agent',
-        { leadId: convo.leadId, phone: convo.leadPhone, conversationType: 'booking', conversationId: convo._id }
-      );
-    }
+    await markSchedulingPaused(convo, 'calendar-api-failure');
     return {
       success: false,
       message: `Thanks! I'm having trouble confirming that time automatically right now — a team member will personally confirm ${friendlyDateLabel(slot.date)} at ${friendlyTimeLabel(slot.time)} with you shortly.`,
@@ -3358,6 +3442,10 @@ async function handleBookedReply(convo: any, body: string, config: any): Promise
     await cancelBookingCalendarAndReminders(booking);
   }
   const offer = await offerRealSlots(convo);
+  if (offer.needsHandoff) {
+    await pauseAutomatedScheduling(convo, 'no-salesperson-calendar');
+    return;
+  }
   const res = await sendOutboundMessage(convo.leadPhone, offer.message, convo.leadId?.toString());
   if (res.success) convo.messages.push({ role: 'agent', text: offer.message, at: new Date() });
   if (offer.available) convo.status = 'awaiting_slot_selection';

@@ -42,8 +42,10 @@ export interface IBookingConversation extends Document {
   offeredSlots: IOfferedSlot[];
   leadId?: mongoose.Types.ObjectId;
   bookingId?: mongoose.Types.ObjectId;
-    bookedAt?: Date;
-    lastReadAt?: Date;
+  bookedAt?: Date;
+  lastReadAt?: Date;
+  /** Set once, when automated scheduling cannot run. Later replies stay on this thread and the AI stays quiet. */
+  schedulingHandoffAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -92,6 +94,7 @@ const BookingConversationSchema: Schema = new Schema(
     bookingId: { type: Schema.Types.ObjectId, ref: 'DemoBooking' },
     bookedAt: { type: Date },
     lastReadAt: { type: Date },
+    schedulingHandoffAt: { type: Date },
   },
   { timestamps: true }
 );

@@ -20,7 +20,7 @@ import {
   insertMeetEvent,
   queryFreeBusy,
 } from '@/services/calendar/salespersonCalendar';
-import { CalendarError, SlotUnavailableError, createDemoEvent, isCalendarConfigured } from '@/services/calendar/googleCalendar';
+import { CalendarError, SlotUnavailableError } from '@/services/calendar/googleCalendar';
 
 export interface BookedMeeting {
   eventId: string;
@@ -65,9 +65,9 @@ export async function loadSchedule(): Promise<{ config: DemoScheduleConfig; curs
 }
 
 /**
- * Books a confirmed slot on a salesperson calendar when one is connected.
- * Falls back to the existing service-account calendar only when no
- * salesperson has connected. Never invents a Meet URL.
+ * Books a confirmed slot on a connected salesperson calendar.
+ * If nobody has connected a calendar, this throws instead of using the
+ * shared service-account calendar. Never invents a Meet URL.
  */
 export async function bookDemoOnCalendar(input: {
   leadId: string;
@@ -100,23 +100,8 @@ export async function bookDemoOnCalendar(input: {
 
   const connections = await SalespersonCalendarConnection.find({ status: 'active' });
   if (!connections.length) {
-    if (!isCalendarConfigured()) {
-      await releaseClaim(placeholder._id);
-      throw new SlotUnavailableError('No salesperson calendar is connected');
-    }
-    try {
-      const created = await createDemoEvent({
-        title: input.title,
-        startTime: input.start,
-        durationMinutes: input.durationMinutes,
-        attendeeEmail: input.attendeeEmail,
-      });
-      await markConfirmed(placeholder, { ...created, calendarId: process.env.GOOGLE_CALENDAR_ID || '' });
-      return { ...created, calendarId: process.env.GOOGLE_CALENDAR_ID || '', idempotencyKey: key };
-    } catch (err) {
-      await releaseClaim(placeholder._id);
-      throw err;
-    }
+    await releaseClaim(placeholder._id);
+    throw new SlotUnavailableError('No salesperson calendar is connected');
   }
 
   const { config, cursor } = await loadSchedule();
@@ -281,4 +266,50 @@ export async function suggestWhenBusy(start: Date): Promise<RequestedSlot[]> {
   }
   if (!busyByUser.length) return [];
   return alternativeSlots({ now: new Date(), config, around: start, busyByUser, limit: 2 });
+}
+
+/**
+ * Availability for a WhatsApp demo. Uses connected salesperson calendars only.
+ * The shared service-account calendar is not consulted here.
+ */
+export async function findSalespersonAvailability(requested: RequestedSlot | null): Promise<{
+  connected: boolean;
+  exact: RequestedSlot | null;
+  alternatives: RequestedSlot[];
+}> {
+  await dbConnect();
+  const connections = await SalespersonCalendarConnection.find({ status: 'active' });
+  if (!connections.length) return { connected: false, exact: null, alternatives: [] };
+
+  const { config } = await loadSchedule();
+  const now = new Date();
+  const horizon = new Date(now.getTime() + config.maxDaysAhead * 24 * 60 * 60 * 1000);
+  const busyByUser = [];
+  for (const connection of connections) {
+    try {
+      const token = await accessTokenFor(connection);
+      const busy = await queryFreeBusy(token, connection.calendarId || 'primary', now, horizon);
+      busyByUser.push({ userId: String(connection.userId), busy });
+    } catch {
+      busyByUser.push({ userId: String(connection.userId), busy: [{ start: now, end: horizon }] });
+    }
+  }
+
+  let exact: RequestedSlot | null = null;
+  if (requested && !slotFitsSchedule(requested, now, config)) {
+    const end = new Date(requested.startUtc.getTime() + config.demoDurationMinutes * 60 * 1000);
+    const someoneFree = busyByUser.some((person) => !rangesOverlap(requested.startUtc, end, person.busy, config.bufferMinutes));
+    if (someoneFree) exact = requested;
+  }
+
+  const alternatives = exact
+    ? []
+    : alternativeSlots({
+        now,
+        config,
+        around: requested?.startUtc || now,
+        busyByUser,
+        limit: 3,
+      });
+  return { connected: true, exact, alternatives };
 }

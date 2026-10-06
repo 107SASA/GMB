@@ -24,7 +24,7 @@ const EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>
 const twimlOk = () => new NextResponse(EMPTY_TWIML, { status: 200, headers: { 'Content-Type': 'text/xml' } });
 
 // Keyword signal that a lead mid-sales-chat now wants an actual demo booked
-// rather than more nurture — same booking keywords classifyIntent() below
+// rather than more nurture — same booking keywords the prospect menu below
 // uses for a brand-new thread, so a lead reads as consistent whichever path
 // they came in through. Deliberately keyword-based (not an extra AI call) so
 // the handoff is instant and free; a bare "yes"/"2pm" reply to the agent's
@@ -73,11 +73,11 @@ async function handleActiveSalesConversation(
   // booking record ever created).
   const keywordHandoff = BOOKING_HANDOFF_RE.test(body);
   let timeHandoff = false;
-  if (opts.allowBookingHandoff && salesConvo.consentStatus !== 'pending' && !keywordHandoff) {
-    const { parseRequestedDateTime } = await import('@/services/calendar/demoScheduling');
+    if (opts.allowBookingHandoff && salesConvo.consentStatus !== 'pending' && !keywordHandoff) {
+    const { parseDemoTimeRequest } = await import('@/services/calendar/demoScheduling');
     const { default: BookingAgentConfig } = await import('@/models/BookingAgentConfig');
     const schedule: any = await BookingAgentConfig.findOne({ key: 'default' }).select('automatedBookingEnabled timezone').lean();
-    if (schedule?.automatedBookingEnabled === true && parseRequestedDateTime(body, new Date(), schedule.timezone || 'Asia/Kolkata')) {
+    if (schedule?.automatedBookingEnabled === true && parseDemoTimeRequest(body, new Date(), schedule.timezone || 'Asia/Kolkata')) {
       const { normalizePhoneE164 } = await import('@/lib/phone');
       const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
       const lead: any = await Lead.findOne({
@@ -109,8 +109,17 @@ async function handleActiveSalesConversation(
       phoneKey: phoneDedupeKey(salesConvo.leadPhone),
       leadName: salesConvo.leadName || leadForBooking?.name || '',
       leadId: leadForBooking?._id,
-      status: timeHandoff ? 'awaiting_slot_selection' : 'active',
-      details: timeHandoff ? { name: leadForBooking?.name || salesConvo.leadName || '', businessName: leadForBooking?.name || salesConvo.leadName || '' } : undefined,
+      status: 'active',
+      details: {
+        name: leadForBooking?.name || salesConvo.leadName || '',
+        businessName: salesConvo.scores?.businessName || '',
+        businessType: '',
+        location: '',
+        email: '',
+        preferredDate: '',
+        preferredTime: '',
+        notes: '',
+      },
       messages: [{ role: 'lead', text: body, at: new Date() }],
     });
     await inngest.send({ name: 'booking/agent.reply', data: { conversationId: convo._id.toString(), body } });
@@ -368,22 +377,11 @@ interface PlatformInbound {
  * src/lib/whatsappCta.ts), then falls back to loose keyword matching so a
  * reply to the menu (e.g. "1", "report") still routes correctly.
  */
-function classifyIntent(body: string): 'report' | 'booking' | 'support' | 'unknown' {
+function isSupportRequest(body: string): boolean {
   const text = (body || '').trim().toLowerCase();
-  if (!text) return 'unknown';
-  // Exact-match first (SUPPORT_MESSAGE/BOOST_PROFILE_MESSAGE from
-  // lib/whatsappCta.ts — the mobile Help button and marketing CTAs send
-  // these verbatim), then loose keywords for a reply typed by hand.
-  if (text === SUPPORT_MESSAGE.toLowerCase() || /\b(help|support|issue|problem)\b/.test(text) || text.includes('not working')) {
-    return 'support';
-  }
-  if (text === '1' || /\b(report|profile|boost|rank)\b/.test(text)) return 'report';
-  if (text === '2' || /\b(demo|book)\b/.test(text)) return 'booking';
-  return 'unknown';
+  if (!text) return false;
+  return text === SUPPORT_MESSAGE.toLowerCase() || /\b(help|support|issue|problem)\b/.test(text) || text.includes('not working');
 }
-
-const INTENT_MENU_MESSAGE =
-  'Hi! 👋 Want to:\n1️⃣ Get a *free Google Business report*\n2️⃣ *Book a demo*\n\nJust reply 1 or 2.';
 
 async function processPlatformInbound({ phone, profileName, body }: PlatformInbound) {
   const { phoneDedupeKey, normalizePhoneE164 } = await import('@/lib/phone');
@@ -408,7 +406,10 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
 
   // 2. An active demo-booking thread wins next.
   const { default: BookingConversation } = await import('@/models/BookingConversation');
-  const activeBooking = await BookingConversation.findOne({ phoneKey: key, status: 'active' });
+  const activeBooking = await BookingConversation.findOne({
+    phoneKey: key,
+    status: { $in: ['active', 'awaiting_slot_selection', 'booked'] },
+  }).sort({ updatedAt: -1 });
   if (activeBooking) {
     if (isOptOut) {
       activeBooking.status = 'stopped';
@@ -432,6 +433,28 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
       return;
     }
     if (!activeReport.leadName && profileName) activeReport.leadName = profileName;
+    const { classifyProspectChoice } = await import('@/services/whatsapp/prospectChoice');
+    if (classifyProspectChoice(body, 'new') === 'demo') {
+      activeReport.status = 'stopped';
+      await activeReport.save();
+      await openDemoThread(phone, profileName, body);
+      return;
+    }
+    if (activeReport.intakePhase) {
+      activeReport.messages.push({ role: 'lead', text: body, at: new Date() });
+      await continueReportIntake(activeReport, phone, profileName);
+      return;
+    }
+    if (classifyProspectChoice(body, 'report-ready') === 'view-report') {
+      const { loadPlatformProspectFacts } = await import('@/services/leads/beginFreeReport');
+      const facts = await loadPlatformProspectFacts(phone);
+      if (facts.reportStatus === 'completed' && facts.auditId) {
+        activeReport.messages.push({ role: 'lead', text: body, at: new Date() });
+        await activeReport.save();
+        await sendExistingReport(phone, facts);
+        return;
+      }
+    }
     activeReport.messages.push({ role: 'lead', text: body, at: new Date() });
     await activeReport.save();
     await inngest.send({ name: 'report/agent.reply', data: { conversationId: activeReport._id.toString(), body } });
@@ -478,11 +501,9 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     .select('_id activeBusinessId')
     .lean() as any;
 
-  // 4. Brand-new thread — classify by the CTA's prefilled text (or a reply to
-  // the menu below), rather than defaulting to one agent over the other.
-  const intent = existingUser ? 'support' : classifyIntent(body);
-
-  if (intent === 'support') {
+  // Verified customers stay on the existing support path. Support wording
+  // does too. Neither is the free-report / demo menu.
+  if (existingUser || isSupportRequest(body)) {
     const convo = await SupportConversation.create({
       leadPhone: normalizePhoneE164(phone) || phone,
       phoneKey: key,
@@ -496,49 +517,152 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     return;
   }
 
-  if (intent === 'report') {
-    const convo = await ReportConversation.create({
-      leadPhone: normalizePhoneE164(phone) || phone,
-      phoneKey: key,
-      leadName: profileName || '',
-      status: 'awaiting_connection',
-      messages: [{ role: 'lead', text: body, at: new Date() }],
-    });
-    await inngest.send({ name: 'report/agent.reply', data: { conversationId: convo._id.toString(), body } });
-    return;
-  }
-
-  if (intent === 'booking') {
-    const convo = await BookingConversation.create({
-      leadPhone: normalizePhoneE164(phone) || phone,
-      phoneKey: key,
-      leadName: profileName || '',
-      status: 'active',
-      messages: [{ role: 'lead', text: body, at: new Date() }],
-    });
-    await inngest.send({ name: 'booking/agent.reply', data: { conversationId: convo._id.toString(), body } });
-    return;
-  }
-
-  // P0 FIX (post-implementation-audit) — this static menu send bypasses
-  // every agent-reply function entirely (it's not composed by
-  // salesAgentReply/supportAgentReply/reportAgentReply/bookingAgentReply,
-  // all of which now check isHumanOwned before sending), so it had no
-  // human-handoff awareness of its own. Reachable for a phone with no
-  // currently-active conversation of any type (all four branches above
-  // fell through) — which a HUMAN-owned lead can genuinely be in, e.g. once
-  // their SalesConversation completed/handed_off or their
-  // SupportConversation closed, while currentAgent stays 'HUMAN' until an
-  // explicit admin "Return to AI" release. A normal, never-contacted phone
-  // (the overwhelmingly common case here) has no matching Lead and proceeds
-  // exactly as before — read-only lookup, never creates a Lead.
   const { isHumanOwned } = await import('@/services/agentHandoff/isHumanOwned');
   const menuLead = await Lead.findOne({ phone: normalizePhoneE164(phone) || phone, tenantId: 'gmbboost-internal' }).select('currentAgent humanHandoff').lean() as any;
   if (isHumanOwned(menuLead)) return;
 
-  // Unmatched free text with nothing active — ask rather than guess. No
-  // conversation is created yet, so their next reply re-enters this branch.
-  await sendOutboundMessage(phone, INTENT_MENU_MESSAGE);
+  const { loadPlatformProspectFacts } = await import('@/services/leads/beginFreeReport');
+  const {
+    classifyProspectChoice, modeFor, menuFor, reportIntakeQuestion, REPORT_PROCESSING_MESSAGE,
+  } = await import('@/services/whatsapp/prospectChoice');
+  const facts = await loadPlatformProspectFacts(phone);
+  const mode = modeFor(facts.reportStatus);
+  const choice = classifyProspectChoice(body, mode);
+
+  if (choice === 'demo') {
+    await openDemoThread(phone, profileName, body, facts);
+    return;
+  }
+  if (choice === 'view-report' && facts.auditId) {
+    await sendExistingReport(phone, facts);
+    return;
+  }
+  if (choice === 'report') {
+    const question = reportIntakeQuestion(facts);
+    if (!question) {
+      await startReportFromFacts(phone, profileName, facts);
+      return;
+    }
+    const { default: ReportConversation } = await import('@/models/ReportConversation');
+    const convo = await ReportConversation.create({
+      leadPhone: normalizePhoneE164(phone) || phone,
+      phoneKey: key,
+      leadName: facts.name || profileName || '',
+      status: 'awaiting_connection',
+      intakePhase: question.phase,
+      intakeBusinessName: facts.businessName,
+      intakeLocation: facts.location,
+      messages: [
+        { role: 'lead', text: body, at: new Date() },
+        { role: 'agent', text: question.text, at: new Date() },
+      ],
+    });
+    await convo.save();
+    await sendOutboundMessage(phone, question.text);
+    return;
+  }
+  if (choice === 'wait') {
+    await sendOutboundMessage(phone, REPORT_PROCESSING_MESSAGE);
+    return;
+  }
+
+  await sendOutboundMessage(phone, menuFor(mode));
+}
+
+async function openDemoThread(
+  phone: string,
+  profileName: string,
+  body: string,
+  facts?: { name?: string; businessName?: string; location?: string }
+): Promise<void> {
+  const { phoneDedupeKey, normalizePhoneE164 } = await import('@/lib/phone');
+  const { default: BookingConversation } = await import('@/models/BookingConversation');
+  const known = facts || await (await import('@/services/leads/beginFreeReport')).loadPlatformProspectFacts(phone);
+  const convo = await BookingConversation.create({
+    leadPhone: normalizePhoneE164(phone) || phone,
+    phoneKey: phoneDedupeKey(phone),
+    leadName: known.name || profileName || '',
+    status: 'active',
+    details: {
+      name: known.name || profileName || '',
+      businessName: known.businessName || '',
+      businessType: '',
+      location: known.location || '',
+      email: '',
+      preferredDate: '',
+      preferredTime: '',
+      notes: '',
+    },
+    messages: [{ role: 'lead', text: body, at: new Date() }],
+  });
+  await inngest.send({ name: 'booking/agent.reply', data: { conversationId: convo._id.toString(), body } });
+}
+
+async function sendExistingReport(phone: string, facts: { name: string; businessName: string; auditId: string | null }): Promise<void> {
+  const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
+  const name = facts.name || 'there';
+  const businessName = facts.businessName || 'your business';
+  if (facts.auditId && WA_TEMPLATES.reportReady) {
+    const { sendTemplateMessage } = await import('@/services/twilio/client');
+    const res = await sendTemplateMessage(phone, WA_TEMPLATES.reportReady, {
+      '1': name,
+      '2': businessName,
+      '3': facts.auditId,
+    });
+    if (res.success) return;
+  }
+  const base = (process.env.NEXT_PUBLIC_APP_URL || 'https://growwmatics.com').replace(/\/$/, '');
+  const link = facts.auditId ? `${base}/free-report/result?auditId=${facts.auditId}` : `${base}/free-report`;
+  await sendOutboundMessage(phone, `Your free Google Business Profile report is ready.\n\nView Report: ${link}`);
+}
+
+async function startReportFromFacts(
+  phone: string,
+  profileName: string,
+  facts: { name: string; businessName: string; location: string }
+): Promise<void> {
+  const { beginFreeReport } = await import('@/services/leads/beginFreeReport');
+  const { REPORT_PROCESSING_MESSAGE } = await import('@/services/whatsapp/prospectChoice');
+  const started = await beginFreeReport({
+    phone,
+    name: facts.name || profileName || facts.businessName,
+    businessName: facts.businessName,
+    location: facts.location,
+  });
+  if (!started.ok) {
+    await sendOutboundMessage(phone, "Sure — I'll have a team member help you with the report. Our team will message you here shortly.");
+    return;
+  }
+  if (started.status === 'COMPLETED') {
+    await sendExistingReport(phone, { name: started.name, businessName: started.businessName, auditId: started.auditId });
+    return;
+  }
+  await sendOutboundMessage(phone, REPORT_PROCESSING_MESSAGE);
+}
+
+async function continueReportIntake(activeReport: any, phone: string, profileName: string): Promise<void> {
+  const { applyReportIntake } = await import('@/services/whatsapp/prospectChoice');
+  const latest = [...(activeReport.messages || [])].reverse().find((message: any) => message.role === 'lead');
+  const next = applyReportIntake(activeReport.intakePhase, latest?.text || '', {
+    businessName: activeReport.intakeBusinessName,
+    location: activeReport.intakeLocation,
+  });
+  activeReport.intakeBusinessName = next.businessName;
+  activeReport.intakeLocation = next.location;
+  if (next.question) {
+    activeReport.intakePhase = next.question.phase;
+    activeReport.messages.push({ role: 'agent', text: next.question.text, at: new Date() });
+    await activeReport.save();
+    await sendOutboundMessage(phone, next.question.text);
+    return;
+  }
+  activeReport.intakePhase = null;
+  await activeReport.save();
+  await startReportFromFacts(phone, profileName, {
+    name: activeReport.leadName || profileName || '',
+    businessName: next.businessName,
+    location: next.location,
+  });
 }
 
 // ---------------------------------------------------------------------------

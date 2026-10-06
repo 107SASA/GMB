@@ -30,6 +30,7 @@ const adminGroups = [
       { name: 'Conversion Overview', icon: 'trending_up', href: '/admin/pipeline' },
       { name: 'Leads & Pipeline', icon: 'filter_alt', href: '/admin/leads' },
       { name: 'Nurturing', icon: 'schedule', href: '/admin/nurture-config' },
+      { name: 'WhatsApp Inbox', icon: 'forum', href: '/admin/inbox' },
       { name: 'Demos', icon: 'event_available', href: '/admin/demo-bookings' },
       { name: 'Analytics', icon: 'query_stats', href: '/admin/conversion-analytics' },
     ],
@@ -49,7 +50,7 @@ const adminGroups = [
       { name: 'Sales Agent', icon: 'support_agent', href: '/admin/sales-agent' },
       { name: 'Booking Agent', icon: 'event_note', href: '/admin/booking-agent' },
       { name: 'Report Agent', icon: 'summarize', href: '/admin/report-agent' },
-      { name: 'WhatsApp Inbox', icon: 'forum', href: '/admin/whatsapp-agent' },
+      { name: 'Customer WhatsApp', icon: 'forum', href: '/admin/whatsapp-agent' },
     ],
   },
   {

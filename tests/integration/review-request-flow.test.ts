@@ -9,6 +9,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+
+/** Same Location construction as NextResponse.redirect: absolute URL, status 302. */
+function redirectResponse(url: string, status = 302): Response {
+  return new Response(null, { status, headers: { Location: String(new URL(url)) } });
+}
 import {
   REVIEW_SEND_COOLDOWN_ENFORCED,
   aggregateReviewRequestMetrics,
@@ -101,8 +106,58 @@ test('google review url opens Write a review for the verified place id', () => {
   );
   assert.equal(buildGoogleReviewUrl({ googleMapsUrl: 'https://maps.example/biz', name: 'Mulsetu' }), 'https://google.com');
   assert.equal(buildGoogleReviewUrl({ placeId: 'locations/123', googleMapsUrl: 'https://maps.google.com/?cid=1' }), 'https://google.com');
+  assert.equal(buildGoogleReviewUrl({ placeId: '123456789012345' }), 'https://google.com');
   assert.equal(buildGoogleReviewUrl(null), 'https://google.com');
   assert.equal(buildGoogleReviewUrl({ name: 'Mulsetu' }).includes('writereview'), false);
+  assert.equal(
+    buildGoogleReviewUrl({ googleMapsUrl: `https://www.google.com/maps/search/?api=1&query_place_id=${PLACE_ID}` }),
+    expected
+  );
+});
+
+test('GET /review/{validToken}?src=wa Location is the write-review URL', () => {
+  const expected = `https://search.google.com/local/writereview?placeid=${PLACE_ID}`;
+  const token = extractReviewToken(`${TOKEN}?src=wa`);
+  assert.equal(token, TOKEN);
+  assert.equal(isSafeReviewToken(token), true);
+  assert.equal(extractReviewToken(''), '');
+  assert.equal(isSafeReviewToken(''), false);
+  assert.equal(isSafeReviewToken('not a token'), false);
+
+  const destination = buildGoogleReviewUrl({
+    verifiedLocation: { placeId: PLACE_ID },
+    googlePlaceId: PLACE_ID,
+    placeId: PLACE_ID,
+    googleMapsUrl: 'https://maps.google.com/?cid=998877',
+    name: 'Mulsetu',
+  });
+  const response = redirectResponse(destination, 302);
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get('location'), expected);
+  assert.equal(response.headers.get('location')?.includes('maps.google'), false);
+  assert.equal(response.headers.get('location')?.includes('google.com/maps'), false);
+  assert.equal(response.headers.get('location')?.includes('/search?'), false);
+
+  const missingPlace = redirectResponse(buildGoogleReviewUrl({ googleMapsUrl: 'https://maps.google.com/?cid=998877' }), 302);
+  assert.equal(missingPlace.headers.get('location'), 'https://google.com/');
+
+  const first = applyClick({ clicked: false, clickCount: 0 });
+  assert.equal(first.setClickedAt, true);
+  assert.equal(first.clickCount, 1);
+  assert.equal(first.incrementCampaignClicked, true);
+  assert.equal(first.markReviewReceived, false);
+  const repeat = applyClick({ clicked: true, clickCount: first.clickCount });
+  assert.equal(repeat.setClickedAt, false);
+  assert.equal(repeat.incrementCampaignClicked, false);
+  assert.equal(repeat.clickCount, 2);
+  assert.equal(repeat.markReviewReceived, false);
+
+  const route = readFileSync(new URL('../../src/app/review/[token]/route.ts', import.meta.url), 'utf8');
+  const redirect = readFileSync(new URL('../../src/lib/reviewRedirect.ts', import.meta.url), 'utf8');
+  assert.match(route, /NextResponse\.redirect\(url, 302\)/);
+  assert.match(redirect, /buildGoogleReviewUrl/);
+  assert.equal(redirect.includes('googleMapsUrl ||'), false);
+  assert.equal(route.includes('maps.google'), false);
 });
 
 test('the first click is counted once and is not a review', () => {

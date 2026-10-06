@@ -56,26 +56,46 @@ export function extractReviewToken(pathToken: string): string {
   return token;
 }
 
-/** A stored Google Place ID. Resource names and URLs are not place IDs. */
+/** A stored Google Place ID. Resource names, CIDs, and URLs are not place IDs. */
 export function isGooglePlaceId(value: unknown): value is string {
-  return typeof value === 'string' && /^[A-Za-z0-9_-]{10,200}$/.test(value.trim()) && value.trim() === value;
+  return typeof value === 'string'
+    && /^(?=.*[A-Za-z])[A-Za-z0-9_-]{10,200}$/.test(value.trim())
+    && value.trim() === value;
+}
+
+/** Place ID already embedded in a stored Maps or write-review URL. */
+function placeIdFromStoredUrl(url: string | null | undefined): string | null {
+  if (typeof url !== 'string' || !url.trim()) return null;
+  try {
+    const parsed = new URL(url.trim());
+    const direct = parsed.searchParams.get('placeid') || parsed.searchParams.get('place_id') || parsed.searchParams.get('query_place_id');
+    if (direct && isGooglePlaceId(direct.trim())) return direct.trim();
+    const q = parsed.searchParams.get('q') || '';
+    const embedded = q.match(/place_id:([A-Za-z0-9_-]{10,200})/);
+    if (embedded && isGooglePlaceId(embedded[1])) return embedded[1];
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 /**
- * Place ID already stored for this business. The connected Google location's
- * place id wins, then the listing place id, then the review-send place id.
+ * Place ID already stored for this business.
+ * Verified location, then the connected listing, then the review-send field.
+ * A Place ID already inside a stored Maps URL is used only when those are empty.
  */
 export function canonicalReviewPlaceId(business: {
   placeId?: string | null;
   googlePlaceId?: string | null;
   verifiedLocation?: { placeId?: string | null } | null;
+  googleMapsUrl?: string | null;
 } | null | undefined): string | null {
   if (!business) return null;
   const candidates = [business.verifiedLocation?.placeId, business.googlePlaceId, business.placeId];
   for (const candidate of candidates) {
     if (typeof candidate === 'string' && isGooglePlaceId(candidate.trim())) return candidate.trim();
   }
-  return null;
+  return placeIdFromStoredUrl(business.googleMapsUrl);
 }
 
 /**

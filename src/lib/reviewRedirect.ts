@@ -18,10 +18,11 @@ async function resolveClickedRedirect(reviewRequest: {
   campaignId?: unknown;
   save: () => Promise<unknown>;
 }): Promise<string> {
-  const business = await Business.findById(reviewRequest.businessId).select('placeId googlePlaceId verifiedLocation.placeId').lean() as {
+  const business = await Business.findById(reviewRequest.businessId).select('placeId googlePlaceId verifiedLocation.placeId googleMapsUrl').lean() as {
     placeId?: string;
     googlePlaceId?: string;
     verifiedLocation?: { placeId?: string };
+    googleMapsUrl?: string;
   } | null;
 
   const reviewUrl = buildGoogleReviewUrl(business);

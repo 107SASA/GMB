@@ -5,6 +5,8 @@ export interface IBookingMessage {
   role: 'agent' | 'lead';
   text: string;
   at: Date;
+  sender?: 'ai' | 'human';
+  clientKey?: string;
 }
 
 /** Details the agent collects over the chat before booking the demo. */
@@ -40,7 +42,8 @@ export interface IBookingConversation extends Document {
   offeredSlots: IOfferedSlot[];
   leadId?: mongoose.Types.ObjectId;
   bookingId?: mongoose.Types.ObjectId;
-  bookedAt?: Date;
+    bookedAt?: Date;
+    lastReadAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,6 +61,8 @@ const BookingConversationSchema: Schema = new Schema(
             role: { type: String, enum: ['agent', 'lead'], required: true },
             text: { type: String, required: true },
             at: { type: Date, default: Date.now },
+            sender: { type: String, enum: ['ai', 'human'] },
+            clientKey: { type: String },
           },
           { _id: false }
         ),
@@ -86,6 +91,7 @@ const BookingConversationSchema: Schema = new Schema(
     leadId: { type: Schema.Types.ObjectId, ref: 'Lead' },
     bookingId: { type: Schema.Types.ObjectId, ref: 'DemoBooking' },
     bookedAt: { type: Date },
+    lastReadAt: { type: Date },
   },
   { timestamps: true }
 );

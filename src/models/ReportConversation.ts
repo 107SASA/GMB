@@ -42,6 +42,10 @@ export interface IReportConversation extends Document {
   pendingGoogleAuth?: IPendingGoogleAuth;
   businessId?: mongoose.Types.ObjectId;
   auditId?: mongoose.Types.ObjectId;
+  /** Set only while we still need a business name or location before the existing free-report flow. */
+  intakePhase?: 'need-both' | 'need-name' | 'need-location' | null;
+  intakeBusinessName?: string;
+  intakeLocation?: string;
   connectedAt?: Date;
   reportSentAt?: Date;
   createdAt: Date;
@@ -99,6 +103,9 @@ const ReportConversationSchema: Schema = new Schema(
     pendingGoogleAuth: { type: PendingGoogleAuthSchema, default: undefined },
     businessId: { type: Schema.Types.ObjectId, ref: 'Business' },
     auditId: { type: Schema.Types.ObjectId, ref: 'Audit' },
+    intakePhase: { type: String, enum: ['need-both', 'need-name', 'need-location', null], default: null },
+    intakeBusinessName: { type: String, default: '' },
+    intakeLocation: { type: String, default: '' },
     connectedAt: { type: Date },
     reportSentAt: { type: Date },
   },

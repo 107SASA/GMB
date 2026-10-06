@@ -191,6 +191,23 @@ export function parseRequestedDateTime(text: string, now: Date, timeZone: string
   return { date, time, startUtc };
 }
 
+/**
+ * Like parseRequestedDateTime, and also accepts "Friday afternoon",
+ * "tomorrow morning", and "evening" by mapping them onto a working-hours clock time.
+ */
+export function parseDemoTimeRequest(text: string, now: Date, timeZone: string): RequestedSlot | null {
+  const direct = parseRequestedDateTime(text, now, timeZone);
+  if (direct) return direct;
+  const cleaned = (text || '').toLowerCase();
+  let clock: string | null = null;
+  if (/\bmorning\b/.test(cleaned)) clock = '10:00';
+  else if (/\bafternoon\b/.test(cleaned)) clock = '14:00';
+  else if (/\bevening\b/.test(cleaned)) clock = '17:00';
+  if (!clock) return null;
+  const day = cleaned.match(/\b(today|tomorrow|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+  return parseRequestedDateTime(day ? `${clock} ${day[1]}` : clock, now, timeZone);
+}
+
 export function slotFitsSchedule(slot: RequestedSlot, now: Date, config: DemoScheduleConfig): string | null {
   const start = zonedParts(slot.startUtc, config.timezone);
   if (!config.workingDays.includes(start.weekday)) return 'outside-working-days';

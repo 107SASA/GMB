@@ -71,18 +71,46 @@ async function handleActiveSalesConversation(
   // — see PRODUCTION_READINESS / Aug 2026 fix notes for the incident this
   // closes (fabricated /demo-call link, a "2 PM" offered at 11:42 PM, and no
   // booking record ever created).
-  if (opts.allowBookingHandoff && salesConvo.consentStatus !== 'pending' && BOOKING_HANDOFF_RE.test(body)) {
+  const keywordHandoff = BOOKING_HANDOFF_RE.test(body);
+  let timeHandoff = false;
+  if (opts.allowBookingHandoff && salesConvo.consentStatus !== 'pending' && !keywordHandoff) {
+    const { parseRequestedDateTime } = await import('@/services/calendar/demoScheduling');
+    const { default: BookingAgentConfig } = await import('@/models/BookingAgentConfig');
+    const schedule: any = await BookingAgentConfig.findOne({ key: 'default' }).select('automatedBookingEnabled timezone').lean();
+    if (schedule?.automatedBookingEnabled === true && parseRequestedDateTime(body, new Date(), schedule.timezone || 'Asia/Kolkata')) {
+      const { normalizePhoneE164 } = await import('@/lib/phone');
+      const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
+      const lead: any = await Lead.findOne({
+        phone: normalizePhoneE164(salesConvo.leadPhone) || salesConvo.leadPhone,
+        tenantId: 'gmbboost-internal',
+      }).select('intent nextBestAction name humanHandoff currentAgent currentStage nurtureStatus').lean();
+      timeHandoff = !!lead
+        && (lead.intent === 'DEMO_INTEREST' || lead.nextBestAction === 'SCHEDULE_DEMO')
+        && !isHumanOwned(lead)
+        && !isOptedOutOrDoNotContact(lead);
+    }
+  }
+
+  if (opts.allowBookingHandoff && salesConvo.consentStatus !== 'pending' && (keywordHandoff || timeHandoff)) {
     salesConvo.status = 'handed_off';
     salesConvo.messages.push({ role: 'lead', text: body, at: new Date() });
     await salesConvo.save();
 
-    const { phoneDedupeKey } = await import('@/lib/phone');
+    const { phoneDedupeKey, normalizePhoneE164 } = await import('@/lib/phone');
     const { default: BookingConversation } = await import('@/models/BookingConversation');
+    const leadForBooking: any = timeHandoff
+      ? await Lead.findOne({
+          phone: normalizePhoneE164(salesConvo.leadPhone) || salesConvo.leadPhone,
+          tenantId: 'gmbboost-internal',
+        }).select('name').lean()
+      : null;
     const convo = await BookingConversation.create({
       leadPhone: salesConvo.leadPhone,
       phoneKey: phoneDedupeKey(salesConvo.leadPhone),
-      leadName: salesConvo.leadName,
-      status: 'active',
+      leadName: salesConvo.leadName || leadForBooking?.name || '',
+      leadId: leadForBooking?._id,
+      status: timeHandoff ? 'awaiting_slot_selection' : 'active',
+      details: timeHandoff ? { name: leadForBooking?.name || salesConvo.leadName || '', businessName: leadForBooking?.name || salesConvo.leadName || '' } : undefined,
       messages: [{ role: 'lead', text: body, at: new Date() }],
     });
     await inngest.send({ name: 'booking/agent.reply', data: { conversationId: convo._id.toString(), body } });

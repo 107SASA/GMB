@@ -90,6 +90,11 @@ const SalesAgentConfigSchema: Schema = new Schema(
     maxNurtureMessages: { type: Number, default: 5 },
     nurtureConfigVersion: { type: Number, default: 1 },
     nurtureUpdatedBy: { type: String },
+    // Inbox-only. Absent means the human inbox is on and takeover assigns
+    // the current Super Admin. Not part of the sales-agent editor payload,
+    // so saving that screen does not clear these.
+    humanInboxEnabled: { type: Boolean },
+    humanInboxAssignOnTakeover: { type: Boolean },
   },
   { timestamps: true }
 );

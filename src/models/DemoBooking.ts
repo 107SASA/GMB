@@ -25,6 +25,14 @@ const DemoBookingSchema = new mongoose.Schema({
   // creation failed and fell back to human handoff (see bookingAgent.ts).
   calendarEventId: { type: String },
   meetingLink:     { type: String },
+  salespersonUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  googleEmail:     { type: String },
+  calendarId:      { type: String },
+  startUtc:        { type: Date },
+  endUtc:          { type: Date },
+  timezone:        { type: String },
+  idempotencyKey:  { type: String },
+  rescheduledFrom: { type: mongoose.Schema.Types.ObjectId, ref: 'DemoBooking' },
   // The 24h-before/1h-before reminder ScheduledActions created alongside
   // this booking, so they can be found and cancelled together on
   // reschedule/cancel without a separate lookup query.
@@ -35,6 +43,7 @@ const DemoBookingSchema = new mongoose.Schema({
 // up by leadId, and by (leadId, status:'Pending') for the "needs scheduling"
 // group — this collection had no indexes at all.
 DemoBookingSchema.index({ leadId: 1, status: 1 });
+DemoBookingSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });
 
 export default mongoose.models.DemoBooking ||
   mongoose.model('DemoBooking', DemoBookingSchema);

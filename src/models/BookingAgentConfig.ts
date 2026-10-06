@@ -13,6 +13,18 @@ const BookingAgentConfigSchema: Schema = new Schema(
     enabled: { type: Boolean, default: false },
     agentSystemPrompt: { type: String, default: '' },
     confirmationMessage: { type: String, default: '' },
+    automatedBookingEnabled: { type: Boolean, default: false },
+    demoDurationMinutes: { type: Number, default: 30 },
+    timezone: { type: String, default: 'Asia/Kolkata' },
+    openingTime: { type: String, default: '10:00' },
+    closingTime: { type: String, default: '18:00' },
+    workingDays: { type: [Number], default: [1, 2, 3, 4, 5] },
+    minAdvanceMinutes: { type: Number, default: 60 },
+    maxDaysAhead: { type: Number, default: 14 },
+    bufferMinutes: { type: Number, default: 15 },
+    assignmentStrategy: { type: String, enum: ['first-available', 'round-robin'], default: 'first-available' },
+    reminderLeadMinutes: { type: [Number], default: [1440, 60, 15] },
+    roundRobinCursor: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

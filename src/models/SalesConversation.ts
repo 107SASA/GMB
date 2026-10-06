@@ -5,6 +5,8 @@ export interface ISalesMessage {
   role: 'agent' | 'lead';
   text: string;
   at: Date;
+  sender?: 'ai' | 'human';
+  clientKey?: string;
 }
 
 export interface ISalesScores {
@@ -55,6 +57,8 @@ export interface ISalesConversation extends Document {
   lastAgentAt?: Date;
   lastLeadReplyAt?: Date;
   followUpsSent: number;
+  lastReadAt?: Date;
+  nurtureConfigVersion?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -90,6 +94,8 @@ const SalesConversationSchema: Schema = new Schema(
             role: { type: String, enum: ['agent', 'lead'], required: true },
             text: { type: String, required: true },
             at: { type: Date, default: Date.now },
+            sender: { type: String, enum: ['ai', 'human'] },
+            clientKey: { type: String },
           },
           { _id: false }
         ),
@@ -100,6 +106,7 @@ const SalesConversationSchema: Schema = new Schema(
     lastAgentAt: { type: Date },
     lastLeadReplyAt: { type: Date },
     followUpsSent: { type: Number, default: 0 },
+    lastReadAt: { type: Date },
     // Frozen when the nurture sequence is created. Later admin edits do not
     // rewrite this copy, so an in-flight drip keeps the timing it started with.
     nurtureConfigVersion: { type: Number },

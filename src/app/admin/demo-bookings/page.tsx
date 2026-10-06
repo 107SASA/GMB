@@ -24,6 +24,7 @@ interface DemoRow {
   lead: string | null;
   phone: string | null;
   business: string | null;
+  email?: string | null;
   date: string;
   timeSlot: string;
   parsedStart: string | null;
@@ -41,11 +42,15 @@ interface Data {
   groups: {
     today: DemoRow[];
     upcoming: DemoRow[];
+    overdue: DemoRow[];
     needsScheduling: DemoRow[];
     completed: DemoRow[];
     cancelledOrNoShow: DemoRow[];
   };
+  all: DemoRow[];
 }
+
+type TabKey = keyof Data['groups'] | 'all';
 
 const STATUS_STYLE: Record<string, string> = {
   Pending: 'bg-primary-fixed text-primary',
@@ -61,14 +66,24 @@ const STATUS_OPTIONS = ['Pending', 'Confirmed', 'Rescheduled', 'Completed', 'No 
 export default function DemosPage() {
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<keyof Data['groups']>('upcoming');
+  const [tab, setTab] = useState<TabKey | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/admin/conversion/demos');
       const json = await res.json();
-      if (json.success) setData(json);
+      if (json.success) {
+        setData(json);
+        // First load: land on the first tab that has something, so a fresh
+        // booking is never hidden behind an empty default tab.
+        setTab((cur) => {
+          if (cur) return cur;
+          const g = json.groups;
+          const order: (keyof Data['groups'])[] = ['today', 'needsScheduling', 'upcoming', 'overdue', 'completed', 'cancelledOrNoShow'];
+          return order.find((k) => (g[k] ?? []).length > 0) ?? 'upcoming';
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -90,14 +105,17 @@ export default function DemosPage() {
   }
 
   const c = data?.counts ?? {};
-  const TABS: { key: keyof Data['groups']; label: string; count: number }[] = [
+  const TABS: { key: TabKey; label: string; count: number }[] = [
     { key: 'today', label: 'Today', count: c.today ?? 0 },
     { key: 'upcoming', label: 'Upcoming', count: c.upcoming ?? 0 },
     { key: 'needsScheduling', label: 'Needs scheduling', count: (data?.groups.needsScheduling ?? []).length },
+    { key: 'overdue', label: 'Needs outcome', count: c.overdue ?? 0 },
     { key: 'completed', label: 'Completed', count: c.completed ?? 0 },
     { key: 'cancelledOrNoShow', label: 'Cancelled / no-show', count: (c.cancelled ?? 0) + (c.noShow ?? 0) + (c.rescheduled ?? 0) },
+    { key: 'all', label: 'All', count: c.total ?? 0 },
   ];
-  const rows = data?.groups[tab] ?? [];
+  const activeTab: TabKey = tab ?? 'upcoming';
+  const rows = activeTab === 'all' ? data?.all ?? [] : data?.groups[activeTab] ?? [];
 
   return (
     <div className="space-y-5">
@@ -135,7 +153,7 @@ export default function DemosPage() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${
-              tab === t.key ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
+              activeTab === t.key ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
             }`}
           >
             {t.label} <span className="text-xs opacity-70">({t.count})</span>
@@ -167,7 +185,7 @@ export default function DemosPage() {
                       <Link href={`/admin/leads/${r.leadId}`} className="font-medium text-on-surface hover:text-primary">
                         {r.lead || r.phone || '—'}
                       </Link>
-                      <div className="text-xs text-outline">{r.business || r.phone || ''}</div>
+                      <div className="text-xs text-outline">{[r.business, r.phone, r.email].filter(Boolean).join(' · ')}</div>
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="text-xs text-on-surface">{r.date} · {r.timeSlot}</div>

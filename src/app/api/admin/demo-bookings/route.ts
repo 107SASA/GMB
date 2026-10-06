@@ -153,6 +153,17 @@ export async function PATCH(req: Request) {
       await cancelScheduledActions(booking.leadId, 'demo-cancelled');
     }
 
+    // Also free the salesperson's calendar slot — otherwise a cancelled demo
+    // keeps blocking the time and the prospect still sees the Meet invite.
+    if (status === 'Cancelled' && booking.calendarEventId) {
+      try {
+        const { cancelBookedEvent } = await import('@/services/calendar/bookDemoOnCalendar');
+        await cancelBookedEvent(booking);
+      } catch (err) {
+        console.warn('[demo-bookings PATCH] calendar event cancel failed:', err instanceof Error ? err.message : err);
+      }
+    }
+
     return NextResponse.json({ success: true, booking });
   } catch (error: any) {
     return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });

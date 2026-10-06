@@ -62,7 +62,11 @@ export async function GET(_req: Request) {
 
     const rows = (bookings as any[]).map((b) => {
       const lead = leadMap.get(String(b.leadId));
-      const parsed = tryParseDemoDate(b.date, b.timeSlot);
+      // startUtc is the authoritative instant (set by the calendar/form booking
+      // paths). The friendly date/timeSlot strings are only a fallback for
+      // older rows — and they carry NO year, which is what used to make every
+      // WhatsApp-booked demo parse as 2001 and fall out of every tab.
+      const parsed = b.startUtc ? new Date(b.startUtc) : tryParseDemoDate(b.date, b.timeSlot);
       // Post-demo outcome: derived from the lead's post-demo intent/stage.
       let outcome: string | null = null;
       if (b.status === 'Completed' && lead) {
@@ -77,7 +81,8 @@ export async function GET(_req: Request) {
         leadId: String(b.leadId),
         lead: lead?.name ?? b.name ?? null,
         phone: lead?.phone ?? b.phone ?? null,
-        business: lead?.businessId ? bizMap.get(String(lead.businessId)) ?? null : b.company ?? null,
+        business: (lead?.businessId ? bizMap.get(String(lead.businessId)) : null) ?? b.company ?? null,
+        email: b.email ?? null,
         date: b.date,
         timeSlot: b.timeSlot,
         parsedStart: parsed ? parsed.toISOString() : null,
@@ -108,10 +113,18 @@ export async function GET(_req: Request) {
         cancelled: rows.filter((r) => r.status === 'Cancelled').length,
         rescheduled: rows.filter((r) => r.status === 'Rescheduled').length,
         noShow: rows.filter((r) => r.status === 'No Show').length,
+        overdue: rows.filter(
+          (r) => scheduledStatuses.includes(r.status) && r.parsedStart && new Date(r.parsedStart) < startOfToday
+        ).length,
       },
       groups: {
         today: rows.filter((r) => isToday(r) && scheduledStatuses.includes(r.status)),
         upcoming: rows.filter((r) => isFuture(r) && !isToday(r) && scheduledStatuses.includes(r.status)),
+        // Scheduled (Pending/Confirmed) but the slot has passed and nobody has
+        // marked it Completed / No Show yet.
+        overdue: rows.filter(
+          (r) => scheduledStatuses.includes(r.status) && r.parsedStart && new Date(r.parsedStart) < startOfToday
+        ),
         needsScheduling: rows.filter((r) => r.status === 'Pending' && !r.parsedStart),
         completed: rows.filter((r) => r.status === 'Completed').slice(0, 50),
         cancelledOrNoShow: rows
@@ -132,9 +145,19 @@ export async function GET(_req: Request) {
  */
 function tryParseDemoDate(date?: string, timeSlot?: string): Date | null {
   if (!date) return null;
-  const combined = timeSlot ? `${date} ${timeSlot.split(/[-–—]/)[0].trim()}` : date;
-  const d = new Date(combined);
-  if (!Number.isNaN(d.getTime())) return d;
-  const d2 = new Date(date);
-  return Number.isNaN(d2.getTime()) ? null : d2;
+  const time = timeSlot ? timeSlot.split(/[-–—]/)[0].trim() : '';
+  const hasYear = /\b(19|20)\d{2}\b/.test(date);
+  const now = Date.now();
+  // Legacy labels ("Monday, 7 October") have no year and were written in IST.
+  // Without a year V8 assumes 2001, so supply one: this year, rolling to next
+  // year if that lands more than ~2 months in the past.
+  const attempt = (year?: number) => {
+    const d = new Date(`${date}${hasYear || !year ? '' : ` ${year}`} ${time} GMT+0530`.trim());
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  if (hasYear) return attempt();
+  const thisYear = new Date().getFullYear();
+  const a = attempt(thisYear);
+  if (!a) return null;
+  return a.getTime() < now - 60 * 24 * 60 * 60 * 1000 ? attempt(thisYear + 1) : a;
 }

@@ -32,6 +32,10 @@ const DemoBookingSchema = new mongoose.Schema({
   endUtc:          { type: Date },
   timezone:        { type: String },
   idempotencyKey:  { type: String },
+  // Set only after a confirmation WhatsApp send is claimed. Cleared if that
+  // send fails, so a failed delivery is not recorded as sent. A second submit
+  // of the same booking sees this and does not send another confirmation.
+  whatsappConfirmationSentAt: { type: Date },
   rescheduledFrom: { type: mongoose.Schema.Types.ObjectId, ref: 'DemoBooking' },
   // The 24h-before/1h-before reminder ScheduledActions created alongside
   // this booking, so they can be found and cancelled together on

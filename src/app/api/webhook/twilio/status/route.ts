@@ -113,18 +113,26 @@ async function retryAsApprovedTemplate(
  */
 async function retryGenericAsNotificationTemplate(failedSid: string): Promise<boolean> {
   try {
+    const { shouldRetryFreeformAsTemplate } = await import('@/lib/whatsappOutbound');
     const log = await MessageQueue.findOne({ 'payload.sid': failedSid })
       .select('payload')
-      .lean<{ payload?: { phone?: string; body?: string; contentSid?: string } }>();
-    if (!log?.payload || log.payload.contentSid) return false;
-    const { phone, body } = log.payload;
-    if (!phone || !body) return false;
+      .lean<{ payload?: { phone?: string; body?: string; contentSid?: string; templateRetried?: boolean } }>();
+    if (!log?.payload?.phone || !log.payload.body) return false;
+    if (!shouldRetryFreeformAsTemplate({
+      errorCode: '63016',
+      alreadyTemplate: !!log.payload.contentSid,
+      alreadyRetried: !!log.payload.templateRetried,
+    })) return false;
 
-    const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
-    if (!WA_TEMPLATES.notification) return false;
+    // Claim before sending so a second callback cannot deliver another copy.
+    const claimed = await MessageQueue.updateOne(
+      { 'payload.sid': failedSid, 'payload.templateRetried': { $ne: true }, 'payload.contentSid': { $exists: false } },
+      { $set: { 'payload.templateRetried': true } }
+    );
+    if (claimed.modifiedCount !== 1) return false;
 
-    const { sendTemplateMessage } = await import('@/services/twilio/client');
-    const retry = await sendTemplateMessage(phone, WA_TEMPLATES.notification, { '1': 'there', '2': body });
+    const { retryFreeformAsNotification } = await import('@/services/whatsapp/send');
+    const retry = await retryFreeformAsNotification(log.payload.phone, log.payload.body);
     return retry.success;
   } catch (e) {
     console.error('[twilio-status-webhook] generic template retry failed:', e);

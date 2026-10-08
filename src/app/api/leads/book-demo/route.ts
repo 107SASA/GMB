@@ -283,7 +283,7 @@ async function fileDemoRequest(lead: any, input: DemoRequestInput): Promise<Form
           .filter(Boolean)
           .join(' | '),
       },
-      messages: [{ role: 'lead', text: openingLine, at: new Date() }],
+      messages: [{ role: 'lead', text: openingLine, at: new Date(), via: 'form' }],
     });
   } else {
     if (!convo.leadId) convo.leadId = lead._id;
@@ -332,8 +332,12 @@ async function finishConfirmedBooking(ctx: {
   convo.status = 'booked';
   convo.bookedAt = new Date();
   convo.bookingId = booking._id;
-  const confirmation = `Your GrowwMatics demo is confirmed for ${outcome.whenLabel}.\n\nYou'll meet with our team via Google Meet.\n\nJoin here: ${outcome.meetingLink}\n\nWe'll remind you before the demo. Reply here anytime to reschedule or cancel.`;
-  convo.messages.push({ role: 'agent', text: confirmation, at: new Date() });
+  const { demoConfirmationText } = await import('@/lib/whatsappOutbound');
+  const confirmation = demoConfirmationText({
+    whenLabel: outcome.whenLabel,
+    meetingLink: outcome.meetingLink,
+    timezone: booking.timezone,
+  });
   await convo.save();
 
   await setLeadOwnership(lead._id, 'DEMO', 'demo-scheduled', 'book-demo-form', 'DEMO_SCHEDULED').catch((err: any) =>
@@ -361,9 +365,21 @@ async function finishConfirmedBooking(ctx: {
     .catch((err: any) => console.warn('[book-demo] demo/booked dispatch failed:', err?.message));
 
   try {
+    const { claimDemoConfirmationSend, releaseDemoConfirmationSend } = await import('@/services/demo/confirmationClaim');
+    const claim = await claimDemoConfirmationSend(booking._id);
+    if (claim === 'skip') return;
     const { sendOutboundMessage } = await import('@/services/whatsapp/send');
-    await sendOutboundMessage(phone, confirmation, String(lead._id));
+    const sent = await sendOutboundMessage(phone, confirmation, String(lead._id));
+    if (!sent.success) {
+      await releaseDemoConfirmationSend(booking._id);
+      console.warn('[book-demo] WhatsApp confirmation failed (booking is still confirmed):', sent.error);
+      return;
+    }
+    convo.messages.push({ role: 'agent', text: confirmation, at: new Date() });
+    await convo.save();
   } catch (err: any) {
+    const { releaseDemoConfirmationSend } = await import('@/services/demo/confirmationClaim');
+    await releaseDemoConfirmationSend(booking._id).catch(() => {});
     console.warn('[book-demo] WhatsApp confirmation failed (booking is still confirmed):', err?.message);
   }
 }

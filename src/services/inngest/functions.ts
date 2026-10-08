@@ -3164,17 +3164,37 @@ async function offerRealSlots(convo: any): Promise<{ available: boolean; needsHa
   };
 }
 
+async function deliverBookingReply(
+  convo: any,
+  message: string,
+  options?: { confirmation?: boolean }
+): Promise<void> {
+  const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+  if (options?.confirmation && convo.bookingId) {
+    const { claimDemoConfirmationSend, releaseDemoConfirmationSend } = await import('@/services/demo/confirmationClaim');
+    const claim = await claimDemoConfirmationSend(convo.bookingId);
+    if (claim === 'skip') return;
+    const res = await sendOutboundMessage(convo.leadPhone, message, convo.leadId?.toString());
+    if (!res.success) {
+      await releaseDemoConfirmationSend(convo.bookingId);
+      return;
+    }
+    convo.messages.push({ role: 'agent', text: message, at: new Date() });
+    return;
+  }
+  const res = await sendOutboundMessage(convo.leadPhone, message, convo.leadId?.toString());
+  if (res.success) convo.messages.push({ role: 'agent', text: message, at: new Date() });
+}
+
 /** `awaiting_slot_selection` — deterministic pick against the real offered slots, then books via Calendar. On any Calendar failure: human handoff, never a fabricated link/time (task requirement). */
 async function handleSlotSelection(convo: any, body: string, config: any): Promise<void> {
   const { pickSlotFromReply, formatOfferedSlots } = await import('@/services/booking/bookingAgent');
-  const { sendOutboundMessage } = await import('@/services/whatsapp/send');
 
   const offeredSlots = (convo.offeredSlots || []).map((s: any) => ({ ...s, startUtc: new Date(s.startUtc) }));
   const { confirmsSingleSlot } = await import('@/services/whatsapp/prospectChoice');
   if (offeredSlots.length === 1 && confirmsSingleSlot(body || '')) {
     const outcome = await bookConfirmedSlot(convo, offeredSlots[0], config);
-    const res = await sendOutboundMessage(convo.leadPhone, outcome.message, convo.leadId?.toString());
-    if (res.success) convo.messages.push({ role: 'agent', text: outcome.message, at: new Date() });
+    await deliverBookingReply(convo, outcome.message, { confirmation: outcome.success });
     return;
   }
   const { parseDemoTimeRequest } = await import('@/services/calendar/demoScheduling');
@@ -3184,21 +3204,18 @@ async function handleSlotSelection(convo: any, body: string, config: any): Promi
     : pickSlotFromReply(body, offeredSlots);
   if (!picked && requested) {
     const outcome = await bookConfirmedSlot(convo, requested, config);
-    const res = await sendOutboundMessage(convo.leadPhone, outcome.message, convo.leadId?.toString());
-    if (res.success) convo.messages.push({ role: 'agent', text: outcome.message, at: new Date() });
+    await deliverBookingReply(convo, outcome.message, { confirmation: outcome.success });
     return;
   }
 
   if (!picked) {
     const clarify = `Sorry, I didn't catch that. Please reply with just the number of the time that works:\n${formatOfferedSlots(offeredSlots)}`;
-    const res = await sendOutboundMessage(convo.leadPhone, clarify, convo.leadId?.toString());
-    if (res.success) convo.messages.push({ role: 'agent', text: clarify, at: new Date() });
+    await deliverBookingReply(convo, clarify);
     return;
   }
 
   const outcome = await bookConfirmedSlot(convo, picked, config);
-  const res = await sendOutboundMessage(convo.leadPhone, outcome.message, convo.leadId?.toString());
-  if (res.success) convo.messages.push({ role: 'agent', text: outcome.message, at: new Date() });
+  await deliverBookingReply(convo, outcome.message, { confirmation: outcome.success });
 }
 
 /**
@@ -3365,7 +3382,7 @@ async function bookConfirmedSlot(
     { leadId: convo.leadId, phone: convo.leadPhone, conversationType: 'booking', conversationId: convo._id }
   );
 
-  return { success: true, message: renderConfirmation(config, details, slot, meetingLink) };
+  return { success: true, message: renderConfirmation(config, details, slot, meetingLink, config.timezone) };
 }
 
 /**
@@ -5108,9 +5125,11 @@ async function buildMessageForAction(action: any): Promise<string> {
       throw new Error('DEMO_REMINDER is for a previous booking time');
     }
     const { firstName } = await import('@/services/booking/bookingAgent');
+    const { displayTimezone } = await import('@/lib/whatsappOutbound');
     const when = reminderType === '15m' ? 'in about 15 minutes' : reminderType === '1h' ? 'in about an hour' : 'tomorrow';
+    const tz = displayTimezone(booking.timezone);
     const linkLine = booking.meetingLink ? `\n\nJoin here: ${booking.meetingLink}` : '';
-    return `Hi ${firstName(booking.name)}! Just a reminder that your GrowwMatics demo is ${when} (${booking.date} at ${booking.timeSlot}).${linkLine}`;
+    return `Hi ${firstName(booking.name)}! Just a reminder that your GrowwMatics demo is ${when} (${booking.date} at ${booking.timeSlot} ${tz}).${linkLine}`;
   }
 
   const conversationId = action.payload?.conversationId;

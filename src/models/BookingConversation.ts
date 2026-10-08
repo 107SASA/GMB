@@ -7,6 +7,11 @@ export interface IBookingMessage {
   at: Date;
   sender?: 'ai' | 'human';
   clientKey?: string;
+  /**
+   * `whatsapp` — stored from the inbound webhook (opens the 24-hour window).
+   * `form` — seeded by the website demo form. That line is not a WhatsApp inbound.
+   */
+  via?: 'whatsapp' | 'form';
 }
 
 /** Details the agent collects over the chat before booking the demo. */
@@ -65,6 +70,7 @@ const BookingConversationSchema: Schema = new Schema(
             at: { type: Date, default: Date.now },
             sender: { type: String, enum: ['ai', 'human'] },
             clientKey: { type: String },
+            via: { type: String, enum: ['whatsapp', 'form'] },
           },
           { _id: false }
         ),

@@ -15,6 +15,7 @@ import { normalizePhoneE164 } from '@/lib/phone';
 import { sendOutboundMessage } from '@/services/whatsapp/send';
 import { sendTemplateMessage } from '@/services/twilio/client';
 import { WA_TEMPLATES } from '@/lib/whatsappTemplates';
+import { buildNotificationVariables, realInboundAtFromMessages, recipientFirstName } from '@/lib/whatsappOutbound';
 import { setLeadOwnership } from '@/services/leadOwnership/setLeadOwnership';
 import { releaseFromHuman } from '@/services/leadOwnership/releaseFromHuman';
 import { logLeadEvent } from '@/services/leadEvents';
@@ -187,7 +188,7 @@ export async function inboxDetail(conversationRef: string) {
   const nextAction = lead
     ? await ScheduledAction.findOne({ leadId: lead._id, status: 'PENDING', actionType: { $nin: ['DEMO_REMINDER', 'NO_SHOW_CHECK'] } }).sort({ dueAt: 1 }).select('actionType dueAt reason').lean() as any
     : null;
-  const lastInbound = convo.lastLeadReplyAt || [...(convo.messages || [])].reverse().find((m: any) => m.role === 'lead')?.at || null;
+  const lastInbound = realInboundAtFromMessages(convo.messages, convo.lastLeadReplyAt);
   const view = {
     currentAgent: lead?.currentAgent,
     currentStage: lead?.currentStage,
@@ -297,7 +298,7 @@ export async function sendInboxMessage(conversationRef: string, input: { text?: 
   if (input.clientKey && duplicateClientKey(convo.messages || [], input.clientKey)) {
     return { ok: true as const, duplicate: true };
   }
-  const lastInbound = convo.lastLeadReplyAt || [...(convo.messages || [])].reverse().find((m: any) => m.role === 'lead')?.at;
+  const lastInbound = realInboundAtFromMessages(convo.messages, convo.lastLeadReplyAt);
   const open = sessionWindowOpen(lastInbound);
   let text = (input.text || '').trim();
   if (!open && input.template !== 'notification') {
@@ -307,7 +308,9 @@ export async function sendInboxMessage(conversationRef: string, input: { text?: 
   if (!open) {
     if (!WA_TEMPLATES.notification) return { ok: false as const, error: 'The notification template is not configured.', status: 409 };
     text = text || 'A GrowwMatics teammate sent you an update.';
-    result = await sendTemplateMessage(convo.leadPhone, WA_TEMPLATES.notification, { '1': convo.leadName || 'there', '2': text.slice(0, 900) });
+    const built = buildNotificationVariables(recipientFirstName(lead?.name || convo.leadName), text);
+    if (!built.ok) return { ok: false as const, error: built.error, status: 400 };
+    result = await sendTemplateMessage(convo.leadPhone, WA_TEMPLATES.notification, built.variables);
   } else {
     if (!text) return { ok: false as const, error: 'Message is empty.', status: 400 };
     result = await sendOutboundMessage(convo.leadPhone, text, lead?._id?.toString());

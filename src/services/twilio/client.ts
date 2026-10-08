@@ -2,6 +2,7 @@ import twilio from 'twilio';
 import dbConnect from '@/lib/mongodb';
 import MessageQueue from '@/models/MessageQueue';
 import { normalizePhoneE164 } from '@/lib/phone';
+import { unsafeTemplateVariableReason } from '@/lib/whatsappOutbound';
 
 /**
  * Builds Twilio's `whatsapp:+<e164>` recipient address, normalizing first.
@@ -233,6 +234,12 @@ export async function sendTemplateMessage(
   variables: Record<string, string>,
   businessId?: string // no longer consulted for credentials — see resolveTwilioCredentials's doc comment. Kept in the signature so existing call sites across the codebase don't need to change their argument list.
 ): Promise<SendResult> {
+  const unsafe = unsafeTemplateVariableReason(variables);
+  if (unsafe) {
+    console.error('[twilio] template not sent:', unsafe);
+    return { success: false, error: unsafe };
+  }
+
   await dbConnect();
 
   if (qaSendsSuppressed()) return logSuppressedSend({ phone, contentSid, variables });

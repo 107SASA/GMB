@@ -5,6 +5,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } fro
 
 import { getApiErrorMessage } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
+import { PhoneNumberField } from '@/components/phone-number-field';
 import { ErrorText, Field, PrimaryButton, Screen } from '@/components/ui';
 import { BRAND_GRADIENT } from '@/lib/theme';
 
@@ -26,9 +27,11 @@ export default function LoginScreen() {
   const [maskedPhone, setMaskedPhone] = useState<string | undefined>();
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [phoneSubmitting, setPhoneSubmitting] = useState(false);
+  // Server rejects anything shorter than 8 digits (country code included).
+  const phoneReady = phone.replace(/\D/g, '').length >= 8;
 
   async function handleRequestOtp() {
-    if (!phone.trim() || phoneSubmitting) return;
+    if (!phoneReady || phoneSubmitting) return;
     setPhoneSubmitting(true);
     setPhoneError(null);
     try {
@@ -93,16 +96,11 @@ export default function LoginScreen() {
 
           {phoneStep === 'enter-phone' ? (
             <View className="gap-4 px-5">
-              <Field
-                placeholder="+919876543210"
-                autoCapitalize="none"
-                autoComplete="tel"
-                keyboardType="phone-pad"
+              <PhoneNumberField
                 value={phone}
-                onChangeText={setPhone}
+                onChange={setPhone}
                 editable={!phoneSubmitting}
                 onSubmitEditing={handleRequestOtp}
-                returnKeyType="go"
               />
               <Text className="px-1 font-sans text-xs text-zinc-500">
                 We&apos;ll send a one-time code to this number on WhatsApp.
@@ -112,7 +110,7 @@ export default function LoginScreen() {
                 title="Send code on WhatsApp"
                 onPress={handleRequestOtp}
                 loading={phoneSubmitting}
-                disabled={!phone.trim()}
+                disabled={!phoneReady}
               />
             </View>
           ) : (

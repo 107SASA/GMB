@@ -5,6 +5,7 @@ import Business from '@/models/Business';
 import { encrypt, decrypt } from '@/lib/crypto';
 import { gbpWritesEnabled } from '@/lib/gbpSafety';
 import { describeGoogleApiError } from '@/lib/googleApiError';
+import { classifyTokenRefreshFailure, type TokenRefreshFailure } from '@/services/gbp/intelligence/errors';
 
 const BIZINFO_BASE = 'https://mybusinessbusinessinformation.googleapis.com/v1';
 // Local posts, media and review replies still live only on the legacy My
@@ -16,6 +17,73 @@ export class GBPAuthError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'GBPAuthError';
+  }
+}
+
+/**
+ * A token refresh that failed for a reason that does NOT mean the customer
+ * revoked access (Google 5xx / rate limit, or our own OAuth client config).
+ * The connection is kept; the caller should retry later.
+ */
+export class GbpTokenRefreshError extends Error {
+  kind: Exclude<TokenRefreshFailure, 'REVOKED'>;
+  constructor(kind: Exclude<TokenRefreshFailure, 'REVOKED'>, message: string) {
+    super(message);
+    this.name = 'GbpTokenRefreshError';
+    this.kind = kind;
+  }
+}
+
+/**
+ * Records a failed refresh on GBPToken.authStatus. Only Google's invalid_grant
+ * (REVOKED) disconnects the workspace and alerts its users — once per
+ * revocation (the atomic claim below), not on every sync.
+ */
+async function recordTokenRefreshFailure(
+  businessId: string,
+  kind: TokenRefreshFailure,
+  previous: { state?: string; detectedAt?: Date } | null | undefined,
+): Promise<void> {
+  const now = new Date();
+  try {
+    if (kind === 'REVOKED') {
+      const claimed = await GBPToken.findOneAndUpdate(
+        { businessId, $or: [{ authStatus: null }, { authStatus: { $exists: false } }, { 'authStatus.state': { $ne: 'REVOKED' } }] },
+        { $set: { authStatus: { state: 'REVOKED', reason: kind, detectedAt: now, lastFailureAt: now, notifiedAt: now } } },
+      );
+      await Business.findByIdAndUpdate(businessId, { googleConnected: false });
+      if (!claimed) {
+        await GBPToken.updateOne({ businessId }, { $set: { 'authStatus.lastFailureAt': now } });
+        return;
+      }
+      const { notifyBusinessUsers } = await import('@/services/notifications');
+      await notifyBusinessUsers(businessId, {
+        type: 'gbp_reauth_required',
+        title: 'Reconnect your Google Business Profile',
+        body: 'Google no longer accepts GrowwMatics access to your Business Profile, so syncing has stopped. Open Google Business Profile in GrowwMatics and click "Connect Google Account".',
+        link: '/dashboard/gbp-profile',
+      });
+      return;
+    }
+    // authStatus defaults to null, so the whole object is written (a dotted
+    // $set into a null field would be rejected by MongoDB).
+    await GBPToken.updateOne(
+      { businessId, 'authStatus.state': { $ne: 'REVOKED' } },
+      {
+        $set: {
+          authStatus: {
+            state: 'REFRESH_FAILING',
+            reason: kind,
+            detectedAt: previous?.state === 'REFRESH_FAILING' && previous.detectedAt ? previous.detectedAt : now,
+            lastFailureAt: now,
+            notifiedAt: null,
+          },
+        },
+      },
+    );
+  } catch (err: any) {
+    // Bookkeeping must never mask the original refresh failure.
+    console.error('[gbpClient] could not record token refresh failure:', err?.message);
   }
 }
 
@@ -48,9 +116,14 @@ export async function getValidToken(businessId: string): Promise<string> {
   });
 
   if (!res.ok) {
-    // Token revoked — mark business as disconnected
-    await Business.findByIdAndUpdate(businessId, { googleConnected: false });
-    throw new GBPAuthError('Google token refresh failed — user must reconnect');
+    // Only invalid_grant means the customer's grant is gone (revoked/expired
+    // for good) → disconnect + one alert. A Google outage or our own OAuth
+    // client misconfiguration must not disconnect every customer.
+    const body = await res.text().catch(() => '');
+    const kind = classifyTokenRefreshFailure(res.status, body);
+    await recordTokenRefreshFailure(businessId, kind, (tokenDoc as any).authStatus);
+    if (kind === 'REVOKED') throw new GBPAuthError('Google token refresh failed — user must reconnect');
+    throw new GbpTokenRefreshError(kind, `Google token refresh failed (${kind}, HTTP ${res.status}) — will retry`);
   }
 
   const data = await res.json();
@@ -59,7 +132,11 @@ export async function getValidToken(businessId: string): Promise<string> {
 
   await GBPToken.findOneAndUpdate(
     { businessId },
-    { $set: { accessToken: encrypt(newAccessToken), expiresAt } }
+    {
+      $set: { accessToken: encrypt(newAccessToken), expiresAt },
+      // A successful refresh ends any temporary failure streak.
+      ...(tokenDoc.authStatus ? { $unset: { authStatus: '' } } : {}),
+    }
   );
 
   return newAccessToken;
@@ -562,6 +639,9 @@ export interface GbpMediaItem {
   category: GbpMediaCategory;
   url: string;
   thumbnailUrl: string;
+  /** PHOTO | VIDEO, as Google reports it (used by GBP Intelligence; ignored elsewhere). */
+  mediaFormat?: string | null;
+  createTime?: string | null;
 }
 
 /**
@@ -596,6 +676,8 @@ export async function listLocationMedia(businessId: string): Promise<GbpMediaIte
         category: fromGoogleCategory(m.locationAssociation?.category),
         url: m.googleUrl ?? m.sourceUrl ?? '',
         thumbnailUrl: m.thumbnailUrl ?? m.googleUrl ?? '',
+        mediaFormat: m.mediaFormat ?? null,
+        createTime: m.createTime ?? null,
       }))
     );
     pageToken = data.nextPageToken || undefined;

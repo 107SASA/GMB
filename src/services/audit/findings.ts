@@ -211,6 +211,9 @@ export interface FindingsInput {
   keywordRows: KeywordRow[];
   website?: { onListing: boolean; reachable: boolean | null } | null;
   suspensionRisk: SuspensionRisk;
+  /** Where each profile field's value was read (default 'google_places'). A
+   *  field read from the Google Business Profile API is 'gbp_api'. */
+  fieldSources?: Record<string, EvidenceSource>;
 }
 
 const pct = (r: number | null) => (r == null ? '—' : `${Math.round(r * 100)}%`);
@@ -231,7 +234,7 @@ export function buildEvidenceAndFindings(input: FindingsInput): { evidence: Evid
       metric: `profile_field:${field}`,
       value: state,
       status: state === 'verified_present' ? 'verified' : state === 'verified_missing' ? 'verified_missing' : 'unknown',
-      source: 'google_places',
+      source: input.fieldSources?.[field] ?? 'google_places',
       confidence: state === 'unknown' ? 'low' : 'high',
     });
   }
@@ -246,7 +249,7 @@ export function buildEvidenceAndFindings(input: FindingsInput): { evidence: Evid
       category: 'profile',
       evidence: `${field}: not found on the Google listing`,
       evidenceIds: [`profile.${slug(field)}`],
-      source: 'google_places',
+      source: input.fieldSources?.[field] ?? 'google_places',
       confidence: 'high',
       ...f,
     });
@@ -667,6 +670,11 @@ export function describeEvidence(e: Evidence): string {
     case 'suspension_risk_heuristic':
       return `Suspension-risk check: ${v.level}${v.reasons?.length ? ` — ${v.reasons[0]}` : ''}`;
     default:
+      if (e.metric.startsWith('gbp:')) {
+        const label = `Google Business Profile ${e.metric.slice('gbp:'.length).replace(/_/g, ' ')}`;
+        if (v == null) return `${label}: ${e.state === 'NOT_MEASURED' ? 'not available from Google' : 'not read'}`;
+        return `${label}: ${String(v)}`;
+      }
       if (e.metric.startsWith('profile_field:')) {
         const field = e.metric.slice('profile_field:'.length);
         return `${field}: ${e.status === 'verified' ? 'present' : e.status === 'verified_missing' ? 'missing' : 'could not be checked'}`;

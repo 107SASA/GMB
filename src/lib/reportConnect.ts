@@ -151,6 +151,7 @@ export async function finalizeReportConnection(
         scopes: google.scopes,
         connectedAt: new Date(),
       },
+      $unset: { authStatus: '', reviewSync: '' },
     },
     { upsert: true, new: true }
   );

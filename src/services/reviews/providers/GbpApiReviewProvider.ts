@@ -1,7 +1,8 @@
 import { getValidToken } from '@/lib/gbpClient';
 import dbConnect from '@/lib/mongodb';
 import GBPToken from '@/models/GBPToken';
-import { ProviderReview, FetchReviewsOptions, ProviderReviewTotals } from './MockGoogleProvider';
+import type { ProviderReview, FetchReviewsOptions, ProviderReviewTotals, ProviderRunInfo } from './MockGoogleProvider';
+import { collectGbpReviews } from './gbpReviewPaging';
 import { describeGoogleApiError } from '@/lib/googleApiError';
 
 /**
@@ -17,15 +18,22 @@ import { describeGoogleApiError } from '@/lib/googleApiError';
  * Business API enabled/allow-listed on the Cloud project.
  */
 const MYBUSINESS_V4_BASE = 'https://mybusiness.googleapis.com/v4';
-const MAX_REVIEWS = parseInt(process.env.MAX_REVIEWS_PER_AUDIT || '200', 10);
+// The import cap is separate from MAX_REVIEWS_PER_AUDIT (which only limits
+// how many stored reviews one audit reads): FR-3.2 needs the full review
+// history, so the import pages up to GBP_REVIEW_IMPORT_MAX (default 1000).
+const DEFAULT_IMPORT_MAX = 1000;
 const PAGE_SIZE = 50;
 
-// Google returns star ratings as an enum, not a number.
-const STAR_MAP: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
+function importMax(): number {
+  const n = parseInt(process.env.GBP_REVIEW_IMPORT_MAX || '', 10);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_IMPORT_MAX;
+}
 
 export class GbpApiReviewProvider {
   /** Lifetime totals from the last fetchReviews() call (see syncReviews.ts). */
   lastTotals: ProviderReviewTotals | null = null;
+  /** What the last fetchReviews() call covered (mode, pages, cap). */
+  lastRun: ProviderRunInfo | null = null;
 
   async fetchReviews(businessId: string, options?: FetchReviewsOptions): Promise<ProviderReview[]> {
     await dbConnect();
@@ -34,73 +42,42 @@ export class GbpApiReviewProvider {
       throw new Error('No GBP account/location linked to this business — reconnect Google.');
     }
     const accessToken = await getValidToken(businessId);
-
-    // v4 needs the full "accounts/{a}/locations/{l}" resource name.
     const name = tokenDoc.locationId.includes('/locations/')
       ? tokenDoc.locationId
       : `${tokenDoc.accountId}/${tokenDoc.locationId}`;
 
-    const knownReviewIds = options?.knownReviewIds;
-    const incremental = !!(knownReviewIds && knownReviewIds.size > 0);
+    // Explicit mode from syncReviews.ts; otherwise the original behaviour
+    // (stop at the first already-known id when any are known).
+    const mode = options?.mode
+      ?? (options?.knownReviewIds && options.knownReviewIds.size > 0 ? 'known_ids' : 'full');
 
-    const reviews: ProviderReview[] = [];
-    let pageToken: string | undefined;
-    let reachedKnown = false;
     this.lastTotals = null;
-
-    do {
-      const params = new URLSearchParams({
-        pageSize: String(PAGE_SIZE),
-        orderBy: 'updateTime desc',
-      });
-      if (pageToken) params.set('pageToken', pageToken);
-
-      const res = await fetch(`${MYBUSINESS_V4_BASE}/${name}/reviews?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!res.ok) {
-        const err = await res.text();
-        throw describeGoogleApiError('reviews.list', res.status, err);
-      }
-      const data = await res.json();
-      const page: any[] = data.reviews ?? [];
-      // Google's own lifetime totals — present on every reviews.list page.
-      if (!this.lastTotals && typeof data.totalReviewCount === 'number') {
-        this.lastTotals = {
-          count: data.totalReviewCount,
-          rating: typeof data.averageRating === 'number' ? Math.round(data.averageRating * 10) / 10 : null,
-        };
-      }
-
-      for (const r of page) {
-        if (reviews.length >= MAX_REVIEWS) break;
-        const providerReviewId: string = r.reviewId ?? (r.name ? String(r.name).split('/').pop() : '');
-        if (!providerReviewId) continue;
-
-        // Early-stop on nightly re-syncs once we hit an already-stored review.
-        if (incremental && knownReviewIds!.has(providerReviewId)) {
-          reachedKnown = true;
-          break;
-        }
-
-        reviews.push({
-          providerReviewId,
-          reviewerName: r.reviewer?.displayName ?? 'Anonymous',
-          rating: STAR_MAP[r.starRating] ?? 0,
-          text: r.comment ?? '',
-          postedAt: r.createTime ?? new Date().toISOString(),
-          ownerReply: r.reviewReply?.comment ?? undefined,
-          reviewerPhotoUrl: r.reviewer?.profilePhotoUrl ?? undefined,
+    this.lastRun = null;
+    const { reviews, totals, run } = await collectGbpReviews(
+      async (pageToken) => {
+        const params = new URLSearchParams({ pageSize: String(PAGE_SIZE), orderBy: 'updateTime desc' });
+        if (pageToken) params.set('pageToken', pageToken);
+        const res = await fetch(`${MYBUSINESS_V4_BASE}/${name}/reviews?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
-      }
-
-      pageToken =
-        !reachedKnown && reviews.length < MAX_REVIEWS ? (data.nextPageToken ?? undefined) : undefined;
-    } while (pageToken);
+        if (!res.ok) {
+          const err = await res.text();
+          throw describeGoogleApiError('reviews.list', res.status, err);
+        }
+        return res.json();
+      },
+      {
+        mode,
+        maxReviews: options?.maxReviews ?? importMax(),
+        sinceUpdateTime: options?.sinceUpdateTime ?? null,
+        knownReviewIds: options?.knownReviewIds,
+      },
+    );
+    this.lastTotals = totals;
+    this.lastRun = run;
 
     console.log(
-      `[GbpApiReviewProvider] Fetched ${reviews.length} ${incremental ? 'new ' : ''}reviews for businessId=${businessId}` +
-        `${incremental && reachedKnown ? ' (stopped at first already-synced review)' : ''}`
+      `[GbpApiReviewProvider] Fetched ${reviews.length} reviews (${run.mode}, ${run.pages} page(s)${run.hitCap ? ', import cap reached' : ''}) for businessId=${businessId}`
     );
     return reviews;
   }

@@ -74,7 +74,7 @@ const ReviewSchema: Schema = new Schema(
   {
     tenantId: { type: String, index: true },
     organizationId: { type: String, index: true },
-    providerReviewId: { type: String, index: true, unique: true, sparse: true },
+    providerReviewId: { type: String, index: true, sparse: true },
     businessId: { type: Schema.Types.ObjectId, ref: 'Business', required: true, index: true },
     requestId: { type: Schema.Types.ObjectId, ref: 'ReviewRequest', index: true, unique: true, sparse: true },
     reviewer: { type: String, required: true },
@@ -103,6 +103,17 @@ const ReviewSchema: Schema = new Schema(
     postedAt: { type: Date, index: true },
   },
   { timestamps: true }
+);
+
+// Review identity is per workspace: { businessId, providerReviewId } (the
+// key services/reviews/syncReviews.ts upserts on). Unique only where a
+// provider id exists — manual / request-linked reviews have none.
+// The legacy global unique `providerReviewId_1` is removed by
+// scripts/migrate-review-identity.ts --apply. This field stays a non-unique
+// sparse lookup index so that script is not undone by a later index sync.
+ReviewSchema.index(
+  { businessId: 1, providerReviewId: 1 },
+  { unique: true, partialFilterExpression: { providerReviewId: { $type: 'string' } } },
 );
 
 export default mongoose.models.Review || mongoose.model<IReview>('Review', ReviewSchema);

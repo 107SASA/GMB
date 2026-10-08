@@ -6,6 +6,7 @@ import GBPToken from '@/models/GBPToken';
 import Business from '@/models/Business';
 import { getReviewProvider } from './providers/index';
 import { GbpApiReviewProvider } from './providers/GbpApiReviewProvider';
+import { chooseReviewSyncMode, reportedReviewConflicts } from './providers/gbpReviewPaging';
 import { SerpApiGoogleProvider } from './providers/SerpApiGoogleProvider';
 import { analyzeSentiment } from './sentimentEngine';
 import { computeReviewMetrics, ReviewMetrics } from './reviewMetrics';
@@ -45,14 +46,36 @@ export async function syncReviewsForBusiness(
   // back), the complete review set (nothing missing), and each review's existing
   // owner reply. Businesses without a GBP connection fall back to the configured
   // provider (SerpApi/mock).
-  const gbpToken = await GBPToken.findOne({ businessId: bid }).select('_id').lean();
+  const gbpToken = await GBPToken.findOne({ businessId: bid }).select('_id reviewSync').lean<{ _id: unknown; reviewSync?: any }>();
   if (options?.requireGbp && !gbpToken) {
     // Caller (the Review Management tab) demands the official API — don't fall
     // back to SerpApi, which can't support posting replies.
     throw new Error('Google Business Profile is not connected — connect it to sync reviews.');
   }
   const provider = gbpToken ? new GbpApiReviewProvider() : getReviewProvider();
-  const fetchedReviews = await provider.fetchReviews(businessId, { knownReviewIds });
+
+  // GBP API: full import first, a full backfill (at most daily) while fewer
+  // reviews are stored than Google reports, otherwise incremental from the
+  // updateTime watermark (which also re-reads replies/edits made on Google to
+  // older reviews). SerpApi / mock keep the original known-id behaviour.
+  let syncMode: 'full' | 'incremental' | 'known_ids' | null = null;
+  if (gbpToken) {
+    const biz = await Business.findById(bid).select('googleReviewTotals').lean<{ googleReviewTotals?: { count?: number; source?: string } }>();
+    const rs = gbpToken.reviewSync || null;
+    syncMode = chooseReviewSyncMode({
+      storedCount: knownReviewIds.size,
+      googleTotal: biz?.googleReviewTotals?.source === 'gbp_api' ? biz.googleReviewTotals.count : rs?.googleTotal ?? null,
+      watermark: rs?.maxUpdateTime ?? null,
+      lastFullSyncAt: rs?.lastFullSyncAt ?? null,
+      now: new Date(),
+    });
+  }
+  const fetchedReviews = await provider.fetchReviews(
+    businessId,
+    gbpToken
+      ? { knownReviewIds, mode: syncMode!, sinceUpdateTime: gbpToken.reviewSync?.maxUpdateTime ?? null }
+      : { knownReviewIds },
+  );
 
   // Google's lifetime total + rating as reported by the provider itself —
   // the audit's "Total reviews" source (see auditService.ts). The mock
@@ -92,8 +115,16 @@ export async function syncReviewsForBusiness(
   // array order wins" deterministic even though the DB upserts below run
   // concurrently instead of one at a time.
   const sentiments = fetchedReviews.map((raw) => analyzeSentiment(raw.text, raw.rating));
-  const criticalFound = sentiments.some((s) => s.label === 'critical');
+  // Alerts and reply drafting only for reviews new to GrowwMatics. A full
+  // import/backfill also re-reads old reviews: those must not trigger
+  // "critical review" alerts or AI replies to years-old reviews.
+  const recentCutoffMs = Date.now() - 30 * 86_400_000;
+  const isAlertable = (raw: (typeof fetchedReviews)[number]) =>
+    !knownReviewIds.has(raw.providerReviewId) &&
+    (syncMode !== 'full' || new Date(raw.postedAt).getTime() >= recentCutoffMs);
+  const criticalFound = sentiments.some((s, i) => s.label === 'critical' && isAlertable(fetchedReviews[i]));
 
+  let conflicts = 0;
   const upsertResults = await Promise.all(
     fetchedReviews.map(async (raw, i) => {
       const sentimentResult = sentiments[i];
@@ -124,11 +155,23 @@ export async function syncReviewsForBusiness(
         update.replyStatus = 'POSTED';
       }
 
-      const saved = await Review.findOneAndUpdate(
-        { providerReviewId: raw.providerReviewId },
-        update,
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
+      // Scoped to THIS business: a review id is only ever matched inside the
+      // workspace that synced it, so it can never move to another workspace.
+      // While the legacy global unique index on providerReviewId exists, a
+      // second workspace linked to the same Google location gets E11000 here —
+      // that review is skipped and counted, never reassigned.
+      let saved: any = null;
+      try {
+        saved = await Review.findOneAndUpdate(
+          { businessId: bid, providerReviewId: raw.providerReviewId },
+          update,
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      } catch (err: any) {
+        if (err?.code !== 11000) throw err;
+        conflicts++;
+        return { raw, sentimentResult, saved: null };
+      }
       // A reply we did not post (no GrowwMatics execution record) is the
       // owner's or someone else's, made directly on Google.
       if (raw.ownerReply && saved && !(saved as any).replyPostedBy) {
@@ -143,9 +186,52 @@ export async function syncReviewsForBusiness(
   // the previous sequential loop — resolved from the array, not from
   // whichever upsert happened to finish last.
   for (const { raw, sentimentResult, saved } of upsertResults) {
-    if (sentimentResult.label === 'critical' && saved) {
+    if (sentimentResult.label === 'critical' && saved && isAlertable(raw)) {
       criticalDetails = { rating: raw.rating, reviewId: saved._id.toString() };
     }
+  }
+
+  if (conflicts > 0) {
+    console.warn(`[syncReviews] ${conflicts} review(s) for business ${businessId} are already stored under another workspace (same Google review id) — skipped, not moved.`);
+  }
+
+  // Completeness bookkeeping for the GBP API path (FR-3.2): watermark for the
+  // next incremental run, when the last full pass happened, and whether the
+  // import cap stopped it before Google's total.
+  if (gbpToken && provider instanceof GbpApiReviewProvider && provider.lastRun) {
+    const run = provider.lastRun;
+    const prevRs = gbpToken.reviewSync || {};
+    const maxUpdateTime = [prevRs.maxUpdateTime, run.maxUpdateTime].filter(Boolean).sort().pop() ?? null;
+    const storedAfter = knownReviewIds.size + upsertResults.filter(
+      ({ raw, saved }) => saved && !knownReviewIds.has(raw.providerReviewId),
+    ).length;
+    const googleTotalNow = provider.lastTotals?.count ?? prevRs.googleTotal ?? null;
+    const conflictsToStore = reportedReviewConflicts({
+      upsertConflicts: conflicts,
+      previousConflicts: Number(prevRs.conflicts || 0),
+      storedCount: storedAfter,
+      googleTotal: googleTotalNow,
+    });
+    if (conflicts === 0 && conflictsToStore > 0) {
+      console.warn(`[syncReviews] ${conflictsToStore} review(s) for business ${businessId} are still missing after a pass that imported nothing — keeping the identity conflict count.`);
+    }
+    await GBPToken.updateOne(
+      { businessId: bid },
+      {
+        $set: {
+          reviewSync: {
+            lastRunAt: new Date(),
+            mode: run.mode === 'full' ? 'full' : 'incremental',
+            fetched: run.fetched,
+            maxUpdateTime,
+            lastFullSyncAt: run.mode === 'full' ? new Date() : prevRs.lastFullSyncAt ?? null,
+            hitCap: run.mode === 'full' ? run.hitCap : !!prevRs.hitCap,
+            googleTotal: googleTotalNow,
+            conflicts: conflictsToStore,
+          },
+        },
+      },
+    ).catch((e: any) => console.warn('[syncReviews] could not store review sync state:', e?.message));
   }
 
   // Recompute analytics from the full review set using the SAME function every other
@@ -195,6 +281,7 @@ export async function syncReviewsForBusiness(
     const auto = isAutoPublishActive(business?.reviewReplySettings);
     const recentCutoff = Date.now() - 30 * 86_400_000;
     const pendingIds = upsertResults
+      .filter(({ raw }) => isAlertable(raw))
       .filter(({ saved }) => saved && !saved.response && (!saved.replyStatus || saved.replyStatus === 'PENDING'))
       .filter(({ saved }) => auto || new Date((saved as any).postedAt ?? (saved as any).createdAt).getTime() >= recentCutoff)
       .map(({ saved }) => saved!._id.toString());

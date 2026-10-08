@@ -51,6 +51,9 @@ export async function finalizeGbpConnection(input: FinalizeGbpConnectionInput): 
         scopes: input.scopes,
         connectedAt: new Date(),
       },
+      // A fresh grant ends any revoked / failing state (FR-3.4), and the
+      // review watermark restarts so the new connection gets a full import.
+      $unset: { authStatus: '', reviewSync: '' },
     },
     { upsert: true, new: true }
   );

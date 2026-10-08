@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, MapPin, ShieldCheck, ExternalLink, Info, Unplug } from 'lucide-react';
 import { useBusiness } from '@/context/BusinessContext';
 import GbpMediaManager from '@/components/gbp/GbpMediaManager';
+import GbpIntelligencePanel from '@/components/gbp/GbpIntelligencePanel';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
@@ -150,6 +151,8 @@ export default function GbpProfilePage() {
           </a>
         </div>
       )}
+      {/* Revoked connection: the panel explains why and offers reconnect (renders nothing when never connected). */}
+      {!connected && <div className="mt-6"><GbpIntelligencePanel businessId={activeBusiness?._id} /></div>}
 
       {/* Connected — editor */}
       {connected && profile && (
@@ -216,6 +219,9 @@ export default function GbpProfilePage() {
               Reset
             </button>
           </div>
+
+          {/* Read-only Google listing health, sync status, imported details and external changes. */}
+          <GbpIntelligencePanel businessId={activeBusiness?._id} />
 
           {/* Media management — display existing GBP photos + upload logo/cover/photos. */}
           <GbpMediaManager businessId={activeBusiness?._id} />

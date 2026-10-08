@@ -557,7 +557,27 @@ async function processAuditJobInner(auditId: string) {
         }
       : null;
     let gbpLive: any = null;
+    // GBP Intelligence (FR-3.2): the 6-hourly sync already read the full
+    // listing into GbpLocationSnapshot. When that read is fresh it replaces
+    // this audit's own live read (one less Google call) and adds the sections
+    // the live read never covered (hours, services, attributes, media, posts,
+    // verification, duplicates, external changes). Otherwise the original
+    // live read below runs unchanged.
+    let gbpIntel: any = null;
     if (depth === 'full' && business.googleLocationId) {
+      try {
+        const { getGbpSnapshot } = require('../gbp/intelligence/runner');
+        const { snapshotUsableForAudit, gbpLiveFromSnapshot } = require('../gbp/intelligence/auditInput');
+        const snap = await getGbpSnapshot(audit.businessId.toString());
+        if (snap && snapshotUsableForAudit(snap, new Date())) {
+          gbpIntel = snap;
+          gbpLive = gbpLiveFromSnapshot(snap);
+        }
+      } catch (sErr: any) {
+        console.warn('[auditService] GBP intelligence snapshot unavailable:', sErr?.message);
+      }
+    }
+    if (!gbpLive && depth === 'full' && business.googleLocationId) {
       try {
         const { fetchLocationProfile } = require('../../lib/gbpClient');
         const live = await fetchLocationProfile(audit.businessId.toString());
@@ -606,8 +626,16 @@ async function processAuditJobInner(auditId: string) {
     // Fields are checked against what we actually read from Google this run
     // (Places snapshot, and the live GBP profile for connected full audits)
     // — see calculateProfileCompletion.
-    const profileCompletionPayload = calculateProfileCompletion(businessObj, { gbpLive, publicProfile });
-    const profileCompletion = profileCompletionPayload.data;
+    const intelApi = gbpIntel ? require('../gbp/intelligence/auditInput') : null;
+    const profileCompletionPayload = calculateProfileCompletion(businessObj, {
+      gbpLive,
+      publicProfile,
+      gbpIntelStates: intelApi ? intelApi.checklistStatesFromSnapshot(gbpIntel) : undefined,
+    });
+    const profileCompletion: any = profileCompletionPayload.data;
+    // Measured over more fields than a plain live read → never compared
+    // like-for-like with audits that lacked it (compareAudits).
+    if (gbpIntel) profileCompletion.completionBasis = 'gbp_intelligence';
     const reviewMetricsPayload = calculateReviewMetrics(
       formattedReviews,
       placesReviewCount && placesReviewCount > 0 && placesRating != null
@@ -676,8 +704,19 @@ async function processAuditJobInner(auditId: string) {
       keywordRows,
       website: websiteSignals ? { onListing: !!business.website, reachable: !!websiteSignals.reachable } : null,
       suspensionRisk,
+      // Fields read from the GBP API are labelled gbp_api, not google_places.
+      fieldSources: intelApi
+        ? intelApi.fieldSourcesFromSnapshot(gbpIntel)
+        : gbpLive
+          ? Object.fromEntries(['Business Name', 'Primary Category', 'Phone', 'Website', 'Business Description', 'Additional Categories'].map((f) => [f, 'gbp_api' as const]))
+          : undefined,
     });
     const findings = [...builtFindings];
+    const gbpChangesSince = new Date(Date.now() - 35 * 86_400_000);
+    if (intelApi) {
+      evidence.push(...intelApi.gbpIntelligenceEvidence(gbpIntel, new Date()));
+      findings.push(...intelApi.gbpIntelligenceFindings(gbpIntel, { websiteServices, changesSince: gbpChangesSince, now: new Date() }));
+    }
     const nowIso = new Date().toISOString();
     if (websiteIntel && websiteIntel.status !== 'failed') {
       const claim = (id: string, metric: string, value: unknown, sourceUrl?: string) =>
@@ -707,7 +746,28 @@ async function processAuditJobInner(auditId: string) {
       }
       // The GBP service list is never read by any code path — so the website's
       // services become a verification step, never "your GBP is missing X".
-      if (websiteServices.length && profileCompletion.checklist.find((c: any) => c.field === 'Services Listed')?.status !== 'Complete') {
+      const servicesStatus = profileCompletion.checklist.find((c: any) => c.field === 'Services Listed')?.status;
+      if (websiteServices.length && servicesStatus === 'Missing') {
+        // GBP Intelligence read the service list and it is empty, while the
+        // website names services → a real, specific opportunity. It replaces
+        // the generic "no services listed" finding (same fact, less useful).
+        const generic = findings.findIndex((f) => f.id === 'profile.services_listed.missing');
+        if (generic >= 0) findings.splice(generic, 1);
+        findings.push({
+          id: 'website.services.missing_on_gbp',
+          category: 'profile',
+          title: `Your website lists ${websiteServices.length} service${websiteServices.length === 1 ? '' : 's'}; your Google profile lists none`,
+          evidence: `Google Business Profile services: none · Website (${websiteIntel.services[0]?.sourceUrl}): ${websiteServices.slice(0, 5).join(', ')}${websiteServices.length > 5 ? '…' : ''}`,
+          evidenceIds: ['gbp.services', 'website.services'],
+          source: 'gbp_api',
+          severity: 'medium',
+          confidence: 'high',
+          businessImpact: 'Google matches listings to searches partly by the services listed on them.',
+          actionability: 'directly_fixable',
+          growwmaticsCapability: null,
+          recommendedAction: `Add the services you really offer to Google Business Profile — your website already names: ${websiteServices.slice(0, 5).join(', ')}.`,
+        });
+      } else if (websiteServices.length && servicesStatus !== 'Complete') {
         findings.push({
           id: 'website.services.verify_on_gbp',
           verificationOnly: true,
@@ -870,7 +930,7 @@ async function processAuditJobInner(auditId: string) {
             businessNames: [business.name, ...competitorFacts.map((c) => c.name)],
             places: [resolvedCity, business.area, business.state, business.country, ...areasChecked].filter(Boolean),
             serviceTerms: [
-              ...collectVerifiedServices(business, { servicePages: websiteServices }),
+              ...collectVerifiedServices(business, { servicePages: websiteServices }, intelApi ? intelApi.gbpServiceNames(gbpIntel) : []),
               websiteIntel?.description?.value || '',
               ...(websiteIntel?.credentials || []).map((c: any) => c.value),
               resolvedCategory, websiteSearchTerm || '', publicProfile.category || '',
@@ -928,7 +988,7 @@ async function processAuditJobInner(auditId: string) {
     if (!seoPlanDraft) {
       try {
         const { generateSeoPlanDraft } = require('../ai/seoPlanEngine');
-        const verifiedServices = collectVerifiedServices(business, { servicePages: websiteServices });
+        const verifiedServices = collectVerifiedServices(business, { servicePages: websiteServices }, intelApi ? intelApi.gbpServiceNames(gbpIntel) : []);
         seoPlanDraft = await generateSeoPlanDraft({
           businessName: business.name,
           category: resolvedCategory,
@@ -971,7 +1031,7 @@ async function processAuditJobInner(auditId: string) {
           usps: business.intake?.uniqueSellingPoints || '',
           services: business.services || '',
           verifiedServices,
-          ownerServices: collectVerifiedServices(business, null),
+          ownerServices: collectVerifiedServices(business, null, intelApi ? intelApi.gbpServiceNames(gbpIntel) : []),
           websiteIntel,
           publicProfile,
           competitorComparison,
@@ -981,6 +1041,7 @@ async function processAuditJobInner(auditId: string) {
           websiteSignals,
           gbpLive,
           suspensionRisk,
+          gbpIntelligenceLines: intelApi ? intelApi.seoBrainGbpLines(gbpIntel, { changesSince: gbpChangesSince, now: new Date() }) : undefined,
         });
       } catch (planErr: any) {
         console.warn('[auditService] seoPlanDraft generation failed:', planErr?.message);
@@ -1171,7 +1232,11 @@ async function processAuditJobInner(auditId: string) {
         websiteSearchTerm,
         // Live GBP field values (connected audits) — the monthly report diffs
         // these between audits to find verified profile changes.
-        gbpProfile: gbpLive ? { fields: gbpLive, readAt: new Date().toISOString() } : null,
+        gbpProfile: gbpLive
+          ? { fields: gbpLive, readAt: gbpIntel ? gbpIntel.sections.location.meta.lastSuccessfulFetchAt : new Date().toISOString() }
+          : null,
+        // GBP Intelligence used by this audit (summary only — the snapshot itself stays in GbpLocationSnapshot).
+        gbpIntelligence: intelApi ? intelApi.auditGbpIntelligenceSummary(gbpIntel) : null,
         website: websiteIntel
           ? {
               origin: websiteIntel.origin,
@@ -1330,7 +1395,8 @@ async function processAuditJobInner(auditId: string) {
         { source: 'dataforseo_ads_volume', status: keywordTable.some((k: any) => k.demandStatus === 'measured') ? 'ok' : keywordTable.length ? 'no_volume_returned' : 'not_run', at: nowIso },
         { source: 'reviews', status: reviewFacts.recent.status === 'verified' ? 'synced' : 'lifetime_only', at: totals?.capturedAt ?? null, provider: reviewFacts.lifetime.source },
         { source: 'website', status: !business.website ? 'no_website' : websiteIntel?.status ?? 'not_read', at: websiteIntel?.fetchedAt ?? null },
-        { source: 'gbp_api', status: gbpLive ? 'read' : business.googleLocationId && !audit.fastMode ? 'read_failed' : 'not_connected', at: gbpLive ? nowIso : null },
+        { source: 'gbp_api', status: gbpLive ? 'read' : business.googleLocationId && !audit.fastMode ? 'read_failed' : 'not_connected', at: gbpLive ? (gbpIntel ? gbpIntel.sections.location.meta.lastSuccessfulFetchAt : nowIso) : null },
+        { source: 'gbp_intelligence', status: gbpIntel ? 'snapshot_used' : business.googleLocationId && !audit.fastMode ? 'snapshot_not_fresh' : 'not_connected', at: gbpIntel ? gbpIntel.fetchedAt : null },
       ],
       ranking: {
         searches: rankingFacts.overall.totalSearches,
@@ -1469,13 +1535,15 @@ async function processAuditJobInner(auditId: string) {
  * provided, or seen as a service link on the business's own website. Never
  * generated.
  */
-function collectVerifiedServices(business: any, websiteSignals: any): string[] {
+function collectVerifiedServices(business: any, websiteSignals: any, gbpServices: string[] = []): string[] {
   const out: string[] = [];
   const push = (s: string) => {
     const v = String(s || '').trim();
     if (v.length >= 3 && v.length <= 60 && !out.some((x) => x.toLowerCase() === v.toLowerCase())) out.push(v);
   };
   String(business.services || '').split(/[,;\n]+/).forEach(push);
+  // Services Google lists on the connected profile (GBP Intelligence) are live-listed, i.e. verified.
+  gbpServices.forEach(push);
   // NOT business.keywords: those are auto-filled from earlier audits'
   // keyword phrases ("it training institute kolkata"), not services.
   (websiteSignals?.servicePages || []).forEach(push);
@@ -1500,6 +1568,7 @@ function comparableSnapshot(auditId: string, kind: ComparableSnapshot['kind'], a
     rating: lifetime.rating ?? null,
     completionPercentage: data?.profileCompletion?.completionPercentage ?? null,
     completionScope: data?.profileCompletion?.completionScope ?? null,
+    completionBasis: data?.profileCompletion?.completionBasis ?? null,
     performance: data?.performanceBaseline?.status === 'verified'
       ? {
           days: 28,

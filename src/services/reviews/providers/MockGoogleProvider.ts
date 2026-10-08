@@ -8,6 +8,8 @@ export interface ProviderReview {
   ownerReply?: string;
   /** Reviewer's Google profile photo, when the provider exposes one. */
   reviewerPhotoUrl?: string;
+  /** Last time the review or its reply changed on Google (GBP API only). */
+  updateTime?: string;
 }
 
 /** Lifetime totals the provider saw in its own response (not a count of fetched reviews). */
@@ -24,6 +26,26 @@ export interface FetchReviewsOptions {
    * so a nightly re-sync costs ~1 API call instead of ~10.
    */
   knownReviewIds?: Set<string>;
+  /**
+   * GBP API only. 'full' pages through every review (up to maxReviews);
+   * 'incremental' stops once reviews are older than sinceUpdateTime — so a
+   * reply or edit made on Google to an older review is still picked up.
+   * Omitted → the original knownReviewIds behaviour.
+   */
+  mode?: 'full' | 'incremental' | 'known_ids';
+  sinceUpdateTime?: string | null;
+  maxReviews?: number;
+}
+
+/** What one GBP fetch actually covered (completeness bookkeeping). */
+export interface ProviderRunInfo {
+  mode: 'full' | 'incremental' | 'known_ids';
+  pages: number;
+  fetched: number;
+  /** Pagination stopped because maxReviews was reached (more exist on Google). */
+  hitCap: boolean;
+  /** Newest updateTime seen this run. */
+  maxUpdateTime: string | null;
 }
 
 export class MockGoogleProvider {

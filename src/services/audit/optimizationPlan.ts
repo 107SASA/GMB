@@ -36,6 +36,8 @@ export interface ComparableSnapshot {
   rating: number | null;
   completionPercentage: number | null;
   completionScope: string | null;
+  /** Which fields the percentage was measured over beyond the scope (absent = standard). */
+  completionBasis?: string | null;
   /** Google Performance API totals for a fixed window (connected audits only). */
   performance?: { days: number; calls: number; websiteClicks: number; directionRequests: number } | null;
 }
@@ -110,13 +112,17 @@ export function compareAudits(prev: ComparableSnapshot, cur: ComparableSnapshot)
     after: fmt(cur.rating, '★'),
     change: dir(prev.rating, cur.rating),
   });
-  const scopeSame = prev.completionScope === cur.completionScope;
+  const scopeSame = prev.completionScope === cur.completionScope && (prev.completionBasis ?? 'standard') === (cur.completionBasis ?? 'standard');
   rows.push({
     metric: 'Profile completion',
     before: fmt(prev.completionPercentage, '%'),
     after: fmt(cur.completionPercentage, '%'),
     change: scopeSame ? dir(prev.completionPercentage, cur.completionPercentage) : 'not_comparable',
-    note: scopeSame ? undefined : 'Measured over different fields (public listing vs connected Google profile), so not compared.',
+    note: scopeSame
+      ? undefined
+      : prev.completionScope !== cur.completionScope
+        ? 'Measured over different fields (public listing vs connected Google profile), so not compared.'
+        : 'Measured over a different set of Google profile fields (hours, services, attributes, media read from the full Google sync), so not compared.',
   });
   // Customer actions from Google — the real ROI evidence. Only compared when
   // both audits read them over windows of the same length.

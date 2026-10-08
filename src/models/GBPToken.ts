@@ -23,6 +23,30 @@ export interface IGBPToken extends Document {
    */
   historyBackfilledAt?: Date | null;
   keywordSync?: { checkedAt: Date; months: Array<{ year: number; month: number; count: number; error?: string }> } | null;
+  /**
+   * Refresh-token health (FR-3.4). Set by getValidToken (lib/gbpClient.ts):
+   * REVOKED only on Google's invalid_grant; cleared on every new connection
+   * (finalizeGbpConnection / finalizeReportConnection). notifiedAt makes the
+   * reconnect alert fire once per revocation, not on every sync.
+   */
+  authStatus?: {
+    state: 'REVOKED' | 'REFRESH_FAILING';
+    reason: 'REVOKED' | 'CONFIGURATION' | 'TEMPORARY';
+    detectedAt: Date;
+    lastFailureAt: Date;
+    notifiedAt?: Date | null;
+  } | null;
+  /** Review sync bookkeeping (watermark + completeness) — see services/reviews/syncReviews.ts. */
+  reviewSync?: {
+    lastRunAt: Date;
+    mode: 'full' | 'incremental';
+    fetched: number;
+    maxUpdateTime?: string | null;
+    lastFullSyncAt?: Date | null;
+    hitCap?: boolean;
+    googleTotal?: number | null;
+    conflicts?: number;
+  } | null;
 }
 
 const GBPTokenSchema = new Schema<IGBPToken>(
@@ -42,6 +66,8 @@ const GBPTokenSchema = new Schema<IGBPToken>(
     historyBackfilledAt: { type: Date, default: null },
     /** Last search-keyword sync: months asked for, terms returned, Google errors (shown on the dashboard). */
     keywordSync: { type: Schema.Types.Mixed, default: null },
+    authStatus: { type: Schema.Types.Mixed, default: null },
+    reviewSync: { type: Schema.Types.Mixed, default: null },
   },
   { timestamps: true }
 );

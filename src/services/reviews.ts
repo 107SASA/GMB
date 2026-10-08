@@ -35,6 +35,7 @@ export async function processNewReviews(businessId: string) {
     // sequential existence checks on every monitor run).
     const alreadyStored = new Set(
       (await Review.find({
+        businessId: business._id,
         providerReviewId: { $in: fetchedReviews.map((r) => r.providerReviewId) },
       }).select('providerReviewId').lean()).map((r: any) => r.providerReviewId)
     );

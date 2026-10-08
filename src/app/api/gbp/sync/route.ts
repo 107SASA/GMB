@@ -2,18 +2,33 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { requireBusinessContext } from '@/lib/tenant';
 import GBPToken from '@/models/GBPToken';
-import GBPInsights from '@/models/GBPInsights';
-import GBPKeyword from '@/models/GBPKeyword';
-import Business from '@/models/Business';
-import { fetchDailyMetrics, fetchSearchKeywords, fetchLocationProfile } from '@/lib/gbpClient';
-import { backfillGbpInsightsIfNeeded } from '@/services/gbpInsightsBackfill';
+import GbpLocationSnapshot from '@/models/GbpLocationSnapshot';
+import { inngest } from '@/services/inngest/client';
+import { checkRateLimit } from '@/lib/rateLimit';
 
+export const dynamic = 'force-dynamic';
+
+const WAIT_MS = 25_000;
+const POLL_MS = 1_000;
+const MIN_INTERVAL_MS = 30_000;
+
+/**
+ * Manual "Sync now" (web Insights page, dashboard GBP section, mobile
+ * Performance tab). Runs the SAME pipeline as connect and the 6-hourly
+ * schedule — the `gbp/sync.requested` event handled by gbpSyncWorker
+ * (metrics, keywords, reviews, GBP Intelligence snapshot, profile gap-fill,
+ * history backfill) — instead of a second inline copy of that logic.
+ *
+ * Callers refetch as soon as this returns, so it waits up to WAIT_MS for the
+ * worker to finish. `synced` says whether it finished in that time; if not,
+ * the sync still completes in the background.
+ */
 export async function POST() {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
 
   await dbConnect();
-  const tokenDoc = await GBPToken.findOne({ businessId: ctx.businessId });
+  const tokenDoc = await GBPToken.findOne({ businessId: ctx.businessId }).select('_id').lean();
   if (!tokenDoc) {
     return NextResponse.json(
       { success: false, error: 'Google Business Profile not connected' },
@@ -21,127 +36,33 @@ export async function POST() {
     );
   }
 
-  const now = new Date();
-  const endDate = new Date(now);
-  endDate.setDate(endDate.getDate() - 1); // GBP data lags by 1 day
-  const startDate = new Date(endDate);
-  startDate.setDate(startDate.getDate() - 27); // 28 days total
-
-  // --- Sync daily metrics ---
-  const dailyData = await fetchDailyMetrics(ctx.businessId, startDate, endDate);
-
-  await Promise.all(
-    dailyData.map((d) =>
-      GBPInsights.findOneAndUpdate(
-        { businessId: ctx.businessId, date: new Date(d.date) },
-        {
-          $set: {
-            businessId: ctx.businessId,
-            organizationId: ctx.organizationId,
-            date: new Date(d.date),
-            views: d.views,
-            viewsMaps: d.viewsMaps,
-            viewsSearch: d.viewsSearch,
-            callClicks: d.callClicks,
-            websiteClicks: d.websiteClicks,
-            directionRequests: d.directionRequests,
-            conversations: d.conversations,
-            syncedAt: now,
-          },
-        },
-        { upsert: true }
-      )
-    )
-  );
-
-  // --- Sync keywords: current month + previous month ---
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1;
-  const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-  const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-
-  const [currentKeywords, prevKeywords] = await Promise.all([
-    fetchSearchKeywords(ctx.businessId, currentYear, currentMonth).catch(() => []),
-    fetchSearchKeywords(ctx.businessId, prevYear, prevMonth).catch(() => []),
-  ]);
-
-  const allKeywords = [
-    ...currentKeywords.map((k) => ({ ...k, year: currentYear, month: currentMonth })),
-    ...prevKeywords.map((k) => ({ ...k, year: prevYear, month: prevMonth })),
-  ];
-
-  await Promise.all(
-    allKeywords.map((k) =>
-      GBPKeyword.findOneAndUpdate(
-        {
-          businessId: ctx.businessId,
-          keyword: k.keyword,
-          month: k.month,
-          year: k.year,
-        },
-        {
-          $set: {
-            businessId: ctx.businessId,
-            organizationId: ctx.organizationId,
-            keyword: k.keyword,
-            impressions: k.impressions,
-            month: k.month,
-            year: k.year,
-            type: k.type,
-            syncedAt: now,
-          },
-        },
-        { upsert: true }
-      )
-    )
-  );
-
-  await GBPToken.findOneAndUpdate(
-    { businessId: ctx.businessId },
-    { $set: { lastSyncAt: now } }
-  );
-
-  // Corrects Business.category (and fills a few other fields if still empty)
-  // from the authoritative Google Business Profile — see the matching step
-  // in gbpSyncWorker (services/inngest/functions.ts) for the full reasoning.
-  // Duplicated here (rather than this route dispatching that background job)
-  // so a manual sync click shows the corrected category immediately instead
-  // of waiting for the next nightly run. Best-effort — never fails the sync.
-  try {
-    const profile = await fetchLocationProfile(ctx.businessId);
-    const business = await Business.findById(ctx.businessId)
-      .select('category description phone website address')
-      .lean() as any;
-    if (business) {
-      const update: Record<string, unknown> = {};
-      if (profile.primaryCategory && profile.primaryCategory !== business.category) {
-        update.category = profile.primaryCategory;
-      }
-      if (!business.description && profile.description) update.description = profile.description;
-      if (!business.phone && profile.primaryPhone) update.phone = profile.primaryPhone;
-      if (!business.website && profile.website) update.website = profile.website;
-      if (!business.address && profile.address) update.address = profile.address;
-      if (Object.keys(update).length > 0) {
-        await Business.findByIdAndUpdate(ctx.businessId, { $set: update });
-      }
-    }
-  } catch (err: any) {
-    console.error(`[gbp/sync] Profile sync failed for ${ctx.businessId}:`, err.message);
+  const rl = checkRateLimit(`gbp-manual-sync:${ctx.businessId}`, 1, MIN_INTERVAL_MS);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { success: false, error: 'A sync was just started — please wait a moment before syncing again.' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
+    );
   }
 
-  // One-time 6-month GBPInsights history backfill — see
-  // services/gbpInsightsBackfill.ts and GBPToken.historyBackfilledAt. No-op
-  // (one indexed read, no API calls) once already done for this business.
-  try {
-    await backfillGbpInsightsIfNeeded(ctx.businessId, ctx.organizationId);
-  } catch (err: any) {
-    console.error(`[gbp/sync] History backfill failed for ${ctx.businessId}:`, err.message);
-  }
-
-  return NextResponse.json({
-    success: true,
-    synced: true,
-    daysProcessed: dailyData.length,
-    keywordsProcessed: allKeywords.length,
+  const startedAt = new Date();
+  await inngest.send({
+    // Same event id within the window → Inngest drops the duplicate.
+    id: `gbp-manual-sync-${ctx.businessId}-${Math.floor(startedAt.getTime() / MIN_INTERVAL_MS)}`,
+    name: 'gbp/sync.requested',
+    data: { businessId: ctx.businessId, reason: 'manual' },
   });
+
+  // The intelligence step runs after metrics and reviews, so a snapshot
+  // fetched after `startedAt` means the data the caller re-reads is fresh.
+  const deadline = Date.now() + WAIT_MS;
+  let synced = false;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, POLL_MS));
+    const snap = await GbpLocationSnapshot.findOne({ businessId: ctx.businessId }).select('fetchedAt lastSyncOutcome healthState').lean<{ fetchedAt?: Date; lastSyncOutcome?: string; healthState?: string }>();
+    if (snap?.fetchedAt && new Date(snap.fetchedAt).getTime() >= startedAt.getTime()) {
+      synced = true;
+      return NextResponse.json({ success: true, synced, queued: true, outcome: snap.lastSyncOutcome ?? null, healthState: snap.healthState ?? null });
+    }
+  }
+  return NextResponse.json({ success: true, synced, queued: true });
 }

@@ -1754,6 +1754,37 @@ export const generateAuditJob = inngest.createFunction(
   async ({ event, step }) => {
     const { auditId } = event.data;
 
+    // GBP Intelligence: connecting Google emits gbp/sync.requested and starts
+    // the first full audit back-to-back (finalizeGbpConnection), so the audit
+    // can begin before the workspace's first snapshot exists. Wait briefly —
+    // durable sleeps, database reads only, no Google calls — so it uses the
+    // snapshot (and, running after the worker's review import, its pre-sync
+    // below is incremental instead of a second full import). Only when the
+    // workspace is connected and has no snapshot for its current location.
+    // Capped well inside cleanupStalePendingAudits' 5-minute PENDING limit;
+    // on timeout (e.g. Google unavailable) the audit continues exactly as
+    // before with its own live-read fallback.
+    const snapshotCheck = await step.run('check-gbp-snapshot', async () => {
+      const dbConnect = (await import('@/lib/mongodb')).default;
+      await dbConnect();
+      const { default: Audit } = await import('@/models/Audit');
+      const audit: any = await Audit.findById(auditId).select('businessId fastMode').lean();
+      if (!audit || audit.fastMode) return { wait: false, businessId: null as string | null };
+      const { gbpSnapshotReadiness } = await import('@/services/gbp/intelligence/runner');
+      const r = await gbpSnapshotReadiness(String(audit.businessId));
+      return { wait: r.connected && !r.ready, businessId: String(audit.businessId) };
+    });
+    if (snapshotCheck.wait && snapshotCheck.businessId) {
+      for (let i = 0; i < 5; i++) {
+        await step.sleep(`wait-gbp-snapshot-${i}`, '15s');
+        const ready = await step.run(`gbp-snapshot-ready-${i}`, async () => {
+          const { gbpSnapshotReadiness } = await import('@/services/gbp/intelligence/runner');
+          return (await gbpSnapshotReadiness(snapshotCheck.businessId!)).ready;
+        });
+        if (ready) break;
+      }
+    }
+
     // Pull fresh reviews before scoring so the audit sees current data.
     // If the sync fails for any reason, we fall through and use whatever
     // reviews are already in the DB rather than blocking the whole audit.
@@ -4277,8 +4308,11 @@ export const processDemoBooking = inngest.createFunction(
 
 // ── GBP nightly sync cron ─────────────────────────────────────────────────────
 
+// FR-3.3: every connected business syncs at least every 6 hours. The id is
+// kept (it was the nightly scheduler) so Inngest replaces the schedule
+// instead of orphaning it; the worker throttles the daily-grade steps itself.
 export const gbpNightlySyncScheduler = inngest.createFunction(
-  { id: "gbp-nightly-sync-scheduler", triggers: [{ cron: "0 3 * * *" }] },
+  { id: "gbp-nightly-sync-scheduler", triggers: [{ cron: "0 */6 * * *" }] },
   async ({ step }) => {
     const { default: dbConnect } = await import("@/lib/mongodb");
     const { default: BusinessModel } = await import("@/models/Business");
@@ -4297,7 +4331,7 @@ export const gbpNightlySyncScheduler = inngest.createFunction(
       connectedBusinesses.map((b: any) =>
         step.sendEvent(`gbp-sync-${b._id}`, {
           name: "gbp/sync.requested",
-          data: { businessId: b._id.toString() },
+          data: { businessId: b._id.toString(), reason: "scheduled" },
         })
       )
     );
@@ -4307,9 +4341,20 @@ export const gbpNightlySyncScheduler = inngest.createFunction(
 );
 
 export const gbpSyncWorker = inngest.createFunction(
-  { id: "gbp-sync-worker", triggers: [{ event: "gbp/sync.requested" }], retries: 2 },
+  {
+    id: "gbp-sync-worker",
+    triggers: [{ event: "gbp/sync.requested" }],
+    retries: 2,
+    // One sync per business at a time (manual + scheduled never overlap or
+    // double-refresh the token), and a global cap so the 6-hourly fan-out
+    // stays inside Google's per-project quotas (NFR-5).
+    concurrency: [{ limit: 10 }, { key: "event.data.businessId", limit: 1 }],
+  },
   async ({ event, step }) => {
     const { businessId } = event.data;
+    // connect (finalizeGbpConnection sends no reason) | scheduled | manual
+    const reason: "connect" | "scheduled" | "manual" =
+      event.data.reason === "scheduled" || event.data.reason === "manual" ? event.data.reason : "connect";
 
     await step.run("sync-gbp-data", async () => {
       const { default: dbConnect } = await import("@/lib/mongodb");
@@ -4326,6 +4371,12 @@ export const gbpSyncWorker = inngest.createFunction(
       if (!tokenDoc) return { skipped: true, reason: "No token" };
 
       const now = new Date();
+      // Daily metrics and monthly search keywords don't change within a day:
+      // scheduled 6-hourly runs reuse the last pull for 20h (fewer API calls);
+      // connect and manual syncs always refresh.
+      if (reason === "scheduled" && tokenDoc.lastSyncAt && now.getTime() - new Date(tokenDoc.lastSyncAt).getTime() < 20 * 3_600_000) {
+        return { skipped: true, reason: "Metrics refreshed within 20h" };
+      }
       const endDate = new Date(now);
       endDate.setDate(endDate.getDate() - 1);
       const startDate = new Date(endDate);
@@ -4451,11 +4502,29 @@ export const gbpSyncWorker = inngest.createFunction(
     // Runs on every gbp/sync.requested firing (a fresh connect AND every
     // nightly re-sync), so it also self-heals a workspace whose category was
     // already wrong before this existed, not just newly-connected ones.
+    // GBP Intelligence (FR-3.2 → FR-3.6): ONE read of the full listing
+    // (profile, hours, categories, services, attributes, verification, media,
+    // posts, Google-updated fields, duplicates) → GbpLocationSnapshot, change
+    // detection and health. Reviews are not re-fetched: the step above already
+    // synced them and this summarizes the stored result. Never throws for a
+    // Google failure — those are recorded per section on the snapshot.
+    const intelligence = await step.run("sync-gbp-intelligence", async () => {
+      const { syncCompleteGbpIntelligence } = await import("@/services/gbp/intelligence/runner");
+      try {
+        return await syncCompleteGbpIntelligence(businessId, { reason, force: reason === "manual" });
+      } catch (err: any) {
+        console.error(`[GBP Sync] Intelligence sync failed for ${businessId}:`, err.message);
+        return { ok: false as const, error: String(err?.message || err).slice(0, 300), profileForBusiness: null };
+      }
+    });
+
     await step.run("sync-gbp-profile", async () => {
       const { default: BusinessModel } = await import("@/models/Business");
       const { fetchLocationProfile, GBPAuthError } = await import("@/lib/gbpClient");
       try {
-        const profile = await fetchLocationProfile(businessId);
+        // Reuse the location the intelligence step just read (no second
+        // Google call); fall back to the original live read if it failed.
+        const profile = intelligence?.profileForBusiness ?? await fetchLocationProfile(businessId);
         const business = await BusinessModel.findById(businessId)
           .select('category description phone website address')
           .lean() as any;

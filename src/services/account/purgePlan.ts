@@ -52,6 +52,7 @@ export const PURGE_TARGETS: PurgeTarget[] = [
   { model: 'ReviewReply', by: { businessId: 'businessId' }, category: 'a', what: 'review reply drafts and audit rows' },
   { model: 'Post', by: { businessId: 'businessId' }, category: 'a', what: 'Google posts and drafts' },
   { model: 'GbpMediaAsset', by: { businessId: 'businessId' }, category: 'a', what: 'uploaded photos / videos (records; files deleted separately)' },
+  { model: 'GbpLocationSnapshot', by: { businessId: 'businessId' }, category: 'a', what: 'Google Business Profile snapshot (listing details, change history, health)' },
   { model: 'ShowcaseAsset', by: { businessId: 'businessId' }, category: 'a', what: 'success-story uploads' },
   { model: 'Testimonial', by: { businessId: 'businessId' }, category: 'a', what: 'testimonials submitted' },
   { model: 'FAQ', by: { businessId: 'businessId' }, category: 'a', what: 'FAQs' },

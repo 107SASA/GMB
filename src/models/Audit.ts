@@ -94,6 +94,8 @@ export interface IProfileCompletion {
   completionPercentage: number;
   /** 'places' before a Google connection, 'full' after. */
   completionScope?: 'places' | 'full';
+  /** 'gbp_intelligence' when hours/services/attributes/media came from the GBP Intelligence snapshot (more fields measured). */
+  completionBasis?: 'gbp_intelligence';
   /** The one qualified sentence every surface prints, e.g. "100% of visible
    *  fields complete — 7 more fields need a Google connection to check." */
   completionLabel?: string;

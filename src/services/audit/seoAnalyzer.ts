@@ -43,6 +43,8 @@ export interface GbpLiveRead {
   website?: string;
   primaryCategory?: string;
   additionalCategories?: string[];
+  /** Formatted storefront address (only when read via GBP Intelligence). */
+  address?: string;
 }
 
 /**
@@ -67,6 +69,13 @@ export function calculateProfileCompletion(
     gbpLive?: GbpLiveRead | null;
     /** The target's public Maps listing as seen in ranking results (facts.publicProfileFromObservations). */
     publicProfile?: { observed: boolean; additionalCategories: string[] | null; bookingUrl: string | null } | null;
+    /**
+     * Field states proven by the GBP Intelligence snapshot (hours, services,
+     * attributes, photos, videos, logo/cover, service area, booking/social
+     * links — see services/gbp/intelligence/auditInput.ts). Only fields Google
+     * actually answered are present; everything else keeps its own state.
+     */
+    gbpIntelStates?: Partial<Record<string, IChecklistItem['status']>>;
   } = {},
 ) {
   const checklist: IChecklistItem[] = [];
@@ -90,7 +99,7 @@ export function calculateProfileCompletion(
   const category = realValue(live?.primaryCategory) || realValue(business.userDefinedCategory) || realValue(business.category);
   const phone = live ? realValue(live.primaryPhone) : realValue(business.phone);
   const website = live ? realValue(live.website) : realValue(business.website);
-  const address = realValue(business.address);
+  const address = realValue(live?.address) || realValue(business.address);
 
   check('Business Name', !!name, false);
   // Every Google listing must have a primary category; if we couldn't read
@@ -123,6 +132,12 @@ export function calculateProfileCompletion(
   // absence there is not verified, so it stays Unknown.
   push('Booking / Appointment Link', pub?.bookingUrl ? 'Complete' : 'Unknown');
   const hasGbpConnection = !!live;
+  if (opts.gbpIntelStates) {
+    for (const item of checklist) {
+      const st = opts.gbpIntelStates[item.field];
+      if (st) item.status = st;
+    }
+  }
 
   const completeCount = checklist.filter((c) => c.status === 'Complete').length;
   const missingCount  = checklist.filter((c) => c.status === 'Missing').length;

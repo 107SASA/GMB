@@ -284,7 +284,9 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
     return out;
   };
   const allowed: Record<string, string[]> = {
-    'src/services/inngest/functions.ts': ['processFollowUpJob', 'scheduleLeadFollowUpsJob', 'dispatchWhatsappFollowUpJob', 'crmFollowUpReminderCron', 'crmStaleLeadReminderCron', 'crmGrowthReportReadyCron'],
+    // + the GBP sync scheduler/worker (FR-3.2 → FR-3.6 GBP Intelligence) and the audit's
+    //   bounded wait for the first GBP snapshot — not CRM code.
+    'src/services/inngest/functions.ts': ['processFollowUpJob', 'scheduleLeadFollowUpsJob', 'dispatchWhatsappFollowUpJob', 'crmFollowUpReminderCron', 'crmStaleLeadReminderCron', 'crmGrowthReportReadyCron', 'gbpNightlySyncScheduler', 'gbpSyncWorker', 'generateAuditJob'],
     'src/app/api/whatsapp/webhook/route.ts': ['__header__', 'processInboundMessage'],
   };
   for (const [file, ok] of Object.entries(allowed)) {

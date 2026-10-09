@@ -1,0 +1,240 @@
+/**
+ * FR-5 change rules. Pure. No Google calls.
+ * Run: node --experimental-strip-types --test tests/integration/fr5-changes.test.ts
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  PRODUCTS_SUPPORT,
+  buildAttributeWrite,
+  buildServiceWrite,
+  canonicalFingerprint,
+  classifyReadBack,
+  canRollbackAttribute,
+  idempotencyResult,
+  comparePin,
+  draftDescription,
+  fingerprint,
+  locationGuard,
+  rollbackRecheck,
+  haversineMeters,
+  holidayReminders,
+  toGoogleHours,
+  validateBusinessName,
+  validateDescription,
+  validateRegularHours,
+  validateServiceArea,
+  validateSpecialHours,
+  withGbpUtm,
+} from '../../src/services/gbp/changes/policy.ts';
+import { applyAndVerify, approve, executionClaim, rollbackDecision, type ChangeRecord } from '../../src/services/gbp/changes/machine.ts';
+import { proposeServices, recommendCategories, suggestUnsetAttributes } from '../../src/services/gbp/changes/recommend.ts';
+
+const base = (): ChangeRecord => ({
+  id: '1', businessId: 'biz', organizationId: null, locationId: 'locations/1',
+  kind: 'description', fields: ['description'], sensitive: false, source: 'owner',
+  before: 'old', proposed: 'new', after: null, beforeFingerprint: 'a', afterFingerprint: null,
+  status: 'PROPOSED', validation: { valid: true, violations: [] },
+  requestedBy: 'user', approvedBy: null, approvedAt: null, executedAt: null, verifiedAt: null,
+  googleResult: null, error: null, rollbackStatus: null, rolledBackBy: null, rolledBackAt: null,
+  recommendationRef: null,
+});
+
+test('approval is workspace-bound and sensitive fields need a separate confirm', () => {
+  const other = approve(base(), { userId: 'u', businessId: 'other' }, { now: '2026-10-08T00:00:00.000Z' });
+  assert.equal(other.ok, false);
+  const sensitive = { ...base(), kind: 'title', sensitive: true };
+  const missing = approve(sensitive, { userId: 'u', businessId: 'biz' }, { now: '2026-10-08T00:00:00.000Z' });
+  assert.equal(missing.ok, false);
+  const ok = approve(sensitive, { userId: 'u', businessId: 'biz' }, { confirmSensitive: true, now: '2026-10-08T00:00:00.000Z' });
+  assert.equal(ok.ok, true);
+  if (ok.ok) assert.equal(ok.change.status, 'APPROVED');
+  const invalid = approve({ ...base(), validation: { valid: false, violations: [{ code: 'url', message: 'x' }] } }, { userId: 'u', businessId: 'biz' }, { now: '2026-10-08T00:00:00.000Z' });
+  assert.equal(invalid.ok, false);
+});
+
+test('execution and rollback refuse duplicates and stale Google state', () => {
+  assert.equal(executionClaim('APPROVED'), 'ok');
+  assert.equal(executionClaim('EXECUTING'), 'duplicate');
+  assert.equal(executionClaim('PROPOSED'), 'not_approved');
+  const verified = { ...base(), status: 'VERIFIED' as const, afterFingerprint: fingerprint('after'), after: 'after' };
+  assert.equal(rollbackDecision(verified, fingerprint('after')), 'ok');
+  assert.equal(rollbackDecision(verified, fingerprint('someone else')), 'conflict');
+  assert.equal(rollbackDecision({ ...verified, status: 'REVERTED' }, fingerprint('after')), 'duplicate');
+});
+
+test('description policy', () => {
+  const tokens = ['plumber', 'nashik'];
+  const good = draftDescription({ name: 'Mulsetu', category: 'Plumber', city: 'Nashik', services: ['Blocked drain repair'] });
+  const valid = validateDescription(good, { tokens });
+  assert.equal(valid.valid, true);
+  assert.equal(valid.first250Quality, true);
+  assert.ok(good.length <= 750);
+  assert.equal(validateDescription(`${'a'.repeat(751)} plumber nashik`, { tokens }).valid, false);
+  assert.equal(validateDescription('Mulsetu is a plumber in Nashik. Visit https://example.com', { tokens }).containsUrl, true);
+  assert.equal(validateDescription('The best plumber in Nashik', { tokens }).promotionalLanguage, true);
+  assert.equal(validateDescription('plumber plumber plumber plumber in Nashik', { tokens }).keywordStuffing, true);
+  assert.equal(validateDescription('Mulsetu is a plumber in Nashik with 500 reviews', { tokens, allowedNumbers: [] }).unsupportedClaims, true);
+});
+
+test('name guard blocks stuffing and always requires explicit approval', () => {
+  const clean = validateBusinessName('Mulsetu', 'Mulsetu Plumbing', { city: 'Nashik', category: 'Plumber', services: ['drain'] });
+  assert.equal(clean.requiresExplicitApproval, true);
+  assert.equal(clean.valid, true);
+  const stuffed = validateBusinessName('Mulsetu', 'Best Plumber Nashik Nashik', { city: 'Nashik', category: 'Plumber' });
+  assert.equal(stuffed.valid, false);
+  assert.ok(stuffed.violations.some((v) => v.code === 'promo' || v.code === 'city' || v.code === 'category'));
+});
+
+test('hours, links, service area, and pin', () => {
+  assert.equal(validateRegularHours([{ openDay: 'MONDAY', closeDay: 'MONDAY', openTime: '09:00', closeTime: '17:00' }]).valid, true);
+  assert.equal(validateRegularHours([{ openDay: 'MONDAY', closeDay: 'MONDAY', openTime: '17:00', closeTime: '09:00' }]).valid, false);
+  assert.equal(validateRegularHours([
+    { openDay: 'MONDAY', closeDay: 'MONDAY', openTime: '09:00', closeTime: '12:00' },
+    { openDay: 'MONDAY', closeDay: 'MONDAY', openTime: '11:00', closeTime: '15:00' },
+  ]).valid, false);
+  assert.equal(validateSpecialHours([{ startDate: '2026-10-20', closed: true }]).valid, true);
+  assert.equal(validateSpecialHours([{ startDate: '20-10-2026', closed: true }]).valid, false);
+  const utm = withGbpUtm('https://example.com/service?ref=1&utm_source=newsletter');
+  assert.equal(utm.ok, true);
+  assert.match(utm.url || '', /utm_source=newsletter/);
+  assert.match(utm.url || '', /utm_medium=organic/);
+  assert.equal((utm.url || '').split('utm_source=').length, 2);
+  const area = validateServiceArea({
+    businessType: 'CUSTOMER_LOCATION_ONLY',
+    places: [{ placeId: 'ChIJexample1', placeName: 'Nashik' }, { placeId: 'ChIJexample1', placeName: 'Nashik' }],
+  });
+  assert.equal(area.valid, false);
+  assert.equal(validateServiceArea({ businessType: 'STOREFRONT', places: [{ placeId: 'ChIJexample1', placeName: 'Nashik' }] }).valid, false);
+  assert.equal(validateServiceArea({
+    businessType: 'CUSTOMER_LOCATION_ONLY',
+    places: Array.from({ length: 21 }, (_, i) => ({ placeId: `ChIJexample${i}xxxx`, placeName: `Area ${i}` })),
+  }).valid, false);
+  const here = { lat: 19.99, lng: 73.78 };
+  assert.equal(comparePin(here, here, 0).status, 'MATCH');
+  const far = haversineMeters(here, { lat: 20.02, lng: 73.78 });
+  assert.ok(far > 250);
+  assert.equal(comparePin(here, { lat: 20.02, lng: 73.78 }, far).status, 'MISMATCH');
+  assert.equal(comparePin(null, null, null).status, 'UNKNOWN');
+  assert.equal(holidayReminders([], null, '2026-10-08T00:00:00.000Z').status, 'NOT_CONFIGURED');
+});
+
+test('categories, services, attributes, and products do not invent unsupported data', () => {
+  const rec = recommendCategories({
+    businessName: 'Mulsetu',
+    currentPrimary: { name: 'categories/gcid:local_business', displayName: 'Local business' },
+    currentAdditional: [],
+    competitors: [
+      { name: 'Mulsetu', primaryCategory: 'Ignore me', additionalCategories: [] },
+      { name: 'A', primaryCategory: 'Plumber', additionalCategories: ['Drain'] },
+      { name: 'B', primaryCategory: 'Plumber', additionalCategories: ['Drain'] },
+      { name: 'C', primaryCategory: 'Electrician', additionalCategories: ['Drain'] },
+    ],
+    services: ['Emergency plumber'],
+    catalog: [{ name: 'categories/gcid:plumber', displayName: 'Plumber' }],
+  });
+  assert.equal(rec.primary?.categoryName, 'categories/gcid:plumber');
+  assert.equal(rec.primary?.autoApply, false);
+  assert.equal(rec.additional.some((c) => c.displayName === 'Drain' && c.executable === false), true);
+  assert.equal(proposeServices({ existing: [], verified: ['Drain'], category: 'Plumber', city: 'Nashik', canModify: false }).blocked, true);
+  assert.equal(suggestUnsetAttributes(null, []).available, false);
+  assert.equal(suggestUnsetAttributes([{ name: 'attributes/has_wifi', displayName: 'Wi-Fi', valueType: 'BOOL' }], []).suggestions[0].executable, false);
+  assert.equal(PRODUCTS_SUPPORT.supported, false);
+});
+
+test('read-back is verified only when the canonical value matches the proposal', () => {
+  const before = 'Old description';
+  const proposed = 'Mulsetu is a plumber in Nashik.';
+  assert.equal(classifyReadBack('description', before, proposed, 'A different sentence from Google.'), 'CONFLICT');
+  assert.equal(classifyReadBack('description', before, proposed, before), 'FAILED');
+  assert.equal(classifyReadBack('description', before, proposed, proposed), 'VERIFIED');
+  assert.equal(canonicalFingerprint('description', ''), canonicalFingerprint('description', null));
+  assert.equal(canonicalFingerprint('description', '  '), canonicalFingerprint('description', undefined));
+  assert.notEqual(canonicalFingerprint('description', ''), canonicalFingerprint('description', proposed));
+
+  const wifi = { name: 'attributes/has_wifi', attribute: { name: 'attributes/has_wifi', valueType: 'BOOL', values: [true] } };
+  assert.equal(classifyReadBack('attribute', null, wifi, { name: 'attributes/has_wifi', values: [false], displayName: 'Wi-Fi' }), 'CONFLICT');
+  assert.equal(classifyReadBack('attribute', null, wifi, { name: 'attributes/has_wifi', values: [true], displayName: 'Wi-Fi' }), 'VERIFIED');
+
+  const category = { primaryCategory: { name: 'categories/gcid:plumber' }, additionalCategories: [] };
+  const withLabel = { primaryCategory: { name: 'categories/gcid:plumber', displayName: 'Plumber' }, additionalCategories: [] };
+  const other = { primaryCategory: { name: 'categories/gcid:electrician', displayName: 'Plumber' }, additionalCategories: [] };
+  assert.equal(classifyReadBack('primary_category', { primaryCategory: { name: 'categories/gcid:local_business', displayName: 'Local business' }, additionalCategories: [] }, category, withLabel), 'VERIFIED');
+  assert.equal(classifyReadBack('primary_category', category, category, other), 'CONFLICT');
+
+  const hours = {
+    regularHours: { periods: [{ openDay: 'MONDAY', closeDay: 'MONDAY', openTime: { hours: 9, minutes: 0 }, closeTime: { hours: 17, minutes: 0 } }] },
+    specialHours: { specialHourPeriods: [] },
+  };
+  const omittedZero = {
+    regularHours: { periods: [{ openDay: 'MONDAY', closeDay: 'MONDAY', openTime: { hours: 9 }, closeTime: { hours: 17 } }] },
+    specialHours: null,
+  };
+  const laterClose = {
+    regularHours: { periods: [{ openDay: 'MONDAY', closeDay: 'MONDAY', openTime: { hours: 9 }, closeTime: { hours: 18 } }] },
+    specialHours: null,
+  };
+  assert.equal(classifyReadBack('hours', { regularHours: null, specialHours: null }, hours, omittedZero), 'VERIFIED');
+  assert.equal(classifyReadBack('hours', hours, hours, laterClose), 'CONFLICT');
+});
+
+test('a failed read-back does not patch twice, and a location change refuses the write', async () => {
+  let patches = 0;
+  const missed = await applyAndVerify({
+    kind: 'description',
+    before: '',
+    proposed: 'Mulsetu is a plumber in Nashik.',
+    patch: async () => { patches += 1; return { ok: true }; },
+    read: async () => { throw new Error('read failed'); },
+  });
+  assert.equal(patches, 1);
+  assert.equal(missed.status, 'UNRESOLVED');
+
+  const stored = 'accounts/1/locations/111';
+  const other = 'accounts/1/locations/222';
+  assert.equal(locationGuard(stored, other).ok, false);
+  assert.equal(locationGuard(stored, 'locations/111').ok, true);
+  let rollbackPatches = 0;
+  const guard = locationGuard(stored, other);
+  if (guard.ok) rollbackPatches += 1;
+  assert.equal(rollbackPatches, 0);
+  assert.equal(rollbackRecheck('verified-fp', 'someone-else'), 'conflict');
+  assert.equal(rollbackRecheck('verified-fp', 'verified-fp'), 'patch');
+  assert.equal(canRollbackAttribute(null), false);
+  assert.equal(canRollbackAttribute({ name: 'attributes/has_wifi', values: [true] }), true);
+  assert.equal(idempotencyResult({ kind: 'description', proposed: 'Same text' }, { kind: 'description', proposed: 'Same text' }), 'reuse');
+  assert.equal(idempotencyResult({ kind: 'description', proposed: 'Same text' }, { kind: 'description', proposed: 'Different text' }), 'conflict');
+});
+
+test('short links are rejected and numbers stay strict', () => {
+  const tokens = ['spa', 'goa'];
+  assert.equal(validateDescription('Mulsetu is a spa in Goa. Book at bit.ly/drain', { tokens }).containsUrl, true);
+  assert.equal(validateDescription('Mulsetu is a spa in Goa. Message wa.me/9198', { tokens }).containsUrl, true);
+  assert.equal(validateDescription('Mulsetu is a spa in Goa and has served homes since 2015.', { tokens }).unsupportedClaims, true);
+  assert.equal(validateDescription('Mulsetu is a spa in Goa and has served homes since 2015.', { tokens, allowedNumbers: ['2015'] }).valid, true);
+  assert.equal(validateDescription('The number one spa in Goa.', { tokens }).promotionalLanguage, true);
+});
+
+test('service and hours payloads stay in Google\'s shape', () => {
+  const hours = toGoogleHours({
+    regular: [{ openDay: 'MONDAY', closeDay: 'MONDAY', openTime: '09:00', closeTime: '17:00' }],
+    special: [{ startDate: '2026-10-20', closed: true }],
+  });
+  assert.deepEqual(hours.regularHours.periods[0].openTime, { hours: 9, minutes: 0 });
+  assert.deepEqual(hours.specialHours.specialHourPeriods[0].startDate, { year: 2026, month: 10, day: 20 });
+  const services = buildServiceWrite({
+    existing: [],
+    additions: [{ name: 'Drain cleaning', description: 'Clears a blocked drain.' }],
+    categoryName: 'categories/gcid:plumber',
+  });
+  assert.equal(services.valid, true);
+  assert.equal((services.items[0] as any).freeFormServiceItem.category, 'categories/gcid:plumber');
+  assert.equal(buildServiceWrite({ existing: [], additions: [{ name: 'Drain' }], categoryName: null }).valid, false);
+  const wifi = buildAttributeWrite({ name: 'attributes/has_wifi', valueType: 'BOOL' }, true);
+  assert.equal(wifi.valid, true);
+  assert.deepEqual((wifi.attribute as { values?: boolean[] } | null)?.values, [true]);
+  assert.equal(buildAttributeWrite({ name: 'attributes/has_wifi', valueType: 'BOOL' }, 'yes').valid, false);
+  const menu = buildAttributeWrite({ name: 'attributes/url_menu', valueType: 'URL' }, 'https://example.com/menu?ref=1');
+  const menuUri = (menu.attribute as { uriValues?: Array<{ uri: string }> } | null)?.uriValues?.[0]?.uri || '';
+  assert.match(menuUri, /utm_campaign=gbp/);
+});

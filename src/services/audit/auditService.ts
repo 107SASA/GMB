@@ -26,6 +26,8 @@ import {
 import { buildEvidenceAndFindings, isCustomerIssue, selectOpportunities, type KeywordRow } from './findings';
 import { validateAudit, repairUnverifiedGbpClaims, type ValidatableAudit } from './validateAudit';
 import { getWebsiteIntelligence } from '../intel/websiteIntelligence';
+import { assembleFr4 } from './fr4/assemble';
+import { postsInLast30Days } from './fr4/benchmark';
 import { keywordSource, pickServiceForSearch, toSearchPhrase, websiteServiceKeywords } from '../intel/searchTerms';
 import { evidenceState, findingExecution, isVerifiedIssue } from './findings';
 import { auditKindOf, buildOptimizationPlan, compareAudits, type ComparableSnapshot } from './optimizationPlan';
@@ -717,6 +719,103 @@ async function processAuditJobInner(auditId: string) {
       evidence.push(...intelApi.gbpIntelligenceEvidence(gbpIntel, new Date()));
       findings.push(...intelApi.gbpIntelligenceFindings(gbpIntel, { websiteServices, changesSince: gbpChangesSince, now: new Date() }));
     }
+
+    // FR-4 is additive. overallScore stays the profile-completion percentage.
+    const fr4Now = new Date();
+    const locationData = gbpIntel?.sections?.location?.meta?.status === 'SUCCESS' ? gbpIntel.sections.location.data : null;
+    const mediaData = gbpIntel?.sections?.media?.meta?.status === 'SUCCESS' ? gbpIntel.sections.media.data : null;
+    const postsData = gbpIntel?.sections?.posts?.meta?.status === 'SUCCESS' ? gbpIntel.sections.posts.data : null;
+    const publicPhotos = observations.find((o) => typeof o.target?.totalPhotos === 'number')?.target?.totalPhotos;
+    const photoCount = typeof mediaData?.photos === 'number' ? mediaData.photos : typeof publicPhotos === 'number' ? publicPhotos : null;
+    const photoStatus = typeof mediaData?.photos === 'number' || typeof publicPhotos === 'number'
+      ? 'measured' as const
+      : gbpIntel?.sections?.media?.meta?.status === 'NOT_AVAILABLE' ? 'unavailable' as const : 'not_measured' as const;
+    const newestPost = postsData?.newestCreateTime ? (fr4Now.getTime() - new Date(postsData.newestCreateTime).getTime()) / 86_400_000 : null;
+    const postsLast30 = postsData ? postsInLast30Days(postsData.recent || [], !!postsData.truncated, fr4Now) : null;
+    let fr4History: Array<{ at: string; placeId: string | null; name: string; reviewCount: number | null }> | null = null;
+    let fr4HistoryAt: string | null = null;
+    if (!audit.fastMode) {
+      try {
+        const prevHist: any = await Audit.findOne({
+          businessId: audit.businessId,
+          status: 'COMPLETED',
+          _id: { $ne: audit._id },
+          'auditData.facts.version': { $gte: 1 },
+        }).sort({ createdAt: -1 }).select('createdAt auditData.competitors.placeId auditData.competitors.name auditData.competitors.reviewCount auditData.facts.reviews.lifetime.totalCount').lean();
+        if (prevHist?.createdAt) {
+          fr4HistoryAt = new Date(prevHist.createdAt).toISOString();
+          const lifetimePrev = prevHist.auditData?.facts?.reviews?.lifetime?.totalCount;
+          fr4History = [
+            { at: fr4HistoryAt, placeId: '__subject__', name: '', reviewCount: typeof lifetimePrev === 'number' ? lifetimePrev : null },
+            ...((prevHist.auditData?.competitors || []) as any[]).map((c) => ({
+              at: fr4HistoryAt as string,
+              placeId: c.placeId ?? null,
+              name: String(c.name || ''),
+              reviewCount: typeof c.reviewCount === 'number' ? c.reviewCount : null,
+            })),
+          ];
+        }
+      } catch (histErr: any) {
+        console.warn('[auditService] FR-4 history skipped:', histErr?.message);
+      }
+    }
+    const signals = websiteIntel?.fr4Signals || null;
+    const crawled = !!signals?.finalUrl;
+    const fr4 = assembleFr4({
+      score: {
+        completionPercentage: profileCompletion.completionPercentage ?? null,
+        primaryCategoryState: fieldStates['Primary Category'],
+        primaryCategory: locationData?.primaryCategory?.displayName || business.category || null,
+        serviceNames: intelApi ? intelApi.gbpServiceNames(gbpIntel) : [],
+        servicesState: fieldStates['Services Listed'],
+        attributesState: fieldStates['Attributes'],
+        photos: { status: photoStatus, count: photoCount, scope: typeof mediaData?.photos === 'number' ? 'owner_media' : photoCount != null ? 'public_listing' : null },
+        posts: {
+          status: postsData ? 'measured' : gbpIntel?.sections?.posts?.meta?.status === 'NOT_AVAILABLE' ? 'unavailable' : 'not_measured',
+          total: postsData ? postsData.total : null,
+          newestAgeDays: newestPost != null && Number.isFinite(newestPost) ? Math.floor(newestPost) : null,
+        },
+        reviews: {
+          status: reviewFacts.lifetime.status === 'verified' ? 'measured' : 'not_measured',
+          count: reviewFacts.lifetime.status === 'verified' ? reviewFacts.lifetime.totalCount : null,
+          medianCompetitorCount: reviewComparison?.medianCompetitorReviewCount ?? null,
+        },
+      },
+      website: {
+        crawled,
+        title: websiteIntel?.title || null,
+        phones: (websiteIntel?.phones || []).map((p: any) => String(p.value || p)),
+        textSample: signals?.textSample || null,
+        schemaTypes: websiteIntel?.schemaTypes || [],
+        jsonLdBlocks: crawled ? signals.jsonLdBlocks ?? 0 : null,
+        jsonLdErrors: crawled ? signals.jsonLdErrors ?? 0 : null,
+        jsonLdUntyped: crawled ? signals.jsonLdUntyped ?? 0 : null,
+        mapEmbeds: crawled ? signals.mapEmbeds || [] : null,
+        requestedUrl: signals?.requestedUrl || websiteIntel?.requestedUrl || null,
+        finalUrl: signals?.finalUrl || null,
+        robotsMeta: signals?.robotsMeta ?? null,
+        xRobotsTag: signals?.xRobotsTag ?? null,
+        canonical: signals?.canonical ?? null,
+        robotsTxtFetched: signals?.robotsTxt?.fetched ?? null,
+        robotsTxtDisallowAll: signals?.robotsTxt?.disallowAll ?? null,
+        sitemapSeen: signals?.sitemapSeen ?? null,
+        pageNoindex: signals?.pageNoindex ?? null,
+        gbp: locationData ? {
+          name: locationData.title || null,
+          phone: locationData.primaryPhone || null,
+          address: locationData.address?.formatted || null,
+        } : null,
+      },
+      observations,
+      history: fr4History,
+      historyAt: fr4HistoryAt,
+      now: fr4Now.toISOString(),
+      subjectReviewCount: reviewFacts.lifetime.status === 'verified' ? reviewFacts.lifetime.totalCount : null,
+      subjectPhotoCount: photoCount,
+      subjectPostsLast30Days: postsLast30,
+      existingFindings: findings,
+    });
+    findings.push(...fr4.websiteFindings);
     const nowIso = new Date().toISOString();
     if (websiteIntel && websiteIntel.status !== 'failed') {
       const claim = (id: string, metric: string, value: unknown, sourceUrl?: string) =>
@@ -967,12 +1066,12 @@ async function processAuditJobInner(auditId: string) {
       try {
         const prevForAI: any = await Audit.findOne({ businessId: audit.businessId, status: 'COMPLETED', fastMode: { $ne: true }, _id: { $ne: audit._id }, 'auditData.facts.version': { $gte: 1 } })
           .sort({ createdAt: -1 })
-          .select('createdAt fastMode metadata auditKind auditData.facts.ranking auditData.facts.reviews auditData.profileCompletion auditData.performanceBaseline')
+          .select('createdAt fastMode metadata auditKind auditData.facts.ranking auditData.facts.reviews auditData.profileCompletion auditData.performanceBaseline auditData.fr4.auditScore')
           .lean();
         if (prevForAI) {
           const cmp = compareAudits(
             comparableSnapshot(prevForAI._id.toString(), auditKindOf(prevForAI), prevForAI.createdAt, prevForAI.auditData),
-            comparableSnapshot(audit._id.toString(), 'monthly', new Date(), { facts: { ranking: rankingFacts, reviews: reviewFacts }, profileCompletion, performanceBaseline }),
+            comparableSnapshot(audit._id.toString(), 'monthly', new Date(), { facts: { ranking: rankingFacts, reviews: reviewFacts }, profileCompletion, performanceBaseline, fr4: fr4.bundle }),
           );
           monthlyContext = cmp.rows.filter((r) => r.change !== 'not_comparable').map((r) => `${r.metric}: ${r.before} → ${r.after} (${r.change})`);
           const ex = await collectExecutions(audit.businessId.toString(), new Date(prevForAI.createdAt), new Date());
@@ -1042,6 +1141,7 @@ async function processAuditJobInner(auditId: string) {
           gbpLive,
           suspensionRisk,
           gbpIntelligenceLines: intelApi ? intelApi.seoBrainGbpLines(gbpIntel, { changesSince: gbpChangesSince, now: new Date() }) : undefined,
+          fr4Lines: fr4.bundle.lines,
         });
       } catch (planErr: any) {
         console.warn('[auditService] seoPlanDraft generation failed:', planErr?.message);
@@ -1180,6 +1280,8 @@ async function processAuditJobInner(auditId: string) {
 
     const auditData: any = {
       profileScore: { overallScore: finalScore, seoScore: nativeSeoScore.score, profileCompletionScore: profileCompletion.completionPercentage },
+      // FR-4 score is separate from overallScore, which remains profile completion.
+      fr4: fr4.bundle,
       // Rating + sentiment quality of the synced review window — only
       // meaningful (and only read) when that window was actually synced.
       reviewQualityScore: reviewFacts.recent.status === 'verified' ? reviewQualityScore : null,
@@ -1287,7 +1389,7 @@ async function processAuditJobInner(auditId: string) {
           ...(auditKind === 'monthly' ? { fastMode: { $ne: true } } : {}),
         })
           .sort({ createdAt: -1 })
-          .select('fastMode metadata auditKind createdAt auditData.facts auditData.profileCompletion auditData.performanceBaseline auditData.findings')
+          .select('fastMode metadata auditKind createdAt auditData.facts auditData.profileCompletion auditData.performanceBaseline auditData.findings auditData.fr4.auditScore')
           .lean();
         if (prev) {
           auditData.comparison = compareAudits(
@@ -1577,6 +1679,8 @@ function comparableSnapshot(auditId: string, kind: ComparableSnapshot['kind'], a
           directionRequests: data.performanceBaseline.directionRequests,
         }
       : null,
+    fr4Overall: data?.fr4?.auditScore?.overall ?? null,
+    fr4ScoreVersion: data?.fr4?.auditScore?.version ?? null,
   };
 }
 

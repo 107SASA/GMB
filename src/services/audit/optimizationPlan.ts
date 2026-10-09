@@ -40,6 +40,9 @@ export interface ComparableSnapshot {
   completionBasis?: string | null;
   /** Google Performance API totals for a fixed window (connected audits only). */
   performance?: { days: number; calls: number; websiteClicks: number; directionRequests: number } | null;
+  /** FR-4 audit score. Compared only with the same score version, never with profile completion. */
+  fr4Overall?: number | null;
+  fr4ScoreVersion?: string | null;
 }
 
 export interface ComparisonRow {
@@ -137,6 +140,18 @@ export function compareAudits(prev: ComparableSnapshot, cur: ComparableSnapshot)
       change: perfComparable ? dir(pa![key], pc![key]) : 'not_comparable',
       pctChange: perfComparable ? pct(pa![key], pc![key]) : null,
       note: perfComparable ? undefined : 'Not measured in both audits (needs a Google connection each time).',
+    });
+  }
+  const fr4VersionSame = !!prev.fr4ScoreVersion && prev.fr4ScoreVersion === cur.fr4ScoreVersion;
+  const fr4Both = fr4VersionSame && prev.fr4Overall != null && cur.fr4Overall != null;
+  if (prev.fr4Overall != null || cur.fr4Overall != null || prev.fr4ScoreVersion || cur.fr4ScoreVersion) {
+    rows.push({
+      metric: 'FR-4 audit score',
+      before: prev.fr4Overall == null ? 'not measured' : `${prev.fr4Overall}`,
+      after: cur.fr4Overall == null ? 'not measured' : `${cur.fr4Overall}`,
+      change: fr4Both ? dir(prev.fr4Overall ?? null, cur.fr4Overall ?? null) : 'not_comparable',
+      pctChange: fr4Both ? pct(prev.fr4Overall, cur.fr4Overall) : null,
+      note: fr4Both ? `Score version ${cur.fr4ScoreVersion}. This is not the profile completion percentage.` : 'The FR-4 audit score and profile completion are different metrics, so they are not compared unless both audits recorded the same FR-4 score version.',
     });
   }
   return { previousAuditId: prev.auditId, previousKind: prev.kind, previousAt: prev.at, rows };

@@ -180,3 +180,15 @@ export function confirmsSingleSlot(text: string): boolean {
 export function schedulingReplyAllowed(input: { humanOwned: boolean; handoffAlreadySent: boolean }): boolean {
   return !input.humanOwned && !input.handoffAlreadySent;
 }
+
+/** One line, so it can also be sent as the notification template. Includes the Meet link when one exists. */
+export function bookedStatusReply(input: { whenLabel?: string | null; meetingLink?: string | null }): string {
+  const link = (input.meetingLink || '').trim();
+  const when = (input.whenLabel || '').trim();
+  if (link.startsWith('https://')) {
+    return when
+      ? `Your GrowwMatics demo is booked for ${when}. Join here: ${link}`
+      : `Your GrowwMatics demo is booked. Join here: ${link}`;
+  }
+  return "I've got your message. Reply with a date and time and I'll book the demo.";
+}

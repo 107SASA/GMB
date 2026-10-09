@@ -2933,22 +2933,18 @@ export const bookingAgentReply = inngest.createFunction(
       const { sendOutboundMessage } = await import('@/services/whatsapp/send');
 
       const convo: any = await BookingConversation.findById(conversationId);
-      if (!convo || convo.status === 'stopped' || convo.schedulingHandoffAt) return;
+      if (!convo || convo.status === 'stopped') return;
 
-      // Human-handoff / opt-out stop — BEFORE anything else, including the
-      // config-disabled fallback below. A lead who was handed to a human (or
-      // opted out) must get NO further automated message from this agent, not
-      // even the "a team member will get back to you" fallback. Only checks
-      // once convo.leadId exists (set in handleCollecting once name+business
-      // are known) — a brand-new booking conversation has no Lead yet.
+      // Opt-out stays silent. A human handoff does not: the customer still
+      // gets one reply, and a message that names a time is still booked.
       if (convo.leadId) {
-        const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
-        const bookingLead: any = await Lead.findById(convo.leadId);
-        if (isHumanOwned(bookingLead) || isOptedOutOrDoNotContact(bookingLead)) {
+        const { isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
+        const bookingLead: any = await Lead.findById(convo.leadId).select('nurtureStatus currentStage');
+        if (isOptedOutOrDoNotContact(bookingLead)) {
           const { logLeadEvent } = await import('@/services/leadEvents');
           logLeadEvent(
             'NURTURE_ACTION_SKIPPED',
-            { reason: 'human-owned-or-opted-out', agent: 'demo-agent' },
+            { reason: 'opted-out-or-do-not-contact', agent: 'demo-agent' },
             'demo-agent',
             { leadId: convo.leadId, phone: convo.leadPhone, conversationType: 'booking', conversationId: convo._id }
           );
@@ -2966,6 +2962,18 @@ export const bookingAgentReply = inngest.createFunction(
         return;
       }
 
+      // A named time is the booking. Do this before the human-handoff check
+      // so "Today 2 pm" still creates the Meet link.
+      const { parseDemoTimeRequest } = await import('@/services/calendar/demoScheduling');
+      const namedTime = parseDemoTimeRequest(body || '', new Date(), config.timezone || 'Asia/Kolkata');
+      if (namedTime && convo.status !== 'booked') {
+        convo.schedulingHandoffAt = undefined;
+        if (convo.status === 'awaiting_slot_selection') await handleSlotSelection(convo, body, config);
+        else await handleCollecting(convo, body, config, Lead, Activity);
+        await convo.save();
+        return;
+      }
+
       // Phase 8 — human-handoff check, BEFORE generating any AI reply.
       // Only runs once convo.leadId exists (set once name+business are
       // collected in handleCollecting) — the very first turn or two of a
@@ -2973,7 +2981,12 @@ export const bookingAgentReply = inngest.createFunction(
       if (convo.leadId && body) {
         const { checkHandoffTriggers } = await import('@/services/agentHandoff/checkHandoffTriggers');
         const handoff = await checkHandoffTriggers(convo.leadId, body, 'demo-agent');
-        if (handoff.handedOff) return;
+        if (handoff.handedOff) {
+          const { SCHEDULE_HANDOFF_ONCE } = await import('@/services/whatsapp/prospectChoice');
+          await deliverBookingReply(convo, SCHEDULE_HANDOFF_ONCE);
+          await convo.save();
+          return;
+        }
       }
 
       if (convo.status === 'booked') {
@@ -3009,7 +3022,7 @@ async function handleCollecting(convo: any, body: string, config: any, Lead: any
   const { friendlyTimeLabel } = await import('@/services/whatsapp-agent/dateTimeUtils');
   const { parseDemoTimeRequest } = await import('@/services/calendar/demoScheduling');
   const { findSalespersonAvailability } = await import('@/services/calendar/bookDemoOnCalendar');
-  const { DEMO_TIME_ASK, DEMO_TIME_CLARIFY, slotAvailableCopy, alternativesCopy } = await import('@/services/whatsapp/prospectChoice');
+  const { DEMO_TIME_ASK, DEMO_TIME_CLARIFY, alternativesCopy } = await import('@/services/whatsapp/prospectChoice');
 
   await hydrateBookingDetails(convo, Lead);
   const lead = await ensureBookingLead(convo, Lead);
@@ -3031,11 +3044,8 @@ async function handleCollecting(convo: any, body: string, config: any, Lead: any
   }
 
   if (found.exact) {
-    convo.offeredSlots = [found.exact];
-    convo.status = 'awaiting_slot_selection';
-    const reply = slotAvailableCopy(friendlyTimeLabel(found.exact.time));
-    const res = await sendOutboundMessage(convo.leadPhone, reply, lead?._id?.toString());
-    if (res.success) convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+    const outcome = await bookConfirmedSlot(convo, found.exact, config);
+    await deliverBookingReply(convo, outcome.message, { confirmation: outcome.success });
     return;
   }
 
@@ -3050,8 +3060,7 @@ async function handleCollecting(convo: any, body: string, config: any, Lead: any
         : `${friendlyDateLabel(slot.date)} at ${friendlyTimeLabel(slot.time)}`
     ))
   );
-  const res = await sendOutboundMessage(convo.leadPhone, reply, lead?._id?.toString());
-  if (res.success) convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+  await deliverBookingReply(convo, reply);
 }
 
 async function hydrateBookingDetails(convo: any, Lead: any): Promise<void> {
@@ -3131,12 +3140,15 @@ async function markSchedulingPaused(convo: any, reason: string): Promise<void> {
 
 /** Sends the scheduling handoff once, then marks the lead human-owned so later replies stay silent. */
 async function pauseAutomatedScheduling(convo: any, reason: string): Promise<void> {
-  if (convo.schedulingHandoffAt) return;
-  const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+  if (convo.schedulingHandoffAt) {
+    const { SCHEDULE_HANDOFF_ONCE } = await import('@/services/whatsapp/prospectChoice');
+    await deliverBookingReply(convo, SCHEDULE_HANDOFF_ONCE);
+    return;
+  }
   const { SCHEDULE_HANDOFF_ONCE } = await import('@/services/whatsapp/prospectChoice');
-  const res = await sendOutboundMessage(convo.leadPhone, SCHEDULE_HANDOFF_ONCE, convo.leadId?.toString());
-  if (res.success) convo.messages.push({ role: 'agent', text: SCHEDULE_HANDOFF_ONCE, at: new Date() });
-  await markSchedulingPaused(convo, reason);
+  await deliverBookingReply(convo, SCHEDULE_HANDOFF_ONCE);
+  const toldThem = (convo.messages || []).some((message: any) => message.role === 'agent' && message.text === SCHEDULE_HANDOFF_ONCE);
+  if (toldThem) await markSchedulingPaused(convo, reason);
 }
 
 /**
@@ -3170,19 +3182,21 @@ async function deliverBookingReply(
   options?: { confirmation?: boolean }
 ): Promise<void> {
   const { sendOutboundMessage } = await import('@/services/whatsapp/send');
-  if (options?.confirmation && convo.bookingId) {
+  const send = async (text: string) => sendOutboundMessage(convo.leadPhone, text, convo.leadId?.toString());
+  const claimAndSend = async (text: string) => {
+    if (!(options?.confirmation && convo.bookingId)) return send(text);
     const { claimDemoConfirmationSend, releaseDemoConfirmationSend } = await import('@/services/demo/confirmationClaim');
     const claim = await claimDemoConfirmationSend(convo.bookingId);
-    if (claim === 'skip') return;
-    const res = await sendOutboundMessage(convo.leadPhone, message, convo.leadId?.toString());
-    if (!res.success) {
-      await releaseDemoConfirmationSend(convo.bookingId);
-      return;
-    }
-    convo.messages.push({ role: 'agent', text: message, at: new Date() });
-    return;
+    if (claim === 'skip') return { success: false, error: 'already-sent' };
+    const res = await send(text);
+    if (!res.success) await releaseDemoConfirmationSend(convo.bookingId);
+    return res;
+  };
+  let res = await claimAndSend(message);
+  if (!res.success && /[\r\n\t]/.test(message)) {
+    const flat = message.replace(/[\r\n\t]+/g, ' ').replace(/ {2,}/g, ' ').trim();
+    if (flat && flat !== message) res = await claimAndSend(flat);
   }
-  const res = await sendOutboundMessage(convo.leadPhone, message, convo.leadId?.toString());
   if (res.success) convo.messages.push({ role: 'agent', text: message, at: new Date() });
 }
 
@@ -3445,7 +3459,7 @@ export async function scheduleDemoReminders(
   return ids;
 }
 
-/** `booked` — the lead already has a confirmed demo; only reschedule/cancel keyword intents are handled here (deterministic, not the LLM contract). Anything else is a quiet no-op append (matches the legacy behavior of not re-triggering the AI once booked). */
+/** `booked` — reschedule and cancel stay keyword-based. Any other message gets a reply, including the Meet link when the booking has one. */
 async function handleBookedReply(convo: any, body: string, config: any): Promise<void> {
   const { classifyBookedReplyIntent } = await import('@/services/booking/bookingAgent');
   const { sendOutboundMessage } = await import('@/services/whatsapp/send');
@@ -3454,6 +3468,10 @@ async function handleBookedReply(convo: any, body: string, config: any): Promise
   const intent = classifyBookedReplyIntent(body);
   if (intent === 'none') {
     convo.messages.push({ role: 'lead', text: body, at: new Date() });
+    const booking: any = convo.bookingId ? await DemoBooking.findById(convo.bookingId).select('date timeSlot meetingLink').lean() : null;
+    const { bookedStatusReply } = await import('@/services/whatsapp/prospectChoice');
+    const when = booking?.date && booking?.timeSlot ? `${booking.date} at ${booking.timeSlot}` : '';
+    await deliverBookingReply(convo, bookedStatusReply({ whenLabel: when, meetingLink: booking?.meetingLink }));
     return;
   }
 

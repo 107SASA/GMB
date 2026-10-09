@@ -4,6 +4,10 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { fr5GuardedPatch, fr5ProfileMutationAllowed } from '../../src/lib/gbpSafety.ts';
 import {
   PRODUCTS_SUPPORT,
   buildAttributeWrite,
@@ -237,4 +241,75 @@ test('service and hours payloads stay in Google\'s shape', () => {
   const menu = buildAttributeWrite({ name: 'attributes/url_menu', valueType: 'URL' }, 'https://example.com/menu?ref=1');
   const menuUri = (menu.attribute as { uriValues?: Array<{ uri: string }> } | null)?.uriValues?.[0]?.uri || '';
   assert.match(menuUri, /utm_campaign=gbp/);
+});
+
+test('FR-5 execution and rollback patch only when both live-write flags are exactly true', async () => {
+  const blocked: Array<Record<string, string | undefined>> = [
+    { GBP_LIVE_WRITES_ENABLED: 'true' },
+    { GBP_LIVE_WRITES_ENABLED: 'true', GBP_FR5_LIVE_WRITES_ENABLED: 'false' },
+    { GBP_LIVE_WRITES_ENABLED: 'true', GBP_FR5_LIVE_WRITES_ENABLED: 'TRUE' },
+    { GBP_LIVE_WRITES_ENABLED: 'false', GBP_FR5_LIVE_WRITES_ENABLED: 'true' },
+    { GBP_LIVE_WRITES_ENABLED: 'true', GBP_FR5_LIVE_WRITES_ENABLED: ' true' },
+  ];
+  for (const env of blocked) {
+    let patches = 0;
+    const result = await fr5GuardedPatch(env, async () => { patches += 1; return 'sent'; });
+    assert.equal(patches, 0);
+    assert.equal(result.applied, false);
+    assert.equal(fr5ProfileMutationAllowed(env), false);
+  }
+
+  assert.equal(executionClaim('PROPOSED'), 'not_approved');
+  assert.equal(locationGuard('locations/111', 'locations/222').ok, false);
+  const sensitive = approve({ ...base(), kind: 'title', sensitive: true }, { userId: 'u', businessId: 'biz' }, { now: '2026-10-09T00:00:00.000Z' });
+  assert.equal(sensitive.ok, false);
+
+  let patches = 0;
+  const allowed = await fr5GuardedPatch(
+    { GBP_LIVE_WRITES_ENABLED: 'true', GBP_FR5_LIVE_WRITES_ENABLED: 'true' },
+    async () => { patches += 1; return 'sent'; },
+  );
+  assert.equal(patches, 1);
+  assert.equal(allowed.applied, true);
+});
+
+test('an unresolved recovery reads Google and does not patch when the FR-5 flag is off', async () => {
+  let patches = 0;
+  let reads = 0;
+  const env = { GBP_LIVE_WRITES_ENABLED: 'true', GBP_FR5_LIVE_WRITES_ENABLED: 'false' };
+  assert.equal(fr5ProfileMutationAllowed(env), false);
+  const readBack = await (async () => { reads += 1; return 'Mulsetu is a plumber in Nashik.'; })();
+  const gated = await fr5GuardedPatch(env, async () => { patches += 1; return 'sent'; });
+  assert.equal(gated.applied, false);
+  assert.equal(classifyReadBack('description', 'Old description', readBack, readBack), 'VERIFIED');
+  assert.equal(reads, 1);
+  assert.equal(patches, 0);
+
+  const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
+  const store = readFileSync(join(root, 'src/services/gbp/changes/store.ts'), 'utf8');
+  const executeAt = store.indexOf('export async function executeChange');
+  const unresolvedAt = store.indexOf("pending.status === 'UNRESOLVED'", executeAt);
+  const gateAt = store.indexOf('fr5ProfileMutationAllowed()', executeAt);
+  assert.ok(unresolvedAt > executeAt && gateAt > unresolvedAt);
+  const recovery = store.slice(store.indexOf('async function recoverUnresolved'), executeAt);
+  assert.equal(recovery.includes('fr5ProfileMutationAllowed'), false);
+  assert.equal(recovery.includes('patchLocation'), false);
+  assert.equal(recovery.includes('updateLocationProfile'), false);
+  assert.equal(store.includes("if (!fr5ProfileMutationAllowed()) throw new WriteNotAccepted"), true);
+});
+
+test('posts, review replies, and photos stay on the global write gate', () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
+  const files = [
+    'src/services/reviews/postReply.ts',
+    'src/services/content/publishPost.ts',
+    'src/lib/gbpMediaService.ts',
+    'src/lib/gbpClient.ts',
+  ];
+  for (const file of files) {
+    const source = readFileSync(join(root, file), 'utf8');
+    assert.equal(source.includes('GBP_FR5_LIVE_WRITES_ENABLED'), false, file);
+    assert.equal(source.includes('fr5ProfileMutationAllowed'), false, file);
+    assert.equal(source.includes('gbpWritesEnabled'), true, file);
+  }
 });

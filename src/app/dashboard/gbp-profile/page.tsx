@@ -94,11 +94,7 @@ export default function GbpProfilePage() {
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || 'Could not save.');
-      setSaved(
-        json.liveWriteApplied
-          ? 'Saved and published to Google.'
-          : 'Saved. Changes publish to Google automatically once profile verification is enabled.'
-      );
+      setSaved(json.reason || 'Proposed. Approve it under Profile optimization before Google is changed.');
     } catch (err) {
       setError(friendlyClientMessage(err, 'Could not save.'));
     } finally {
@@ -161,8 +157,7 @@ export default function GbpProfilePage() {
             <div className="flex items-start gap-2 bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container">
               <Info className="w-4 h-4 mt-0.5 shrink-0" />
               <span>
-                Editing is in <strong>preview mode</strong>. Your changes are saved in GrowwMatics now and will
-                publish to Google automatically once profile verification is enabled for your account.
+                Live Google writes are off. Saving creates a proposal only. Nothing is sent to Google until you approve it and writes are enabled.
               </span>
             </div>
           )}
@@ -213,7 +208,7 @@ export default function GbpProfilePage() {
               disabled={saving}
               className="px-6 py-3 rounded-xl bg-primary hover:bg-primary-container text-white font-bold transition-colors disabled:opacity-60 flex items-center gap-2"
             >
-              {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : 'Save changes'}
+              {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Proposing…</> : 'Propose changes'}
             </button>
             <button onClick={load} disabled={saving} className="px-4 py-3 rounded-xl text-on-surface-variant hover:text-on-surface font-medium transition-colors">
               Reset

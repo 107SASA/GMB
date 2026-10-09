@@ -25,6 +25,11 @@
  *                     TWILIO_TEMPLATE_REVIEW_REQUEST_UTILITY. Leaving that
  *                     unset keeps the legacy marketing template.
  *  - notification:   {{1}} recipient name, {{2}} free-text body.
+ *                     The code sends exactly these two keys (see
+ *                     NOTIFICATION_TEMPLATE_KEYS). A live Content SID that
+ *                     was approved with a different placeholder set will
+ *                     still be rejected by Twilio; this file does not
+ *                     rewrite the production SID.
  *                     Generic fallback for any business-initiated message
  *                     that doesn't have its own approved template — owner
  *                     activity notifications (services/ownerNotify.ts), and
@@ -73,6 +78,9 @@
  *                     free-text attempt first. Falls back to plain text only
  *                     when this SID isn't configured (local/dev).
  */
+/** Placeholders the notification send is allowed to pass. Not a live Twilio lookup. */
+export const NOTIFICATION_TEMPLATE_KEYS = ['1', '2'] as const;
+
 export const WA_TEMPLATES = {
   salesIntro: process.env.TWILIO_TEMPLATE_SALES_INTRO || '',
   reportReady: process.env.TWILIO_TEMPLATE_REPORT_READY || '',

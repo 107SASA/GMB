@@ -7,6 +7,7 @@ import {
   normalizeOrigin,
   planCrawl,
   planFromSitemap,
+  robotsTxtDisallowAll,
   type ExtractedPage,
   type PageKind,
 } from './websiteExtract';
@@ -24,7 +25,7 @@ import {
  * status 'failed' and carry on with other sources.
  */
 export const WEBSITE_INTEL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-export const WEBSITE_INTEL_LOGIC_VERSION = 5;
+export const WEBSITE_INTEL_LOGIC_VERSION = 6;
 
 export interface WebsiteIntelOptions {
   maxPages?: number;
@@ -32,26 +33,29 @@ export interface WebsiteIntelOptions {
   force?: boolean;
 }
 
-async function fetchPage(url: string, kind: PageKind): Promise<(ExtractedPage & { kind: PageKind }) | null> {
+async function fetchPage(url: string, kind: PageKind): Promise<(ExtractedPage & { kind: PageKind; xRobotsTag: string | null }) | null> {
   meter('websiteFetch', 1, `website_${kind}`);
   const res = await guardedFetchText(url, { timeoutMs: 8000, maxRedirects: 3, maxBytes: 1_500_000 });
   if (!res || !res.body) return null;
-  return { ...extractPage(res.body, res.finalUrl), kind };
+  return { ...extractPage(res.body, res.finalUrl), kind, xRobotsTag: res.xRobotsTag ?? null };
 }
 
 export async function crawlWebsite(rawUrl: string, maxPages = 6) {
   const origin = normalizeOrigin(rawUrl);
-  if (!origin) return { origin: null, status: 'failed' as const, failureReason: 'invalid URL', pages: [] as any[], facts: null, homepageHash: undefined };
-  const home = await fetchPage(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`, 'home');
+  if (!origin) return { origin: null, status: 'failed' as const, failureReason: 'invalid URL', pages: [] as any[], facts: null, homepageHash: undefined, fr4Signals: null };
+  const requested = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
+  const home = await fetchPage(requested, 'home');
   if (!home) {
-    return { origin, status: 'failed' as const, failureReason: 'homepage did not respond', pages: [], facts: null, homepageHash: undefined };
+    return { origin, status: 'failed' as const, failureReason: 'homepage did not respond', pages: [], facts: null, homepageHash: undefined, fr4Signals: null };
   }
   let plan = planCrawl(home, maxPages);
+  let sitemapSeen: boolean | null = null;
   // Too few relevant pages linked from the homepage → try the sitemap (one
   // extra free GET), so a JS menu or single-page site is still researched.
   if (plan.length < Math.min(3, maxPages - 1)) {
     meter('websiteFetch', 1, 'website_sitemap');
     const sm = await guardedFetchText(`${origin}/sitemap.xml`, { timeoutMs: 6000, maxRedirects: 2, maxBytes: 1_000_000 });
+    sitemapSeen = !!sm?.body && /<url/i.test(sm.body);
     if (sm?.body) plan = [...plan, ...planFromSitemap(sm.body, home.url, [home.url, ...plan.map((p) => p.url)], maxPages - 1 - plan.length)];
   }
   const others = await Promise.all(plan.map((p) => fetchPage(p.url, p.kind).then((pg) => ({ plan: p, pg }))));
@@ -63,7 +67,36 @@ export async function crawlWebsite(rawUrl: string, maxPages = 6) {
   const facts = extractWebsiteFacts(pages);
   const homepageHash = crypto.createHash('sha256').update(home.text.slice(0, 20_000)).digest('hex');
   const status = others.every((o) => o.pg) ? 'complete' as const : 'partial' as const;
-  return { origin, status, failureReason: undefined, pages: crawled, facts, homepageHash };
+  // robots.txt is read for the business crawl only. Competitor reads stay at
+  // their existing page budget and do not gain an extra request.
+  let robotsTxt: { fetched: boolean; disallowAll: boolean | null } = { fetched: false, disallowAll: null };
+  if (maxPages >= 6) {
+    meter('websiteFetch', 1, 'website_robots');
+    const robots = await guardedFetchText(`${origin}/robots.txt`, { timeoutMs: 6000, maxRedirects: 2, maxBytes: 200_000 });
+    if (robots?.body && /user-agent:/i.test(robots.body)) {
+      robotsTxt = { fetched: true, disallowAll: robotsTxtDisallowAll(robots.body) };
+      if (sitemapSeen == null) sitemapSeen = /^sitemap:/im.test(robots.body);
+    } else {
+      robotsTxt = { fetched: false, disallowAll: null };
+    }
+  }
+  const fr4Signals = {
+    version: 'fr4-v1' as const,
+    requestedUrl: requested,
+    finalUrl: home.url,
+    robotsMeta: home.robotsMeta ?? null,
+    xRobotsTag: home.xRobotsTag ?? null,
+    canonical: home.canonical ?? null,
+    mapEmbeds: pages.flatMap((p) => p.mapEmbeds || []).slice(0, 5),
+    jsonLdBlocks: pages.reduce((n, p) => n + (p.jsonLdBlocks || 0), 0),
+    jsonLdErrors: pages.reduce((n, p) => n + (p.jsonLdErrors || 0), 0),
+    jsonLdUntyped: pages.reduce((n, p) => n + (p.jsonLdUntyped || 0), 0),
+    textSample: home.text.slice(0, 4000),
+    robotsTxt,
+    sitemapSeen,
+    pageNoindex: pages.some((p) => /noindex/i.test(p.robotsMeta || '') || /noindex/i.test(p.xRobotsTag || '')),
+  };
+  return { origin, status, failureReason: undefined, pages: crawled, facts, homepageHash, fr4Signals };
 }
 
 /**
@@ -120,6 +153,7 @@ export async function getWebsiteIntelligence(rawUrl: string | undefined | null, 
     headings: crawl.facts?.headings ?? [],
     schemaTypes: crawl.facts?.schemaTypes ?? [],
     keywordsFound: crawl.facts?.keywordsFound ?? [],
+    fr4Signals: crawl.fr4Signals ?? null,
     fetchedAt: new Date(),
     logicVersion: WEBSITE_INTEL_LOGIC_VERSION,
   };

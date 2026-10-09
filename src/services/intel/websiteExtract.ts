@@ -23,6 +23,16 @@ export interface ExtractedPage {
   listItems: string[];
   links: PageLink[];
   jsonLd: any[];
+  /** JSON-LD script blocks found, including ones that did not parse. */
+  jsonLdBlocks?: number;
+  /** JSON-LD script blocks whose contents were not valid JSON. */
+  jsonLdErrors?: number;
+  /** Parsed JSON-LD nodes that have no @type. */
+  jsonLdUntyped?: number;
+  /** Content of the robots meta tag, when the page has one. */
+  robotsMeta?: string | null;
+  /** Google Maps iframe, embed, or maps URL found in the HTML. An address is not a map. */
+  mapEmbeds?: string[];
   text: string;
   /** Brand signals from this page (homepage matters): theme colour, CSS colours, logo, share image. */
   brand?: PageBrand;
@@ -126,6 +136,29 @@ export function sameSite(a: string, b: string): boolean {
   }
 }
 
+/** True when robots.txt blocks the whole site for every crawler. Allow: / cancels that. */
+export function robotsTxtDisallowAll(body: string): boolean {
+  const lines = String(body || '').split(/\r?\n/).map((l) => l.replace(/#.*/, '').trim()).filter(Boolean);
+  let inStar = false;
+  let sawStar = false;
+  let disallowRoot = false;
+  let allowRoot = false;
+  for (const line of lines) {
+    const ua = line.match(/^user-agent:\s*(.*)$/i);
+    if (ua) {
+      inStar = ua[1].trim() === '*';
+      if (inStar) sawStar = true;
+      continue;
+    }
+    if (!inStar) continue;
+    const disallow = line.match(/^disallow:\s*(.*)$/i);
+    if (disallow && disallow[1].trim() === '/') disallowRoot = true;
+    const allow = line.match(/^allow:\s*(.*)$/i);
+    if (allow && (allow[1].trim() === '/' || allow[1].trim() === '')) allowRoot = true;
+  }
+  return sawStar && disallowRoot && !allowRoot;
+}
+
 export function extractPage(html: string, url: string): ExtractedPage {
   const src = String(html || '');
   const noScript = src.replace(/<script(?![^>]*application\/ld\+json)[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ');
@@ -138,14 +171,38 @@ export function extractPage(html: string, url: string): ExtractedPage {
     .map((m) => ({ href: normalizePageUrl(decode(m[1]), url) || '', label: clean(m[2]) }))
     .filter((l) => !!l.href);
   const jsonLd: any[] = [];
+  let jsonLdBlocks = 0;
+  let jsonLdErrors = 0;
   for (const m of src.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)) {
+    jsonLdBlocks++;
     try {
       const parsed = JSON.parse(m[1].trim());
       const flat = (x: any): any[] => (Array.isArray(x) ? x.flatMap(flat) : x && x['@graph'] ? flat(x['@graph']) : [x]);
       jsonLd.push(...flat(parsed).filter(Boolean));
-    } catch { /* malformed JSON-LD is skipped */ }
+    } catch {
+      jsonLdErrors++;
+    }
   }
-  const canonical = src.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)?.[1];
+  const jsonLdUntyped = jsonLd.filter((n) => !n || (n['@type'] == null && n['@graph'] == null)).length;
+  const canonical = src.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)?.[1]
+    || src.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["']canonical["']/i)?.[1];
+  const robotsMeta = src.match(/<meta[^>]+name=["']robots["'][^>]+content=["']([^"']*)["']/i)?.[1]
+    || src.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']robots["']/i)?.[1]
+    || null;
+  const mapEmbeds: string[] = [];
+  const seenMaps = new Set<string>();
+  for (const m of src.matchAll(/<(?:iframe|embed)[^>]+src=["']([^"']+)["']/gi)) {
+    if (/google\.com\/maps|maps\.google\./i.test(m[1]) && !seenMaps.has(m[1])) {
+      seenMaps.add(m[1]);
+      mapEmbeds.push(m[1].slice(0, 300));
+    }
+  }
+  for (const m of src.matchAll(/<a[^>]+href=["']([^"']+)["']/gi)) {
+    if (/google\.com\/maps|maps\.google\./i.test(m[1]) && !seenMaps.has(m[1])) {
+      seenMaps.add(m[1]);
+      mapEmbeds.push(m[1].slice(0, 300));
+    }
+  }
   return {
     url,
     title: clean(src.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '') || undefined,
@@ -155,6 +212,11 @@ export function extractPage(html: string, url: string): ExtractedPage {
     listItems,
     links,
     jsonLd,
+    jsonLdBlocks,
+    jsonLdErrors,
+    jsonLdUntyped,
+    robotsMeta,
+    mapEmbeds,
     text: clean(noScript.replace(/<(header|nav|footer)[\s\S]*?<\/\1>/gi, ' ')).slice(0, 60_000),
     brand: extractBrand(src, url),
   };

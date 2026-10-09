@@ -24,6 +24,13 @@ import MessageQueue from '@/models/MessageQueue';
 import { sendOutboundMessage as sendViaTwilio, sendTemplateMessage, SendResult } from '@/services/twilio/client';
 import { getMetaConfig, isReengagementError, sendMetaTemplate, sendMetaText, sendMetaImage } from './meta';
 import { WA_TEMPLATES } from '@/lib/whatsappTemplates';
+import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
+import {
+  buildNotificationVariables,
+  outboundChannel,
+  realInboundAtFromMessages,
+  recipientFirstName,
+} from '@/lib/whatsappOutbound';
 
 export type { SendResult };
 
@@ -51,6 +58,78 @@ async function resolveProvider(businessId?: string): Promise<'meta' | 'twilio'> 
   return 'meta';
 }
 
+/**
+ * Last genuine inbound WhatsApp time for this phone, plus a first name
+ * taken from the lead or a conversation the webhook actually wrote.
+ * A website-form `via: 'form'` line is ignored.
+ */
+async function recipientWindow(phone: string, leadId?: string): Promise<{ lastInboundAt: Date | null; name: string }> {
+  const normalized = normalizePhoneE164(phone) || phone;
+  const key = phoneDedupeKey(phone);
+  const { default: Lead } = await import('@/models/Lead');
+  const { default: SalesConversation } = await import('@/models/SalesConversation');
+  const { default: BookingConversation } = await import('@/models/BookingConversation');
+  const { default: Conversation } = await import('@/models/Conversation');
+
+  const phoneQuery = key ? { phoneKey: key } : { leadPhone: normalized };
+  const [leadById, leadByPhone, sales, bookings] = await Promise.all([
+    leadId ? Lead.findById(leadId).select('name').lean() as Promise<{ name?: string } | null> : null,
+    Lead.findOne({ phone: normalized }).select('name _id').sort({ updatedAt: -1 }).lean() as Promise<{ name?: string; _id?: unknown } | null>,
+    SalesConversation.find(phoneQuery).select('lastLeadReplyAt leadName').lean() as Promise<Array<{ lastLeadReplyAt?: Date; leadName?: string }>>,
+    BookingConversation.find(phoneQuery).select('leadName messages').lean() as Promise<Array<{ leadName?: string; messages?: Array<{ role?: string; at?: Date; via?: string }> }>>,
+  ]);
+
+  const inboundStamps: Array<Date | string | null | undefined> = sales.map((row) => row.lastLeadReplyAt);
+  for (const row of bookings) {
+    inboundStamps.push(realInboundAtFromMessages(row.messages));
+  }
+  const leadIds = [leadId, leadByPhone?._id].filter(Boolean);
+  if (leadIds.length) {
+    const inbound = await Conversation.findOne({ leadId: { $in: leadIds }, direction: 'inbound' })
+      .sort({ timestamp: -1 })
+      .select('timestamp')
+      .lean() as { timestamp?: Date } | null;
+    if (inbound?.timestamp) inboundStamps.push(inbound.timestamp);
+  }
+
+  const name = recipientFirstName(leadById?.name)
+    || recipientFirstName(leadByPhone?.name)
+    || recipientFirstName(sales.find((row) => row.leadName)?.leadName)
+    || recipientFirstName(bookings.find((row) => row.leadName)?.leadName);
+
+  return {
+    lastInboundAt: realInboundAtFromMessages(
+      inboundStamps.filter(Boolean).map((at) => ({ role: 'lead', via: 'whatsapp', at })),
+      null
+    ),
+    name,
+  };
+}
+
+async function sendNotificationTemplate(
+  phone: string,
+  body: string,
+  leadId?: string,
+  businessId?: string,
+  name?: string
+): Promise<SendResult> {
+  if (!WA_TEMPLATES.notification) {
+    return { success: false, error: 'Notification template is not configured (TWILIO_TEMPLATE_NOTIFICATION).' };
+  }
+  const resolved = name || (await recipientWindow(phone, leadId)).name;
+  const built = buildNotificationVariables(resolved, body);
+  if (!built.ok) {
+    console.error('[whatsapp] notification template refused:', built.error);
+    return { success: false, error: built.error };
+  }
+  return sendTemplateMessage(phone, WA_TEMPLATES.notification, built.variables, businessId);
+}
+
+/** Status-callback recovery. Sanitizes {{2}} and does not call Twilio when the variables are invalid. */
+export async function retryFreeformAsNotification(phone: string, body: string): Promise<SendResult> {
+  return sendNotificationTemplate(phone, body);
+}
+
 export async function sendOutboundMessage(
   phone: string,
   body: string,
@@ -62,30 +141,25 @@ export async function sendOutboundMessage(
 
   const provider = await resolveProvider(businessId);
   if (provider === 'twilio') {
+    const window = await recipientWindow(phone, leadId);
+    const channel = outboundChannel(window.lastInboundAt);
+
+    // Outside the 24-hour window the free-form API is not called. Media has
+    // no approved header template, so that case fails locally.
+    if (channel === 'template') {
+      if (media?.url) {
+        return { success: false, error: 'Image sends have no template fallback outside the 24h window.' };
+      }
+      return sendNotificationTemplate(phone, body, leadId, businessId, window.name);
+    }
+
     const result = await sendViaTwilio(phone, body, leadId, businessId, media?.url);
 
-    // Twilio 63016 = business-initiated send rejected because we're outside
-    // the 24h customer-session window. growwmatics_notification is the
-    // generic approved-template fallback for exactly this case — same idea
-    // as the Meta branch's META_UTILITY_TEMPLATE_NAME retry below, but only
-    // usable when the send went out on GrowwMatics' own number (a business's
-    // own Twilio number can't use a GrowwMatics-scoped Content Template) and
-    // never for media (no header-media template configured).
-    if (!result.success && result.outsideWindow && result.isPlatformDefault && !media && WA_TEMPLATES.notification) {
-      // WhatsApp/Twilio reject any Content Template variable that contains a
-      // newline/tab or 21656 "ContentVariables invalid" (this was silently
-      // dropping every multi-line body — the sales-nurture drip's follow-up
-      // templates and the owner daily digest both include line breaks — see
-      // incident notes Sep 2026). Flatten to a single line before packing it
-      // into {{2}}; this is the fallback's own last-resort summary text, not
-      // the primary send, so losing line breaks here is an acceptable trade
-      // for the message actually arriving.
-      // Template parameters can't hold newlines, and WhatsApp caps the whole
-      // template body (~1024 chars incl. the fixed wording) — an over-long
-      // update (e.g. a monthly summary) would otherwise be rejected outright.
-      const flat = body.replace(/\s*[\r\n\t]+\s*/g, ' ').replace(/ {2,}/g, ' ').trim();
-      const flatBody = flat.length > 900 ? `${flat.slice(0, 897).trimEnd()}…` : flat;
-      const retry = await sendTemplateMessage(phone, WA_TEMPLATES.notification, { '1': 'there', '2': flatBody }, businessId);
+    // Exceptional only: the local window said the customer was inside 24h
+    // and Twilio still returned 63016. One sanitized template attempt, not
+    // a second try if that attempt is invalid.
+    if (!result.success && result.outsideWindow && result.isPlatformDefault && !media) {
+      const retry = await sendNotificationTemplate(phone, body, leadId, businessId, window.name);
       if (retry.success) return retry;
       return { ...result, error: `${result.error} (template fallback also failed: ${retry.error})` };
     }

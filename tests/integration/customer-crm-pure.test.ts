@@ -286,8 +286,11 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
   const allowed: Record<string, string[]> = {
     // + the GBP sync scheduler/worker (FR-3.2 → FR-3.6 GBP Intelligence) and the audit's
     //   bounded wait for the first GBP snapshot — not CRM code.
-    'src/services/inngest/functions.ts': ['processFollowUpJob', 'scheduleLeadFollowUpsJob', 'dispatchWhatsappFollowUpJob', 'crmFollowUpReminderCron', 'crmStaleLeadReminderCron', 'crmGrowthReportReadyCron', 'gbpNightlySyncScheduler', 'gbpSyncWorker', 'generateAuditJob'],
-    'src/app/api/whatsapp/webhook/route.ts': ['__header__', 'processInboundMessage'],
+    // + demo slot confirmation and DEMO_REMINDER copy, which now claim a
+    //   confirmation once and let the WhatsApp sender pick the 24h channel.
+    'src/services/inngest/functions.ts': ['processFollowUpJob', 'scheduleLeadFollowUpsJob', 'dispatchWhatsappFollowUpJob', 'crmFollowUpReminderCron', 'crmStaleLeadReminderCron', 'crmGrowthReportReadyCron', 'gbpNightlySyncScheduler', 'gbpSyncWorker', 'generateAuditJob', 'handleSlotSelection', 'bookConfirmedSlot', 'buildMessageForAction', 'deliverBookingReply'],
+    // Real WhatsApp inbound lines are tagged via: 'whatsapp' so a website form cannot open the 24h window.
+    'src/app/api/whatsapp/webhook/route.ts': ['__header__', 'processInboundMessage', 'handleActiveSalesConversation', 'processPlatformInbound', 'openDemoThread'],
   };
   for (const [file, ok] of Object.entries(allowed)) {
     const head = atHead(file);

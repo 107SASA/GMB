@@ -390,28 +390,17 @@ export async function fetchLocationPin(businessId: string): Promise<{ lat?: numb
 }
 
 /**
- * Applies an edit to the GBP profile. The edit is ALWAYS mirrored into our own
- * Business doc so the data is captured; the live write to Google only happens
- * when GBP_LIVE_WRITES_ENABLED is on (until the app is verified for the
- * business.manage write scope). Returns whether the live write was applied.
+ * Writes name, description, phone, or website to Google.
+ * Does not update the local Business document. The FR-5 executor mirrors a
+ * field only after a successful read-back. Live writes stay behind
+ * GBP_LIVE_WRITES_ENABLED.
  */
 export async function updateLocationProfile(
   businessId: string,
   patch: GbpProfilePatch
-): Promise<{ liveWriteApplied: boolean }> {
+): Promise<{ liveWriteApplied: boolean; googleBody?: unknown }> {
   await dbConnect();
 
-  // Mirror into the local Business record (source of truth for our features).
-  const localSet: Record<string, string> = {};
-  if (patch.title !== undefined) localSet.name = patch.title;
-  if (patch.description !== undefined) localSet.description = patch.description;
-  if (patch.primaryPhone !== undefined) localSet.phone = patch.primaryPhone;
-  if (patch.website !== undefined) localSet.website = patch.website;
-  if (Object.keys(localSet).length) {
-    await Business.updateOne({ _id: businessId }, { $set: localSet });
-  }
-
-  // Live write to Google is gated OFF by default (see lib/gbpSafety.ts).
   if (!gbpWritesEnabled()) {
     return { liveWriteApplied: false };
   }
@@ -426,19 +415,170 @@ export async function updateLocationProfile(
   if (patch.description !== undefined) { body.profile = { description: patch.description }; masks.push('profile.description'); }
   if (patch.primaryPhone !== undefined) { body.phoneNumbers = { primaryPhone: patch.primaryPhone }; masks.push('phoneNumbers.primaryPhone'); }
   if (patch.website !== undefined) { body.websiteUri = patch.website; masks.push('websiteUri'); }
-  if (masks.length === 0) return { liveWriteApplied: true };
+  if (masks.length === 0) return { liveWriteApplied: true, googleBody: null };
 
-  const url = `${BIZINFO_BASE}/${tokenDoc.locationId}?updateMask=${encodeURIComponent(masks.join(','))}`;
+  const url = `${BIZINFO_BASE}/${v1Location(tokenDoc.locationId)}?updateMask=${encodeURIComponent(masks.join(','))}`;
   const res = await fetch(url, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  const googleBody = await res.json().catch(() => null);
   if (!res.ok) {
-    const err = await res.text();
-    throw describeGoogleApiError('updateLocationProfile', res.status, err);
+    throw describeGoogleApiError('updateLocationProfile', res.status, JSON.stringify(googleBody || {}));
   }
-  return { liveWriteApplied: true };
+  return { liveWriteApplied: true, googleBody };
+}
+
+function v1Location(locationId: string): string {
+  const i = locationId.indexOf('locations/');
+  return i >= 0 ? locationId.slice(i) : locationId;
+}
+
+/** Copies a verified Google value onto the local business. Not called before Google confirms it. */
+export async function mirrorVerifiedProfile(businessId: string, patch: GbpProfilePatch): Promise<void> {
+  await dbConnect();
+  const localSet: Record<string, string> = {};
+  if (patch.title !== undefined) localSet.name = patch.title;
+  if (patch.description !== undefined) localSet.description = patch.description;
+  if (patch.primaryPhone !== undefined) localSet.phone = patch.primaryPhone;
+  if (patch.website !== undefined) localSet.website = patch.website;
+  if (Object.keys(localSet).length) await Business.updateOne({ _id: businessId }, { $set: localSet });
+}
+
+export async function readLocationRaw(businessId: string, readMask: string): Promise<any> {
+  const accessToken = await getValidToken(businessId);
+  await dbConnect();
+  const tokenDoc = await GBPToken.findOne({ businessId });
+  if (!tokenDoc?.locationId) throw new Error('No GBP location linked to this business');
+  const url = `${BIZINFO_BASE}/${v1Location(tokenDoc.locationId)}?readMask=${encodeURIComponent(readMask)}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) throw describeGoogleApiError('readLocationRaw', res.status, await res.text());
+  return res.json();
+}
+
+export async function patchLocationRaw(
+  businessId: string,
+  updateMask: string,
+  body: unknown,
+): Promise<{ liveWriteApplied: boolean; status: number; googleBody: unknown }> {
+  if (!gbpWritesEnabled()) return { liveWriteApplied: false, status: 0, googleBody: null };
+  const accessToken = await getValidToken(businessId);
+  await dbConnect();
+  const tokenDoc = await GBPToken.findOne({ businessId });
+  if (!tokenDoc?.locationId) throw new Error('No GBP location linked to this business');
+  const url = `${BIZINFO_BASE}/${v1Location(tokenDoc.locationId)}?updateMask=${encodeURIComponent(updateMask)}`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const googleBody = await res.json().catch(() => null);
+  if (!res.ok) throw describeGoogleApiError('patchLocationRaw', res.status, JSON.stringify(googleBody || {}));
+  return { liveWriteApplied: true, status: res.status, googleBody };
+}
+
+const AREA_PLACE_TYPES = new Set([
+  'locality', 'postal_code', 'sublocality', 'sublocality_level_1', 'sublocality_level_2',
+  'neighborhood', 'administrative_area_level_2', 'administrative_area_level_3',
+]);
+
+/**
+ * Resolves a city or postal code to Places results that can be service areas.
+ * Businesses and streets are dropped. An empty list means unresolved — never a guessed id.
+ */
+export async function resolveAreaPlaces(query: string): Promise<{ configured: boolean; places: Array<{ placeId: string; placeName: string; address: string | null }> }> {
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  const text = query.trim();
+  if (!key || !text) return { configured: !!key, places: [] };
+  const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': key,
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.types',
+    },
+    body: JSON.stringify({ textQuery: text, pageSize: 5 }),
+  });
+  if (!res.ok) return { configured: true, places: [] };
+  const data = await res.json().catch(() => null);
+  const places = (Array.isArray(data?.places) ? data.places : [])
+    .filter((p: any) => Array.isArray(p?.types) && p.types.some((t: string) => AREA_PLACE_TYPES.has(t)))
+    .filter((p: any) => typeof p?.id === 'string' && p.id.length >= 8)
+    .map((p: any) => ({
+      placeId: String(p.id),
+      placeName: String(p.displayName?.text || text),
+      address: p.formattedAddress ? String(p.formattedAddress) : null,
+    }));
+  return { configured: true, places };
+}
+
+/** Resolves a display name to a Google category resource. Empty when Google returns no exact match. */
+export async function searchGbpCategories(businessId: string, displayName: string, regionCode = 'IN'): Promise<Array<{ name: string; displayName: string }>> {
+  const accessToken = await getValidToken(businessId);
+  const params = new URLSearchParams({
+    regionCode,
+    languageCode: 'en',
+    view: 'BASIC',
+    filter: `displayName=${displayName}`,
+  });
+  const res = await fetch(`${BIZINFO_BASE}/categories?${params}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  const want = displayName.trim().toLowerCase();
+  return (Array.isArray(data?.categories) ? data.categories : [])
+    .filter((c: any) => String(c?.displayName || '').trim().toLowerCase() === want && typeof c?.name === 'string')
+    .map((c: any) => ({ name: c.name, displayName: c.displayName }));
+}
+
+export async function readLocationAttributes(businessId: string): Promise<any> {
+  const accessToken = await getValidToken(businessId);
+  await dbConnect();
+  const tokenDoc = await GBPToken.findOne({ businessId });
+  if (!tokenDoc?.locationId) throw new Error('No GBP location linked to this business');
+  const res = await fetch(`${BIZINFO_BASE}/${v1Location(tokenDoc.locationId)}/attributes`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) throw describeGoogleApiError('readLocationAttributes', res.status, await res.text());
+  return res.json();
+}
+
+export async function patchLocationAttributes(
+  businessId: string,
+  attributeMask: string,
+  attributes: unknown[],
+): Promise<{ liveWriteApplied: boolean; googleBody: unknown }> {
+  if (!gbpWritesEnabled()) return { liveWriteApplied: false, googleBody: null };
+  const accessToken = await getValidToken(businessId);
+  await dbConnect();
+  const tokenDoc = await GBPToken.findOne({ businessId });
+  if (!tokenDoc?.locationId) throw new Error('No GBP location linked to this business');
+  const url = `${BIZINFO_BASE}/${v1Location(tokenDoc.locationId)}/attributes?attributeMask=${encodeURIComponent(attributeMask)}`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ attributes }),
+  });
+  const googleBody = await res.json().catch(() => null);
+  if (!res.ok) throw describeGoogleApiError('patchLocationAttributes', res.status, JSON.stringify(googleBody || {}));
+  return { liveWriteApplied: true, googleBody };
+}
+
+/** Attribute catalog for one category. Null when Google does not return it. */
+export async function listCategoryAttributes(businessId: string, categoryName: string, regionCode = 'IN'): Promise<Array<{ name: string; displayName: string; valueType: string }> | null> {
+  if (!categoryName) return null;
+  const accessToken = await getValidToken(businessId);
+  const params = new URLSearchParams({ categoryName, regionCode, languageCode: 'en' });
+  const res = await fetch(`${BIZINFO_BASE}/attributes?${params}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const list = Array.isArray(data?.attributeMetadata) ? data.attributeMetadata : Array.isArray(data?.attributes) ? data.attributes : null;
+  if (!list) return null;
+  return list
+    .filter((a: any) => typeof (a?.parent || a?.name) === 'string')
+    .map((a: any) => ({
+      name: String(a.parent || a.name),
+      displayName: String(a.displayName || a.parent || a.name),
+      valueType: String(a.valueType || 'ATTRIBUTE_VALUE_TYPE_UNSPECIFIED'),
+    }));
 }
 
 // ─── Local posts / media / review replies (My Business API v4) ─────────────────

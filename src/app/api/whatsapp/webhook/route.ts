@@ -120,7 +120,7 @@ async function handleActiveSalesConversation(
         preferredTime: '',
         notes: '',
       },
-      messages: [{ role: 'lead', text: body, at: new Date() }],
+      messages: [{ role: 'lead', text: body, at: new Date(), via: 'whatsapp' }],
     });
     await inngest.send({ name: 'booking/agent.reply', data: { conversationId: convo._id.toString(), body } });
 
@@ -417,7 +417,7 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
       return;
     }
     if (!activeBooking.leadName && profileName) activeBooking.leadName = profileName;
-    activeBooking.messages.push({ role: 'lead', text: body, at: new Date() });
+    activeBooking.messages.push({ role: 'lead', text: body, at: new Date(), via: 'whatsapp' });
     await activeBooking.save();
     await inngest.send({ name: 'booking/agent.reply', data: { conversationId: activeBooking._id.toString(), body } });
     return;
@@ -593,7 +593,7 @@ async function openDemoThread(
       preferredTime: '',
       notes: '',
     },
-    messages: [{ role: 'lead', text: body, at: new Date() }],
+    messages: [{ role: 'lead', text: body, at: new Date(), via: 'whatsapp' }],
   });
   await inngest.send({ name: 'booking/agent.reply', data: { conversationId: convo._id.toString(), body } });
 }

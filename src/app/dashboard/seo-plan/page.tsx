@@ -73,7 +73,7 @@ export default function SeoPlanPage() {
     try {
       const res = await fetch('/api/seo-plan/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       const json = await res.json();
-      setApplyMsg(json.reason || (json.success ? 'Applied.' : 'Could not apply.'));
+      setApplyMsg(json.reason || (json.proposalId ? 'Description proposed. Approve it under Profile optimization. The business name was not included.' : 'Could not propose.'));
     } catch {
       setApplyMsg('Network error — please try again.');
     } finally {
@@ -157,7 +157,7 @@ export default function SeoPlanPage() {
             disabled={applying}
             className="px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-bold hover:bg-primary-container disabled:opacity-60"
           >
-            {applying ? 'Applying…' : 'Apply to Google'}
+            {applying ? 'Proposing…' : 'Propose description'}
           </button>
           {applyMsg && <p className="text-xs text-on-surface-variant mt-2">{applyMsg}</p>}
         </Card>

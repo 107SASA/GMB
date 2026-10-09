@@ -143,7 +143,7 @@ export const guardedHttpsAgent = new https.Agent({ lookup: guardedLookup as any 
 export async function guardedFetchText(
   rawUrl: string,
   opts: { timeoutMs?: number; maxRedirects?: number; maxBytes?: number; userAgent?: string } = {},
-): Promise<{ finalUrl: string; body: string } | null> {
+): Promise<{ finalUrl: string; body: string; xRobotsTag: string | null } | null> {
   const { default: axios } = await import('axios');
   let current = rawUrl;
   for (let hop = 0; hop <= (opts.maxRedirects ?? 4); hop++) {
@@ -168,7 +168,12 @@ export async function guardedFetchText(
         current = new URL(String(res.headers.location), shape.url).toString();
         continue;
       }
-      return { finalUrl: shape.url.toString(), body: typeof res.data === 'string' ? res.data : '' };
+      const tag = res.headers?.['x-robots-tag'];
+      return {
+        finalUrl: shape.url.toString(),
+        body: typeof res.data === 'string' ? res.data : '',
+        xRobotsTag: tag ? String(tag).slice(0, 200) : null,
+      };
     } catch (err: any) {
       console.warn(`[ssrfGuard] fetch failed for ${current}: ${err?.message}`);
       return null;

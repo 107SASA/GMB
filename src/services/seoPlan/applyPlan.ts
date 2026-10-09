@@ -1,60 +1,64 @@
 import dbConnect from '@/lib/mongodb';
 import SeoPlan from '@/models/SeoPlan';
-import { gbpWritesEnabled } from '@/lib/gbpSafety';
-import { updateLocationProfile } from '@/lib/gbpClient';
+import GBPToken from '@/models/GBPToken';
+import { createChange } from '@/services/gbp/changes/store';
+import { validateDescription } from '@/services/gbp/changes/policy';
+import { readLocationRaw } from '@/lib/gbpClient';
 
 /**
- * Apply the active SEO plan's suggested title + description to the business.
- *
- * updateLocationProfile always mirrors the values into our own Business doc;
- * the live Google write only fires when GBP_LIVE_WRITES_ENABLED is on AND the
- * business is OAuth-connected. This function never flips that flag — with it
- * off, "apply" means "save the drafts onto the listing record locally".
+ * Turns the active SEO plan's description into a FR-5 proposal.
+ * The title is not included: a business name is never applied from the plan.
+ * Nothing is sent to Google here.
  */
-export interface ApplyPlanResult {
+export async function applyActivePlanToProfile(businessId: string): Promise<{
   applied: boolean;
-  liveWriteApplied: boolean;
-  title?: string;
-  description?: string;
-  reason?: string;
-}
-
-export async function applyActivePlanToProfile(
-  businessId: string,
-  opts: { fields?: Array<'title' | 'description'> } = {},
-): Promise<ApplyPlanResult> {
+  liveWriteApplied: false;
+  proposalId?: string;
+  reason: string;
+}> {
   await dbConnect();
   const plan = await SeoPlan.findOne({ businessId, status: 'active' }).sort({ version: -1 }).lean();
   if (!plan) return { applied: false, liveWriteApplied: false, reason: 'No active SEO plan for this business.' };
-
-  const fields = opts.fields ?? ['title', 'description'];
-  const patch: { title?: string; description?: string } = {};
-  if (fields.includes('title') && plan.suggestedTitle) {
-    patch.title = plan.suggestedTitle.slice(0, 100);
+  const description = plan.suggestedDescription?.trim();
+  if (!description) return { applied: false, liveWriteApplied: false, reason: 'The active plan has no description draft to propose.' };
+  const token = await GBPToken.findOne({ businessId }).select('locationId').lean<{ locationId?: string }>();
+  if (!token?.locationId) return { applied: false, liveWriteApplied: false, reason: 'Google Business Profile is not connected.' };
+  let before = '';
+  try {
+    const live = await readLocationRaw(businessId, 'profile,categories,storefrontAddress');
+    before = live?.profile?.description || '';
+    const tokens = [live?.categories?.primaryCategory?.displayName, live?.storefrontAddress?.locality].filter(Boolean);
+    const allowedNumbers = (Array.isArray(plan.baseline) ? plan.baseline : []).flatMap((row) =>
+      [row?.reviewCount, row?.rating, row?.avgRank, row?.overallScore, row?.completionPct]
+        .filter((n): n is number => typeof n === 'number' && Number.isFinite(n))
+        .map((n) => String(n)),
+    );
+    const competitorNames = (Array.isArray(plan.competitorLandscape) ? plan.competitorLandscape : [])
+      .map((row: { name?: string; businessName?: string }) => row?.name || row?.businessName || '')
+      .filter(Boolean);
+    const validation = validateDescription(description, { tokens, allowedNumbers, competitorNames });
+    const change = await createChange({
+      businessId,
+      locationId: token.locationId,
+      kind: 'description',
+      fields: ['description'],
+      source: 'seo_plan',
+      before,
+      proposed: description.slice(0, 750),
+      validation,
+      requestedBy: 'seo_plan',
+      recommendationRef: { seoPlanId: String(plan._id), version: plan.version },
+    });
+    await SeoPlan.updateOne({ _id: plan._id }, { $set: { proposedChangeId: change._id.toString() } });
+    return {
+      applied: false,
+      liveWriteApplied: false,
+      proposalId: change._id.toString(),
+      reason: validation.valid
+        ? 'Description proposed. Review and approve it before anything is sent to Google. The business name was not included.'
+        : `Description was not proposed for apply: ${validation.violations.map((v) => v.message).join(' ')}`,
+    };
+  } catch (err: any) {
+    return { applied: false, liveWriteApplied: false, reason: 'Could not read the current Google description, so no proposal was created.' };
   }
-  if (fields.includes('description') && plan.suggestedDescription) {
-    patch.description = plan.suggestedDescription.slice(0, 750);
-  }
-  if (!patch.title && !patch.description) {
-    return { applied: false, liveWriteApplied: false, reason: 'The active plan has no title/description draft to apply.' };
-  }
-
-  const { liveWriteApplied } = await updateLocationProfile(businessId, patch);
-
-  await SeoPlan.updateOne(
-    { _id: plan._id },
-    { $set: { appliedAt: new Date(), appliedLive: liveWriteApplied } },
-  );
-
-  return {
-    applied: true,
-    liveWriteApplied,
-    title: patch.title,
-    description: patch.description,
-    reason: liveWriteApplied
-      ? 'Applied to the live Google listing.'
-      : gbpWritesEnabled()
-        ? 'Saved locally — connect Google to push this to the live listing.'
-        : 'Saved locally — live Google writes are disabled on this environment.',
-  };
 }

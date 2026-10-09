@@ -63,10 +63,10 @@ export interface ISeoPlan extends Document {
    *  an audit refresh. */
   ownerEdited: boolean;
 
-  /** Set by applyActivePlanToProfile when the title/description drafts were
-   *  pushed onto the listing record (locally, or live when writes are on). */
+  /** Earlier apply path. New proposals are stored on GbpProfileChange. */
   appliedAt?: Date;
   appliedLive?: boolean;
+  proposedChangeId?: string;
 
   createdAt: Date;
   updatedAt: Date;
@@ -108,6 +108,7 @@ const SeoPlanSchema = new Schema<ISeoPlan>(
     ownerEdited: { type: Boolean, default: false },
     appliedAt: { type: Date },
     appliedLive: { type: Boolean },
+    proposedChangeId: { type: String },
   },
   { timestamps: true },
 );

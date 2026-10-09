@@ -11,6 +11,7 @@ import {
 } from '@/lib/bookingAgentDefaults';
 import { AGENT_SCOPE_GUARDRAIL } from '@/lib/agentGuardrails';
 import { getBusinessNow, friendlyDateLabel, friendlyTimeLabel } from '@/services/whatsapp-agent/dateTimeUtils';
+import { displayTimezone } from '@/lib/whatsappOutbound';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -188,14 +189,16 @@ export function renderConfirmation(
   config: BookingAgentConfigShape,
   details: IBookingDetails,
   slot: { date: string; time: string },
-  meetingLink: string
+  meetingLink: string,
+  timezone?: string
 ): string {
+  const tz = displayTimezone(timezone || config.timezone);
   return renderTemplate(config.confirmationMessage, {
     name: firstName(details.name),
     business: details.businessName || 'your business',
     date: friendlyDateLabel(slot.date),
     time: friendlyTimeLabel(slot.time),
-  }) + `\n\nJoin here: ${meetingLink}`;
+  }) + ` (${tz})\n\nJoin here: ${meetingLink}`;
 }
 
 /** Formats a numbered list of real available slots for a WhatsApp message. */

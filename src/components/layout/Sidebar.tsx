@@ -40,6 +40,7 @@ const sidebarLinks = [
   { name: "Dashboard", icon: "dashboard", href: "/dashboard" },
   { name: "Audit Engine", icon: "analytics", href: "/dashboard/audit" },
   { name: "SEO Plan", icon: "target", href: "/dashboard/seo-plan" },
+  { name: "Profile optimization", icon: "rule", href: "/dashboard/profile-optimization" },
   { name: "Google Profile", icon: "location_on", href: "/dashboard/gbp-profile" },
   { name: "Review Management", icon: "star", href: "/dashboard/reviews" },
   { name: "CRM", icon: "forum", href: "/dashboard/crm" },

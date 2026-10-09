@@ -16,6 +16,7 @@ import {
   factsFromStored,
   menuFor,
   reportIntakeQuestion,
+  bookedStatusReply,
   schedulingReplyAllowed,
   slotAvailableCopy,
 } from '../../src/services/whatsapp/prospectChoice.ts';
@@ -56,6 +57,14 @@ test('E tomorrow 11 AM parses to 11:00', () => {
   assert.equal(slot!.date, '2026-10-07');
   const afternoon = parseDemoTimeRequest('Friday afternoon', now, 'Asia/Kolkata');
   assert.equal(afternoon?.time, '14:00');
+});
+
+test('a booked demo reply includes the Meet link on one line', () => {
+  const link = 'https://meet.google.com/abc-defg-hij';
+  const reply = bookedStatusReply({ whenLabel: 'Friday, 9 October at 2:00 PM', meetingLink: link });
+  assert.match(reply, /Join here: https:\/\/meet.google.com\/abc-defg-hij/);
+  assert.equal(reply.includes('\n'), false);
+  assert.match(bookedStatusReply({ meetingLink: '' }), /Reply with a date and time/);
 });
 
 test('F and G slot copy uses real times and never the old forwarded line', () => {

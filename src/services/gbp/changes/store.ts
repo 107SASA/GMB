@@ -6,7 +6,7 @@ import dbConnect from '@/lib/mongodb';
 import GbpProfileChange, { type IGbpProfileChange } from '@/models/GbpProfileChange';
 import GBPToken from '@/models/GBPToken';
 import User from '@/models/User';
-import { gbpWritesEnabled } from '@/lib/gbpSafety';
+import { fr5ProfileMutationAllowed } from '@/lib/gbpSafety';
 import { logProfileActivity } from '@/lib/logProfileActivity';
 import {
   mirrorVerifiedProfile,
@@ -316,7 +316,7 @@ export async function executeChange(id: string, actor: { userId: string; busines
     await claimed.save();
     return { ok: false as const, error: guard.error, change: claimed };
   }
-  if (!gbpWritesEnabled()) {
+  if (!fr5ProfileMutationAllowed()) {
     const blocked = failClosed(toRecord(claimed), 'BLOCKED', 'Live Google writes are disabled.', now);
     await saveRecord(claimed, blocked);
     return { ok: false as const, error: blocked.error, change: claimed };
@@ -350,6 +350,7 @@ export async function executeChange(id: string, actor: { userId: string; busines
       before: claimed.before,
       proposed: claimed.proposed,
       patch: async () => {
+        if (!fr5ProfileMutationAllowed()) throw new WriteNotAccepted(null);
         const written = claimed.kind === 'attribute'
           ? await patchLocationAttributes(actor.businessId, String((claimed.proposed as { name?: string }).name), [(claimed.proposed as { attribute: unknown }).attribute])
           : await writeKind(actor.businessId, claimed.kind, claimed.proposed);
@@ -380,6 +381,7 @@ async function restorePrevious(claimed: IGbpProfileChange, actor: { userId: stri
       before: claimed.after,
       proposed: claimed.before,
       patch: async () => {
+        if (!fr5ProfileMutationAllowed()) throw new WriteNotAccepted(null);
         const written = claimed.kind === 'attribute'
           ? await patchLocationAttributes(actor.businessId, String((claimed.proposed as { name?: string }).name), [claimed.before])
           : await writeKind(actor.businessId, claimed.kind, claimed.before);
@@ -438,7 +440,7 @@ export async function rollbackChange(id: string, actor: { userId: string; busine
     return { ok: false as const, error: 'This attribute had no previous Google value, so it cannot be removed automatically.' };
   }
   if (doc.kind !== 'attribute' && !READ_MASK[doc.kind]) return { ok: false as const, error: 'This change cannot be rolled back.' };
-  if (!gbpWritesEnabled()) return { ok: false as const, error: 'Live Google writes are disabled.' };
+  if (!fr5ProfileMutationAllowed()) return { ok: false as const, error: 'Live Google writes are disabled.' };
   const live = await readKind(actor.businessId, doc.kind, doc.proposed);
   const decision = rollbackDecision(toRecord(doc), canonicalFingerprint(doc.kind, live));
   if (decision === 'conflict') {

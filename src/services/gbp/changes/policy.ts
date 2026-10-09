@@ -422,6 +422,11 @@ export function rollbackRecheck(afterFingerprint: string | null, liveFingerprint
   return 'patch';
 }
 
+/** Execution must not patch when Google no longer has the value captured on the proposal. */
+export function staleFieldDecision(beforeFingerprint: string, currentFingerprint: string): 'ok' | 'conflict' {
+  return beforeFingerprint === currentFingerprint ? 'ok' : 'conflict';
+}
+
 function emptyText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();

@@ -21,6 +21,7 @@ import {
   fingerprint,
   locationGuard,
   rollbackRecheck,
+  staleFieldDecision,
   haversineMeters,
   holidayReminders,
   toGoogleHours,
@@ -31,7 +32,7 @@ import {
   validateSpecialHours,
   withGbpUtm,
 } from '../../src/services/gbp/changes/policy.ts';
-import { applyAndVerify, approve, executionClaim, rollbackDecision, type ChangeRecord } from '../../src/services/gbp/changes/machine.ts';
+import { applyAndVerify, approve, executionClaim, failClosed, markReverted, rollbackDecision, type ChangeRecord } from '../../src/services/gbp/changes/machine.ts';
 import { proposeServices, recommendCategories, suggestUnsetAttributes } from '../../src/services/gbp/changes/recommend.ts';
 
 const base = (): ChangeRecord => ({
@@ -296,6 +297,135 @@ test('an unresolved recovery reads Google and does not patch when the FR-5 flag 
   assert.equal(recovery.includes('patchLocation'), false);
   assert.equal(recovery.includes('updateLocationProfile'), false);
   assert.equal(store.includes("if (!fr5ProfileMutationAllowed()) throw new WriteNotAccepted"), true);
+});
+
+test('a changed Google description conflicts before any patch', async () => {
+  const before = 'Mulsetu is a software company in Ojhar.';
+  const proposed = 'Mulsetu is a software company in Ojhar';
+  const beforeFingerprint = canonicalFingerprint('description', before);
+  const changedOnGoogle = `${before} Edited elsewhere.`;
+  let patches = 0;
+
+  assert.equal(staleFieldDecision(beforeFingerprint, canonicalFingerprint('description', changedOnGoogle)), 'conflict');
+  const closed = failClosed(
+    { ...base(), before, proposed, beforeFingerprint, status: 'EXECUTING' },
+    'CONFLICT',
+    'Google changed this field after the proposal was created.',
+    '2026-10-09T00:00:00.000Z',
+  );
+  assert.equal(closed.status, 'CONFLICT');
+  assert.equal(closed.after, null);
+  assert.equal(patches, 0);
+
+  assert.equal(staleFieldDecision(beforeFingerprint, canonicalFingerprint('description', before)), 'ok');
+  const written = await applyAndVerify({
+    kind: 'description',
+    before,
+    proposed,
+    patch: async () => { patches += 1; return { ok: true }; },
+    read: async () => proposed,
+  });
+  assert.equal(written.status, 'VERIFIED');
+  assert.equal(patches, 1);
+
+  const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
+  const store = readFileSync(join(root, 'src/services/gbp/changes/store.ts'), 'utf8');
+  const executeAt = store.indexOf('export async function executeChange');
+  const rollbackAt = store.indexOf('export async function rollbackChange');
+  const executeBody = store.slice(executeAt, rollbackAt);
+  const staleAt = executeBody.indexOf('staleFieldDecision(');
+  const applyAt = executeBody.indexOf('applyAndVerify(');
+  assert.ok(staleAt > 0 && applyAt > staleAt);
+  assert.equal(executeBody.slice(0, applyAt).includes('writeKind('), false);
+  assert.equal(executeBody.slice(0, applyAt).includes('patchLocation'), false);
+  assert.equal(executeBody.slice(0, applyAt).includes('updateLocationProfile'), false);
+});
+
+test('rollback patches the recorded before-value only while the verified value is still live', async () => {
+  const before = 'Original description.';
+  const after = 'Original description';
+  const afterFingerprint = canonicalFingerprint('description', after);
+  const record = {
+    ...base(),
+    status: 'VERIFIED' as const,
+    before,
+    proposed: after,
+    after,
+    beforeFingerprint: canonicalFingerprint('description', before),
+    afterFingerprint,
+  };
+  let patches = 0;
+  let patched: unknown = null;
+
+  const changed = rollbackRecheck(afterFingerprint, canonicalFingerprint('description', 'A different Google description.'));
+  patches += changed === 'patch' ? 1 : 0;
+  assert.equal(changed, 'conflict');
+  assert.equal(rollbackDecision(record, canonicalFingerprint('description', 'A different Google description.')), 'conflict');
+  assert.equal(patches, 0);
+
+  const stillVerified = rollbackRecheck(afterFingerprint, canonicalFingerprint('description', after));
+  assert.equal(stillVerified, 'patch');
+  const restored = await applyAndVerify({
+    kind: 'description',
+    before: after,
+    proposed: before,
+    patch: async () => { patches += 1; patched = before; return { ok: true }; },
+    read: async () => before,
+  });
+  assert.equal(patched, before);
+  assert.equal(restored.status, 'VERIFIED');
+  assert.equal(canonicalFingerprint('description', restored.after), record.beforeFingerprint);
+  const reverted = markReverted(record, 'user', restored.googleBody, '2026-10-09T00:00:00.000Z');
+  assert.equal(reverted.status, 'REVERTED');
+  assert.equal(reverted.after, before);
+  assert.equal(reverted.rollbackStatus, 'REVERTED');
+
+  const ambiguous = await applyAndVerify({
+    kind: 'description',
+    before: after,
+    proposed: before,
+    patch: async () => { patches += 1; return { ok: true }; },
+    read: async () => 'neither the verified text nor the original',
+  });
+  assert.equal(ambiguous.status, 'CONFLICT');
+  assert.notEqual(ambiguous.status, 'VERIFIED');
+
+  const unread = await applyAndVerify({
+    kind: 'description',
+    before: after,
+    proposed: before,
+    patch: async () => { patches += 1; return { ok: true }; },
+    read: async () => { throw new Error('read failed'); },
+  });
+  assert.equal(unread.status, 'UNRESOLVED');
+  assert.match(unread.error || '', /not retried/);
+
+  const unchanged = await applyAndVerify({
+    kind: 'description',
+    before: after,
+    proposed: before,
+    patch: async () => { patches += 1; return { ok: true }; },
+    read: async () => after,
+  });
+  assert.equal(unchanged.status, 'FAILED');
+  assert.equal(patches, 4);
+  for (const outcome of [ambiguous, unread, unchanged]) {
+    assert.notEqual(outcome.status, 'VERIFIED');
+  }
+
+  const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
+  const store = readFileSync(join(root, 'src/services/gbp/changes/store.ts'), 'utf8');
+  const restoreAt = store.indexOf('async function restorePrevious');
+  const rollbackAt = store.indexOf('export async function rollbackChange');
+  const restoreBody = store.slice(restoreAt, rollbackAt);
+  const verifiedAt = restoreBody.indexOf("outcome.status === 'VERIFIED'");
+  const revertedAt = restoreBody.indexOf('markReverted(');
+  assert.ok(verifiedAt > 0 && revertedAt > verifiedAt);
+  assert.equal(restoreBody.includes('writeKind(actor.businessId, claimed.kind, claimed.before)'), true);
+  const rollbackBody = store.slice(rollbackAt);
+  const recheckAt = rollbackBody.indexOf('rollbackRecheck(');
+  const restoreCallAt = rollbackBody.indexOf('return restorePrevious(');
+  assert.ok(recheckAt > 0 && restoreCallAt > recheckAt);
 });
 
 test('posts, review replies, and photos stay on the global write gate', () => {

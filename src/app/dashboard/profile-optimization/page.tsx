@@ -2,9 +2,22 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import {
+  APPLY_REQUIRES_BOTH_FLAGS,
+  APPROVAL_DOES_NOT_PUBLISH,
+  SENSITIVE_CONFIRM,
+  VALIDATION_LIMIT,
+  VALIDATION_PASSED,
+  proposalText,
+  validationReview,
+  wordDiff,
+} from '@/app/dashboard/profile-optimization/textDiff';
 
 interface ChangeRow {
   _id: string;
+  businessId?: string;
+  locationId?: string;
+  clientRequestId?: string | null;
   kind: string;
   status: string;
   sensitive: boolean;
@@ -12,7 +25,7 @@ interface ChangeRow {
   before: unknown;
   proposed: unknown;
   error?: string | null;
-  validation?: { valid: boolean; violations?: Array<{ message: string }> };
+  validation?: { valid?: boolean; violations?: Array<{ message?: string }>; warnings?: Array<{ message?: string }> };
 }
 
 interface CategoryRec {
@@ -114,7 +127,7 @@ export default function ProfileOptimizationPage() {
       <div>
         <h1 className="font-heading text-xl font-bold text-on-surface">Profile optimization</h1>
         <p className="text-sm text-on-surface-variant mt-1">
-          Recommendations stay here until you approve one change. Google is updated only after that approval, and only when live writes are enabled. There is no apply-all.
+          {APPROVAL_DOES_NOT_PUBLISH} {APPLY_REQUIRES_BOTH_FLAGS} There is no apply-all. {VALIDATION_LIMIT}
         </p>
       </div>
       {message && <p className="text-sm text-on-surface">{message}</p>}
@@ -125,7 +138,7 @@ export default function ProfileOptimizationPage() {
           <p className="text-sm text-on-surface-variant">{recs.products?.reason}</p>
           {description?.text && (
             <div className="space-y-1">
-              <p className="text-xs text-on-surface-variant">Description draft · {description.validation?.valid ? 'validation passed' : 'validation failed'}</p>
+              <p className="text-xs text-on-surface-variant">Description draft · {description.validation?.valid ? VALIDATION_PASSED : 'Validation failed.'} {VALIDATION_LIMIT}</p>
               <p className="text-sm whitespace-pre-wrap">{description.text}</p>
               {description.validation?.valid && (
                 <button className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-bold" onClick={() => propose({ kind: 'description', proposed: description.text, source: 'recommendation', context: { tokens: description.tokens || [], competitorNames: description.competitorNames || [] } })}>Propose this description</button>
@@ -236,39 +249,71 @@ export default function ProfileOptimizationPage() {
       <section className="space-y-3">
         <h2 className="font-heading font-bold">Proposed changes</h2>
         {changes.length === 0 && <p className="text-sm text-on-surface-variant">No proposals yet.</p>}
-        {changes.map((change) => (
-          <article key={change._id} className="bg-surface-container-lowest rounded-xl border border-outline-variant p-4 space-y-2">
+        {changes.map((change) => {
+          const review = validationReview(change.validation);
+          const diff = wordDiff(proposalText(change.before), proposalText(change.proposed));
+          const changed = diff.some((part) => part.type !== 'equal');
+          return (
+          <article key={change._id} className="bg-surface-container-lowest rounded-xl border border-outline-variant p-4 space-y-3">
             <div className="flex justify-between gap-3">
               <p className="font-semibold text-sm">{change.kind} · {change.status}{change.sensitive ? ' · explicit approval' : ''}</p>
               <p className="text-xs text-on-surface-variant">{change.source}</p>
+            </div>
+            <dl className="grid sm:grid-cols-2 gap-2 text-xs text-on-surface-variant">
+              <div><dt className="font-semibold text-on-surface">Proposal</dt><dd className="break-all">{change._id}</dd></div>
+              <div><dt className="font-semibold text-on-surface">Idempotency key</dt><dd className="break-all">{change.clientRequestId || 'Not set'}</dd></div>
+              <div><dt className="font-semibold text-on-surface">Business</dt><dd className="break-all">{change.businessId || 'Not recorded'}</dd></div>
+              <div><dt className="font-semibold text-on-surface">Google location</dt><dd className="break-all">{change.locationId || 'Not recorded'}</dd></div>
+            </dl>
+            <div>
+              <p className="text-xs font-semibold text-on-surface">Differences</p>
+              <p className="text-xs text-on-surface-variant">Removed text is struck through. Added text is highlighted.</p>
+              {!changed && <p className="text-xs text-on-surface-variant">No text was added or removed.</p>}
+              <p className="whitespace-pre-wrap text-sm mt-1">
+                {diff.map((part, index) => part.type === 'equal'
+                  ? <span key={index}>{part.value}</span>
+                  : part.type === 'insert'
+                    ? <ins key={index} className="bg-primary-fixed text-primary no-underline">{part.value}</ins>
+                    : <del key={index} className="text-error">{part.value}</del>)}
+              </p>
             </div>
             <div className="grid md:grid-cols-2 gap-3 text-sm">
               <div><p className="text-xs text-on-surface-variant">Current</p><pre className="whitespace-pre-wrap text-xs">{show(change.before)}</pre></div>
               <div><p className="text-xs text-on-surface-variant">Proposed</p><pre className="whitespace-pre-wrap text-xs">{show(change.proposed)}</pre></div>
             </div>
-            {change.validation?.violations?.length ? <p className="text-xs text-error">{change.validation.violations.map((v) => v.message).join(' ')}</p> : null}
+            {change.validation && review.passed ? <p className="text-xs text-on-surface">{VALIDATION_PASSED} {VALIDATION_LIMIT}</p> : null}
+            {change.validation && !review.passed ? <p className="text-xs text-error">Validation did not pass. {VALIDATION_LIMIT}</p> : null}
+            {!change.validation ? <p className="text-xs text-on-surface-variant">Validation was not recorded. {VALIDATION_LIMIT}</p> : null}
+            {review.violations.map((message, index) => <p key={`violation-${index}`} className="text-xs text-error">{message}</p>)}
+            {review.warnings.map((message, index) => <p key={`warning-${index}`} className="text-xs text-on-surface-variant">Warning: {message}</p>)}
             {change.error && <p className="text-xs text-error">{change.error}</p>}
-            <div className="flex flex-wrap gap-2">
-              {change.status === 'PROPOSED' && (
-                change.sensitive ? (
-                  confirmId === change._id ? (
-                    <button className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-bold" onClick={() => act(change._id, 'approve', { confirmSensitive: true })}>Confirm this {change.kind} change</button>
+            <div className="space-y-2">
+              <p className="text-xs text-on-surface-variant">{APPROVAL_DOES_NOT_PUBLISH}</p>
+              <p className="text-xs text-on-surface-variant">{APPLY_REQUIRES_BOTH_FLAGS}</p>
+              {change.sensitive && <p className="text-xs font-semibold text-on-surface">{SENSITIVE_CONFIRM}</p>}
+              <div className="flex flex-wrap gap-2">
+                {change.status === 'PROPOSED' && (
+                  change.sensitive ? (
+                    confirmId === change._id ? (
+                      <button className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-bold" onClick={() => act(change._id, 'approve', { confirmSensitive: true })}>Confirm this {change.kind} change</button>
+                    ) : (
+                      <button className="px-3 py-1.5 rounded-lg border border-outline text-xs font-bold" onClick={() => setConfirmId(change._id)}>Review sensitive change</button>
+                    )
                   ) : (
-                    <button className="px-3 py-1.5 rounded-lg border border-outline text-xs font-bold" onClick={() => setConfirmId(change._id)}>Review sensitive change</button>
+                    <button className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-bold" onClick={() => act(change._id, 'approve')}>Approve</button>
                   )
-                ) : (
-                  <button className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-bold" onClick={() => act(change._id, 'approve')}>Approve</button>
-                )
-              )}
-              {change.status === 'APPROVED' && (
-                <button className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-bold" onClick={() => act(change._id, 'execute')}>Apply to Google</button>
-              )}
-              {change.status === 'VERIFIED' && (
-                <button className="px-3 py-1.5 rounded-lg border border-outline text-xs font-bold" onClick={() => act(change._id, 'rollback')}>Roll back</button>
-              )}
+                )}
+                {change.status === 'APPROVED' && (
+                  <button className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-bold" onClick={() => act(change._id, 'execute')}>Apply to Google</button>
+                )}
+                {change.status === 'VERIFIED' && (
+                  <button className="px-3 py-1.5 rounded-lg border border-outline text-xs font-bold" onClick={() => act(change._id, 'rollback')}>Roll back</button>
+                )}
+              </div>
             </div>
           </article>
-        ))}
+          );
+        })}
       </section>
     </div>
   );

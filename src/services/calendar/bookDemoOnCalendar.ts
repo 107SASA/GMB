@@ -101,7 +101,21 @@ export async function bookDemoOnCalendar(input: {
   }
 
   const placeholder = await claimBookingSlot(input, key);
+  try {
+    return await bookOnClaimedSlot(input, key, placeholder);
+  } catch (err) {
+    // No half-made Pending row is left behind, whatever failed. releaseClaim
+    // never deletes a row that already has a Meet link.
+    await releaseClaim(placeholder._id).catch(() => {});
+    throw err;
+  }
+}
 
+async function bookOnClaimedSlot(
+  input: Parameters<typeof bookDemoOnCalendar>[0],
+  key: string,
+  placeholder: any
+): Promise<BookedMeeting> {
   const connections = await SalespersonCalendarConnection.find({ status: 'active' });
   if (!connections.length) {
     await releaseClaim(placeholder._id);

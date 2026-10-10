@@ -3361,11 +3361,17 @@ async function bookConfirmedSlot(
       await markSchedulingPaused(convo, 'no-open-slot');
       return { success: false, message: SCHEDULE_HANDOFF_ONCE };
     }
-    if (!(err instanceof CalendarError)) throw err;
+    // Anything else (network, token refresh, database) used to be rethrown,
+    // which failed the Inngest run and left the lead with no reply at all.
+    // It is logged with its stack and handed off like a Calendar failure.
+    if (!(err instanceof CalendarError)) {
+      console.error('[bookingAgent] unexpected booking failure — handing off:', err);
+    } else {
+      console.warn('[bookingAgent] calendar booking failed:', err.message);
+    }
 
     // Never fabricate a link/time — hand off to a human instead, per the
     // task's explicit requirement.
-    console.warn('[bookingAgent] calendar booking failed:', err.message);
     await markSchedulingPaused(convo, 'calendar-api-failure');
     return {
       success: false,

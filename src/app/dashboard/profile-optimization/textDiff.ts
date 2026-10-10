@@ -5,8 +5,11 @@
 
 export type DiffPart = { type: 'equal' | 'insert' | 'delete'; value: string };
 
-export const APPROVAL_DOES_NOT_PUBLISH = 'Approve records this proposal. It does not publish the change to Google.';
-export const APPLY_REQUIRES_BOTH_FLAGS = 'Apply to Google is a separate operation. It runs only when both GBP_LIVE_WRITES_ENABLED and GBP_FR5_LIVE_WRITES_ENABLED are exactly "true".';
+export const APPROVAL_DOES_NOT_PUBLISH = 'Approving saves your decision. It does not change your Google profile.';
+// Customer copy: never name internal settings or environment variables here.
+export const APPLY_REQUIRES_BOTH_FLAGS = 'Apply to Google is a separate step after approval. If live Google updates are switched off for your account, nothing is sent and the proposal stays approved.';
+export const APPLY_CONFIRM = 'Send this approved change to your Google profile now? If live Google updates are switched off for your account, nothing is sent and the proposal stays approved.';
+export const ROLLBACK_CONFIRM = 'Restore the value your Google profile had before this change?';
 export const VALIDATION_PASSED = 'Validation passed.';
 export const VALIDATION_LIMIT = 'Passing validation does not prove this change is safe, and it does not mean Google will accept it.';
 export const SENSITIVE_CONFIRM = 'This field needs a separate confirmation before it can be approved. Confirmation does not publish the change.';

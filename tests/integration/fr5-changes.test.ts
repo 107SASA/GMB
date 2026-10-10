@@ -301,6 +301,23 @@ test('an unresolved recovery reads Google and does not patch when the FR-5 flag 
   assert.equal(store.includes("if (!fr5ProfileMutationAllowed()) throw new WriteNotAccepted"), true);
 });
 
+test('apply with live writes off is refused before the claim and leaves the approval in place', () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
+  const store = readFileSync(join(root, 'src/services/gbp/changes/store.ts'), 'utf8');
+  const executeAt = store.indexOf('export async function executeChange');
+  const execute = store.slice(executeAt, store.indexOf('async function restorePrevious', executeAt));
+  const gateAt = execute.indexOf("pending.status === 'APPROVED' && !fr5ProfileMutationAllowed()");
+  const claimAt = execute.indexOf("$set: { status: 'EXECUTING'");
+  assert.ok(gateAt > 0 && claimAt > gateAt, 'the writes-off check runs before the EXECUTING claim');
+  assert.match(execute.slice(gateAt, claimAt), /return \{ ok: false as const, error: LIVE_WRITES_DISABLED, change: pending \}/);
+  // Writes switched off mid-request: the claim is released back to APPROVED, never BLOCKED.
+  assert.equal(/failClosed\([^)]*'BLOCKED', 'Live Google writes are disabled\.'/.test(store), false);
+  assert.match(execute, /claimed\.status = 'APPROVED';\s*claimed\.executedAt = pending\.executedAt \?\? null;/);
+  // Rollback with writes off still refuses without touching the record.
+  const rollback = store.slice(store.indexOf('export async function rollbackChange'));
+  assert.ok(rollback.indexOf('if (!fr5ProfileMutationAllowed()) return { ok: false as const, error: LIVE_WRITES_DISABLED }') < rollback.indexOf("$set: { status: 'EXECUTING' }"));
+});
+
 test('a changed Google description conflicts before any patch', async () => {
   const before = 'Mulsetu is a software company in Ojhar.';
   const proposed = 'Mulsetu is a software company in Ojhar';
@@ -496,7 +513,11 @@ test('a service can recommend a resolved category without becoming an automatic 
 test('bulk attribute storage and product publishing stay outside the Google write path', () => {
   const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
   const route = readFileSync(join(root, 'src/app/api/gbp/changes/attributes/route.ts'), 'utf8');
-  assert.equal(route.includes('createChange('), true);
+  assert.equal(route.includes('proposeAttributeBatch('), true);
+  const storeSource = readFileSync(join(root, 'src/services/gbp/changes/store.ts'), 'utf8');
+  const batch = storeSource.slice(storeSource.indexOf('export async function proposeAttributeBatch'), storeSource.indexOf('export async function approveChange'));
+  assert.equal(batch.includes('createProposal('), true);
+  for (const write of ['patchLocation', 'updateLocationProfile', 'executeChange', 'approveChange(']) assert.equal(batch.includes(write), false, write);
   assert.equal(route.includes('patchLocation'), false);
   assert.equal(route.includes('updateLocationProfile'), false);
   assert.equal(route.includes('executeChange'), false);

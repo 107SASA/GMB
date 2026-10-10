@@ -5,8 +5,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  APPLY_CONFIRM,
   APPLY_REQUIRES_BOTH_FLAGS,
   APPROVAL_DOES_NOT_PUBLISH,
+  ROLLBACK_CONFIRM,
+  SENSITIVE_CONFIRM,
   VALIDATION_LIMIT,
   VALIDATION_PASSED,
   validationReview,
@@ -63,9 +66,14 @@ test('validation passed is shown only when there are no violations', () => {
 });
 
 test('approval copy does not treat approval as publication', () => {
-  assert.match(APPROVAL_DOES_NOT_PUBLISH, /does not publish/);
-  assert.match(APPLY_REQUIRES_BOTH_FLAGS, /GBP_LIVE_WRITES_ENABLED/);
-  assert.match(APPLY_REQUIRES_BOTH_FLAGS, /GBP_FR5_LIVE_WRITES_ENABLED/);
-  assert.match(APPLY_REQUIRES_BOTH_FLAGS, /separate operation/);
-  assert.equal(APPLY_REQUIRES_BOTH_FLAGS.includes('process.env'), false);
+  assert.match(APPROVAL_DOES_NOT_PUBLISH, /does not change your Google profile/);
+  assert.match(APPLY_REQUIRES_BOTH_FLAGS, /separate step/);
+  assert.match(APPLY_REQUIRES_BOTH_FLAGS, /nothing is sent/);
+  assert.match(APPLY_CONFIRM, /nothing is sent/);
+});
+
+test('customer copy never names internal settings or environment variables', () => {
+  for (const copy of [APPROVAL_DOES_NOT_PUBLISH, APPLY_REQUIRES_BOTH_FLAGS, APPLY_CONFIRM, ROLLBACK_CONFIRM, SENSITIVE_CONFIRM, VALIDATION_LIMIT, VALIDATION_PASSED]) {
+    assert.equal(/GBP_|_ENABLED|process\.env|\b[A-Z]{2,}_[A-Z_]+\b/.test(copy), false, copy);
+  }
 });

@@ -17,7 +17,7 @@ import {
   updateLocationProfile,
   type GbpProfilePatch,
 } from '@/lib/gbpClient';
-import { canRollbackAttribute, canonicalFingerprint, classifyReadBack, idempotencyResult, locationGuard, rollbackRecheck, staleFieldDecision } from './policy.ts';
+import { canRollbackAttribute, canonicalFingerprint, classifyReadBack, idempotencyResult, locationGuard, openProposalKey, rollbackRecheck, staleFieldDecision } from './policy.ts';
 import { applyAndVerify, approve, executionClaim, failClosed, markReverted, markUnresolved, markVerified, rollbackDecision, WriteNotAccepted, type ChangeRecord } from './machine.ts';
 
 export class ProposalConflictError extends Error {
@@ -28,6 +28,11 @@ export class ProposalConflictError extends Error {
 }
 
 const SENSITIVE_KINDS = new Set(['title', 'primary_category', 'address']);
+
+/** Returned by execute and rollback when either live-write flag is off. The record is not changed. */
+export const LIVE_WRITES_DISABLED = 'Live Google writes are disabled.';
+/** Apply could not read the current Google value first. Nothing was sent; the proposal stays APPROVED. */
+export const PRE_WRITE_READ_FAILED = 'Could not read the current Google value, so nothing was sent. The proposal is still approved; try Apply again.';
 
 function toRecord(doc: IGbpProfileChange): ChangeRecord {
   return {
@@ -109,7 +114,7 @@ async function noteVerifiedEdit(change: IGbpProfileChange, actorUserId: string):
   });
 }
 
-export async function createChange(input: {
+export interface CreateChangeInput {
   businessId: string;
   organizationId?: string | null;
   locationId: string;
@@ -122,42 +127,137 @@ export async function createChange(input: {
   requestedBy: string;
   recommendationRef?: Record<string, unknown> | null;
   clientRequestId?: string | null;
-}): Promise<IGbpProfileChange> {
+}
+
+/** Which unique index a duplicate-key error came from. */
+function duplicateKeyOn(err: any, field: 'openKey' | 'clientRequestId'): boolean {
+  if (err?.code !== 11000) return false;
+  if (err.keyPattern && field in err.keyPattern) return true;
+  if (err.keyValue && field in err.keyValue) return true;
+  return String(err.message || '').includes(field === 'openKey' ? 'open_proposal_key' : 'clientRequestId');
+}
+
+async function byRequestId(input: CreateChangeInput): Promise<IGbpProfileChange | null> {
+  const existing = await GbpProfileChange.findOne({ businessId: input.businessId, clientRequestId: input.clientRequestId });
+  const decision = idempotencyResult(existing, input);
+  if (decision === 'conflict') throw new ProposalConflictError();
+  return decision === 'reuse' ? existing : null;
+}
+
+/**
+ * Stores a proposal, or returns the record it duplicates:
+ * - same clientRequestId (any status) → that record (request replay);
+ * - an open proposal with the same kind, current value and proposed value →
+ *   that proposal. The unique `open_proposal_key` index decides races: the
+ *   loser's insert fails with a duplicate key and returns the winner.
+ * Blocked proposals carry no key and are always stored, for the audit trail.
+ */
+export async function createProposal(input: CreateChangeInput): Promise<{ change: IGbpProfileChange; outcome: 'created' | 'reused' }> {
   await dbConnect();
   if (input.clientRequestId) {
-    const existing = await GbpProfileChange.findOne({ businessId: input.businessId, clientRequestId: input.clientRequestId });
-    const decision = idempotencyResult(existing, input);
-    if (decision === 'reuse' && existing) return existing;
-    if (decision === 'conflict') throw new ProposalConflictError();
+    const replay = await byRequestId(input);
+    if (replay) return { change: replay, outcome: 'reused' };
   }
+  const beforeFingerprint = canonicalFingerprint(input.kind, input.before);
   if (input.kind === 'address') {
-    return GbpProfileChange.create({
+    const change = await GbpProfileChange.create({
       ...input,
       sensitive: true,
-      beforeFingerprint: canonicalFingerprint(input.kind, input.before),
+      beforeFingerprint,
       status: 'BLOCKED',
       validation: { valid: false, violations: [{ code: 'address', message: 'Address has no unattended edit path.' }] },
       error: 'Address edits are not offered.',
     });
+    return { change, outcome: 'created' };
   }
   const status = input.validation.valid ? 'PROPOSED' : 'BLOCKED';
-  try {
-    return await GbpProfileChange.create({
-      ...input,
-      sensitive: SENSITIVE_KINDS.has(input.kind),
-      beforeFingerprint: canonicalFingerprint(input.kind, input.before),
-      status,
-      error: input.validation.valid ? null : input.validation.violations.map((v) => v.message).join(' '),
-    });
-  } catch (err: any) {
-    if (err?.code === 11000 && input.clientRequestId) {
-      const existing = await GbpProfileChange.findOne({ businessId: input.businessId, clientRequestId: input.clientRequestId });
-      const decision = idempotencyResult(existing, input);
-      if (decision === 'reuse' && existing) return existing;
-      if (decision === 'conflict') throw new ProposalConflictError();
+  const openKey = status === 'PROPOSED' ? openProposalKey(input.kind, beforeFingerprint, input.proposed) : null;
+  // A retry only happens when the open proposal we collided with closed
+  // before we could read it; three rounds is far more than that needs.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (openKey) {
+      const open = await GbpProfileChange.findOne({ businessId: input.businessId, openKey });
+      if (open) return { change: open, outcome: 'reused' };
     }
-    throw err;
+    try {
+      const change = await GbpProfileChange.create({
+        ...input,
+        sensitive: SENSITIVE_KINDS.has(input.kind),
+        beforeFingerprint,
+        status,
+        openKey,
+        error: input.validation.valid ? null : input.validation.violations.map((v) => v.message).join(' '),
+      });
+      return { change, outcome: 'created' };
+    } catch (err: any) {
+      if (input.clientRequestId && duplicateKeyOn(err, 'clientRequestId')) {
+        const replay = await byRequestId(input);
+        if (replay) return { change: replay, outcome: 'reused' };
+      }
+      if (openKey && duplicateKeyOn(err, 'openKey')) continue;
+      throw err;
+    }
   }
+  throw new Error('The proposal could not be stored. Please try again.');
+}
+
+/** Existing callers get the stored or reused record, as before. */
+export async function createChange(input: CreateChangeInput): Promise<IGbpProfileChange> {
+  return (await createProposal(input)).change;
+}
+
+/**
+ * One proposal per valid attribute row of a batch. Invalid rows are reported
+ * and not stored. Each row's request id is `<batch id>:<attribute name>`.
+ */
+export async function proposeAttributeBatch(input: {
+  businessId: string;
+  organizationId?: string | null;
+  locationId: string;
+  requestedBy: string;
+  clientRequestId: string;
+  current: Array<{ name?: string }>;
+  rows: Array<{ name: string; valid: boolean; attribute?: Record<string, unknown> | null; violations: Array<{ code: string; message: string }> }>;
+}) {
+  const results = [];
+  for (const row of input.rows) {
+    if (!row.valid || !row.attribute) {
+      results.push({ name: row.name, stored: false, reused: false, status: null, changeId: null, violations: row.violations, error: row.violations[0]?.message || 'This attribute was not stored.' });
+      continue;
+    }
+    const before = input.current.find((item) => item.name === row.name) || null;
+    try {
+      const { change: doc, outcome } = await createProposal({
+        businessId: input.businessId,
+        organizationId: input.organizationId,
+        locationId: input.locationId,
+        kind: 'attribute',
+        fields: ['attribute'],
+        source: 'owner',
+        before,
+        proposed: { name: row.name, attribute: row.attribute },
+        validation: { valid: true, violations: [] },
+        requestedBy: input.requestedBy,
+        clientRequestId: `${input.clientRequestId}:${row.name}`,
+      });
+      const stored = doc.status !== 'BLOCKED' && doc.status !== 'FAILED';
+      results.push({
+        name: row.name,
+        stored,
+        reused: outcome === 'reused',
+        status: doc.status,
+        changeId: doc._id.toString(),
+        violations: doc.validation?.violations || [],
+        error: stored ? null : doc.error || 'This attribute was not stored as a proposal.',
+      });
+    } catch (err) {
+      const message = err instanceof ProposalConflictError
+        ? err.message
+        : 'This attribute could not be stored.';
+      results.push({ name: row.name, stored: false, reused: false, status: null, changeId: null, violations: [], error: message });
+    }
+  }
+  return results;
 }
 
 export async function approveChange(id: string, actor: { userId: string; businessId: string }, confirmSensitive = false) {
@@ -297,6 +397,11 @@ export async function executeChange(id: string, actor: { userId: string; busines
   const pending = await GbpProfileChange.findOne({ _id: id, businessId: actor.businessId });
   if (!pending) return { ok: false as const, error: 'Change not found.' };
   if (pending.status === 'UNRESOLVED') return recoverUnresolved(pending, actor);
+  // Live writes off: refuse before claiming, like rollback does. The approval
+  // stays as it was (APPROVED), so it can be applied once writes are enabled.
+  if (pending.status === 'APPROVED' && !fr5ProfileMutationAllowed()) {
+    return { ok: false as const, error: LIVE_WRITES_DISABLED, change: pending };
+  }
   const claimed = await GbpProfileChange.findOneAndUpdate(
     { _id: id, businessId: actor.businessId, status: 'APPROVED' },
     { $set: { status: 'EXECUTING', executedAt: new Date() } },
@@ -309,36 +414,46 @@ export async function executeChange(id: string, actor: { userId: string; busines
     return { ok: false as const, error: claim === 'duplicate' ? 'This change is already executing or finished.' : 'Approve the change before applying it.' };
   }
   const now = new Date().toISOString();
-  const guard = locationGuard(claimed.locationId, await connectedLocationId(actor.businessId));
-  if (!guard.ok) {
+  // Nothing has been sent to Google yet: give the claim back. The proposal is
+  // APPROVED again, keeps its open-proposal key, and executedAt is restored.
+  const handBack = async (error: string, keepError = true) => {
     claimed.status = 'APPROVED';
-    claimed.error = guard.error;
+    claimed.executedAt = pending.executedAt ?? null;
+    if (keepError) claimed.error = error;
     await claimed.save();
-    return { ok: false as const, error: guard.error, change: claimed };
-  }
-  if (!fr5ProfileMutationAllowed()) {
-    const blocked = failClosed(toRecord(claimed), 'BLOCKED', 'Live Google writes are disabled.', now);
-    await saveRecord(claimed, blocked);
-    return { ok: false as const, error: blocked.error, change: claimed };
-  }
-  try {
-    if (claimed.kind === 'attribute') {
-      const spec = claimed.proposed as { name?: string; attribute?: Record<string, unknown> };
-      if (!spec?.name || !spec.attribute) {
-        const blocked = failClosed(toRecord(claimed), 'BLOCKED', 'An attribute cannot be written without an explicit value.', now);
-        await saveRecord(claimed, blocked);
-        return { ok: false as const, error: blocked.error, change: claimed };
-      }
+    return { ok: false as const, error, change: claimed };
+  };
+  const guard = locationGuard(claimed.locationId, await connectedLocationId(actor.businessId));
+  if (!guard.ok) return handBack(guard.error);
+  // Writes were switched off after the check above.
+  if (!fr5ProfileMutationAllowed()) return handBack(LIVE_WRITES_DISABLED, false);
+  if (claimed.kind === 'attribute') {
+    const spec = claimed.proposed as { name?: string; attribute?: Record<string, unknown> };
+    if (!spec?.name || !spec.attribute) {
+      const blocked = failClosed(toRecord(claimed), 'BLOCKED', 'An attribute cannot be written without an explicit value.', now);
+      await saveRecord(claimed, blocked);
+      return { ok: false as const, error: blocked.error, change: claimed };
     }
-    let current = await readKind(actor.businessId, claimed.kind, claimed.proposed);
+  }
+  // Pre-write read of the current value. If it fails, nothing was written,
+  // so this is not an unresolved write.
+  let current: unknown;
+  let serviceListLocked = false;
+  try {
+    current = await readKind(actor.businessId, claimed.kind, claimed.proposed);
     if (claimed.kind === 'services') {
       const raw = await readLocationRaw(actor.businessId, 'serviceItems,metadata');
       current = raw?.serviceItems ?? [];
-      if (raw?.metadata?.canModifyServiceList === false) {
-        const blocked = failClosed(toRecord(claimed), 'BLOCKED', 'Google says this service list cannot be modified.', now);
-        await saveRecord(claimed, blocked);
-        return { ok: false as const, error: blocked.error, change: claimed };
-      }
+      serviceListLocked = raw?.metadata?.canModifyServiceList === false;
+    }
+  } catch {
+    return handBack(PRE_WRITE_READ_FAILED);
+  }
+  try {
+    if (serviceListLocked) {
+      const blocked = failClosed(toRecord(claimed), 'BLOCKED', 'Google says this service list cannot be modified.', now);
+      await saveRecord(claimed, blocked);
+      return { ok: false as const, error: blocked.error, change: claimed };
     }
     if (staleFieldDecision(claimed.beforeFingerprint, canonicalFingerprint(claimed.kind, current)) === 'conflict') {
       const conflict = failClosed(toRecord(claimed), 'CONFLICT', 'Google changed this field after the proposal was created.', now);
@@ -440,7 +555,7 @@ export async function rollbackChange(id: string, actor: { userId: string; busine
     return { ok: false as const, error: 'This attribute had no previous Google value, so it cannot be removed automatically.' };
   }
   if (doc.kind !== 'attribute' && !READ_MASK[doc.kind]) return { ok: false as const, error: 'This change cannot be rolled back.' };
-  if (!fr5ProfileMutationAllowed()) return { ok: false as const, error: 'Live Google writes are disabled.' };
+  if (!fr5ProfileMutationAllowed()) return { ok: false as const, error: LIVE_WRITES_DISABLED };
   const live = await readKind(actor.businessId, doc.kind, doc.proposed);
   const decision = rollbackDecision(toRecord(doc), canonicalFingerprint(doc.kind, live));
   if (decision === 'conflict') {

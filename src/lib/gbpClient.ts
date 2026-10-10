@@ -563,7 +563,7 @@ export async function patchLocationAttributes(
 }
 
 /** Attribute catalog for one category. Null when Google does not return it. */
-export async function listCategoryAttributes(businessId: string, categoryName: string, regionCode = 'IN'): Promise<Array<{ name: string; displayName: string; valueType: string }> | null> {
+export async function listCategoryAttributes(businessId: string, categoryName: string, regionCode = 'IN'): Promise<Array<{ name: string; displayName: string; valueType: string; allowedValues?: string[] }> | null> {
   if (!categoryName) return null;
   const accessToken = await getValidToken(businessId);
   const params = new URLSearchParams({ categoryName, regionCode, languageCode: 'en' });
@@ -574,11 +574,17 @@ export async function listCategoryAttributes(businessId: string, categoryName: s
   if (!list) return null;
   return list
     .filter((a: any) => typeof (a?.parent || a?.name) === 'string')
-    .map((a: any) => ({
-      name: String(a.parent || a.name),
-      displayName: String(a.displayName || a.parent || a.name),
-      valueType: String(a.valueType || 'ATTRIBUTE_VALUE_TYPE_UNSPECIFIED'),
-    }));
+    .map((a: any) => {
+      const allowed = Array.isArray(a?.valueMetadata)
+        ? a.valueMetadata.map((item: any) => item?.value).filter((item: unknown) => typeof item === 'string' && item.trim()).map((item: string) => item.trim())
+        : [];
+      return {
+        name: String(a.parent || a.name),
+        displayName: String(a.displayName || a.parent || a.name),
+        valueType: String(a.valueType || 'ATTRIBUTE_VALUE_TYPE_UNSPECIFIED'),
+        ...(allowed.length ? { allowedValues: allowed } : {}),
+      };
+    });
 }
 
 // ─── Local posts / media / review replies (My Business API v4) ─────────────────

@@ -4,6 +4,7 @@ import GbpLocationSnapshot from '@/models/GbpLocationSnapshot';
 import Audit from '@/models/Audit';
 import { listCategoryAttributes, searchGbpCategories } from '@/lib/gbpClient';
 import { PRODUCTS_SUPPORT, comparePin, draftDescription, haversineMeters, holidayReminders, validateDescription, type PinStatus } from '@/services/gbp/changes/policy';
+import { calendarDate, holidayCalendarFor } from '@/services/gbp/changes/holidayCalendar';
 import { proposeServices, recommendCategories, suggestUnsetAttributes } from '@/services/gbp/changes/recommend';
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +34,11 @@ export async function GET(req: Request) {
     for (const extra of c.additionalCategories || []) displayNames.add(extra);
   }
   const catalog: Array<{ name: string; displayName: string }> = [];
-  for (const name of [...displayNames].slice(0, 8)) {
+  const categoryQueries = [...new Set([
+    ...[...displayNames].slice(0, 8),
+    ...services.filter((service) => !displayNames.has(service)).slice(0, 4),
+  ])];
+  for (const name of categoryQueries) {
     try {
       const found = await searchGbpCategories(ctx.businessId, name, loc?.address?.regionCode || 'IN');
       catalog.push(...found);
@@ -69,7 +74,15 @@ export async function GET(req: Request) {
     services,
   });
   const descriptionValidation = validateDescription(description, { tokens });
-  const hours = holidayReminders(loc?.specialHours || [], null, new Date().toISOString());
+  const regionCode = loc?.address?.regionCode || ctx.business.country || null;
+  const holidayList = holidayCalendarFor(regionCode);
+  const localDate = calendarDate(ctx.business.timezone, new Date());
+  const specials = Array.isArray(loc?.specialHours) ? loc.specialHours : [];
+  const hours = !holidayList
+    ? holidayReminders(specials, null, new Date().toISOString())
+    : !localDate
+      ? { status: 'NOT_CONFIGURED' as const, note: 'The business timezone is not set, so holiday reminders are not calculated.', reminders: [] }
+      : holidayReminders(specials, holidayList, `${localDate}T12:00:00.000Z`);
 
   const url = new URL(req.url);
   let pin: { status: PinStatus; distanceMeters: number | null; note: string } = { status: 'UNKNOWN', distanceMeters: null, note: 'Add ?address= to compare the Google pin with a geocoded address. The pin is not moved.' };
@@ -102,7 +115,7 @@ export async function GET(req: Request) {
       tokens,
       competitorNames: [...new Set(competitors.map((c) => c.name).filter(Boolean))].slice(0, 20),
     },
-    hours,
+    hours: { ...hours, currentSpecialHours: specials },
     links: {
       website: loc?.websiteUri || null,
       appointment: 'Supported only when the attribute catalog contains attributes/url_appointment.',
@@ -112,6 +125,11 @@ export async function GET(req: Request) {
         appointment: !!attributeCatalog?.some((a) => a.name === 'attributes/url_appointment'),
         menu: !!attributeCatalog?.some((a) => a.name === 'attributes/url_menu'),
         order: !!attributeCatalog?.some((a) => a.name === 'attributes/url_order_ahead'),
+      },
+      attributes: {
+        appointment: attributeCatalog?.find((a) => a.name === 'attributes/url_appointment') || null,
+        menu: attributeCatalog?.find((a) => a.name === 'attributes/url_menu') || null,
+        order: attributeCatalog?.find((a) => a.name === 'attributes/url_order_ahead') || null,
       },
     },
     serviceArea: {

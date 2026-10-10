@@ -60,6 +60,8 @@ export default function ProfileOptimizationPage() {
   const [areaHits, setAreaHits] = useState<Array<{ placeId: string; placeName: string; address: string | null }>>([]);
   const [pickedAreas, setPickedAreas] = useState<Array<{ placeId: string; placeName: string }>>([]);
   const [attrValues, setAttrValues] = useState<Record<string, string>>({});
+  const [bulkOn, setBulkOn] = useState<Record<string, boolean>>({});
+  const [bulkBool, setBulkBool] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,6 +78,57 @@ export default function ProfileOptimizationPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const proposeSelectedAttributes = async () => {
+    const suggestions = recs?.attributes?.suggestions || [];
+    const skipped: string[] = [];
+    const items = suggestions.flatMap((attribute: { name: string; displayName?: string; valueType: string }) => {
+      if (!bulkOn[attribute.name]) return [];
+      const label = attribute.displayName || attribute.name;
+      if (attribute.valueType === 'BOOL') {
+        if (typeof bulkBool[attribute.name] !== 'boolean') {
+          skipped.push(label);
+          return [];
+        }
+        return [{ name: attribute.name, value: bulkBool[attribute.name] }];
+      }
+      const value = attrValues[attribute.name] || '';
+      if (!value) {
+        skipped.push(label);
+        return [];
+      }
+      return [{ name: attribute.name, value }];
+    });
+    if (!items.length) {
+      setMessage(skipped.length
+        ? `Choose a value before proposing: ${skipped.join(', ')}. Nothing was stored.`
+        : 'Select at least one attribute. Nothing was stored.');
+      return;
+    }
+    setMessage(null);
+    const payload = items
+      .map((item: { name: string; value: unknown }) => `${item.name}:${JSON.stringify(item.value)}`)
+      .sort()
+      .join('|');
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
+    const hex = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    const clientRequestId = `attr-${hex.slice(0, 32)}`;
+    const res = await fetch('/api/gbp/changes/attributes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientRequestId, items }),
+    });
+    const json = await res.json();
+    const results = Array.isArray(json.results) ? json.results : [];
+    const stored = results.filter((row: { stored?: boolean }) => row.stored);
+    const failed = results.filter((row: { stored?: boolean }) => !row.stored);
+    const failureText = failed.map((row: { name?: string; error?: string; violations?: Array<{ message?: string }> }) => `${row.name || 'attribute'}: ${row.error || row.violations?.[0]?.message || 'rejected'}`).join('; ');
+    const skippedText = skipped.length ? ` Not sent because no value was chosen: ${skipped.join(', ')}.` : '';
+    setMessage(failed.length
+      ? `${stored.length} of ${results.length} attribute proposals were stored. Rejected: ${failureText}.${skippedText} Nothing was published.`
+      : json.error || `${stored.length} attribute proposals were stored. Review each one before approval.${skippedText} Nothing was published.`);
+    await load();
+  };
 
   const propose = async (body: object) => {
     setMessage(null);
@@ -127,7 +180,7 @@ export default function ProfileOptimizationPage() {
       <div>
         <h1 className="font-heading text-xl font-bold text-on-surface">Profile optimization</h1>
         <p className="text-sm text-on-surface-variant mt-1">
-          {APPROVAL_DOES_NOT_PUBLISH} {APPLY_REQUIRES_BOTH_FLAGS} There is no apply-all. {VALIDATION_LIMIT}
+          {APPROVAL_DOES_NOT_PUBLISH} {APPLY_REQUIRES_BOTH_FLAGS} A bulk attribute selection stores one proposal per attribute and does not publish them. {VALIDATION_LIMIT}
         </p>
       </div>
       {message && <p className="text-sm text-on-surface">{message}</p>}
@@ -172,24 +225,42 @@ export default function ProfileOptimizationPage() {
             >Propose resolved additional categories</button>
           )}
           <p className="text-sm">Attributes: {recs.attributes?.reason}</p>
-          {(recs.attributes?.suggestions || []).slice(0, 8).map((a: any) => (
+          {(recs.attributes?.suggestions || []).map((a: any) => (
             <div key={a.name} className="flex flex-wrap items-center gap-2 text-sm">
-              <span>{a.displayName}</span>
+              <label className="flex items-center gap-1">
+                <input type="checkbox" checked={!!bulkOn[a.name]} onChange={(e) => setBulkOn({ ...bulkOn, [a.name]: e.target.checked })} />
+                <span>{a.displayName}</span>
+              </label>
               {a.valueType === 'BOOL' ? (
                 <>
+                  <button className={`px-2 py-1 rounded border text-xs ${bulkBool[a.name] === true ? 'border-primary' : ''}`} onClick={() => setBulkBool({ ...bulkBool, [a.name]: true })}>Yes for selection</button>
+                  <button className={`px-2 py-1 rounded border text-xs ${bulkBool[a.name] === false ? 'border-primary' : ''}`} onClick={() => setBulkBool({ ...bulkBool, [a.name]: false })}>No for selection</button>
                   <button className="px-2 py-1 rounded border text-xs" onClick={() => propose({ kind: 'attribute', proposed: { name: a.name, value: true }, source: 'owner' })}>Yes</button>
                   <button className="px-2 py-1 rounded border text-xs" onClick={() => propose({ kind: 'attribute', proposed: { name: a.name, value: false }, source: 'owner' })}>No</button>
                 </>
               ) : (
                 <>
                   <input className="border border-outline-variant rounded px-2 py-1 text-xs" placeholder={a.valueType === 'URL' ? 'https://' : 'Value'} value={attrValues[a.name] || ''} onChange={(e) => setAttrValues({ ...attrValues, [a.name]: e.target.value })} />
-                  <button className="px-2 py-1 rounded border text-xs" onClick={() => propose({ kind: 'attribute', proposed: { name: a.name, value: attrValues[a.name] || '' }, source: 'owner' })}>Propose</button>
+                  <button className="px-2 py-1 rounded border text-xs" onClick={() => propose({ kind: 'attribute', proposed: { name: a.name, value: attrValues[a.name] || '' }, source: 'owner' })}>Propose this one</button>
                 </>
               )}
             </div>
           ))}
+          {(recs.attributes?.suggestions || []).length > 0 && (
+            <button className="px-3 py-1.5 rounded-lg border border-outline text-xs font-bold" onClick={proposeSelectedAttributes}>Propose selected attributes</button>
+          )}
+          {(['appointment', 'menu', 'order'] as const).map((key) => {
+            const link = recs.links?.attributes?.[key];
+            if (!link?.name) return null;
+            return (
+              <div key={key} className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="w-28 capitalize">{key} link</span>
+                <input className="border border-outline-variant rounded px-2 py-1 text-xs" placeholder="https://" value={attrValues[link.name] || ''} onChange={(e) => setAttrValues({ ...attrValues, [link.name]: e.target.value })} />
+                <button className="px-2 py-1 rounded border text-xs" onClick={() => propose({ kind: 'attribute', proposed: { name: link.name, value: attrValues[link.name] || '' }, source: 'owner' })}>Propose {key} link</button>
+              </div>
+            );
+          })}
           <p className="text-sm">Pin: {recs.pin?.status}. {recs.pin?.note}</p>
-          <p className="text-sm">Holiday reminders: {recs.hours?.note}</p>
           {(recs.services?.items || []).length > 0 && (
             <div className="space-y-1">
               <p className="text-sm">Services ready to propose: {recs.services.items.map((s: any) => s.name).join(', ')}</p>
@@ -227,6 +298,32 @@ export default function ProfileOptimizationPage() {
             },
           })}
         >Propose these hours</button>
+        <p className="text-sm">Holiday reminders: {recs?.hours?.note}</p>
+        {Object.entries((recs?.hours?.reminders || []).reduce((groups: Record<string, string[]>, reminder: { date: string; name: string; covered: boolean }) => {
+          if (reminder.covered) return groups;
+          groups[reminder.date] = [...(groups[reminder.date] || []), reminder.name];
+          return groups;
+        }, {})).map(([date, names]) => (
+          <div key={date} className="flex flex-wrap items-center gap-2 text-sm">
+            <span>{date}: {(names as string[]).join(', ')}. This is a reminder, not a published hours change.</span>
+            <button
+              className="px-2 py-1 rounded border text-xs"
+              onClick={() => propose({
+                kind: 'hours',
+                source: 'recommendation',
+                proposed: {
+                  regularHours: { periods: [] },
+                  specialHours: {
+                    specialHourPeriods: [
+                      ...(recs?.hours?.currentSpecialHours || []),
+                      { startDate: date, closed: true },
+                    ],
+                  },
+                },
+              })}
+            >Propose closed on {date}</button>
+          </div>
+        ))}
       </section>
 
       <section className="bg-surface-container-lowest rounded-xl border border-outline-variant p-6 space-y-3">

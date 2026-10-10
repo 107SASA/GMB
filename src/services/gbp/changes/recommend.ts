@@ -89,6 +89,24 @@ export function recommendCategories(input: {
     };
     additional.push(rec);
   }
+  for (const entry of input.catalog) {
+    const key = entry.displayName.toLowerCase();
+    if (have.has(key) || additional.some((row) => row.displayName.toLowerCase() === key)) continue;
+    const matchedServices = overlaps(entry.displayName, input.services);
+    if (matchedServices.length === 0 || !entry.name) continue;
+    additional.push({
+      role: 'additional',
+      displayName: entry.displayName,
+      categoryName: entry.name,
+      reason: 'Matches a verified service. Competitor usage was not required once Google resolved the category.',
+      competitors: [],
+      services: matchedServices,
+      confidence: 'high',
+      risk: 'low',
+      autoApply: false,
+      executable: true,
+    });
+  }
   const currentLabel = input.currentPrimary?.displayName || '';
   if (GENERIC.has(currentLabel.toLowerCase())) {
     const better = additional.find((r) => r.executable && r.services.length > 0);

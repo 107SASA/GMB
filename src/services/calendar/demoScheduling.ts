@@ -159,8 +159,9 @@ function minutesOfDay(hhmm: string): number {
  * A bare clock time is today only when that instant is still ahead.
  */
 export function parseRequestedDateTime(text: string, now: Date, timeZone: string): RequestedSlot | null {
-  const cleaned = (text || '').toLowerCase().replace(/(\d{1,2})\.(\d{2})\b/g, '$1:$2');
-  const match = cleaned.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);
+  const cleaned = (text || '').toLowerCase().replace(/(\d{1,2})[.:](\d{2})/g, '$1:$2');
+  const clocks = [...cleaned.matchAll(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/g)];
+  const match = clocks.length ? clocks[clocks.length - 1] : cleaned.match(/\b(\d{1,2})(?::(\d{2}))?\b/);
   if (!match) return null;
   let hour = Number(match[1]);
   const minute = match[2] === undefined ? 0 : Number(match[2]);
@@ -259,21 +260,188 @@ export function alternativeSlots(input: {
   const startDay = dateString(zonedParts(input.around, input.config.timezone));
   for (let dayOffset = 0; dayOffset < input.config.maxDaysAhead && open.length < limit; dayOffset++) {
     const date = addDays(startDay, dayOffset, input.config.timezone);
-    const openMinute = minutesOfDay(input.config.openingTime);
-    const closeMinute = minutesOfDay(input.config.closingTime);
-    for (let minute = openMinute; minute + input.config.demoDurationMinutes <= closeMinute; minute += input.config.demoDurationMinutes) {
-      const time = `${pad(Math.floor(minute / 60))}:${pad(minute % 60)}`;
-      const slot = { date, time, startUtc: zonedLocalToUtc(date, time, input.config.timezone) };
-      if (slot.startUtc.getTime() <= input.around.getTime()) continue;
-      if (slotFitsSchedule(slot, input.now, input.config)) continue;
-      const end = new Date(slot.startUtc.getTime() + input.config.demoDurationMinutes * 60 * 1000);
-      const someoneFree = input.busyByUser.some((person) => !rangesOverlap(slot.startUtc, end, person.busy, input.config.bufferMinutes));
-      if (!someoneFree) continue;
-      open.push(slot);
-      if (open.length >= limit) break;
-    }
+    const later = openSlotsOnDate({ ...input, date }).filter((slot) => slot.startUtc.getTime() > input.around.getTime());
+    open.push(...later.slice(0, limit - open.length));
   }
   return open;
+}
+
+/** Every bookable start time on one business-local day, in order. */
+export function openSlotsOnDate(input: {
+  now: Date;
+  config: DemoScheduleConfig;
+  date: string;
+  busyByUser: Array<{ userId: string; busy: BusyRange[] }>;
+}): RequestedSlot[] {
+  const { config } = input;
+  const open: RequestedSlot[] = [];
+  const closeMinute = minutesOfDay(config.closingTime);
+  for (let minute = minutesOfDay(config.openingTime); minute + config.demoDurationMinutes <= closeMinute; minute += config.demoDurationMinutes) {
+    const time = `${pad(Math.floor(minute / 60))}:${pad(minute % 60)}`;
+    const slot = { date: input.date, time, startUtc: zonedLocalToUtc(input.date, time, config.timezone) };
+    if (slotFitsSchedule(slot, input.now, config)) continue;
+    const end = new Date(slot.startUtc.getTime() + config.demoDurationMinutes * 60 * 1000);
+    const someoneFree = input.busyByUser.some((person) => !rangesOverlap(slot.startUtc, end, person.busy, config.bufferMinutes));
+    if (someoneFree) open.push(slot);
+  }
+  return open;
+}
+
+/** The next days after `after` that still have at least one open time. */
+export function nextOpenDates(input: {
+  now: Date;
+  config: DemoScheduleConfig;
+  after: string;
+  busyByUser: Array<{ userId: string; busy: BusyRange[] }>;
+  limit: number;
+}): string[] {
+  const today = dateString(zonedParts(input.now, input.config.timezone));
+  const dates: string[] = [];
+  for (let offset = 1; offset <= input.config.maxDaysAhead + 1 && dates.length < input.limit; offset++) {
+    const date = addDays(input.after < today ? today : input.after, offset, input.config.timezone);
+    if (openSlotsOnDate({ ...input, date }).length) dates.push(date);
+  }
+  return dates;
+}
+
+/** At most `max` slots, spread across the day instead of only the earliest ones. */
+export function spreadSlots<T>(slots: T[], max: number): T[] {
+  if (slots.length <= max) return slots;
+  if (max <= 1) return slots.slice(0, max);
+  const picked = new Set<number>();
+  for (let i = 0; i < max; i++) picked.add(Math.round((i * (slots.length - 1)) / (max - 1)));
+  return [...picked].map((index) => slots[index]);
+}
+
+export type DayProblem = 'past' | 'too-far' | 'closed';
+
+/** Why a whole day cannot be offered, or null when it can. */
+export function dayProblem(date: string, now: Date, config: DemoScheduleConfig): DayProblem | null {
+  const today = dateString(zonedParts(now, config.timezone));
+  if (date < today) return 'past';
+  if (date > addDays(today, config.maxDaysAhead, config.timezone)) return 'too-far';
+  const [year, month, day] = date.split('-').map(Number);
+  if (!config.workingDays.includes(new Date(Date.UTC(year, month - 1, day)).getUTCDay())) return 'closed';
+  return null;
+}
+
+const MONTH_NAMES = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const WEEKDAY_WORDS: Record<string, number> = {
+  sunday: 0, sun: 0, monday: 1, mon: 1, tuesday: 2, tue: 2, tues: 2, wednesday: 3, wed: 3,
+  thursday: 4, thu: 4, thur: 4, thurs: 4, friday: 5, fri: 5, saturday: 6, sat: 6,
+};
+const TOMORROW_RE = /\b(?:tomorrow|tommorow|tomorow|tommorrow|tommorw|tomorw|tomarrow|tmrw|tmrow|tmr|tmw)\b/;
+
+/** Edit distance where swapping two neighbouring letters counts as one edit. */
+function editDistance(a: string, b: string): number {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[a.length][b.length];
+}
+
+/**
+ * "oct", "october", "sept", and misspellings such as "ocotber" or "ocotor".
+ * A misspelling must keep the month's first two letters, so "number" never reads as November.
+ */
+function monthFromWord(word: string): number | null {
+  if (word.length < 3) return null;
+  const prefix = MONTH_NAMES.findIndex((name) => name.startsWith(word));
+  if (prefix >= 0) return prefix + 1;
+  if (word.length < 5) return null;
+  const scored = MONTH_NAMES
+    .map((name, index) => ({ index, distance: editDistance(word, name) }))
+    .filter((row) => MONTH_NAMES[row.index].startsWith(word.slice(0, 2)) && row.distance <= (word.length >= 6 ? 3 : 2))
+    .sort((a, b) => a.distance - b.distance);
+  if (!scored.length || (scored[1] && scored[1].distance === scored[0].distance)) return null;
+  return scored[0].index + 1;
+}
+
+function validDate(year: number, month: number, day: number): string | null {
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  if (probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) return null;
+  return dateString({ year, month, day });
+}
+
+/** A day and month without a year: this year, or next year when it is well behind us (so "5 Jan" in December means next January). */
+function withYear(day: number, month: number, year: number | null, today: { year: number; month: number; day: number }): string | null {
+  if (year !== null) return validDate(year < 100 ? 2000 + year : year, month, day);
+  const thisYear = validDate(today.year, month, day);
+  if (!thisYear) return null;
+  const ageDays = (Date.UTC(today.year, today.month - 1, today.day) - Date.UTC(today.year, month - 1, day)) / 86400000;
+  return ageDays > 60 ? validDate(today.year + 1, month, day) : thisYear;
+}
+
+/**
+ * Reads the day a customer means from free text, as business-local "YYYY-MM-DD".
+ * Understands today, tomorrow, weekdays, "2nd October", "oct 2", "2/10" (day first),
+ * and ISO dates. When `expectingDate` is true (the customer was just asked for a date),
+ * "2", "2nd", "2-10" and "2.10" are read as dates too.
+ * It does not decide whether the day is open; see dayProblem.
+ */
+export function parseDemoDate(
+  text: string,
+  now: Date,
+  timeZone: string,
+  options: { expectingDate?: boolean } = {}
+): string | null {
+  const cleaned = (text || '').toLowerCase().trim();
+  if (!cleaned) return null;
+  const todayParts = zonedParts(now, timeZone);
+  const today = dateString(todayParts);
+
+  const iso = cleaned.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
+  if (iso) return validDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+
+  if (/\bday after (?:tomorrow|tmrw|tmr)\b|\bparso\b/.test(cleaned)) return addDays(today, 2, timeZone);
+  if (/\btoday\b|\baaj\b/.test(cleaned)) return today;
+  if (TOMORROW_RE.test(cleaned)) return addDays(today, 1, timeZone);
+
+  const separators = options.expectingDate ? '[\\/\\-.]' : '\\/';
+  const numeric = cleaned.match(new RegExp(`\\b(\\d{1,2})${separators}(\\d{1,2})(?:${separators}(\\d{2}|\\d{4}))?\\b`));
+  if (numeric) {
+    const found = withYear(Number(numeric[1]), Number(numeric[2]), numeric[3] ? Number(numeric[3]) : null, todayParts);
+    if (found) return found;
+  }
+
+  const tokens = cleaned.replace(/(\d)(?:st|nd|rd|th)\b/g, '$1').split(/[^a-z0-9]+/).filter(Boolean);
+  for (let i = 0; i < tokens.length; i++) {
+    const month = monthFromWord(tokens[i]);
+    if (!month) continue;
+    const before = tokens[i - 1] === 'of' ? tokens[i - 2] : tokens[i - 1];
+    const after = tokens[i + 1];
+    const yearToken = [tokens[i + 1], tokens[i + 2]].find((token) => /^20\d{2}$/.test(token || ''));
+    const year = yearToken ? Number(yearToken) : null;
+    for (const candidate of [before, after]) {
+      if (!candidate || !/^\d{1,2}$/.test(candidate)) continue;
+      const found = withYear(Number(candidate), month, year, todayParts);
+      if (found) return found;
+    }
+  }
+
+  const weekdayIndex = tokens.findIndex((token) => token in WEEKDAY_WORDS);
+  if (weekdayIndex >= 0) {
+    let delta = (WEEKDAY_WORDS[tokens[weekdayIndex]] - todayParts.weekday + 7) % 7;
+    if (delta === 0 && tokens[weekdayIndex - 1] === 'next') delta = 7;
+    return addDays(today, delta, timeZone);
+  }
+
+  if (options.expectingDate) {
+    const bare = cleaned.match(/^(?:on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:\s+date)?[.!]?$/);
+    if (bare) {
+      const day = Number(bare[1]);
+      if (day >= todayParts.day) return validDate(todayParts.year, todayParts.month, day);
+      const nextMonth = todayParts.month === 12 ? 1 : todayParts.month + 1;
+      return validDate(nextMonth === 1 ? todayParts.year + 1 : todayParts.year, nextMonth, day);
+    }
+  }
+  return null;
 }
 
 export function reminderInstants(startUtc: Date, leadMinutes: number[], now: Date): Array<{ leadMinutes: number; dueAt: Date }> {

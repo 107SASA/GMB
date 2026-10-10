@@ -17,7 +17,7 @@ import {
   updateLocationProfile,
   type GbpProfilePatch,
 } from '@/lib/gbpClient';
-import { canRollbackAttribute, canonicalFingerprint, classifyReadBack, idempotencyResult, locationGuard, rollbackRecheck } from './policy.ts';
+import { canRollbackAttribute, canonicalFingerprint, classifyReadBack, idempotencyResult, locationGuard, rollbackRecheck, staleFieldDecision } from './policy.ts';
 import { applyAndVerify, approve, executionClaim, failClosed, markReverted, markUnresolved, markVerified, rollbackDecision, WriteNotAccepted, type ChangeRecord } from './machine.ts';
 
 export class ProposalConflictError extends Error {
@@ -340,7 +340,7 @@ export async function executeChange(id: string, actor: { userId: string; busines
         return { ok: false as const, error: blocked.error, change: claimed };
       }
     }
-    if (canonicalFingerprint(claimed.kind, current) !== claimed.beforeFingerprint) {
+    if (staleFieldDecision(claimed.beforeFingerprint, canonicalFingerprint(claimed.kind, current)) === 'conflict') {
       const conflict = failClosed(toRecord(claimed), 'CONFLICT', 'Google changed this field after the proposal was created.', now);
       await saveRecord(claimed, conflict);
       return { ok: false as const, error: conflict.error, change: claimed };

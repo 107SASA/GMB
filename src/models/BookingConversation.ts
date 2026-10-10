@@ -45,6 +45,12 @@ export interface IBookingConversation extends Document {
   messages: IBookingMessage[];
   details: IBookingDetails;
   offeredSlots: IOfferedSlot[];
+  /**
+   * While status is `active`: which question the lead was last asked.
+   * `day-choice` — Today / Tomorrow / Other date buttons were sent.
+   * `custom-date` — the lead was asked to type a date, so a bare "12" means the 12th.
+   */
+  datePrompt?: 'day-choice' | 'custom-date';
   leadId?: mongoose.Types.ObjectId;
   bookingId?: mongoose.Types.ObjectId;
   bookedAt?: Date;
@@ -96,6 +102,7 @@ const BookingConversationSchema: Schema = new Schema(
       ],
       default: [],
     },
+    datePrompt: { type: String, enum: ['day-choice', 'custom-date'] },
     leadId: { type: Schema.Types.ObjectId, ref: 'Lead' },
     bookingId: { type: Schema.Types.ObjectId, ref: 'DemoBooking' },
     bookedAt: { type: Date },

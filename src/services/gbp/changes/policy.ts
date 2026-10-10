@@ -12,7 +12,7 @@ export const SERVICE_AREA_MAX = 20;
 
 export const PRODUCTS_SUPPORT = {
   supported: false as const,
-  reason: 'This integration has no Google Business Profile endpoint for the product catalog. Products are not written.',
+  reason: 'Google Business Profile product publishing is not available in this integration. Business Information v1 has no product resource, and the v4 client only posts, photos, and review replies. Products are not written.',
 };
 
 const PROMO = /\b(best|top|no\.?\s*1|number\s*1|number\s+one|#1|world[- ]class|guaranteed|guarantee|discount|cheapest|cheap|leading|premier|award[- ]winning|finest|trusted)\b/i;
@@ -362,9 +362,22 @@ export function buildServiceWrite(input: {
   return { valid: violations.length === 0, violations, items };
 }
 
+export interface AttributeCatalogMeta {
+  name: string;
+  valueType: string;
+  /** Present only when Google lists the allowed values. An empty list does not invent any. */
+  allowedValues?: string[];
+}
+
+function listedValue(meta: AttributeCatalogMeta, value: string): Violation | null {
+  if (!meta.allowedValues?.length) return null;
+  if (meta.allowedValues.includes(value)) return null;
+  return { code: 'value', message: `${value} is not one of the values Google lists for this attribute.` };
+}
+
 /** Owner-supplied attribute value → the Google attribute object. Unknown types are refused. */
 export function buildAttributeWrite(
-  meta: { name: string; valueType: string },
+  meta: AttributeCatalogMeta,
   value: unknown,
 ): { valid: boolean; violations: Violation[]; attribute: Record<string, unknown> | null } {
   const fail = (message: string) => ({ valid: false, violations: [{ code: 'value', message }], attribute: null as null });
@@ -374,7 +387,10 @@ export function buildAttributeWrite(
   }
   if (meta.valueType === 'ENUM') {
     if (typeof value !== 'string' || !value.trim()) return fail('Choose one of the allowed values.');
-    return { valid: true, violations: [], attribute: { name: meta.name, valueType: 'ENUM', values: [value.trim()] } };
+    const chosen = value.trim();
+    const listed = listedValue(meta, chosen);
+    if (listed) return { valid: false, violations: [listed], attribute: null };
+    return { valid: true, violations: [], attribute: { name: meta.name, valueType: 'ENUM', values: [chosen] } };
   }
   if (meta.valueType === 'URL') {
     const utm = withGbpUtm(String(value || ''));
@@ -384,6 +400,8 @@ export function buildAttributeWrite(
   if (meta.valueType === 'REPEATED_ENUM') {
     const setValues = Array.isArray(value) ? value.map((v) => String(v).trim()).filter(Boolean) : [];
     if (!setValues.length) return fail('Choose at least one value.');
+    const rejected = setValues.map((item) => listedValue(meta, item)).filter((item): item is Violation => !!item);
+    if (rejected.length) return { valid: false, violations: rejected, attribute: null };
     return {
       valid: true,
       violations: [],
@@ -391,6 +409,55 @@ export function buildAttributeWrite(
     };
   }
   return fail(`Attribute type ${meta.valueType || 'unknown'} is not written.`);
+}
+
+export interface AttributeBatchResult {
+  name: string;
+  valid: boolean;
+  violations: Violation[];
+  attribute: Record<string, unknown> | null;
+}
+
+/**
+ * Validate each selected attribute on its own. A failure does not make the
+ * other rows valid, and this function does not store or publish anything.
+ */
+export function planAttributeBatch(
+  catalog: AttributeCatalogMeta[] | null,
+  items: Array<{ name?: string; value?: unknown }>,
+): { results: AttributeBatchResult[] } {
+  if (!catalog) {
+    return {
+      results: items.map((item) => ({
+        name: String(item?.name || ''),
+        valid: false,
+        violations: [{ code: 'catalog', message: 'The Google attribute catalog was not available. No attribute was guessed.' }],
+        attribute: null,
+      })),
+    };
+  }
+  const seen = new Set<string>();
+  const results: AttributeBatchResult[] = [];
+  for (const item of items) {
+    const name = String(item?.name || '').trim();
+    if (!name) {
+      results.push({ name, valid: false, violations: [{ code: 'attribute', message: 'An attribute is missing its name.' }], attribute: null });
+      continue;
+    }
+    if (seen.has(name)) {
+      results.push({ name, valid: false, violations: [{ code: 'duplicate', message: 'That attribute is selected more than once.' }], attribute: null });
+      continue;
+    }
+    seen.add(name);
+    const meta = catalog.find((entry) => entry.name === name);
+    if (!meta) {
+      results.push({ name, valid: false, violations: [{ code: 'attribute', message: 'That attribute is not in the catalog for this category.' }], attribute: null });
+      continue;
+    }
+    const built = buildAttributeWrite(meta, item?.value);
+    results.push({ name: meta.name, valid: built.valid, violations: built.violations, attribute: built.attribute });
+  }
+  return { results };
 }
 
 /** Same Google location, whether or not the account prefix is present. */
@@ -420,6 +487,11 @@ export function canRollbackAttribute(before: unknown): boolean {
 export function rollbackRecheck(afterFingerprint: string | null, liveFingerprint: string): 'patch' | 'conflict' {
   if (!afterFingerprint || liveFingerprint !== afterFingerprint) return 'conflict';
   return 'patch';
+}
+
+/** Execution must not patch when Google no longer has the value captured on the proposal. */
+export function staleFieldDecision(beforeFingerprint: string, currentFingerprint: string): 'ok' | 'conflict' {
+  return beforeFingerprint === currentFingerprint ? 'ok' : 'conflict';
 }
 
 function emptyText(value: unknown): string | null {

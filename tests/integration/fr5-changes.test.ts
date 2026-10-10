@@ -11,6 +11,7 @@ import { fr5GuardedPatch, fr5ProfileMutationAllowed } from '../../src/lib/gbpSaf
 import {
   PRODUCTS_SUPPORT,
   buildAttributeWrite,
+  planAttributeBatch,
   buildServiceWrite,
   canonicalFingerprint,
   classifyReadBack,
@@ -21,6 +22,7 @@ import {
   fingerprint,
   locationGuard,
   rollbackRecheck,
+  staleFieldDecision,
   haversineMeters,
   holidayReminders,
   toGoogleHours,
@@ -31,8 +33,9 @@ import {
   validateSpecialHours,
   withGbpUtm,
 } from '../../src/services/gbp/changes/policy.ts';
-import { applyAndVerify, approve, executionClaim, rollbackDecision, type ChangeRecord } from '../../src/services/gbp/changes/machine.ts';
+import { applyAndVerify, approve, executionClaim, failClosed, markReverted, rollbackDecision, type ChangeRecord } from '../../src/services/gbp/changes/machine.ts';
 import { proposeServices, recommendCategories, suggestUnsetAttributes } from '../../src/services/gbp/changes/recommend.ts';
+import { calendarDate, holidayCalendarFor } from '../../src/services/gbp/changes/holidayCalendar.ts';
 
 const base = (): ChangeRecord => ({
   id: '1', businessId: 'biz', organizationId: null, locationId: 'locations/1',
@@ -296,6 +299,211 @@ test('an unresolved recovery reads Google and does not patch when the FR-5 flag 
   assert.equal(recovery.includes('patchLocation'), false);
   assert.equal(recovery.includes('updateLocationProfile'), false);
   assert.equal(store.includes("if (!fr5ProfileMutationAllowed()) throw new WriteNotAccepted"), true);
+});
+
+test('a changed Google description conflicts before any patch', async () => {
+  const before = 'Mulsetu is a software company in Ojhar.';
+  const proposed = 'Mulsetu is a software company in Ojhar';
+  const beforeFingerprint = canonicalFingerprint('description', before);
+  const changedOnGoogle = `${before} Edited elsewhere.`;
+  let patches = 0;
+
+  assert.equal(staleFieldDecision(beforeFingerprint, canonicalFingerprint('description', changedOnGoogle)), 'conflict');
+  const closed = failClosed(
+    { ...base(), before, proposed, beforeFingerprint, status: 'EXECUTING' },
+    'CONFLICT',
+    'Google changed this field after the proposal was created.',
+    '2026-10-09T00:00:00.000Z',
+  );
+  assert.equal(closed.status, 'CONFLICT');
+  assert.equal(closed.after, null);
+  assert.equal(patches, 0);
+
+  assert.equal(staleFieldDecision(beforeFingerprint, canonicalFingerprint('description', before)), 'ok');
+  const written = await applyAndVerify({
+    kind: 'description',
+    before,
+    proposed,
+    patch: async () => { patches += 1; return { ok: true }; },
+    read: async () => proposed,
+  });
+  assert.equal(written.status, 'VERIFIED');
+  assert.equal(patches, 1);
+
+  const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
+  const store = readFileSync(join(root, 'src/services/gbp/changes/store.ts'), 'utf8');
+  const executeAt = store.indexOf('export async function executeChange');
+  const rollbackAt = store.indexOf('export async function rollbackChange');
+  const executeBody = store.slice(executeAt, rollbackAt);
+  const staleAt = executeBody.indexOf('staleFieldDecision(');
+  const applyAt = executeBody.indexOf('applyAndVerify(');
+  assert.ok(staleAt > 0 && applyAt > staleAt);
+  assert.equal(executeBody.slice(0, applyAt).includes('writeKind('), false);
+  assert.equal(executeBody.slice(0, applyAt).includes('patchLocation'), false);
+  assert.equal(executeBody.slice(0, applyAt).includes('updateLocationProfile'), false);
+});
+
+test('rollback patches the recorded before-value only while the verified value is still live', async () => {
+  const before = 'Original description.';
+  const after = 'Original description';
+  const afterFingerprint = canonicalFingerprint('description', after);
+  const record = {
+    ...base(),
+    status: 'VERIFIED' as const,
+    before,
+    proposed: after,
+    after,
+    beforeFingerprint: canonicalFingerprint('description', before),
+    afterFingerprint,
+  };
+  let patches = 0;
+  let patched: unknown = null;
+
+  const changed = rollbackRecheck(afterFingerprint, canonicalFingerprint('description', 'A different Google description.'));
+  patches += changed === 'patch' ? 1 : 0;
+  assert.equal(changed, 'conflict');
+  assert.equal(rollbackDecision(record, canonicalFingerprint('description', 'A different Google description.')), 'conflict');
+  assert.equal(patches, 0);
+
+  const stillVerified = rollbackRecheck(afterFingerprint, canonicalFingerprint('description', after));
+  assert.equal(stillVerified, 'patch');
+  const restored = await applyAndVerify({
+    kind: 'description',
+    before: after,
+    proposed: before,
+    patch: async () => { patches += 1; patched = before; return { ok: true }; },
+    read: async () => before,
+  });
+  assert.equal(patched, before);
+  assert.equal(restored.status, 'VERIFIED');
+  assert.equal(canonicalFingerprint('description', restored.after), record.beforeFingerprint);
+  const reverted = markReverted(record, 'user', restored.googleBody, '2026-10-09T00:00:00.000Z');
+  assert.equal(reverted.status, 'REVERTED');
+  assert.equal(reverted.after, before);
+  assert.equal(reverted.rollbackStatus, 'REVERTED');
+
+  const ambiguous = await applyAndVerify({
+    kind: 'description',
+    before: after,
+    proposed: before,
+    patch: async () => { patches += 1; return { ok: true }; },
+    read: async () => 'neither the verified text nor the original',
+  });
+  assert.equal(ambiguous.status, 'CONFLICT');
+  assert.notEqual(ambiguous.status, 'VERIFIED');
+
+  const unread = await applyAndVerify({
+    kind: 'description',
+    before: after,
+    proposed: before,
+    patch: async () => { patches += 1; return { ok: true }; },
+    read: async () => { throw new Error('read failed'); },
+  });
+  assert.equal(unread.status, 'UNRESOLVED');
+  assert.match(unread.error || '', /not retried/);
+
+  const unchanged = await applyAndVerify({
+    kind: 'description',
+    before: after,
+    proposed: before,
+    patch: async () => { patches += 1; return { ok: true }; },
+    read: async () => after,
+  });
+  assert.equal(unchanged.status, 'FAILED');
+  assert.equal(patches, 4);
+  for (const outcome of [ambiguous, unread, unchanged]) {
+    assert.notEqual(outcome.status, 'VERIFIED');
+  }
+
+  const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
+  const store = readFileSync(join(root, 'src/services/gbp/changes/store.ts'), 'utf8');
+  const restoreAt = store.indexOf('async function restorePrevious');
+  const rollbackAt = store.indexOf('export async function rollbackChange');
+  const restoreBody = store.slice(restoreAt, rollbackAt);
+  const verifiedAt = restoreBody.indexOf("outcome.status === 'VERIFIED'");
+  const revertedAt = restoreBody.indexOf('markReverted(');
+  assert.ok(verifiedAt > 0 && revertedAt > verifiedAt);
+  assert.equal(restoreBody.includes('writeKind(actor.businessId, claimed.kind, claimed.before)'), true);
+  const rollbackBody = store.slice(rollbackAt);
+  const recheckAt = rollbackBody.indexOf('rollbackRecheck(');
+  const restoreCallAt = rollbackBody.indexOf('return restorePrevious(');
+  assert.ok(recheckAt > 0 && restoreCallAt > recheckAt);
+});
+
+test('attribute batches validate each row and do not treat a partial failure as success', () => {
+  const catalog = [
+    { name: 'attributes/has_wifi', valueType: 'BOOL' },
+    { name: 'attributes/pay_credit_card_types_accepted', valueType: 'ENUM', allowedValues: ['visa', 'mastercard'] },
+    { name: 'attributes/url_menu', valueType: 'URL' },
+  ];
+  const batch = planAttributeBatch(catalog, [
+    { name: 'attributes/has_wifi', value: true },
+    { name: 'attributes/pay_credit_card_types_accepted', value: 'bitcoin' },
+    { name: 'attributes/url_menu', value: 'https://example.com/menu?utm_medium=email' },
+    { name: 'attributes/url_menu', value: 'https://example.com/other' },
+    { name: 'attributes/not_listed', value: true },
+  ]);
+  assert.equal(batch.results[0].valid, true);
+  assert.equal(batch.results[1].valid, false);
+  assert.match(batch.results[1].violations[0].message, /not one of the values/);
+  assert.equal(batch.results[2].valid, true);
+  assert.match(JSON.stringify(batch.results[2].attribute), /utm_medium=email/);
+  assert.match(JSON.stringify(batch.results[2].attribute), /utm_source=google/);
+  assert.equal((JSON.stringify(batch.results[2].attribute).match(/utm_medium=/g) || []).length, 1);
+  assert.equal(batch.results[3].valid, false);
+  assert.equal(batch.results[3].violations[0].code, 'duplicate');
+  assert.equal(batch.results[4].valid, false);
+  assert.equal(batch.results.every((row) => row.valid), false);
+  assert.equal(planAttributeBatch(null, [{ name: 'attributes/has_wifi', value: true }]).results[0].violations[0].code, 'catalog');
+  assert.equal(buildAttributeWrite({ name: 'attributes/pay_credit_card_types_accepted', valueType: 'ENUM', allowedValues: ['visa'] }, 'visa').valid, true);
+});
+
+test('holiday reminders use the configured calendar and do not invent dates', () => {
+  assert.equal(holidayCalendarFor('US'), null);
+  assert.equal(holidayCalendarFor(null), null);
+  const india = holidayCalendarFor('IN');
+  assert.ok(india?.some((holiday) => holiday.date === '2026-01-26' && holiday.name === 'Republic Day'));
+  assert.equal(india?.some((holiday) => /tentative/i.test(holiday.name)), false);
+  assert.equal(holidayReminders([], null, '2026-10-10T12:00:00.000Z').status, 'NOT_CONFIGURED');
+  const reminders = holidayReminders([{ startDate: '2026-10-20' }], india, '2026-10-10T12:00:00.000Z');
+  assert.equal(reminders.status, 'READY');
+  assert.equal(reminders.reminders.some((row) => row.date === '2026-10-20' && row.covered), true);
+  assert.equal(reminders.reminders.some((row) => row.date === '2026-01-26'), false);
+  assert.equal(reminders.reminders.some((row) => row.date === '2026-11-08'), true);
+  assert.equal(reminders.reminders.some((row) => row.date === '2026-12-25'), false);
+  assert.equal(calendarDate('Asia/Kolkata', new Date('2026-10-09T20:00:00.000Z')), '2026-10-10');
+  assert.equal(calendarDate('Asia/Kolkata', new Date('2026-10-09T18:00:00.000Z')), '2026-10-09');
+  assert.equal(calendarDate('Not/A/Zone', new Date('2026-10-10T00:00:00.000Z')), null);
+  assert.equal(calendarDate('', new Date('2026-10-10T00:00:00.000Z')), null);
+});
+
+test('a service can recommend a resolved category without becoming an automatic primary change', () => {
+  const rec = recommendCategories({
+    businessName: 'Mulsetu',
+    currentPrimary: { name: 'categories/gcid:software_company', displayName: 'Software company' },
+    currentAdditional: [],
+    competitors: [],
+    services: ['Website designer'],
+    catalog: [{ name: 'categories/gcid:software_company', displayName: 'Software company' }, { name: 'categories/gcid:website_designer', displayName: 'Website designer' }],
+  });
+  assert.equal(rec.primary, null);
+  const extra = rec.additional.find((row) => row.displayName === 'Website designer');
+  assert.equal(extra?.executable, true);
+  assert.equal(extra?.autoApply, false);
+  assert.equal(extra?.categoryName, 'categories/gcid:website_designer');
+});
+
+test('bulk attribute storage and product publishing stay outside the Google write path', () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
+  const route = readFileSync(join(root, 'src/app/api/gbp/changes/attributes/route.ts'), 'utf8');
+  assert.equal(route.includes('createChange('), true);
+  assert.equal(route.includes('patchLocation'), false);
+  assert.equal(route.includes('updateLocationProfile'), false);
+  assert.equal(route.includes('executeChange'), false);
+  assert.equal(route.includes('liveWriteApplied: false'), true);
+  const client = readFileSync(join(root, 'src/lib/gbpClient.ts'), 'utf8');
+  assert.equal(client.includes('/products'), false);
+  assert.equal(PRODUCTS_SUPPORT.supported, false);
 });
 
 test('posts, review replies, and photos stay on the global write gate', () => {

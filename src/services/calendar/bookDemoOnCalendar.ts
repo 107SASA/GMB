@@ -7,9 +7,13 @@ import {
   alternativeSlots,
   assignSalesperson,
   bookingIdempotencyKey,
+  dayProblem,
   defaultDemoSchedule,
+  nextOpenDates,
+  openSlotsOnDate,
   rangesOverlap,
   slotFitsSchedule,
+  type DayProblem,
   type DemoScheduleConfig,
   type RequestedSlot,
 } from '@/services/calendar/demoScheduling';
@@ -268,6 +272,50 @@ export async function suggestWhenBusy(start: Date): Promise<RequestedSlot[]> {
   return alternativeSlots({ now: new Date(), config, around: start, busyByUser, limit: 2 });
 }
 
+/** A calendar that cannot be read counts as fully busy, so its owner is never double-booked. */
+async function busyUntilHorizon(connections: any[], now: Date, config: DemoScheduleConfig) {
+  const horizon = new Date(now.getTime() + (config.maxDaysAhead + 1) * 24 * 60 * 60 * 1000);
+  const busyByUser = [];
+  for (const connection of connections) {
+    try {
+      const token = await accessTokenFor(connection);
+      const busy = await queryFreeBusy(token, connection.calendarId || 'primary', now, horizon);
+      busyByUser.push({ userId: String(connection.userId), busy });
+    } catch {
+      busyByUser.push({ userId: String(connection.userId), busy: [{ start: now, end: horizon }] });
+    }
+  }
+  return busyByUser;
+}
+
+export async function hasConnectedCalendar(): Promise<boolean> {
+  await dbConnect();
+  return Boolean(await SalespersonCalendarConnection.exists({ status: 'active' }));
+}
+
+/**
+ * Open demo times on one business-local day, from connected salesperson calendars.
+ * When the day has none, `nextDates` holds up to `nextLimit` later days that do.
+ */
+export async function openTimesOnDay(date: string, nextLimit = 2): Promise<{
+  connected: boolean;
+  problem: DayProblem | null;
+  slots: RequestedSlot[];
+  nextDates: string[];
+}> {
+  await dbConnect();
+  const connections = await SalespersonCalendarConnection.find({ status: 'active' });
+  if (!connections.length) return { connected: false, problem: null, slots: [], nextDates: [] };
+
+  const { config } = await loadSchedule();
+  const now = new Date();
+  const problem = dayProblem(date, now, config);
+  const busyByUser = await busyUntilHorizon(connections, now, config);
+  const slots = problem ? [] : openSlotsOnDate({ now, config, date, busyByUser });
+  const nextDates = slots.length ? [] : nextOpenDates({ now, config, after: date, busyByUser, limit: nextLimit });
+  return { connected: true, problem, slots, nextDates };
+}
+
 /**
  * Availability for a WhatsApp demo. Uses connected salesperson calendars only.
  * The shared service-account calendar is not consulted here.
@@ -283,17 +331,7 @@ export async function findSalespersonAvailability(requested: RequestedSlot | nul
 
   const { config } = await loadSchedule();
   const now = new Date();
-  const horizon = new Date(now.getTime() + config.maxDaysAhead * 24 * 60 * 60 * 1000);
-  const busyByUser = [];
-  for (const connection of connections) {
-    try {
-      const token = await accessTokenFor(connection);
-      const busy = await queryFreeBusy(token, connection.calendarId || 'primary', now, horizon);
-      busyByUser.push({ userId: String(connection.userId), busy });
-    } catch {
-      busyByUser.push({ userId: String(connection.userId), busy: [{ start: now, end: horizon }] });
-    }
-  }
+  const busyByUser = await busyUntilHorizon(connections, now, config);
 
   let exact: RequestedSlot | null = null;
   if (requested && !slotFitsSchedule(requested, now, config)) {

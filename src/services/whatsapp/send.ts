@@ -21,7 +21,7 @@
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import MessageQueue from '@/models/MessageQueue';
-import { sendOutboundMessage as sendViaTwilio, sendTemplateMessage, SendResult } from '@/services/twilio/client';
+import { sendOutboundMessage as sendViaTwilio, sendListPicker, sendQuickReply, sendTemplateMessage, SendResult } from '@/services/twilio/client';
 import { getMetaConfig, isReengagementError, sendMetaTemplate, sendMetaText, sendMetaImage } from './meta';
 import { WA_TEMPLATES } from '@/lib/whatsappTemplates';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
@@ -207,6 +207,33 @@ export async function sendOutboundMessage(
   await msgLog.save();
 
   return { success: result.success, sid: result.sid, error: result.error };
+}
+
+/** Up to 3 tap buttons in an open WhatsApp session. Callers fall back to plain text when this fails. */
+export async function sendButtonChoice(
+  phone: string,
+  body: string,
+  actions: { id: string; title: string }[],
+  leadId?: string,
+  businessId?: string,
+): Promise<SendResult> {
+  const provider = await resolveProvider(businessId);
+  if (provider !== 'twilio') return { success: false, error: 'Buttons are sent through Twilio.' };
+  return sendQuickReply(phone, body, actions, leadId);
+}
+
+/** A tap-to-pick list (up to 10 rows) in an open WhatsApp session. Callers fall back to plain text when this fails. */
+export async function sendListChoice(
+  phone: string,
+  body: string,
+  button: string,
+  items: { id: string; item: string; description?: string }[],
+  leadId?: string,
+  businessId?: string,
+): Promise<SendResult> {
+  const provider = await resolveProvider(businessId);
+  if (provider !== 'twilio') return { success: false, error: 'Lists are sent through Twilio.' };
+  return sendListPicker(phone, body, button, items, leadId);
 }
 
 /**

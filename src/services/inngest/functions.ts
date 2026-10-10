@@ -2962,10 +2962,13 @@ export const bookingAgentReply = inngest.createFunction(
         return;
       }
 
-      // A named time is the booking. Do this before the human-handoff check
-      // so "Today 2 pm" still creates the Meet link.
-      const { parseDemoTimeRequest } = await import('@/services/calendar/demoScheduling');
-      const namedTime = parseDemoTimeRequest(body || '', new Date(), config.timezone || 'Asia/Kolkata');
+      // A message naming a day or time goes straight to the booking steps,
+      // before the human-handoff check, so "Today 2 pm" still gets today's
+      // times to tap.
+      const { parseDemoTimeRequest, parseDemoDate } = await import('@/services/calendar/demoScheduling');
+      const timezone = config.timezone || 'Asia/Kolkata';
+      const namedTime = parseDemoTimeRequest(body || '', new Date(), timezone)
+        || parseDemoDate(body || '', new Date(), timezone);
       if (namedTime && convo.status !== 'booked') {
         convo.schedulingHandoffAt = undefined;
         if (convo.status === 'awaiting_slot_selection') await handleSlotSelection(convo, body, config);
@@ -3016,51 +3019,102 @@ export const bookingAgentReply = inngest.createFunction(
   }
 );
 
-/** `active` — ask for a time, then check salesperson calendars. Known lead/audit fields are reused and are not asked again. */
+/**
+ * `active` — ask which day (Today / Tomorrow / Other date), then list that day's open times.
+ * A typed time is never booked directly: the lead taps one of the listed times.
+ * Known lead/audit fields are reused and are not asked again.
+ */
 async function handleCollecting(convo: any, body: string, config: any, Lead: any, _activity: any): Promise<void> {
-  const { sendOutboundMessage } = await import('@/services/whatsapp/send');
-  const { friendlyTimeLabel } = await import('@/services/whatsapp-agent/dateTimeUtils');
-  const { parseDemoTimeRequest } = await import('@/services/calendar/demoScheduling');
-  const { findSalespersonAvailability } = await import('@/services/calendar/bookDemoOnCalendar');
-  const { DEMO_TIME_ASK, DEMO_TIME_CLARIFY, alternativesCopy } = await import('@/services/whatsapp/prospectChoice');
+  const { parseDemoDate } = await import('@/services/calendar/demoScheduling');
+  const { isOtherDateChoice, ASK_DAY, ASK_CUSTOM_DATE } = await import('@/services/whatsapp/slotButtons');
 
   await hydrateBookingDetails(convo, Lead);
-  const lead = await ensureBookingLead(convo, Lead);
-  const timezone = config.timezone || 'Asia/Kolkata';
-  const requested = parseDemoTimeRequest(body || '', new Date(), timezone);
+  await ensureBookingLead(convo, Lead);
 
-  if (!requested) {
-    const alreadyAsked = (convo.messages || []).some((message: any) => message.role === 'agent' && message.text === DEMO_TIME_ASK);
-    const reply = alreadyAsked ? DEMO_TIME_CLARIFY : DEMO_TIME_ASK;
-    const res = await sendOutboundMessage(convo.leadPhone, reply, lead?._id?.toString());
-    if (res.success) convo.messages.push({ role: 'agent', text: reply, at: new Date() });
+  if (isOtherDateChoice(body || '')) {
+    await askCustomDate(convo, ASK_CUSTOM_DATE);
     return;
   }
+  const date = parseDemoDate(body || '', new Date(), config.timezone || 'Asia/Kolkata', { expectingDate: Boolean(convo.datePrompt) });
+  if (date) {
+    await offerDay(convo, date);
+    return;
+  }
+  if (convo.datePrompt === 'custom-date') {
+    await askCustomDate(convo, `Sorry, I couldn't read that date. ${ASK_CUSTOM_DATE}`);
+    return;
+  }
+  await askDemoDay(convo, convo.datePrompt ? `Sorry, I didn't catch that. ${ASK_DAY}` : ASK_DAY);
+}
 
-  const found = await findSalespersonAvailability(requested);
-  if (!found.connected || (!found.exact && !found.alternatives.length)) {
+/** Sends Today / Tomorrow / Other date buttons. Hands off to a person when no salesperson calendar is connected. */
+async function askDemoDay(convo: any, intro: string): Promise<void> {
+  const { hasConnectedCalendar } = await import('@/services/calendar/bookDemoOnCalendar');
+  if (!(await hasConnectedCalendar())) {
     await pauseAutomatedScheduling(convo, 'no-salesperson-calendar');
     return;
   }
+  const { DAY_CHOICE_BUTTONS, dayChoiceText } = await import('@/services/whatsapp/slotButtons');
+  convo.status = 'active';
+  convo.datePrompt = 'day-choice';
+  convo.offeredSlots = [];
+  await sendButtonsOrText(convo, intro, DAY_CHOICE_BUTTONS, dayChoiceText(intro));
+}
 
-  if (found.exact) {
-    const outcome = await bookConfirmedSlot(convo, found.exact, config);
-    await deliverBookingReply(convo, outcome.message, { confirmation: outcome.success });
+/** Asks the lead to type a date. The next bare number ("12") is then read as the 12th. */
+async function askCustomDate(convo: any, text: string): Promise<void> {
+  convo.status = 'active';
+  convo.datePrompt = 'custom-date';
+  convo.offeredSlots = [];
+  await deliverBookingReply(convo, text);
+}
+
+/** Lists the open times on one day, or offers the next open days when that day has none. */
+async function offerDay(convo: any, date: string): Promise<void> {
+  const { openTimesOnDay } = await import('@/services/calendar/bookDemoOnCalendar');
+  const { spreadSlots } = await import('@/services/calendar/demoScheduling');
+  const { MAX_LISTED_SLOTS, ASK_DAY, dateButtons, dateLabel } = await import('@/services/whatsapp/slotButtons');
+
+  const day = await openTimesOnDay(date);
+  if (!day.connected) {
+    await pauseAutomatedScheduling(convo, 'no-salesperson-calendar');
     return;
   }
-
-  convo.offeredSlots = found.alternatives;
-  convo.status = 'awaiting_slot_selection';
-  const { friendlyDateLabel } = await import('@/services/whatsapp-agent/dateTimeUtils');
-  const reply = alternativesCopy(
-    friendlyTimeLabel(requested.time),
-    found.alternatives.map((slot) => (
-      slot.date === requested.date
-        ? friendlyTimeLabel(slot.time)
-        : `${friendlyDateLabel(slot.date)} at ${friendlyTimeLabel(slot.time)}`
-    ))
+  const label = dateLabel(date);
+  if (day.slots.length) {
+    await presentSlots(convo, spreadSlots(day.slots, MAX_LISTED_SLOTS), `Open times on ${label}. Tap one to book your demo.`);
+    return;
+  }
+  if (day.problem === 'past' || day.problem === 'too-far') {
+    const why = day.problem === 'past' ? `${label} has already passed.` : `${label} is too far ahead to book right now.`;
+    await askDemoDay(convo, `${why} ${ASK_DAY}`);
+    return;
+  }
+  if (!day.nextDates.length) {
+    await pauseAutomatedScheduling(convo, 'no-open-slot');
+    return;
+  }
+  const intro = `There are no open times on ${label}. Pick another day.`;
+  convo.status = 'active';
+  convo.datePrompt = 'day-choice';
+  convo.offeredSlots = [];
+  await sendButtonsOrText(
+    convo,
+    intro,
+    dateButtons(day.nextDates),
+    `${intro}\n\n${day.nextDates.map(dateLabel).join('\n')}\n\nType one of these dates, or any other date.`
   );
-  await deliverBookingReply(convo, reply);
+}
+
+/** Quick-reply buttons, or the given text when buttons cannot be sent (e.g. outside the 24-hour window). */
+async function sendButtonsOrText(convo: any, body: string, buttons: { id: string; title: string }[], fallback: string): Promise<void> {
+  const { sendButtonChoice } = await import('@/services/whatsapp/send');
+  const res = await sendButtonChoice(convo.leadPhone, body, buttons, convo.leadId?.toString());
+  if (res.success) {
+    convo.messages.push({ role: 'agent', text: `${body} [${buttons.map((button) => button.title).join(' | ')}]`, at: new Date() });
+    return;
+  }
+  await deliverBookingReply(convo, fallback);
 }
 
 async function hydrateBookingDetails(convo: any, Lead: any): Promise<void> {
@@ -3151,31 +3205,6 @@ async function pauseAutomatedScheduling(convo: any, reason: string): Promise<voi
   if (toldThem) await markSchedulingPaused(convo, reason);
 }
 
-/**
- * Offers real salesperson-calendar slots. Used when a booked lead asks to
- * reschedule and has not named a time yet. Does not consult the shared
- * service-account calendar.
- */
-async function offerRealSlots(convo: any): Promise<{ available: boolean; needsHandoff: boolean; message: string }> {
-  const { findSalespersonAvailability } = await import('@/services/calendar/bookDemoOnCalendar');
-  const { friendlyDateLabel, friendlyTimeLabel } = await import('@/services/whatsapp-agent/dateTimeUtils');
-  const { SCHEDULE_HANDOFF_ONCE } = await import('@/services/whatsapp/prospectChoice');
-  const found = await findSalespersonAvailability(null);
-  if (!found.connected || !found.alternatives.length) {
-    return { available: false, needsHandoff: true, message: SCHEDULE_HANDOFF_ONCE };
-  }
-  convo.offeredSlots = found.alternatives;
-  const lines = found.alternatives.map((slot, index) => {
-    const mark = ['1️⃣', '2️⃣', '3️⃣'][index] || `${index + 1}.`;
-    return `${mark} ${friendlyDateLabel(slot.date)} at ${friendlyTimeLabel(slot.time)}`;
-  });
-  return {
-    available: true,
-    needsHandoff: false,
-    message: `Here are times I can book:\n\n${lines.join('\n')}\n\nWhich works best for you?`,
-  };
-}
-
 async function deliverBookingReply(
   convo: any,
   message: string,
@@ -3200,36 +3229,67 @@ async function deliverBookingReply(
   if (res.success) convo.messages.push({ role: 'agent', text: message, at: new Date() });
 }
 
-/** `awaiting_slot_selection` — deterministic pick against the real offered slots, then books via Calendar. On any Calendar failure: human handoff, never a fabricated link/time (task requirement). */
+/** Sends the open times as a WhatsApp list with an "Another day" row. Plain numbered text is used only if the list cannot be sent. */
+async function presentSlots(convo: any, slots: any[], intro: string): Promise<void> {
+  const { MAX_LISTED_SLOTS, slotListItems, slotOfferText } = await import('@/services/whatsapp/slotButtons');
+  const { sendListChoice } = await import('@/services/whatsapp/send');
+  const offered = (slots || []).slice(0, MAX_LISTED_SLOTS);
+  convo.offeredSlots = offered;
+  convo.status = 'awaiting_slot_selection';
+  convo.datePrompt = undefined;
+  const items = slotListItems(offered);
+  const res = await sendListChoice(convo.leadPhone, intro, 'See times', items, convo.leadId?.toString());
+  if (res.success) {
+    convo.messages.push({ role: 'agent', text: `${intro} [${items.map((row) => row.item).join(' | ')}]`, at: new Date() });
+    return;
+  }
+  await deliverBookingReply(convo, slotOfferText(intro, offered));
+}
+
+/** A slot taken between listing and tapping gets a fresh list. Anything else (confirmation, handoff) is sent as text. */
+async function sendBookingOutcome(convo: any, outcome: { message: string; success: boolean; retry?: boolean }): Promise<void> {
+  if (outcome.retry && convo.offeredSlots?.length) {
+    await presentSlots(convo, convo.offeredSlots, 'That time was just taken. Please pick another one.');
+    return;
+  }
+  await deliverBookingReply(convo, outcome.message, { confirmation: outcome.success });
+}
+
+/**
+ * `awaiting_slot_selection` — books only a time that was actually listed (tap, number, or that clock time).
+ * A new day ("tomorrow", "15 oct", "Another day") lists that day instead. Anything else re-sends the list.
+ * On any Calendar failure: human handoff, never a fabricated link/time.
+ */
 async function handleSlotSelection(convo: any, body: string, config: any): Promise<void> {
-  const { pickSlotFromReply, formatOfferedSlots } = await import('@/services/booking/bookingAgent');
+  const { pickSlotFromReply } = await import('@/services/booking/bookingAgent');
+  const { confirmsSingleSlot } = await import('@/services/whatsapp/prospectChoice');
+  const { parseDemoDate } = await import('@/services/calendar/demoScheduling');
+  const { isOtherDateChoice, ASK_DAY, ASK_CUSTOM_DATE } = await import('@/services/whatsapp/slotButtons');
 
   const offeredSlots = (convo.offeredSlots || []).map((s: any) => ({ ...s, startUtc: new Date(s.startUtc) }));
-  const { confirmsSingleSlot } = await import('@/services/whatsapp/prospectChoice');
-  if (offeredSlots.length === 1 && confirmsSingleSlot(body || '')) {
-    const outcome = await bookConfirmedSlot(convo, offeredSlots[0], config);
-    await deliverBookingReply(convo, outcome.message, { confirmation: outcome.success });
-    return;
-  }
-  const { parseDemoTimeRequest } = await import('@/services/calendar/demoScheduling');
-  const requested = parseDemoTimeRequest(body, new Date(), config.timezone || 'Asia/Kolkata');
-  const picked = requested && !/^\s*\d{1,2}\s*$/.test(body || '')
-    ? null
+  const date = parseDemoDate(body || '', new Date(), config.timezone || 'Asia/Kolkata');
+  const picked = offeredSlots.length === 1 && confirmsSingleSlot(body || '')
+    ? offeredSlots[0]
     : pickSlotFromReply(body, offeredSlots);
-  if (!picked && requested) {
-    const outcome = await bookConfirmedSlot(convo, requested, config);
-    await deliverBookingReply(convo, outcome.message, { confirmation: outcome.success });
+  // "tomorrow 3 pm" while today's list is open means tomorrow, not today's 3 PM.
+  if (picked && (!date || date === picked.date)) {
+    const outcome = await bookConfirmedSlot(convo, picked, config);
+    await sendBookingOutcome(convo, outcome);
     return;
   }
-
-  if (!picked) {
-    const clarify = `Sorry, I didn't catch that. Please reply with just the number of the time that works:\n${formatOfferedSlots(offeredSlots)}`;
-    await deliverBookingReply(convo, clarify);
+  if (isOtherDateChoice(body || '')) {
+    await askCustomDate(convo, ASK_CUSTOM_DATE);
     return;
   }
-
-  const outcome = await bookConfirmedSlot(convo, picked, config);
-  await deliverBookingReply(convo, outcome.message, { confirmation: outcome.success });
+  if (date) {
+    await offerDay(convo, date);
+    return;
+  }
+  if (!offeredSlots.length) {
+    await askDemoDay(convo, ASK_DAY);
+    return;
+  }
+  await presentSlots(convo, offeredSlots, 'Please tap one of these times, or pick another day.');
 }
 
 /**
@@ -3242,7 +3302,7 @@ async function bookConfirmedSlot(
   convo: any,
   slot: { date: string; time: string; startUtc: Date },
   config: any
-): Promise<{ message: string; success: boolean }> {
+): Promise<{ message: string; success: boolean; retry?: boolean }> {
   const { CalendarError, SlotUnavailableError } = await import('@/services/calendar/googleCalendar');
   const { bookDemoOnCalendar, suggestWhenBusy } = await import('@/services/calendar/bookDemoOnCalendar');
   const { confirmationCopy } = await import('@/services/calendar/demoScheduling');
@@ -3293,6 +3353,7 @@ async function bookConfirmedSlot(
         convo.status = 'awaiting_slot_selection';
         return {
           success: false,
+          retry: true,
           message: `${friendlyTimeLabel(slot.time)} is not available. I can offer:\n${formatOfferedSlots(convo.offeredSlots)}\n\nWhich works better?`,
         };
       }
@@ -3321,7 +3382,10 @@ async function bookConfirmedSlot(
     : null;
   if (!booking && convo.bookingId) booking = await DemoBooking.findById(convo.bookingId);
   if (booking) {
-    // Reschedule path — reuse the existing DemoBooking row.
+    // Reschedule path — reuse the existing DemoBooking row. A new calendar
+    // event means a new time and Meet link, so the lead must get a new
+    // confirmation; the one-per-booking claim is reset for it.
+    if (booking.calendarEventId !== eventId) booking.whatsappConfirmationSentAt = undefined;
     booking.date = dateStr;
     booking.timeSlot = timeStr;
     booking.status = 'Confirmed';
@@ -3467,7 +3531,7 @@ async function handleBookedReply(convo: any, body: string, config: any): Promise
 
   const intent = classifyBookedReplyIntent(body);
   if (intent === 'none') {
-    convo.messages.push({ role: 'lead', text: body, at: new Date() });
+    // The webhook already stored this inbound message on the conversation.
     const booking: any = convo.bookingId ? await DemoBooking.findById(convo.bookingId).select('date timeSlot meetingLink').lean() : null;
     const { bookedStatusReply } = await import('@/services/whatsapp/prospectChoice');
     const when = booking?.date && booking?.timeSlot ? `${booking.date} at ${booking.timeSlot}` : '';
@@ -3503,18 +3567,24 @@ async function handleBookedReply(convo: any, body: string, config: any): Promise
     return;
   }
 
-  // Reschedule: cancel the old event + reminders, then re-run slot-offering.
+  // Reschedule: cancel the old event + reminders, then pick a day again.
+  // "reschedule to friday" goes straight to Friday's times.
+  // The row is marked Rescheduled so it doesn't stay Confirmed with a deleted
+  // event if the lead never picks a new time; booking again sets Confirmed.
   if (booking) {
     await cancelBookingCalendarAndReminders(booking);
+    booking.status = 'Rescheduled';
+    await booking.save();
   }
-  const offer = await offerRealSlots(convo);
-  if (offer.needsHandoff) {
-    await pauseAutomatedScheduling(convo, 'no-salesperson-calendar');
+  const { parseDemoDate } = await import('@/services/calendar/demoScheduling');
+  const { ASK_DAY } = await import('@/services/whatsapp/slotButtons');
+  const date = parseDemoDate(body || '', new Date(), config.timezone || 'Asia/Kolkata');
+  if (date) {
+    convo.status = 'active';
+    await offerDay(convo, date);
     return;
   }
-  const res = await sendOutboundMessage(convo.leadPhone, offer.message, convo.leadId?.toString());
-  if (res.success) convo.messages.push({ role: 'agent', text: offer.message, at: new Date() });
-  if (offer.available) convo.status = 'awaiting_slot_selection';
+  await askDemoDay(convo, `No problem, let's find a new time. ${ASK_DAY}`);
 }
 
 /** Cancels a booking's calendar event (best-effort — a Calendar failure here doesn't block the reschedule/cancel from proceeding on the WhatsApp/DB side) and its reminder + no-show ScheduledActions. */

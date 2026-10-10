@@ -11,6 +11,7 @@ import {
 } from '@/lib/bookingAgentDefaults';
 import { AGENT_SCOPE_GUARDRAIL } from '@/lib/agentGuardrails';
 import { getBusinessNow, friendlyDateLabel, friendlyTimeLabel } from '@/services/whatsapp-agent/dateTimeUtils';
+import { pickOfferedSlotIndex } from '@/services/whatsapp/slotButtons';
 import { displayTimezone } from '@/lib/whatsappOutbound';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -219,24 +220,8 @@ export function formatOfferedSlots(slots: IOfferedSlot[]): string {
  * Returns null if the reply doesn't clearly match any offered slot.
  */
 export function pickSlotFromReply(reply: string, offeredSlots: IOfferedSlot[]): IOfferedSlot | null {
-  const text = (reply || '').trim().toLowerCase();
-  if (!text || !offeredSlots.length) return null;
-
-  const numberMatch = text.match(/\b(\d+)\b/);
-  if (numberMatch) {
-    const idx = parseInt(numberMatch[1], 10) - 1;
-    if (idx >= 0 && idx < offeredSlots.length) return offeredSlots[idx];
-  }
-
-  for (const slot of offeredSlots) {
-    const dateLabel = friendlyDateLabel(slot.date).toLowerCase();
-    const timeLabel = friendlyTimeLabel(slot.time).toLowerCase();
-    const dayNameOnly = dateLabel.split(',')[0]; // e.g. "monday"
-    if (text.includes(timeLabel) || (text.includes(dayNameOnly) && text.includes(timeLabel.split(' ')[0]))) {
-      return slot;
-    }
-  }
-  return null;
+  const index = pickOfferedSlotIndex(reply, offeredSlots);
+  return index === null ? null : offeredSlots[index];
 }
 
 // Keyword signals for the reschedule/cancel branches (task item 3) —

@@ -921,9 +921,10 @@ async function handleMetaWebhook(req: Request) {
           const profileName = contact?.profile?.name || '';
 
           const isText = message.type === 'text';
-          const body = isText
+          const buttonId = message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || message.button?.payload || '';
+          const body = buttonId || (isText
             ? message.text?.body || ''
-            : message[message.type]?.caption || message.button?.text || message.interactive?.button_reply?.title || '';
+            : message[message.type]?.caption || message.button?.text || message.interactive?.button_reply?.title || '');
           const numMedia = ['image', 'video', 'audio', 'document', 'sticker'].includes(message.type) ? 1 : 0;
 
           if (await isDuplicateInboundMessage('meta', message.id || '')) continue;
@@ -968,7 +969,9 @@ export async function handleTwilioWebhook(req: Request) {
     const messageSid = formData.get('MessageSid') as string;
     const from = formData.get('From') as string;
     const toPayload = formData.get('To') as string;
-    const body = formData.get('Body') as string;
+    // A tapped button or list row arrives as its id, so the booking flow never has to guess from the title.
+    const buttonPayload = String(formData.get('ButtonPayload') || formData.get('ListId') || '').trim();
+    const body = buttonPayload || (formData.get('Body') as string) || '';
     const profileName = formData.get('ProfileName') as string;
     const numMedia = parseInt(formData.get('NumMedia') as string || '0', 10);
 

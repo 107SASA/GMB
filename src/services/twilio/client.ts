@@ -1,4 +1,5 @@
 import twilio from 'twilio';
+import { createHash } from 'crypto';
 import dbConnect from '@/lib/mongodb';
 import MessageQueue from '@/models/MessageQueue';
 import { normalizePhoneE164 } from '@/lib/phone';
@@ -315,4 +316,135 @@ export async function sendTemplateMessage(
       errorCode: e.code != null ? String(e.code) : undefined,
     };
   }
+}
+
+/** Content SIDs already created this process, keyed by a hash of the content, so an identical list is not re-created. */
+const contentSidCache = new Map<string, string>();
+
+async function contentSidFor(
+  auth: string,
+  kind: string,
+  types: Record<string, unknown>,
+): Promise<{ sid?: string; error?: string }> {
+  const key = createHash('sha1').update(JSON.stringify(types)).digest('hex').slice(0, 16);
+  const cached = contentSidCache.get(key);
+  if (cached) return { sid: cached };
+  let created: Response;
+  try {
+    created = await fetch('https://content.twilio.com/v1/Content', {
+      method: 'POST',
+      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ friendly_name: `gm_${kind}_${key}`, language: 'en', types }),
+    });
+  } catch (e: any) {
+    return { error: e?.message || 'Could not reach Twilio to create the buttons.' };
+  }
+  const payload = await created.json().catch(() => ({} as { sid?: string; message?: string }));
+  if (!created.ok || !payload.sid) return { error: payload.message || 'Could not create the buttons.' };
+  contentSidCache.set(key, payload.sid);
+  return { sid: payload.sid };
+}
+
+/** Sends one in-session interactive message (quick reply or list). Only works inside the 24-hour window. */
+async function sendInteractive(
+  phone: string,
+  kind: string,
+  types: Record<string, unknown>,
+  logPayload: Record<string, unknown>,
+  leadId?: string,
+): Promise<SendResult> {
+  await dbConnect();
+  if (qaSendsSuppressed()) return logSuppressedSend({ phone, ...logPayload }, leadId);
+
+  const creds = await resolveTwilioCredentials();
+  if (!creds) return { success: false, error: 'WhatsApp is not configured (missing Twilio credentials)' };
+  const toAddress = toWhatsAppAddress(phone);
+  if (!toAddress) return { success: false, error: `Invalid WhatsApp recipient number: "${phone}"` };
+
+  const auth = Buffer.from(`${creds.sid}:${creds.authToken}`).toString('base64');
+  const content = await contentSidFor(auth, kind, types);
+  if (!content.sid) return { success: false, error: content.error };
+
+  const msgLog = await MessageQueue.create({
+    leadId,
+    direction: 'OUTBOUND',
+    status: 'PENDING',
+    payload: { phone, ...logPayload },
+  });
+  const client = twilio(creds.sid, creds.authToken, { timeout: 15000 });
+  const statusCallback = statusCallbackUrl();
+  try {
+    const message = await client.messages.create({
+      to: toAddress,
+      contentSid: content.sid,
+      ...(creds.messagingServiceSid
+        ? { messagingServiceSid: creds.messagingServiceSid }
+        : { from: `whatsapp:${creds.fromNumber}` }),
+      ...(statusCallback ? { statusCallback } : {}),
+    });
+    msgLog.status = 'SENT';
+    msgLog.sentAt = new Date();
+    msgLog.payload = { ...msgLog.payload, sid: message.sid };
+    msgLog.markModified('payload');
+    await msgLog.save();
+    return { success: true, sid: message.sid, isPlatformDefault: creds.isPlatformDefault };
+  } catch (e: any) {
+    msgLog.status = 'FAILED';
+    msgLog.failedReason = e.message;
+    msgLog.errorCode = e.code != null ? String(e.code) : undefined;
+    await msgLog.save();
+    console.error('Twilio Error:', e);
+    return { success: false, error: e.message, errorCode: e.code != null ? String(e.code) : undefined };
+  }
+}
+
+function oneLine(text: string, max: number): string {
+  return String(text || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, max);
+}
+
+/** Up to 3 in-session WhatsApp quick-reply buttons. Titles are capped at 20 characters. */
+export async function sendQuickReply(
+  phone: string,
+  body: string,
+  actions: { id: string; title: string }[],
+  leadId?: string,
+): Promise<SendResult> {
+  const usable = actions
+    .map((action) => ({ id: oneLine(action.id, 200), title: oneLine(action.title, 20) }))
+    .filter((action) => action.id && action.title)
+    .slice(0, 3);
+  if (!usable.length) return { success: false, error: 'No buttons to send.' };
+  return sendInteractive(
+    phone,
+    'quick_reply',
+    { 'twilio/quick-reply': { body: oneLine(body, 1024), actions: usable } },
+    { body, buttons: usable },
+    leadId,
+  );
+}
+
+/** An in-session WhatsApp list of up to 10 rows. Row titles are capped at 24 characters, descriptions at 72. */
+export async function sendListPicker(
+  phone: string,
+  body: string,
+  button: string,
+  items: { id: string; item: string; description?: string }[],
+  leadId?: string,
+): Promise<SendResult> {
+  const usable = items
+    .map((row) => ({
+      id: oneLine(row.id, 200),
+      item: oneLine(row.item, 24),
+      ...(row.description ? { description: oneLine(row.description, 72) } : {}),
+    }))
+    .filter((row) => row.id && row.item)
+    .slice(0, 10);
+  if (!usable.length) return { success: false, error: 'No list rows to send.' };
+  return sendInteractive(
+    phone,
+    'list',
+    { 'twilio/list-picker': { body: oneLine(body, 1024), button: oneLine(button, 20) || 'Choose', items: usable } },
+    { body, list: usable },
+    leadId,
+  );
 }

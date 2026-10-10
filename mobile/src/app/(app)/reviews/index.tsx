@@ -166,7 +166,16 @@ function ReviewCard({ review }: { review: Review }) {
             // No `className` — see note above.
             style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}
           >
-            <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>
+            {/*
+              One line, no shrink, font set inline: on Android the bold label
+              was measured narrower than it draws, so "reply" wrapped onto a
+              hidden second line and only "Your" showed on some cards.
+            */}
+            <Text
+              numberOfLines={1}
+              textBreakStrategy="simple"
+              style={{ flexShrink: 0, fontFamily: 'Inter_700Bold', fontSize: 14, lineHeight: 20, color: t.brandBright }}
+            >
               Your reply
             </Text>
             <Ionicons name={replyOpen ? 'chevron-up' : 'chevron-down'} size={14} color={t.brandBright} />

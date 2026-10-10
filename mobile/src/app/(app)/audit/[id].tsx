@@ -420,7 +420,7 @@ function PendingBody({ timedOut, onRetry }: { timedOut: boolean; onRetry: () => 
   if (timedOut) {
     return (
       <View className="flex-1 items-center justify-center gap-3 px-10">
-        <Ionicons name="time-outline" size={40} color="#a6c8ff" />
+        <Ionicons name="time-outline" size={40} color={t.violet} />
         <Text className="font-display-bold text-lg text-white">Taking longer than usual</Text>
         <Text className="text-center font-sans text-sm text-zinc-400">
           This audit is taking much longer than expected.
@@ -439,7 +439,7 @@ function PendingBody({ timedOut, onRetry }: { timedOut: boolean; onRetry: () => 
   }
   return (
     <View className="flex-1 items-center justify-center gap-3 px-10">
-      <ActivityIndicator size="large" color="#a6c8ff" />
+      <ActivityIndicator size="large" color={t.violet} />
       <Text className="font-display-bold text-lg text-white">Running your audit…</Text>
       <Text className="text-center font-sans text-sm text-zinc-400">
         We're analysing your Google ranking, profile, SEO and reviews. This usually takes a couple

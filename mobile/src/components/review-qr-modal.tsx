@@ -202,8 +202,12 @@ export function ReviewQrModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View className="flex-1 items-center justify-center bg-black/70 px-4" style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}>
         <ScrollView
-          style={{ width: '100%', maxWidth: 420, maxHeight: height - insets.top - insets.bottom - 24 }}
-          contentContainerStyle={{ alignItems: 'center' }}
+          // flexGrow: 0 — a ScrollView grows to fill its parent by default,
+          // which pinned the card to the top; this keeps it card-sized so the
+          // parent's justify-center places it mid-screen.
+          style={{ flexGrow: 0, width: '100%', maxWidth: 420, maxHeight: height - insets.top - insets.bottom - 24 }}
+          // Also centred inside the ScrollView; a card taller than the screen still scrolls.
+          contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center' }}
           bounces={false}
         >
         <View className="w-full items-center rounded-3xl border border-surface-border bg-surface-raised p-5" style={{ maxWidth: Math.min(420, width - 32) }}>
@@ -223,7 +227,11 @@ export function ReviewQrModal({
             />
           ) : (
             <>
-              <Text className="mb-4 mt-2 text-center font-sans text-sm text-zinc-400">
+              <Text
+                className="mb-4 mt-2 text-center font-sans text-sm text-zinc-400"
+                // Clears the 44 px close button at the top right (the text ran under it).
+                style={{ paddingHorizontal: 36 }}
+              >
                 Screenshot or print this to display anywhere customers can scan it.
               </Text>
 

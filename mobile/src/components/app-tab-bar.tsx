@@ -43,6 +43,9 @@ export function AppTabBar({ state, descriptors, navigation, insets }: BottomTabB
   const { width } = useWindowDimensions();
   const narrow = width < 360;
   const pillPad = narrow ? 10 : width < 400 ? 14 : 18;
+  const iconSize = narrow ? 22 : 24;
+  // Explicit half-height radius (icon + 2×4 padding) instead of 999.
+  const pillRadius = (iconSize + 8) / 2;
 
   return (
     <View
@@ -85,17 +88,30 @@ export function AppTabBar({ state, descriptors, navigation, insets }: BottomTabB
             // why Pressable + className is unsafe in this app.
             style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minHeight: 44, paddingVertical: 2, paddingHorizontal: 2 }}
           >
-            <View
-              style={{
-                paddingHorizontal: pillPad,
-                paddingVertical: 4,
-                borderRadius: 999,
-                backgroundColor: focused ? SECONDARY_CONTAINER[scheme] : 'transparent',
-              }}
-            >
+            <View style={{ paddingHorizontal: pillPad, paddingVertical: 4 }}>
+              {/*
+                The pill is its own layer whose colour and radius never change
+                after mount; only its opacity follows focus. Toggling
+                backgroundColor on an already-rounded view (transparent ↔
+                colour) let Android drop the corner radius after a few tab
+                switches, showing a square-cornered block.
+              */}
+              <View
+                style={{
+                  pointerEvents: 'none',
+                  position: 'absolute',
+                  top: 0,
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  borderRadius: pillRadius,
+                  backgroundColor: SECONDARY_CONTAINER[scheme],
+                  opacity: focused ? 1 : 0,
+                }}
+              />
               <Ionicons
                 name={focused ? icon.filled : icon.outline}
-                size={narrow ? 22 : 24}
+                size={iconSize}
                 color={focused ? ACTIVE_TINT[scheme] : t.textFaint}
               />
             </View>

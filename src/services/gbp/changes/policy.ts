@@ -3,6 +3,8 @@
  * A failing validation blocks execution. Unknown data is not treated as a value.
  */
 
+import { createHash } from 'node:crypto';
+
 export const DESCRIPTION_MAX = 750;
 export const DESCRIPTION_LEAD = 250;
 /** Pin vs geocoded address. Documented, not a Google requirement. */
@@ -652,6 +654,25 @@ export function canonicalValue(kind: string, value: unknown): unknown {
 
 export function canonicalFingerprint(kind: string, value: unknown): string {
   return fingerprint(canonicalValue(kind, value));
+}
+
+/**
+ * Statuses that hold an open-proposal key. PROPOSED and APPROVED are open;
+ * EXECUTING (Apply in flight) keeps the key so an identical proposal cannot be
+ * created mid-apply, and so a guard that hands the claim back to APPROVED never
+ * has to re-acquire it. Every other status releases the key.
+ */
+export const OPEN_KEY_STATUSES: ReadonlySet<string> = new Set(['PROPOSED', 'APPROVED', 'EXECUTING']);
+
+/**
+ * Identity of an open proposal: same business (scoped by the index), same
+ * kind, same current Google value, same proposed value. A changed Google value
+ * gives a different key, so a fresh proposal is allowed after Google moved.
+ */
+export function openProposalKey(kind: string, beforeFingerprint: string, proposed: unknown): string {
+  return createHash('sha256')
+    .update(`${kind}\u0000${beforeFingerprint}\u0000${canonicalFingerprint(kind, proposed)}`)
+    .digest('hex');
 }
 
 /** Same clientRequestId: reuse only when the proposal itself is unchanged. */

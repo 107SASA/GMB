@@ -5,6 +5,9 @@
  * PROPOSED → APPROVED → EXECUTING → VERIFIED
  *                  ↘ FAILED / BLOCKED / CONFLICT
  * VERIFIED → EXECUTING (rollback) → REVERTED
+ *
+ * Apply or rollback while live writes are off is refused without a
+ * transition: an APPROVED change stays APPROVED, a VERIFIED one stays VERIFIED.
  */
 
 import { canonicalFingerprint, classifyReadBack, type ReadBackStatus } from './policy.ts';

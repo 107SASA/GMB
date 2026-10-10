@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireBusinessContext } from '@/lib/tenant';
 import GbpProfileChange from '@/models/GbpProfileChange';
-import { createChange, locationIdFor, ProposalConflictError } from '@/services/gbp/changes/store';
+import { createProposal, locationIdFor, ProposalConflictError } from '@/services/gbp/changes/store';
 import { buildAttributeWrite, buildServiceWrite, toGoogleHours, validateBusinessName, validateDescription, validateRegularHours, validateServiceArea, validateSpecialHours, withGbpUtm, type HoursPeriodIn, type SpecialHourIn } from '@/services/gbp/changes/policy';
 import { listCategoryAttributes, readLocationAttributes, readLocationRaw } from '@/lib/gbpClient';
 import GbpLocationSnapshot from '@/models/GbpLocationSnapshot';
@@ -185,8 +185,9 @@ export async function POST(req: Request) {
   }
 
   let doc;
+  let reused = false;
   try {
-    doc = await createChange({
+    const created = await createProposal({
     businessId: ctx.businessId,
     organizationId: ctx.organizationId,
     locationId,
@@ -200,13 +201,15 @@ export async function POST(req: Request) {
     recommendationRef: parsed.data.recommendationRef || null,
     clientRequestId: parsed.data.clientRequestId || null,
     });
+    doc = created.change;
+    reused = created.outcome === 'reused';
   } catch (err) {
     if (err instanceof ProposalConflictError) {
       return NextResponse.json({ success: false, error: err.message }, { status: 409 });
     }
     throw err;
   }
-  return NextResponse.json({ success: true, change: doc, liveWriteApplied: false });
+  return NextResponse.json({ success: true, change: doc, reused, liveWriteApplied: false });
 }
 
 function asClock(value: unknown): string {

@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import { OPEN_KEY_STATUSES } from '@/services/gbp/changes/policy';
 
 /**
  * One proposed Google Business Profile edit (FR-5.10).
@@ -36,6 +37,12 @@ export interface IGbpProfileChange extends Document {
   rolledBackAt?: Date | null;
   recommendationRef?: Record<string, unknown> | null;
   clientRequestId?: string | null;
+  /**
+   * Set only at creation of a PROPOSED change (see openProposalKey); cleared
+   * as soon as the status leaves PROPOSED / APPROVED / EXECUTING. Unique per
+   * business while set, so two identical open proposals cannot both exist.
+   */
+  openKey?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -73,14 +80,38 @@ const GbpProfileChangeSchema = new Schema<IGbpProfileChange>(
     rolledBackAt: { type: Date, default: null },
     recommendationRef: { type: Schema.Types.Mixed, default: null },
     clientRequestId: { type: String, default: null },
+    openKey: { type: String, default: null },
   },
   { timestamps: true },
 );
+
+// Release the open-proposal key on every status change that closes the
+// proposal, whichever write path makes it: document saves...
+GbpProfileChangeSchema.pre('save', function () {
+  if (!OPEN_KEY_STATUSES.has(this.status)) this.openKey = null;
+});
+
+// ...and update queries that set a status.
+GbpProfileChangeSchema.pre(['findOneAndUpdate', 'updateOne', 'updateMany'], function () {
+  const update = this.getUpdate() as Record<string, any> | null;
+  if (!update || Array.isArray(update)) return;
+  const status = update.$set?.status ?? update.status;
+  if (status === undefined || OPEN_KEY_STATUSES.has(status)) return;
+  this.setUpdate({ ...update, $set: { ...(update.$set || {}), openKey: null } });
+});
 
 GbpProfileChangeSchema.index({ businessId: 1, createdAt: -1 });
 GbpProfileChangeSchema.index(
   { businessId: 1, clientRequestId: 1 },
   { unique: true, partialFilterExpression: { clientRequestId: { $type: 'string' } } },
+);
+// At most one open proposal per business and key. Records without a string
+// key (closed proposals, and every record written before this field existed)
+// are outside the index, so it builds on existing data. Production builds it
+// through scripts/migrate-open-proposal-keys.ts (autoIndex is off there).
+GbpProfileChangeSchema.index(
+  { businessId: 1, openKey: 1 },
+  { name: 'open_proposal_key', unique: true, partialFilterExpression: { openKey: { $type: 'string' } } },
 );
 
 const GbpProfileChange: Model<IGbpProfileChange> =

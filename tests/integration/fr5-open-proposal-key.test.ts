@@ -87,7 +87,7 @@ test('the migration names its target without credentials and refuses a URI witho
   const src = read('scripts/migrate-open-proposal-keys.ts');
   assert.equal(/dropIndex|syncIndexes|deleteMany|deleteOne|\$unset/.test(src), false, 'the migration never drops or deletes');
   assert.equal(/readFileSync|dotenv|['"`/]\.env/.test(src), false, 'the migration reads no env file');
-  assert.match(src, /const BACKFILL_STATUSES = \['PROPOSED', 'APPROVED'\];/);
+  assert.match(read('scripts/open-proposal-plan.ts'), /export const BACKFILL_STATUSES = \['PROPOSED', 'APPROVED'\];/);
 });
 
 test('every proposal creation path goes through createProposal', () => {

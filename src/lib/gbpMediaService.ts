@@ -51,7 +51,13 @@ export async function listMediaAssets(
 
       for (const item of liveItems) {
         if (!item.name) continue;
+        const googleCreateTime = item.createTime ? new Date(item.createTime) : null;
         const exists = await GbpMediaAsset.findOne({ businessId, googleMediaName: item.name });
+        if (exists && !exists.googleCreateTime && googleCreateTime) {
+          // Records reconciled before this field existed: record when the
+          // photo was really added on Google (their createdAt is the sync time).
+          await GbpMediaAsset.updateOne({ _id: exists._id }, { $set: { googleCreateTime } });
+        }
         if (!exists) {
           await GbpMediaAsset.create({
             businessId,
@@ -64,6 +70,7 @@ export async function listMediaAssets(
             googleMediaName: item.name,
             publishedAt: new Date(),
             publishedVia: 'google_sync',
+            googleCreateTime,
           });
         }
       }

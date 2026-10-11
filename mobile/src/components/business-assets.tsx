@@ -55,9 +55,11 @@ function daysAgo(iso?: string): string {
 }
 
 function WhyPublishInfo({ onPress }: { onPress: () => void }) {
+  // Themed link colour: the fixed light blue was ~2.5:1 on light-mode cards.
+  const t = useTheme();
   return (
     <Pressable onPress={onPress}>
-      <Text className="font-sans-bold text-sm underline text-center" style={{ color: '#6ea8fe' }}>
+      <Text className="font-sans-bold text-sm underline text-center" style={{ color: t.violet }}>
         Why Publish Photos &amp; Videos?
       </Text>
     </Pressable>

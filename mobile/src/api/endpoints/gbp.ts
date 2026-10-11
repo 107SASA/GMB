@@ -18,6 +18,10 @@ export const gbpMediaItemSchema = z.object({
   status: z.enum(['staged', 'published', 'failed']).catch('staged'),
   googleMediaName: z.string().optional(),
   publishedAt: z.string().optional(),
+  /** 'google_sync' = already on Google and reconciled; createdAt is then the sync time. */
+  publishedVia: z.string().optional(),
+  /** When the photo was really added on Google (synced items only). */
+  googleCreateTime: z.string().nullable().optional(),
   failureReason: z.string().optional(),
   createdAt: z.string().optional(),
   /** Future auto-publish date — only meaningful while status is 'staged'. */

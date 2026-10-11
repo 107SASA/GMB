@@ -6,17 +6,8 @@ import { Pressable, Text, View } from 'react-native';
 import { fetchGbpMedia } from '@/api/endpoints/gbp';
 import { useBusiness } from '@/business/BusinessContext';
 import { Skeleton } from '@/components/ui';
+import { photoQuota } from '@/lib/photo-quota';
 import { useTheme } from '@/lib/theme';
-
-/**
- * Weekly photo cadence that keeps a profile "fresh" — a real, if simple,
- * content-marketing recommendation (a handful of new photos/week keeps a
- * listing looking active to both Google and visitors), not an arbitrary
- * number. Same idea as WEEKLY_REVIEW_GOAL in lib/review-insights.ts; make
- * this owner-configurable later if the product wants per-business tiers.
- */
-const WEEKLY_PHOTO_QUOTA = 4;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * "AI Agent" photo-quota card — real computation from GbpMediaAsset upload
@@ -42,33 +33,29 @@ export function AiAgentCard() {
   if (media.isLoading) return <Skeleton className="mx-4 mt-8 h-40 rounded-card" />;
   if (media.isError) return null; // Not connected — the Photos tab already explains why; no need to repeat it here.
 
-  const now = Date.now();
-  const items = media.data?.media ?? [];
-  const usedThisWeek = items.filter((m) => m.createdAt && now - new Date(m.createdAt).getTime() < 7 * DAY_MS).length;
-  const usedLastWeek = items.filter((m) => {
-    if (!m.createdAt) return false;
-    const age = now - new Date(m.createdAt).getTime();
-    return age >= 7 * DAY_MS && age < 14 * DAY_MS;
-  }).length;
-
-  const photosLeft = Math.max(0, WEEKLY_PHOTO_QUOTA - usedThisWeek);
-  const isActive = usedThisWeek > 0 || usedLastWeek > 0;
+  // Counted by when each photo was really added (see lib/photo-quota.ts).
+  const { photosLeft, isActive } = photoQuota(media.data?.media ?? []);
 
   return (
     <View className="mx-4 mt-8">
       <View className="rounded-card border border-surface-border bg-surface-raised p-4">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-3">
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <View className="h-11 w-11 items-center justify-center rounded-full" style={{ backgroundColor: `${t.brandBright}26` }}>
               <Ionicons name="sparkles" size={20} color={t.brandBright} />
             </View>
-            <Text className="font-display-bold text-base text-white">GrowwMatics AI Agent</Text>
+            <Text className="font-display-bold text-base text-white" numberOfLines={1} style={{ flexShrink: 1 }}>
+              GrowwMatics AI Agent
+            </Text>
           </View>
           <View
-            className="rounded-full px-3 py-1"
-            style={{ backgroundColor: isActive ? `${t.emerald}26` : `${t.rose}26` }}
+            style={{ flexShrink: 0, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4, backgroundColor: isActive ? `${t.emerald}26` : `${t.rose}26` }}
           >
-            <Text className="font-sans-bold text-xs" style={{ color: isActive ? t.emerald : t.rose }}>
+            <Text
+              numberOfLines={1}
+              textBreakStrategy="simple"
+              style={{ fontFamily: 'Inter_700Bold', fontSize: 12, lineHeight: 16, color: isActive ? t.emerald : t.rose }}
+            >
               {isActive ? 'Active' : 'Needs Attention'}
             </Text>
           </View>

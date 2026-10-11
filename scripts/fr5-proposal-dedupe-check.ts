@@ -234,6 +234,72 @@ async function run() {
   const afterMigration = await store.createProposal({ ...input(), businessId: String(legacyBiz), before: 'L', proposed: 'Same.' });
   check('after migration, a new identical proposal returns the legacy open one', afterMigration.outcome === 'reused' && keyedLegacy.some((d) => String(d._id) === String(afterMigration.change._id)));
 
+  // --- Production-shaped data, no index yet (app already keys new proposals)
+  const { diagnoseOpenProposals } = await import('./fr5-open-proposal-diagnostic');
+  const pdb = mongoose.connection.getClient().db('fr5_prod_like');
+  const pcol = pdb.collection('gbpprofilechanges');
+  const pBiz = oid();
+  const pfp = canonicalFingerprint('description', 'P');
+  const pdoc = (minutesAgo: number, status: string, proposed: string, keyed = false) => {
+    const when = new Date(Date.now() - minutesAgo * 60000);
+    return {
+      _id: oid(), businessId: pBiz, organizationId: null, locationId, kind: 'description', fields: ['description'], sensitive: false, source: keyed ? 'recommendation' : 'owner',
+      before: 'P', proposed, after: null, beforeFingerprint: pfp, afterFingerprint: null, status, validation: { valid: true, violations: [] }, requestedBy: 'u',
+      approvedBy: status === 'APPROVED' ? 'u' : null, approvedAt: status === 'APPROVED' ? when : null, error: null, clientRequestId: null, createdAt: when, updatedAt: when,
+      ...(keyed ? { openKey: openProposalKey('description', pfp, proposed) } : {}),
+    };
+  };
+  const holderDoc = pdoc(1, 'APPROVED', 'H', true);
+  const legacyH = pdoc(100, 'PROPOSED', 'H');
+  const pdocs = [
+    holderDoc, legacyH,
+    pdoc(90, 'APPROVED', 'A'), pdoc(80, 'PROPOSED', 'A'), pdoc(70, 'PROPOSED', 'A'),
+    pdoc(60, 'APPROVED', 'B'), pdoc(50, 'PROPOSED', 'B'),
+    pdoc(40, 'APPROVED', 'C'), pdoc(30, 'APPROVED', 'C'),
+    pdoc(20, 'PROPOSED', 'D'), pdoc(10, 'APPROVED', 'D'),
+    pdoc(5, 'PROPOSED', 'E'),
+    pdoc(3, 'BLOCKED', 'H'), pdoc(2, 'VERIFIED', 'Z'),
+  ];
+  await pcol.insertMany(pdocs);
+  const snapshot = async () => JSON.stringify({ docs: await pcol.find({}).sort({ _id: 1 }).toArray(), idx: await pcol.indexes().catch(() => []) });
+  const s0 = await snapshot();
+  const diag = await diagnoseOpenProposals(pcol);
+  check('diagnostic: counts match the production report shape', JSON.stringify(diag.openRecordsByStatus) === JSON.stringify({ 'APPROVED:keyed': 1, 'APPROVED:unkeyed': 5, 'PROPOSED:unkeyed': 6 }), JSON.stringify(diag.openRecordsByStatus));
+  check('diagnostic: 5 keyed, 5 duplicates, 1 key held elsewhere, 0 deletes/rewrites', diag.migrationWould.key === 5 && diag.migrationWould.leaveUnchangedAsDuplicate === 5 && diag.migrationWould.leaveUnchangedKeyHeldElsewhere === 1 && diag.migrationWould.deleteOrRewrite === 0, JSON.stringify(diag.migrationWould));
+  check('diagnostic: names the held record, its holder and the reason', diag.keyHeldElsewhere.length === 1 && diag.keyHeldElsewhere[0].id === String(legacyH._id) && diag.keyHeldElsewhere[0].heldBy.id === String(holderDoc._id) && /already holds the open key/.test(diag.keyHeldElsewhere[0].reason));
+  check('diagnostic: lists 5 duplicate groups with every member', diag.duplicateGroups.length === 5 && diag.duplicateGroups.reduce((n, g) => n + g.members.length, 0) === 11, String(diag.duplicateGroups.length));
+  check('diagnostic: index missing, build would not fail, no key problems', !diag.index.present && !diag.indexBuildWouldFail && diag.existingKeyProblems.sameKeyHeldTwice.length === 0);
+  const pdry = await migrateOpenProposalKeys(pdb, false) as any;
+  check('migration dry run agrees with the diagnostic (5 / 1 / 6)', pdry.wouldKey === 5 && pdry.keyAlreadyHeldByAnotherRecord === 1 && pdry.duplicateOpenProposalsLeftUnchanged === 6, JSON.stringify({ k: pdry.wouldKey, h: pdry.keyAlreadyHeldByAnotherRecord, d: pdry.duplicateOpenProposalsLeftUnchanged }));
+  const pTarget = base.replace(/\/(\?|$)/, '/fr5_prod_like$1');
+  const diagCli = spawnSync('npx', ['--no-install', 'tsx', 'scripts/fr5-open-proposal-diagnostic.ts'], { env: { ...process.env, MONGODB_URI: pTarget }, encoding: 'utf8', shell: process.platform === 'win32' });
+  check('diagnostic CLI runs against MONGODB_URI without an in-memory server', diagCli.status === 0 && /Target database: fr5_prod_like/.test(diagCli.stdout) && /READ-ONLY/.test(diagCli.stdout) && /"leaveUnchangedKeyHeldElsewhere": 1/.test(diagCli.stdout), diagCli.stderr.slice(0, 200));
+  check('diagnostic and dry run changed nothing (all documents and indexes identical)', (await snapshot()) === s0);
+
+  await migrateOpenProposalKeys(pdb, true);
+  const beforeDocs = new Map((JSON.parse(s0).docs as any[]).map((d) => [d._id, d]));
+  const afterDocs = JSON.parse(JSON.stringify(await pcol.find({}).sort({ _id: 1 }).toArray())) as any[];
+  const newlyKeyed = afterDocs.filter((d) => d.openKey && !beforeDocs.get(d._id).openKey).map((d) => d._id);
+  const strip = (d: any) => { const { openKey: _k, ...rest } = d; return JSON.stringify(rest); };
+  check('apply keeps every document (none deleted or added)', afterDocs.length === pdocs.length);
+  check('apply changes nothing except openKey on the chosen records', afterDocs.every((d) => strip(d) === strip(beforeDocs.get(d._id))));
+  const expectedKeepers = [pdocs[4], pdocs[6], pdocs[8], pdocs[10], pdocs[11]].map((d) => String(d._id)).sort();
+  check('apply keys exactly the newest record of each unkeyed group', JSON.stringify(newlyKeyed.sort()) === JSON.stringify(expectedKeepers), JSON.stringify(newlyKeyed));
+  check('apply leaves the app-keyed holder and the held legacy record as they were', afterDocs.find((d) => d._id === String(holderDoc._id)).openKey === holderDoc.openKey && !afterDocs.find((d) => d._id === String(legacyH._id)).openKey);
+
+  // --- Two app-keyed records sharing a key (possible while the index is missing)
+  const sdb = mongoose.connection.getClient().db('fr5_shared_key');
+  const scol = sdb.collection('gbpprofilechanges');
+  const sBiz = oid();
+  const sk = openProposalKey('description', pfp, 'S');
+  await scol.insertMany([0, 1].map((i) => ({ _id: oid(), businessId: sBiz, kind: 'description', status: 'PROPOSED', beforeFingerprint: pfp, proposed: 'S', openKey: sk, createdAt: new Date(Date.now() - i * 1000) })));
+  const sBefore = JSON.stringify({ docs: await scol.find({}).sort({ _id: 1 }).toArray(), idx: await scol.indexes() });
+  const sDiag = await diagnoseOpenProposals(scol);
+  check('diagnostic flags a shared key that would break the index build', sDiag.indexBuildWouldFail && sDiag.existingKeyProblems.sameKeyHeldTwice.length === 1);
+  let sErr: unknown = null;
+  try { await migrateOpenProposalKeys(sdb, true); } catch (err) { sErr = err; }
+  check('apply refuses before building the index and changes nothing', sErr instanceof Error && /cannot be built/.test(String((sErr as Error).message)) && JSON.stringify({ docs: await scol.find({}).sort({ _id: 1 }).toArray(), idx: await scol.indexes() }) === sBefore);
+
   check('no Google call in the whole run', googleCalls.length === 0, googleCalls.join(','));
 
   // --- Control: without the index, the lookup alone does not stop races

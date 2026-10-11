@@ -171,7 +171,7 @@ export function AppHeader({ title }: { title: string }) {
         {compact ? (
           <Ionicons name="logo-whatsapp" size={20} color="#ffffff" />
         ) : (
-          <Text className="font-sans-bold text-sm text-white">Help</Text>
+          <Text className="font-sans-bold text-sm text-on-brand">Help</Text>
         )}
       </Pressable>
 

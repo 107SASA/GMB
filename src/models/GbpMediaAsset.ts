@@ -56,6 +56,12 @@ export interface IGbpMediaAsset extends Document {
   publishedAt?: Date;
   /** 'growwmatics' = uploaded by us (live write applied); 'google_sync' = already on Google, reconciled. */
   publishedVia?: 'growwmatics' | 'google_sync';
+  /**
+   * When the photo was actually added on Google (Google's createTime). Only
+   * set for items reconciled from Google; createdAt on those records is the
+   * sync time, not the upload time.
+   */
+  googleCreateTime?: Date | null;
   failureReason?: string;
   scheduledFor?: Date;
   /** What happened to location metadata on upload (lib/imageGeotag.ts): GPS kept from the photo,
@@ -77,6 +83,7 @@ const GbpMediaAssetSchema: Schema = new Schema(
     googleMediaName: { type: String },
     publishedAt: { type: Date },
     publishedVia: { type: String, enum: ['growwmatics', 'google_sync'] },
+    googleCreateTime: { type: Date, default: null },
     failureReason: { type: String },
     scheduledFor: { type: Date },
     geotag: { type: Schema.Types.Mixed },

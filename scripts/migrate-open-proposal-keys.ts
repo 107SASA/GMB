@@ -16,11 +16,14 @@
  * --apply does two things, in this order:
  *   1. Creates the partial unique index `open_proposal_key`
  *      ({ businessId: 1, openKey: 1 }, unique, where openKey is a string).
- *      Records written before this change have no key, so the build cannot
- *      fail on them. Only this index is created; no index is dropped (unlike
+ *      Records written before this change have no key. If two records the app
+ *      already keyed share a key (possible only while the index is missing),
+ *      the script stops before building the index and changes nothing. Only this index is created; no index is dropped (unlike
  *      scripts/sync-indexes.ts). If an index with this name or key pattern
  *      exists with different options, the script stops without writing.
- *   2. Backfills openKey on existing open proposals (PROPOSED, APPROVED).
+ *   2. Backfills openKey on existing open proposals (PROPOSED, APPROVED),
+ *      following scripts/open-proposal-plan.ts (the same plan the read-only
+ *      scripts/fr5-open-proposal-diagnostic.ts explains record by record).
  *      Within a group of identical open proposals (same business, kind,
  *      current value and proposed value) only the newest (createdAt, then
  *      _id) gets the key; the others are listed and left exactly as they are.
@@ -33,13 +36,13 @@
  * timestamp (updatedAt is not touched).
  */
 import mongoose from 'mongoose';
-import { canonicalFingerprint, openProposalKey } from '../src/services/gbp/changes/policy.ts';
+import { BACKFILL_STATUSES, keyIntegrity, planOpenProposalKeys, readOpenProposalState } from './open-proposal-plan.ts';
+
+const { ObjectId } = mongoose.Types;
 
 const INDEX_NAME = 'open_proposal_key';
 const INDEX_KEY = { businessId: 1, openKey: 1 } as const;
 const INDEX_OPTIONS = { name: INDEX_NAME, unique: true, partialFilterExpression: { openKey: { $type: 'string' } } };
-/** Backfilled statuses. EXECUTING also holds a key in the app, but is not backfilled (see above). */
-const BACKFILL_STATUSES = ['PROPOSED', 'APPROVED'];
 
 /** Host and database of a MongoDB URI, without credentials. */
 export function describeTarget(uri: string): { hosts: string; db: string | null } {
@@ -92,68 +95,54 @@ export async function migrateOpenProposalKeys(db: import('mongodb').Db, apply: b
       && JSON.stringify(existing.partialFilterExpression) === JSON.stringify(INDEX_OPTIONS.partialFilterExpression);
     if (!matches) throw new Error(`An index conflicts with ${INDEX_NAME}: ${JSON.stringify(existing)}. Nothing was changed.`);
   }
+
+  // One read-only snapshot drives the plan (shared with the diagnostic).
+  const state = await readOpenProposalState(col);
+  const integrity = keyIntegrity(state.keyed);
+  if (apply && !existing && integrity.sameKeyHeldTwice.length) {
+    throw new Error(`Two records already hold the same open key, so the unique index cannot be built: ${JSON.stringify(integrity.sameKeyHeldTwice)}. Nothing was changed. Run scripts/fr5-open-proposal-diagnostic.ts for details.`);
+  }
   if (apply && !existing) await col.createIndex(INDEX_KEY, INDEX_OPTIONS);
 
-  const byStatus = await col.aggregate<{ _id: string; n: number }>([
-    { $match: { status: { $in: [...BACKFILL_STATUSES, 'EXECUTING'] } } },
-    { $group: { _id: { $concat: ['$status', { $cond: [{ $eq: [{ $type: '$openKey' }, 'string'] }, ':keyed', ':unkeyed'] }] }, n: { $sum: 1 } } },
-  ]).toArray();
-  const executing = await col
-    .find({ status: 'EXECUTING' }, { projection: { _id: 1, businessId: 1, kind: 1, executedAt: 1, openKey: 1 } })
-    .sort({ executedAt: 1, _id: 1 })
-    .limit(50)
-    .toArray();
-
-  const open = await col
-    .find({ status: { $in: BACKFILL_STATUSES }, openKey: { $not: { $type: 'string' } } })
-    .project({ businessId: 1, kind: 1, status: 1, beforeFingerprint: 1, proposed: 1, createdAt: 1 })
-    .sort({ createdAt: -1, _id: -1 })
-    .toArray();
-
-  const keeper = new Map<string, string>();
+  const plan = planOpenProposalKeys(state.candidates, state.keyed);
+  const byId = new Map(state.candidates.map((r) => [r.id, r]));
+  const row = (id: string) => {
+    const r = byId.get(id)!;
+    return { id, businessId: r.businessId, kind: r.kind, status: r.status, createdAt: r.createdAt ?? '' };
+  };
   let keyed = 0;
-  let alreadyHeld = 0;
-  const duplicates: Array<{ id: string; businessId: string; kind: string; status: string; createdAt: string; duplicateOf: string }> = [];
-  for (const doc of open) {
-    const key = openProposalKey(String(doc.kind), String(doc.beforeFingerprint ?? canonicalFingerprint(String(doc.kind), null)), doc.proposed);
-    const scope = `${String(doc.businessId)}|${key}`;
-    const row = { id: String(doc._id), businessId: String(doc.businessId), kind: String(doc.kind), status: String(doc.status), createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : '' };
-    if (keeper.has(scope)) {
-      duplicates.push({ ...row, duplicateOf: keeper.get(scope)! });
-      continue;
-    }
-    const holder = await col.findOne({ businessId: doc.businessId, openKey: key }, { projection: { _id: 1 } });
-    if (holder) {
-      keeper.set(scope, String(holder._id));
-      alreadyHeld += 1;
-      duplicates.push({ ...row, duplicateOf: String(holder._id) });
-      continue;
-    }
-    keeper.set(scope, String(doc._id));
+  let alreadyHeld = plan.decisions.filter((d) => d.action === 'held').length;
+  const duplicates: Array<{ id: string; businessId: string; kind: string; status: string; createdAt: string; duplicateOf: string }> = plan.decisions
+    .filter((d) => d.action !== 'key')
+    .map((d) => ({ ...row(d.id), duplicateOf: (d as { of: string }).of }));
+  for (const d of plan.decisions) {
+    if (d.action !== 'key') continue;
     if (!apply) { keyed += 1; continue; }
     try {
+      // Only this one field is set, only on a still-open, still-unkeyed record.
       const res = await col.updateOne(
-        { _id: doc._id, status: { $in: BACKFILL_STATUSES }, openKey: { $not: { $type: 'string' } } },
-        { $set: { openKey: key } },
+        { _id: new ObjectId(d.id), status: { $in: BACKFILL_STATUSES }, openKey: { $not: { $type: 'string' } } },
+        { $set: { openKey: d.key } },
       );
       keyed += res.modifiedCount;
     } catch (err: any) {
       if (err?.code !== 11000) throw err;
       alreadyHeld += 1;
-      duplicates.push({ ...row, duplicateOf: '(keyed by the live app during this run)' });
+      duplicates.push({ ...row(d.id), duplicateOf: '(keyed by the live app during this run)' });
     }
   }
 
   return {
     mode: apply ? 'APPLY' : 'DRY RUN',
     index: existing ? 'present' : apply ? 'created' : 'missing (would be created)',
-    openRecordsByStatus: Object.fromEntries(byStatus.map((r) => [r._id, r.n]).sort()),
-    backfillCandidates: open.length,
+    openRecordsByStatus: state.byStatus,
+    backfillCandidates: state.candidates.length,
     [apply ? 'keyed' : 'wouldKey']: keyed,
     keyAlreadyHeldByAnotherRecord: alreadyHeld,
     duplicateOpenProposalsLeftUnchanged: duplicates.length,
     duplicates: duplicates.slice(0, 50),
-    executingNotKeyed: executing.filter((d) => typeof d.openKey !== 'string').map((d) => ({ id: String(d._id), businessId: String(d.businessId), kind: String(d.kind), executedAt: d.executedAt ? new Date(d.executedAt).toISOString() : null })),
+    executingNotKeyed: state.executingNotKeyed,
+    existingKeyProblems: integrity,
   };
 }
 

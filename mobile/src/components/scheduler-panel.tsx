@@ -90,7 +90,12 @@ function PostRow({
       {!!plan && <Text className="mt-1 font-sans text-xs text-zinc-500">{plan}</Text>}
       {!!sv.note && <Text className="mt-1 font-sans text-xs text-amber-300">{sv.note}</Text>}
       {!isPublished && post.status !== 'publishing' && (
-        <View className="mt-3 flex-row gap-2">
+        <View
+          // Wraps on narrow phones: at 320 px the three buttons overflowed and
+          // "Delete" was cut off. Layout kept in one style object (same as
+          // mt-3 flex-row gap-2) so it applies identically everywhere.
+          style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+        >
           <Pressable
             onPress={onPublish}
             // No `className` — react-native-css-interop can swallow onPress

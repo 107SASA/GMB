@@ -53,7 +53,7 @@ export function RankMap({
           className="absolute left-3 top-3 rounded-md px-2.5 py-1.5"
           style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}
         >
-          <Text className="font-sans-semibold text-xs text-white">Last updated on {lastUpdated}</Text>
+          <Text className="font-sans-semibold text-xs text-on-brand">Last updated on {lastUpdated}</Text>
         </View>
       )}
     </View>

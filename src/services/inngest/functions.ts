@@ -4463,8 +4463,9 @@ export const gbpSyncWorker = inngest.createFunction(
     retries: 2,
     // One sync per business at a time (manual + scheduled never overlap or
     // double-refresh the token), and a global cap so the 6-hourly fan-out
-    // stays inside Google's per-project quotas (NFR-5).
-    concurrency: [{ limit: 10 }, { key: "event.data.businessId", limit: 1 }],
+    // stays inside Google's per-project quotas (NFR-5). The global cap must not
+    // exceed the Inngest plan's concurrency limit (5) or the app sync is rejected.
+    concurrency: [{ limit: 5 }, { key: "event.data.businessId", limit: 1 }],
   },
   async ({ event, step }) => {
     const { businessId } = event.data;

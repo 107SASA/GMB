@@ -424,6 +424,14 @@ export const followUpCron = inngest.createFunction(
       const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       const activeLeads = await Lead.find({ status: { $nin: ['Converted', 'Lost'] }, lastInteractionTime: { $lte: oneDayAgo } });
 
+      // One query for all completed follow-ups of these leads (was a
+      // findOne per lead).
+      const doneRows = await FollowUp.find(
+        { leadId: { $in: activeLeads.map((l: any) => l._id) }, completed: true },
+        { leadId: 1, reminderType: 1 }
+      ).lean();
+      const doneSet = new Set(doneRows.map((r: any) => `${r.leadId}|${r.reminderType}`));
+
       const eventsToDispatch = [];
       for (const lead of activeLeads) {
         const interactionDelta = now.getTime() - (lead.lastInteractionTime?.getTime() || lead.updatedAt.getTime());
@@ -432,8 +440,7 @@ export const followUpCron = inngest.createFunction(
         else if (interactionDelta >= 3 * 24 * 60 * 60 * 1000) reminderType = '3-Day Check-in';
         else reminderType = '24h Reminder';
 
-        const existingFollowUp = await FollowUp.findOne({ leadId: lead._id, reminderType, completed: true });
-        if (!existingFollowUp) {
+        if (!doneSet.has(`${lead._id}|${reminderType}`)) {
           eventsToDispatch.push({
             name: "scheduler/follow-up",
             data: { leadId: lead._id.toString(), reminderType }
@@ -671,12 +678,14 @@ export const weeklyContentAutopilot = inngest.createFunction(
 // stuck locked because the Razorpay webhook was late/dropped/unreachable AND
 // they weren't around to trigger the self-heal in GET /api/billing/status
 // (checkout tab closed before the poll finished, never opened the dashboard
-// again). Runs every 10 min; bounded to businesses that touched billing in
+// again). Runs every 30 min; bounded to businesses that touched billing in
 // the last 7 days so it never turns into an unbounded full-table scan of
 // long-cancelled workspaces. Reuses the exact same reconcile function the
 // status endpoint calls — this is purely a "nobody was there to ask" net.
 export const billingActivationReconcileCron = inngest.createFunction(
-  { id: "billing-activation-reconcile-cron", triggers: [{ cron: "*/10 * * * *" }] },
+  // Every 30 min: the Razorpay webhook and the GET /api/billing/status self-heal
+  // handle the normal path; this is only the "nobody was there" net.
+  { id: "billing-activation-reconcile-cron", triggers: [{ cron: "*/30 * * * *" }] },
   async ({ step }) => {
     const result = await step.run("reconcile-stuck-subscriptions", async () => {
       const dbConnect = (await import("@/lib/mongodb")).default;
@@ -1485,17 +1494,6 @@ export const processReviewCampaign = inngest.createFunction(
 );
 
 // 5. Review Autopoll
-export const reviewAutopollCron = inngest.createFunction(
-  { id: "review-autopoll-cron", triggers: [{ cron: "0 * * * *" }] },
-  async () => {
-    // A click is not a submitted Google review. This job used to mark
-    // clicked requests as reviewReceived two hours later. That guess is
-    // no longer written. The function stays registered so existing schedules
-    // do not error.
-    return { success: true, skipped: 'clicks are not reviews' };
-  }
-);
-
 export const processReviewAutopollJob = inngest.createFunction(
   { id: "process-review-autopoll-job", retries: 3, triggers: [{ event: "scheduler/review-autopoll" }] },
   async () => {
@@ -1959,7 +1957,9 @@ export const sendReportReadyNotification = inngest.createFunction(
 // only audit gets swept here was never charged its free report and can
 // resubmit immediately.
 export const cleanupStalePendingAudits = inngest.createFunction(
-  { id: "cleanup-stale-pending-audits", triggers: [{ cron: "*/1 * * * *" }] },
+  // Every 10 min (was every minute): the cutoff is 5 min, so cleanup within
+  // ~15 min of creation is equivalent and costs 1/10th the runs.
+  { id: "cleanup-stale-pending-audits", triggers: [{ cron: "*/10 * * * *" }] },
   async ({ step }) => {
     const result = await step.run("delete-stale-pending", async () => {
       await dbConnect();
@@ -4438,14 +4438,19 @@ export const gbpNightlySyncScheduler = inngest.createFunction(
       { _id: 1 }
     ).lean();
 
-    await Promise.all(
-      connectedBusinesses.map((b: any) =>
-        step.sendEvent(`gbp-sync-${b._id}`, {
+    // One batched sendEvent per chunk (not one step per business) — the
+    // dispatched events are identical, but this costs ceil(N/500) steps
+    // instead of N.
+    const CHUNK = 500;
+    for (let i = 0; i < connectedBusinesses.length; i += CHUNK) {
+      await step.sendEvent(
+        `gbp-sync-dispatch-${i / CHUNK}`,
+        connectedBusinesses.slice(i, i + CHUNK).map((b: any) => ({
           name: "gbp/sync.requested",
           data: { businessId: b._id.toString(), reason: "scheduled" },
-        })
-      )
-    );
+        }))
+      );
+    }
 
     return { dispatched: connectedBusinesses.length };
   }
@@ -4629,7 +4634,7 @@ export const gbpSyncWorker = inngest.createFunction(
       }
     });
 
-    await step.run("sync-gbp-profile", async () => {
+    await step.run("sync-gbp-profile-and-backfill", async () => {
       const { default: BusinessModel } = await import("@/models/Business");
       const { fetchLocationProfile, GBPAuthError } = await import("@/lib/gbpClient");
       try {
@@ -4660,13 +4665,13 @@ export const gbpSyncWorker = inngest.createFunction(
           console.error(`[GBP Sync] Profile sync failed for ${businessId}:`, err.message);
         }
       }
-    });
+
 
     // One-time 6-month GBPInsights history backfill — see
     // services/gbpInsightsBackfill.ts and GBPToken.historyBackfilledAt for
     // the full reasoning. No-ops instantly (one indexed read, no API calls)
     // for any business already backfilled, so safe to run on every sync.
-    await step.run("backfill-gbp-history", async () => {
+    {
       const { default: BusinessModel } = await import("@/models/Business");
       const { backfillGbpInsightsIfNeeded } = await import("@/services/gbpInsightsBackfill");
       const business = await BusinessModel.findById(businessId).select('organizationId').lean() as any;
@@ -4676,6 +4681,7 @@ export const gbpSyncWorker = inngest.createFunction(
       } catch (err: any) {
         console.error(`[GBP Sync] History backfill failed for ${businessId}:`, err.message);
       }
+    }
     });
   }
 );
@@ -4830,8 +4836,11 @@ export const nurtureSchedulerTick = inngest.createFunction(
     let executed = 0;
     let skipped = 0;
 
-    for (const actionId of dueIds) {
-      const outcome = await step.run(`process-action-${actionId}`, async () => {
+    // Process due actions in batches of 10 per step (was one step per action).
+    // Each action is still individually claimed atomically below, so a batch
+    // retry can never double-send: already-handled rows return early.
+    const processAction = async (actionId: string): Promise<'executed' | 'skipped' | 'already-handled'> => {
+      {
         await dbConnect();
         const { default: ScheduledAction } = await import('@/models/ScheduledAction');
         const { requestOutboundMessage } = await import('@/services/orchestration/outboundOrchestrator');
@@ -5029,10 +5038,29 @@ export const nurtureSchedulerTick = inngest.createFunction(
         action.reason = result.decision === 'REJECTED' ? result.reason : 'flag-or-cohort-no-longer-applies';
         await action.save();
         return 'skipped';
-      });
+      }
+    };
 
-      if (outcome === 'executed') executed++;
-      else if (outcome === 'skipped') skipped++;
+    const BATCH = 10;
+    for (let i = 0; i < dueIds.length; i += BATCH) {
+      const batchIds = dueIds.slice(i, i + BATCH);
+      const outcomes = await step.run(`process-actions-batch-${i / BATCH}`, async () => {
+        const out: string[] = [];
+        for (const id of batchIds) {
+          try {
+            out.push(await processAction(id));
+          } catch (err: any) {
+            // One bad row must not abort (and retry) the rest of the batch.
+            console.error(`[nurture-scheduler-tick] action ${id} threw:`, err?.message);
+            out.push('skipped');
+          }
+        }
+        return out;
+      });
+      for (const o of outcomes) {
+        if (o === 'executed') executed++;
+        else if (o === 'skipped') skipped++;
+      }
     }
 
     // Silence progression: NURTURING → UNRESPONSIVE → LONG_TERM_NURTURE using

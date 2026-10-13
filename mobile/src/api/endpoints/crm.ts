@@ -116,16 +116,31 @@ const roiSchema = z.object({
   revenuePerLead: z.number().nullable().catch(null),
   roiPercent: z.number().nullable().catch(null),
   roiNote: z.string().nullable().catch(null),
+  /** Investment for this period (monthly × days / 30.44); null when not configured. */
+  investment: z
+    .object({ amount: z.number(), monthly: z.number(), currency: z.string().catch('INR') })
+    .nullable()
+    .catch(null),
 });
 export type CrmRoi = z.infer<typeof roiSchema>;
 
 /** GET /api/crm/roi?days= — ROI % is null unless the owner configured an investment. */
-export async function fetchRoi(days = 30): Promise<{ roi: CrmRoi; missedOpportunities: string[] }> {
+export async function fetchRoi(days = 30): Promise<{ roi: CrmRoi; missedOpportunities: string[]; investmentConfigured: boolean }> {
   const { data } = await api.get('/api/crm/roi', { params: { days } });
   return {
     roi: roiSchema.parse(data?.roi ?? {}),
     missedOpportunities: z.array(z.string()).catch([]).parse(data?.missedOpportunities),
+    investmentConfigured: data?.investmentConfigured === true,
   };
+}
+
+/**
+ * PATCH /api/crm/roi/investment — what the business spends per month to get
+ * leads (same setting as the web CRM Analytics). null clears it, and ROI then
+ * shows as unavailable.
+ */
+export async function saveMonthlyInvestment(monthlyAmount: number | null, currency = 'INR'): Promise<void> {
+  await api.patch('/api/crm/roi/investment', { monthlyAmount, currency });
 }
 
 export function formatMoney(value: number | null | undefined, currency = 'INR'): string {

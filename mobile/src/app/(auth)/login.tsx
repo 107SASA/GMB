@@ -1,5 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 
@@ -7,7 +6,6 @@ import { getApiErrorMessage } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
 import { PhoneNumberField } from '@/components/phone-number-field';
 import { ErrorText, Field, PrimaryButton, Screen } from '@/components/ui';
-import { BRAND_GRADIENT } from '@/lib/theme';
 
 type PhoneStep = 'enter-phone' | 'enter-otp';
 
@@ -69,21 +67,13 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View className="mb-10 items-center gap-4">
-            <LinearGradient
-              colors={[...BRAND_GRADIENT]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: 22,
-                alignItems: 'center',
-                justifyContent: 'center',
-                transform: [{ rotate: '-8deg' }],
-              }}
-            >
-              <Ionicons name="rocket" size={34} color="#ffffff" style={{ transform: [{ rotate: '8deg' }] }} />
-            </LinearGradient>
+            {/* GrowwMatics logo — the same mark the web app uses (public/brand/icon.png). */}
+            <Image
+              source={require('../../../assets/images/splash-icon.png')}
+              style={{ width: 88, height: 88 }}
+              contentFit="contain"
+              accessibilityLabel="GrowwMatics AI logo"
+            />
             <View className="items-center gap-1">
               <Text className="font-display text-[32px] tracking-tight text-white">
                 GrowwMatics AI

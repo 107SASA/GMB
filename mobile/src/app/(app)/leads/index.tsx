@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, type Href } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
@@ -12,11 +12,13 @@ import {
   formatMoney,
   groupLabel,
   LIFECYCLE_STAGES,
+  saveMonthlyInvestment,
   type LeadStages,
 } from '@/api/endpoints/crm';
 import { fetchLeads, type Lead } from '@/api/endpoints/leads';
 import { useBusiness } from '@/business/BusinessContext';
 import { AppHeader } from '@/components/app-header';
+import { InvestmentSheet } from '@/components/investment-sheet';
 import { Badge, Chip, EmptyState, Field, Screen, Skeleton } from '@/components/ui';
 import { timeAgo } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
@@ -128,6 +130,20 @@ export default function LeadsScreen() {
     queryKey: ['crm-roi', activeBusinessId, 30],
     queryFn: () => fetchRoi(30),
     enabled: !!activeBusinessId,
+    // The investment can also be changed on the web, so always refresh on open.
+    staleTime: 0,
+    refetchOnMount: 'always',
+  });
+  const queryClient = useQueryClient();
+  const [investmentOpen, setInvestmentOpen] = useState(false);
+  const saveInvestment = useMutation({
+    mutationFn: (monthlyAmount: number | null) => saveMonthlyInvestment(monthlyAmount),
+    onSuccess: () => {
+      setInvestmentOpen(false);
+      // Same setting drives the Monthly Growth Report's ROI.
+      void queryClient.invalidateQueries({ queryKey: ['crm-roi', activeBusinessId] });
+      void queryClient.invalidateQueries({ queryKey: ['crm-growth-report', activeBusinessId] });
+    },
   });
 
   const subOptions =
@@ -210,11 +226,45 @@ export default function LeadsScreen() {
               {formatMoney(roi.data.roi.wonRevenue, roi.data.roi.currency)} revenue
             </Text>
           </View>
-          <Text className="mt-1 font-sans text-xs text-zinc-500">
-            {roi.data.roi.roiPercent != null ? `ROI ${roi.data.roi.roiPercent}%` : roi.data.roi.roiNote || ''}
-          </Text>
+          {/* ROI, the investment it is measured against, and where to set it. */}
+          <View className="mt-2 flex-row items-center justify-between gap-3">
+            <View className="flex-1">
+              <Text className="font-sans-semibold text-sm text-white">
+                {roi.data.roi.roiPercent != null ? `ROI ${roi.data.roi.roiPercent}%` : 'ROI not available'}
+              </Text>
+              <Text className="mt-0.5 font-sans text-xs leading-4 text-zinc-500">
+                {roi.data.roi.investment
+                  ? `vs ${formatMoney(roi.data.roi.investment.amount, roi.data.roi.investment.currency)} invested (${formatMoney(roi.data.roi.investment.monthly, roi.data.roi.investment.currency)}/month)`
+                  : 'Set what you spend per month to see ROI.'}
+              </Text>
+              {!!roi.data.roi.investment && !!roi.data.roi.roiNote && (
+                <Text className="mt-0.5 font-sans text-xs leading-4 text-zinc-500">{roi.data.roi.roiNote}</Text>
+              )}
+            </View>
+            <Pressable
+              onPress={() => {
+                saveInvestment.reset();
+                setInvestmentOpen(true);
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              style={{ minHeight: 44, justifyContent: 'center' }}
+            >
+              <Text className="font-sans-semibold text-sm" style={{ color: t.brandBright }}>
+                {roi.data.investmentConfigured ? 'Edit investment' : 'Set investment'}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       )}
+      <InvestmentSheet
+        visible={investmentOpen}
+        initialMonthly={roi.data?.roi.investment?.monthly ?? null}
+        saving={saveInvestment.isPending}
+        error={saveInvestment.isError ? getApiErrorMessage(saveInvestment.error, 'Could not save. Please try again.') : null}
+        onCancel={() => setInvestmentOpen(false)}
+        onSave={(amount) => saveInvestment.mutate(amount)}
+      />
 
       {/* Monthly Growth Report (same numbers as the web report) */}
       <Pressable

@@ -411,7 +411,7 @@ export function BusinessAssets() {
               )}
               <View className="absolute bottom-1.5 left-1.5 flex-row items-center gap-1 rounded-full bg-black/60 px-2 py-1">
                 <Ionicons name={item.mediaType === 'video' ? 'videocam' : 'location'} size={10} color="#ffffff" />
-                <Text className="font-sans-bold text-[10px] text-white">
+                <Text className="font-sans-bold text-[10px] text-on-brand">
                   {item.status === 'published' ? daysAgo(item.publishedAt) : item.status === 'failed' ? 'Publish failed' : item.scheduledFor ? 'Scheduled' : 'Not on Google yet'}
                 </Text>
               </View>

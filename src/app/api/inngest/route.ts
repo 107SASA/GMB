@@ -13,7 +13,6 @@ import {
   processContentJob,
   applyWeeklyOfferJob,
   processReviewCampaign,
-  reviewAutopollCron,
   processReviewAutopollJob,
   scheduleSinglePostPublish,
   publishScheduledPostsCron,
@@ -69,8 +68,7 @@ export const { GET, POST, PUT } = serve({
     processContentJob,
     applyWeeklyOfferJob,
     processReviewCampaign,
-    reviewAutopollCron,
-    processReviewAutopollJob,
+      processReviewAutopollJob,
     scheduleSinglePostPublish,
     publishScheduledPostsCron,
     processPublishPostJob,
@@ -105,7 +103,9 @@ export const { GET, POST, PUT } = serve({
     gbpSyncWorker,
     cleanupAbandonedSignups,
     nurtureSchedulerTick,
-    proactiveNbaScheduler,
+    // With the Lead Engine v2 flag off this cron is a pure no-op that still
+    // bills a run every 30 min, so it is only registered when the flag is on.
+    ...(process.env.LEAD_ENGINE_V2 === 'true' ? [proactiveNbaScheduler] : []),
     dataRetentionCleanupCron,
     accountHardPurgeCron,
   ],

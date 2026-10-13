@@ -288,7 +288,10 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
     //   bounded wait for the first GBP snapshot — not CRM code.
     // + demo slot confirmation and DEMO_REMINDER copy, which now claim a
     //   confirmation once and let the WhatsApp sender pick the 24h channel.
-    'src/services/inngest/functions.ts': ['processFollowUpJob', 'scheduleLeadFollowUpsJob', 'dispatchWhatsappFollowUpJob', 'crmFollowUpReminderCron', 'crmStaleLeadReminderCron', 'crmGrowthReportReadyCron', 'gbpNightlySyncScheduler', 'gbpSyncWorker', 'generateAuditJob', 'handleSlotSelection', 'bookConfirmedSlot', 'buildMessageForAction', 'deliverBookingReply'],
+    // + Inngest usage optimization (fewer cron runs / steps, no behaviour change):
+    //   followUpCron N+1, billing/audit-cleanup cadence, removed no-op
+    //   reviewAutopollCron, batched nurtureSchedulerTick steps.
+    'src/services/inngest/functions.ts': ['processFollowUpJob', 'scheduleLeadFollowUpsJob', 'dispatchWhatsappFollowUpJob', 'crmFollowUpReminderCron', 'crmStaleLeadReminderCron', 'crmGrowthReportReadyCron', 'gbpNightlySyncScheduler', 'gbpSyncWorker', 'generateAuditJob', 'handleSlotSelection', 'bookConfirmedSlot', 'buildMessageForAction', 'deliverBookingReply', 'followUpCron', 'billingActivationReconcileCron', 'reviewAutopollCron', 'cleanupStalePendingAudits', 'nurtureSchedulerTick'],
     // Real WhatsApp inbound lines are tagged via: 'whatsapp' so a website form cannot open the 24h window.
     'src/app/api/whatsapp/webhook/route.ts': ['__header__', 'processInboundMessage', 'handleActiveSalesConversation', 'processPlatformInbound', 'openDemoThread'],
   };

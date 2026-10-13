@@ -5434,7 +5434,9 @@ export const dataRetentionCleanupCron = inngest.createFunction(
         const Model: any = m.default;
         const res = await Model.updateMany(
           { $expr: { $gt: [{ $size: { $ifNull: ["$messages", []] } }, CAP] } },
-          [{ $set: { messages: { $slice: ["$messages", -CAP] } } }]
+          [{ $set: { messages: { $slice: ["$messages", -CAP] } } }],
+          // Mongoose rejects an aggregation-pipeline update unless this is set.
+          { updatePipeline: true }
         );
         trimmed += res.modifiedCount ?? 0;
       }

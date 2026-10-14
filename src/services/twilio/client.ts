@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import dbConnect from '@/lib/mongodb';
 import MessageQueue from '@/models/MessageQueue';
 import { normalizePhoneE164 } from '@/lib/phone';
+import { suppressOutbound } from '@/lib/outboundSuppression';
 import { unsafeTemplateVariableReason } from '@/lib/whatsappOutbound';
 
 /**
@@ -35,7 +36,8 @@ function toWhatsAppAddress(phone: string): string | null {
  * unset). Absent in every production env file; production is unaffected.
  */
 function qaSendsSuppressed(): boolean {
-  return process.env.QA_SUPPRESS_WHATSAPP_SENDS === 'true';
+  // QA_SUPPRESS_WHATSAPP_SENDS (legacy) or QA_SUPPRESS_OUTBOUND_SENDS — see lib/outboundSuppression.ts.
+  return suppressOutbound('whatsapp', 'twilio');
 }
 
 async function logSuppressedSend(payload: Record<string, unknown>, leadId?: string): Promise<SendResult> {

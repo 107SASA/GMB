@@ -12,8 +12,9 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:integration": "node --experimental-strip-types --test tests/integration/**/*.test.ts",
-    "test:jobs": "node --experimental-strip-types --test tests/unit/jobs-pure.test.ts",
-    "test:jobs:staging": "node --import tsx --test tests/staging/jobs-queue.staging.test.ts",
+    "test:jobs": "node --experimental-strip-types --test tests/unit/jobs-pure.test.ts tests/unit/jobs-safety.test.ts",
+    "test:jobs:staging": "node --import tsx --test tests/staging/jobs-queue.staging.test.ts tests/staging/jobs-safety.staging.test.ts",
+    "test:jobs:smoke": "node --import tsx --test tests/staging/jobs-wave0.smoke.test.ts tests/staging/outbound-suppression.staging.test.ts",
     "jobs:worker": "tsx scripts/job-worker.ts",
     "jobs:admin": "tsx scripts/jobs-admin.ts",
     "jobs:inventory": "tsx scripts/jobs-inventory.ts"

@@ -1,3 +1,4 @@
+import { suppressOutbound } from '@/lib/outboundSuppression';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import Business from '@/models/Business';
@@ -30,6 +31,8 @@ interface ExpoPushTicket {
  */
 async function sendToTokens(tokens: string[], message: PushMessage): Promise<string[]> {
   const dead: string[] = [];
+  // QA/staging only: never reach the Expo push API (see lib/outboundSuppression.ts).
+  if (suppressOutbound('push', 'expo')) return dead;
 
   for (let i = 0; i < tokens.length; i += CHUNK_SIZE) {
     const chunk = tokens.slice(i, i + CHUNK_SIZE);

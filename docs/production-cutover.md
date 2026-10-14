@@ -36,6 +36,8 @@ curl -s localhost:3000/api/health || true            # whatever health URL exist
 #    JOBS_NATIVE_ENABLED=true
 #    JOBS_NATIVE_FUNCTIONS=$W
 #    JOBS_CONCURRENCY=3        JOBS_COLLECTION_PREFIX=native_
+#    JOBS_GUARD_TOKEN=<long random secret>   (same value for web AND worker; enables the
+#                                             ownership guard endpoint the worker checks)
 #    (never set INNGEST_DEV)
 
 # 2. Release the functions from Inngest: restart web so /api/inngest drops them, resync
@@ -44,7 +46,11 @@ sleep 5
 curl -s -X PUT https://growwmatics.com/api/inngest    # expect "Successfully registered"
 #    Verify in the Inngest dashboard the wave's functions are GONE from the app.
 
-# 3. Create indexes + start the worker (first start creates native_* indexes)
+# 2b. Manual gate (the worker's ownership guard cannot see Inngest Cloud): in the Inngest
+#     dashboard confirm every id in $W is no longer registered. If not, STOP.
+# 3. Create indexes + start the worker (first start creates native_* indexes).
+#    The worker verifies web via GET /api/inngest/ownership first and exits 1 if any owned
+#    id is still served or the check fails; it never claims jobs until that passes.
 pm2 start ecosystem.worker.config.cjs
 pm2 logs growwmatics-worker --lines 50                # expect: worker started {functions:[...]}
 curl -s 127.0.0.1:3911/healthz                        # ok:true, leader:true after ≤10 s

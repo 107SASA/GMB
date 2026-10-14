@@ -44,6 +44,34 @@ curl -s -X PUT https://growwmatics.com/api/inngest     # "Successfully registere
 | `running` | worker was killed hard | will be re-claimable until the worker is stopped; after stop: treat as `queued` |
 | `dead` | exhausted | triage; do not auto-retry on Inngest |
 
+### Replaying queued native jobs back to Inngest (tool)
+
+```bash
+npm run jobs:admin -- pause "rollback" --yes
+pm2 stop growwmatics-worker                       # wait for status "stopped"
+# env: clear the ids from JOBS_NATIVE_FUNCTIONS, pm2 restart growwmatics --update-env, PUT /api/inngest,
+#      confirm the functions are registered again in the Inngest dashboard.
+npm run jobs:admin -- replay-to-inngest [fnId...]                    # DRY RUN (default): read the summary
+npm run jobs:admin -- replay-to-inngest [fnId...] --execute --yes
+```
+
+Eligible = `queued`, never attempted, no recorded steps, event-triggered. Reported but **never replayed**:
+`running`, `sleeping`, `dead`, retried or recovered, partially executed (their external side effects are uncertain),
+and cron slots (Inngest fires its own). Each replayed job is cancelled natively first
+(`cancelledReason: replayed-to-inngest`), so the native worker can never also run it, and it is sent with its
+**original event id** so Inngest's event-id dedupe (24 h window) absorbs a repeat of an interrupted replay. A failed
+send is marked `replay-failed` and picked up by the next run. The tool refuses while a worker heartbeat is live,
+skips any id still natively owned, and requires `INNGEST_EVENT_KEY`.
+
+**Verify without causing duplicate customer-visible effects:**
+
+1. Compare the dry-run `eligible` count with the execute `replayed` count.
+2. In the Inngest dashboard search the event name: each replayed event id must appear once and trigger one run.
+3. `jobs:admin list cancelled <fnId>` should show `replayed-to-inngest`; none `replay-pending` or `replay-failed`.
+4. Re-run the dry run: `eligible` must be 0.
+5. Spot-check the customer-visible effect for 2 or 3 jobs (message sent once, post published once) before replaying a
+   second function. Replay one function at a time.
+
 Never **delete** native job documents during rollback — they are the audit trail. Mark nothing; just stop the worker.
 
 ## Rolling back the CODE (not just config)

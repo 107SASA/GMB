@@ -104,6 +104,7 @@ export class JobStore {
   readonly cronState: Collection<any>;
   readonly locks: Collection<any>;
   readonly workers: Collection<any>;
+  readonly control: Collection<any>;
   private indexesReady: Promise<void> | null = null;
 
   constructor(readonly db: Db, readonly prefix: string, readonly now: Clock = () => new Date()) {
@@ -111,6 +112,7 @@ export class JobStore {
     this.cronState = db.collection(`${prefix}job_cron_state`);
     this.locks = db.collection(`${prefix}job_locks`);
     this.workers = db.collection(`${prefix}job_workers`);
+    this.control = db.collection(`${prefix}job_control`);
   }
 
   /** Idempotent; memoised per store. Required before any other call (autoIndex is off in prod). */
@@ -345,6 +347,43 @@ export class JobStore {
       },
     });
     return r.matchedCount === 1;
+  }
+
+  // ------------------------------------------------- pause / control --
+
+  /**
+   * Durable pause flag (single document). Workers read it before every claim
+   * and treat an unreadable control document as PAUSED (fail closed).
+   */
+  async getControl(): Promise<{ paused: boolean; reason?: string; by?: string; since?: Date; changedAt?: Date }> {
+    const d: any = await this.control.findOne({ _id: 'control' as any });
+    if (!d) return { paused: false };
+    return { paused: !!d.paused, reason: d.reason, by: d.by, since: d.since, changedAt: d.changedAt };
+  }
+
+  /**
+   * Idempotent: pausing an already-paused queue (or resuming a running one)
+   * changes nothing and returns `changed:false`. Concurrent callers are safe —
+   * the conditional update is a single atomic operation.
+   */
+  async setPaused(paused: boolean, by: string, reason?: string): Promise<{ changed: boolean }> {
+    const now = this.now();
+    if (paused) {
+      const r = await this.control.updateOne(
+        { _id: 'control' as any, paused: { $ne: true } },
+        { $set: { paused: true, reason: (reason || '').slice(0, 300), by, since: now, changedAt: now } },
+        { upsert: true }
+      ).catch((e: any) => {
+        if (e?.code === 11000) return { modifiedCount: 0, upsertedCount: 0 }; // lost the upsert race: already paused
+        throw e;
+      });
+      return { changed: (r.modifiedCount ?? 0) + (r.upsertedCount ?? 0) > 0 };
+    }
+    const r = await this.control.updateOne(
+      { _id: 'control' as any, paused: true },
+      { $set: { paused: false, by, changedAt: now }, $unset: { since: '', reason: '' } }
+    );
+    return { changed: r.modifiedCount === 1 };
   }
 
   // ---------------------------------------------------- cancel / admin --

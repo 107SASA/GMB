@@ -1,3 +1,4 @@
+import { suppressOutbound } from '@/lib/outboundSuppression';
 /**
  * Meta WhatsApp Cloud API client (Graph API).
  *
@@ -48,6 +49,10 @@ export function isReengagementError(errorCode?: number, message?: string): boole
 }
 
 async function postToMeta(config: MetaConfig, payload: Record<string, unknown>): Promise<MetaSendResult> {
+  // QA/staging only: never reach graph.facebook.com (see lib/outboundSuppression.ts).
+  if (suppressOutbound('whatsapp', 'meta')) {
+    return { success: true, sid: `qa_meta_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` };
+  }
   const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);

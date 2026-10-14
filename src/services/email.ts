@@ -1,3 +1,4 @@
+import { suppressOutbound } from '@/lib/outboundSuppression';
 import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
 
@@ -29,6 +30,7 @@ if (!resend && !transporter) {
 }
 
 export const sendEmail = async (to: string, customerName: string, service: string, reviewLink: string, businessName: string, requestId?: string) => {
+  if (suppressOutbound('email', 'review-request')) return { success: true, messageId: 'qa_suppressed' };
   if (!transporter) {
     console.warn('Nodemailer transporter not initialized (missing SendGrid key). Mocking Email send.');
     return { success: true, messageId: 'mock_msg_id' };
@@ -123,6 +125,8 @@ export const sendEmailOtp = async (
     console.log(`================================\n`);
   }
 
+  if (suppressOutbound('email', 'otp')) return { success: true, messageId: 'qa_suppressed' };
+
   if (!resend && !transporter) {
     console.warn(`Mocking OTP Email to ${to}: ${otp} (No email provider configured)`);
     return { success: true, messageId: 'mock_otp_id' };
@@ -184,6 +188,7 @@ export const sendEmailOtp = async (
  * best-effort contract as notifyBusinessUsers() in services/notifications.ts.
  */
 export const sendTransactionalEmail = async (to: string, subject: string, html: string) => {
+  if (suppressOutbound('email', 'transactional')) return { success: true, messageId: 'qa_suppressed' };
   if (!resend && !transporter) {
     console.warn(`Mocking transactional email to ${to} ("${subject}") — no email provider configured.`);
     return { success: true, messageId: 'mock_txn_id' };

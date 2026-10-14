@@ -34,6 +34,12 @@ export interface WorkerOptions {
   cronEnabled?: boolean;
   /** Retry delay override (tests). Default: exponential backoff from time.ts. */
   backoff?: (failedAttempts: number) => number;
+  /**
+   * External claim gate (e.g. the web-ownership guard). When it returns a
+   * string the worker neither claims jobs nor leads the cron scheduler, and
+   * reports that string as its block reason. Returning null/undefined = ok.
+   */
+  claimBlock?: () => string | null | undefined;
 }
 
 interface Running {
@@ -53,6 +59,10 @@ export class JobWorker {
   private wake: (() => void) | null = null;
   private scheduler: CronScheduler | null = null;
   private leader = false;
+  private paused = false;
+  private pausedObservedAt = 0;
+  private controlError = false;
+  private lastBlock: string | null = null;
   readonly counters = { claimed: 0, completed: 0, retried: 0, dead: 0, sleeping: 0, lost: 0, recovered: 0, cronFired: 0 };
 
   constructor(private readonly o: WorkerOptions) {
@@ -68,6 +78,21 @@ export class JobWorker {
   }
   get isLeader() {
     return this.leader;
+  }
+  /** Durable pause observed (or control doc unreadable → fail closed). */
+  get isPaused() {
+    return this.paused;
+  }
+  /** Why this worker is not claiming right now, or null. */
+  get claimBlockedReason(): string | null {
+    if (this.paused) return this.controlError ? 'control-unreadable' : 'paused';
+    return this.o.claimBlock?.() ?? null;
+  }
+  /** running | draining (paused, jobs still finishing) | paused | stopping | stopped */
+  get state(): 'running' | 'draining' | 'paused' | 'blocked' | 'stopping' {
+    if (this.stopping) return 'stopping';
+    if (this.paused) return this.running.size > 0 ? 'draining' : 'paused';
+    return this.o.claimBlock?.() ? 'blocked' : 'running';
   }
 
   async start(): Promise<void> {
@@ -87,7 +112,12 @@ export class JobWorker {
         store,
         this.owner,
         crons,
-        { leaderTtlMs: tuning.leaderTtlMs, catchupMs: tuning.cronCatchupMs, canLead: () => (clock ? clock.isFresh() : true) },
+        {
+          leaderTtlMs: tuning.leaderTtlMs,
+          catchupMs: tuning.cronCatchupMs,
+          // A paused / blocked worker must not enqueue cron slots either.
+          canLead: () => (clock ? clock.isFresh() : true) && this.claimBlockedReason === null,
+        },
         this.o.logger
       );
       const tick = () =>
@@ -110,7 +140,7 @@ export class JobWorker {
     this.loopPromise = this.loop();
   }
 
-  private async beat(status: 'running' | 'stopping' | 'stopped' = this.stopping ? 'stopping' : 'running') {
+  private async beat(status: string = this.state) {
     await this.o.store.workers
       .updateOne(
         { _id: this.owner as any },
@@ -118,6 +148,8 @@ export class JobWorker {
           $set: {
             seenAt: this.o.store.now(),
             status,
+            paused: this.paused,
+            claimBlockedReason: this.claimBlockedReason,
             pid: process.pid,
             host: os.hostname(),
             inFlight: this.running.size,
@@ -141,12 +173,54 @@ export class JobWorker {
     return out;
   }
 
+  /** Read the durable control doc. Unreadable ⇒ treated as paused (fail closed). */
+  private async refreshControl(): Promise<void> {
+    let paused: boolean;
+    try {
+      paused = (await this.o.store.getControl()).paused;
+      this.controlError = false;
+    } catch (e: any) {
+      paused = true;
+      if (!this.controlError) this.o.logger('error', 'control document unreadable — not claiming', { error: String(e?.message || e) });
+      this.controlError = true;
+    }
+    if (paused !== this.paused) {
+      this.paused = paused;
+      this.pausedObservedAt = paused ? Date.now() : 0;
+      this.o.logger('warn', paused ? 'queue paused — no new claims; draining in-flight jobs' : 'queue resumed', { inFlight: this.running.size });
+      void this.beat();
+      if (!paused) this.wake?.();
+    }
+  }
+
+  /** Give in-flight jobs back (abort + release lease) — used when a pause outlasts the shutdown grace. */
+  private async releaseInFlight(reason: string): Promise<number> {
+    let released = 0;
+    for (const r of [...this.running.values()]) {
+      r.handle.abort(reason);
+      const ok = await this.o.store.release(r.job, this.o.store.now()).catch(() => false);
+      if (ok) released++;
+    }
+    if (released) this.o.logger('warn', 'released in-flight jobs after pause grace', { released });
+    return released;
+  }
+
   private async loop(): Promise<void> {
     const { tuning, store } = this.o;
     while (!this.stopping) {
       let claimedAny = false;
       try {
-        while (!this.stopping && this.running.size < tuning.concurrency) {
+        await this.refreshControl();
+        const block = this.claimBlockedReason;
+        if (block !== this.lastBlock) {
+          this.lastBlock = block;
+          if (block && block !== 'paused') this.o.logger('warn', 'claiming blocked', { reason: block });
+          void this.beat();
+        }
+        if (block && this.paused && this.running.size > 0 && Date.now() - this.pausedObservedAt > tuning.shutdownGraceMs) {
+          await this.releaseInFlight('paused');
+        }
+        while (!block && !this.stopping && this.running.size < tuning.concurrency) {
           const claim = await store.claim(this.owner, this.eligibleFnIds(), tuning.leaseMs);
           if (!claim) break;
           claimedAny = true;

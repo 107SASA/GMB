@@ -29,7 +29,7 @@ Branch: `feature/native-job-worker` (from `origin/main` @ `3eaa96e`; `dev` and `
 
 ## Incomplete / not verified
 
-- **Real handlers under the shim.** Queue semantics are proven with synthetic functions. The 50 real handlers have **not** been executed through the native runner; each wave needs a staging run with `QA_TESTING_MODE` send suppression.
+- **Real handlers under the shim.** Only wave 0a/0b (`cleanup-stale-pending-audits`, `data-retention-cleanup-cron`) have been run through the native runner (disposable DB). The other 48 have not; each wave needs a staging run with `QA_SUPPRESS_OUTBOUND_SENDS=true`.
 - **Inventory rows marked `scan`** were derived structurally; only the publish, weekly-offer, review-campaign send path and a few claim sites were read in full. Read each before its wave.
 - **Atlas**: unreachable from the dev machine (IP allow-list), so staging tests ran on local mongod, not Atlas.
 - **PM2/SIGTERM/reboot on the droplet**: process death is simulated in tests, not exercised on the server.
@@ -52,3 +52,32 @@ Branch: `feature/native-job-worker` (from `origin/main` @ `3eaa96e`; `dev` and `
 ## Exact next action
 
 Approve (or adjust) the wave plan and provide SSH access so the read-only server audit can run; no production change happens before that.
+
+## Migration safety controls (second commit: `feat(jobs): add migration safety controls`)
+
+| Item | Status | Evidence |
+|---|---|---|
+| Worker startup ownership guard (fail closed, periodic recheck, token-protected `/api/inngest/ownership`) | done | `ownershipGuard.ts`, 13 unit tests |
+| Durable pause / resume / drain, observable state, fail-closed on unreadable control doc | done | `store.ts` control doc, `worker.ts`, 8 staging tests (incl. 2 concurrent workers) |
+| `replay-to-inngest` (dry-run default, explicit `--execute --yes`, never replays uncertain jobs) | done | `replay.ts`, 5 staging tests |
+| Router-level outbound suppression: Twilio + Meta + Expo push + email | done | `outboundSuppression.ts`, 9 tests with network recorders |
+| Real-handler smoke tests for wave 0a/0b on a disposable DB | done | `jobs-wave0.smoke.test.ts`, 3 tests |
+
+| Check (this commit) | Result |
+|---|---|
+| `npm run test:jobs` (unit: queue helpers + ownership guard + suppression + registry drift) | 26 pass / 0 fail |
+| `npm run test:jobs:staging` (queue + pause/replay; local MongoDB 7.0.14 replica set) | 34 pass / 0 fail |
+| `npm run test:jobs:smoke` (wave 0 real handlers + suppression; disposable DB) | 12 pass / 0 fail |
+| `npm run typecheck` | clean |
+| eslint on every changed/added source and test file | clean |
+| `npm run build` | pass (exit 0; `/api/inngest/ownership` included) |
+
+### Explicit blockers (NOT done in this commit, by instruction)
+
+| Blocker | Must be done before |
+|---|---|
+| **Timezone fix.** `nextBizHourDate` and `lib/scheduleTime.ts` use server-local `getHours()/setHours()`; prod is UTC, so campaign business hours (default 9-20) are really 14:30-01:30 IST. Needs an owner-approved behaviour change using the business timezone (`Asia/Kolkata` default), with a pinned test. | wave 6 (`process-review-campaign`) and any wave that sends within "business hours" |
+| **Publishing re-seed tool.** Posts already scheduled in Inngest have sleeping `schedule-single-post-publish` runs that are lost when the function is released. A one-time script must enqueue native `scheduler/post-scheduled` jobs for every future `scheduled` post with deterministic event ids (dry-run first). Without it they publish only via the hourly cron, up to an hour late. | the publishing wave (wave 2 in the revised order) |
+| Real handlers for waves 1+ not yet run through the runner (only wave 0a/0b are). | each wave |
+| Inventory rows marked `scan` still need a line-by-line read. | each wave |
+| Staging for wave-specific flows needs `QA_SUPPRESS_OUTBOUND_SENDS=true`, `GBP_LIVE_WRITES_ENABLED` unset, and no real provider credentials. | each wave |

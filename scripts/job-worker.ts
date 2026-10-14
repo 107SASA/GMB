@@ -31,6 +31,7 @@ for (const file of process.env.NODE_ENV === 'production' ? ['.env.production'] :
 import mongoose from 'mongoose';
 import { isNativeEnabled, nativeFunctionIds, workerTuning } from '../src/services/jobs/config';
 import { jsonLogger } from '../src/services/jobs/types';
+import { checkWebOwnership, guardConfig, waitForOwnership } from '../src/services/jobs/ownershipGuard';
 
 async function main() {
   const log = jsonLogger;
@@ -57,7 +58,34 @@ async function main() {
   const owned = nativeFunctionIds();
   assertOwnable(functions, owned); // throws (→ exit 1) on unknown ids or unsupported options
 
+  // Ownership guard — fail closed. The worker does not claim a single job until the
+  // running web app confirms it has released every owned id. See ownershipGuard.ts.
+  const guard = guardConfig();
+  let guardBlock: string | null = null;
+  if (!guard.enabled) {
+    log('warn', 'ownership guard DISABLED (JOBS_OWNERSHIP_GUARD=off, non-production only)');
+  } else {
+    if (!guard.token) {
+      log('error', 'JOBS_GUARD_TOKEN is not set — cannot verify web ownership; refusing to start');
+      process.exit(1);
+    }
+    const verdict = await waitForOwnership({ url: guard.url, token: guard.token, owned });
+    if (!verdict.ok) {
+      log('error', 'ownership guard failed — refusing to claim jobs', { reason: verdict.reason, conflicting: verdict.conflicting });
+      process.exit(1);
+    }
+    log('info', 'ownership guard passed', { served: verdict.served, native: verdict.native });
+    const recheck = setInterval(async () => {
+      const v = await checkWebOwnership({ url: guard.url, token: guard.token, owned });
+      const next = v.ok ? null : `ownership-guard: ${v.reason}`;
+      if (next !== guardBlock) log(next ? 'error' : 'info', next ? 'ownership guard lost — claiming blocked' : 'ownership guard restored', { reason: next });
+      guardBlock = next;
+    }, 60_000);
+    recheck.unref();
+  }
+
   const worker = new JobWorker({
+    claimBlock: () => guardBlock,
     store,
     clock,
     functions,
@@ -78,12 +106,16 @@ async function main() {
     }
     const dbOk = mongoose.connection.readyState === 1;
     const body = {
+      // A paused/blocked worker is healthy (it is doing what it was told); only DB/clock health fails the probe.
       ok: dbOk && clock.isFresh(),
       owner: worker.owner,
       dbConnected: dbOk,
       clockOffsetMs: clock.offsetMs,
       inFlight: worker.inFlight,
       leader: worker.isLeader,
+      state: worker.state,
+      paused: worker.isPaused,
+      claimBlockedReason: worker.claimBlockedReason,
       counters: worker.counters,
       functions: worker.ownedIds.length,
       uptimeSec: Math.round((Date.now() - startedAt) / 1000),

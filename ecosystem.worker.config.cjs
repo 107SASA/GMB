@@ -20,9 +20,12 @@ module.exports = {
       script: './node_modules/tsx/dist/cli.mjs',
       args: 'scripts/job-worker.ts',
       cwd: __dirname,
-      // Heap cap well below the 4 GB box; PM2 restarts it above max_memory_restart.
-      node_args: '--max-old-space-size=768 --dns-result-order=ipv4first',
-      max_memory_restart: '900M',
+      // Sized for the CURRENT 1 vCPU / 1.9 GiB droplet, WAVES 0-1 ONLY (cleanup crons, GBP sync):
+      // one forked process, concurrency 1, ~384 MB heap, restart at 450 MB. NOT sufficient for the
+      // Chromium PDF (report-card-deliver) or AI-heavy waves: re-size (2 vCPU / 4 GB, and raise
+      // these) before enabling those. Measure real RSS in the first hour (docs/worker-operations.md).
+      node_args: '--max-old-space-size=384 --dns-result-order=ipv4first',
+      max_memory_restart: '450M',
       instances: 1, // exactly one: per-function in-process caps assume a single worker
       exec_mode: 'fork',
       autorestart: true,
@@ -32,7 +35,8 @@ module.exports = {
       max_restarts: 20,
       // Must exceed JOBS_SHUTDOWN_GRACE_MS (default 25s) so SIGTERM can drain.
       kill_timeout: 40000,
-      env: { NODE_ENV: 'production' },
+      // PM2 env wins over .env.production (the worker never overrides real process env).
+      env: { NODE_ENV: 'production', JOBS_CONCURRENCY: '1' },
       time: true,
       merge_logs: true,
       out_file: './logs/worker.out.log',

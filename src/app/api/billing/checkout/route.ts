@@ -1,3 +1,4 @@
+import { guardExternalOperation } from '@/lib/outboundSuppression';
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Subscription from '@/models/Subscription';
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
       );
     }
 
+    guardExternalOperation('razorpay', 'subscriptions.create');
     const rpSubscription = await razorpay.subscriptions.create({
       plan_id: duration.razorpayPlanId,
       customer_notify: 1,

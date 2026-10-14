@@ -20,7 +20,20 @@ export function isNativeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return truthy(env.JOBS_NATIVE_ENABLED);
 }
 
+/**
+ * Lenient parse used on WEB paths (event sends, /api/inngest): never throws.
+ * A wildcard or empty token is dropped (never expanded), so a bad value can
+ * only reduce native ownership, never break event delivery. The worker uses
+ * `nativeFunctionIdsStrict`.
+ */
 export function nativeFunctionIds(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  if (!isNativeEnabled(env)) return new Set();
+  const raw = (env.JOBS_NATIVE_FUNCTIONS || '').split(',').map((s) => s.trim()).filter((s) => s && s !== '*');
+  return new Set(raw);
+}
+
+/** Strict parse used by the worker: throws on a wildcard so the process fails closed at startup. */
+export function nativeFunctionIdsStrict(env: NodeJS.ProcessEnv = process.env): Set<string> {
   if (!isNativeEnabled(env)) return new Set();
   const raw = (env.JOBS_NATIVE_FUNCTIONS || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (raw.includes('*')) {

@@ -16,7 +16,9 @@ An event sent by an Inngest-owned function reaches a native function via a patch
 
 | Wave | Functions | Why this order | Idempotency / duplicate-side-effect notes |
 |---|---|---|---|
-| 0 | `data-retention-cleanup-cron`, `cleanup-stale-pending-audits`, `cleanup-abandoned-signups` | Idempotent maintenance, no customer-visible effect | safe to double-run |
+| 0a | `cleanup-stale-pending-audits` | First wave: cron every 10 min, one step, deletes PENDING audits older than 5 min, no sends, repeat is a no-op. Real handler smoke-tested. | safe to repeat |
+| 0b | `data-retention-cleanup-cron` | After 0a is clean for >= 1 h: daily 03:15 UTC, cutoff-based deletes/$unset, no sends. Real handler smoke-tested. | safe to repeat |
+| 0c (late) | `cleanup-abandoned-signups` | **Not wave 0.** Deletes users, businesses, organizations and subscriptions. Move to the late waves and dry-run first. | per-run idempotent, destructive |
 | 1 | `publish-scheduled-posts-cron`, `publish-scheduled-media-cron`, **`schedule-single-post-publish`**, `process-publish-post-job`, `process-scheduled-media-publish-job` | Exercises delayed jobs + `cancelOn`; **GBP live writes are gated off** (`GBP_LIVE_WRITES_ENABLED`) so a mistake is DB-only | `process-publish-post-job` re-checks `status==='scheduled'` |
 | 2 | review pipeline: `review-sync-worker`, `process-review-sync-job`, `process-auto-reply-batch-job`, `critical-review-alert-worker`, `review-reply-drafted-worker`, `gbp-nightly-sync-scheduler`, `gbp-sync-worker` | Mostly read/sync; `gbp-sync-worker` needs keyed concurrency (supported) | per-business `limit 1` is DB-enforced |
 | 3 | content: `weekly-content-*`, `process-content-job`, `manual-content-generate`, `apply-weekly-offer`, `seo-plan-weekly-summary` | AI-call heavy; duplicate run = wasted tokens, not customer harm | per-slot idempotency already in `process-content-job` |
@@ -33,8 +35,8 @@ Generated, not hand-maintained: run `npm run jobs:inventory` (columns: id, attem
 |---|---|
 | Externally visible side effects per step | read the function; list sends/charges |
 | Idempotency guard that makes a repeated step safe | cite code line |
-| Safe worker limit | start `JOBS_CONCURRENCY=3`, adjust from memory/CPU baseline (**pending server audit**) |
-| Validation | wave test in staging with `QA_TESTING_MODE` (WhatsApp send suppression exists) |
+| Safe worker limit | `JOBS_CONCURRENCY=1` for Waves 0-1 on the 1.9 GiB / 1 vCPU box (audit: 1.3 GiB free); raise only after a droplet resize and a measured RSS baseline |
+| Validation | wave test in staging with `QA_SUPPRESS_OUTBOUND_SENDS=true` (WhatsApp Twilio+Meta, push, email; NOT Google Calendar invites or Razorpay) |
 | Rollback | remove id from `JOBS_NATIVE_FUNCTIONS`, restart web, `PUT /api/inngest` (see rollback doc) |
 
 ## In-flight work at cutover (per function)

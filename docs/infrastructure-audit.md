@@ -17,7 +17,7 @@ Status: **codebase portion complete; server portion PENDING** (no SSH host/user 
 | Reverse proxy | Nginx → `127.0.0.1:3000`; config guidance in `documentation/deployment/nginx-rate-limiting.md` (port 3000 must not be public — **verify**) |
 | DB | MongoDB Atlas via Mongoose; pool `maxPoolSize 10`, `autoIndex:false` in production (so new indexes need explicit creation — the queue creates its own) |
 | Env validation | `src/lib/env.ts` at boot (rejects `INNGEST_DEV` in production) |
-| Safety switches that bound blast radius | `GBP_LIVE_WRITES_ENABLED` (live GBP writes off by default), `QA_TESTING_MODE` (WhatsApp send suppression), `ACCOUNT_PURGE_MODE` (dry-run default), `LEAD_ENGINE_V2` |
+| Safety switches that bound blast radius | `GBP_LIVE_WRITES_ENABLED` (live GBP writes off by default), `QA_SUPPRESS_OUTBOUND_SENDS` (staging-only outbound send suppression; `QA_TESTING_MODE` is a different, onboarding-gate flag), `ACCOUNT_PURGE_MODE` (dry-run default), `LEAD_ENGINE_V2` |
 | Monitoring/backup in repo | none found beyond logs. No alerting, no backup scripts (`scripts/db-migrate.mjs` is a migration toolkit) |
 | Docs drift | `documentation/deployment/scaling-guide.md` still says "Vercel"; production-deployment.md was corrected Sep 2026 |
 

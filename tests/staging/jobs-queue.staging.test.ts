@@ -21,7 +21,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
-import { resolveTestMongoUri } from '../../scripts/lib/localTestEnv.mjs';
+import { resolveLoopbackTestUri } from '../../scripts/lib/loopbackTestDb.mjs';
 import { JobStore, type JobDoc } from '../../src/services/jobs/store';
 import { JobWorker } from '../../src/services/jobs/worker';
 import { routeEvents } from '../../src/services/jobs/routing';
@@ -36,7 +36,7 @@ let store: JobStore;
 const workers: JobWorker[] = [];
 
 before(async () => {
-  const uri = resolveTestMongoUri();
+  const uri = resolveLoopbackTestUri({ dbName: `jobs_queue_${Date.now().toString(36)}` });
   await mongoose.connect(uri, { family: 4, serverSelectionTimeoutMS: 15000 } as any);
   db = mongoose.connection.db;
   assert.ok(!/prod/i.test(db.databaseName), `refusing to run against ${db.databaseName}`);
@@ -49,6 +49,7 @@ after(async () => {
   for (const c of ['jobs', 'job_cron_state', 'job_locks', 'job_workers']) {
     await db.collection(`${PREFIX}${c}`).drop().catch(() => undefined);
   }
+  if (db?.databaseName && /^jobs_(queue|safety)_/.test(db.databaseName)) await db.dropDatabase().catch(() => undefined);
   await mongoose.disconnect();
 });
 

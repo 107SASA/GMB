@@ -106,6 +106,11 @@ export class JobWorker {
       this.timers.push(setInterval(() => clock.sync().catch((e) => this.o.logger('warn', 'clock sync failed', { error: String(e?.message || e) })), 60_000));
     }
 
+    // Read the durable pause state BEFORE the scheduler's first tick, so a worker that
+    // starts while the queue is paused (or with an unreadable control doc) never enqueues
+    // a cron slot or claims anything.
+    await this.refreshControl();
+
     if (this.o.cronEnabled !== false) {
       const crons = buildCronEntries([...this.fns.values()]);
       this.scheduler = new CronScheduler(
@@ -217,10 +222,20 @@ export class JobWorker {
           if (block && block !== 'paused') this.o.logger('warn', 'claiming blocked', { reason: block });
           void this.beat();
         }
-        if (block && this.paused && this.running.size > 0 && Date.now() - this.pausedObservedAt > tuning.shutdownGraceMs) {
+        // Release in-flight work only for an OPERATOR pause that outlasted the grace
+        // period. An unreadable control document (controlError) blocks new claims but
+        // must never abort healthy in-flight jobs: that would manufacture duplicate
+        // side effects out of a transient MongoDB blip.
+        if (block && this.paused && !this.controlError && this.running.size > 0 && Date.now() - this.pausedObservedAt > tuning.shutdownGraceMs) {
           await this.releaseInFlight('paused');
         }
-        while (!block && !this.stopping && this.running.size < tuning.concurrency) {
+        while (!this.stopping && this.running.size < tuning.concurrency) {
+          // Read the pause state IMMEDIATELY before every claim (not once per round) and honour
+          // the external ownership block, so no claim starts after a pause has been observed.
+          // The only remaining window is a claim whose atomic DB operation is already in
+          // flight when the pause is written (one claim per worker, never a batch).
+          await this.refreshControl();
+          if (this.claimBlockedReason !== null) break;
           const claim = await store.claim(this.owner, this.eligibleFnIds(), tuning.leaseMs);
           if (!claim) break;
           claimedAny = true;
@@ -291,6 +306,9 @@ export class JobWorker {
         ...(out.type === 'lost' ? { reason: out.reason } : {}),
         ...(out.type === 'sleeping' ? { wakeAt: out.wakeAt.toISOString() } : {}),
       });
+      // While paused, report the drained state promptly so `pause --wait` does not
+      // have to wait for the 10 s heartbeat.
+      if (this.paused) void this.beat();
       this.wake?.();
     });
   }

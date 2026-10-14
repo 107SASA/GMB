@@ -7,7 +7,7 @@ Sections marked **PENDING SERVER AUDIT** depend on facts not yet gathered (dropl
 
 1. Verified backups exist: Atlas snapshot/PIT confirmed, DO droplet snapshot taken, env/PM2/nginx archive stored encrypted (`backup-and-recovery.md`). **PENDING**
 2. Droplet resized per approved plan, or explicit decision to run the worker on the current 1.9 GB box (not recommended — build already OOMs). **PENDING**
-3. Staging run of the wave's functions passes with sends suppressed (`QA_TESTING_MODE`), against a non-prod DB.
+3. Staging run of the wave's functions passes with sends suppressed (`QA_SUPPRESS_OUTBOUND_SENDS=true`; `QA_TESTING_MODE` is only the onboarding-gate bypass and is ignored when `NODE_ENV=production`), against a non-prod DB.
 4. `npm run jobs:inventory` shows the wave's functions without `UNSUPPORTED`.
 5. Wave reviewed for the "idempotency guard per externally visible step" table (`inngest-migration-plan.md`).
 6. Maintenance window communicated; rollback owner named.
@@ -35,7 +35,7 @@ curl -s localhost:3000/api/health || true            # whatever health URL exist
 # 1. Put worker env in .env.production (NOT committed). Worker stays stopped.
 #    JOBS_NATIVE_ENABLED=true
 #    JOBS_NATIVE_FUNCTIONS=$W
-#    JOBS_CONCURRENCY=3        JOBS_COLLECTION_PREFIX=native_
+#    JOBS_COLLECTION_PREFIX=native_   (JOBS_CONCURRENCY is pinned to 1 by ecosystem.worker.config.cjs for Waves 0-1)
 #    JOBS_GUARD_TOKEN=<long random secret>   (same value for web AND worker; enables the
 #                                             ownership guard endpoint the worker checks)
 #    (never set INNGEST_DEV)
@@ -49,8 +49,9 @@ curl -s -X PUT https://growwmatics.com/api/inngest    # expect "Successfully reg
 # 2b. Manual gate (the worker's ownership guard cannot see Inngest Cloud): in the Inngest
 #     dashboard confirm every id in $W is no longer registered. If not, STOP.
 # 3. Create indexes + start the worker (first start creates native_* indexes).
-#    The worker verifies web via GET /api/inngest/ownership first and exits 1 if any owned
-#    id is still served or the check fails; it never claims jobs until that passes.
+#    The worker starts BLOCKED and verifies web via GET /api/inngest/ownership; it claims nothing
+#    (and leads no cron) until every owned id is released on web, and re-blocks if that ever stops being true.
+#    State: curl -s 127.0.0.1:3911/healthz  (claimBlockedReason / ownershipGuard).
 pm2 start ecosystem.worker.config.cjs
 pm2 logs growwmatics-worker --lines 50                # expect: worker started {functions:[...]}
 curl -s 127.0.0.1:3911/healthz                        # ok:true, leader:true after ≤10 s
@@ -71,7 +72,7 @@ npm run jobs:admin -- list dead                       # expect none
 | Backlog | `jobs:admin stats` → `oldestDueAgeMs` | < 2× `JOBS_POLL_MS` normally, < 5 min worst case |
 | Dead letters | `jobs:admin list dead` | 0 (investigate every entry) |
 | Duplicates | for the wave's side effect (posts published once, digest sent once) | exactly once |
-| Memory/CPU | `pm2 monit`, `free -m` | worker RSS < 600 MB; **PENDING baseline** |
+| Memory/CPU | `pm2 monit`, `free -m` | worker RSS < 350 MB (PM2 restarts at 450 MB); **re-baseline after the first hour** |
 | Inngest dashboard | runs for non-owned fns | unchanged |
 
 ## Wave 6 (long sleepers) — extra procedure

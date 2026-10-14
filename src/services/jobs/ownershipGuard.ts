@@ -67,25 +67,39 @@ export interface GuardOptions {
   timeoutMs?: number;
 }
 
-export async function checkWebOwnership(o: GuardOptions): Promise<OwnershipVerdict> {
+export type PayloadResult = { ok: true; payload: unknown } | { ok: false; reason: string };
+
+/** Fetches the raw ownership payload; any transport/shape problem is a failure (never a guess). */
+export async function fetchOwnershipPayload(o: Pick<GuardOptions, 'url' | 'token' | 'fetchImpl' | 'timeoutMs'>): Promise<PayloadResult> {
   const f = o.fetchImpl ?? fetch;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), o.timeoutMs ?? 5_000);
   try {
     const res = await f(o.url, { headers: { authorization: `Bearer ${o.token}`, accept: 'application/json' }, signal: controller.signal });
     if (!res.ok) return { ok: false, reason: `ownership endpoint returned HTTP ${res.status}` };
-    let json: unknown;
     try {
-      json = await res.json();
+      return { ok: true, payload: await res.json() };
     } catch {
       return { ok: false, reason: 'ownership endpoint returned invalid JSON' };
     }
-    return evaluateOwnership(json, o.owned);
   } catch (e: any) {
     return { ok: false, reason: `ownership endpoint unreachable: ${e?.name === 'AbortError' ? 'timeout' : String(e?.message || e).slice(0, 120)}` };
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function checkWebOwnership(o: GuardOptions): Promise<OwnershipVerdict> {
+  const r = await fetchOwnershipPayload(o);
+  if (!r.ok) return { ok: false, reason: r.reason };
+  return evaluateOwnership(r.payload, o.owned);
+}
+
+/** Ids the web app reports as released to the native worker, or null when the payload is unusable. */
+export function releasedByWeb(payload: unknown): Set<string> | null {
+  const p = payload as Partial<OwnershipPayload> | null;
+  if (!p || typeof p !== 'object' || p.version !== 1 || !isStringArray(p.native)) return null;
+  return new Set(p.native);
 }
 
 export interface GuardConfig {

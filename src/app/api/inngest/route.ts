@@ -116,8 +116,13 @@ const allFunctions = [
 // next `PUT /api/inngest` resync) so Inngest can never run them alongside
 // the native worker — one owner per function, always.
 const ownership = partitionOwnership(allFunctions.map((f: any) => f?.opts?.id as string));
+// A typo must never take the whole Inngest app down: unknown ids are simply not owned
+// natively (Inngest keeps serving everything valid). The native worker's ownership
+// guard refuses to claim anything while an owned id is unknown to this registry.
 if (ownership.unknown.length) {
-  throw new Error(`JOBS_NATIVE_FUNCTIONS lists unknown function ids: ${ownership.unknown.join(", ")}`);
+  console.error(
+    `[inngest] JOBS_NATIVE_FUNCTIONS lists unknown function ids (ignored on the web path): ${ownership.unknown.join(", ")}`
+  );
 }
 const owned = new Set(ownership.native);
 const served = owned.size

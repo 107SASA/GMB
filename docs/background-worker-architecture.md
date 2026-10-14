@@ -99,7 +99,7 @@ Timing accuracy: a sleeper wakes within `JOBS_POLL_MS` (default 2 s) of `runAt` 
 
 ## 8. Process management
 
-* Separate PM2 app `growwmatics-worker` (`ecosystem.worker.config.cjs`), `instances:1`, `max_memory_restart 900M`, `--max-old-space-size=768`, `kill_timeout 40 s` > `JOBS_SHUTDOWN_GRACE_MS` 25 s.
+* Separate PM2 app `growwmatics-worker` (`ecosystem.worker.config.cjs`), `instances:1`, `max_memory_restart 450M`, `--max-old-space-size=384`, `JOBS_CONCURRENCY=1` (Waves 0-1 on the 1.9 GiB box; re-size before Chromium/AI waves), `kill_timeout 40 s` > `JOBS_SHUTDOWN_GRACE_MS` 25 s.
 * SIGTERM: stop claiming → wait for in-flight ≤ grace → abort + **release** leftovers to `queued` (immediate pickup by the next start instead of waiting out the lease).
 * Exits 0 and stays stopped (`stop_exit_codes:[0]`) when native mode is disabled.
 * `scripts/deploy.sh` is **unchanged**: web deploys stop only `growwmatics`; the worker is not touched.

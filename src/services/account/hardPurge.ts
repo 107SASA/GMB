@@ -1,3 +1,4 @@
+import { guardExternalOperation } from '@/lib/outboundSuppression';
 import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import {
@@ -85,6 +86,7 @@ async function defaultStorage(): Promise<NonNullable<PurgeDeps['storage']>> {
 }
 
 async function defaultRevoke(encrypted: string): Promise<void> {
+  guardExternalOperation('oauth', 'google-revoke');
   const { decrypt } = await import('@/lib/crypto');
   const token = decrypt(encrypted);
   const res = await fetch('https://oauth2.googleapis.com/revoke', {

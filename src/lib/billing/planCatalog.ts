@@ -1,3 +1,4 @@
+import { guardExternalOperation } from '@/lib/outboundSuppression';
 import dbConnect from '@/lib/mongodb';
 import BillingPlan from '@/models/BillingPlan';
 import { getRazorpay } from './razorpay';
@@ -171,6 +172,7 @@ export async function ensureRazorpayPlanIdForCycle(cycle: BillingCycle): Promise
   if (!razorpay) return dur; // caller answers 503
 
   const meta = CYCLES[cycle];
+  guardExternalOperation('razorpay', 'plans.create');
   const rpPlan = await razorpay.plans.create({
     period: meta.razorpayPeriod,
     interval: meta.razorpayInterval,

@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { backoffMs, cronMatches, parseCron, parseDurationMs, slotsBetween } from '../../src/services/jobs/time.ts';
-import { isNativeEnabled, nativeFunctionIds, partitionOwnership, workerTuning } from '../../src/services/jobs/config.ts';
+import { isNativeEnabled, nativeFunctionIds, nativeFunctionIdsStrict, partitionOwnership, workerTuning } from '../../src/services/jobs/config.ts';
 import { assertOwnable, INNGEST_DEFAULT_RETRIES, isInngestFunction, toNativeFunction } from '../../src/services/jobs/adapter.ts';
 
 const D = (iso: string) => new Date(iso).getTime();
@@ -17,7 +17,9 @@ test('flags: everything is OFF by default', () => {
   // function list alone must not enable anything without the master switch
   assert.equal(nativeFunctionIds({ JOBS_NATIVE_FUNCTIONS: 'a,b' } as any).size, 0);
   assert.equal(nativeFunctionIds({ JOBS_NATIVE_ENABLED: 'true', JOBS_NATIVE_FUNCTIONS: 'a, b' } as any).size, 2);
-  assert.throws(() => nativeFunctionIds({ JOBS_NATIVE_ENABLED: 'true', JOBS_NATIVE_FUNCTIONS: '*' } as any));
+  // web path is lenient (never throws, never expands '*'); the worker is strict
+  assert.equal(nativeFunctionIds({ JOBS_NATIVE_ENABLED: 'true', JOBS_NATIVE_FUNCTIONS: '*' } as any).size, 0);
+  assert.throws(() => nativeFunctionIdsStrict({ JOBS_NATIVE_ENABLED: 'true', JOBS_NATIVE_FUNCTIONS: '*' } as any));
 });
 
 test('tuning: clamps and heartbeat stays under a third of the lease', () => {

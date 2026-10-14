@@ -13,7 +13,7 @@ Branch: `feature/native-job-worker` (from `origin/main` @ `3eaa96e`; `dev` and `
 | Cron leader lock, no backfill on init, coalesced catch-up, stale slot skip | staging test "cron: ..." |
 | Single-owner guarantee (per function: Inngest XOR native; typos fail closed) | `partitionOwnership` + 3 new unit tests; `/api/inngest` deregisters owned ids |
 | All flags default OFF | unit test "everything is OFF by default" |
-| PM2 definition (separate app, 1 instance, 900M cap, 40s kill_timeout) | `ecosystem.worker.config.cjs` |
+| PM2 definition (separate app, 1 instance, concurrency 1, 384 MB heap / 450M restart for Waves 0-1, 40s kill_timeout) | `ecosystem.worker.config.cjs` |
 | Env var documentation (names only) | `.env.production.example` (JOBS_* block) |
 | Runbook, cutover, rollback, operations | `docs/production-cutover.md`, `rollback-procedure.md`, `worker-operations.md`, `inngest-migration-plan.md` |
 
@@ -81,3 +81,47 @@ Approve (or adjust) the wave plan and provide SSH access so the read-only server
 | Real handlers for waves 1+ not yet run through the runner (only wave 0a/0b are). | each wave |
 | Inventory rows marked `scan` still need a line-by-line read. | each wave |
 | Staging for wave-specific flows needs `QA_SUPPRESS_OUTBOUND_SENDS=true`, `GBP_LIVE_WRITES_ENABLED` unset, and no real provider credentials. | each wave |
+
+## Hardening (third commit: `fix(jobs): harden ownership pause and rollback safety`)
+
+Fixes for the review of `1db6172` + `047c2a9`. Nothing here is deployed or enabled.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| **H1** typo in `JOBS_NATIVE_FUNCTIONS` took down all Inngest functions and every event send | Web path never throws: unknown/unsupported ids and `*` are logged and ignored (Inngest keeps them); the worker stays strict (exit 1) | `resolveWebOwnership`, lenient `nativeFunctionIds`, `web-ownership.smoke.test.ts` (4), unit (3) |
+| **H2** replay claims could be taken by a second replayer; late writes unfenced | Exclusive claim with token + timestamp (10 min lease), outcome writes fenced on the token, `released-on-web` check via the ownership endpoint, no resend outside the ~24 h dedupe window | `replay.ts`, 6 staging tests (concurrent replayers send once; takeover fences the old owner; late failure cannot downgrade) |
+| **H3** pause could be missed at start and between claims; no acknowledgement | Control read before the scheduler's first tick and immediately before every claim; `pause --wait` waits for post-pause heartbeats with `paused:true` and `inFlight:0` | `worker.ts`, `pauseWait.ts`, 4 staging + 2 unit tests, CLI exercised end to end |
+| **M1** unreadable control doc released in-flight jobs | Blocks new claims only; only an operator pause releases | staging test (job stays `running`, new job stays `queued`) |
+| **M2** wrong-database risk | Database + hosts printed on every command; ambiguous targets refused; state changes need `--yes` AND the typed database name | `adminTarget.ts`, 4 unit tests, CLI run (refusals verified) |
+| **M3** suppression gaps / production safety | Never honoured in production-like envs (needs `APP_ENV=staging`); Calendar, Razorpay, OAuth revoke FAIL CLOSED; worker refuses live credentials next to active suppression; counts in `/healthz` | `outboundSuppression.ts`, 5 unit + 5 staging tests |
+| **M4** guard startup/restart | Worker starts blocked-but-alive and recovers on its own; never exits on a transient failure | `guardMonitor.ts`, 3 unit tests, real worker process run |
+| **M5** tests could reach remote/prod DBs | Explicit `TEST_MONGODB_URI`, loopback only, no env files, never `MONGODB_URI` | `loopbackTestDb.mjs`, unit + 3 refusals verified live |
+| **M6** sizing | One forked worker, `JOBS_CONCURRENCY=1`, 384 MB heap, restart at 450 MB (Waves 0-1 only) | `ecosystem.worker.config.cjs` |
+
+Defects found and fixed while doing this: a Razorpay QA guard placed inside a `try` whose handler treats
+"cancel" in the message as "already cancelled" (it would have marked the subscription Canceled in the DB); a
+test-seed race on the unique `ScheduledAction.idempotencyKey` index; a claim-time control read that was one DB
+round trip stale (now immediately before the claim).
+
+| Check (after the final source change) | Result |
+|---|---|
+| `npm run test:jobs` (unit) | 44 / 44 pass |
+| `npm run test:jobs:staging` (queue + safety, local mongod 7.0.14) | 44 / 44 pass |
+| `npm run test:jobs:smoke` (wave 0 handlers + suppression + web ownership) | 21 / 21 pass |
+| Combined staging + smoke soak, 10 consecutive loaded runs | 10 / 10 runs clean (65 / 65 tests each) |
+| `npm run typecheck` | clean |
+| ESLint on every changed or added `.ts/.mjs/.cjs` file (44 files) | clean |
+| `npm run build` | pass (exit 0; `/api/inngest` and `/api/inngest/ownership` present) |
+| Admin CLI end to end (status, refusals, `pause --wait`, idempotent pause, resume, replay dry-run) | verified on a disposable DB |
+| Worker process: unreachable guard, typo id, missing token | blocked-but-alive / exit 1 / exit 1 (verified) |
+
+### Still unresolved (explicit)
+
+| Blocker | Must be done before |
+|---|---|
+| **Timezone fix**: `nextBizHourDate` / `lib/scheduleTime.ts` use server-local hours; prod is UTC, so campaign "business hours" 9-20 are 14:30-01:30 IST. Needs an owner-approved behaviour change plus a pinned test. | wave 6 (`process-review-campaign`) and any business-hours send |
+| **Publishing re-seed tool**: sleeping `schedule-single-post-publish` runs are lost when the function is released; needs a dry-run-first script enqueueing native jobs for future `scheduled` posts. | the publishing wave |
+| Inngest dashboard gate is manual (the guard cannot see Inngest Cloud); residual race windows are listed in `worker-operations.md`. | every wave |
+| Real handlers beyond waves 0a/0b not yet run through the runner; PM2/SIGTERM/reboot not exercised on the droplet; Atlas unreachable from the dev box (tests ran on local mongod). | each wave / deployment |
+| 450 MB / 384 MB sizing is for Waves 0-1 only; Chromium (`report-card-deliver`) and AI-heavy waves need the larger droplet and re-sized limits. | those waves |
+| `owner-whatsapp-digest-cron` has no atomic claim (double-send risk) and `report-ready-notification` stamps after send. | wave 4 |

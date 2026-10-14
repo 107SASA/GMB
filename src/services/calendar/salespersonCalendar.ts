@@ -1,3 +1,4 @@
+import { guardExternalOperation } from '@/lib/outboundSuppression';
 import { decrypt, encrypt } from '@/lib/crypto';
 import { classifyTokenRefreshFailure } from '@/services/calendar/demoScheduling';
 import type { ISalespersonCalendarConnection } from '@/models/SalespersonCalendarConnection';
@@ -128,6 +129,8 @@ export async function insertMeetEvent(input: {
   attendeeEmail?: string;
   requestId: string;
 }): Promise<{ eventId: string; meetingLink: string }> {
+  // QA/staging hard boundary: a calendar event with an attendee makes Google email a real person.
+  guardExternalOperation('calendar', 'insertMeetEvent');
   const res = await fetch(`${CALENDAR_BASE}/calendars/${encodeURIComponent(input.calendarId)}/events?conferenceDataVersion=1`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${input.accessToken}`, 'Content-Type': 'application/json' },
@@ -159,6 +162,7 @@ export async function insertMeetEvent(input: {
 }
 
 export async function deleteCalendarEvent(accessToken: string, calendarId: string, eventId: string): Promise<void> {
+  guardExternalOperation('calendar', 'deleteCalendarEvent');
   const res = await fetch(`${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${accessToken}` },

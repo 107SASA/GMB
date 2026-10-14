@@ -29,13 +29,15 @@ for (const file of process.env.NODE_ENV === 'production' ? ['.env.production'] :
 }
 
 import mongoose from 'mongoose';
-import { isNativeEnabled, nativeFunctionIds, workerTuning } from '../src/services/jobs/config';
+import { isNativeEnabled, nativeFunctionIdsStrict, workerTuning } from '../src/services/jobs/config';
 import { jsonLogger } from '../src/services/jobs/types';
-import { checkWebOwnership, guardConfig, waitForOwnership } from '../src/services/jobs/ownershipGuard';
+import { checkWebOwnership, guardConfig } from '../src/services/jobs/ownershipGuard';
+import { GuardMonitor } from '../src/services/jobs/guardMonitor';
+import { suppressionSummary } from '../src/lib/outboundSuppression';
 
 async function main() {
   const log = jsonLogger;
-  if (!isNativeEnabled() || nativeFunctionIds().size === 0) {
+  if (!isNativeEnabled() || nativeFunctionIdsStrict().size === 0) {
     log('info', 'native job queue disabled (JOBS_NATIVE_ENABLED / JOBS_NATIVE_FUNCTIONS unset) — exiting');
     process.exit(0);
   }
@@ -55,13 +57,30 @@ async function main() {
   const store = new JobStore(db, tuning.prefix, clock.now);
 
   const functions = await loadRegistry();
-  const owned = nativeFunctionIds();
+  const owned = nativeFunctionIdsStrict();
   assertOwnable(functions, owned); // throws (→ exit 1) on unknown ids or unsupported options
 
-  // Ownership guard — fail closed. The worker does not claim a single job until the
-  // running web app confirms it has released every owned id. See ownershipGuard.ts.
+  // QA suppression boundary: refuse to run a worker that has suppression ACTIVE next to
+  // live-looking credentials/modes. (In production the flag is ignored — see outboundSuppression.ts —
+  // so it only warns there.)
+  const sup = suppressionSummary();
+  if (sup.requested) {
+    log(sup.ignoredInProduction ? 'error' : 'warn', 'QA outbound suppression flag present', {
+      active: sup.active,
+      ignoredInProduction: sup.ignoredInProduction,
+      violations: sup.violations,
+    });
+    if (sup.active && sup.violations.length) {
+      log('error', 'suppression is active alongside live-looking configuration — refusing to start', { violations: sup.violations });
+      process.exit(1);
+    }
+  }
+
+  // Ownership guard — fail closed, never exits on a transient failure. The worker starts BLOCKED
+  // (no claims, no cron leadership) and unblocks only after the running web app confirms it has
+  // released every owned id; any later failure blocks it again. See guardMonitor.ts.
   const guard = guardConfig();
-  let guardBlock: string | null = null;
+  let monitor: GuardMonitor | null = null;
   if (!guard.enabled) {
     log('warn', 'ownership guard DISABLED (JOBS_OWNERSHIP_GUARD=off, non-production only)');
   } else {
@@ -69,23 +88,15 @@ async function main() {
       log('error', 'JOBS_GUARD_TOKEN is not set — cannot verify web ownership; refusing to start');
       process.exit(1);
     }
-    const verdict = await waitForOwnership({ url: guard.url, token: guard.token, owned });
-    if (!verdict.ok) {
-      log('error', 'ownership guard failed — refusing to claim jobs', { reason: verdict.reason, conflicting: verdict.conflicting });
-      process.exit(1);
-    }
-    log('info', 'ownership guard passed', { served: verdict.served, native: verdict.native });
-    const recheck = setInterval(async () => {
-      const v = await checkWebOwnership({ url: guard.url, token: guard.token, owned });
-      const next = v.ok ? null : `ownership-guard: ${v.reason}`;
-      if (next !== guardBlock) log(next ? 'error' : 'info', next ? 'ownership guard lost — claiming blocked' : 'ownership guard restored', { reason: next });
-      guardBlock = next;
-    }, 60_000);
-    recheck.unref();
+    monitor = new GuardMonitor({
+      logger: log,
+      check: () => checkWebOwnership({ url: guard.url, token: guard.token, owned }),
+    });
+    monitor.start();
   }
 
   const worker = new JobWorker({
-    claimBlock: () => guardBlock,
+    claimBlock: () => monitor?.block ?? null,
     store,
     clock,
     functions,
@@ -116,6 +127,8 @@ async function main() {
       state: worker.state,
       paused: worker.isPaused,
       claimBlockedReason: worker.claimBlockedReason,
+      ownershipGuard: monitor ? monitor.state : { verified: null, disabled: true },
+      outboundSuppression: suppressionSummary(),
       counters: worker.counters,
       functions: worker.ownedIds.length,
       uptimeSec: Math.round((Date.now() - startedAt) / 1000),
@@ -130,6 +143,7 @@ async function main() {
     shuttingDown = true;
     log('info', 'shutdown requested', { signal: sig });
     server.close();
+    monitor?.stop();
     try {
       await worker.stop();
       await mongoose.disconnect();

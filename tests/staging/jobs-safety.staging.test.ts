@@ -10,11 +10,12 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
-import { resolveTestMongoUri } from '../../scripts/lib/localTestEnv.mjs';
+import { resolveLoopbackTestUri } from '../../scripts/lib/loopbackTestDb.mjs';
 import { JobStore, type JobDoc } from '../../src/services/jobs/store';
 import { JobWorker } from '../../src/services/jobs/worker';
 import { routeEvents } from '../../src/services/jobs/routing';
 import { CRON_EVENT, executeReplay, liveWorkers, planReplay, type ReplayEvent } from '../../src/services/jobs/replay';
+import { waitForPauseAck } from '../../src/services/jobs/pauseWait';
 import type { Logger, NativeFunction } from '../../src/services/jobs/types';
 import type { WorkerTuning } from '../../src/services/jobs/config';
 
@@ -25,7 +26,7 @@ let store: JobStore;
 const workers: JobWorker[] = [];
 
 before(async () => {
-  await mongoose.connect(resolveTestMongoUri(), { family: 4, serverSelectionTimeoutMS: 15000 } as any);
+  await mongoose.connect(resolveLoopbackTestUri({ dbName: `jobs_safety_${Date.now().toString(36)}` }), { family: 4, serverSelectionTimeoutMS: 15000 } as any);
   db = mongoose.connection.db;
   assert.ok(!/prod/i.test(db.databaseName), `refusing to run against ${db.databaseName}`);
   store = new JobStore(db, PREFIX);
@@ -37,6 +38,7 @@ after(async () => {
   for (const c of ['jobs', 'job_cron_state', 'job_locks', 'job_workers', 'job_control']) {
     await db.collection(`${PREFIX}${c}`).drop().catch(() => undefined);
   }
+  if (db?.databaseName && /^jobs_(queue|safety)_/.test(db.databaseName)) await db.dropDatabase().catch(() => undefined);
   await mongoose.disconnect();
 });
 
@@ -331,7 +333,7 @@ test('replay send failure is recorded and retried on the next run; repeat after 
   assert.equal((await getJob(id)).cancelledReason, 'replay-failed');
 
   // simulate a crash between the cancel and the confirmation
-  await store.jobs.updateOne({ _id: oid(id) }, { $set: { cancelledReason: 'replay-pending' } });
+  await store.jobs.updateOne({ _id: oid(id) }, { $set: { cancelledReason: 'replay-pending', replayClaimedAt: new Date(Date.now() - 15 * 60000), replayClaimToken: 'dead-process' } });
   const plan2 = await planReplay(store, { fnIds: [f.id] });
   assert.equal(plan2.eligible.length, 1);
   assert.equal(plan2.eligible[0].interrupted, true);
@@ -366,4 +368,237 @@ test('liveWorkers: a recent heartbeat blocks replay; a stopped worker does not',
   assert.ok((await liveWorkers(store, 5000)).some((x) => x.id === w.owner));
   await w.stop();
   assert.ok(!(await liveWorkers(store, 5000)).some((x) => x.id === w.owner));
+});
+
+
+// ===================================================== hardening regressions ==
+
+// ---- H3: pause state is read before the scheduler's first tick -------------
+
+test('H3: a worker started while PAUSED never enqueues a cron slot; it does after resume', async () => {
+  await ensureResumed();
+  let ran = 0;
+  const f = fn(uid('cronp'), async ({ step }) => { await step.run('s', async () => { ran++; return 1; }); }, { crons: ['* * * * *'] });
+  // Pre-existing cron state two minutes old, so the very first tick WOULD enqueue a slot.
+  await store.cronState.updateOne(
+    { _id: f.id as any },
+    { $set: { lastSlotAt: Math.floor((Date.now() - 2 * 60_000) / 60_000) * 60_000, missed: 0, expr: '* * * * *' } },
+    { upsert: true }
+  );
+  await store.setPaused(true, 'test');
+  const w = mkWorker([f], { cron: true });
+  await w.start();
+  await sleep(700);
+  assert.equal(await store.jobs.countDocuments({ fnId: f.id }), 0, 'no slot enqueued while paused');
+  assert.equal(ran, 0);
+  await store.setPaused(false, 'test');
+  await waitFor(() => ran >= 1, 8000, 'cron slot after resume');
+});
+
+test('H3: control state is re-read between claims (not once per round)', async () => {
+  await ensureResumed();
+  const events: string[] = [];
+  const realClaim = store.claim.bind(store);
+  const realControl = store.getControl.bind(store);
+  (store as any).claim = async (...a: any[]) => { const r = await (realClaim as any)(...a); events.push(r ? 'claim' : 'claim-empty'); return r; };
+  (store as any).getControl = async () => { events.push('control'); return realControl(); };
+  try {
+    const f = fn(uid('rc'), async ({ step }) => { await step.run('s', async () => { await sleep(150); return 1; }); });
+    for (let i = 0; i < 3; i++) await enqueue(f, { i });
+    const w = mkWorker([f], { tuning: { concurrency: 3 } });
+    await w.start();
+    await waitFor(async () => (await store.jobs.countDocuments({ fnId: f.id, status: 'completed' })) === 3, 8000);
+    const seq = events.join(',');
+    const claims = events.map((e, i) => ({ e, i })).filter((x) => x.e === 'claim');
+    assert.ok(claims.length >= 3);
+    // a control read precedes every claim, and sits between every two consecutive claims
+    for (const c of claims) {
+      assert.ok(events.slice(0, c.i).includes('control'), `a control read precedes claim @${c.i}: ${seq}`);
+    }
+    for (let k = 1; k < claims.length; k++) {
+      const between = events.slice(claims[k - 1].i + 1, claims[k].i);
+      assert.ok(between.includes('control'), `no control read between claims: ${seq}`);
+    }
+  } finally {
+    delete (store as any).claim;
+    delete (store as any).getControl;
+  }
+});
+
+test('H3: once a worker reports paused it claims nothing more, even with a backlog', async () => {
+  await ensureResumed();
+  const started: number[] = [];
+  const f = fn(uid('nomore'), async ({ step, event }) => {
+    await step.run('s', async () => { started.push(event.data.i); await sleep(100); return 1; });
+  });
+  const w = mkWorker([f], { tuning: { concurrency: 1 } });
+  await w.start();
+  for (let i = 0; i < 6; i++) await enqueue(f, { i });
+  await waitFor(() => started.length >= 1);
+  const since = store.now();
+  await store.setPaused(true, 'test');
+  const ack = await waitForPauseAck(store, { since, timeoutMs: 8000, pollMs: 50 });
+  assert.equal(ack.acked, true, JSON.stringify(ack));
+  const frozen = started.length;
+  await sleep(500);
+  assert.equal(started.length, frozen, 'no claims after the pause was acknowledged');
+  await store.setPaused(false, 'test');
+  await waitFor(() => started.length === 6, 10_000);
+});
+
+test('H3: pause --wait semantics: not acked while a job is in flight, acked when drained', async () => {
+  await ensureResumed();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  let running = 0;
+  const f = fn(uid('pw'), async ({ step }) => { await step.run('hold', async () => { running++; await gate; return 1; }); });
+  await enqueue(f);
+  const w = mkWorker([f], { tuning: { shutdownGraceMs: 60_000 } });
+  await w.start();
+  await waitFor(() => running === 1);
+
+  const since = store.now();
+  await store.setPaused(true, 'test');
+  const early = await waitForPauseAck(store, { since, timeoutMs: 600, pollMs: 40 });
+  assert.equal(early.acked, false);
+  assert.equal(early.timedOut, true);
+  assert.ok(early.waitingOn.length >= 1, JSON.stringify(early.waitingOn));
+
+  release();
+  const done = await waitForPauseAck(store, { since, timeoutMs: 8000, pollMs: 40 });
+  assert.equal(done.acked, true, JSON.stringify(done));
+  assert.equal(done.timedOut, false);
+  await store.setPaused(false, 'test');
+});
+
+// ---- M1: an unreadable control document must not abort in-flight work ------
+
+test('M1: control-doc read errors block NEW claims but never release in-flight jobs', async () => {
+  await ensureResumed();
+  const release: Array<() => void> = [];
+  const f = fn(uid('m1'), async ({ step }) => {
+    await step.run('long', async () => { await new Promise<void>((r) => release.push(r)); return 1; });
+  });
+  const long = await enqueue(f);
+  const w = mkWorker([f], { tuning: { shutdownGraceMs: 150, leaseMs: 5000, heartbeatMs: 500 } });
+  await w.start();
+  await waitFor(() => release.length === 1);
+
+  (store as any).getControl = async () => { throw new Error('mongo hiccup'); };
+  try {
+    // Wait until the worker has OBSERVED the failure; only then is "no new claims" the contract
+    // (a claim already in flight at the instant of the failure cannot be taken back).
+    await waitFor(() => w.claimBlockedReason === 'control-unreadable', 3000, 'worker to observe the control error');
+    const fresh = await enqueue(f);
+    await sleep(900); // several multiples of shutdownGraceMs
+    assert.equal(w.claimBlockedReason, 'control-unreadable');
+    assert.equal(await status(long), 'running', 'in-flight job must NOT be released by a control read error');
+    assert.equal(await status(fresh), 'queued', 'new work must not be claimed');
+  } finally {
+    delete (store as any).getControl;
+  }
+  release.forEach((r) => r());
+  await waitFor(async () => (await status(long)) === 'completed', 6000);
+});
+
+// ---- H2: replay claims are exclusive and fenced ----------------------------
+
+test('H2: two concurrent replayers send each event exactly once', async () => {
+  const f = fn(uid('rc2'), async () => 1);
+  const ids: string[] = [];
+  for (let i = 0; i < 5; i++) ids.push(await seedJob(f));
+  const plan = await planReplay(store, { fnIds: [f.id] });
+  assert.equal(plan.eligible.length, 5);
+
+  const sent: string[] = [];
+  const slowSend = async (ev: ReplayEvent) => { await sleep(30); sent.push(ev.id); };
+  const [a, b] = await Promise.all([executeReplay(store, plan, slowSend), executeReplay(store, plan, slowSend)]);
+  assert.equal(a.replayed + b.replayed, 5);
+  assert.equal(sent.length, 5, 'no event sent twice');
+  assert.equal(new Set(sent).size, 5);
+  assert.equal(a.raced + b.raced, 5, 'every job was lost to exactly one of the two');
+  for (const id of ids) assert.equal(((await getJob(id)) as any).cancelledReason, 'replayed-to-inngest');
+});
+
+test('H2: a live claim lease blocks a second replayer; an expired one is taken over and fences the old owner', async () => {
+  const f = fn(uid('lease'), async () => 1);
+  const id = await seedJob(f);
+  const plan = await planReplay(store, { fnIds: [f.id] });
+
+  let finishA!: () => void;
+  const aGate = new Promise<void>((r) => (finishA = r));
+  const sentA: string[] = [];
+  const A = executeReplay(store, plan, async (ev) => { sentA.push(ev.id); await aGate; });
+  await waitFor(() => sentA.length === 1, 3000, 'A to start sending');
+  const claimedDoc: any = await getJob(id);
+  assert.equal(claimedDoc.cancelledReason, 'replay-pending');
+  assert.ok(claimedDoc.replayClaimToken && claimedDoc.replayClaimedAt);
+
+  const planB = await planReplay(store, { fnIds: [f.id] });
+  assert.equal(planB.eligible.length, 0);
+  assert.equal(planB.skipped[0].reason, 'replay-in-progress');
+  const forced = await executeReplay(store, plan, async () => { throw new Error('must not send'); });
+  assert.equal(forced.raced, 1, 'a stale plan still cannot steal a live claim');
+
+  // A's lease expires (process wedged): B takes over and completes.
+  await store.jobs.updateOne({ _id: oid(id) }, { $set: { replayClaimedAt: new Date(Date.now() - 20 * 60_000) } });
+  const planB2 = await planReplay(store, { fnIds: [f.id] });
+  assert.equal(planB2.eligible.length, 1);
+  assert.equal(planB2.eligible[0].interrupted, true);
+  const sentB: string[] = [];
+  const outB = await executeReplay(store, planB2, async (ev) => { sentB.push(ev.id); });
+  assert.equal(outB.replayed, 1);
+  assert.equal(sentB[0], sentA[0], 'same stable event id');
+
+  // A finally finishes: its result write is FENCED and must not overwrite B's outcome.
+  finishA();
+  const outA = await A;
+  assert.equal(outA.lostClaim, 1);
+  assert.equal(outA.replayed, 0);
+  assert.equal(((await getJob(id)) as any).cancelledReason, 'replayed-to-inngest');
+});
+
+test('H2: a late FAILURE from a stale owner cannot downgrade a completed replay', async () => {
+  const f = fn(uid('late'), async () => 1);
+  const id = await seedJob(f);
+  const plan = await planReplay(store, { fnIds: [f.id] });
+  let failA!: () => void;
+  const gate = new Promise<void>((_r, rej) => (failA = () => rej(new Error('inngest 503'))));
+  const A = executeReplay(store, plan, async () => { await gate; });
+  await waitFor(async () => ((await getJob(id)) as any).cancelledReason === 'replay-pending', 3000);
+  await store.jobs.updateOne({ _id: oid(id) }, { $set: { replayClaimedAt: new Date(Date.now() - 20 * 60_000) } });
+  const out = await executeReplay(store, await planReplay(store, { fnIds: [f.id] }), async () => {});
+  assert.equal(out.replayed, 1);
+  failA();
+  const outA = await A;
+  assert.equal(outA.lostClaim, 1);
+  assert.equal(outA.failed, 0);
+  assert.equal(((await getJob(id)) as any).cancelledReason, 'replayed-to-inngest');
+});
+
+test('H2: interrupted/failed replays older than the dedupe window are NOT resent unless explicitly allowed', async () => {
+  const f = fn(uid('win'), async () => 1);
+  const id = await seedJob(f);
+  const old = new Date(Date.now() - 30 * 3_600_000);
+  await store.jobs.updateOne(
+    { _id: oid(id) },
+    { $set: { status: 'cancelled', cancelledReason: 'replay-pending', replayClaimedAt: old, replayClaimToken: 'x' } }
+  );
+  const plan = await planReplay(store, { fnIds: [f.id] });
+  assert.equal(plan.eligible.length, 0);
+  assert.equal(plan.skipped[0].reason, 'outside-dedupe-window');
+  const allowed = await planReplay(store, { fnIds: [f.id], allowOutsideDedupeWindow: true });
+  assert.equal(allowed.eligible.length, 1);
+  await store.jobs.updateOne({ _id: oid(id) }, { $set: { cancelledReason: 'replay-failed' } });
+  assert.equal((await planReplay(store, { fnIds: [f.id] })).eligible.length, 0);
+});
+
+test('H2: functions the running web app still releases are never replayed', async () => {
+  const f = fn(uid('rel2'), async () => 1);
+  await seedJob(f);
+  const plan = await planReplay(store, { fnIds: [f.id], webReleased: new Set([f.id]) });
+  assert.equal(plan.eligible.length, 0);
+  assert.equal(plan.skipped[0].reason, 'released-on-web');
+  const ok = await planReplay(store, { fnIds: [f.id], webReleased: new Set(['other']) });
+  assert.equal(ok.eligible.length, 1);
 });

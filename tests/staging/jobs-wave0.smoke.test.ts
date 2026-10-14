@@ -35,10 +35,10 @@ const workers: any[] = [];
 before(async () => {
   assert.match(DB_NAME, /^wave0_smoke_/);
   assert.ok(!/prod/i.test(DB_NAME));
-  process.env.TEST_DB_NAME = DB_NAME;
-  // resolveTestMongoUri refuses prod-looking names and forces our disposable DB.
-  const { resolveTestMongoUri } = await import('../../scripts/lib/localTestEnv.mjs');
-  process.env.MONGODB_URI = resolveTestMongoUri();
+  // Fail closed: explicit loopback TEST_MONGODB_URI only (ALLOW_REMOTE_TEST_DB=1 to override);
+  // no env files are loaded, so no production secrets or MONGODB_URI fallback can leak in.
+  const { resolveLoopbackTestUri } = await import('../../scripts/lib/loopbackTestDb.mjs');
+  process.env.MONGODB_URI = resolveLoopbackTestUri({ dbName: DB_NAME });
   (process.env as any).NODE_ENV = 'test';
   mongoose = (await import('mongoose')).default;
   ({ JobStore } = await import('../../src/services/jobs/store'));
@@ -192,11 +192,14 @@ test('wave 0b data-retention-cleanup-cron: sweeps expired OTP fields, prunes ter
     { _id: jq.oldPending, status: 'PENDING', updatedAt: ago(40 * DAY), createdAt: ago(40 * DAY) },
   ] as any);
   const sa = { oldExecuted: oid(), oldSkipped: oid(), oldPending: oid(), recentExecuted: oid() };
+  // idempotencyKey has a UNIQUE index (non-sparse): every seeded row needs its own value or the insert
+  // races Mongoose's async index build and fails with E11000 on null.
+  const key = (n: string) => `smoke-${n}-${new mongoose.mongo.ObjectId().toHexString()}`;
   await ScheduledAction.collection.insertMany([
-    { _id: sa.oldExecuted, status: 'EXECUTED', updatedAt: ago(91 * DAY), createdAt: ago(91 * DAY) },
-    { _id: sa.oldSkipped, status: 'SKIPPED', updatedAt: ago(91 * DAY), createdAt: ago(91 * DAY) },
-    { _id: sa.oldPending, status: 'PENDING', updatedAt: ago(100 * DAY), createdAt: ago(100 * DAY) },
-    { _id: sa.recentExecuted, status: 'EXECUTED', updatedAt: ago(10 * DAY), createdAt: ago(10 * DAY) },
+    { _id: sa.oldExecuted, idempotencyKey: key('oldExecuted'), status: 'EXECUTED', updatedAt: ago(91 * DAY), createdAt: ago(91 * DAY) },
+    { _id: sa.oldSkipped, idempotencyKey: key('oldSkipped'), status: 'SKIPPED', updatedAt: ago(91 * DAY), createdAt: ago(91 * DAY) },
+    { _id: sa.oldPending, idempotencyKey: key('oldPending'), status: 'PENDING', updatedAt: ago(100 * DAY), createdAt: ago(100 * DAY) },
+    { _id: sa.recentExecuted, idempotencyKey: key('recentExecuted'), status: 'EXECUTED', updatedAt: ago(10 * DAY), createdAt: ago(10 * DAY) },
   ] as any);
 
   // ---- conversations: 600 messages → last 500 kept; 10 untouched

@@ -7,7 +7,7 @@
 import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import { isNativeEnabled, nativeFunctionIds, workerTuning } from './config';
-import { assertOwnable, isInngestFunction, toNativeFunction } from './adapter';
+import { isInngestFunction, resolveWebOwnership, toNativeFunction } from './adapter';
 import { routeEvents, type RoutingContext } from './routing';
 import { JobStore } from './store';
 import type { NativeEvent, NativeFunction } from './types';
@@ -31,8 +31,11 @@ export function getRouter(): Promise<RoutingContext> {
       const store = new JobStore(mongoose.connection.db as any, workerTuning().prefix);
       await store.ensureIndexes();
       const functions = await loadRegistry();
-      const owned = nativeFunctionIds();
-      assertOwnable(functions, owned);
+      // Never throw here: a bad id must not fail every event send. Rejected ids stay with Inngest.
+      const { owned, rejected } = resolveWebOwnership(functions, nativeFunctionIds());
+      for (const r of rejected) {
+        console.error(`[jobs] JOBS_NATIVE_FUNCTIONS id "${r.id}" ignored on the web path (${r.reason}); Inngest keeps it. The native worker will refuse to start until this is fixed.`);
+      }
       return { store, functions, owned };
     })().catch((err) => {
       routerPromise = null;

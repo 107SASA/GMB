@@ -1,3 +1,4 @@
+import { guardExternalOperation } from '@/lib/outboundSuppression';
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Subscription from '@/models/Subscription';
@@ -37,6 +38,7 @@ export async function POST() {
     }
 
     // true → cancel at cycle end (keep access until the paid period ends).
+    guardExternalOperation('razorpay', 'subscriptions.cancel');
     await razorpay.subscriptions.cancel(subscription.razorpaySubscriptionId, true);
 
     // Flag the workspace(s) on this subscription: still 'active' (unlocked) but

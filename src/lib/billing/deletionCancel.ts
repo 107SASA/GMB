@@ -1,3 +1,4 @@
+import { guardExternalOperation } from '@/lib/outboundSuppression';
 import dbConnect from '@/lib/mongodb';
 import { getRazorpay } from '@/lib/billing/razorpay';
 
@@ -10,6 +11,9 @@ import { getRazorpay } from '@/lib/billing/razorpay';
 export async function cancelRazorpayForDeletedAccount(razorpaySubscriptionId: string): Promise<'cancelled' | 'already_cancelled'> {
   const razorpay = getRazorpay();
   if (!razorpay) throw new Error('Billing is not configured on this server');
+  // Hard QA boundary BEFORE the try: the catch below treats messages containing "cancel" as
+  // "already cancelled" and would otherwise swallow this and mark the subscription Canceled.
+  guardExternalOperation('razorpay', 'subscriptions.cancel');
   let outcome: 'cancelled' | 'already_cancelled' = 'cancelled';
   try {
     await razorpay.subscriptions.cancel(razorpaySubscriptionId, false);

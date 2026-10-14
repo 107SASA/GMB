@@ -4,7 +4,7 @@ Status: **PLAN ONLY — no backup has been taken, verified or restored by this w
 
 ## What this change does and does not touch
 
-The native queue only **adds** collections (`native_jobs`, `native_job_cron_state`, `native_job_locks`, `native_job_workers`). It does not modify existing collections. Therefore queue state is *not* the primary reason to back up, but the **cutover and the droplet resize** are production-impacting and require restore points first.
+The native queue only **adds** collections (`native_jobs`, `native_job_cron_state`, `native_job_locks`, `native_job_workers`, `native_job_control`). It does not modify existing collections. Therefore queue state is *not* the primary reason to back up, but the **cutover and the droplet resize** are production-impacting and require restore points first.
 
 ## Items and owners
 

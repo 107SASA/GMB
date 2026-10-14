@@ -74,6 +74,29 @@ export function toNativeFunction(fn: any): NativeFunction {
   };
 }
 
+/**
+ * WEB-PATH ownership: never throws. Ids that are unknown to the registry, or
+ * that use an option the native queue cannot honour, are NOT owned natively —
+ * Inngest keeps them — and are reported so the caller can log loudly. A typo in
+ * JOBS_NATIVE_FUNCTIONS must never take down /api/inngest or every event send.
+ * The worker still uses `assertOwnable` and refuses to start on the same input.
+ */
+export function resolveWebOwnership(
+  functions: Pick<NativeFunction, 'id' | 'unsupported'>[],
+  requested: Set<string>
+): { owned: Set<string>; rejected: Array<{ id: string; reason: string }> } {
+  const byId = new Map(functions.map((f) => [f.id, f]));
+  const owned = new Set<string>();
+  const rejected: Array<{ id: string; reason: string }> = [];
+  for (const id of requested) {
+    const f = byId.get(id);
+    if (!f) rejected.push({ id, reason: 'unknown function id' });
+    else if (f.unsupported?.length) rejected.push({ id, reason: `unsupported options: ${f.unsupported.join('; ')}` });
+    else owned.add(id);
+  }
+  return { owned, rejected };
+}
+
 /** Throws if any natively-owned function uses an option the native queue cannot honour. */
 export function assertOwnable(functions: NativeFunction[], owned: Set<string>): void {
   const known = new Set(functions.map((f) => f.id));

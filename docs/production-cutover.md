@@ -72,7 +72,7 @@ npm run jobs:admin -- list dead                       # expect none
 | Backlog | `jobs:admin stats` → `oldestDueAgeMs` | < 2× `JOBS_POLL_MS` normally, < 5 min worst case |
 | Dead letters | `jobs:admin list dead` | 0 (investigate every entry) |
 | Duplicates | for the wave's side effect (posts published once, digest sent once) | exactly once |
-| Memory/CPU | `pm2 monit`, `free -m` | worker RSS < 350 MB (PM2 restarts at 450 MB); **re-baseline after the first hour** |
+| Memory/CPU | `pm2 describe growwmatics-worker`, `ps -o pid,ppid,rss,args -C node`, `/healthz` `memory`, `free -m` | ONE worker process carrying `--max-old-space-size=384`; RSS < 350 MB is a **target** (idle ~120-150 MB observed locally); PM2 restart at 450 MB is configured but its enforcement is **not yet verified**; **re-baseline after the first hour** |
 | Inngest dashboard | runs for non-owned fns | unchanged |
 
 ## Wave 6 (long sleepers) — extra procedure

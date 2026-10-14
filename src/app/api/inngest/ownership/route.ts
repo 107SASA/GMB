@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { partitionOwnership } from "@/services/jobs/config";
+import { nativeFunctionIds } from "@/services/jobs/config";
+import { buildOwnershipPayload } from "@/services/jobs/adapter";
 import { loadRegistry } from "@/services/jobs/dispatch";
 
 /**
@@ -29,17 +30,13 @@ export async function GET(req: NextRequest) {
   if (!process.env.JOBS_GUARD_TOKEN) return new NextResponse(null, { status: 404 });
   if (!authorized(req)) return new NextResponse(null, { status: 401 });
   try {
-    const known = (await loadRegistry()).map((f) => f.id);
-    const { inngest, native } = partitionOwnership(known);
-    // Mirrors the conditional registration in /api/inngest/route.ts.
-    const served =
-      process.env.LEAD_ENGINE_V2 === "true" ? inngest : inngest.filter((id) => id !== "proactive-nba-scheduler");
-    return NextResponse.json(
-      { version: 1, known, served, native },
-      { headers: { "cache-control": "no-store" } }
-    );
+    // Same rules as /api/inngest and dispatch.getRouter (see selectServedFunctions).
+    const payload = buildOwnershipPayload(await loadRegistry(), nativeFunctionIds(), {
+      leadEngineV2: process.env.LEAD_ENGINE_V2 === "true",
+    });
+    return NextResponse.json(payload, { headers: { "cache-control": "no-store" } });
   } catch (err: any) {
-    // Unknown ids in JOBS_NATIVE_FUNCTIONS throw here — surface as 500 so the guard fails closed.
+    // Any failure is a 500 so the worker guard fails closed.
     return NextResponse.json({ error: String(err?.message || err).slice(0, 200) }, { status: 500 });
   }
 }

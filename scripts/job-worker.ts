@@ -28,12 +28,22 @@ for (const file of process.env.NODE_ENV === 'production' ? ['.env.production'] :
   }
 }
 
+import v8 from 'v8';
 import mongoose from 'mongoose';
 import { isNativeEnabled, nativeFunctionIdsStrict, workerTuning } from '../src/services/jobs/config';
 import { jsonLogger } from '../src/services/jobs/types';
 import { checkWebOwnership, guardConfig } from '../src/services/jobs/ownershipGuard';
 import { GuardMonitor } from '../src/services/jobs/guardMonitor';
 import { suppressionSummary } from '../src/lib/outboundSuppression';
+
+function maxOldSpaceFlagMb(): number | null {
+  const all = [...process.execArgv, ...String(process.env.NODE_OPTIONS || '').split(/\s+/)];
+  for (const a of all) {
+    const m = /^--max-old-space-size=(\d+)$/.exec(a);
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
 
 async function main() {
   const log = jsonLogger;
@@ -131,6 +141,19 @@ async function main() {
       outboundSuppression: suppressionSummary(),
       counters: worker.counters,
       functions: worker.ownedIds.length,
+      // Lets an operator VERIFY the heap cap of the process that actually runs jobs
+      // (the value comes from V8 itself, not from configuration).
+      memory: {
+        rssMb: Math.round(process.memoryUsage().rss / 1048576),
+        heapUsedMb: Math.round(process.memoryUsage().heapUsed / 1048576),
+        // V8's total heap limit = --max-old-space-size + young generation (~192 MB), so a 384 flag
+        // reports ~576 here; maxOldSpaceFlagMb is the flag this process was actually started with
+        // (null = no cap, V8 default). PM2's RSS-based restart is the operative guard.
+        heapLimitMb: Math.round(v8.getHeapStatistics().heap_size_limit / 1048576),
+        maxOldSpaceFlagMb: maxOldSpaceFlagMb(),
+        pid: process.pid,
+        singleProcess: !process.execArgv.some((a) => /preflight\.cjs/.test(a)),
+      },
       uptimeSec: Math.round((Date.now() - startedAt) / 1000),
     };
     res.writeHead(body.ok ? 200 : 503, { 'content-type': 'application/json' }).end(JSON.stringify(body));

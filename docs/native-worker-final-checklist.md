@@ -13,7 +13,7 @@ Branch: `feature/native-job-worker` (from `origin/main` @ `3eaa96e`; `dev` and `
 | Cron leader lock, no backfill on init, coalesced catch-up, stale slot skip | staging test "cron: ..." |
 | Single-owner guarantee (per function: Inngest XOR native; typos fail closed) | `partitionOwnership` + 3 new unit tests; `/api/inngest` deregisters owned ids |
 | All flags default OFF | unit test "everything is OFF by default" |
-| PM2 definition (separate app, 1 instance, concurrency 1, 384 MB heap / 450M restart for Waves 0-1, 40s kill_timeout) | `ecosystem.worker.config.cjs` |
+| PM2 definition (separate app, 1 instance, single process via `job-worker.launch.mjs`, concurrency 1, 384 MB old-space flag / 450M restart configured for Waves 0-1; restart enforcement and PM2 signal delivery NOT yet verified on Linux) | `ecosystem.worker.config.cjs` |
 | Env var documentation (names only) | `.env.production.example` (JOBS_* block) |
 | Runbook, cutover, rollback, operations | `docs/production-cutover.md`, `rollback-procedure.md`, `worker-operations.md`, `inngest-migration-plan.md` |
 
@@ -96,7 +96,7 @@ Fixes for the review of `1db6172` + `047c2a9`. Nothing here is deployed or enabl
 | **M3** suppression gaps / production safety | Never honoured in production-like envs (needs `APP_ENV=staging`); Calendar, Razorpay, OAuth revoke FAIL CLOSED; worker refuses live credentials next to active suppression; counts in `/healthz` | `outboundSuppression.ts`, 5 unit + 5 staging tests |
 | **M4** guard startup/restart | Worker starts blocked-but-alive and recovers on its own; never exits on a transient failure | `guardMonitor.ts`, 3 unit tests, real worker process run |
 | **M5** tests could reach remote/prod DBs | Explicit `TEST_MONGODB_URI`, loopback only, no env files, never `MONGODB_URI` | `loopbackTestDb.mjs`, unit + 3 refusals verified live |
-| **M6** sizing | One forked worker, `JOBS_CONCURRENCY=1`, 384 MB heap, restart at 450 MB (Waves 0-1 only) | `ecosystem.worker.config.cjs` |
+| **M6** sizing | One process, `JOBS_CONCURRENCY=1`, 384 MB old-space flag, restart at 450 MB (Waves 0-1 only). Flag application verified; restart enforcement NOT verified (see follow-up section) | `ecosystem.worker.config.cjs`, `job-worker.launch.mjs` |
 
 Defects found and fixed while doing this: a Razorpay QA guard placed inside a `try` whose handler treats
 "cancel" in the message as "already cancelled" (it would have marked the subscription Canceled in the DB); a
@@ -125,3 +125,42 @@ round trip stale (now immediately before the claim).
 | Real handlers beyond waves 0a/0b not yet run through the runner; PM2/SIGTERM/reboot not exercised on the droplet; Atlas unreachable from the dev box (tests ran on local mongod). | each wave / deployment |
 | 450 MB / 384 MB sizing is for Waves 0-1 only; Chromium (`report-card-deliver`) and AI-heavy waves need the larger droplet and re-sized limits. | those waves |
 | `owner-whatsapp-digest-cron` has no atomic claim (double-send risk) and `report-ready-notification` stamps after send. | wave 4 |
+
+## Pre-push audit follow-up (fourth commit: `fix(jobs): align ownership and worker memory limits`)
+
+Closes the two HIGH findings of the read-only audit of `78f8e60`.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| **F1** `/api/inngest` and `/api/inngest/ownership` used `partitionOwnership` (id known?) while event routing used `resolveWebOwnership` (id known AND no unsupported options): an owned function with an unsupported option would have been deregistered from Inngest while nothing executed it | One shared rule, `selectServedFunctions` / `buildOwnershipPayload` over `resolveWebOwnership`, used by the route, the ownership endpoint and `dispatch.getRouter`. Unknown ids, `*`, unsupported options and uninspectable functions all stay served by Inngest; nothing throws | `adapter.ts`, 5 new unit tests (unsupported option stays served; typo/`*`/uninspectable; three call sites agree; flag-gated scheduler; guard stays blocked), 1 new smoke test hitting the real endpoint handler |
+| **F2** `tsx` CLI launch ran the worker as a child, so `--max-old-space-size` and PM2's `max_memory_restart` applied to the ~42 MB launcher, not the worker | Single process: `scripts/job-worker.launch.mjs` run by `node --import tsx --max-old-space-size=384`; `/healthz` now reports `memory` (pid, rss, V8 heap limit, parsed flag) so the cap can be verified | process tree + PM2 5.4.3 (isolated `PM2_HOME`) + `/healthz`, see `worker-operations.md` "Verified vs not verified" |
+
+| Check (after the final source change) | Result |
+|---|---|
+| `npm run test:jobs` (unit) | 49 / 49 pass |
+| `npm run test:jobs:staging` (queue + safety, local mongod 7.0.14) | 44 / 44 pass |
+| `npm run test:jobs:smoke` (wave 0 + suppression + web ownership) | 22 / 22 pass |
+| Combined staging + smoke soak, 10 consecutive loaded runs | 10 / 10 clean (66 / 66 tests each) |
+| `npm run typecheck` | clean |
+| ESLint on every changed or added `.ts/.mjs/.cjs` file | clean |
+| `npm run build` | pass (exit 0; `/api/inngest` and `/api/inngest/ownership` present) |
+
+### Memory / launch: verified vs NOT verified
+
+| Item | Status |
+|---|---|
+| Worker is one process; heap flag applied; PM2 monitors the worker's own pid | **Verified** locally (Windows, PM2 5.4.3, isolated PM2_HOME): PM2 pid == `/healthz` `memory.pid`, `maxOldSpaceFlagMb 384`, V8 `heapLimitMb 576` (= flag + 192 MB young generation) |
+| `max_memory_restart: 450M` actually restarts the worker | **NOT verified**: PM2 5.4.3 on Windows reported 0 memory for the process. Needs the Linux droplet (PM2 7.0.3) or a Linux staging host |
+| `pm2 stop` / `reload` delivers a signal that drains and releases jobs | **NOT verified**: on Windows PM2 terminated the process without running the handler. The drain/release logic itself is covered by the staging tests. Needs a Linux staging check |
+| Real droplet behaviour (PM2 7.0.3, Linux, 1.9 GiB, real RSS under load) | **NOT verified** |
+
+### Still unresolved (explicit, unchanged)
+
+| Blocker | Must be done before |
+|---|---|
+| **Timezone fix** (`nextBizHourDate`, `lib/scheduleTime.ts` use server-local hours; prod is UTC) | wave 6 and any business-hours send |
+| **Publishing re-seed tool** (sleeping `schedule-single-post-publish` runs are lost on release) | the publishing wave |
+| **Manual Inngest dashboard gate** (the guard cannot see Inngest Cloud; race windows in `worker-operations.md`) | every wave |
+| **Later-wave duplicate-send risks**: `owner-whatsapp-digest-cron` has no atomic claim; `report-ready-notification`, the agent repliers, `process-demo-booking`, the sales drip and the review-campaign initial send send before they record | waves 4-6 |
+| Linux/PM2 verification of the 450 MB restart and of graceful SIGTERM drain (above) | Wave 0a on the droplet |
+| Real handlers beyond waves 0a/0b through the runner; Atlas unreachable from the dev box | each wave |

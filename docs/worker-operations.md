@@ -28,7 +28,7 @@ Web app and worker must read the **same** `JOBS_NATIVE_*` values (both load `.en
 ./scripts/deploy.sh
 
 # Worker code changed? (it runs the same source tree)
-pm2 reload growwmatics-worker          # graceful: drains in-flight (≤25 s), releases the rest
+pm2 reload growwmatics-worker          # intended: SIGTERM -> drain in-flight (<=25 s), release the rest (see "Verified vs not verified")
 # or
 pm2 restart growwmatics-worker
 
@@ -72,7 +72,7 @@ pm2 monit
 free -m; df -h /; uptime
 ps -o pid,rss,cmd -C node
 ```
-Targets for Waves 0–1 on the current 1.9 GiB box (see Sizing below): worker RSS < 350 MB (PM2 restarts at 450 MB; heap capped 384 MB); queue `oldestDueAgeMs` < 5 min; dead = 0.
+Targets for Waves 0–1 on the current 1.9 GiB box (see Sizing below): worker RSS < 350 MB (a **target**, not yet measured under load); queue `oldestDueAgeMs` < 5 min; dead = 0. Enforcement of the 450 MB restart threshold is not yet verified (see "Verified vs not verified").
 
 ## Server crash / reboot recovery
 
@@ -184,7 +184,7 @@ npm run jobs:admin -- resume --yes --confirm-db <db-name>
 
 ```bash
 npm run jobs:admin -- pause "deploy" --wait --timeout-sec=180 --yes --confirm-db <db-name>   # must succeed (exit 0)
-pm2 stop growwmatics-worker                # SIGTERM: drains up to JOBS_SHUTDOWN_GRACE_MS, releases the rest
+pm2 stop growwmatics-worker                # intended: SIGTERM -> drain up to JOBS_SHUTDOWN_GRACE_MS, release the rest (PM2 delivery not yet verified on Linux)
 # ... run scripts/deploy.sh (npm install / build / pm2 restart growwmatics / PUT /api/inngest) ...
 pm2 start growwmatics-worker               # starts blocked; unblocks only after the ownership guard passes
 npm run jobs:admin -- status               # worker shows state "paused" (control doc still paused)
@@ -229,13 +229,46 @@ QA_SUPPRESS_WHATSAPP_SENDS=true      # legacy, WhatsApp only
   `outboundSuppression` = `{ requested, active, ignoredInProduction, violations[], suppressed{channel:count} }`:
   counts and names only, never recipients, payloads or secrets.
 
-### 6. Sizing (Waves 0-1 only)
+### 6. Sizing and launch (Waves 0-1 only)
 
 `ecosystem.worker.config.cjs` is sized for the **current 1 vCPU / 1.9 GiB** droplet and the light early waves:
-one forked process, `JOBS_CONCURRENCY=1`, `--max-old-space-size=384`, `max_memory_restart: 450M`, `kill_timeout 40 s`.
-Targets: RSS < 350 MB steady, queue `oldestDueAgeMs` < 5 min, dead = 0. **Not sufficient** for Chromium
-(`report-card-deliver`), AI-heavy content/review/nurture waves or `JOBS_CONCURRENCY > 1`: re-size the droplet and these
-limits before those waves, and re-baseline after the first hour of real RSS data.
+one PM2 fork process, `JOBS_CONCURRENCY=1`, `--max-old-space-size=384`, `max_memory_restart: 450M`,
+`kill_timeout 40 s`. **Not sufficient** for Chromium (`report-card-deliver`), AI-heavy content/review/nurture waves
+or `JOBS_CONCURRENCY > 1`: re-size the droplet and these limits before those waves.
+
+**Single-process launch (fixed after the pre-push audit).** PM2 runs `scripts/job-worker.launch.mjs` with
+`node_args: --import tsx --max-old-space-size=384 ...`, so Node runs the worker itself. The earlier launch through
+`tsx/dist/cli.mjs` made tsx spawn the worker as a child: PM2 then monitored the ~42 MB launcher and the heap flag never
+reached the worker. `tsx` is a devDependency and must be installed on the host (do not install with `--omit=dev`).
+
+**How to verify on a host (do this after every config change, on staging before production):**
+
+```bash
+pm2 describe growwmatics-worker          # script = job-worker.launch.mjs, node args include --max-old-space-size=384
+ps -o pid,ppid,rss,args -C node          # exactly ONE worker process; no tsx child; args carry the flag
+curl -s 127.0.0.1:3911/healthz           # memory.pid equals the PM2 pid; memory.maxOldSpaceFlagMb = 384
+```
+
+`memory.heapLimitMb` is V8's TOTAL heap limit = the old-space flag + ~192 MB young generation, so a 384 flag reports
+**576** (checked: 256 -> 448, 384 -> 576, 512 -> 704; unflagged -> 2240 on that machine). The 384 MB cap is on old space;
+PM2's RSS-based restart at 450 MB is the operative guard and fires before V8's own limit.
+
+### Verified vs not verified (single-process launch, F2)
+
+| Claim | Status | Evidence |
+|---|---|---|
+| Worker runs as ONE process; no tsx child | **Verified** (local, Windows, PM2 5.4.3 in an isolated PM2_HOME) | OS process tree: one `node --import tsx --max-old-space-size=384 ...`; PM2 pid == `/healthz` `memory.pid` |
+| Heap flag applies to the worker | **Verified** (same run) | `/healthz`: `maxOldSpaceFlagMb 384`, `heapLimitMb 576` |
+| Env loading, preflight, ownership guard, blocked-mode, health endpoint behave as before | **Verified** (same run + 21 smoke / 44 staging / 44 unit tests) | blocked worker, guard failure reason reported, strict id/token exits unchanged |
+| Idle RSS | Observed: ~117 MB plain node, ~148 MB under PM2 (blocked, Windows) | not a load figure |
+| `max_memory_restart: 450M` is configured as 471859200 bytes | **Verified** in `pm2 jlist` | |
+| `max_memory_restart` actually restarts the worker above 450 MB | **NOT verified** | PM2 5.4.3 on Windows reported 0 memory for the process, so the check could not run; the droplet has PM2 7.0.3 on Linux |
+| SIGTERM from `pm2 stop/reload` reaches the handler and drains | **NOT verified** | On Windows `pm2 stop` terminated the process without running the handler (heartbeat stayed `blocked`). The drain/release code itself is covered by the staging tests (`worker.stop()`); PM2-to-signal delivery needs a Linux staging check |
+| Behaviour on the real droplet (PM2 7.0.3, Linux, 1.9 GiB) | **NOT verified** | no staging host available to this session |
+
+Before relying on the 450 MB restart or on graceful PM2 shutdown, run on a Linux staging host: `pm2 start`, then
+`pm2 stop growwmatics-worker` with a long job in flight and confirm the log shows `shutdown requested` and
+`worker stopped` and the heartbeat doc status becomes `stopped`.
 
 ### 7. Replay and tests
 

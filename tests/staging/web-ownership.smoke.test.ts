@@ -59,7 +59,10 @@ test('H1: the /api/inngest route module loads and serves with a typo configured'
   const mod: any = await import('../../src/app/api/inngest/route');
   assert.equal(typeof mod.GET, 'function');
   assert.equal(typeof mod.PUT, 'function');
-  assert.ok(errors.some((e) => /unknown function ids/.test(e)));
+  assert.ok(
+    errors.some((e) => /typo-fn-id/.test(e) && /ignored on the web path/.test(e) && /Inngest keeps serving it/.test(e)),
+    `expected a per-id log naming the typo, got: ${errors.join(' | ')}`
+  );
 });
 
 test('H1: the worker-side validation is still fail-closed for the same input', async () => {
@@ -69,4 +72,26 @@ test('H1: the worker-side validation is still fail-closed for the same input', a
   const fns = await loadRegistry();
   assert.throws(() => nativeFunctionIdsStrict(), /explicit function ids/);
   assert.throws(() => assertOwnable(fns, new Set(['cleanup-stale-pending-audits', 'typo-fn-id'])), /unknown function id/);
+});
+
+test('F1: the ownership endpoint reports exactly the ownership the router uses', async () => {
+  process.env.JOBS_GUARD_TOKEN = 'smoke-test-token';
+  const { GET } = await import('../../src/app/api/inngest/ownership/route');
+  const { getRouter } = await import('../../src/services/jobs/dispatch');
+
+  const unauth = await GET(new Request('http://localhost/api/inngest/ownership', { headers: { authorization: 'Bearer wrong' } }) as any);
+  assert.equal(unauth.status, 401);
+
+  const res = await GET(new Request('http://localhost/api/inngest/ownership', { headers: { authorization: 'Bearer smoke-test-token' } }) as any);
+  assert.equal(res.status, 200);
+  const body: any = await res.json();
+  const router = await getRouter();
+
+  assert.deepEqual(body.native, [...router.owned].sort());
+  assert.deepEqual(body.native, ['cleanup-stale-pending-audits']);
+  assert.ok(body.rejected.includes('typo-fn-id'));
+  assert.ok(!body.served.includes('cleanup-stale-pending-audits'), 'owned function is released to the worker');
+  assert.ok(body.served.includes('process-whatsapp-message'), 'every other function stays with Inngest');
+  // every known function is served by Inngest or owned natively; the flag-gated scheduler is the one exception
+  assert.equal(body.served.length + body.native.length + (process.env.LEAD_ENGINE_V2 === 'true' ? 0 : 1), body.known.length);
 });

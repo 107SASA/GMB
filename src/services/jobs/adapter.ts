@@ -97,6 +97,50 @@ export function resolveWebOwnership(
   return { owned, rejected };
 }
 
+/**
+ * The single rule for what the WEB app serves to Inngest. `/api/inngest` (deregistration),
+ * `/api/inngest/ownership` (what the worker guard sees) and `dispatch.getRouter` (event
+ * routing) all go through `resolveWebOwnership`, so the three can never disagree.
+ *
+ * A function is removed from the Inngest-served list ONLY when it is natively owned
+ * under the same rules the router uses: known id AND no unsupported options. Anything
+ * else (typo, `*`, unsupported option, or a function the adapter cannot even inspect)
+ * stays with Inngest, because a function with no valid executor must never be
+ * deregistered. Never throws.
+ */
+export function selectServedFunctions<T>(
+  all: T[],
+  requested: Set<string>
+): { served: T[]; owned: Set<string>; rejected: Array<{ id: string; reason: string }> } {
+  const views: Array<NativeFunction | null> = all.map((f) => {
+    try {
+      return isInngestFunction(f) ? toNativeFunction(f) : null;
+    } catch {
+      return null; // cannot be inspected => cannot be owned natively
+    }
+  });
+  const { owned, rejected } = resolveWebOwnership(
+    views.filter((v): v is NativeFunction => v !== null),
+    requested
+  );
+  const served = all.filter((_, i) => !(views[i] && owned.has(views[i]!.id)));
+  return { served, owned, rejected };
+}
+
+/** Payload for GET /api/inngest/ownership, built with the same rules (see selectServedFunctions). */
+export function buildOwnershipPayload(
+  registry: Array<Pick<NativeFunction, 'id' | 'unsupported'>>,
+  requested: Set<string>,
+  opts: { leadEngineV2: boolean }
+): { version: 1; known: string[]; served: string[]; native: string[]; rejected: string[] } {
+  const known = registry.map((f) => f.id);
+  const { owned, rejected } = resolveWebOwnership(registry, requested);
+  const served = known.filter(
+    (id) => !owned.has(id) && (opts.leadEngineV2 || id !== 'proactive-nba-scheduler')
+  );
+  return { version: 1, known, served, native: known.filter((id) => owned.has(id)), rejected: rejected.map((r) => r.id) };
+}
+
 /** Throws if any natively-owned function uses an option the native queue cannot honour. */
 export function assertOwnable(functions: NativeFunction[], owned: Set<string>): void {
   const known = new Set(functions.map((f) => f.id));

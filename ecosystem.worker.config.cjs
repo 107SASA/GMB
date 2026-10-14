@@ -17,14 +17,17 @@ module.exports = {
   apps: [
     {
       name: 'growwmatics-worker',
-      script: './node_modules/tsx/dist/cli.mjs',
-      args: 'scripts/job-worker.ts',
+      // ONE process: Node runs the worker itself with the tsx loader registered via --import
+      // (see scripts/job-worker.launch.mjs). The old `tsx cli.mjs` launch spawned the worker as a
+      // child, so the heap flag and max_memory_restart applied to the launcher, not the worker.
+      script: './scripts/job-worker.launch.mjs',
       cwd: __dirname,
       // Sized for the CURRENT 1 vCPU / 1.9 GiB droplet, WAVES 0-1 ONLY (cleanup crons, GBP sync):
-      // one forked process, concurrency 1, ~384 MB heap, restart at 450 MB. NOT sufficient for the
+      // one process, concurrency 1, 384 MB heap cap, restart at 450 MB. NOT sufficient for the
       // Chromium PDF (report-card-deliver) or AI-heavy waves: re-size (2 vCPU / 4 GB, and raise
-      // these) before enabling those. Measure real RSS in the first hour (docs/worker-operations.md).
-      node_args: '--max-old-space-size=384 --dns-result-order=ipv4first',
+      // these) before enabling those. Verify with GET 127.0.0.1:3911/healthz -> memory.heapLimitMb
+      // and `pm2 describe growwmatics-worker` / `ps` (docs/worker-operations.md).
+      node_args: '--import tsx --max-old-space-size=384 --dns-result-order=ipv4first',
       max_memory_restart: '450M',
       instances: 1, // exactly one: per-function in-process caps assume a single worker
       exec_mode: 'fork',

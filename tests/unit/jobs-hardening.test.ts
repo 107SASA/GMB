@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveWebOwnership } from '../../src/services/jobs/adapter.ts';
+import { buildOwnershipPayload, resolveWebOwnership, selectServedFunctions, toNativeFunction } from '../../src/services/jobs/adapter.ts';
 import { nativeFunctionIds, nativeFunctionIdsStrict, partitionOwnership } from '../../src/services/jobs/config.ts';
 import { pauseAckStatus } from '../../src/services/jobs/pauseWait.ts';
 import { confirmDatabase, evaluateAdminTarget, parseMongoTarget } from '../../src/services/jobs/adminTarget.ts';
@@ -262,4 +262,74 @@ test('M5: test DB resolver fails closed (explicit, loopback, never prod, no MONG
     /db\.example\.net.*\/d$/
   );
   assert.deepEqual(parseHosts('mongodb://u:p@a:1,b:2/db'), ['a', 'b']);
+});
+
+
+// ------------------------------------------------- F1: one ownership rule everywhere --
+
+const fakeFn = (id: string, extra: Record<string, unknown> = {}) => ({
+  opts: { id, triggers: [{ event: `ev/${id}` }], ...extra },
+  fn: async () => undefined,
+});
+
+test('F1: an owned function with an unsupported option stays served by Inngest (never deregistered)', () => {
+  const all = [fakeFn('ok-a'), fakeFn('ok-b'), fakeFn('throttled', { throttle: { limit: 1, period: '1m' } })];
+  assert.ok(toNativeFunction(all[2]).unsupported?.length, 'fixture must really be unsupported');
+
+  const sel = selectServedFunctions(all, new Set(['ok-a', 'throttled']));
+  assert.deepEqual([...sel.owned], ['ok-a']);
+  const servedIds = sel.served.map((f) => f.opts.id).sort();
+  assert.deepEqual(servedIds, ['ok-b', 'throttled']);
+  assert.ok(servedIds.includes('throttled'), 'the unsupported function must remain registered with Inngest');
+  assert.ok(!servedIds.includes('ok-a'), 'the valid owned function is released to the worker');
+  assert.deepEqual(sel.rejected.map((r) => r.id), ['throttled']);
+  assert.match(sel.rejected[0].reason, /unsupported/);
+});
+
+test('F1: typos, "*", and uninspectable entries never deregister anything and never throw', () => {
+  const all = [fakeFn('a'), { weird: true } as any, fakeFn('b')];
+  const sel = selectServedFunctions(all, new Set(['typo', '*', 'a']));
+  assert.deepEqual([...sel.owned], ['a']);
+  assert.equal(sel.served.length, 2);
+  assert.ok(sel.served.includes(all[1]), 'an entry the adapter cannot inspect is kept');
+  assert.deepEqual(sel.rejected.map((r) => r.id).sort(), ['*', 'typo']);
+  // only typos: nothing owned, everything served
+  const none = selectServedFunctions(all, new Set(['nope']));
+  assert.equal(none.owned.size, 0);
+  assert.equal(none.served.length, 3);
+  // nothing requested: identical list returned
+  assert.deepEqual(selectServedFunctions(all, new Set()).served, all);
+});
+
+test('F1: the route, the ownership endpoint and the router apply identical rules', () => {
+  const all = [fakeFn('a'), fakeFn('b'), fakeFn('c', { debounce: { period: '5s' } }), fakeFn('proactive-nba-scheduler')];
+  const requested = new Set(['a', 'c', 'ghost']);
+  const views = all.map((f) => toNativeFunction(f));
+
+  const fromRoute = selectServedFunctions(all, requested);
+  const fromRouter = resolveWebOwnership(views, requested); // what dispatch.getRouter calls
+  const payload = buildOwnershipPayload(views, requested, { leadEngineV2: true });
+
+  assert.deepEqual([...fromRoute.owned].sort(), [...fromRouter.owned].sort());
+  assert.deepEqual(payload.native.sort(), [...fromRouter.owned].sort());
+  assert.deepEqual(payload.rejected.sort(), ['c', 'ghost']);
+  // served by Inngest = everything not natively owned
+  assert.deepEqual(fromRoute.served.map((f) => f.opts.id).sort(), payload.served.sort());
+  assert.ok(payload.served.includes('c'), 'unsupported owned function is still served');
+  assert.ok(!payload.native.includes('c'));
+});
+
+test('F1: the ownership payload hides proactive-nba-scheduler unless LEAD_ENGINE_V2, like the route', () => {
+  const views = [{ id: 'a' }, { id: 'proactive-nba-scheduler' }];
+  assert.deepEqual(buildOwnershipPayload(views, new Set(), { leadEngineV2: false }).served, ['a']);
+  assert.deepEqual(buildOwnershipPayload(views, new Set(), { leadEngineV2: true }).served, ['a', 'proactive-nba-scheduler']);
+});
+
+test('F1: with an unsupported id requested, the worker guard stays BLOCKED (never verified)', async () => {
+  const { evaluateOwnership } = await import('../../src/services/jobs/ownershipGuard.ts');
+  const views = [{ id: 'a' }, { id: 'c', unsupported: ['opts.throttle'] }];
+  const payload = buildOwnershipPayload(views, new Set(['a', 'c']), { leadEngineV2: true });
+  const v = evaluateOwnership(payload, new Set(['a', 'c']));
+  assert.equal(v.ok, false, 'web did not release c, so the worker must not claim anything');
+  assert.deepEqual((v as any).conflicting, ['c']);
 });

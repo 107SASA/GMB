@@ -11,7 +11,12 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:integration": "node --experimental-strip-types --test tests/integration/**/*.test.ts"
+    "test:integration": "node --experimental-strip-types --test tests/integration/**/*.test.ts",
+    "test:jobs": "node --experimental-strip-types --test tests/unit/jobs-pure.test.ts",
+    "test:jobs:staging": "node --import tsx --test tests/staging/jobs-queue.staging.test.ts",
+    "jobs:worker": "tsx scripts/job-worker.ts",
+    "jobs:admin": "tsx scripts/jobs-admin.ts",
+    "jobs:inventory": "tsx scripts/jobs-inventory.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1095.0",
@@ -80,6 +85,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
+    "tsx": "^4.20.6",
     "typescript": "^5"
   }
 }

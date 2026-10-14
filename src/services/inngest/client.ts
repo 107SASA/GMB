@@ -94,8 +94,22 @@ type Events = {
   };
 };
 
-export const inngest = new Inngest({ 
-  id: "gmb-optimization-platform", 
+export const inngest = new Inngest({
+  id: "gmb-optimization-platform",
   eventKey: process.env.INNGEST_EVENT_KEY || "local",
-  schemas: { events: {} as Events } 
+  schemas: { events: {} as Events }
 });
+
+// Native-queue routing (src/services/jobs). Inert by default: unless
+// JOBS_NATIVE_ENABLED=true AND JOBS_NATIVE_FUNCTIONS names at least one
+// function, this calls the original `send` untouched — no behaviour change.
+// When active, events for natively-owned functions are enqueued in MongoDB
+// and only the remainder is forwarded to Inngest.
+const originalSend = inngest.send.bind(inngest);
+(inngest as any).send = async (payload: any, ...rest: any[]) => {
+  if (process.env.JOBS_NATIVE_ENABLED === "true" && (process.env.JOBS_NATIVE_FUNCTIONS || "").trim()) {
+    const { nativeRoutingActive, routeSend } = await import("@/services/jobs/dispatch");
+    if (nativeRoutingActive()) return routeSend(payload, (p) => (originalSend as any)(p, ...rest));
+  }
+  return (originalSend as any)(payload, ...rest);
+};

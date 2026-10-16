@@ -607,7 +607,7 @@ test('first full audit waits (bounded, DB-only) for the first snapshot, before t
 test('6-hourly runs reuse metrics/keywords for 20 h; connect and manual always refresh', () => {
   const fns = fs.readFileSync('src/services/inngest/functions.ts', 'utf8');
   assert.match(fns, /if \(reason === "scheduled" && tokenDoc\.lastSyncAt && now\.getTime\(\) - new Date\(tokenDoc\.lastSyncAt\)\.getTime\(\) < 20 \* 3_600_000\)/);
-  assert.match(fns, /concurrency: \[\{ limit: 10 \}, \{ key: "event\.data\.businessId", limit: 1 \}\]/);
+  assert.match(fns, /concurrency: \[\{ limit: 5 \}, \{ key: "event\.data\.businessId", limit: 1 \}\]/);
 });
 
 test('review identity: per-workspace unique index declared; providerReviewId is not globally unique', () => {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
+import { displayPersonName } from '@/lib/personName';
 import User from '@/models/User';
 import Business from '@/models/Business';
 import Subscription from '@/models/Subscription';
@@ -82,7 +83,7 @@ export async function GET(req: NextRequest) {
 
       return {
         _id:              uid,
-        fullName:         u.fullName,
+        fullName:         displayPersonName(u.fullName, biz?.name, u.phone),
         email:            u.email,
         phone:            u.phone,
         createdAt:        u.createdAt,

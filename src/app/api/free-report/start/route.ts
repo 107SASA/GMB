@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Audit from '@/models/Audit';
 import { provisionShadowAccount, CLAIMED_OR_PAID_REUSE_ERROR } from '@/lib/shadowAccount';
+import { usablePersonName } from '@/lib/personName';
 import { createPendingAuditAndDispatch } from '@/lib/startAudit';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { getClientIp } from '@/lib/rateLimit';
@@ -111,7 +112,7 @@ export async function POST(req: Request) {
     // apply FREE_REPORT_SUBMITTED, then attach auditId when the audit is known.
     // WhatsApp nurture still waits on the post-audit sales drip + flags.
     const leadResult = await fileFreeReportPlatformLead({
-      name: user.fullName || businessName,
+      name: usablePersonName(user.fullName) || businessName,
       phone: normalizedPhone,
       businessName,
     }).catch((err) => {

@@ -259,7 +259,9 @@ function BookDemoForm() {
                 <div className="space-y-5">
                   <div>
                     <label className="mkt-label block text-[#101613] mb-2">Business Details *</label>
-                    <BusinessAutocomplete selected={business} onSelect={setBusiness} onClear={() => setBusiness(null)} />
+                    <div className="[&_button[aria-label='Change_business']]:min-h-11 [&_button[aria-label='Change_business']]:min-w-11">
+                      <BusinessAutocomplete selected={business} onSelect={setBusiness} onClear={() => setBusiness(null)} />
+                    </div>
                   </div>
 
                   <div>
@@ -376,7 +378,7 @@ function BookDemoForm() {
         </div>
       </section>
 
-      <Footer />
+      <Footer hideBoosterPromo />
     </main>
   );
 }

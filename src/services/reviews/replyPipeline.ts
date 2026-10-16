@@ -11,8 +11,9 @@ import { validateReply, type ReplyEvidence, type ReplyValidation } from './valid
  *   re-check of the exact text → publish to Google → POSTED only when Google
  *   confirms (blocked when live writes are off, FAILED with Google's error).
  *
- * Auto-publish is OFF unless the owner turned it on under this flow
- * (reviewReplySettings.mode 'auto' + autoPublishConsentAt). Nothing that fails
+ * Auto-publish runs only with reviewReplySettings.mode 'auto' +
+ * autoPublishConsentAt — set for new businesses by default
+ * (newBusinessReviewReplySettings), or by the owner turning it on. Nothing that fails
  * the check is ever published — not by auto-reply, not by the Post button.
  */
 
@@ -25,6 +26,26 @@ export interface ReplyDeps {
 
 export function isAutoPublishActive(settings?: { mode?: string; autoPublishConsentAt?: Date | string | null } | null): boolean {
   return settings?.mode === 'auto' && !!settings?.autoPublishConsentAt;
+}
+
+/** autoPublishConsentBy for auto-reply that came from the new-business default,
+ *  not from an owner switching it on — keeps the two distinguishable. */
+export const DEFAULT_AUTO_REPLY_CONSENT_BY = 'default:new-business';
+
+/**
+ * Reply settings for a business at creation: auto-reply ON by default (product
+ * decision, Oct 2026). Only fact-checked replies auto-publish; failed drafts
+ * still wait for the owner, and the owner can switch to manual in Review
+ * Management. Applied at each Business.create() rather than as a schema
+ * default, so existing businesses (loaded without these fields) never flip.
+ */
+export function newBusinessReviewReplySettings() {
+  return {
+    mode: 'auto' as const,
+    tone: 'Professional',
+    autoPublishConsentAt: new Date(),
+    autoPublishConsentBy: DEFAULT_AUTO_REPLY_CONSENT_BY,
+  };
 }
 
 const split = (s?: string) => String(s || '').split(/[,;\n]+/).map((x) => x.trim()).filter((x) => x.length >= 3);

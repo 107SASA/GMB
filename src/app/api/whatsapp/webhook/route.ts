@@ -623,9 +623,10 @@ async function startReportFromFacts(
 ): Promise<void> {
   const { beginFreeReport } = await import('@/services/leads/beginFreeReport');
   const { REPORT_PROCESSING_MESSAGE } = await import('@/services/whatsapp/prospectChoice');
+  const { usablePersonName } = await import('@/lib/personName');
   const started = await beginFreeReport({
     phone,
-    name: facts.name || profileName || facts.businessName,
+    name: usablePersonName(facts.name) || usablePersonName(profileName) || '',
     businessName: facts.businessName,
     location: facts.location,
   });
@@ -658,8 +659,9 @@ async function continueReportIntake(activeReport: any, phone: string, profileNam
   }
   activeReport.intakePhase = null;
   await activeReport.save();
+  const { usablePersonName } = await import('@/lib/personName');
   await startReportFromFacts(phone, profileName, {
-    name: activeReport.leadName || profileName || '',
+    name: usablePersonName(activeReport.leadName) || usablePersonName(profileName) || '',
     businessName: next.businessName,
     location: next.location,
   });
@@ -1009,6 +1011,16 @@ export async function handleTwilioWebhook(req: Request) {
         body: body || '',
         messageSid: messageSid || '',
       });
+      // A message on our own line with a checked Twilio signature proves the
+      // sender owns this number (the free-trial rule needs a verified phone).
+      // After processing, so an account created by this very message counts.
+      // Never on the development skip, where nothing was checked.
+      if (verification.signatureChecked) {
+        const { markPhoneVerifiedBySender } = await import('@/services/auth/phoneVerification');
+        await markPhoneVerifiedBySender(phone).catch((err) =>
+          console.warn('[whatsapp/webhook] phone verification mark failed:', err?.message)
+        );
+      }
       // Shadow-mode only — see observeLeadOwnershipShadow's own doc comment.
       // Does not affect the routing/reply decision above.
       await observeLeadOwnershipShadow(phone);

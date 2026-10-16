@@ -136,28 +136,30 @@ export default function PublicReportPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="bg-surface-container-lowest border-b border-outline-variant px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <MaterialIcon name="bolt" size={16} className="text-on-primary" />
+      <div className="bg-surface-container-lowest border-b border-outline-variant">
+        <div className="max-w-4xl mx-auto px-4 py-3 sm:py-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
+              <MaterialIcon name="bolt" size={16} className="text-on-primary" />
+            </div>
+            <span className="font-heading font-bold text-on-surface whitespace-nowrap">GrowwMatics AI</span>
+            <span className="hidden sm:inline text-outline mx-2">·</span>
+            <span className="hidden sm:inline text-sm text-on-surface-variant truncate">Business Profile Audit Report</span>
           </div>
-          <span className="font-heading font-bold text-on-surface">GrowwMatics AI</span>
-          <span className="text-outline mx-2">·</span>
-          <span className="text-sm text-on-surface-variant">Business Profile Audit Report</span>
+          {expiresAt && (
+            <span className="text-xs text-outline flex items-center gap-1 shrink-0 whitespace-nowrap">
+              <MaterialIcon name="schedule" size={12} />
+              Expires {new Date(expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          )}
         </div>
-        {expiresAt && (
-          <span className="text-xs text-outline flex items-center gap-1">
-            <MaterialIcon name="schedule" size={12} />
-            Expires {new Date(expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-          </span>
-        )}
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
-        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-8">
+      <div className="max-w-4xl mx-auto px-4 py-6 sm:py-10 space-y-6 sm:space-y-8">
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5 sm:p-8">
           <div className="flex flex-col sm:flex-row sm:items-center gap-6">
-            <div className="flex-1">
-              <h1 className="font-heading text-3xl font-bold text-on-surface mb-1">{audit.businessName}</h1>
+            <div className="flex-1 min-w-0">
+              <h1 className="font-heading text-2xl sm:text-3xl font-bold text-on-surface mb-1 break-words">{audit.businessName}</h1>
               <div className="flex items-center gap-2 text-on-surface-variant text-sm mb-3">
                 <MaterialIcon name="location_on" size={16} />
                 <span>{audit.location}</span>
@@ -165,7 +167,7 @@ export default function PublicReportPage() {
               {audit.website && (
                 <div className="flex items-center gap-2 text-primary text-sm">
                   <MaterialIcon name="language" size={16} />
-                  <a href={audit.website} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                  <a href={audit.website} target="_blank" rel="noopener noreferrer" className="hover:underline min-w-0 [overflow-wrap:anywhere]">
                     {audit.website}
                   </a>
                 </div>
@@ -204,7 +206,7 @@ export default function PublicReportPage() {
         )}
 
         {reviews.reviewCount > 0 && (
-          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
             <SectionHeader title="Review Analytics" icon="star" />
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
               <div className="text-center">
@@ -281,7 +283,7 @@ export default function PublicReportPage() {
         {(strengths.length > 0 || weaknesses.length > 0) && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {strengths.length > 0 && (
-              <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+              <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
                 <SectionHeader title="Strengths" icon="check_circle" />
                 <ul className="space-y-3">
                   {strengths.map((s: any, i: number) => (
@@ -297,7 +299,7 @@ export default function PublicReportPage() {
               </div>
             )}
             {weaknesses.length > 0 && (
-              <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+              <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
                 <SectionHeader title="Areas to Improve" icon="warning" />
                 <ul className="space-y-3">
                   {weaknesses.map((w: any, i: number) => (
@@ -316,7 +318,7 @@ export default function PublicReportPage() {
         )}
 
         {plan30.length > 0 && (
-          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
             <SectionHeader title="30-Day Action Plan" icon="flag" />
             <div className="space-y-4">
               {plan30.map((week: any, idx: number) => (
@@ -347,7 +349,7 @@ export default function PublicReportPage() {
           </div>
         )}
 
-        <div className="bg-primary rounded-xl p-8 text-center text-on-primary">
+        <div className="bg-primary rounded-xl p-6 sm:p-8 text-center text-on-primary">
           <h2 className="font-heading text-2xl font-bold mb-2">Ready to boost your Google ranking?</h2>
           <p className="text-primary-fixed-dim text-sm mb-6">
             GrowwMatics AI automates review requests, replies, posts and supported profile updates — and re-measures your results every month.

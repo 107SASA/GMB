@@ -6,6 +6,7 @@ import Organization from '@/models/Organization';
 import User from '@/models/User';
 import { requireClient } from '@/lib/auth';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { newBusinessReviewReplySettings } from '@/services/reviews/replyPipeline';
 
 export async function POST(req: Request) {
   try {
@@ -63,6 +64,7 @@ export async function POST(req: Request) {
       coordinates:
         latitude && longitude ? { lat: latitude, lng: longitude } : undefined,
       googleConnected: false,
+      reviewReplySettings: newBusinessReviewReplySettings(),
       organizationId: newOrg._id,
       userId: auth.userId,
       onboardingCompleted: true,

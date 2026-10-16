@@ -29,6 +29,14 @@ export const subscriptionSchema = z.object({
     })
     .nullable()
     .catch(null),
+  /** 'offer' for an authorized free trial; older servers don't send it. */
+  trialSource: z.string().nullable().optional(),
+  /** Payment failure: paid modules stay open until this instant (grace). */
+  paymentGraceEndsAt: z.string().nullable().optional(),
+  /** Payment failure after grace: the modules locked (missing = every paid module). */
+  restrictedModules: z.array(z.string()).nullable().optional(),
+  /** Paid again but held locked until GrowwMatics releases it. */
+  accessHold: z.boolean().nullable().optional(),
   modules: z.record(z.string(), moduleStateSchema).nullable().optional(),
 });
 export type Subscription = z.infer<typeof subscriptionSchema>;

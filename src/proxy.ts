@@ -117,8 +117,8 @@ export default async function proxy(request: NextRequest) {
         .lean<{ role?: string; subscriptionPlan?: string; sessionEpoch?: number }>(),
       businessId
         ? Business.findById(businessId)
-            .select('subscriptionStatus freeAuditUsed intakeCompleted createdAt')
-            .lean<{ subscriptionStatus?: string; freeAuditUsed?: boolean; intakeCompleted?: boolean; createdAt?: Date }>()
+            .select('subscriptionStatus freeAuditUsed intakeCompleted createdAt trialEndsAt trialCancelledAt paymentGraceEndsAt paymentAccessHold')
+            .lean<{ subscriptionStatus?: string; freeAuditUsed?: boolean; intakeCompleted?: boolean; createdAt?: Date; trialEndsAt?: Date; trialCancelledAt?: Date; paymentGraceEndsAt?: Date; paymentAccessHold?: boolean }>()
         : Promise.resolve(null),
     ]);
     if (!user) return NextResponse.next();
@@ -153,6 +153,10 @@ export default async function proxy(request: NextRequest) {
         subscriptionStatus: business.subscriptionStatus,
         userSubscriptionPlan: user.subscriptionPlan,
         businessCreatedAt: business.createdAt,
+        trialEndsAt: business.trialEndsAt,
+        trialCancelledAt: business.trialCancelledAt,
+        paymentGraceEndsAt: business.paymentGraceEndsAt,
+        paymentAccessHold: business.paymentAccessHold,
       })
     ) {
       // Shadow accounts (see src/lib/shadowAccount.ts) log back in via

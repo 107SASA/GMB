@@ -15,6 +15,13 @@ export interface ISubscription extends Document {
     isActive: boolean;
     endsAt?: Date;
   };
+  /** 'offer' only when a verified Razorpay trial authorization started the trial. */
+  trialSource?: 'offer';
+  /** Payment failure (billingStatus PastDue): frozen at Day 0 from the billing policy. */
+  paymentGraceEndsAt?: Date;
+  restrictedModules?: string[];
+  /** Paid again but held locked until a super admin releases it. */
+  accessHold?: boolean;
   modules: {
     [key in ModuleKey]?: {
       enabled: boolean;
@@ -50,11 +57,19 @@ const SubscriptionSchema: Schema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
     planType: { type: String, enum: ['Free', 'Pro', 'Enterprise'], default: 'Free' },
-    billingStatus: { type: String, enum: ['Active', 'PastDue', 'Canceled', 'Trialing'], default: 'Trialing' },
+    // Defaults describe a FREE user. The old defaults (Trialing + a 14-day
+    // trial) let any doc created by an upsert — e.g. opening checkout — unlock
+    // paid modules for 14 days without paying. A trial is now only ever set
+    // explicitly, from a verified Razorpay authorization (trialSource: 'offer').
+    billingStatus: { type: String, enum: ['Active', 'PastDue', 'Canceled', 'Trialing'], default: 'Active' },
     trialStatus: {
-      isActive: { type: Boolean, default: true },
-      endsAt: { type: Date, default: () => new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) } // 14 day trial
+      isActive: { type: Boolean, default: false },
+      endsAt: { type: Date },
     },
+    trialSource: { type: String, enum: ['offer'] },
+    paymentGraceEndsAt: { type: Date },
+    restrictedModules: { type: [String], default: undefined },
+    accessHold: { type: Boolean },
     modules: {
       google_ranking_agent: { enabled: { type: Boolean, default: true }, activatedAt: { type: Date, default: Date.now } },
       reputation_agent: { enabled: { type: Boolean, default: false }, activatedAt: { type: Date } },

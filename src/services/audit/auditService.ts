@@ -1569,7 +1569,7 @@ async function processAuditJobInner(auditId: string) {
     if (audit.status === 'COMPLETED') {
       try {
         await Business.updateOne(
-          { _id: audit.businessId, subscriptionStatus: { $ne: 'active' } },
+          { _id: audit.businessId, subscriptionStatus: { $nin: ['active', 'trial_active'] } },
           { $set: { freeAuditUsed: true } }
         );
         // Admin sales pipeline: this workspace just experienced the product

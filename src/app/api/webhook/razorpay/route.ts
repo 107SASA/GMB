@@ -1,25 +1,15 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import dbConnect from '@/lib/mongodb';
-import Subscription from '@/models/Subscription';
-import Business from '@/models/Business';
 import ProcessedWebhookEvent from '@/models/ProcessedWebhookEvent';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
-import {
-  activatePlan,
-  cancelPlan,
-  markPastDue,
-  activateBusinessPlan,
-  cancelBusinessPlan,
-  markBusinessPastDue,
-} from '@/lib/billing/applyEntitlements';
-import { isPaidPlanType } from '@/lib/billing/planCatalog';
+import { applyRazorpayEvent } from '@/services/billing/billingEvents';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Razorpay webhook — the ONLY place entitlements change in response to
- * payments. Requirements honored here:
+ * Razorpay webhook — entitlements change here (and in the self-heal, through
+ * the same services/billing/billingEvents.ts rules). Requirements honored here:
  *  - HMAC-SHA256 signature verification against RAZORPAY_WEBHOOK_SECRET
  *    before the payload is trusted (403 otherwise; mirrors the Twilio
  *    pattern in lib/twilioSignature.ts, including the dev-mode skip).
@@ -63,33 +53,20 @@ function verifySignature(rawBody: string, signature: string | null):
   return { ok: true };
 }
 
-/** Razorpay subscription entity → the GrowwMatics AI user it belongs to. */
-async function resolveUserId(subEntity: any): Promise<string | null> {
-  const fromNotes = subEntity?.notes?.userId;
-  if (typeof fromNotes === 'string' && fromNotes) return fromNotes;
-
-  if (subEntity?.id) {
-    const doc = await Subscription.findOne({ razorpaySubscriptionId: subEntity.id })
-      .select('userId')
-      .lean() as any;
-    if (doc?.userId) return doc.userId.toString();
-  }
-  return null;
-}
-
-/** Razorpay subscription entity → the workspace (Business) it belongs to. */
-async function resolveBusinessId(subEntity: any): Promise<string | null> {
-  const fromNotes = subEntity?.notes?.businessId;
-  if (typeof fromNotes === 'string' && fromNotes) return fromNotes;
-
-  if (subEntity?.id) {
-    const doc = await Business.findOne({ razorpaySubscriptionId: subEntity.id })
-      .select('_id')
-      .lean() as any;
-    if (doc?._id) return doc._id.toString();
-  }
-  return null;
-}
+// Razorpay subscription events this app acts on (confirmed against
+// razorpay.com/docs/webhooks/subscriptions). The Razorpay dashboard webhook
+// must be subscribed to each of these. Anything else is acknowledged and ignored.
+const HANDLED_EVENTS = new Set([
+  'subscription.authenticated',
+  'subscription.activated',
+  'subscription.charged',
+  'subscription.pending',
+  'subscription.halted',
+  'subscription.cancelled',
+  'subscription.completed',
+  'subscription.expired',
+  'payment.failed',
+]);
 
 export async function POST(request: Request) {
   try {
@@ -126,105 +103,21 @@ export async function POST(request: Request) {
       const subEntity = event?.payload?.subscription?.entity;
       const paymentEntity = event?.payload?.payment?.entity;
 
-      switch (eventType) {
-      case 'subscription.activated':
-      case 'subscription.charged': {
-        const userId = await resolveUserId(subEntity);
-        // planType comes from the notes we set at checkout ('Pro', or
-        // 'Enterprise' on legacy subscriptions) — validated, never trusted
-        // blindly. Either way there is only one paid plan to activate.
-        if (!userId || !isPaidPlanType(subEntity?.notes?.planType)) {
-          console.error(`[billing] ${eventType}: cannot resolve user/plan`, subEntity?.id);
-          break;
-        }
-        const currentPeriodEnd =
-          typeof subEntity.current_end === 'number'
-            ? new Date(subEntity.current_end * 1000)
-            : undefined;
-        await activatePlan(userId, {
-          razorpaySubscriptionId: subEntity.id,
-          currentPeriodEnd,
+      if (HANDLED_EVENTS.has(eventType)) {
+        // One set of rules for every event — see lib/billing/subscriptionMachine.ts.
+        // Razorpay's event created_at orders out-of-order deliveries.
+        const eventAt =
+          typeof event?.created_at === 'number' ? new Date(event.created_at * 1000) : new Date();
+        await applyRazorpayEvent({
+          type: eventType,
+          eventAt,
+          subEntity,
+          paymentEntity,
+          source: 'webhook',
+          razorpayEventId: request.headers.get('x-razorpay-event-id') ?? undefined,
         });
-        // Per-workspace: unlock THIS workspace's dashboard.
-        const businessId = await resolveBusinessId(subEntity);
-        if (businessId) {
-          await activateBusinessPlan(businessId, {
-            currentPeriodEnd,
-            eventType: eventType as 'subscription.activated' | 'subscription.charged',
-          });
-        } else {
-          console.warn(`[billing] ${eventType}: cannot resolve workspace for ${subEntity?.id}`);
-        }
-
-        // "Payment received + download the app" WhatsApp message — sent to
-        // EVERY paying customer (not gated on a CRM lead like the sequence
-        // below), once, guarded by Subscription.paymentReceivedMessageSentAt.
-        // Runs after the entitlement flip and swallows its own errors.
-        const { sendPaymentReceivedMessage } = await import('@/services/billing/paymentReceivedNotice');
-        await sendPaymentReceivedMessage(userId, businessId);
-
-        // Phase 7 — runs strictly AFTER the in-app entitlement flip above,
-        // never before or instead of it, and never affects it either way
-        // (this function catches and swallows its own failures). See
-        // customerActivation.ts's own doc comment for the full idempotent
-        // sequence.
-        const { runCustomerActivationSequence } = await import('@/services/billing/customerActivation');
-        await runCustomerActivationSequence(userId, businessId, {
-          paymentId: paymentEntity?.id,
-          amount: typeof paymentEntity?.amount === 'number' ? paymentEntity.amount : undefined,
-          currency: paymentEntity?.currency,
-        });
-        break;
       }
-
-      case 'payment.failed':
-      case 'subscription.halted': {
-        const notesFallback = { notes: paymentEntity?.notes };
-        const userId = await resolveUserId(subEntity ?? notesFallback);
-        if (userId) await markPastDue(userId);
-        else console.warn(`[billing] ${eventType}: cannot resolve user — ignoring`);
-        const businessId = await resolveBusinessId(subEntity ?? notesFallback);
-        if (businessId) await markBusinessPastDue(businessId);
-        // Platform Lead: CONVERSION_PENDING on failure — never CUSTOMER.
-        // Does not clear intelligence fields.
-        if (userId || businessId) {
-          try {
-            const { resolveLeadForPayment } = await import('@/services/billing/customerActivation');
-            const { stageOnPaymentFailure } = await import('@/services/billing/paymentLeadStages');
-            const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
-            const lead = await resolveLeadForPayment(userId || '', businessId || null);
-            const nextStage = stageOnPaymentFailure(lead?.currentStage);
-            if (lead && nextStage) {
-              await setLeadOwnership(
-                lead._id,
-                (lead.currentAgent as any) || 'SALES',
-                `razorpay:${eventType}`,
-                'system',
-                nextStage
-              );
-            }
-          } catch (err: any) {
-            console.warn(`[billing] ${eventType}: platform lead stage update failed:`, err?.message);
-          }
-        }
-        break;
-      }
-
-      case 'subscription.cancelled':
-      case 'subscription.completed':
-      case 'subscription.expired': {
-        const userId = await resolveUserId(subEntity);
-        if (userId) await cancelPlan(userId);
-        else console.warn(`[billing] ${eventType}: cannot resolve user — ignoring`);
-        const businessId = await resolveBusinessId(subEntity);
-        if (businessId) await cancelBusinessPlan(businessId);
-        break;
-      }
-
-      default:
-        // Unhandled event types are acknowledged so Razorpay stops retrying.
-        break;
-      }
+      // Unhandled event types are acknowledged so Razorpay stops retrying.
     } catch (applyErr: any) {
       // Release the idempotency claim so Razorpay's retry actually re-runs the
       // handler instead of hitting the 11000 skip above. Best-effort — if the

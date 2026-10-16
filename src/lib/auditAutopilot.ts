@@ -7,6 +7,7 @@ import { createPendingAuditAndDispatch } from '@/lib/startAudit';
 import { incrementUsage } from '@/lib/featureGating';
 import { notifyBusinessUsers } from '@/services/notifications';
 import { notifyOwner } from '@/services/ownerNotify';
+import { workspaceHasPlanAccess, PLAN_ACCESS_FIELDS } from '@/lib/billing/entitlements';
 
 /** Exact-one-month cadence, matching the old seoPlanMonthlyReaudit cutoff. */
 export const AUDIT_AUTOPILOT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -54,13 +55,17 @@ export async function maybeStartAuditAutopilot(businessId: string): Promise<void
     await dbConnect();
     const business = await Business.findById(businessId)
       .select(
-        'name subscriptionStatus googleConnected category userDefinedCategory ' +
+        `name ${PLAN_ACCESS_FIELDS} googleConnected category userDefinedCategory ` +
           'auditAutopilotNextRunAt auditAutopilotCategoryNudgedAt organizationId userId phone'
       )
       .lean<{
         _id: any;
         name?: string;
         subscriptionStatus?: string;
+        trialEndsAt?: Date;
+        trialCancelledAt?: Date;
+        paymentGraceEndsAt?: Date;
+        paymentAccessHold?: boolean;
         googleConnected?: boolean;
         category?: string;
         userDefinedCategory?: string;
@@ -73,7 +78,8 @@ export async function maybeStartAuditAutopilot(businessId: string): Promise<void
 
     if (!business) return;
     if (business.auditAutopilotNextRunAt) return; // already anchored — never re-trigger
-    if (business.subscriptionStatus !== 'active' || !business.googleConnected) return; // not qualified yet
+    // Paid, or an authorized free trial (same plan) — see lib/billing/entitlements.ts.
+    if (!workspaceHasPlanAccess(business) || !business.googleConnected) return; // not qualified yet
 
     if (!hasRealAuditCategory(business)) {
       await nudgeForCategory(business);

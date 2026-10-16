@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { ReportGeneratingAnimation } from '@/components/graphics/ReportGeneratingAnimation';
@@ -97,6 +98,7 @@ function FreeReportResultContent() {
           <MaterialIcon name="cancel" size={56} className="text-error mx-auto mb-4" />
           <h1 className="font-heading text-xl font-bold text-on-surface mb-2">Report unavailable</h1>
           <p className="text-on-surface-variant text-sm">{error}</p>
+          <BackToFormLink />
         </div>
       </div>
     );
@@ -117,6 +119,7 @@ function FreeReportResultContent() {
           <MaterialIcon name="cancel" size={56} className="text-error mx-auto mb-4" />
           <h1 className="font-heading text-xl font-bold text-on-surface mb-2">We couldn't generate this report</h1>
           <p className="text-on-surface-variant text-sm">Please try again from the form.</p>
+          <BackToFormLink />
         </div>
       </div>
     );
@@ -129,5 +132,17 @@ function FreeReportResultContent() {
       audit={audit!}
       pricing={{ heroPrice, heroCycleLabel, heroDailyRate, cycle: heroDuration?.cycle }}
     />
+  );
+}
+
+/** Error screens used to be dead ends — this is the one way back to the form. */
+function BackToFormLink() {
+  return (
+    <Link
+      href="/free-report"
+      className="mt-6 inline-flex items-center justify-center min-h-12 px-6 rounded-lg bg-primary text-on-primary font-bold hover:bg-primary-container transition-colors"
+    >
+      Back to the free report form
+    </Link>
   );
 }

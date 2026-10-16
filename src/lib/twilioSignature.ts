@@ -5,7 +5,11 @@ export async function validateTwilioSignature(
   req: Request,
   formData: FormData,
   authToken?: string
-): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
+): Promise<
+  // signatureChecked is false only on the development skip below — callers
+  // that treat the sender as proven (phone verification) must require true.
+  { ok: true; signatureChecked: boolean } | { ok: false; response: NextResponse }
+> {
   const token = authToken || process.env.TWILIO_AUTH_TOKEN;
 
   if (!token) {
@@ -16,7 +20,7 @@ export async function validateTwilioSignature(
       };
     }
     console.warn('[twilio] TWILIO_AUTH_TOKEN not set — skipping signature validation in development');
-    return { ok: true };
+    return { ok: true, signatureChecked: false };
   }
 
   const signature = req.headers.get('x-twilio-signature');
@@ -54,5 +58,5 @@ export async function validateTwilioSignature(
     };
   }
 
-  return { ok: true };
+  return { ok: true, signatureChecked: true };
 }

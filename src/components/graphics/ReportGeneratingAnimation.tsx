@@ -36,7 +36,7 @@ export function ReportGeneratingAnimation() {
         {/* Self-drawing growth ring — a circular progress-feeling motif that
             never "completes," matching the honest indeterminate nature of
             the wait instead of faking a percentage we don't have. */}
-        <div className="relative w-40 h-40 mb-10">
+        <div className="relative w-32 h-32 sm:w-40 sm:h-40 mb-8 sm:mb-10">
           <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
             <circle cx="50" cy="50" r="42" fill="none" stroke="var(--color-surface-container)" strokeWidth="6" />
             <motion.circle
@@ -67,7 +67,7 @@ export function ReportGeneratingAnimation() {
           Generating your report…
         </h1>
 
-        <div className="h-6 mb-8">
+        <div className="min-h-6 mb-8">
           <AnimatePresence mode="wait">
             <motion.p
               key={messageIndex}

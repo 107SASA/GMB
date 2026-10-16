@@ -66,6 +66,10 @@ export async function POST(req: Request) {
       subscriptionStatus: business.subscriptionStatus,
       userSubscriptionPlan: (authResult.user as any).subscriptionPlan,
       businessCreatedAt: business.createdAt,
+      trialEndsAt: business.trialEndsAt,
+      trialCancelledAt: business.trialCancelledAt,
+      paymentGraceEndsAt: business.paymentGraceEndsAt,
+      paymentAccessHold: business.paymentAccessHold,
     });
 
     // Manual audits were removed (Sep 2026) — a subscribed workspace's audits

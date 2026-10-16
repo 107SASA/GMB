@@ -9,10 +9,11 @@ import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import { isAutoPublishActive } from '@/services/reviews/replyPipeline';
 
 /**
- * Review Management's reply-mode toggle. 'manual' (DEFAULT): every reply is a
- * fact-checked draft the owner approves before it is posted. 'auto': drafts
- * that pass the fact check are posted without waiting; drafts that fail wait
- * for the owner. Auto is active only when the owner switched it on here
+ * Review Management's reply-mode toggle. 'manual': every reply is a
+ * fact-checked draft the owner approves before it is posted. 'auto' (DEFAULT
+ * for businesses created since Oct 2026 — see newBusinessReviewReplySettings):
+ * drafts that pass the fact check are posted without waiting; drafts that fail
+ * wait for the owner. Auto is active only when the owner switched it on here
  * (autoPublishConsentAt recorded) — a legacy mode:'auto' saved before the
  * fact-checked flow existed is treated as manual until re-enabled.
  * See services/reviews/replyPipeline.ts.

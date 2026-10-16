@@ -104,7 +104,7 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
             <span className="text-sm font-bold text-on-surface">AI drafts, I approve</span>
           </div>
           <p className="text-xs text-on-surface-variant leading-snug">
-            The AI drafts a fact-checked reply for each new review. Nothing posts to Google until you approve it and hit Post. (Default)
+            The AI drafts a fact-checked reply for each new review. Nothing posts to Google until you approve it and hit Post.
           </p>
         </button>
 
@@ -121,7 +121,7 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
           </div>
           <p className="text-xs text-on-surface-variant leading-snug">
             Replies that pass the fact check are posted without waiting for you. Replies that fail it are kept as
-            drafts for your review. Turning this on also covers your existing unanswered reviews.
+            drafts for your review. Turning this on also covers your existing unanswered reviews. (Default)
           </p>
         </button>
       </div>

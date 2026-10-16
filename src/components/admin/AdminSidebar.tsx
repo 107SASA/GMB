@@ -41,6 +41,7 @@ const adminGroups = [
       { name: 'Customers', icon: 'group', href: '/admin/customers' },
       { name: 'Businesses', icon: 'storefront', href: '/admin/businesses' },
       { name: 'Subscriptions', icon: 'credit_card', href: '/admin/subscriptions' },
+      { name: 'Billing Controls', icon: 'admin_panel_settings', href: '/admin/billing' },
       { name: 'Revenue', icon: 'payments', href: '/admin/revenue' },
     ],
   },

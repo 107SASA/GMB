@@ -4,6 +4,7 @@ import Business from "@/models/Business";
 import Organization from "@/models/Organization";
 import { requireBusinessContext } from "@/lib/tenant";
 import { requireClient } from "@/lib/auth";
+import { newBusinessReviewReplySettings } from "@/services/reviews/replyPipeline";
 
 export async function GET(req: Request) {
   try {
@@ -43,6 +44,7 @@ export async function POST(req: Request) {
     delete body.userId;
 
     const business = await Business.create({
+      reviewReplySettings: newBusinessReviewReplySettings(),
       ...body,
       organizationId,
       userId: auth.userId,

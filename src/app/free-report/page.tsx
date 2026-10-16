@@ -128,9 +128,14 @@ export default function FreeReportPage() {
 
       <section className="relative pt-20 sm:pt-24 md:pt-28 pb-8 sm:pb-12 px-4 sm:px-6 md:px-12">
 
-        <div className="relative max-w-[720px] lg:max-w-[1100px] mx-auto grid lg:grid-cols-12 gap-6 lg:gap-10 items-start">
+        {/* Three grid items so phones get heading → form → sample preview
+            (the form is the CTA; it used to sit below the whole preview,
+            about a screen and a half down). From lg the explicit placement
+            restores the two-column layout: heading + preview on the left,
+            sticky form spanning both rows on the right. */}
+        <div className="relative max-w-[720px] lg:max-w-[1100px] mx-auto grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-[auto_1fr] gap-6 lg:gap-x-10 lg:gap-y-0 items-start">
           {/* Intro */}
-          <div className="lg:col-span-7 text-center lg:text-left">
+          <div className="lg:col-span-7 lg:row-start-1 text-center lg:text-left">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#006e2c]/35 bg-white/80 text-[#006e2c] text-xs sm:text-sm font-semibold mb-4">
               <MaterialIcon name="verified" size={16} className="text-[#006e2c]" />
               Built for local businesses across India
@@ -140,13 +145,15 @@ export default function FreeReportPage() {
               Grow your business from <GoogleWord /> with{' '}
               <span className="text-[#006e2c]">GrowwMatics AI</span>
             </h1>
-            <div className="mb-4 sm:mb-5">
-              <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-[#e8f8ee] text-[#006e2c] text-[0.7rem] sm:text-xs font-bold uppercase tracking-wide">
+            <div className="lg:mb-5">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-[#e8f8ee] text-[#006e2c] text-xs font-bold uppercase tracking-wide">
                 Free Rank Report
               </span>
             </div>
+          </div>
 
-            {/* Live preview of what the free report looks like */}
+          {/* Live preview of what the free report looks like */}
+          <div className="order-last lg:order-none lg:col-span-7 lg:row-start-2">
             <div className="mkt-ink-panel rounded-xl border border-(--mkt-ink-border) overflow-hidden max-w-md mx-auto lg:mx-0">
               <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-(--mkt-ink-border)">
                 <span className="mkt-label text-(--mkt-ink-text-dim)">Sample Report</span>
@@ -191,11 +198,11 @@ export default function FreeReportPage() {
           </div>
 
           {/* Form — sticky on desktop */}
-          <div className="lg:col-span-5 lg:sticky lg:top-24">
+          <div className="lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:row-span-2 lg:sticky lg:top-24">
           <div className="bg-[#eef9f2] sm:bg-white rounded-xl border border-[#c8ebd4] sm:border-(--mkt-line) shadow-md sm:shadow-lg p-4 sm:p-7 md:p-8">
             <div className="flex items-center gap-3 mb-5 sm:mb-7">
               <span className="flex-1 h-px bg-[#c8ebd4] sm:bg-(--mkt-line)" />
-              <h2 className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-[#3d4a3d] text-center px-1">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-[#3d4a3d] text-center px-1">
                 Get your free GBP report
               </h2>
               <span className="flex-1 h-px bg-[#c8ebd4] sm:bg-(--mkt-line)" />
@@ -209,12 +216,16 @@ export default function FreeReportPage() {
                   </span>
                   <label className="text-sm font-bold text-[#101613]">Find your business on Google</label>
                 </div>
-                <BusinessAutocomplete
-                  selected={selected}
-                  onSelect={setSelected}
-                  onClear={() => setSelected(null)}
-                  placeholder="Start typing your business name…"
-                />
+                {/* Shared with dashboard forms, so the bigger (44px) tap
+                    target for "Change business" is applied from here. */}
+                <div className="[&_button[aria-label='Change_business']]:min-h-11 [&_button[aria-label='Change_business']]:min-w-11">
+                  <BusinessAutocomplete
+                    selected={selected}
+                    onSelect={setSelected}
+                    onClear={() => setSelected(null)}
+                    placeholder="Start typing your business name…"
+                  />
+                </div>
                 <p className="text-xs text-[#3d4a3d] mt-2">
                   Type the name, then pick your business from the list.
                 </p>
@@ -287,7 +298,7 @@ export default function FreeReportPage() {
               {NICHES.map((niche) => (
                 <span
                   key={niche}
-                  className={`px-2.5 sm:px-4 py-1.5 rounded-full text-[11px] sm:text-sm font-medium ${
+                  className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium ${
                     niche === 'And many more'
                       ? 'bg-[#f0f2f1] text-[#3d4a3d]'
                       : 'bg-[#e8f8ee] text-[#006e2c]'
@@ -301,7 +312,7 @@ export default function FreeReportPage() {
         </div>
       </section>
 
-      <Footer />
+      <Footer hideBoosterPromo />
     </main>
   );
 }

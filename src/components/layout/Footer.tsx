@@ -5,7 +5,15 @@ import { SERVICES } from "@/lib/servicesData";
 import { GbpBoosterPromo } from "@/components/sections/GbpBoosterPromo";
 import { BookDemoButton } from "@/components/shared/BookDemoButton";
 
-export function Footer() {
+// Touch widths (phones + tablets): each link is a 40px-tall tap row in place of
+// the old list gap, which left ~17–20px targets. lg+: inline links, spacing as before.
+const FOOTER_LINK = "inline-flex items-center min-h-10 lg:min-h-0 hover:text-primary transition-colors";
+
+/**
+ * `hideBoosterPromo`: form pages (free report, book demo) opt out of the floating
+ * booster pill — on small phones it sat on top of the form fields and Submit.
+ */
+export function Footer({ hideBoosterPromo = false }: { hideBoosterPromo?: boolean } = {}) {
   return (
     <footer className="theme-marketing py-10 sm:py-12 md:py-16 px-4 sm:px-6 border-t border-(--mkt-line) bg-white">
       <div className="max-w-container-max mx-auto grid grid-cols-2 sm:grid-cols-2 md:grid-cols-5 gap-8 sm:gap-10 md:gap-12">
@@ -28,10 +36,10 @@ export function Footer() {
 
         <div>
           <h4 className="mkt-label text-[#6b756f] mb-4 sm:mb-6">OnDemand Service</h4>
-          <ul className="space-y-3 sm:space-y-4 text-sm text-on-surface-variant">
+          <ul className="lg:space-y-4 text-sm text-on-surface-variant">
             {SERVICES.map((service) => (
               <li key={service.slug}>
-                <Link href={`/services/${service.slug}`} className="hover:text-primary transition-colors">
+                <Link href={`/services/${service.slug}`} className={FOOTER_LINK}>
                   {service.name}
                 </Link>
               </li>
@@ -41,29 +49,29 @@ export function Footer() {
 
         <div>
           <h4 className="mkt-label text-[#6b756f] mb-4 sm:mb-6">Product</h4>
-          <ul className="space-y-3 sm:space-y-4 text-sm text-on-surface-variant">
+          <ul className="lg:space-y-4 text-sm text-on-surface-variant">
             <li>
-              <Link href="/features" className="hover:text-primary transition-colors">
+              <Link href="/features" className={FOOTER_LINK}>
                 Features
               </Link>
             </li>
             <li>
-              <Link href="/gbp-booster" className="hover:text-primary transition-colors">
+              <Link href="/gbp-booster" className={FOOTER_LINK}>
                 GBP Booster
               </Link>
             </li>
             <li>
-              <Link href="/about" className="hover:text-primary transition-colors">
+              <Link href="/about" className={FOOTER_LINK}>
                 About Us
               </Link>
             </li>
             <li>
-              <Link href="/pricing" className="hover:text-primary transition-colors">
+              <Link href="/pricing" className={FOOTER_LINK}>
                 Pricing
               </Link>
             </li>
             <li>
-              <Link href="/faq" className="hover:text-primary transition-colors">
+              <Link href="/faq" className={FOOTER_LINK}>
                 FAQ
               </Link>
             </li>
@@ -71,7 +79,7 @@ export function Footer() {
               <a
                 href={boostProfileLink()}
                 {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                className="hover:text-primary transition-colors"
+                className={FOOTER_LINK}
               >
                 Get Report on WhatsApp
               </a>
@@ -81,17 +89,17 @@ export function Footer() {
 
         <div>
           <h4 className="mkt-label text-[#6b756f] mb-4 sm:mb-6">Get Started</h4>
-          <ul className="space-y-3 sm:space-y-4 text-sm text-on-surface-variant">
+          <ul className="lg:space-y-4 text-sm text-on-surface-variant">
             <li>
-              <Link href="/free-report" className="hover:text-primary transition-colors">
+              <Link href="/free-report" className={FOOTER_LINK}>
                 Get Free Report
               </Link>
             </li>
             <li>
-              <BookDemoButton origin="footer" showIcon={false} className="hover:text-primary transition-colors" />
+              <BookDemoButton origin="footer" showIcon={false} className={FOOTER_LINK} />
             </li>
             <li>
-              <Link href="/contact" className="hover:text-primary transition-colors">
+              <Link href="/contact" className={FOOTER_LINK}>
                 Contact Us
               </Link>
             </li>
@@ -100,29 +108,29 @@ export function Footer() {
 
         <div>
           <h4 className="mkt-label text-[#6b756f] mb-4 sm:mb-6">Legal</h4>
-          <ul className="space-y-3 sm:space-y-4 text-sm text-on-surface-variant">
+          <ul className="lg:space-y-4 text-sm text-on-surface-variant">
             <li>
-              <Link href="/privacy" className="hover:text-primary transition-colors">
+              <Link href="/privacy" className={FOOTER_LINK}>
                 Privacy Policy
               </Link>
             </li>
             <li>
-              <Link href="/terms" className="hover:text-primary transition-colors">
+              <Link href="/terms" className={FOOTER_LINK}>
                 Terms &amp; Conditions
               </Link>
             </li>
             <li>
-              <Link href="/refund" className="hover:text-primary transition-colors">
+              <Link href="/refund" className={FOOTER_LINK}>
                 Refund &amp; Cancellation
               </Link>
             </li>
             <li>
-              <Link href="/delete-account" className="hover:text-primary transition-colors">
+              <Link href="/delete-account" className={FOOTER_LINK}>
                 Delete Your Account
               </Link>
             </li>
             <li>
-              <Link href="/contact" className="hover:text-primary transition-colors">
+              <Link href="/contact" className={FOOTER_LINK}>
                 Contact Us
               </Link>
             </li>
@@ -139,7 +147,7 @@ export function Footer() {
         </p>
       </div>
 
-      <GbpBoosterPromo />
+      {!hideBoosterPromo && <GbpBoosterPromo />}
     </footer>
   );
 }

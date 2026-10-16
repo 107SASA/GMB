@@ -9,6 +9,7 @@ import { sendOtpMessage } from '@/services/whatsapp/send';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
+import { newBusinessReviewReplySettings } from '@/services/reviews/replyPipeline';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes — matches phone-login/request
@@ -209,6 +210,7 @@ export async function POST(req: Request) {
             : undefined,
         // Picking a listing is not a connected Google Business Profile.
         googleConnected: false,
+        reviewReplySettings: newBusinessReviewReplySettings(),
         organizationId: newOrg._id,
         userId: newUser._id,
         metaBusinessProfileUrl: body.metaBusinessProfileUrl,

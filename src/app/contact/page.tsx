@@ -26,7 +26,7 @@ export default function ContactPage() {
             <MaterialIcon name="mail" size={20} className="text-primary mt-0.5 shrink-0" />
             <div>
               <div className="font-semibold text-on-surface">Email</div>
-              <a href={`mailto:${COMPANY.supportEmail}`} className="text-primary underline">
+              <a href={`mailto:${COMPANY.supportEmail}`} className="inline-block py-2.5 -my-2.5 text-primary underline break-all">
                 {COMPANY.supportEmail}
               </a>
             </div>
@@ -40,7 +40,7 @@ export default function ContactPage() {
                 href={COMPANY.siteUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary underline"
+                className="inline-block py-2.5 -my-2.5 text-primary underline"
               >
                 {COMPANY.domain}
               </a>

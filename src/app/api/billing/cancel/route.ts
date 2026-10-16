@@ -5,6 +5,7 @@ import Business from '@/models/Business';
 import { requireClient } from '@/lib/auth';
 import { getRazorpay } from '@/lib/billing/razorpay';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { markTrialCancelled } from '@/lib/billing/applyEntitlements';
 
 /**
  * Cancels the user's Razorpay subscription AT THE END OF THE CURRENT CYCLE
@@ -34,6 +35,41 @@ export async function POST() {
         { error: 'Billing is not configured on this server' },
         { status: 503 }
       );
+    }
+
+    // Free trial: cancel on Razorpay NOW (an authenticated future-start
+    // subscription has no billing cycle, so cycle-end cancel is rejected) and
+    // confirm Razorpay reports it cancelled before promising "no charge".
+    // Access continues until the original trial end — never extended.
+    const trialWorkspace = await Business.findOne({
+      billingSubscriptionId: subscription.razorpaySubscriptionId,
+      subscriptionStatus: 'trial_active',
+    })
+      .select('_id trialEndsAt trialCancelledAt')
+      .lean() as any;
+    if (trialWorkspace) {
+      const endLabel = new Date(trialWorkspace.trialEndsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+      if (!trialWorkspace.trialCancelledAt) {
+        try {
+          await razorpay.subscriptions.cancel(subscription.razorpaySubscriptionId, false);
+        } catch (err: any) {
+          console.warn('[billing/cancel] trial cancel call failed, re-checking state:', err?.error?.description || err?.message);
+        }
+        const rp: any = await razorpay.subscriptions.fetch(subscription.razorpaySubscriptionId);
+        if (rp?.status !== 'cancelled') {
+          return NextResponse.json(
+            { error: 'We could not confirm the cancellation with our payment provider. Please try again in a minute, or contact support.' },
+            { status: 502 }
+          );
+        }
+        await markTrialCancelled(trialWorkspace._id.toString(), auth.userId);
+      }
+      return NextResponse.json({
+        success: true,
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: trialWorkspace.trialEndsAt,
+        message: `Free trial cancelled. You keep full access until ${endLabel} and won't be charged.`,
+      });
     }
 
     // true → cancel at cycle end (keep access until the paid period ends).

@@ -104,18 +104,26 @@ interface ResolvedOwner {
   phone?: string;
   prefs: Record<string, boolean>;
   subscriptionStatus?: string;
+  trialEndsAt?: Date;
+  trialCancelledAt?: Date;
+  paymentGraceEndsAt?: Date;
+  paymentAccessHold?: boolean;
   googleConnected?: boolean;
   googleLocationId?: string;
 }
 
 async function resolveOwner(businessId: string): Promise<ResolvedOwner | null> {
   const business = await Business.findById(businessId)
-    .select('name userId phone subscriptionStatus googleConnected googleLocationId')
+    .select('name userId phone subscriptionStatus trialEndsAt trialCancelledAt paymentGraceEndsAt paymentAccessHold googleConnected googleLocationId')
     .lean<{
       name?: string;
       userId?: { toString(): string };
       phone?: string;
       subscriptionStatus?: string;
+      trialEndsAt?: Date;
+      trialCancelledAt?: Date;
+      paymentGraceEndsAt?: Date;
+      paymentAccessHold?: boolean;
       googleConnected?: boolean;
       googleLocationId?: string;
     }>();
@@ -144,6 +152,10 @@ async function resolveOwner(businessId: string): Promise<ResolvedOwner | null> {
     phone,
     prefs,
     subscriptionStatus: business.subscriptionStatus,
+    trialEndsAt: business.trialEndsAt,
+    trialCancelledAt: business.trialCancelledAt,
+    paymentGraceEndsAt: business.paymentGraceEndsAt,
+    paymentAccessHold: business.paymentAccessHold,
     googleConnected: business.googleConnected,
     googleLocationId: business.googleLocationId,
   };

@@ -52,7 +52,7 @@ export function GbpBoosterPromo() {
                   type="button"
                   onClick={() => setExpanded(false)}
                   aria-label="Collapse"
-                  className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-[#6b756f] hover:bg-(--mkt-surface) hover:text-[#101613] transition-colors"
+                  className="shrink-0 w-10 h-10 -m-2 rounded-md flex items-center justify-center text-[#6b756f] hover:bg-(--mkt-surface) hover:text-[#101613] transition-colors"
                 >
                   <MaterialIcon name="close" size={16} />
                 </button>
@@ -73,7 +73,7 @@ export function GbpBoosterPromo() {
                 </a>
                 <Link
                   href="/gbp-booster"
-                  className="shrink-0 mkt-label text-[#006e2c] hover:underline whitespace-nowrap px-1"
+                  className="shrink-0 mkt-label text-[#006e2c] hover:underline whitespace-nowrap px-2 h-10 inline-flex items-center"
                 >
                   Details
                 </Link>

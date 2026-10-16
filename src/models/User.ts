@@ -64,6 +64,8 @@ export interface IUser extends Document {
   failedOtpAttempts: number;
   emailVerifiedAt?: Date;
   phoneVerifiedAt?: Date;
+  /** How the phone was proven: signup/login WhatsApp code, or a signature-verified inbound WhatsApp message. */
+  phoneVerifiedVia?: 'whatsapp_otp' | 'whatsapp_inbound';
 
   // Phone + OTP login (WhatsApp-delivered) — separate from the email-based
   // OTP fields above since a user can attempt both flows independently.
@@ -214,6 +216,7 @@ const UserSchema: Schema = new Schema(
     failedOtpAttempts: { type: Number, default: 0 },
     emailVerifiedAt: { type: Date },
     phoneVerifiedAt: { type: Date },
+    phoneVerifiedVia: { type: String, enum: ['whatsapp_otp', 'whatsapp_inbound'] },
 
     // Security
     failedLoginAttempts: { type: Number, default: 0 },

@@ -8,6 +8,8 @@ import { createSession } from '@/lib/session';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
 import { isQaTestingMode } from '@/lib/testingMode';
+import { PLACEHOLDER_PERSON_NAME, usablePersonName } from '@/lib/personName';
+import { newBusinessReviewReplySettings } from '@/services/reviews/replyPipeline';
 
 /**
  * Shadow accounts: a real, unverified, passwordless User+Organization+Business
@@ -73,6 +75,13 @@ export interface ProvisionShadowAccountInput {
   /** Traceability tag, e.g. 'free-report-form'. */
   source: string;
   /**
+   * The person's name when we already know it (WhatsApp profile, a name
+   * they typed). Never the business name. Written onto User.fullName
+   * instead of the "New User" placeholder, including when an existing
+   * shadow account still has that placeholder.
+   */
+  personName?: string;
+  /**
    * True ONLY when the caller has independently verified this phone number
    * out-of-band (e.g. an authenticated inbound WhatsApp message from that
    * exact number). False (the default) for anonymous HTTP callers like
@@ -115,6 +124,8 @@ export async function provisionShadowAccount(
   if (!normalizedPhone) {
     throw new Error('Please enter a valid phone number.');
   }
+
+  const personName = usablePersonName(input.personName, input.businessData.name);
 
   let user = await User.findOne({ phone: normalizedPhone });
   let organization: any = null;
@@ -161,6 +172,10 @@ export async function provisionShadowAccount(
           subscriptionStatus: c.subscriptionStatus,
           userSubscriptionPlan: user.subscriptionPlan,
           businessCreatedAt: c.createdAt,
+          trialEndsAt: c.trialEndsAt,
+          trialCancelledAt: c.trialCancelledAt,
+          paymentGraceEndsAt: c.paymentGraceEndsAt,
+          paymentAccessHold: c.paymentAccessHold,
         }),
       );
 
@@ -187,6 +202,13 @@ export async function provisionShadowAccount(
       await User.findByIdAndUpdate(user._id, { $set: { activeBusinessId: business._id } });
       user.activeBusinessId = business._id;
     }
+
+    // A returning report still has the placeholder if the name was only
+    // stored on the lead. Replace it once we actually know who they are.
+    if (personName && !usablePersonName(user.fullName)) {
+      await User.findByIdAndUpdate(user._id, { $set: { fullName: personName } });
+      user.fullName = personName;
+    }
   } else {
     user = await User.create({
       // NOT input.businessData.name — that's the BUSINESS's name (e.g.
@@ -194,9 +216,9 @@ export async function provisionShadowAccount(
       // person's. It was leaking into every "who's logged in" display
       // (DashboardHeader's name + initials avatar) and into WhatsApp sales
       // messages that address the lead by "first name" (composeFirstMessage
-      // → firstName(owner?.fullName)) until PATCH /api/user/profile
-      // overwrites this with their real name (e.g. typed at checkout).
-      fullName: 'New User',
+      // → firstName(owner?.fullName)). Use the person name when we have
+      // one; otherwise the placeholder until checkout or profile save.
+      fullName: personName || PLACEHOLDER_PERSON_NAME,
       email: shadowEmailFor(normalizedPhone),
       phone: normalizedPhone,
       role: 'CLIENT',
@@ -250,6 +272,7 @@ export async function provisionShadowAccount(
       photoCount: input.businessData.photoCount,
       hasHours: input.businessData.hasHours,
       googleTypes: input.businessData.googleTypes,
+      reviewReplySettings: newBusinessReviewReplySettings(),
       organizationId: organization._id,
       userId: user._id,
       provisionedVia: input.source,

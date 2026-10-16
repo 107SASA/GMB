@@ -214,10 +214,15 @@ export async function runPerformanceDigestAll(now = new Date()): Promise<{ busin
   await dbConnect();
   const Business = (await import('@/models/Business')).default;
   const due = new Date(now.getTime() - (15 * DAY - 12 * 3_600_000));
+  const { planAccessWorkspaceFilter } = await import('@/lib/billing/entitlements');
   const list: any[] = await Business.find({
-    isDeleted: { $ne: true }, subscriptionStatus: 'active', googleConnected: true,
+    isDeleted: { $ne: true }, googleConnected: true,
     googleLocationId: { $exists: true, $nin: [null, ''] },
-    $or: [{ performanceDigestLastSentAt: { $exists: false } }, { performanceDigestLastSentAt: null }, { performanceDigestLastSentAt: { $lte: due } }],
+    // Paid, or an authorized free trial within its window.
+    $and: [
+      planAccessWorkspaceFilter(now),
+      { $or: [{ performanceDigestLastSentAt: { $exists: false } }, { performanceDigestLastSentAt: null }, { performanceDigestLastSentAt: { $lte: due } }] },
+    ],
   }).select('_id').lean();
   let sent = 0;
   for (const b of list) {
@@ -234,9 +239,11 @@ export async function runPerformanceDigestAll(now = new Date()): Promise<{ busin
 export async function runWeeklyMonitoringAll(now = new Date()): Promise<{ businesses: number; done: number; skipped: number; alreadyRan: number }> {
   await dbConnect();
   const Business = (await import('@/models/Business')).default;
+  const { planAccessWorkspaceFilter } = await import('@/lib/billing/entitlements');
   const list: any[] = await Business.find({
-    isDeleted: { $ne: true }, subscriptionStatus: 'active', googleConnected: true,
+    isDeleted: { $ne: true }, googleConnected: true,
     googleLocationId: { $exists: true, $nin: [null, ''] },
+    ...planAccessWorkspaceFilter(now), // paid, or an authorized free trial
   }).select('_id').lean();
   let done = 0; let skipped = 0; let alreadyRan = 0;
   for (const b of list) {

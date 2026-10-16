@@ -1,3 +1,5 @@
+import { workspaceHasPlanAccess } from '../lib/billing/entitlements.ts';
+
 /**
  * Who may receive WhatsApp about activity inside their Google business.
  * A free-report phone is a sales lead until they subscribe and connect Google.
@@ -38,6 +40,10 @@ export function isBillingOwnerEvent(event: OwnerBusinessEvent): boolean {
 export function ownerBusinessWhatsAppAllowed(
   business: {
     subscriptionStatus?: string | null;
+    trialEndsAt?: Date | string | null;
+    trialCancelledAt?: Date | string | null;
+    paymentGraceEndsAt?: Date | string | null;
+    paymentAccessHold?: boolean | null;
     googleConnected?: boolean | null;
     googleLocationId?: string | null;
   } | null | undefined,
@@ -45,7 +51,8 @@ export function ownerBusinessWhatsAppAllowed(
 ): boolean {
   if (BILLING_OWNER_EVENTS.has(event)) return true;
   if (!business) return false;
-  const subscribed = business.subscriptionStatus === 'active';
+  // Paid, or an authorized free trial within its window.
+  const subscribed = workspaceHasPlanAccess(business);
   const connected =
     business.googleConnected === true &&
     typeof business.googleLocationId === 'string' &&

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
+import { displayPersonName } from '@/lib/personName';
 import Subscription from '@/models/Subscription';
 import User from '@/models/User';
 import Business from '@/models/Business';
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest) {
     endOfMonth.setUTCMonth(endOfMonth.getUTCMonth() + 1);
 
     const [ownedBusinesses, aiCounts, planConfigs] = await Promise.all([
-      Business.find({ userId: { $in: userIds } }).select('_id userId').lean(),
+      Business.find({ userId: { $in: userIds } }).select('_id userId name').lean(),
       AIUsageLog.aggregate([
         { $match: { userId: { $in: userIds }, status: 'success', createdAt: { $gte: startOfMonth, $lt: endOfMonth } } },
         { $group: { _id: '$userId', count: { $sum: 1 } } },
@@ -90,10 +91,12 @@ export async function GET(req: NextRequest) {
     ]);
 
     const businessIdsByUser: Record<string, string[]> = {};
+    const businessNameByUser: Record<string, string> = {};
     ownedBusinesses.forEach((b: any) => {
       const key = b.userId?.toString();
       if (!key) return;
       (businessIdsByUser[key] ??= []).push(b._id.toString());
+      businessNameByUser[key] ??= b.name;
     });
     const allBusinessIds = ownedBusinesses.map((b: any) => b._id);
 
@@ -155,7 +158,7 @@ export async function GET(req: NextRequest) {
         user: sub.userId
           ? {
               _id:              sub.userId._id,
-              fullName:         sub.userId.fullName,
+              fullName:         displayPersonName(sub.userId.fullName, businessNameByUser[userId], sub.userId.phone),
               email:            sub.userId.email,
               phone:            sub.userId.phone,
               subscriptionPlan: sub.userId.subscriptionPlan,

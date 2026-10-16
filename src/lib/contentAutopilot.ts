@@ -1,6 +1,7 @@
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import { inngest } from '@/services/inngest/client';
+import { workspaceHasPlanAccess, PLAN_ACCESS_FIELDS } from '@/lib/billing/entitlements';
 
 /** Kept in one place — weeklyContentAutopilotCron (services/inngest/functions.ts) reads the same constant. */
 export const AUTOPILOT_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -37,16 +38,21 @@ export async function maybeStartContentAutopilot(businessId: string): Promise<vo
   try {
     await dbConnect();
     const business = await Business.findById(businessId)
-      .select('subscriptionStatus googleConnected keywords autopilotNextRunAt')
+      .select(`${PLAN_ACCESS_FIELDS} googleConnected keywords autopilotNextRunAt`)
       .lean<{
         subscriptionStatus?: string;
+        trialEndsAt?: Date;
+        trialCancelledAt?: Date;
+        paymentGraceEndsAt?: Date;
+        paymentAccessHold?: boolean;
         googleConnected?: boolean;
         keywords?: string[];
         autopilotNextRunAt?: Date;
       }>();
     if (!business) return;
     if (business.autopilotNextRunAt) return; // already anchored — never re-trigger
-    if (business.subscriptionStatus !== 'active' || !business.googleConnected) return; // not qualified yet
+    // Paid, or an authorized free trial (same plan) — see lib/billing/entitlements.ts.
+    if (!workspaceHasPlanAccess(business) || !business.googleConnected) return; // not qualified yet
     // Nothing to generate from yet — weeklyContentAutopilotCron's hourly pass
     // retries this automatically once keywords are added (onboarding intake).
     if (!Array.isArray(business.keywords) || business.keywords.length === 0) return;

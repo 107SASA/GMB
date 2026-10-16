@@ -101,7 +101,7 @@ export default function LoginForm({ staleSession = false }: { staleSession?: boo
   };
 
   return (
-    <div className="w-full bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant p-8 sm:p-10">
+    <div className="w-full bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant p-6 sm:p-10">
       <div className="text-center mb-8">
         <h1 className="text-headline-md font-heading text-on-surface mb-2">Welcome Back</h1>
         <p className="text-sm text-on-surface-variant">Sign in with your phone number — we&apos;ll send a one-time code on WhatsApp.</p>
@@ -111,7 +111,7 @@ export default function LoginForm({ staleSession = false }: { staleSession?: boo
             <form onSubmit={requestOtp} className="space-y-5">
               <div>
                 <label className="block text-label-md text-on-surface mb-2">Phone Number</label>
-                <PhoneNumberInput value={phone} onChange={setPhone} />
+                <PhoneNumberInput value={phone} onChange={setPhone} className="[&_select]:text-base" />
                 <p className="text-xs text-outline mt-1.5">We&apos;ll send a one-time code to this number on WhatsApp.</p>
               </div>
 

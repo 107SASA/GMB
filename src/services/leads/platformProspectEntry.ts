@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import Lead from '@/models/Lead';
 import { applyFormSignal } from '@/services/leadIntelligence/formSignals';
+import { usablePersonName } from '@/lib/personName';
+import { normalizePhoneE164 } from '@/lib/phone';
 
 export interface FreeReportPlatformLeadInput {
   name: string;
@@ -28,10 +30,13 @@ export async function upsertPlatformProspectLead(
   const source = input.source ?? 'Website';
   const ownershipActor = input.ownershipActor ?? 'platform-prospect-entry';
 
+  const incomingName = usablePersonName(name, businessName) || businessName.trim() || name.trim();
   let lead = await Lead.findOne({ phone, tenantId: 'gmbboost-internal' });
   let created = false;
   if (lead) {
-    if (!lead.name || lead.name === lead.phone) lead.name = name;
+    // Replace a missing name, a phone-as-name, the "New User" placeholder, or
+    // a business-name fallback. A real person name already on the lead is left alone.
+    if (!usablePersonName(lead.name, lead.businessType || businessName)) lead.name = incomingName;
     if (!lead.source || lead.source === 'Website') lead.source = source;
     lead.leadType = 'Platform Prospect';
     if (!lead.businessType) lead.businessType = businessName;
@@ -41,7 +46,7 @@ export async function upsertPlatformProspectLead(
   } else {
     lead = await Lead.create({
       tenantId: 'gmbboost-internal',
-      name,
+      name: incomingName,
       phone,
       source,
       leadType: 'Platform Prospect',
@@ -135,4 +140,20 @@ export async function ensurePlatformLeadForReportPhone(input: {
     source: 'WhatsApp',
   });
   return leadId;
+}
+
+/**
+ * Copies a name the person typed themselves (checkout / profile) onto their
+ * platform lead, so the super admin CRM stops showing "New User" or the
+ * business name. A real person name already on the lead is left alone.
+ */
+export async function syncPlatformLeadName(phone: string, fullName: string): Promise<void> {
+  const name = usablePersonName(fullName);
+  const normalized = normalizePhoneE164(phone) || phone;
+  if (!name || !normalized) return;
+  await dbConnect();
+  const lead = await Lead.findOne({ phone: normalized, tenantId: 'gmbboost-internal' });
+  if (!lead || usablePersonName(lead.name, lead.businessType)) return;
+  lead.name = name;
+  await lead.save();
 }

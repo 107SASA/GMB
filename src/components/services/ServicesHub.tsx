@@ -16,7 +16,7 @@ export function ServicesHub() {
 
       <div className="pt-24 md:pt-28 px-6">
         <nav aria-label="Breadcrumb" className="max-w-5xl mx-auto text-sm text-[#3d4a3d] flex items-center gap-2">
-          <Link href="/" className="hover:text-[#006e2c] transition-colors">Home</Link>
+          <Link href="/" className="inline-block py-2.5 -my-2.5 hover:text-[#006e2c] transition-colors">Home</Link>
           <MaterialIcon name="chevron_right" size={16} className="text-[#9aa59c]" />
           <span className="text-[#101613] font-medium">OnDemand Service</span>
         </nav>

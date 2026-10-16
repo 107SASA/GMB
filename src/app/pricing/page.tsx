@@ -35,18 +35,23 @@ export default function PricingPage() {
       <Navbar />
 
       <section className="relative pt-28 sm:pt-32 md:pt-40 pb-20 sm:pb-28 px-4 sm:px-6 md:px-12">
-        <div className="max-w-[1280px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16 items-start">
-          {/* Left: value copy + trust points */}
-          <div className="lg:col-span-6 order-2 lg:order-1 lg:pt-6">
+        {/* Phones: heading → plan card → trust points (the card used to come
+            before the page heading). lg+: copy left, sticky card right. */}
+        <div className="max-w-[1280px] mx-auto grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-[auto_1fr] gap-8 lg:gap-x-16 lg:gap-y-0 items-start">
+          {/* Left: heading */}
+          <div className="lg:col-span-6 lg:row-start-1 lg:pt-6">
             <p className="mkt-label text-[#006e2c] mb-2">Pricing</p>
             <h1 className="font-mkt-display text-4xl sm:text-5xl font-semibold text-[#101613] tracking-tight mb-4">
               Simple pricing
             </h1>
-            <p className="text-[#3d4a3d] text-lg leading-relaxed mb-10 max-w-md">
+            <p className="text-[#3d4a3d] text-base sm:text-lg leading-relaxed lg:mb-10 max-w-md">
               One plan, everything included — dashboard and mobile app. No tiers, no add-ons to
               figure out.
             </p>
+          </div>
 
+          {/* Left (lg row 2): trust points */}
+          <div className="order-last lg:order-none lg:col-span-6 lg:row-start-2">
             <ul className="flex flex-col gap-4 mb-10">
               {TRUST_POINTS.map((point) => (
                 <li key={point} className="flex items-start gap-3">
@@ -71,13 +76,13 @@ export default function PricingPage() {
           </div>
 
           {/* Right: the plan card */}
-          <div className="lg:col-span-6 order-1 lg:order-2">
+          <div className="lg:col-span-6 lg:col-start-7 lg:row-start-1 lg:row-span-2">
             <div className="lg:sticky lg:top-28">
               {loading ? (
                 <div className="bg-white rounded-xl border border-(--mkt-line) shadow-sm p-8 animate-pulse h-96" />
               ) : plan ? (
-                <div className="bg-white rounded-xl border-2 border-[#006e2c] shadow-lg p-8 flex flex-col">
-                  <div className="flex items-center gap-2 mb-2">
+                <div className="bg-white rounded-xl border-2 border-[#006e2c] shadow-lg p-5 sm:p-8 flex flex-col">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
                     <h2 className="font-mkt-display text-xl font-semibold text-[#101613]">{plan.displayName}</h2>
                     <span className="mkt-label flex items-center gap-1 text-[#006e2c] bg-[#e8f8ee] border border-[#c8ebd4] px-2 py-1 rounded-md">
                       <MaterialIcon name="auto_awesome" size={12} className="text-[#006e2c]" /> All features

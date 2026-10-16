@@ -90,9 +90,11 @@ export interface IBusiness extends Document {
     messageTemplate?: string;
   };
   // How incoming reviews get replied to (Review Management screen) —
-  // 'manual' (default): AI drafts a reply, the owner reviews/edits/approves
-  // before it posts. 'auto': the AI agent drafts AND posts on its own, no
-  // human step. Read by syncReviewsForBusiness (see services/reviews/) right
+  // 'manual': AI drafts a reply, the owner reviews/edits/approves before it
+  // posts. 'auto': the AI agent drafts AND posts fact-checked replies on its
+  // own. New businesses start on 'auto' (set at creation by
+  // newBusinessReviewReplySettings); the schema default below stays 'manual'
+  // so older documents loaded without these fields never flip to auto. Read by syncReviewsForBusiness (see services/reviews/) right
   // after new reviews are upserted, and by the reply-settings route when the
   // owner switches modes (to catch up the existing backlog of unreplied
   // reviews, not just future ones).
@@ -130,7 +132,10 @@ export interface IBusiness extends Document {
   // workspaces default to 'trialing' + freeAuditUsed:false, so they get exactly
   // one free GBP audit, after which the dashboard locks until subscribed.
   // Enforced centrally in src/proxy.ts. Owner (SUPER_ADMIN) accounts bypass it.
-  subscriptionStatus?: 'trialing' | 'active' | 'past_due' | 'canceled';
+  // 'trialing' is the never-paid default (NOT the free trial — that is
+  // 'trial_active', set only by a verified Razorpay authorization of a trial
+  // subscription; see lib/billing/subscriptionMachine.ts).
+  subscriptionStatus?: 'trialing' | 'trial_active' | 'active' | 'past_due' | 'canceled';
   freeAuditUsed?: boolean;
   /**
    * GrowwMatics' OWN sales pipeline stage for this workspace (admin CRM) —
@@ -148,6 +153,33 @@ export interface IBusiness extends Document {
   subscriptionCancelAtPeriodEnd?: boolean;
   /** Day-thresholds (10/5/3/2/1) already reminded, so we don't double-notify. */
   subscriptionRemindersSent?: number[];
+  /** Free trial (yearly offer): when it started and its fixed end (= Razorpay start_at, the first charge). */
+  trialStartedAt?: Date;
+  trialEndsAt?: Date;
+  /** Cancelled during the trial: access continues until trialEndsAt, no charge. */
+  trialCancelledAt?: Date;
+  /** The Razorpay subscription that currently grants access (trial or paid). Events for any other subscription can't change access. */
+  billingSubscriptionId?: string;
+  /** created_at of the last Razorpay event applied — older events are ignored (out-of-order delivery). */
+  billingLastEventAt?: Date;
+  /** Set when a charge fails (Day 0 of recovery); cleared when a payment succeeds. */
+  paymentFailedAt?: Date;
+  paymentFailureReason?: string;
+  /** Frozen at Day 0 from the billing policy (never changed by later policy edits): */
+  paymentFailureKind?: 'first_charge' | 'renewal';
+  /** Paid access continues until this instant (= paymentFailedAt when restriction is immediate). */
+  paymentGraceEndsAt?: Date;
+  /** Paid modules locked after the grace period. */
+  paymentRestrictedModules?: string[];
+  paymentRestoreOnRecovery?: boolean;
+  /** Paid again, but held locked for a super-admin release (policy: restoreAccessOnRecovery false). */
+  paymentAccessHold?: boolean;
+  /** Original subscriptions replaced by a recovery checkout — their failure/cancel events are ignored. */
+  supersededSubscriptionIds?: string[];
+  /** One recovery at a time (lib/billing/paymentRecovery.ts). */
+  recoveryLock?: { token: string; until: Date };
+  /** The open replacement checkout, reused on repeated clicks until paid or expired. */
+  recoveryCheckout?: { subscriptionId: string; replacesSubscriptionId?: string | null; cycle: string; createdAt: Date; expiresAt: Date };
   /** When the post-audit WhatsApp sales nurture was sent (send-once guard). */
   auditNurtureSentAt?: Date;
   /** When the "your report is ready" WhatsApp ping was sent (send-once guard). */
@@ -355,7 +387,7 @@ const BusinessSchema: Schema = new Schema(
     // ADDITIVE — per-workspace subscription gate (see IBusiness above).
     subscriptionStatus: {
       type: String,
-      enum: ['trialing', 'active', 'past_due', 'canceled'],
+      enum: ['trialing', 'trial_active', 'active', 'past_due', 'canceled'],
       default: 'trialing',
     },
     freeAuditUsed: { type: Boolean, default: false },
@@ -365,6 +397,28 @@ const BusinessSchema: Schema = new Schema(
     subscriptionCurrentPeriodEnd: { type: Date },
     subscriptionCancelAtPeriodEnd: { type: Boolean, default: false },
     subscriptionRemindersSent: { type: [Number], default: [] },
+    // ADDITIVE — free trial + billing lifecycle (see IBusiness above).
+    trialStartedAt: { type: Date },
+    trialEndsAt: { type: Date },
+    trialCancelledAt: { type: Date },
+    billingSubscriptionId: { type: String, index: true, sparse: true },
+    billingLastEventAt: { type: Date },
+    paymentFailedAt: { type: Date },
+    paymentFailureReason: { type: String },
+    paymentFailureKind: { type: String, enum: ['first_charge', 'renewal'] },
+    paymentGraceEndsAt: { type: Date },
+    paymentRestrictedModules: { type: [String], default: undefined },
+    paymentRestoreOnRecovery: { type: Boolean },
+    paymentAccessHold: { type: Boolean },
+    supersededSubscriptionIds: { type: [String], default: undefined },
+    recoveryLock: { token: { type: String }, until: { type: Date } },
+    recoveryCheckout: {
+      subscriptionId: { type: String },
+      replacesSubscriptionId: { type: String },
+      cycle: { type: String },
+      createdAt: { type: Date },
+      expiresAt: { type: Date },
+    },
     // ADDITIVE — when the post-audit WhatsApp sales nurture was sent (send-once).
     auditNurtureSentAt: { type: Date },
     reportReadySentAt: { type: Date },

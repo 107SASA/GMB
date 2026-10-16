@@ -7,6 +7,7 @@ import { createPendingAuditAndDispatch } from '@/lib/startAudit';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 import { fileFreeReportPlatformLead, linkPlatformLeadAudit } from '@/services/leads/platformProspectEntry';
 import { factsFromStored, type ProspectFacts } from '@/services/whatsapp/prospectChoice';
+import { usablePersonName } from '@/lib/personName';
 
 const REUSE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const STALE_PENDING_MS = 2 * 60 * 1000;
@@ -56,6 +57,7 @@ export async function beginFreeReport(input: {
     provisioned = await provisionShadowAccount({
       phone: input.phone,
       source: 'whatsapp-report',
+      personName: input.name,
       businessData: {
         name: businessName,
         city,
@@ -71,7 +73,7 @@ export async function beginFreeReport(input: {
 
   const { user, business, organization } = provisioned;
   const leadResult = await fileFreeReportPlatformLead({
-    name: input.name || user.fullName || businessName,
+    name: usablePersonName(input.name, businessName) || usablePersonName(user.fullName) || businessName,
     phone: normalizePhoneE164(input.phone) || input.phone,
     businessName,
   }).catch((err) => {

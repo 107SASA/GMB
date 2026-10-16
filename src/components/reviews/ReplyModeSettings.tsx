@@ -86,8 +86,8 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
 
       {legacyPaused && (
         <p className="text-xs text-on-surface-variant bg-surface-container rounded-lg px-3 py-2">
-          Auto-reply was switched on before replies were fact-checked, so it is paused and replies wait for your approval.
-          Choose &quot;Auto-reply&quot; and save to turn it back on under the fact-checked flow.
+          Auto-reply is paused because you have not switched it on yourself, so replies wait for your approval.
+          Choose &quot;Auto-reply&quot; and save to turn it on under the fact-checked flow.
         </p>
       )}
 
@@ -104,7 +104,7 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
             <span className="text-sm font-bold text-on-surface">AI drafts, I approve</span>
           </div>
           <p className="text-xs text-on-surface-variant leading-snug">
-            The AI drafts a fact-checked reply for each new review. Nothing posts to Google until you approve it and hit Post.
+            The AI drafts a fact-checked reply for each new review. Nothing posts to Google until you approve it and hit Post. (Default)
           </p>
         </button>
 
@@ -121,7 +121,7 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
           </div>
           <p className="text-xs text-on-surface-variant leading-snug">
             Replies that pass the fact check are posted without waiting for you. Replies that fail it are kept as
-            drafts for your review. Turning this on also covers your existing unanswered reviews. (Default)
+            drafts for your review. Turning this on also covers your existing unanswered reviews.
           </p>
         </button>
       </div>

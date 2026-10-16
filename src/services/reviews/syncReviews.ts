@@ -274,7 +274,7 @@ export async function syncReviewsForBusiness(
   // (mode 'auto' + consent) and the draft passed the check — see
   // services/reviews/autoReply.ts + replyPipeline.ts.
   const business = await Business.findById(bid).select('reviewReplySettings').lean<{
-    reviewReplySettings?: { mode?: string; autoPublishConsentAt?: Date };
+    reviewReplySettings?: { mode?: string; autoPublishConsentAt?: Date; autoPublishConsentBy?: string };
   }>();
   {
     const { isAutoPublishActive } = await import('./replyPipeline');

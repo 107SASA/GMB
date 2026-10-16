@@ -92,9 +92,9 @@ export interface IBusiness extends Document {
   // How incoming reviews get replied to (Review Management screen) —
   // 'manual': AI drafts a reply, the owner reviews/edits/approves before it
   // posts. 'auto': the AI agent drafts AND posts fact-checked replies on its
-  // own. New businesses start on 'auto' (set at creation by
-  // newBusinessReviewReplySettings); the schema default below stays 'manual'
-  // so older documents loaded without these fields never flip to auto. Read by syncReviewsForBusiness (see services/reviews/) right
+  // own, only after the owner opted in (lib/reviewReplyConsent.ts). New
+  // businesses start on 'manual' (newBusinessReviewReplySettings, matching the
+  // schema default below). Read by syncReviewsForBusiness (see services/reviews/) right
   // after new reviews are upserted, and by the reply-settings route when the
   // owner switches modes (to catch up the existing backlog of unreplied
   // reviews, not just future ones).

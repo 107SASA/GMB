@@ -4,6 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import MessageQueue from '@/models/MessageQueue';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { unsafeTemplateVariableReason } from '@/lib/whatsappOutbound';
+import { outboundSuppressed } from '@/lib/outboundSuppression';
 
 /**
  * Builds Twilio's `whatsapp:+<e164>` recipient address, normalizing first.
@@ -21,8 +22,9 @@ function toWhatsAppAddress(phone: string): string | null {
 }
 
 /**
- * QA-only outbound suppression. When QA_SUPPRESS_WHATSAPP_SENDS=true, every
- * WhatsApp send here is short-circuited: it is logged to MessageQueue as a
+ * Outbound suppression (lib/outboundSuppression.ts). When WhatsApp sends are
+ * suppressed — QA_SUPPRESS_WHATSAPP_SENDS=true, or unset outside production —
+ * every WhatsApp send here is short-circuited: it is logged to MessageQueue as a
  * SENT message with a synthetic `qa_*` sid and returns success, but NO
  * request is made to Twilio, so an automated end-to-end QA run against the
  * local test DB never delivers a real WhatsApp message to anyone. Every
@@ -31,11 +33,11 @@ function toWhatsAppAddress(phone: string): string | null {
  * bookkeeping) behaves exactly as it would on a real success.
  *
  * Deliberately its OWN env var, not QA_TESTING_MODE — so an operator can
- * still run a genuine WhatsApp round-trip test (QA_TESTING_MODE=true but this
- * unset). Absent in every production env file; production is unaffected.
+ * still run a genuine WhatsApp round-trip test (QA_SUPPRESS_WHATSAPP_SENDS=false).
+ * Absent in every production env file; production is unaffected.
  */
 function qaSendsSuppressed(): boolean {
-  return process.env.QA_SUPPRESS_WHATSAPP_SENDS === 'true';
+  return outboundSuppressed('whatsapp');
 }
 
 async function logSuppressedSend(payload: Record<string, unknown>, leadId?: string): Promise<SendResult> {

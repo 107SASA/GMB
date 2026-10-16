@@ -6,7 +6,9 @@
  *   META_WHATSAPP_ACCESS_TOKEN   permanent System User token (whatsapp_business_messaging)
  *   META_WHATSAPP_PHONE_NUMBER_ID  the sender's Phone Number ID (not the phone number)
  *   META_GRAPH_API_VERSION       optional, defaults to v23.0
+ * Sends are suppressed (no request to Meta) per lib/outboundSuppression.ts.
  */
+import { outboundSuppressed } from '@/lib/outboundSuppression';
 
 export interface MetaSendResult {
   success: boolean;
@@ -48,6 +50,10 @@ export function isReengagementError(errorCode?: number, message?: string): boole
 }
 
 async function postToMeta(config: MetaConfig, payload: Record<string, unknown>): Promise<MetaSendResult> {
+  if (outboundSuppressed('whatsapp')) {
+    console.info(`[meta][suppressed] ${String(payload.type)} to ${String(payload.to)} — not sent`);
+    return { success: true, sid: `qa_meta_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` };
+  }
   const url = `https://graph.facebook.com/${config.apiVersion}/${config.phoneNumberId}/messages`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);

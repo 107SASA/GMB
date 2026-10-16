@@ -1,6 +1,7 @@
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import Business from '@/models/Business';
+import { outboundSuppressed } from '@/lib/outboundSuppression';
 
 /**
  * Expo push notifications — plain fetch against Expo's push API (no
@@ -30,6 +31,11 @@ interface ExpoPushTicket {
  */
 async function sendToTokens(tokens: string[], message: PushMessage): Promise<string[]> {
   const dead: string[] = [];
+  // lib/outboundSuppression.ts — nothing reaches Expo; no token is reported dead.
+  if (outboundSuppressed('push')) {
+    console.info(`[push][suppressed] "${message.title}" to ${tokens.length} device(s) — not sent`);
+    return dead;
+  }
 
   for (let i = 0; i < tokens.length; i += CHUNK_SIZE) {
     const chunk = tokens.slice(i, i + CHUNK_SIZE);

@@ -240,7 +240,10 @@ export async function markBusinessPastDue(
 export async function startTrialAccess(
   businessId: string,
   userId: string | null,
-  opts: { subscriptionId: string; trialEndsAt: Date; eventAt?: Date }
+  /** cancelled: the subscription's cancellation was processed before this authorization
+   *  (out-of-order delivery) — the trial starts already cancelled: access until
+   *  trialEndsAt, no charge, and no "trial started" notice. */
+  opts: { subscriptionId: string; trialEndsAt: Date; eventAt?: Date; cancelled?: boolean }
 ): Promise<boolean> {
   await dbConnect();
   const now = new Date();
@@ -254,8 +257,9 @@ export async function startTrialAccess(
         billingSubscriptionId: opts.subscriptionId,
         razorpaySubscriptionId: opts.subscriptionId,
         subscriptionCancelAtPeriodEnd: false,
+        ...(opts.cancelled && { trialCancelledAt: now }),
       },
-      $unset: { trialCancelledAt: '', paymentFailedAt: '', paymentFailureReason: '' },
+      $unset: { ...(!opts.cancelled && { trialCancelledAt: '' }), paymentFailedAt: '', paymentFailureReason: '' },
       ...(opts.eventAt && { $max: { billingLastEventAt: opts.eventAt } }),
     },
     { new: true }
@@ -273,7 +277,8 @@ export async function startTrialAccess(
           billingStatus: 'Trialing',
           trialSource: 'offer',
           'trialStatus.isActive': true,
-          'trialStatus.endsAt': new Date(opts.trialEndsAt.getTime() + TRIAL_CHARGE_PROCESSING_MS),
+          // A cancelled trial ends exactly at trialEndsAt (no charge to wait for).
+          'trialStatus.endsAt': opts.cancelled ? opts.trialEndsAt : new Date(opts.trialEndsAt.getTime() + TRIAL_CHARGE_PROCESSING_MS),
           razorpaySubscriptionId: opts.subscriptionId,
         },
         $setOnInsert: { planType: 'Free' },
@@ -284,12 +289,22 @@ export async function startTrialAccess(
 
   const endLabel = opts.trialEndsAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
   try {
-    await notifyBusinessUsers(businessId, {
-      type: 'billing_trial_started',
-      title: 'Free trial started',
-      body: `Your free trial for ${business.name || 'your workspace'} is active until ${endLabel}. Your yearly plan starts then unless you cancel before.`,
-      link: '/dashboard/billing',
-    });
+    await notifyBusinessUsers(
+      businessId,
+      opts.cancelled
+        ? {
+            type: 'billing_trial_cancelled',
+            title: 'Free trial cancelled',
+            body: `Your free trial for ${business.name || 'your workspace'} was cancelled. You keep full access until ${endLabel} and won't be charged.`,
+            link: '/dashboard/billing',
+          }
+        : {
+            type: 'billing_trial_started',
+            title: 'Free trial started',
+            body: `Your free trial for ${business.name || 'your workspace'} is active until ${endLabel}. Your yearly plan starts then unless you cancel before.`,
+            link: '/dashboard/billing',
+          }
+    );
   } catch (e: any) {
     console.error('[billing] startTrialAccess notification failed:', e.message);
   }

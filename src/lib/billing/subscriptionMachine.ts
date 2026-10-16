@@ -58,6 +58,8 @@ export interface WorkspaceFacts {
   billingLastEventAt: Date | null;
   /** Originals replaced by a recovery checkout (cancelled on purpose). */
   supersededSubscriptionIds?: string[];
+  /** The paying subscription was cancelled at cycle end (it will not charge again). */
+  subscriptionCancelAtPeriodEnd?: boolean | null;
 }
 
 export interface ClaimFacts {
@@ -65,10 +67,13 @@ export interface ClaimFacts {
   businessId: string;
   attachedSubscriptionId: string | null;
   offer: { razorpayPlanId: string; amountPaise: number; currency: string; trialEndsAt: Date } | null;
+  /** A cancelled/expired/completed event for the attached subscription was already processed. */
+  subscriptionEndedAt?: Date | null;
 }
 
 export type BillingAction =
-  | { kind: 'start_trial'; trialEndsAt: Date }
+  /** cancelled: the subscription's cancellation was processed first — start it already cancelled. */
+  | { kind: 'start_trial'; trialEndsAt: Date; cancelled?: true }
   | { kind: 'consume_claim' }
   | { kind: 'reject_trial'; reason: string }
   | { kind: 'activate_paid'; periodEnd: Date | null; renewal: boolean }
@@ -76,7 +81,14 @@ export type BillingAction =
   | { kind: 'trial_cancelled' }
   | { kind: 'cancel_paid' }
   | { kind: 'settle_claim' }
-  | { kind: 'lead_payment_failed' };
+  | { kind: 'lead_payment_failed' }
+  | { kind: 'flag_duplicate_subscription' }
+  /** Money was captured but the charge failed verification: no access, a person reviews it. */
+  | { kind: 'flag_payment_review'; reason: string }
+  /** The trial subscription ended (cancelled/expired) — remembered on its claim for order safety. */
+  | { kind: 'record_trial_subscription_ended' }
+  /** Another failure event for a failure that is already open (Razorpay retry / self-heal). */
+  | { kind: 'failure_continues'; halted: boolean };
 
 export interface BillingDecision {
   actions: BillingAction[];
@@ -96,6 +108,13 @@ export function isBillingSubscription(ws: WorkspaceFacts, subId: string): boolea
   // Legacy paid workspaces (activated before billingSubscriptionId existed)
   // only have the checkout link — same behaviour as before this change.
   return !ws.razorpaySubscriptionId || ws.razorpaySubscriptionId === subId;
+}
+
+/** The workspace's paying subscription will charge again (paid and not ending, or a trial not cancelled). */
+function currentCanStillCharge(ws: WorkspaceFacts): boolean {
+  if (ws.subscriptionStatus === 'active') return !ws.subscriptionCancelAtPeriodEnd;
+  if (ws.subscriptionStatus === 'trial_active') return !ws.trialCancelledAt;
+  return false;
 }
 
 function isStale(ws: WorkspaceFacts, eventAt: Date): boolean {
@@ -157,6 +176,17 @@ export function decideBillingEvent(input: {
       if (status === 'trial_active' && ws.billingSubscriptionId === sub.id) {
         return { actions: [{ kind: 'consume_claim' }], recordEvent: false, note: 'trial already started (replay)' };
       }
+      if (claim.subscriptionEndedAt) {
+        // Out of order: the cancellation was delivered first. A subscription
+        // can't be authorized after it ends, so the authorization happened
+        // before — converge to the in-order result: the trial is used and
+        // cancelled (access until the trial end, no charge), never a running trial.
+        return {
+          actions: [{ kind: 'consume_claim' }, { kind: 'start_trial', trialEndsAt: offer.trialEndsAt, cancelled: true }],
+          recordEvent: true,
+          note: 'trial authorized, but its cancellation arrived first — started as cancelled',
+        };
+      }
       return {
         actions: [{ kind: 'consume_claim' }, { kind: 'start_trial', trialEndsAt: offer.trialEndsAt }],
         recordEvent: true,
@@ -168,21 +198,38 @@ export function decideBillingEvent(input: {
     case 'subscription.charged': {
       if (stale(ws) && linked) return ignore('older than the last applied event');
       const captured = payment?.status === 'captured';
+      // Captured money that fails verification: never access, but never silent either.
+      const review = (reason: string): BillingDecision => ({
+        actions: [{ kind: 'flag_payment_review', reason }],
+        recordEvent: false,
+        note: `captured payment not accepted — ${reason}`,
+      });
       if (sub.isTrial) {
         // activated = billing cycle started (paid_count 0 for a trial) — not payment.
         if (type === 'subscription.activated' && !captured) return ignore('trial billing cycle started; waiting for the charge');
         if (!captured) return ignore('no captured payment');
         const expected = claim?.attachedSubscriptionId === sub.id ? claim.offer : null;
-        if (!expected) return ignore('trial charge without a matching checkout snapshot — not activating');
-        if (payment!.currency !== expected.currency) return ignore(`currency mismatch (${payment!.currency})`);
-        if (payment!.amount !== expected.amountPaise) return ignore(`amount mismatch (${payment!.amount} ≠ ${expected.amountPaise})`);
+        if (!expected) return review('trial charge without a matching checkout snapshot — not activating');
+        if (payment!.currency !== expected.currency) return review(`currency mismatch (${payment!.currency})`);
+        if (payment!.amount !== expected.amountPaise) return review(`amount mismatch (${payment!.amount} ≠ ${expected.amountPaise})`);
       } else {
         // Non-trial: the authorization payment IS the first charge.
         if (!captured && sub.paidCount < 1) return ignore('no payment yet');
-        if (captured && payment!.currency && payment!.currency !== 'INR') return ignore(`currency mismatch (${payment!.currency})`);
+        if (captured && payment!.currency && payment!.currency !== 'INR') return review(`currency mismatch (${payment!.currency})`);
         if (captured && input.expectedPaidAmountPaise != null && payment!.amount !== input.expectedPaidAmountPaise) {
-          return ignore(`amount mismatch (${payment!.amount} ≠ ${input.expectedPaidAmountPaise})`);
+          return review(`amount mismatch (${payment!.amount} ≠ ${input.expectedPaidAmountPaise})`);
         }
+      }
+      // A second subscription paid while the one granting access can still
+      // charge: the customer is being billed twice. Access is already granted —
+      // keep the original as the paying subscription (no flip-flop each cycle)
+      // and put it in front of a person to refund/cancel one.
+      if (ws.billingSubscriptionId && ws.billingSubscriptionId !== sub.id && currentCanStillCharge(ws)) {
+        return {
+          actions: [{ kind: 'flag_duplicate_subscription' }],
+          recordEvent: false,
+          note: `possible double charge: ${sub.id} paid while ${ws.billingSubscriptionId} still pays for this workspace`,
+        };
       }
       return {
         actions: [{
@@ -201,6 +248,15 @@ export function decideBillingEvent(input: {
       if (!linked) return ignore('not the subscription granting access');
       if (!HAS_ACCESS.has(status)) return ignore(`workspace is ${status} — nothing to fail`);
       if (stale(ws)) return ignore('older than the last applied event');
+      if (status === 'past_due') {
+        // The failure is already open (Day 0 frozen): a Razorpay retry or the
+        // self-heal re-reading it changes nothing but the event time.
+        return {
+          actions: [{ kind: 'failure_continues', halted: type === 'subscription.halted' }],
+          recordEvent: true,
+          note: type === 'subscription.halted' ? 'retries exhausted (failure already open)' : 'failure already open',
+        };
+      }
       return {
         actions: [{ kind: 'payment_failed', halted: type === 'subscription.halted', reason: type === 'subscription.halted' ? 'retries_exhausted' : 'charge_failed' }],
         recordEvent: true,
@@ -212,8 +268,14 @@ export function decideBillingEvent(input: {
     case 'subscription.completed':
     case 'subscription.expired': {
       if (sub.isTrial && claim?.status === 'reserved' && claim.attachedSubscriptionId === sub.id) {
-        // Never authorized — ask Razorpay before the phone's claim is released.
-        return { actions: [{ kind: 'settle_claim' }], recordEvent: false, note: 'unauthorized trial checkout ended' };
+        // Not (yet) authorized as far as we know — remember the end (an
+        // authorization delivered late must not start a running trial), then
+        // ask Razorpay before the phone's claim is released.
+        return {
+          actions: [{ kind: 'record_trial_subscription_ended' }, { kind: 'settle_claim' }],
+          recordEvent: false,
+          note: 'trial checkout ended before an authorization was processed',
+        };
       }
       if (superseded) return ignore('superseded by a recovery checkout (cancelled on purpose)');
       if (!linked) return ignore('not the subscription granting access');

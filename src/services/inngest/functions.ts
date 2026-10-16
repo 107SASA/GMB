@@ -823,15 +823,21 @@ export const subscriptionExpiryWorker = inngest.createFunction(
 
     // Free trials past their end date. A cancelled trial ends at trialEndsAt
     // (no charge — Razorpay subscription already cancelled). A trial whose
-    // first charge was never confirmed within the processing window is asked
-    // about once more (self-heal), then treated as a failed charge.
+    // first charge was not confirmed within the processing window is asked
+    // about again (self-heal, same rules as the webhook): a CONFIRMED failure
+    // (pending/halted) or cancellation is applied there. Anything Razorpay has
+    // not confirmed — including Razorpay being unreachable — is never assumed
+    // to be a success or a failure: it is re-checked every run and flagged once
+    // for review. Access already closed at the end of the processing window
+    // (lib/billing/entitlements.ts), so waiting grants nothing.
     const trials = await step.run("finish-trials", async () => {
       const dbConnect = (await import("@/lib/mongodb")).default;
       await dbConnect();
       const { default: Business } = await import("@/models/Business");
-      const { cancelBusinessPlan, cancelPlan, markBusinessPastDue, markPastDue } = await import("@/lib/billing/applyEntitlements");
+      const { cancelBusinessPlan, cancelPlan } = await import("@/lib/billing/applyEntitlements");
       const { reconcileWorkspaceSubscription } = await import("@/lib/billing/razorpayReconcile");
       const { TRIAL_CHARGE_PROCESSING_MS } = await import("@/lib/billing/billingPolicy");
+      const { flagUnconfirmedTrialCharge } = await import("@/services/billing/trialChargeVerification");
 
       const now = Date.now();
       const due = await Business.find({ subscriptionStatus: "trial_active", trialEndsAt: { $lte: new Date(now) } })
@@ -850,17 +856,14 @@ export const subscriptionExpiryWorker = inngest.createFunction(
           continue;
         }
         if (new Date(b.trialEndsAt).getTime() + TRIAL_CHARGE_PROCESSING_MS > now) continue;
-        await reconcileWorkspaceSubscription(id).catch(() => null);
-        const fresh: any = await Business.findById(id).select("subscriptionStatus").lean();
-        if (fresh?.subscriptionStatus === "trial_active") {
-          const snapshot = await markBusinessPastDue(id, { reason: "charge_not_confirmed" });
-          if (b.userId) await markPastDue(b.userId.toString(), snapshot);
-          if (snapshot) {
-            const { openRecoveryEpisode } = await import("@/services/billing/recoveryRemindersService");
-            await openRecoveryEpisode({ businessId: id, userId: b.userId?.toString() ?? null, snapshot });
-          }
-          unconfirmed++;
-        }
+        const check = await reconcileWorkspaceSubscription(id, { force: true }).catch((err: any) => ({
+          attempted: true, activated: false, reason: `reconcile threw: ${err?.message ?? err}`,
+        }));
+        const fresh: any = await Business.findById(id).select("subscriptionStatus trialCancelledAt").lean();
+        // A confirmed outcome was applied (paid / past due / cancelled trial).
+        if (fresh?.subscriptionStatus !== "trial_active" || fresh?.trialCancelledAt) continue;
+        await flagUnconfirmedTrialCharge(id, b.userId?.toString() ?? null, check);
+        unconfirmed++;
       }
       return { due: due.length, ended, unconfirmed };
     });

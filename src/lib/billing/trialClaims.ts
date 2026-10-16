@@ -167,7 +167,7 @@ export async function reserveTrialClaim(
           reservedUntil: new Date(now.getTime() + TRIAL_RESERVATION_MS),
           needsReview: false,
         },
-        $unset: { razorpaySubscriptionId: '', offer: '', consumedAt: '', releasedAt: '', releaseReason: '' },
+        $unset: { razorpaySubscriptionId: '', offer: '', consumedAt: '', releasedAt: '', releaseReason: '', subscriptionEndedAt: '' },
         $push: { history: { at: now, status: 'reserved', reason: 'checkout', businessId } },
       },
       { upsert: true, returnDocument: 'after' }

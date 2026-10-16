@@ -60,6 +60,8 @@ export interface ITrialClaim extends Document {
    * alter a checkout that already exists.
    */
   offer?: ITrialOfferSnapshot;
+  /** When a cancelled/expired/completed event for the attached subscription was processed (order safety). */
+  subscriptionEndedAt?: Date;
   history: ITrialClaimHistory[];
   createdAt: Date;
   updatedAt: Date;
@@ -104,6 +106,7 @@ const TrialClaimSchema = new Schema<ITrialClaim>(
         { _id: false }
       ),
     },
+    subscriptionEndedAt: { type: Date },
     history: { type: [HistorySchema], default: [] },
   },
   { timestamps: true }

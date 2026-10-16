@@ -129,20 +129,26 @@ test('trial converts to paid only on a captured charge for the exact snapshot am
   assert.deepEqual(kinds(ok), ['activate_paid']);
   assert.equal((ok.actions[0] as any).periodEnd.toISOString(), '2028-01-15T10:00:00.000Z');
 
-  for (const payment of [captured(AMOUNT - 100), captured(AMOUNT, 'USD'), { amount: AMOUNT, currency: 'INR', status: 'failed' }, null]) {
+  // Captured but wrong amount/currency → no access; flagged (money was taken).
+  for (const payment of [captured(AMOUNT - 100), captured(AMOUNT, 'USD')]) {
+    const d = decide('subscription.charged', { sub, workspace: trialWs(), payment, eventAt: new Date('2027-01-15T10:05:00Z') });
+    assert.deepEqual(kinds(d), ['flag_payment_review'], JSON.stringify(payment));
+  }
+  // Not captured → nothing at all.
+  for (const payment of [{ amount: AMOUNT, currency: 'INR', status: 'failed' }, null]) {
     const d = decide('subscription.charged', { sub, workspace: trialWs(), payment, eventAt: new Date('2027-01-15T10:05:00Z') });
     assert.deepEqual(kinds(d), [], JSON.stringify(payment));
   }
-  // No snapshot to check the amount against → no activation.
-  assert.deepEqual(kinds(decide('subscription.charged', { sub, workspace: trialWs(), payment: captured(), claim: null, eventAt: new Date('2027-01-15T10:05:00Z') })), []);
+  // No snapshot to check the amount against → no activation (flagged for review).
+  assert.deepEqual(kinds(decide('subscription.charged', { sub, workspace: trialWs(), payment: captured(), claim: null, eventAt: new Date('2027-01-15T10:05:00Z') })), ['flag_payment_review']);
 });
 
 test('existing non-trial checkout behaviour is preserved', () => {
   const live = ws({ razorpaySubscriptionId: 'sub_paid' });
   assert.deepEqual(kinds(decide('subscription.activated', { sub: paidSub(), workspace: live, claim: null })), ['activate_paid']);
   assert.deepEqual(kinds(decide('subscription.charged', { sub: paidSub(), workspace: live, claim: null, payment: captured(199_900) })), ['activate_paid']);
-  // Known plan price: a wrong amount is refused.
-  assert.deepEqual(kinds(decide('subscription.charged', { sub: paidSub(), workspace: live, claim: null, payment: captured(100), expectedPaidAmountPaise: 199_900 })), []);
+  // Known plan price: a wrong amount is refused (no access) and flagged for review.
+  assert.deepEqual(kinds(decide('subscription.charged', { sub: paidSub(), workspace: live, claim: null, payment: captured(100), expectedPaidAmountPaise: 199_900 })), ['flag_payment_review']);
 });
 
 // ── failures ──
@@ -202,8 +208,9 @@ test('cancelling during the trial keeps access to the trial end, no charge', () 
 });
 
 test('an unauthorized trial checkout that expires or is cancelled settles its claim (Razorpay re-checked)', () => {
-  assert.deepEqual(kinds(decide('subscription.expired', { sub: trialSub({ status: 'expired' }) })), ['settle_claim']);
-  assert.deepEqual(kinds(decide('subscription.cancelled', { sub: trialSub({ status: 'cancelled' }) })), ['settle_claim']);
+  // The end is remembered on the claim first (an authorization delivered late must not start a running trial).
+  assert.deepEqual(kinds(decide('subscription.expired', { sub: trialSub({ status: 'expired' }) })), ['record_trial_subscription_ended', 'settle_claim']);
+  assert.deepEqual(kinds(decide('subscription.cancelled', { sub: trialSub({ status: 'cancelled' }) })), ['record_trial_subscription_ended', 'settle_claim']);
 });
 
 test('an expired or cancelled unpaid checkout never cancels the workspace (no "subscription cancelled" email)', () => {

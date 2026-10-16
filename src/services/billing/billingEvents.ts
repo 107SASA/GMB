@@ -38,7 +38,7 @@ import { openRecoveryEpisode, closeRecoveryEpisodes } from '@/services/billing/r
 async function resolveBusiness(subEntity: any, paymentEntity: any): Promise<any | null> {
   const notesBusinessId = subEntity?.notes?.businessId ?? paymentEntity?.notes?.businessId;
   const fields =
-    '_id userId subscriptionStatus billingSubscriptionId razorpaySubscriptionId trialEndsAt trialCancelledAt billingLastEventAt supersededSubscriptionIds';
+    '_id userId subscriptionStatus billingSubscriptionId razorpaySubscriptionId trialEndsAt trialCancelledAt billingLastEventAt supersededSubscriptionIds subscriptionCancelAtPeriodEnd';
   if (typeof notesBusinessId === 'string' && notesBusinessId) {
     const b = await Business.findById(notesBusinessId).select(fields).lean();
     if (b) return b;
@@ -73,15 +73,27 @@ async function expectedPlanAmountPaise(planId: string | null): Promise<number | 
   return null; // legacy / env plan — amount unknown, behave as before
 }
 
-async function cancelRejectedTrial(subId: string): Promise<void> {
+/**
+ * Cancels a trial subscription that was refused a trial. True only when
+ * Razorpay confirms it can no longer charge — otherwise it would charge the
+ * full price at its start date with no access, so the caller flags it.
+ */
+async function cancelRejectedTrial(subId: string): Promise<boolean> {
   const razorpay = getRazorpay();
-  if (!razorpay) return;
+  if (!razorpay) return false;
   try {
     // Immediate cancel: an authenticated (future-start) subscription has no
     // billing cycle yet, so nothing is charged.
     await razorpay.subscriptions.cancel(subId, false);
+    return true;
   } catch (err: any) {
     console.error(`[billing] could not cancel rejected trial subscription ${subId}:`, err?.error?.description || err?.message);
+  }
+  try {
+    const s: any = await razorpay.subscriptions.fetch(subId);
+    return ['cancelled', 'expired', 'completed'].includes(String(s?.status));
+  } catch {
+    return false;
   }
 }
 
@@ -135,6 +147,7 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
         trialCancelledAt: business.trialCancelledAt ?? null,
         billingLastEventAt: business.billingLastEventAt ?? null,
         supersededSubscriptionIds: business.supersededSubscriptionIds ?? [],
+        subscriptionCancelAtPeriodEnd: business.subscriptionCancelAtPeriodEnd ?? null,
       }
     : null;
   const claim: ClaimFacts | null = claimDoc
@@ -150,6 +163,7 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
               trialEndsAt: new Date(claimDoc.offer.trialEndsAt),
             }
           : null,
+        subscriptionEndedAt: claimDoc.subscriptionEndedAt ? new Date(claimDoc.subscriptionEndedAt) : null,
       }
     : null;
 
@@ -164,6 +178,7 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
     authoritative: source === 'reconcile',
   });
   const stampAt = source === 'webhook' ? eventAt : undefined;
+  const reviewReasons: string[] = [];
 
   for (const action of decision.actions) {
     switch (action.kind) {
@@ -171,11 +186,13 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
         await consumeTrialClaim(TrialClaim, { razorpaySubscriptionId: sub!.id, now: new Date() });
         break;
       case 'start_trial':
-        await startTrialAccess(businessId!, userId, { subscriptionId: sub!.id, trialEndsAt: action.trialEndsAt, eventAt: stampAt });
+        await startTrialAccess(businessId!, userId, { subscriptionId: sub!.id, trialEndsAt: action.trialEndsAt, eventAt: stampAt, cancelled: action.cancelled === true });
         break;
       case 'reject_trial':
         console.error(`[billing] trial rejected for ${sub?.id} (business ${businessId}): ${action.reason}`);
-        await cancelRejectedTrial(sub!.id);
+        if (!(await cancelRejectedTrial(sub!.id))) {
+          reviewReasons.push(`rejected trial subscription ${sub?.id} could not be confirmed cancelled — it may charge at its start date`);
+        }
         break;
       case 'activate_paid': {
         // planType comes from our checkout notes ('Pro', or 'Enterprise' on
@@ -246,7 +263,40 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
         if (fresh) await settleTrialReservation(TrialClaim, fresh, razorpaySettleDeps, new Date());
         break;
       }
+      case 'flag_duplicate_subscription':
+      case 'flag_payment_review':
+        // Nothing changes automatically — the BillingEvent below goes to the review queue.
+        reviewReasons.push(decision.note);
+        break;
+      case 'record_trial_subscription_ended':
+        await TrialClaim.updateOne(
+          { razorpaySubscriptionId: sub!.id, subscriptionEndedAt: { $exists: false } },
+          { $set: { subscriptionEndedAt: eventAt } }
+        );
+        break;
+      case 'failure_continues':
+        // Day 0, grace and reminders stay as frozen; only the facts move on.
+        if (businessId && (action.halted || stampAt)) {
+          await Business.updateOne(
+            { _id: businessId, subscriptionStatus: 'past_due' },
+            {
+              ...(action.halted && { $set: { paymentFailureReason: 'retries_exhausted' } }),
+              ...(stampAt && { $max: { billingLastEventAt: stampAt } }),
+            }
+          );
+        }
+        break;
     }
+  }
+  for (const reason of reviewReasons) console.error(`[billing] NEEDS REVIEW business ${businessId}: ${reason}`);
+  const needsReview = reviewReasons.length > 0;
+
+  // The self-heal re-reads Razorpay every 30 minutes: an unchanged state
+  // (nothing applied, or the same open failure) is not recorded again.
+  // Webhooks are always recorded — each is a distinct Razorpay event.
+  const unchanged = decision.actions.every((a) => a.kind === 'failure_continues');
+  if (source === 'reconcile' && unchanged && !needsReview) {
+    return { decision, businessId, userId };
   }
 
   const after = businessId ? await Business.findById(businessId).select('subscriptionStatus').lean<any>() : null;
@@ -261,9 +311,10 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
     statusBefore: workspace?.subscriptionStatus ?? undefined,
     statusAfter: after?.subscriptionStatus ?? undefined,
     actions: decision.actions.map((a) => a.kind),
-    note: decision.note,
+    note: [decision.note, ...reviewReasons.filter((r) => r !== decision.note)].join(' | '),
     amountPaise: payment?.amount ?? undefined,
     currency: payment?.currency ?? undefined,
+    ...(needsReview && { needsReview: true }),
   }).catch((err: any) => console.error('[billing] BillingEvent write failed:', err?.message));
 
   if (decision.actions.length === 0) {

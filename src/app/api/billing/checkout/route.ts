@@ -8,10 +8,12 @@ import { requireBusinessContext } from '@/lib/tenant';
 import { getRazorpay, getRazorpayKeyId } from '@/lib/billing/razorpay';
 import { ensureRazorpayPlanIdForCycle, getActivePlan, isBillingCycle, CYCLES, type BillingCycle } from '@/lib/billing/planCatalog';
 import { decideCheckoutTrial, offerAppliesToCycle } from '@/lib/billing/billingPolicy';
-import { attachSubscriptionToClaim } from '@/lib/billing/trialClaims';
+import { attachSubscriptionToClaim, settleTrialReservation } from '@/lib/billing/trialClaims';
 import { getTrialPolicy } from '@/services/billing/trialPolicyStore';
-import { reserveTrialForCheckout } from '@/services/billing/trialEligibility';
+import { reserveTrialForCheckout, razorpaySettleDeps } from '@/services/billing/trialEligibility';
 import { startRecoveryCheckout } from '@/services/billing/paymentRecoveryService';
+import { decideTrialCheckoutReuse, previousUnpaidCheckout, retirePreviousCheckout } from '@/lib/billing/checkoutGuard';
+import { reconcileWorkspaceSubscription } from '@/lib/billing/razorpayReconcile';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 /**
@@ -41,8 +43,15 @@ export async function POST(req: Request) {
 
     await dbConnect();
     const workspace = await Business.findById(ctx.businessId)
-      .select('subscriptionStatus trialEndsAt subscriptionCancelAtPeriodEnd paymentAccessHold')
-      .lean<{ subscriptionStatus?: string; trialEndsAt?: Date; subscriptionCancelAtPeriodEnd?: boolean; paymentAccessHold?: boolean }>();
+      .select('subscriptionStatus trialEndsAt subscriptionCancelAtPeriodEnd paymentAccessHold razorpaySubscriptionId billingSubscriptionId')
+      .lean<{
+        subscriptionStatus?: string;
+        trialEndsAt?: Date;
+        subscriptionCancelAtPeriodEnd?: boolean;
+        paymentAccessHold?: boolean;
+        razorpaySubscriptionId?: string;
+        billingSubscriptionId?: string;
+      }>();
     if (workspace?.subscriptionStatus === 'trial_active') {
       return NextResponse.json(
         { error: 'This workspace is already on a free trial. Your plan starts automatically when it ends.', code: 'TRIAL_ACTIVE' },
@@ -100,6 +109,40 @@ export async function POST(req: Request) {
       },
     });
 
+    // Before ANY new subscription is created below: the workspace's previous
+    // unpaid checkout must not be able to charge alongside it (see
+    // lib/billing/checkoutGuard.ts). Null = safe to create.
+    const guardPreviousCheckout = async (): Promise<NextResponse | null> => {
+      const guard = await retirePreviousCheckout(
+        {
+          fetchSubscription: async (id) => {
+            const s: any = await razorpay.subscriptions.fetch(id);
+            return { status: String(s.status), paidCount: Number(s.paid_count ?? 0) };
+          },
+          cancelSubscription: async (id) => {
+            await razorpay.subscriptions.cancel(id, false);
+          },
+        },
+        previousUnpaidCheckout(workspace)
+      );
+      if (guard.kind === 'clear' || guard.kind === 'cancelled_previous') return null;
+      if (guard.kind === 'payment_in_progress') {
+        // Apply it now instead of waiting for a late webhook.
+        await reconcileWorkspaceSubscription(ctx.businessId, { force: true, subscriptionId: guard.subscriptionId }).catch((err) =>
+          console.error('[billing/checkout] reconcile of in-flight payment failed:', err?.message)
+        );
+        return NextResponse.json(
+          { error: 'A payment for this workspace is already being processed. Please wait a moment and refresh — no new payment is needed.', code: 'PAYMENT_IN_PROGRESS' },
+          { status: 409 }
+        );
+      }
+      console.error(`[billing/checkout] previous checkout ${guard.subscriptionId} for business ${ctx.businessId} unresolved: ${guard.reason}`);
+      return NextResponse.json(
+        { error: "We couldn't safely start a new checkout right now, so nothing was charged. Please try again in a few minutes.", code: 'CHECKOUT_UNAVAILABLE' },
+        { status: 503 }
+      );
+    };
+
     // ── Failed payment: safe recovery (never a second subscription that can
     // charge alongside the original, never a free trial) ──────────────────
     if (workspace?.subscriptionStatus === 'past_due') {
@@ -153,18 +196,55 @@ export async function POST(req: Request) {
         const claim = reservation.claim;
 
         // A second tab of the same workspace: reuse the subscription already
-        // attached to this reservation instead of creating another.
+        // attached to this reservation instead of creating another — only
+        // while Razorpay says it can still be authorized.
         if (claim.razorpaySubscriptionId && claim.offer) {
-          return NextResponse.json({
-            success: true,
-            checkout: widgetParams(claim.razorpaySubscriptionId, trialDescription(activePlan.displayName, duration.priceInr, claim.offer.trialEndsAt)),
-            trial: trialTerms(claim.offer, duration.priceInr),
-          });
+          let reuse: ReturnType<typeof decideTrialCheckoutReuse>;
+          try {
+            const s: any = await razorpay.subscriptions.fetch(claim.razorpaySubscriptionId);
+            reuse = decideTrialCheckoutReuse({ status: String(s.status), paidCount: Number(s.paid_count ?? 0) });
+          } catch (err: any) {
+            console.error('[billing/checkout] could not check the attached trial checkout:', err?.error?.description || err?.message);
+            reuse = 'unknown';
+          }
+          if (reuse === 'reuse') {
+            return NextResponse.json({
+              success: true,
+              checkout: widgetParams(claim.razorpaySubscriptionId, trialDescription(activePlan.displayName, duration.priceInr, claim.offer.trialEndsAt)),
+              trial: trialTerms(claim.offer, duration.priceInr),
+            });
+          }
+          if (reuse === 'payment_in_progress') {
+            await reconcileWorkspaceSubscription(ctx.businessId, { force: true, subscriptionId: claim.razorpaySubscriptionId }).catch((err) =>
+              console.error('[billing/checkout] reconcile of authorized trial failed:', err?.message)
+            );
+            return NextResponse.json(
+              { error: 'Your free trial is already being set up. Please wait a moment and refresh — no new payment is needed.', code: 'PAYMENT_IN_PROGRESS' },
+              { status: 409 }
+            );
+          }
+          if (reuse === 'ended') {
+            // Settle the reservation against Razorpay (releases it when it was
+            // never authorized), so the next attempt starts a fresh checkout.
+            await settleTrialReservation(TrialClaim, claim, razorpaySettleDeps, new Date()).catch((err) =>
+              console.error('[billing/checkout] settling the ended trial checkout failed:', err?.message)
+            );
+            return NextResponse.json(
+              { error: 'Your previous checkout window was closed, so nothing was charged. Please start checkout again.', code: 'CHECKOUT_ENDED' },
+              { status: 409 }
+            );
+          }
+          return NextResponse.json(
+            { error: "We couldn't safely resume your checkout right now, so nothing was charged. Please try again in a few minutes.", code: 'CHECKOUT_UNAVAILABLE' },
+            { status: 503 }
+          );
         }
 
         const now = new Date();
         const decision = decideCheckoutTrial({ policy, cycle, eligible: true, now });
         if (decision.trial) {
+          const blocked = await guardPreviousCheckout();
+          if (blocked) return blocked;
           const reservedUntil = new Date(claim.reservedUntil);
           const rpSubscription = await razorpay.subscriptions.create({
             plan_id: duration.razorpayPlanId,
@@ -224,7 +304,9 @@ export async function POST(req: Request) {
       // → the normal paid checkout below, same as when the offer is OFF.
     }
 
-    // ── Normal paid checkout (unchanged behaviour) ─────────────────────────
+    // ── Normal paid checkout ────────────────────────────────────────────────
+    const blocked = await guardPreviousCheckout();
+    if (blocked) return blocked;
     const rpSubscription = await razorpay.subscriptions.create({
       plan_id: duration.razorpayPlanId,
       customer_notify: 1,

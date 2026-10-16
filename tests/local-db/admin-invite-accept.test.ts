@@ -9,31 +9,40 @@
  * is arguably a better test for an API route anyway — it exercises the same
  * code path a real invite acceptance does, session cookies included.
  *
- * Prerequisites to run:
- *   1. `npm run dev` running on http://localhost:3000
- *   2. MONGODB_URI reachable (same one .env.local points at)
+ * It WRITES: deletes/creates test users (one a SUPER_ADMIN with the password
+ * below) and admin invites, directly and through the dev server. So it is
+ * kept out of `npm run test:integration` and runs only against an explicitly
+ * configured LOCAL test database — tests/helpers/localTestDb.ts refuses Atlas,
+ * remote hosts and ambiguous URIs before anything connects.
  *
- * Run with: node --test tests/integration/admin-invite-accept.test.ts
+ * Prerequisites to run:
+ *   1. A local mongod, e.g. on 127.0.0.1:27017
+ *   2. .env.local MONGODB_URI = that local database (the dev server writes there too)
+ *   3. `npm run dev` running on http://localhost:3000
+ *
+ * Run with:
+ *   MONGODB_LOCAL_TEST_URI=mongodb://127.0.0.1:27017/growwmatics_local npm run test:local-db
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { requireLocalTestDatabase } from '../helpers/localTestDb.ts';
 
 const BASE_URL = 'http://localhost:3000';
 
-function loadEnvLocal() {
-  for (const line of readFileSync('.env.local', 'utf8').split('\n')) {
-    const eq = line.indexOf('=');
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim();
-    if (!/^[A-Z0-9_]+$/.test(key) || process.env[key]) continue;
-    let val = line.slice(eq + 1);
-    const hashIdx = val.indexOf('#');
-    if (hashIdx !== -1) val = val.slice(0, hashIdx);
-    process.env[key] = val.trim().replace(/^"(.*)"$/, '$1');
+/** The dev server's database — only MONGODB_URI is read from .env.local. */
+function serverMongoUri(): string | null {
+  let text = '';
+  try {
+    text = readFileSync('.env.local', 'utf8');
+  } catch {
+    return null;
   }
+  const line = text.split('\n').find((l) => /^\s*MONGODB_URI\s*=/.test(l));
+  if (!line) return null;
+  return line.slice(line.indexOf('=') + 1).replace(/\s+#.*$/, '').trim().replace(/^(['"])(.*)\1$/, '$2');
 }
 
 const SUPER_ADMIN_EMAIL = 'qa-invite-test-admin@example.invalid';
@@ -44,8 +53,10 @@ let superAdminId: any;
 let createdInviteeId: any = null;
 
 before(async () => {
-  loadEnvLocal();
-  await mongoose.connect(process.env.MONGODB_URI as string);
+  // Fail closed: throws (nothing connected, nothing written) unless both the
+  // test and the dev server point at the same explicit local test database.
+  const { uri } = requireLocalTestDatabase(process.env, serverMongoUri());
+  await mongoose.connect(uri);
   const db = mongoose.connection.db!;
   await db.collection('users').deleteMany({ email: { $in: [SUPER_ADMIN_EMAIL, INVITEE_EMAIL] } });
   await db.collection('admininvites').deleteMany({ email: INVITEE_EMAIL });
@@ -61,6 +72,7 @@ before(async () => {
 });
 
 after(async () => {
+  if (mongoose.connection.readyState !== 1) return; // the guard refused — nothing to clean up
   const db = mongoose.connection.db!;
   await db.collection('admininvites').deleteMany({ email: INVITEE_EMAIL });
   await db.collection('users').deleteMany({ email: { $in: [SUPER_ADMIN_EMAIL, INVITEE_EMAIL] } });

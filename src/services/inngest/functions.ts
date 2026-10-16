@@ -626,12 +626,16 @@ export const weeklyContentAutopilot = inngest.createFunction(
       // its scheduled weekly run has arrived. Needs keywords to generate
       // anything meaningful — a business missing them just keeps getting
       // picked up here every hour until the owner completes onboarding intake.
+      const { planAccessWorkspaceFilter } = await import("@/lib/billing/entitlements");
       const candidates = await Business.find({
         isDeleted: { $ne: true },
-        subscriptionStatus: "active",
         googleConnected: true,
         keywords: { $exists: true, $ne: [] },
-        $or: [{ autopilotNextRunAt: { $exists: false } }, { autopilotNextRunAt: { $lte: now } }],
+        // Paid, or an authorized free trial within its window.
+        $and: [
+          planAccessWorkspaceFilter(now),
+          { $or: [{ autopilotNextRunAt: { $exists: false } }, { autopilotNextRunAt: { $lte: now } }] },
+        ],
       })
         .select("_id autopilotNextRunAt")
         .lean();
@@ -682,6 +686,33 @@ export const weeklyContentAutopilot = inngest.createFunction(
 // the last 7 days so it never turns into an unbounded full-table scan of
 // long-cancelled workspaces. Reuses the exact same reconcile function the
 // status endpoint calls — this is purely a "nobody was there to ask" net.
+// 3b-ter. WhatsApp payment-recovery reminders (services/billing/
+// recoveryRemindersService.ts). Every step is claimed atomically in MongoDB
+// before sending, so overlapping or repeated runs can't send twice. Off unless
+// a super admin enabled reminders with an approved template.
+export const billingRecoveryRemindersCron = inngest.createFunction(
+  { id: "billing-recovery-reminders-cron", triggers: [{ cron: "*/30 * * * *" }] },
+  async ({ step }) => {
+    const summary = await step.run("send-due-reminders", async () => {
+      const { runRecoveryReminderPass } = await import("@/services/billing/recoveryRemindersService");
+      return runRecoveryReminderPass();
+    });
+    return { success: true, ...summary };
+  }
+);
+
+// Day 0 right away (sent when a new failure opens its episode).
+export const billingRecoveryProcess = inngest.createFunction(
+  { id: "billing-recovery-process", triggers: [{ event: "billing/recovery.process" }] },
+  async ({ event, step }) => {
+    const summary = await step.run("send-due-reminder", async () => {
+      const { runRecoveryReminderPass } = await import("@/services/billing/recoveryRemindersService");
+      return runRecoveryReminderPass({ businessId: event.data.businessId });
+    });
+    return { success: true, ...summary };
+  }
+);
+
 export const billingActivationReconcileCron = inngest.createFunction(
   // Every 30 min: the Razorpay webhook and the GET /api/billing/status self-heal
   // handle the normal path; this is only the "nobody was there" net.
@@ -695,9 +726,15 @@ export const billingActivationReconcileCron = inngest.createFunction(
 
       const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000);
       const candidates = await Business.find({
-        razorpaySubscriptionId: { $exists: true, $ne: null },
-        subscriptionStatus: { $ne: "active" },
-        updatedAt: { $gte: sevenDaysAgo },
+        $or: [
+          {
+            razorpaySubscriptionId: { $exists: true, $ne: null },
+            subscriptionStatus: { $ne: "active" },
+            updatedAt: { $gte: sevenDaysAgo },
+          },
+          // Free trials whose first charge is due — usually untouched for months.
+          { subscriptionStatus: "trial_active", trialEndsAt: { $lte: new Date(), $gte: sevenDaysAgo } },
+        ],
       })
         .select("_id")
         .limit(200)
@@ -784,7 +821,54 @@ export const subscriptionExpiryWorker = inngest.createFunction(
       return { checked: businesses.length, expired, reminded };
     });
 
-    return { success: true, ...result };
+    // Free trials past their end date. A cancelled trial ends at trialEndsAt
+    // (no charge — Razorpay subscription already cancelled). A trial whose
+    // first charge was not confirmed within the processing window is asked
+    // about again (self-heal, same rules as the webhook): a CONFIRMED failure
+    // (pending/halted) or cancellation is applied there. Anything Razorpay has
+    // not confirmed — including Razorpay being unreachable — is never assumed
+    // to be a success or a failure: it is re-checked every run and flagged once
+    // for review. Access already closed at the end of the processing window
+    // (lib/billing/entitlements.ts), so waiting grants nothing.
+    const trials = await step.run("finish-trials", async () => {
+      const dbConnect = (await import("@/lib/mongodb")).default;
+      await dbConnect();
+      const { default: Business } = await import("@/models/Business");
+      const { cancelBusinessPlan, cancelPlan } = await import("@/lib/billing/applyEntitlements");
+      const { reconcileWorkspaceSubscription } = await import("@/lib/billing/razorpayReconcile");
+      const { TRIAL_CHARGE_PROCESSING_MS } = await import("@/lib/billing/billingPolicy");
+      const { flagUnconfirmedTrialCharge } = await import("@/services/billing/trialChargeVerification");
+
+      const now = Date.now();
+      const due = await Business.find({ subscriptionStatus: "trial_active", trialEndsAt: { $lte: new Date(now) } })
+        .select("_id userId trialEndsAt trialCancelledAt")
+        .limit(500)
+        .lean();
+
+      let ended = 0;
+      let unconfirmed = 0;
+      for (const b of due as any[]) {
+        const id = b._id.toString();
+        if (b.trialCancelledAt) {
+          await cancelBusinessPlan(id);
+          if (b.userId) await cancelPlan(b.userId.toString());
+          ended++;
+          continue;
+        }
+        if (new Date(b.trialEndsAt).getTime() + TRIAL_CHARGE_PROCESSING_MS > now) continue;
+        const check = await reconcileWorkspaceSubscription(id, { force: true }).catch((err: any) => ({
+          attempted: true, activated: false, reason: `reconcile threw: ${err?.message ?? err}`,
+        }));
+        const fresh: any = await Business.findById(id).select("subscriptionStatus trialCancelledAt").lean();
+        // A confirmed outcome was applied (paid / past due / cancelled trial).
+        if (fresh?.subscriptionStatus !== "trial_active" || fresh?.trialCancelledAt) continue;
+        await flagUnconfirmedTrialCharge(id, b.userId?.toString() ?? null, check);
+        unconfirmed++;
+      }
+      return { due: due.length, ended, unconfirmed };
+    });
+
+    return { success: true, ...result, trials };
   }
 );
 
@@ -2021,13 +2105,14 @@ export const auditAutopilotCron = inngest.createFunction(
 
       // Candidates: currently-qualified workspaces that are either not yet
       // anchored (first run) or due for their monthly re-audit.
+      const { planAccessWorkspaceFilter } = await import("@/lib/billing/entitlements");
       const candidates = await Business.find({
         isDeleted: { $ne: true },
-        subscriptionStatus: "active",
         googleConnected: true,
-        $or: [
-          { auditAutopilotNextRunAt: { $exists: false } },
-          { auditAutopilotNextRunAt: { $lte: now } },
+        // Paid, or an authorized free trial within its window.
+        $and: [
+          planAccessWorkspaceFilter(now),
+          { $or: [{ auditAutopilotNextRunAt: { $exists: false } }, { auditAutopilotNextRunAt: { $lte: now } }] },
         ],
       })
         .select(
@@ -2475,7 +2560,7 @@ export const salesNurtureRequested = inngest.createFunction(
       const owner: any = business.userId
         ? await User.findById(business.userId).select('fullName phone subscriptionPlan').lean()
         : null;
-      if (isWorkspaceUnlocked({ subscriptionStatus: business.subscriptionStatus, userSubscriptionPlan: owner?.subscriptionPlan, businessCreatedAt: business.createdAt })) {
+      if (isWorkspaceUnlocked({ subscriptionStatus: business.subscriptionStatus, userSubscriptionPlan: owner?.subscriptionPlan, businessCreatedAt: business.createdAt, trialEndsAt: business.trialEndsAt, trialCancelledAt: business.trialCancelledAt, paymentGraceEndsAt: business.paymentGraceEndsAt, paymentAccessHold: business.paymentAccessHold })) {
         return { skip: 'already subscribed' as const };
       }
       const phone = owner?.phone || business.phone;

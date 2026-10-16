@@ -91,7 +91,7 @@ export async function POST(req: Request) {
     await User.updateOne(
       { _id: user._id },
       {
-        $set: { isPhoneVerified: true, phoneVerifiedAt: new Date(), failedOtpAttempts: 0 },
+        $set: { isPhoneVerified: true, phoneVerifiedAt: new Date(), phoneVerifiedVia: 'whatsapp_otp', failedOtpAttempts: 0 },
         $unset: { phoneOtpHash: '', phoneOtpExpiry: '' },
       }
     );

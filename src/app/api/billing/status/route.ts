@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { cookies, headers } from 'next/headers';
+import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import Subscription from '@/models/Subscription';
 import Business from '@/models/Business';
 import { requireClient } from '@/lib/auth';
 import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
+import { workspaceAccessState } from '@/lib/billing/entitlements';
 import { reconcileWorkspaceSubscription } from '@/lib/billing/razorpayReconcile';
 
 export const dynamic = 'force-dynamic';
@@ -18,19 +20,37 @@ export const dynamic = 'force-dynamic';
  * has a paid user-level plan. Additive — null when no workspace is selected.
  */
 const WORKSPACE_FIELDS =
-  'name subscriptionStatus freeAuditUsed subscriptionCurrentPeriodEnd subscriptionCancelAtPeriodEnd createdAt razorpaySubscriptionId';
+  'name subscriptionStatus freeAuditUsed subscriptionCurrentPeriodEnd subscriptionCancelAtPeriodEnd createdAt razorpaySubscriptionId ' +
+  'trialStartedAt trialEndsAt trialCancelledAt paymentFailedAt paymentFailureKind paymentGraceEndsAt ' +
+  'paymentRestrictedModules paymentAccessHold';
 
-async function getWorkspaceStatus(userSubscriptionPlan?: string) {
+async function getWorkspaceStatus(user: any, userId: string) {
+  const userSubscriptionPlan = user?.subscriptionPlan;
   const businessId =
     (await headers()).get('x-business-id') ?? (await cookies()).get('activeBusinessId')?.value;
-  if (!businessId) return null;
-  let business = await Business.findById(businessId).select(WORKSPACE_FIELDS).lean() as any;
+  if (!businessId || !mongoose.isValidObjectId(businessId)) return null;
+  // Tenant isolation — same ownership rule as requireBusinessContext: the
+  // caller must own the workspace or share its organization (super admins:
+  // any). Otherwise this would reveal another workspace's billing state and
+  // trigger a Razorpay self-heal for it.
+  const ownership =
+    user?.role === 'SUPER_ADMIN'
+      ? { _id: businessId }
+      : {
+          _id: businessId,
+          $or: [{ userId }, ...(user?.organizationId ? [{ organizationId: user.organizationId }] : [])],
+        };
+  let business = await Business.findOne(ownership).select(WORKSPACE_FIELDS).lean() as any;
   if (!business) return null;
 
   let isActive = isWorkspaceUnlocked({
     subscriptionStatus: business.subscriptionStatus,
     userSubscriptionPlan,
     businessCreatedAt: business.createdAt,
+    trialEndsAt: business.trialEndsAt,
+    trialCancelledAt: business.trialCancelledAt,
+    paymentGraceEndsAt: business.paymentGraceEndsAt,
+    paymentAccessHold: business.paymentAccessHold,
   });
 
   // Every read of "is this workspace unlocked" doubles as a chance to
@@ -44,12 +64,16 @@ async function getWorkspaceStatus(userSubscriptionPlan?: string) {
       console.error('[billing/status] reconcile threw:', err);
       return null;
     });
-    if (result?.activated) {
+    if (result?.attempted) {
       business = await Business.findById(businessId).select(WORKSPACE_FIELDS).lean() as any;
       isActive = isWorkspaceUnlocked({
         subscriptionStatus: business.subscriptionStatus,
         userSubscriptionPlan,
         businessCreatedAt: business.createdAt,
+        trialEndsAt: business.trialEndsAt,
+        trialCancelledAt: business.trialCancelledAt,
+        paymentGraceEndsAt: business.paymentGraceEndsAt,
+        paymentAccessHold: business.paymentAccessHold,
       });
     }
   }
@@ -63,6 +87,22 @@ async function getWorkspaceStatus(userSubscriptionPlan?: string) {
     currentPeriodEnd: business.subscriptionCurrentPeriodEnd ?? null,
     // True while access continues but the subscription won't renew.
     cancelAtPeriodEnd: Boolean(business.subscriptionCancelAtPeriodEnd),
+    // Free trial: the first charge happens at trialEndsAt unless cancelled.
+    trial: business.trialEndsAt
+      ? {
+          startedAt: business.trialStartedAt ?? null,
+          endsAt: business.trialEndsAt,
+          cancelled: Boolean(business.trialCancelledAt),
+        }
+      : null,
+    paymentFailedAt: business.paymentFailedAt ?? null,
+    // Payment-failure policy in effect for this workspace (frozen at Day 0):
+    // mode full | grace | restricted | held | none, the grace end, and — when
+    // restricted — which paid modules are locked (the dashboard blurs only those).
+    access: {
+      ...workspaceAccessState(business),
+      failureKind: business.paymentFailureKind ?? null,
+    },
   };
 }
 
@@ -77,7 +117,7 @@ export async function GET() {
 
   await dbConnect();
 
-  const workspace = await getWorkspaceStatus((auth.user as any).subscriptionPlan);
+  const workspace = await getWorkspaceStatus(auth.user, auth.userId);
 
   const subscription = await Subscription.findOne({ userId: auth.userId })
     .select('planType billingStatus trialStatus modules razorpaySubscriptionId currentPeriodEnd')

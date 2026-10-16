@@ -3,6 +3,8 @@ import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { requireClient } from '@/lib/auth';
 import { phoneDedupeKey } from '@/lib/phone';
+import { usablePersonName } from '@/lib/personName';
+import { syncPlatformLeadName } from '@/services/leads/platformProspectEntry';
 
 const SAFE_FIELDS =
   'fullName email phone role companyName isEmailVerified isShadowAccount subscriptionPlan lastLoginAt createdAt businessIds';
@@ -33,7 +35,9 @@ export async function PATCH(req: Request) {
 
   if (fullName !== undefined) {
     const name = String(fullName).trim();
-    if (!name) return NextResponse.json({ error: 'Full name cannot be empty.' }, { status: 400 });
+    if (!usablePersonName(name)) {
+      return NextResponse.json({ error: 'Please enter your real name.' }, { status: 400 });
+    }
     update.fullName = name;
   }
 
@@ -104,7 +108,16 @@ export async function PATCH(req: Request) {
     auth.userId,
     { $set: update },
     { new: true, select: SAFE_FIELDS }
-  ).lean();
+  ).lean<{ phone?: string }>();
+
+  // The super admin CRM reads the platform Lead, not the User. A free-report
+  // lead was filed as "New User" / the business name before they typed a real
+  // name (checkout or profile), so carry it over unless the lead already has one.
+  if (update.fullName && user?.phone) {
+    await syncPlatformLeadName(user.phone, update.fullName).catch((err) =>
+      console.warn('[user/profile] platform lead name sync failed:', err?.message)
+    );
+  }
 
   return NextResponse.json({ user });
 }

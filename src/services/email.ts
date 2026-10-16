@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
+import { outboundSuppressed } from '@/lib/outboundSuppression';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -28,7 +29,20 @@ if (!resend && !transporter) {
   );
 }
 
+/**
+ * lib/outboundSuppression.ts — checked first in every sender below, so a
+ * suppressed email never reaches Resend or SendGrid. Resolves as a success.
+ */
+function suppressedEmail(to: string, subject: string): { success: boolean; messageId: string; error?: string; suppressed: true } | null {
+  if (!outboundSuppressed('email')) return null;
+  console.info(`[email][suppressed] "${subject}" to ${to} — not sent`);
+  return { success: true, messageId: `suppressed_${Date.now()}`, suppressed: true };
+}
+
 export const sendEmail = async (to: string, customerName: string, service: string, reviewLink: string, businessName: string, requestId?: string) => {
+  const suppressed = suppressedEmail(to, 'review request');
+  if (suppressed) return suppressed;
+
   if (!transporter) {
     console.warn('Nodemailer transporter not initialized (missing SendGrid key). Mocking Email send.');
     return { success: true, messageId: 'mock_msg_id' };
@@ -123,6 +137,9 @@ export const sendEmailOtp = async (
     console.log(`================================\n`);
   }
 
+  const suppressed = suppressedEmail(to, `OTP (${purpose})`);
+  if (suppressed) return suppressed;
+
   if (!resend && !transporter) {
     console.warn(`Mocking OTP Email to ${to}: ${otp} (No email provider configured)`);
     return { success: true, messageId: 'mock_otp_id' };
@@ -184,6 +201,9 @@ export const sendEmailOtp = async (
  * best-effort contract as notifyBusinessUsers() in services/notifications.ts.
  */
 export const sendTransactionalEmail = async (to: string, subject: string, html: string) => {
+  const suppressed = suppressedEmail(to, subject);
+  if (suppressed) return suppressed;
+
   if (!resend && !transporter) {
     console.warn(`Mocking transactional email to ${to} ("${subject}") — no email provider configured.`);
     return { success: true, messageId: 'mock_txn_id' };

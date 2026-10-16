@@ -100,8 +100,10 @@ test('weekly and 15-day jobs require a real Google location before claiming a sl
   );
   assert.match(weekly, /googleLocationId: \{ \$exists: true, \$nin: \[null, ''\] \}/);
   assert.match(digest, /googleLocationId: \{ \$exists: true, \$nin: \[null, ''\] \}/);
-  assert.match(weekly, /subscriptionStatus: 'active'/);
-  assert.match(digest, /subscriptionStatus: 'active'/);
+  // Subscribed = paid OR an authorized free trial (lib/billing/entitlements.ts;
+  // its MongoDB behaviour is tested in billing-entitlements-mongo.test.ts).
+  assert.match(weekly, /planAccessWorkspaceFilter\(now\)/);
+  assert.match(digest, /planAccessWorkspaceFilter\(now\)/);
 });
 
 test('billing notices still send without a Google connection', () => {

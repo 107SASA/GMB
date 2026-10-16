@@ -7,6 +7,7 @@ import { finalizeLogin } from '@/lib/authSession';
 import { checkRateLimit, resetRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
 import { isReviewerUser, isReviewerOtp } from '@/lib/reviewerAccount';
+import { markPhoneVerified } from '@/services/auth/phoneVerification';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,6 +85,9 @@ export async function POST(req: Request) {
       { _id: user._id },
       { $unset: { phoneOtpHash: '', phoneOtpExpiry: '' } }
     );
+    // A correct WhatsApp code proves the number — the trial rule relies on
+    // this. Not for the store-reviewer account, whose code is fixed.
+    if (!isReviewerUser(user)) await markPhoneVerified(user._id, 'whatsapp_otp');
 
     return await finalizeLogin(user, req);
   } catch (error: any) {

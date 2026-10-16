@@ -16,6 +16,8 @@ import {
   formatCountdown,
 } from '@/components/billing/DurationPicker';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
+import { usablePersonName } from '@/lib/personName';
+import { TrialTerms, TrialPhoneVerification, type TrialOfferPreview } from '@/components/billing/TrialCheckoutPanel';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -80,11 +82,13 @@ function CheckoutForm() {
       })
       .then((json) => {
         if (cancelled || !json?.user) return;
-        setName(json.user.fullName || '');
+        // "New User" is the shadow-account placeholder, not a name they chose.
+        const knownName = usablePersonName(json.user.fullName);
+        setName(knownName);
         setIsShadowAccount(!!json.user.isShadowAccount);
         setEmail(json.user.isShadowAccount ? '' : json.user.email || '');
         setPhone(json.user.phone || '+91');
-        setOriginalName(json.user.fullName || '');
+        setOriginalName(knownName);
         setOriginalPhone(json.user.phone || '');
       })
       .catch(() => {})
@@ -93,14 +97,28 @@ function CheckoutForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Free-trial preview (server-decided; reserves nothing). null = no offer for this customer.
+  const [trialOffer, setTrialOffer] = useState<TrialOfferPreview | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/billing/trial-offer')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => { if (!cancelled) setTrialOffer(json?.offer ?? null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const busy = checkout.phase === 'starting' || checkout.phase === 'confirming' || savingProfile;
+  const trialForCycle =
+    !!trialOffer && trialOffer.cycle === cycle && (trialOffer.eligible || trialOffer.needsPhoneVerification);
+  const showPhoneStep = trialForCycle && checkout.phase === 'needs_phone_verification';
   const selected = pickDuration(plan?.durations, cycle);
   const price = selected?.priceInr ?? plan?.priceInr;
   const cycleLabel = selected?.label ?? plan?.billingCycle ?? 'month';
   const savings = computeSavings(plan?.durations, selected);
   const features = plan?.features?.length ? plan.features : (plan?.modules ?? []).map((m) => MODULE_LABELS[m] ?? m);
 
-  const handleSubscribe = async () => {
+  const handleSubscribe = async (options?: { skipTrial?: boolean }) => {
     setFormError('');
     if (!name.trim()) {
       setFormError('Please enter your name.');
@@ -148,7 +166,7 @@ function CheckoutForm() {
     }
 
     setPreferredCycle(cycle);
-    subscribe(cycle);
+    subscribe(cycle, options);
   };
 
   return (
@@ -299,6 +317,18 @@ function CheckoutForm() {
               </div>
             </div>
 
+            {trialForCycle && <TrialTerms offer={trialOffer!} />}
+            {showPhoneStep && (
+              <TrialPhoneVerification
+                disabled={busy}
+                onVerified={() => {
+                  setTrialOffer((o) => (o ? { ...o, needsPhoneVerification: false, eligible: true } : o));
+                  handleSubscribe();
+                }}
+                onSkipTrial={() => handleSubscribe({ skipTrial: true })}
+              />
+            )}
+
             {(formError || checkout.phase === 'error') && (
               <div role="alert" className="mt-4 p-3 bg-error-container text-on-error-container rounded-lg text-sm font-medium flex items-start gap-2">
                 <MaterialIcon name="error" size={18} className="shrink-0 mt-0.5" />
@@ -307,14 +337,18 @@ function CheckoutForm() {
             )}
 
             <button
-              onClick={handleSubscribe}
-              disabled={!plan?.available || busy || profileLoading}
+              onClick={() => handleSubscribe()}
+              disabled={!plan?.available || busy || profileLoading || showPhoneStep}
               className="mt-6 w-full py-3.5 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2 bg-primary text-on-primary hover:bg-primary-container disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {(checkout.phase === 'starting' || savingProfile) && (
                 <MaterialIcon name="progress_activity" size={16} className="animate-spin text-on-primary" />
               )}
-              {checkout.phase === 'confirming' ? 'Activating…' : `Subscribe now @ ₹${(price ?? 0).toLocaleString('en-IN')} / ${cycleLabel}`}
+              {checkout.phase === 'confirming'
+                ? 'Activating…'
+                : trialForCycle
+                  ? `Start ${trialOffer!.months}-month free trial`
+                  : `Subscribe now @ ₹${(price ?? 0).toLocaleString('en-IN')} / ${cycleLabel}`}
             </button>
 
             <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-outline">

@@ -119,16 +119,16 @@ function FixTags({ finding }: { finding: any }) {
   return (
     <span className="flex flex-wrap gap-1.5 mt-1">
       {finding.severity && (
-        <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant">
+        <span className="text-[11px] font-bold uppercase px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant">
           {SEVERITY_LABEL[finding.severity] || finding.severity} priority
         </span>
       )}
       {finding.actionability && (
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant">
+        <span className="text-[11px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant">
           {ACTIONABILITY_LABEL[finding.actionability] || finding.actionability}
         </span>
       )}
-      <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary-fixed text-primary">
+      <span className="text-[11px] px-1.5 py-0.5 rounded bg-primary-fixed text-primary">
         {cap && GROWWMATICS_CAPABILITIES[cap] ? `GrowwMatics: ${GROWWMATICS_CAPABILITIES[cap].label}` : 'Changed by you in Google — not automated by GrowwMatics'}
       </span>
     </span>
@@ -201,38 +201,40 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="bg-surface-container-lowest border-b border-outline-variant px-6 py-4 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <MaterialIcon name="bolt" size={16} className="text-on-primary" />
+      <div className="bg-surface-container-lowest border-b border-outline-variant">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
+              <MaterialIcon name="bolt" size={16} className="text-on-primary" />
+            </div>
+            <span className="font-heading font-bold text-on-surface whitespace-nowrap">GrowwMatics AI</span>
+            <span className="hidden sm:inline text-outline mx-2">·</span>
+            <span className="hidden sm:inline text-sm text-on-surface-variant truncate">Your Free Business Report</span>
           </div>
-          <span className="font-heading font-bold text-on-surface">GrowwMatics AI</span>
-          <span className="text-outline mx-2">·</span>
-          <span className="text-sm text-on-surface-variant">Your Free Business Report</span>
+          <Link href="/free-report" className="text-sm font-medium text-primary hover:underline shrink-0 min-h-11 inline-flex items-center">
+            Change business
+          </Link>
         </div>
-        <Link href="/free-report" className="text-sm font-medium text-primary hover:underline shrink-0">
-          Change business
-        </Link>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-10 flex flex-col lg:flex-row gap-8 items-start">
-        <div className="flex-1 space-y-8 w-full">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10 flex flex-col lg:flex-row gap-6 sm:gap-8 items-start">
+        <div className="flex-1 min-w-0 space-y-6 sm:space-y-8 w-full">
           {legacy && (
             <div className="rounded-xl border border-outline-variant bg-surface-container p-4 text-sm text-on-surface-variant">
               {LEGACY_REPORT_NOTICE}
             </div>
           )}
 
-          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-8">
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5 sm:p-8">
             <div className="mb-1">
               <span className="text-xs font-bold uppercase tracking-wide text-error">
                 Report ready · {issues.length} verified issue{issues.length === 1 ? '' : 's'} found
               </span>
             </div>
-            <h1 className="font-heading text-3xl font-bold text-on-surface mb-1">{audit.businessName}</h1>
-            <div className="flex items-center gap-2 text-on-surface-variant text-sm mb-3">
-              <MaterialIcon name="location_on" size={16} />
-              <span>{audit.location}</span>
+            <h1 className="font-heading text-2xl sm:text-3xl font-bold text-on-surface mb-1 break-words">{audit.businessName}</h1>
+            <div className="flex items-start gap-2 text-on-surface-variant text-sm mb-3">
+              <MaterialIcon name="location_on" size={16} className="shrink-0 mt-0.5" />
+              <span className="min-w-0">{audit.location}</span>
             </div>
             {lifetimeCount != null && (
               <div className="flex items-center gap-1.5 text-sm mb-2">
@@ -242,9 +244,9 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
               </div>
             )}
             {audit.website && (
-              <div className="flex items-center gap-2 text-primary text-sm mb-5">
-                <MaterialIcon name="language" size={16} className="text-primary" />
-                <a href={audit.website} target="_blank" rel="noopener noreferrer" className="hover:underline">
+              <div className="flex items-start gap-2 text-primary text-sm mb-5">
+                <MaterialIcon name="language" size={16} className="text-primary shrink-0 mt-0.5" />
+                <a href={audit.website} target="_blank" rel="noopener noreferrer" className="hover:underline min-w-0 [overflow-wrap:anywhere]">
                   {audit.website}
                 </a>
               </div>
@@ -252,7 +254,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
 
             {competitorsAhead > 0 && (
               <div className="pt-5 border-t border-outline-variant">
-                <h2 className="font-heading text-2xl font-bold text-on-surface mb-2">
+                <h2 className="font-heading text-xl sm:text-2xl font-bold text-on-surface mb-2 break-words">
                   {competitorsAhead} business{competitorsAhead > 1 ? 'es' : ''} showed up above {audit.businessName} on Google Maps.
                 </h2>
                 <p className="text-on-surface-variant text-sm mb-6">
@@ -292,7 +294,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
 
           {/* ── Google Search Ranking ─────────────────────────────────── */}
           {rankingStatus === 'unavailable' && (
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
               <SectionHeader title="Google Search Ranking" icon="leaderboard" />
               <p className="text-sm text-on-surface-variant">
                 We couldn&apos;t complete the ranking check for this report, so your Google Maps position is unknown right now. This is a data problem on our side, not a finding about your business.
@@ -301,7 +303,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
           )}
 
           {rankingStatus === 'not_measured' && (
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
               <SectionHeader title="Google Search Ranking" icon="leaderboard" />
               <p className="text-sm text-on-surface-variant">
                 Not measured. Google lists {audit.businessName} only under a generic category, so there is no customer search term we can rank you for — and ranking for your own business name would only measure people who already know you. Tell us your main service (or set a specific primary category in Google) and we&apos;ll measure it.
@@ -310,7 +312,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
           )}
 
           {rankingStatus === 'ok' && (
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
               <SectionHeader title="Google Search Ranking" icon="leaderboard" />
               <div className="flex items-center gap-6 mb-5">
                 <RankBadge value={headlineRank} />
@@ -359,10 +361,10 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
                   </div>
                   <div className="space-y-2">
                     {nearbyRows.map((k: any) => (
-                      <div key={k.keyword} className="flex items-center gap-3 text-sm">
-                        <span className="text-on-surface-variant flex-1 truncate">{k.keyword}</span>
-                        <div className="w-28"><RankBar value={kwValue(k)} /></div>
-                        <span className="text-xs font-bold text-on-surface w-20 text-right">{rankLabel(kwValue(k))}</span>
+                      <div key={k.keyword} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1 text-sm">
+                        <span className="text-on-surface-variant basis-full sm:basis-auto sm:flex-1 min-w-0 truncate">{k.keyword}</span>
+                        <div className="flex-1 sm:flex-none sm:w-28"><RankBar value={kwValue(k)} /></div>
+                        <span className="text-xs font-bold text-on-surface shrink-0 sm:w-20 text-right">{rankLabel(kwValue(k))}</span>
                       </div>
                     ))}
                   </div>
@@ -377,10 +379,10 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
                   <div className="text-xs font-semibold text-on-surface mb-2">Other keywords checked</div>
                   <div className="space-y-2">
                     {otherRows.map((k: any) => (
-                      <div key={k.keyword} className="flex items-center gap-3 text-sm">
-                        <span className="text-on-surface-variant flex-1 truncate">{k.keyword}</span>
-                        <div className="w-28"><RankBar value={kwValue(k)} /></div>
-                        <span className="text-xs font-bold text-on-surface w-20 text-right">{rankLabel(kwValue(k))}</span>
+                      <div key={k.keyword} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1 text-sm">
+                        <span className="text-on-surface-variant basis-full sm:basis-auto sm:flex-1 min-w-0 truncate">{k.keyword}</span>
+                        <div className="flex-1 sm:flex-none sm:w-28"><RankBar value={kwValue(k)} /></div>
+                        <span className="text-xs font-bold text-on-surface shrink-0 sm:w-20 text-right">{rankLabel(kwValue(k))}</span>
                       </div>
                     ))}
                   </div>
@@ -395,8 +397,8 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
                   <div className="space-y-2">
                     {brandRows.map((k: any) => (
                       <div key={k.keyword} className="flex items-center gap-3 text-sm">
-                        <span className="text-on-surface-variant flex-1 truncate">{k.keyword}</span>
-                        <span className="text-xs font-bold text-on-surface w-20 text-right">{rankLabel(kwValue(k))}</span>
+                        <span className="text-on-surface-variant flex-1 min-w-0 truncate">{k.keyword}</span>
+                        <span className="text-xs font-bold text-on-surface shrink-0 sm:w-20 text-right">{rankLabel(kwValue(k))}</span>
                       </div>
                     ))}
                   </div>
@@ -406,10 +408,10 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
               {!facts && legacyKeywordRows.length > 0 && (
                 <div className="space-y-3">
                   {legacyKeywordRows.slice(0, 5).map((k: any, i: number) => (
-                    <div key={i} className="flex items-center gap-3 text-sm">
-                      <span className="text-on-surface-variant flex-1 truncate">{k.keyword}</span>
-                      <div className="w-28"><RankBar value={toRankValue(k.rank)} /></div>
-                      <span className="text-xs font-bold text-on-surface w-20 text-right">{rankLabel(toRankValue(k.rank))}</span>
+                    <div key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1 text-sm">
+                      <span className="text-on-surface-variant basis-full sm:basis-auto sm:flex-1 min-w-0 truncate">{k.keyword}</span>
+                      <div className="flex-1 sm:flex-none sm:w-28"><RankBar value={toRankValue(k.rank)} /></div>
+                      <span className="text-xs font-bold text-on-surface shrink-0 sm:w-20 text-right">{rankLabel(toRankValue(k.rank))}</span>
                     </div>
                   ))}
                 </div>
@@ -419,7 +421,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
 
           {/* ── Businesses shown above you ────────────────────────────── */}
           {localCompetitors.length > 0 && rankingStatus === 'ok' && (
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
               <SectionHeader title="Businesses shown above you" icon="emoji_events" />
               <p className="text-sm text-on-surface-variant -mt-3 mb-5">
                 Real Google Maps listings that appeared above {audit.businessName} in the searches we ran.
@@ -475,7 +477,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
 
           {/* ── Verified issues ───────────────────────────────────────── */}
           {issues.length > 0 && (
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
               <SectionHeader title={`Issues we verified for ${audit.businessName}`} icon="warning" />
               <ul className="space-y-4">
                 {issues.map((it, i) => (
@@ -500,7 +502,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
 
           {/* ── Reviews ───────────────────────────────────────────────── */}
           {(lifetimeCount != null || facts?.reviews) && (
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
               <SectionHeader title="Review Analytics" icon="star" />
               {facts ? (
                 <>
@@ -528,7 +530,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
 
           {/* ── Profile completion ────────────────────────────────────── */}
           {checklist.length > 0 && (
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
               <SectionHeader title="Profile Completion" icon="check_circle" />
               <div className="mb-5">
                 <p className="text-sm text-on-surface-variant mb-2">{completionSentence(completion)}</p>
@@ -559,7 +561,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
               <SectionHeader title="Priority Action Items" icon="warning" />
               <div className="space-y-3">
                 {priorityFixes.map((fix: any, idx: number) => (
-                  <div key={idx} className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-5">
+                  <div key={idx} className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-5">
                     <div className="flex items-start gap-3">
                       <div className="w-7 h-7 bg-primary-fixed rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                         <span className="text-xs font-bold text-primary">{idx + 1}</span>
@@ -581,7 +583,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
           )}
 
           {facts && strengths.length === 0 && weaknesses.length === 0 && (
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
               <SectionHeader title="Strengths & Areas to Improve" icon="thumb_up" />
               <p className="text-sm text-on-surface-variant">
                 {aiUnavailable
@@ -591,9 +593,9 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
             </div>
           )}
           {(strengths.length > 0 || weaknesses.length > 0) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               {strengths.length > 0 && (
-                <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+                <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
                   <SectionHeader title="Strengths" icon="thumb_up" />
                   <ul className="space-y-3">
                     {strengths.map((s: any, i: number) => (
@@ -609,7 +611,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
                 </div>
               )}
               {weaknesses.length > 0 && (
-                <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+                <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
                   <SectionHeader title="Areas to Improve" icon="thumb_down" />
                   <ul className="space-y-3">
                     {weaknesses.map((w: any, i: number) => (
@@ -637,13 +639,13 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
             />
           )}
 
-          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
             <SectionHeader title="Common questions" icon="help" />
             <FaqAccordion faqs={ALL_FAQS} defaultOpenIndex={null} />
           </div>
         </div>
 
-        <div id="unlock">
+        <div id="unlock" className="w-full lg:w-auto">
           <AuditPaywallSidebar
             unlockHeadline="Your report is free to keep. Unlock the full detailed report — every issue, every keyword gap, and a step-by-step action plan — plus the whole platform."
             showComparison

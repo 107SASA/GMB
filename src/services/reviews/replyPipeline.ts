@@ -11,9 +11,10 @@ import { validateReply, type ReplyEvidence, type ReplyValidation } from './valid
  *   re-check of the exact text → publish to Google → POSTED only when Google
  *   confirms (blocked when live writes are off, FAILED with Google's error).
  *
- * Auto-publish is OFF unless the owner turned it on under this flow
- * (reviewReplySettings.mode 'auto' + autoPublishConsentAt). Nothing that fails
- * the check is ever published — not by auto-reply, not by the Post button.
+ * Auto-publish runs only with reviewReplySettings.mode 'auto' + the owner's
+ * own consent, recorded when the owner turns it on (lib/reviewReplyConsent.ts).
+ * New businesses start in manual mode. Nothing that fails the check is ever
+ * published — not by auto-reply, not by the Post button.
  */
 
 export const REPLY_BLOCKED_REASON = 'Approved in GrowwMatics — Google publishing has not been executed. Live Google Business Profile writes are turned off, so this reply is not on Google.';
@@ -23,9 +24,11 @@ export interface ReplyDeps {
   postToGoogle?: (businessId: string, review: any) => Promise<{ liveWriteApplied: boolean; googleResponse?: string }>;
 }
 
-export function isAutoPublishActive(settings?: { mode?: string; autoPublishConsentAt?: Date | string | null } | null): boolean {
-  return settings?.mode === 'auto' && !!settings?.autoPublishConsentAt;
-}
+export {
+  isAutoPublishActive,
+  DEFAULT_AUTO_REPLY_CONSENT_BY,
+  newBusinessReviewReplySettings,
+} from '@/lib/reviewReplyConsent';
 
 const split = (s?: string) => String(s || '').split(/[,;\n]+/).map((x) => x.trim()).filter((x) => x.length >= 3);
 

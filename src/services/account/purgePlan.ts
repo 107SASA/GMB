@@ -89,6 +89,7 @@ export const PURGE_TARGETS: PurgeTarget[] = [
   { model: 'AutomationLog', by: { businessId: 'businessId' }, category: 'c', what: 'automation logs' },
   { model: 'UsageTracking', by: { userId: 'userId' }, category: 'c', what: 'usage counters' },
   { model: 'SubscriptionUsage', by: { businessId: 'businessId' }, category: 'c', what: 'plan usage counters' },
+  { model: 'BillingRecoveryEpisode', by: { businessId: 'businessId' }, category: 'c', what: 'payment-recovery reminder schedule and send results' },
 ];
 
 /** Collections the purge does not delete from — each with the reason. */
@@ -106,6 +107,9 @@ export const NOT_PURGED: Record<string, string> = {
   LocalityCache: 'neighbourhood names keyed by coordinates — shared, not personal',
   JobQueue: 'short-lived job rows, pruned by dataRetentionCleanupCron',
   ProcessedWebhookEvent: 'webhook event ids for de-duplication (TTL)',
+  BillingEvent: 'billing audit trail (Razorpay ids, amounts, state decisions — no personal fields), kept with the billing record',
+  BillingPolicy: 'platform configuration',
+  TrialClaim: 'one-free-trial-per-phone record — phone stored only as a one-way hash; deleting it would let a recreated account take a second trial',
   BillingPlan: 'platform configuration',
   Plan: 'platform configuration',
   PlanConfig: 'platform configuration',

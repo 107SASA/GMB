@@ -7,7 +7,7 @@ import { usePublicPlan, MODULE_LABELS } from '@/components/billing/useRazorpayCh
 import {
   DurationPicker,
   pickDuration,
-  getPreferredCycle,
+  recommendedDuration,
   setPreferredCycle,
   computeSavings,
   LAUNCH_WINDOW_SECONDS,
@@ -62,7 +62,11 @@ export default function AuditPaywallSidebar({
 }) {
   const router = useRouter();
   const { plan, loading } = usePublicPlan();
-  const [cycle, setCycle] = useState(() => getPreferredCycle() ?? 'monthly');
+  // Opens on the recommended (longest, best-value) duration — the same one
+  // the free-report hero CTA quotes — until the visitor picks another here.
+  const [pickedCycle, setPickedCycle] = useState<string | null>(null);
+  const recommended = recommendedDuration(plan?.durations);
+  const cycle = pickedCycle ?? recommended?.cycle ?? 'monthly';
 
   // Resets every visit — no real fixed deadline exists in the billing
   // config to count down to. See the LAUNCH_WINDOW_SECONDS comment.
@@ -78,6 +82,8 @@ export default function AuditPaywallSidebar({
   const cycleLabel = selected?.label ?? 'month';
   const savings = computeSavings(plan?.durations, selected);
   const features = plan?.features?.length ? plan.features : (plan?.modules ?? []).map((m) => MODULE_LABELS[m] ?? m);
+  // Display only — checkout decides per customer (one trial per phone number).
+  const trialOffer = plan?.trialOffer && plan.trialOffer.cycle === cycle ? plan.trialOffer : null;
 
   return (
     <aside className={`${sticky ? 'lg:sticky lg:top-6' : ''} w-full lg:w-[340px] shrink-0`}>
@@ -110,7 +116,8 @@ export default function AuditPaywallSidebar({
             <DurationPicker
               durations={plan.durations}
               value={cycle}
-              onChange={(c) => { setCycle(c); setPreferredCycle(c); }}
+              onChange={(c) => { setPickedCycle(c); setPreferredCycle(c); }}
+              recommendedCycle={recommended?.cycle}
             />
           )}
 
@@ -172,8 +179,16 @@ export default function AuditPaywallSidebar({
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3.5 font-bold text-white transition-all hover:bg-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Lock className="h-4 w-4" />
-            {promoStyle && price != null ? `Pay ₹${price.toLocaleString('en-IN')} · Start today` : 'Unlock full dashboard'}
+            {trialOffer
+              ? `Start ${trialOffer.months}-month free trial`
+              : promoStyle && price != null ? `Pay ₹${price.toLocaleString('en-IN')} · Start today` : 'Unlock full dashboard'}
           </button>
+          {trialOffer && price != null && (
+            <div className="mt-2 text-center text-[11px] text-on-surface-variant">
+              Then ₹{price.toLocaleString('en-IN')} / {cycleLabel.toLowerCase()} via autopay. Cancel before the trial ends and pay nothing.
+              One free trial per phone number.
+            </div>
+          )}
 
           <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-outline">
             <ShieldCheck className="h-3.5 w-3.5" />

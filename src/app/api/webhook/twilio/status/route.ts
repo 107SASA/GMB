@@ -159,6 +159,12 @@ export async function POST(req: Request) {
     const interpreted = interpretTwilioStatus(messageStatus, errorCode, errorMessageRaw);
     const now = new Date();
 
+    // Billing recovery reminders: real delivery status (sent ≠ delivered).
+    if (interpreted.kind !== 'ignore') {
+      const { recordReminderDelivery } = await import('@/services/billing/recoveryRemindersService');
+      await recordReminderDelivery(messageSid, interpreted.kind);
+    }
+
     if (interpreted.kind === 'failed') {
       await MessageQueue.updateMany(
         { 'payload.sid': messageSid },

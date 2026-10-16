@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useBusiness } from '@/context/BusinessContext';
 import { planDisplayLabel, isPaidPlanLabel } from '@/lib/billing/planLabel';
 import { checkPasswordStrength } from '@/lib/passwordPolicy';
+import { usablePersonName } from '@/lib/personName';
 import {
   Eye,
   EyeOff,
@@ -110,7 +111,7 @@ export default function ProfilePage() {
         // name (edited in Settings → Business Profile) instead of the old
         // separately-typed User.companyName, which could silently drift out
         // of sync with the actual business record shown everywhere else.
-        setInfoForm({ fullName: u.fullName ?? '', phone: u.phone ?? '', companyName: '' });
+        setInfoForm({ fullName: usablePersonName(u.fullName), phone: u.phone ?? '', companyName: '' });
       }
       if (sRes.ok) {
         const { subscription: s } = await sRes.json();

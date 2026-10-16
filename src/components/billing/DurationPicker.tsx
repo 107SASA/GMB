@@ -8,6 +8,12 @@ export function pickDuration(durations: PlanDuration[] | undefined, cycle: strin
   return durations.find((d) => d.cycle === cycle) ?? durations[0];
 }
 
+/** The duration we steer buyers to: the longest one (the biggest saving). */
+export function recommendedDuration(durations: PlanDuration[] | undefined): PlanDuration | undefined {
+  if (!durations?.length) return undefined;
+  return durations.reduce((best, d) => (d.months > best.months ? d : best));
+}
+
 /**
  * Genuine "you save ₹X vs paying monthly" — never a fabricated original
  * price. Shared by /checkout and every duration-picker-carrying pricing
@@ -70,10 +76,13 @@ export function DurationPicker({
   durations,
   value,
   onChange,
+  recommendedCycle,
 }: {
   durations: PlanDuration[];
   value: string;
   onChange: (cycle: string) => void;
+  /** Tags this duration with a "Recommended" badge. */
+  recommendedCycle?: string;
 }) {
   if (!durations || durations.length <= 1) return null;
 
@@ -87,10 +96,15 @@ export function DurationPicker({
             key={d.cycle}
             type="button"
             onClick={() => onChange(d.cycle)}
-            className={`rounded-xl border px-3 py-2 text-left transition-all ${
+            className={`relative rounded-xl border px-3 py-2 text-left transition-all ${
               active ? 'border-primary bg-primary-fixed ring-1 ring-primary' : 'border-outline-variant hover:border-outline-variant'
             }`}
           >
+            {d.cycle === recommendedCycle && (
+              <span className="absolute -top-2 right-2 rounded-full bg-secondary px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white">
+                Recommended
+              </span>
+            )}
             <div className="text-xs font-bold text-on-surface">{d.label}</div>
             <div className="text-[11px] text-on-surface-variant">
               ₹{d.priceInr.toLocaleString('en-IN')}

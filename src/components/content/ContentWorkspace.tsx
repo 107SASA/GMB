@@ -324,7 +324,7 @@ export default function ContentWorkspace() {
       <div data-tour="generate-content">
       <AutopilotBanner
         hasKeywords={autopilot ? autopilot.hasKeywords : !!activeBusiness?.keywords?.length}
-        qualified={autopilot ? autopilot.qualified : activeBusiness?.subscriptionStatus === 'active' && !!activeBusiness?.googleConnected}
+        qualified={autopilot ? autopilot.qualified : (activeBusiness?.subscriptionStatus === 'active' || activeBusiness?.subscriptionStatus === 'trial_active') && !!activeBusiness?.googleConnected}
         nextRunAt={autopilot ? autopilot.nextRunAt ?? undefined : activeBusiness?.autopilotNextRunAt}
         generating={autopilot?.generating}
         stalled={autopilot?.stalled}

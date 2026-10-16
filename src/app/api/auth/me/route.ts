@@ -19,7 +19,7 @@ export async function GET() {
 
   const subscription = await Subscription.findOne(
     { userId: auth.userId },
-    'planType billingStatus trialStatus modules'
+    'planType billingStatus trialStatus trialSource modules paymentGraceEndsAt restrictedModules accessHold'
   ).lean();
 
   return NextResponse.json({
@@ -46,6 +46,14 @@ export async function GET() {
             planType: (subscription as any).planType,
             billingStatus: (subscription as any).billingStatus,
             trialStatus: (subscription as any).trialStatus,
+            // 'offer' only for an authorized free trial — the mobile app must
+            // not treat any other 'Trialing' record as a trial (requireModule doesn't).
+            trialSource: (subscription as any).trialSource ?? null,
+            // Payment failure (PastDue): grace end + locked modules after it; the
+            // mobile app mirrors requireModule with these (lib/billing/entitlements.ts).
+            paymentGraceEndsAt: (subscription as any).paymentGraceEndsAt ?? null,
+            restrictedModules: (subscription as any).restrictedModules ?? null,
+            accessHold: (subscription as any).accessHold === true,
             modules: (subscription as any).modules,
           }
         : null,

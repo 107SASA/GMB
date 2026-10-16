@@ -54,3 +54,18 @@ export function phoneDedupeKey(raw: string | null | undefined): string | null {
   if (digits.length < 8) return null;
   return digits.slice(-10);
 }
+
+/**
+ * Identity key for the one-free-trial-per-phone rule. Stricter than
+ * phoneDedupeKey: the full E.164 number, never the last 10 digits, so two
+ * different countries' numbers can never collide. Indian numbers must be a
+ * valid mobile (+91 then 10 digits starting 6-9); anything ambiguous or
+ * malformed returns null and the caller grants no trial.
+ */
+export function trialPhoneKey(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const e164 = normalizePhoneE164(raw);
+  if (!e164) return null;
+  if (e164.startsWith('+91')) return /^\+91[6-9]\d{9}$/.test(e164) ? e164 : null;
+  return /^\+[1-9]\d{7,14}$/.test(e164) ? e164 : null;
+}

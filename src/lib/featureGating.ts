@@ -6,7 +6,9 @@ import SubscriptionUsage from '@/models/SubscriptionUsage';
 import AIUsageLog from '@/models/AIUsageLog';
 import PlanConfig from '@/models/PlanConfig';
 import Post from '@/models/Post';
+import Subscription from '@/models/Subscription';
 import { getPlanDefaults, type PlanLimits } from '@/lib/planDefaults';
+import { limitsPlanFor } from '@/lib/billing/entitlements';
 
 async function getPlanLimitsFromDB(planName: string): Promise<PlanLimits> {
   if (planName === 'Enterprise') planName = 'Pro'; // legacy paid tier → THE paid plan
@@ -77,8 +79,12 @@ export async function checkUsageLimit(
 ): Promise<{ allowed: boolean; reason?: string; code?: string; limit?: number; used?: number }> {
   await dbConnect();
 
-  const user = await User.findById(userId).select('subscriptionPlan').lean() as any;
-  const planName = user?.subscriptionPlan || 'Free';
+  const [user, subscription] = await Promise.all([
+    User.findById(userId).select('subscriptionPlan').lean() as any,
+    Subscription.findOne({ userId }).select('billingStatus trialSource trialStatus').lean() as any,
+  ]);
+  // An authorized free trial gets the paid plan's (finite) limits.
+  const planName = limitsPlanFor(user?.subscriptionPlan, subscription);
 
   const limits = await resolveUserLimits(userId, planName);
   const month = new Date().toISOString().slice(0, 7); // YYYY-MM

@@ -5,6 +5,7 @@ import Post from '@/models/Post';
 import { requireBusinessContext } from '@/lib/tenant';
 import { AUTOPILOT_INTERVAL_MS } from '@/lib/contentAutopilot';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { workspaceHasPlanAccess, PLAN_ACCESS_FIELDS } from '@/lib/billing/entitlements';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,10 +31,10 @@ export async function GET() {
     await dbConnect();
 
     const b: any = await Business.findById(ctx.businessId)
-      .select('keywords subscriptionStatus googleConnected autopilotNextRunAt')
+      .select(`keywords ${PLAN_ACCESS_FIELDS} googleConnected autopilotNextRunAt`)
       .lean();
     const hasKeywords = Array.isArray(b?.keywords) && b.keywords.length > 0;
-    const qualified = b?.subscriptionStatus === 'active' && !!b?.googleConnected;
+    const qualified = workspaceHasPlanAccess(b) && !!b?.googleConnected; // paid or authorized trial
     const nextRunAt: Date | null = b?.autopilotNextRunAt ? new Date(b.autopilotNextRunAt) : null;
 
     let generating = false;

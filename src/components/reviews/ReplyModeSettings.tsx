@@ -86,8 +86,8 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
 
       {legacyPaused && (
         <p className="text-xs text-on-surface-variant bg-surface-container rounded-lg px-3 py-2">
-          Auto-reply was switched on before replies were fact-checked, so it is paused and replies wait for your approval.
-          Choose &quot;Auto-reply&quot; and save to turn it back on under the fact-checked flow.
+          Auto-reply is paused because you have not switched it on yourself, so replies wait for your approval.
+          Choose &quot;Auto-reply&quot; and save to turn it on under the fact-checked flow.
         </p>
       )}
 

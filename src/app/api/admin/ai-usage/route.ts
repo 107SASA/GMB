@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
+import { displayPersonName } from '@/lib/personName';
 import AIUsageLog from '@/models/AIUsageLog';
 import ContentGenerationLog from '@/models/ContentGenerationLog';
 import MessageQueue from '@/models/MessageQueue';
@@ -163,14 +164,14 @@ export async function GET(req: NextRequest) {
 
     const topUserIds  = topUsersRaw.map(u => u._id);
     const topUserDocs = await User.find({ _id: { $in: topUserIds } })
-      .select('fullName email subscriptionPlan')
+      .select('fullName email phone subscriptionPlan')
       .lean();
     const userMap: Record<string, any> = {};
     topUserDocs.forEach((u: any) => { userMap[u._id.toString()] = u; });
 
     const topUsers = topUsersRaw.map(u => ({
       userId:        u._id,
-      fullName:      userMap[u._id.toString()]?.fullName        ?? 'Unknown',
+      fullName:      userMap[u._id.toString()] ? displayPersonName(userMap[u._id.toString()].fullName, userMap[u._id.toString()].phone) : 'Unknown',
       email:         userMap[u._id.toString()]?.email           ?? '—',
       plan:          userMap[u._id.toString()]?.subscriptionPlan ?? 'Free',
       generations:   u.generations,
@@ -194,7 +195,7 @@ export async function GET(req: NextRequest) {
     const recentActivity = await AIUsageLog.find()
       .sort({ createdAt: -1 })
       .limit(10)
-      .populate('userId', 'fullName email')
+      .populate('userId', 'fullName email phone')
       .lean();
 
     return NextResponse.json({
@@ -223,7 +224,7 @@ export async function GET(req: NextRequest) {
         recentActivity: recentActivity.map((log: any) => ({
           _id:           log._id,
           userId:        log.userId?._id,
-          userName:      log.userId?.fullName ?? 'Unknown',
+          userName:      log.userId ? displayPersonName(log.userId.fullName, log.userId.phone) : 'Unknown',
           userEmail:     log.userId?.email    ?? '—',
           promptType:    log.promptType,
           aiModel:       log.aiModel,

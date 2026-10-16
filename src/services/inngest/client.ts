@@ -26,6 +26,9 @@ type Events = {
   "sales/nurture.requested": {
     data: { auditId: string };
   };
+  "billing/recovery.process": {
+    data: { businessId: string };
+  };
   "sales/agent.reply": {
     data: { conversationId: string; body: string };
   };

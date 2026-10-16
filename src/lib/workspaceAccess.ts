@@ -1,3 +1,5 @@
+import { workspaceHasPlanAccess } from './billing/entitlements.ts';
+
 // Per-workspace billing went live on this date (see src/proxy.ts's matching
 // INTAKE_ENFORCED_SINCE, rolled out the same day). Businesses created before
 // it never got `subscriptionStatus: 'active'` backfilled onto them, so they
@@ -30,8 +32,25 @@ export function isWorkspaceUnlocked(opts: {
    *  treated as "may be legacy" so a caller that hasn't been updated yet fails
    *  open rather than locking out an existing paying customer. */
   businessCreatedAt?: Date | string | null;
+  /** Free trial ('trial_active'): access until trialEndsAt, plus a short
+   *  window while the first charge processes — unless the trial was cancelled,
+   *  then exactly until trialEndsAt. Missing end date → no access. */
+  trialEndsAt?: Date | string | null;
+  trialCancelledAt?: Date | string | null;
+  /** Payment failure: paid access continues until this instant (grace). */
+  paymentGraceEndsAt?: Date | string | null;
+  /** Paid again but held locked until a super admin releases it. */
+  paymentAccessHold?: boolean | null;
+  now?: Date;
 }): boolean {
-  if (opts.subscriptionStatus === 'active') return true;
+  // Paid (unless held after recovery), an authorized trial, or a payment
+  // failure inside its grace period — see lib/billing/entitlements.ts.
+  if (['active', 'trial_active', 'past_due'].includes(opts.subscriptionStatus ?? '')) {
+    return workspaceHasPlanAccess(opts, opts.now ?? new Date());
+  }
+  // A cancelled subscription is never "paid", even on a legacy workspace
+  // whose owner's user-level plan still says Pro.
+  if (opts.subscriptionStatus === 'canceled') return false;
 
   const createdAt = opts.businessCreatedAt ? new Date(opts.businessCreatedAt) : null;
   const isLegacyWorkspace = !createdAt || createdAt < PER_WORKSPACE_BILLING_ENFORCED_SINCE;

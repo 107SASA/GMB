@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
+import { displayPersonName } from '@/lib/personName';
 import Business from '@/models/Business';
 import User from '@/models/User';
 import ContentGenerationLog from '@/models/ContentGenerationLog';
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('userId', 'fullName email')
+        .populate('userId', 'fullName email phone')
         .lean(),
       Business.countDocuments(query),
     ]);
@@ -70,6 +71,7 @@ export async function GET(req: NextRequest) {
 
     const enriched = businesses.map((b: any) => ({
       ...b,
+      userId: b.userId ? { ...b.userId, fullName: displayPersonName(b.userId.fullName, b.name, b.userId.phone) } : b.userId,
       contentGeneratedCount: contentCountMap[b._id.toString()] || 0,
     }));
 

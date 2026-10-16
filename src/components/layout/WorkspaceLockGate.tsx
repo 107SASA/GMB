@@ -33,16 +33,46 @@ function isFreePage(pathname: string): boolean {
   return FREE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+// Payment failure with a PARTIAL restriction (super-admin billing policy):
+// only pages of the restricted paid modules are blurred. Same module split
+// as the server's requireModule gates on these pages' APIs.
+const PAGE_MODULES: Array<[string, string]> = [
+  ['/dashboard/crm', 'sales_agent'],
+  ['/dashboard/inbox', 'sales_agent'],
+  ['/dashboard/whatsapp', 'sales_agent'],
+  ['/dashboard/reviews', 'reputation_agent'],
+  ['/dashboard/review-requests', 'reputation_agent'],
+  ['/dashboard/success-stories', 'reputation_agent'],
+  ['/dashboard/content', 'content_studio'],
+  ['/dashboard/posts', 'content_studio'],
+  ['/dashboard/scheduler', 'content_studio'],
+  ['/dashboard/seo-plan', 'content_studio'],
+  ['/dashboard/campaigns', 'marketing_automation'],
+];
+function pageModule(pathname: string): string | null {
+  const hit = PAGE_MODULES.find(([p]) => pathname === p || pathname.startsWith(`${p}/`));
+  return hit ? hit[1] : null;
+}
+
 export default function WorkspaceLockGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [locked, setLocked] = useState<boolean | null>(null);
+  // null = whole workspace locked (or not locked); a list = only these modules' pages.
+  const [restrictedOnly, setRestrictedOnly] = useState<string[] | null>(null);
 
   // Re-check on navigation so the gate lifts immediately after subscribing.
   useEffect(() => {
     let cancelled = false;
     fetch('/api/billing/status')
       .then((r) => r.json())
-      .then((j) => { if (!cancelled) setLocked(!!j?.workspace && !j.workspace.isActive); })
+      .then((j) => {
+        if (cancelled) return;
+        setLocked(!!j?.workspace && !j.workspace.isActive);
+        const access = j?.workspace?.access;
+        const partial =
+          access?.mode === 'restricted' && Array.isArray(access.restrictedModules) && access.restrictedModules.length < 4;
+        setRestrictedOnly(partial ? access.restrictedModules : null);
+      })
       .catch(() => { if (!cancelled) setLocked(false); });
     return () => { cancelled = true; };
   }, [pathname]);
@@ -60,6 +90,10 @@ export default function WorkspaceLockGate({ children }: { children: React.ReactN
   // Still checking, unlocked, or on a free page → render normally (never flash a
   // blur at a paying customer).
   if (locked !== true || isFreePage(pathname)) return <>{children}</>;
+  if (restrictedOnly) {
+    const mod = pageModule(pathname);
+    if (!mod || !restrictedOnly.includes(mod)) return <>{children}</>;
+  }
 
   return (
     <div className="relative min-h-[70vh]">

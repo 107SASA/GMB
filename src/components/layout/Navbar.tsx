@@ -85,14 +85,16 @@ export function Navbar() {
       )}
     >
       <nav className="max-w-[1280px] mx-auto w-full flex items-center justify-between gap-3">
-        <Link href="/" className="flex items-center gap-2.5 shrink-0 min-w-0">
+        <Link href="/" className="flex items-center gap-2.5 shrink-0 min-w-0 min-h-11">
           <img src="/brand/icon.png" alt="GrowwMatics AI" className="w-8 h-8 md:w-9 md:h-9 object-contain shrink-0" />
           <span className="font-mkt-display text-base sm:text-lg md:text-xl font-semibold tracking-tight text-[#101613] truncate">
             Growwmatics
           </span>
         </Link>
 
-        <div className="hidden lg:flex items-center gap-6 xl:gap-7 absolute left-1/2 -translate-x-1/2">
+        {/* lg–xl: in normal flow between logo and CTAs so the links can never run
+          into "Login" (they did at 1024px). xl+: centred on the page as before. */}
+        <div className="hidden lg:flex flex-1 min-w-0 justify-center items-center gap-4 xl:gap-7 xl:flex-none xl:absolute xl:left-1/2 xl:-translate-x-1/2">
           <div
             className="relative"
             onMouseEnter={openServicesMenu}
@@ -102,7 +104,7 @@ export function Navbar() {
               type="button"
               onClick={() => setServicesMenuOpen((v) => !v)}
               aria-expanded={servicesMenuOpen}
-              className="font-mkt-display flex items-center gap-1 text-sm font-medium text-[#3d4a3d] hover:text-[#006e2c] transition-colors whitespace-nowrap min-h-[44px]"
+              className="font-mkt-display flex items-center gap-1 text-[13px] xl:text-sm font-medium text-[#3d4a3d] hover:text-[#006e2c] transition-colors whitespace-nowrap min-h-[44px]"
             >
               OnDemand Services
               <MaterialIcon
@@ -160,14 +162,14 @@ export function Navbar() {
             <Link
               key={link.name}
               href={link.href}
-              className="font-mkt-display text-sm font-medium text-[#3d4a3d] hover:text-[#006e2c] transition-colors whitespace-nowrap min-h-[44px] inline-flex items-center"
+              className="font-mkt-display text-[13px] xl:text-sm font-medium text-[#3d4a3d] hover:text-[#006e2c] transition-colors whitespace-nowrap min-h-[44px] inline-flex items-center"
             >
               {link.name}
             </Link>
           ))}
         </div>
 
-        <div className="hidden lg:flex items-center gap-4 shrink-0">
+        <div className="hidden lg:flex items-center gap-3 xl:gap-4 shrink-0">
           <Link
             href={isLoggedIn ? '/dashboard' : '/login'}
             className="font-mkt-display text-sm font-medium text-[#3d4a3d] hover:text-[#006e2c] transition-colors min-h-[44px] inline-flex items-center"
@@ -177,7 +179,7 @@ export function Navbar() {
           <BookDemoButton
             origin="navbar"
             iconSize={16}
-            className="px-5 py-2.5 bg-[#006e2c] text-white rounded-md text-sm font-semibold hover:bg-[#005a24] transition-all active:scale-[0.98] shadow-sm min-h-[44px]"
+            className="px-4 xl:px-5 py-2.5 bg-[#006e2c] text-white rounded-md text-sm font-semibold hover:bg-[#005a24] transition-all active:scale-[0.98] shadow-sm min-h-[44px]"
           />
         </div>
 

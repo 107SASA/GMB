@@ -10,6 +10,7 @@ import { festivalsBetween } from '@/lib/festivalCalendar';
 import { contentWeekKey, contentWeekStart } from '@/services/content/plan';
 import { inngest } from '@/services/inngest/client';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { workspaceHasPlanAccess, PLAN_ACCESS_FIELDS } from '@/lib/billing/entitlements';
 
 /**
  * Weekly "Anything to promote this week?" question (Sep 2026).
@@ -23,12 +24,12 @@ export async function GET() {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
     await dbConnect();
-    const business: any = await Business.findById(ctx.businessId).select('subscriptionStatus googleConnected').lean();
+    const business: any = await Business.findById(ctx.businessId).select(`${PLAN_ACCESS_FIELDS} googleConnected`).lean();
     const now = new Date();
     const weekKey = contentWeekKey(now);
     const answer: any = await WeeklyOffer.findOne({ businessId: ctx.businessId, weekKey }).lean();
     // Only businesses whose weekly posts run (paid + Google connected) are asked.
-    const eligible = business?.subscriptionStatus === 'active' && !!business?.googleConnected;
+    const eligible = workspaceHasPlanAccess(business) && !!business?.googleConnected; // paid or authorized trial
     const photos = eligible && !answer
       ? await GbpMediaAsset.find({ businessId: ctx.businessId, category: { $in: ['ADDITIONAL', 'COVER'] }, mediaType: { $ne: 'video' }, status: { $in: ['published', 'staged'] }, url: { $regex: '^https://' } })
           .sort({ createdAt: -1 }).limit(8).select('url').lean()

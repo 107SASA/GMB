@@ -1,8 +1,8 @@
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import { getRazorpay } from './razorpay';
-import { activatePlan, activateBusinessPlan } from './applyEntitlements';
-import { isPaidPlanType } from './planCatalog';
+import { impliedEventFromState, subscriptionFactsFrom } from './subscriptionMachine';
+import { applyRazorpayEvent } from '@/services/billing/billingEvents';
 
 /**
  * Self-heals a workspace's activation state by checking DIRECTLY with
@@ -24,9 +24,12 @@ import { isPaidPlanType } from './planCatalog';
  * also tries to fix it, with no client-side changes needed.
  *
  * Safe to call often: short-circuits immediately unless the workspace has a
- * linked Razorpay subscription and isn't active yet, is throttled per
- * business, and its writes (activatePlan/activateBusinessPlan) are
- * idempotent upserts — so a real webhook landing moments later is a no-op.
+ * linked Razorpay subscription and isn't active yet (or is a trial whose first
+ * charge is due), and is throttled per business. Razorpay's current state is
+ * applied through services/billing/billingEvents.ts — the SAME rules as the
+ * webhook (a trial is never paid without a verified charge; a declined or
+ * expired checkout never fails or cancels anyone) — so a real webhook landing
+ * moments later is a no-op.
  */
 
 export interface ReconcileResult {
@@ -44,65 +47,80 @@ export interface ReconcileResult {
 const lastAttempt = new Map<string, number>();
 const THROTTLE_MS = 20_000;
 
-export async function reconcileWorkspaceSubscription(businessId: string): Promise<ReconcileResult> {
+export async function reconcileWorkspaceSubscription(
+  businessId: string,
+  /** force: skip the throttle; subscriptionId: check this subscription (safe recovery found it paid). */
+  opts: { force?: boolean; subscriptionId?: string } = {}
+): Promise<ReconcileResult> {
   const last = lastAttempt.get(businessId);
-  if (last && Date.now() - last < THROTTLE_MS) {
+  if (!opts.force && last && Date.now() - last < THROTTLE_MS) {
     return { attempted: false, activated: false, reason: 'throttled' };
   }
 
   await dbConnect();
   const business = await Business.findById(businessId)
-    .select('subscriptionStatus razorpaySubscriptionId userId')
+    .select('subscriptionStatus razorpaySubscriptionId billingSubscriptionId trialEndsAt')
     .lean() as any;
   if (!business) return { attempted: false, activated: false, reason: 'business not found' };
   if (business.subscriptionStatus === 'active') return { attempted: false, activated: false, reason: 'already active' };
-  if (!business.razorpaySubscriptionId) return { attempted: false, activated: false, reason: 'no subscription linked yet' };
+  // A running trial has nothing to heal until its first charge is due.
+  if (
+    business.subscriptionStatus === 'trial_active' &&
+    business.trialEndsAt &&
+    new Date(business.trialEndsAt).getTime() > Date.now()
+  ) {
+    return { attempted: false, activated: false, reason: 'trial in progress' };
+  }
+  const subscriptionId = opts.subscriptionId || business.billingSubscriptionId || business.razorpaySubscriptionId;
+  if (!subscriptionId) return { attempted: false, activated: false, reason: 'no subscription linked yet' };
 
   const razorpay = getRazorpay();
   if (!razorpay) return { attempted: false, activated: false, reason: 'billing not configured' };
 
   lastAttempt.set(businessId, Date.now());
 
-  let sub;
+  let sub: any;
   try {
-    sub = await razorpay.subscriptions.fetch(business.razorpaySubscriptionId);
+    sub = await razorpay.subscriptions.fetch(subscriptionId);
   } catch (err: any) {
-    console.error('[billing] reconcile: Razorpay fetch failed for', business.razorpaySubscriptionId, err?.message);
+    console.error('[billing] reconcile: Razorpay fetch failed for', subscriptionId, err?.message);
     return { attempted: true, activated: false, reason: 'razorpay fetch failed' };
   }
 
-  // 'active' covers a subscription mid-cycle; paid_count > 0 catches the
-  // narrow window where the first charge succeeded but Razorpay hasn't
-  // flipped status to 'active' yet — same signal the webhook's
-  // subscription.charged event represents.
-  const isPaid = sub.status === 'active' || (sub.paid_count ?? 0) > 0;
-  if (!isPaid) return { attempted: true, activated: false, razorpayStatus: sub.status };
+  const facts = subscriptionFactsFrom(sub);
+  const implied = facts ? impliedEventFromState(facts) : null;
+  if (!facts || !implied) return { attempted: true, activated: false, razorpayStatus: sub?.status };
 
-  const userId = (sub.notes?.userId as string | undefined) || business.userId?.toString();
-  const planType = sub.notes?.planType as string | undefined;
-  if (!userId || !isPaidPlanType(planType)) {
-    console.error(`[billing] reconcile: cannot resolve user/plan for Razorpay subscription ${sub.id}`);
-    return { attempted: true, activated: false, razorpayStatus: sub.status, reason: 'cannot resolve user/plan' };
+  // A trial's first charge must be proven by the paid invoice's amount — the
+  // same check the webhook makes on the payment entity. Non-trial
+  // subscriptions keep the previous behaviour (paid_count > 0 is enough).
+  let paymentEntity: any = null;
+  if (implied === 'subscription.charged' && facts.isTrial) {
+    try {
+      const invoices: any = await (razorpay as any).invoices.all({ subscription_id: subscriptionId });
+      const paid = (invoices?.items ?? []).find((inv: any) => inv.status === 'paid');
+      if (paid) paymentEntity = { id: paid.payment_id, amount: paid.amount_paid, currency: paid.currency, status: 'captured' };
+    } catch (err: any) {
+      console.error('[billing] reconcile: invoice fetch failed for', subscriptionId, err?.message);
+    }
+    if (!paymentEntity) return { attempted: true, activated: false, razorpayStatus: sub.status, reason: 'trial charge not verifiable yet' };
   }
 
-  const currentPeriodEnd = typeof sub.current_end === 'number' ? new Date(sub.current_end * 1000) : undefined;
-  await activatePlan(userId, { razorpaySubscriptionId: sub.id, currentPeriodEnd });
-  await activateBusinessPlan(businessId, { currentPeriodEnd, eventType: 'subscription.activated' });
-
-  // Same idempotent post-activation sequence the webhook runs (welcome
-  // message, ownership transition, …) — every step is individually gated
-  // on its own persisted flag, so this is a no-op if the webhook already
-  // ran it, and vice versa. Best-effort: never blocks the activation above.
-  try {
-    const { runCustomerActivationSequence } = await import('@/services/billing/customerActivation');
-    await runCustomerActivationSequence(userId, businessId, {});
-  } catch (err) {
-    console.error('[billing] reconcile: customerActivation sequence failed', err);
+  const before = business.subscriptionStatus;
+  await applyRazorpayEvent({
+    type: implied,
+    eventAt: new Date(),
+    subEntity: sub,
+    paymentEntity,
+    source: 'reconcile',
+  });
+  const after = await Business.findById(businessId).select('subscriptionStatus').lean() as any;
+  const activated = after?.subscriptionStatus === 'active' && before !== 'active';
+  if (after?.subscriptionStatus !== before) {
+    console.warn(
+      `[billing] Self-healed subscription ${sub.id} for business ${businessId}: ` +
+      `${before} → ${after?.subscriptionStatus} (Razorpay "${sub.status}", webhook not yet recorded).`
+    );
   }
-
-  console.warn(
-    `[billing] Self-healed subscription ${sub.id} for business ${businessId} — ` +
-    `Razorpay reports "${sub.status}" but our webhook hadn't recorded it yet.`
-  );
-  return { attempted: true, activated: true, razorpayStatus: sub.status };
+  return { attempted: true, activated, razorpayStatus: sub.status };
 }

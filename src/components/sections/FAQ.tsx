@@ -16,7 +16,7 @@ export function FAQ() {
         <FaqAccordion faqs={HOMEPAGE_FAQS} />
 
         <div className="text-center mt-10">
-          <Link href="/faq" className="text-sm font-semibold text-[#006e2c] hover:underline">
+          <Link href="/faq" className="inline-block py-2.5 -my-2.5 text-sm font-semibold text-[#006e2c] hover:underline">
             See the full FAQ →
           </Link>
         </div>

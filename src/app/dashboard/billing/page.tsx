@@ -124,6 +124,9 @@ interface WorkspaceBilling {
   cancelAtPeriodEnd?: boolean;
   currentPeriodEnd?: string | null;
   isActive?: boolean;
+  subscriptionStatus?: string;
+  /** Payment-failure state from /api/billing/status (billing policy). */
+  access?: { mode: 'full' | 'grace' | 'restricted' | 'held' | 'none'; graceEndsAt: string | null; restrictedModules: string[] | null };
 }
 
 function SubscriptionCard() {
@@ -217,6 +220,29 @@ function SubscriptionCard() {
             <span className="font-bold text-on-surface">
               {new Date((workspace?.currentPeriodEnd || status.currentPeriodEnd)!).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
             </span>
+          </div>
+        )}
+        {workspace?.subscriptionStatus === 'past_due' && (
+          // Also where WhatsApp payment reminders land (/dashboard/billing?recover=1).
+          <div role="alert" className="flex flex-col gap-2 py-3 text-xs text-on-error-container bg-error-container border border-error-container rounded-lg px-3">
+            <span>
+              <strong>Your last payment didn&apos;t go through.</strong>{' '}
+              {workspace.access?.mode === 'grace' && workspace.access.graceEndsAt
+                ? `Full access continues until ${new Date(workspace.access.graceEndsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}.`
+                : 'Paid features are paused until the payment succeeds — your data is safe.'}{' '}
+              Retrying is safe: we cancel the failed payment first, so you&apos;re never charged twice.
+            </span>
+            <Link
+              href="/checkout?return=/dashboard/billing"
+              className="self-start px-3 py-1.5 bg-primary text-white font-bold rounded-lg hover:bg-primary-container transition-colors"
+            >
+              Retry payment
+            </Link>
+          </div>
+        )}
+        {workspace?.access?.mode === 'held' && (
+          <div className="py-2 text-xs text-on-surface-variant bg-surface border border-outline-variant rounded-lg px-3">
+            Payment received — our team is restoring your access. No further payment is needed.
           </div>
         )}
         {workspace?.cancelAtPeriodEnd && (

@@ -7,7 +7,9 @@ import PlanConfig from '@/models/PlanConfig';
 import SubscriptionUsage from '@/models/SubscriptionUsage';
 import AIUsageLog from '@/models/AIUsageLog';
 import Post from '@/models/Post';
+import Subscription from '@/models/Subscription';
 import { getPlanDefaults, type PlanLimits } from '@/lib/planDefaults';
+import { limitsPlanFor } from '@/lib/billing/entitlements';
 
 async function getPlanLimits(planName: string): Promise<PlanLimits> {
   if (planName === 'Enterprise') planName = 'Pro'; // legacy paid tier → THE paid plan
@@ -44,8 +46,9 @@ export async function GET() {
     // incrementUsage actually write to, not the month-keyed one below.
     const day = new Date().toISOString().slice(0, 10);
 
-    const [user, override, subUsage, whatsappUsage, aiCount] = await Promise.all([
+    const [user, subscription, override, subUsage, whatsappUsage, aiCount] = await Promise.all([
       User.findById(ctx.userId).select('subscriptionPlan fullName email').lean() as any,
+      Subscription.findOne({ userId: ctx.userId }).select('billingStatus trialSource trialStatus').lean() as any,
       UserLimitOverride.findOne({ userId: ctx.userId }).lean() as any,
       SubscriptionUsage.findOne({ businessId: ctx.businessId, month }).lean() as any,
       SubscriptionUsage.findOne({ businessId: ctx.businessId, month: day }).select('whatsappMessagesUsed').lean() as any,
@@ -56,7 +59,8 @@ export async function GET() {
       }),
     ]);
 
-    const planName = user?.subscriptionPlan || 'Free';
+    // An authorized free trial gets the paid plan's (finite) limits.
+    const planName = limitsPlanFor(user?.subscriptionPlan, subscription);
     const planLimits = await getPlanLimits(planName);
 
     // Apply per-user overrides

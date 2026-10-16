@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
+import { displayPersonName } from '@/lib/personName';
 import User from '@/models/User';
 import Business from '@/models/Business';
 import UserLimitOverride from '@/models/UserLimitOverride';
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .select('fullName email subscriptionPlan')
+        .select('fullName email phone subscriptionPlan')
         .lean(),
       User.countDocuments(query),
     ]);
@@ -73,7 +74,7 @@ export async function GET(req: NextRequest) {
 
       return {
         userId:   uid,
-        fullName: u.fullName,
+        fullName: displayPersonName(u.fullName, businessMap[uid]?.name, u.phone),
         email:    u.email,
         plan,
         business: businessMap[uid]

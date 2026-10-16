@@ -7,6 +7,7 @@ import { BusinessSwitcher } from "./BusinessSwitcher";
 import { NotificationBell } from "./NotificationBell";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { getSupportLink } from "@/lib/whatsappCta";
+import { usablePersonName } from "@/lib/personName";
 
 // WhatsApp's own darker brand teal (their app bar color), not this app's own
 // brand green — same reasoning/value as the mobile header's Help button
@@ -120,13 +121,13 @@ export function DashboardHeader() {
         <NotificationBell />
         <div className="hidden sm:flex items-center gap-3 pl-3 lg:pl-6 border-l border-outline-variant">
           <div className="text-right">
-            <div className="text-sm font-bold text-on-surface">{user?.fullName || "…"}</div>
+            <div className="text-sm font-bold text-on-surface">{usablePersonName(user?.fullName) || "Your name"}</div>
             <div className="text-label-sm text-on-surface-variant normal-case tracking-wider">
               {user?.subscriptionPlan ? `${user.subscriptionPlan} Plan` : ""}
             </div>
           </div>
           <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-full bg-primary flex items-center justify-center font-bold text-on-primary text-sm">
-            {initialsOf(user?.fullName)}
+            {initialsOf(usablePersonName(user?.fullName))}
           </div>
         </div>
       </div>

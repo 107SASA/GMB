@@ -36,6 +36,8 @@ export interface PublicPlan {
   /** Enabled billing durations the customer can choose from. */
   durations: PlanDuration[];
   available: boolean;
+  /** Free-trial promotion, when switched on (display only — checkout decides per customer). */
+  trialOffer?: { months: number; cycle: string } | null;
 }
 
 export const MODULE_LABELS: Record<string, string> = {
@@ -51,6 +53,9 @@ export type CheckoutState =
   | { phase: 'starting' }
   | { phase: 'confirming' } // payment done, waiting for the webhook to flip the plan
   | { phase: 'success' }
+  // Free trial needs a verified phone first — the page shows the code step
+  // (or the customer chooses to pay now without the trial: skipTrial).
+  | { phase: 'needs_phone_verification' }
   | { phase: 'error'; message: string };
 
 /**
@@ -146,13 +151,15 @@ export function useRazorpayCheckout(opts?: {
     }, 1500);
   }, []);
 
-  const subscribe = useCallback(async (cycle?: string) => {
+  const subscribe = useCallback(async (cycle?: string, options?: { skipTrial?: boolean }) => {
     setCheckout({ phase: 'starting' });
     try {
+      // Only the cycle (and declining a trial) is sent — whether a free trial
+      // applies is decided entirely by the server.
       const res = await fetch('/api/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cycle: cycle || 'monthly' }),
+        body: JSON.stringify({ cycle: cycle || 'monthly', ...(options?.skipTrial && { skipTrial: true }) }),
       });
       if (res.status === 401) {
         setCheckout({ phase: 'idle' });
@@ -160,6 +167,17 @@ export function useRazorpayCheckout(opts?: {
         return;
       }
       const json = await res.json();
+      if (json?.code === 'PHONE_VERIFICATION_REQUIRED') {
+        setCheckout({ phase: 'needs_phone_verification' });
+        return;
+      }
+      // Recovery found the original subscription already paid by Razorpay's
+      // retry — no new payment; wait for the workspace to unlock.
+      if (json?.alreadyPaid) {
+        setCheckout({ phase: 'confirming' });
+        confirmActivation();
+        return;
+      }
       if (!res.ok || !json.success) {
         setCheckout({ phase: 'error', message: json.error || 'Could not start checkout.' });
         return;

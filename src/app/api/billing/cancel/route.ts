@@ -3,7 +3,8 @@ import { cookies, headers } from 'next/headers';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import { requireClient } from '@/lib/auth';
-import { getRazorpay } from '@/lib/billing/razorpay';
+import { getRazorpay, getRazorpayMode } from '@/lib/billing/razorpay';
+import { otherModeSupportMessage, recordedInOtherMode, recordedSubscriptionMode } from '@/lib/billing/razorpayMode';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import { markTrialCancelled } from '@/lib/billing/applyEntitlements';
 import { cancelTarget, pickCancelWorkspace } from '@/lib/billing/cancelTarget';
@@ -30,7 +31,7 @@ export async function POST() {
     const selectedId =
       (await headers()).get('x-business-id') || (await cookies()).get('activeBusinessId')?.value || null;
     const owned = await Business.find({ userId: auth.userId, isDeleted: { $ne: true } })
-      .select('_id subscriptionStatus billingSubscriptionId razorpaySubscriptionId trialEndsAt trialCancelledAt')
+      .select('_id subscriptionStatus billingSubscriptionId billingSubscriptionEnv razorpaySubscriptionId razorpaySubscriptionEnv trialEndsAt trialCancelledAt')
       .lean<any[]>();
     const picked = pickCancelWorkspace(owned, selectedId);
     if (!picked.ok) {
@@ -49,10 +50,23 @@ export async function POST() {
     }
 
     const razorpay = getRazorpay();
-    if (!razorpay) {
+    const mode = getRazorpayMode();
+    if (!razorpay || !mode) {
       return NextResponse.json(
         { error: 'Billing is not configured on this server' },
         { status: 503 }
+      );
+    }
+
+    // Created under the other Razorpay keys (recorded, never inferred): these
+    // keys can't reach it, so nothing is called and nothing is changed here.
+    // Unknown mode → the normal path below (fails closed on a lookup error).
+    const recorded = recordedSubscriptionMode(workspace, target.subscriptionId);
+    if (recordedInOtherMode(recorded, mode)) {
+      console.warn(`[billing/cancel] ${target.subscriptionId} (business ${workspace._id}) was created in ${recorded} mode; ${mode} keys configured — support required`);
+      return NextResponse.json(
+        { error: otherModeSupportMessage(recorded!), code: 'SUBSCRIPTION_NEEDS_SUPPORT' },
+        { status: 409 }
       );
     }
 
@@ -112,9 +126,13 @@ export async function POST() {
     });
   } catch (error: any) {
     console.error('Cancel subscription error:', error);
-    return NextResponse.json(
-      { error: error?.error?.description || toFriendlyMessage(error) },
-      { status: 500 }
-    );
+    // Never show the provider's raw error (e.g. "The id provided does not exist").
+    if (error?.error || error?.statusCode) {
+      return NextResponse.json(
+        { error: 'We could not confirm the cancellation with our payment provider. Please try again in a minute, or contact support.', code: 'PROVIDER_UNAVAILABLE' },
+        { status: 502 }
+      );
+    }
+    return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }
 }

@@ -147,6 +147,9 @@ export interface IBusiness extends Document {
    */
   pipelineStage?: string;
   razorpaySubscriptionId?: string;
+  /** Razorpay mode our checkout created `subscriptionId` in. Trusted only while it
+   *  names the current razorpaySubscriptionId (other writers don't record a mode). */
+  razorpaySubscriptionEnv?: { subscriptionId: string; mode: 'test' | 'live' };
   subscriptionCurrentPeriodEnd?: Date;
   /** True after the owner cancels: stays 'active' until the period ends (no
    *  refund — access continues to the paid-through date), then downgrades. */
@@ -160,6 +163,9 @@ export interface IBusiness extends Document {
   trialCancelledAt?: Date;
   /** The Razorpay subscription that currently grants access (trial or paid). Events for any other subscription can't change access. */
   billingSubscriptionId?: string;
+  /** Razorpay mode billingSubscriptionId was created in — copied only from a checkout-link record naming that
+   *  same id (never inferred). Trusted only while it names the current billingSubscriptionId. */
+  billingSubscriptionEnv?: { subscriptionId: string; mode: 'test' | 'live' };
   /** created_at of the last Razorpay event applied — older events are ignored (out-of-order delivery). */
   billingLastEventAt?: Date;
   /** Set when a charge fails (Day 0 of recovery); cleared when a payment succeeds. */
@@ -179,7 +185,7 @@ export interface IBusiness extends Document {
   /** One recovery at a time (lib/billing/paymentRecovery.ts). */
   recoveryLock?: { token: string; until: Date };
   /** The open replacement checkout, reused on repeated clicks until paid or expired. */
-  recoveryCheckout?: { subscriptionId: string; replacesSubscriptionId?: string | null; cycle: string; createdAt: Date; expiresAt: Date };
+  recoveryCheckout?: { subscriptionId: string; replacesSubscriptionId?: string | null; cycle: string; createdAt: Date; expiresAt: Date; mode?: 'test' | 'live' };
   /** When the post-audit WhatsApp sales nurture was sent (send-once guard). */
   auditNurtureSentAt?: Date;
   /** When the "your report is ready" WhatsApp ping was sent (send-once guard). */
@@ -413,6 +419,10 @@ const BusinessSchema: Schema = new Schema(
     // ADDITIVE — GrowwMatics' own sales pipeline stage (see IBusiness above).
     pipelineStage: { type: String, index: true },
     razorpaySubscriptionId: { type: String, index: true, sparse: true },
+    razorpaySubscriptionEnv: {
+      type: new Schema({ subscriptionId: { type: String, required: true }, mode: { type: String, enum: ['test', 'live'], required: true } }, { _id: false }),
+      default: undefined,
+    },
     subscriptionCurrentPeriodEnd: { type: Date },
     subscriptionCancelAtPeriodEnd: { type: Boolean, default: false },
     subscriptionRemindersSent: { type: [Number], default: [] },
@@ -421,6 +431,10 @@ const BusinessSchema: Schema = new Schema(
     trialEndsAt: { type: Date },
     trialCancelledAt: { type: Date },
     billingSubscriptionId: { type: String, index: true, sparse: true },
+    billingSubscriptionEnv: {
+      type: new Schema({ subscriptionId: { type: String, required: true }, mode: { type: String, enum: ['test', 'live'], required: true } }, { _id: false }),
+      default: undefined,
+    },
     billingLastEventAt: { type: Date },
     paymentFailedAt: { type: Date },
     paymentFailureReason: { type: String },
@@ -437,6 +451,7 @@ const BusinessSchema: Schema = new Schema(
       cycle: { type: String },
       createdAt: { type: Date },
       expiresAt: { type: Date },
+      mode: { type: String, enum: ['test', 'live'] },
     },
     // ADDITIVE — when the post-audit WhatsApp sales nurture was sent (send-once).
     auditNurtureSentAt: { type: Date },

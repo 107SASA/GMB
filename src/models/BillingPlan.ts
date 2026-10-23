@@ -20,6 +20,8 @@ export interface IPlanDuration {
   /** Razorpay Plan id valid for THIS cycle's current price (immutable amounts). */
   razorpayPlanId?: string;
   razorpayPlanPriceInr?: number;
+  /** Razorpay mode (test/live keys) the plan id was created in. Missing = legacy, test only. */
+  razorpayPlanMode?: 'test' | 'live';
 }
 
 export interface IBillingPlan extends Document {
@@ -30,10 +32,13 @@ export interface IBillingPlan extends Document {
   priceInr: number;
   razorpayPlanId?: string;
   razorpayPlanPriceInr?: number;
+  razorpayPlanMode?: 'test' | 'live';
   /** Editable feature bullets shown on the pricing card / paywall. */
   features: string[];
   /** Per-duration pricing (monthly/quarterly/halfyearly/yearly). */
   durations: IPlanDuration[];
+  /** Bumped by every write; the admin save only writes over the revision it read (no lost updates). */
+  revision?: number;
   updatedBy: string;
   createdAt: Date;
   updatedAt: Date;
@@ -46,6 +51,7 @@ const PlanDurationSchema = new Schema<IPlanDuration>(
     enabled:              { type: Boolean, default: false },
     razorpayPlanId:       { type: String },
     razorpayPlanPriceInr: { type: Number },
+    razorpayPlanMode:     { type: String, enum: ['test', 'live'] },
   },
   { _id: false }
 );
@@ -58,8 +64,10 @@ const BillingPlanSchema = new Schema<IBillingPlan>(
     priceInr:             { type: Number, required: true, min: 1 },
     razorpayPlanId:       { type: String },
     razorpayPlanPriceInr: { type: Number },
+    razorpayPlanMode:     { type: String, enum: ['test', 'live'] },
     features:             { type: [String], default: [] },
     durations:            { type: [PlanDurationSchema], default: [] },
+    revision:             { type: Number },
     updatedBy:            { type: String, default: '' },
   },
   { timestamps: true }

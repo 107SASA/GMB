@@ -6,16 +6,18 @@ import BillingPlan from '@/models/BillingPlan';
 import {
   getActivePlan,
   PLAN_FALLBACK,
-  CYCLE_ORDER,
   isBillingCycle,
+  saveAdminPlan,
+  type AdminDurationInput,
 } from '@/lib/billing/planCatalog';
-import { getRazorpay } from '@/lib/billing/razorpay';
+import { getRazorpay, getRazorpayMode } from '@/lib/billing/razorpay';
 
 /**
  * Super admin: the ONE sellable plan. GET returns it; PATCH edits price /
  * display name / description. A price change invalidates the stored Razorpay
- * Plan (amounts are immutable there), so a fresh one is created immediately
- * when Razorpay is configured — otherwise lazily at first checkout.
+ * Plan (amounts are immutable there); a fresh one is created lazily at the
+ * first checkout for that duration. An unchanged price keeps its stored plan
+ * id exactly as saved (id, price, test/live mode).
  * Existing subscribers keep paying their old price; the new amount applies
  * to new checkouts only.
  */
@@ -27,6 +29,7 @@ async function planPayload() {
   return {
     ...plan,
     razorpayConfigured: Boolean(getRazorpay()),
+    razorpayMode: getRazorpayMode(),
     razorpayPlanReady: Boolean(plan.razorpayPlanId),
   };
 }
@@ -102,16 +105,16 @@ export async function PATCH(req: NextRequest) {
       update.features = features;
     }
 
-    // Per-duration pricing. The whole set is replaced; Razorpay ids for
-    // unchanged prices are preserved (getActivePlan invalidates mismatches).
+    // Per-duration pricing. The whole set is replaced; the stored Razorpay plan
+    // (id, price, mode) is kept for each unchanged price — merged at write time
+    // by saveAdminPlan, so a plan id attached meanwhile is not lost.
+    let durations: AdminDurationInput[] | undefined;
     if ('durations' in body) {
       if (!Array.isArray(body.durations)) {
         return NextResponse.json({ error: 'durations must be an array' }, { status: 400 });
       }
-      const current = await getActivePlan();
-      const existing = new Map(current.durations.map((d) => [d.cycle, d]));
       const seen = new Set<string>();
-      const out: any[] = [];
+      durations = [];
       for (const d of body.durations) {
         if (!isBillingCycle(d?.cycle) || seen.has(d.cycle)) {
           return NextResponse.json({ error: `Invalid or duplicate cycle: ${d?.cycle}` }, { status: 400 });
@@ -121,57 +124,31 @@ export async function PATCH(req: NextRequest) {
         if (!Number.isFinite(price) || price < 1 || price > MAX_PRICE_INR) {
           return NextResponse.json({ error: `Price for ${d.cycle} must be 1–${MAX_PRICE_INR}` }, { status: 400 });
         }
-        const prev = existing.get(d.cycle);
-        // Preserve the Razorpay id only when the price is unchanged.
-        const keepRp = prev?.razorpayPlanId && prev.priceInr === price;
-        out.push({
-          cycle: d.cycle,
-          priceInr: price,
-          enabled: Boolean(d.enabled),
-          ...(keepRp ? { razorpayPlanId: prev!.razorpayPlanId, razorpayPlanPriceInr: price } : {}),
-        });
+        durations.push({ cycle: d.cycle, priceInr: price, enabled: Boolean(d.enabled) });
       }
-      // Ensure all four cycles exist (disabled if omitted) so the array is complete.
-      for (const cycle of CYCLE_ORDER) {
-        if (!seen.has(cycle)) {
-          const prev = existing.get(cycle)!;
-          out.push({ cycle, priceInr: prev.priceInr, enabled: false });
-        }
-      }
-      // At least monthly must be enabled so there's always something to sell.
-      if (!out.some((d) => d.enabled)) {
+      // At least monthly must be enabled so there's always something to sell
+      // (omitted cycles are saved disabled).
+      if (!durations.some((d) => d.enabled)) {
         return NextResponse.json({ error: 'Enable at least one billing duration.' }, { status: 400 });
       }
-      update.durations = out;
-      // Keep the legacy monthly price in sync for back-compat readers.
-      const monthly = out.find((d) => d.cycle === 'monthly');
-      if (monthly) update.priceInr = monthly.priceInr;
     }
 
-    if (Object.keys(update).length === 1) {
+    if (Object.keys(update).length === 1 && !durations) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
-    // Fill required fields on first save so the upsert can't fail validation.
-    const current = await getActivePlan();
-    await BillingPlan.findOneAndUpdate(
-      { key: 'default' },
-      {
-        $set: {
-          displayName: current.displayName,
-          description: current.description,
-          priceInr: current.priceInr,
-          ...update,
-        },
-      },
-      { upsert: true, setDefaultsOnInsert: true, runValidators: true }
-    );
+    if ((await saveAdminPlan({ fields: update, durations })) === 'conflict') {
+      return NextResponse.json(
+        { error: 'The plan was updated at the same moment. Please reload and save again.', code: 'PLAN_SAVE_CONFLICT' },
+        { status: 409 }
+      );
+    }
 
     // Razorpay plans for changed prices are created lazily at first checkout
     // (per duration), so a save never fails on a Razorpay error. Surface only a
     // config hint when keys are missing.
     let warning: string | undefined;
-    if (('priceInr' in update || 'durations' in update) && !getRazorpay()) {
+    if (('priceInr' in update || durations) && !getRazorpay()) {
       warning = 'Saved. Razorpay keys are not configured, so checkout is disabled until they are.';
     }
 

@@ -57,6 +57,8 @@ export async function activateBusinessPlan(
     eventType?: 'subscription.activated' | 'subscription.charged';
     /** The Razorpay subscription that was paid — becomes the one granting access. */
     subscriptionId?: string;
+    /** Mode recorded for subscriptionId by its checkout link (never inferred); omitted when unknown. */
+    subscriptionMode?: 'test' | 'live' | null;
     /** Razorpay event time, so older events delivered later are ignored. */
     eventAt?: Date;
   } = {}
@@ -87,6 +89,7 @@ export async function activateBusinessPlan(
       $set: {
         ...(held && { paymentAccessHold: true }),
         ...(opts.subscriptionId && { billingSubscriptionId: opts.subscriptionId }),
+        ...(opts.subscriptionId && opts.subscriptionMode && { billingSubscriptionEnv: { subscriptionId: opts.subscriptionId, mode: opts.subscriptionMode } }),
         subscriptionStatus: 'active',
         // A successful (re)activation clears any pending cancel + reminder state.
         subscriptionCancelAtPeriodEnd: false,
@@ -243,7 +246,7 @@ export async function startTrialAccess(
   /** cancelled: the subscription's cancellation was processed before this authorization
    *  (out-of-order delivery) — the trial starts already cancelled: access until
    *  trialEndsAt, no charge, and no "trial started" notice. */
-  opts: { subscriptionId: string; trialEndsAt: Date; eventAt?: Date; cancelled?: boolean }
+  opts: { subscriptionId: string; trialEndsAt: Date; eventAt?: Date; cancelled?: boolean; subscriptionMode?: 'test' | 'live' | null }
 ): Promise<boolean> {
   await dbConnect();
   const now = new Date();
@@ -255,6 +258,7 @@ export async function startTrialAccess(
         trialStartedAt: now,
         trialEndsAt: opts.trialEndsAt,
         billingSubscriptionId: opts.subscriptionId,
+        ...(opts.subscriptionMode && { billingSubscriptionEnv: { subscriptionId: opts.subscriptionId, mode: opts.subscriptionMode } }),
         razorpaySubscriptionId: opts.subscriptionId,
         subscriptionCancelAtPeriodEnd: false,
         ...(opts.cancelled && { trialCancelledAt: now }),

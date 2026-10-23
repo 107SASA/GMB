@@ -43,7 +43,8 @@ function Tile({ label, value, sub }: { label: string; value: string; sub?: strin
   return (
     <View className="mb-3 w-[48%] rounded-card border border-surface-border bg-surface-raised px-3 py-3">
       <Text className="font-sans text-xs text-zinc-500">{label}</Text>
-      <Text className="mt-1 font-display-bold text-xl text-white" numberOfLines={1}>{value}</Text>
+      {/* Shrinks long amounts (₹12,34,567) on narrow phones instead of cutting them off. */}
+      <Text className="mt-1 font-display-bold text-xl text-white" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{value}</Text>
       {!!sub && <Text className="mt-0.5 font-sans text-[11px] text-zinc-500">{sub}</Text>}
     </View>
   );

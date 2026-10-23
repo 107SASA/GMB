@@ -91,18 +91,18 @@ export interface IBusiness extends Document {
   };
   // How incoming reviews get replied to (Review Management screen) —
   // 'manual': AI drafts a reply, the owner reviews/edits/approves before it
-  // posts. 'auto': the AI agent drafts AND posts fact-checked replies on its
-  // own, only after the owner opted in (lib/reviewReplyConsent.ts). New
-  // businesses start on 'manual' (newBusinessReviewReplySettings, matching the
-  // schema default below). Read by syncReviewsForBusiness (see services/reviews/) right
+  // posts. 'auto' (DEFAULT): the AI agent drafts AND posts fact-checked
+  // replies on its own; failing drafts wait for the owner
+  // (lib/reviewReplyConsent.ts). New businesses start on 'auto'
+  // (newBusinessReviewReplySettings, matching the schema default below). Read by syncReviewsForBusiness (see services/reviews/) right
   // after new reviews are upserted, and by the reply-settings route when the
   // owner switches modes (to catch up the existing backlog of unreplied
   // reviews, not just future ones).
   reviewReplySettings: {
     mode: 'manual' | 'auto';
     tone: string;
-    /** Auto-publish runs only when the owner switched it on under the validated flow (set by
-     *  api/reviews/reply-settings). A legacy mode:'auto' without this stays drafts-only. */
+    /** Audit of the owner switching auto on themselves (set by api/reviews/reply-settings).
+     *  Not required for auto to run — auto is the default. */
     autoPublishConsentAt?: Date;
     autoPublishConsentBy?: string;
   };
@@ -382,7 +382,7 @@ const BusinessSchema: Schema = new Schema(
       messageTemplate: { type: String }
     },
     reviewReplySettings: {
-      mode: { type: String, enum: ['manual', 'auto'], default: 'manual' },
+      mode: { type: String, enum: ['manual', 'auto'], default: 'auto' },
       tone: { type: String, default: 'Professional' },
       autoPublishConsentAt: { type: Date },
       autoPublishConsentBy: { type: String },

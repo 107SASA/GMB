@@ -58,6 +58,7 @@ const MENU: { section: string; items: MenuItem[] }[] = [
     items: [
       { label: 'Notifications', icon: 'notifications', href: '/notifications', tint: 'rose' },
       { label: 'Settings', icon: 'settings', href: '/settings', tint: 'textDim' },
+      { label: 'Review settings', icon: 'chatbubbles', href: '/review-settings', tint: 'amber', surface: 'reviews' },
       { label: 'Billing', icon: 'card', href: '/billing', tint: 'cyan' },
       { label: 'Profile', icon: 'person', href: '/profile', tint: 'brandBright' },
     ],
@@ -68,8 +69,8 @@ const MENU: { section: string; items: MenuItem[] }[] = [
 // Media/CRM) is intentionally routed through here for now — Aug 2026,
 // per an explicit ask to park everything under More rather than deciding
 // per-screen whether it stays in the app. Audit/Business Profile/Content
-// Generator/Content Scheduler/WhatsApp AI Agent/Settings/Billing/Profile/
-// Notifications are all listed above. Inbox is deliberately NOT listed
+// Generator/Content Scheduler/WhatsApp AI Agent/Settings/Review settings/
+// Billing/Profile/Notifications are all listed above. Inbox is deliberately NOT listed
 // (Sep 2026, owner's call) — reachable only via deep links now, not a nav
 // entry. Nothing else hidden is currently unreachable.
 

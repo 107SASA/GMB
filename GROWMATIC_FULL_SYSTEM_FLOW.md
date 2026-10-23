@@ -82,7 +82,7 @@ Visitor ──► /free-report ──► POST /api/free-report/start
           │        └─ maybeStartAuditAutopilot → FULL audit (connected_baseline) → SeoPlan v+1
           ├─ auditAutopilotCron (hourly; 30-day cadence) → monthly audit → comparison + monthly report → SeoPlan v+1
           ├─ weeklyContentAutopilot (hourly; 7-day cadence) → weekly batch posts → scheduled publish (GBP write gated OFF)
-          ├─ Reviews: nightly sync, AI reply drafts, auto-reply when opted in (publish gated OFF)
+          ├─ Reviews: nightly sync, AI reply drafts, auto-reply on by default, owner can switch to manual (publish gated OFF)
           └─ Review requests: WhatsApp (Twilio, platform number) → delivery/read webhook → click redirect → Google
 ```
 

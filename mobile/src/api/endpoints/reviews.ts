@@ -170,3 +170,31 @@ export async function postReply(reviewId: string): Promise<PostReplyResult> {
   if (data?.success === false) throw new Error(typeof data?.error === 'string' ? data.error : 'Could not post the reply.');
   return { outcome: 'published' };
 }
+
+// --- Reply mode (same setting as the web's Review Management toggle) ---------
+
+export type ReplyMode = 'auto' | 'manual';
+export const REPLY_TONES = ['Professional', 'Friendly', 'Apology', 'Empathetic'] as const;
+
+const replySettingsSchema = z.object({
+  /** 'auto' (default): fact-checked replies post automatically; 'manual': owner approves each. */
+  mode: z.enum(['auto', 'manual']).catch('auto'),
+  tone: z.string().catch('Professional'),
+});
+export type ReplySettings = z.infer<typeof replySettingsSchema>;
+
+/** GET /api/reviews/reply-settings — the active workspace's reply mode + tone. */
+export async function fetchReplySettings(): Promise<ReplySettings> {
+  const { data } = await api.get('/api/reviews/reply-settings');
+  return replySettingsSchema.parse(data ?? {});
+}
+
+/**
+ * POST /api/reviews/reply-settings — saves mode + tone. Switching to auto
+ * also queues the workspace's existing unanswered reviews; `queued` says how many.
+ */
+export async function saveReplySettings(settings: ReplySettings): Promise<{ queued: number }> {
+  const { data } = await api.post('/api/reviews/reply-settings', settings);
+  if (data?.success === false) throw new Error(typeof data?.error === 'string' ? data.error : 'Could not save.');
+  return { queued: Number(data?.queued ?? 0) };
+}

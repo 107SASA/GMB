@@ -4232,8 +4232,8 @@ export const processReviewSyncJob = inngest.createFunction(
 // 8b. Review reply batch — fired (1) after a sync for newly fetched reviews
 // without a reply and (2) once for the backlog when an owner switches
 // auto-reply on (reviews/reply-settings/route.ts). Every review gets a
-// fact-checked draft; a reply is PUBLISHED only when the owner switched
-// auto-reply on and the draft passed the check (services/reviews/autoReply.ts).
+// fact-checked draft; a reply is PUBLISHED only in auto-reply mode (the
+// default) and when the draft passed the check (services/reviews/autoReply.ts).
 // Otherwise the owner is told drafts are waiting for approval.
 //
 // Runs sequentially (not Promise.all) deliberately: each review is one or two

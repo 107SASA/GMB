@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 /**
  * DEV / QA ONLY — simulate a verified Razorpay payment for a test lead so the
  * customer-activation flow (stop nurture, cancel pending sales actions,
- * activate exactly once, invoice + welcome WhatsApp, hand to In-House) can be
+ * activate exactly once, the payment-received WhatsApp, hand to In-House) can be
  * tested end-to-end without real Razorpay production credentials.
  *
  * HARD GATED on QA_TESTING_MODE=true (absent/false in production — see

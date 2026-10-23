@@ -7,8 +7,15 @@ import {
   applyClick,
   buildGoogleReviewUrl,
   extractReviewToken,
+  isLinkPreviewRequest,
   isSafeReviewToken,
 } from '@/lib/reviewRequestFlow';
+
+/** Who opened the link: a preview fetch is redirected but not recorded as a click. */
+export interface ReviewLinkVisit {
+  method?: string | null;
+  userAgent?: string | null;
+}
 
 async function resolveClickedRedirect(reviewRequest: {
   clicked?: boolean;
@@ -17,7 +24,7 @@ async function resolveClickedRedirect(reviewRequest: {
   businessId: unknown;
   campaignId?: unknown;
   save: () => Promise<unknown>;
-}): Promise<string> {
+}, visit: ReviewLinkVisit = {}): Promise<string> {
   const business = await Business.findById(reviewRequest.businessId).select('placeId googlePlaceId verifiedLocation.placeId googleMapsUrl').lean() as {
     placeId?: string;
     googlePlaceId?: string;
@@ -26,6 +33,7 @@ async function resolveClickedRedirect(reviewRequest: {
   } | null;
 
   const reviewUrl = buildGoogleReviewUrl(business);
+  if (isLinkPreviewRequest(visit)) return reviewUrl;
   const click = applyClick(reviewRequest);
   reviewRequest.clickCount = click.clickCount;
   if (click.setClickedAt) {
@@ -42,24 +50,24 @@ async function resolveClickedRedirect(reviewRequest: {
 }
 
 /** Existing /go/[id] and /api/campaigns/track/[requestId] lookup. */
-export async function handleReviewRedirect(requestId: string): Promise<string> {
+export async function handleReviewRedirect(requestId: string, visit: ReviewLinkVisit = {}): Promise<string> {
   await dbConnect();
 
   const reviewRequest = await ReviewRequest.findById(requestId);
   if (!reviewRequest) return GENERIC_REVIEW_REDIRECT;
-  return resolveClickedRedirect(reviewRequest);
+  return resolveClickedRedirect(reviewRequest, visit);
 }
 
 /**
  * Public /review/[token] lookup. An unknown or malformed token redirects to
  * a generic Google URL and does not describe why.
  */
-export async function handleReviewRedirectByToken(token: string): Promise<string> {
+export async function handleReviewRedirectByToken(token: string, visit: ReviewLinkVisit = {}): Promise<string> {
   const reviewToken = extractReviewToken(token);
   if (!isSafeReviewToken(reviewToken)) return GENERIC_REVIEW_REDIRECT;
 
   await dbConnect();
   const reviewRequest = await ReviewRequest.findOne({ token: reviewToken });
   if (!reviewRequest) return GENERIC_REVIEW_REDIRECT;
-  return resolveClickedRedirect(reviewRequest);
+  return resolveClickedRedirect(reviewRequest, visit);
 }

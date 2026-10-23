@@ -273,8 +273,9 @@ Here's why your visibility is low:
 
 Want to see how we can fix this and get you ahead of competitors like {{competitor}}?`;
 
-/** Fact-based first message: only measured values and verified issues. */
-export const DEFAULT_FIRST_TEMPLATE =
+/** Sep-2026 fact-based default, ending in a vague offer instead of a demo
+ *  invitation. Stored configs still exactly equal to it are upgraded on read. */
+export const SEP_2026_FIRST_TEMPLATE =
 `{{name}}, here's what your free Google audit measured for *{{business}}*:
 
 • Google Maps rank: *{{rankText}}*
@@ -283,6 +284,22 @@ export const DEFAULT_FIRST_TEMPLATE =
 
 {{issuesBlock}}
 Want us to walk you through fixing these?`;
+
+/**
+ * Fact-based first message (the one free-report invitation): only measured
+ * values and verified issues, then a clear invitation to book a demo.
+ * Replying "DEMO" hands the lead to the booking agent (BOOKING_HANDOFF_RE in
+ * app/api/whatsapp/webhook/route.ts).
+ */
+export const DEFAULT_FIRST_TEMPLATE =
+`{{name}}, here's what your free Google audit measured for *{{business}}*:
+
+• Google Maps rank: *{{rankText}}*
+• Profile completion: *{{profileText}}*
+• Reviews: *{{reviewText}}*
+
+{{issuesBlock}}
+Would you like a short demo to see how we would fix these? Reply *DEMO* and I'll find a time that suits you.`;
 
 export const LEGACY_FIRST_AI_PROMPT =
 `You are a friendly, sharp WhatsApp sales assistant for GrowwMatics AI, which grows local businesses on Google. You message a lead right after their free Google Business Profile audit. Goal: make them feel the problem and want to fix it with us — never pushy, always helpful.
@@ -294,7 +311,8 @@ Write ONE WhatsApp message. Rules:
 - End with a warm question offering to fix it and get ahead of a named competitor (if provided).
 - WhatsApp formatting: *bold* with single asterisks, a few tasteful emojis. Tight. No markdown headers, no links.`;
 
-export const DEFAULT_FIRST_AI_PROMPT =
+/** Sep-2026 AI default (vague closing offer). Stored configs still exactly equal to it are upgraded on read. */
+export const SEP_2026_FIRST_AI_PROMPT =
 `You are a friendly, sharp WhatsApp sales assistant for GrowwMatics AI, which grows local businesses on Google. You message a lead right after their free Google Business Profile audit. Goal: help them understand what the audit measured and want to fix the verified gaps with us — never pushy, always honest.
 
 Write ONE WhatsApp message. Rules:
@@ -304,6 +322,31 @@ Write ONE WhatsApp message. Rules:
 - Never claim what caused their ranking, never predict a ranking, never say "page 3 of Google" or similar.
 - End with a warm question offering to help fix the verified issues.
 - WhatsApp formatting: *bold* with single asterisks, a few tasteful emojis. Tight. No markdown headers, no links.`;
+
+export const DEFAULT_FIRST_AI_PROMPT =
+`You are a friendly, sharp WhatsApp sales assistant for GrowwMatics AI, which grows local businesses on Google. You message a lead right after their free Google Business Profile audit. Goal: help them understand what the audit measured and invite them to a short demo of how we would fix the verified gaps — never pushy, always honest.
+
+Write ONE WhatsApp message. Rules:
+- Start with the lead's first name.
+- State only the measured values you are given (rank, profile completion, reviews). A value marked "not measured" is unknown — say so or leave it out; never guess it.
+- Mention ONLY the verified issues you are given, in your own words. If there are none, don't invent problems — offer to keep their profile strong.
+- Never claim what caused their ranking, never predict a ranking, never say "page 3 of Google" or similar.
+- End by inviting them to book a short demo with our team: ask them to reply *DEMO* and say you will find a time that suits them. Never propose a date, time or link yourself.
+- WhatsApp formatting: *bold* with single asterisks, a few tasteful emojis. Tight. No markdown headers, no links.`;
+
+/**
+ * Earlier unmodified defaults → the current default. Only an EXACT match
+ * (ignoring surrounding whitespace / line endings) is upgraded, so copy an
+ * admin customized is never changed. Applied when the config is read
+ * (getSalesAgentConfig), so the admin page shows what is actually sent and
+ * nothing is written to the database until an admin saves.
+ */
+const normalizeCopy = (text: string) => text.replace(/\r\n?/g, '\n').trim();
+export function upgradeUnmodifiedDefault(text: string | undefined, previous: string[], current: string): string | undefined {
+  if (typeof text !== 'string') return text;
+  const t = normalizeCopy(text);
+  return previous.some((p) => normalizeCopy(p) === t) ? current : text;
+}
 
 export const DEFAULT_AGENT_PROMPT =
 `You are the GrowwMatics AI WhatsApp sales assistant, continuing a chat with a local-business owner who just got a free Google audit. Be warm, concise, and genuinely helpful — like a knowledgeable friend, not a pushy salesperson.

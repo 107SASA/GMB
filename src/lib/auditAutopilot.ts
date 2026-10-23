@@ -7,6 +7,7 @@ import { createPendingAuditAndDispatch } from '@/lib/startAudit';
 import { incrementUsage } from '@/lib/featureGating';
 import { notifyBusinessUsers } from '@/services/notifications';
 import { notifyOwner } from '@/services/ownerNotify';
+import { appLink, composeOwnerMessage } from '@/lib/whatsappOutbound';
 import { workspaceHasPlanAccess, PLAN_ACCESS_FIELDS } from '@/lib/billing/entitlements';
 
 /** Exact-one-month cadence, matching the old seoPlanMonthlyReaudit cutoff. */
@@ -14,6 +15,21 @@ export const AUDIT_AUTOPILOT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** How often at most the "add your business category" nudge is re-sent. */
 const CATEGORY_NUDGE_THROTTLE_MS = 3 * 24 * 60 * 60 * 1000;
+
+/** The category nudge reaches WhatsApp at most this many times in total; the in-app notice keeps the 3-day throttle. */
+export const CATEGORY_NUDGE_WHATSAPP_LIMIT = 2;
+
+/**
+ * Category-nudge WhatsApps already sent. A business nudged before the counter
+ * existed (Oct 2026) is counted as having had one.
+ */
+export function categoryNudgeWhatsAppsSent(business: {
+  auditAutopilotCategoryNudgeWhatsApps?: number | null;
+  auditAutopilotCategoryNudgedAt?: Date | string | null;
+}): number {
+  if (typeof business.auditAutopilotCategoryNudgeWhatsApps === 'number') return business.auditAutopilotCategoryNudgeWhatsApps;
+  return business.auditAutopilotCategoryNudgedAt ? 1 : 0;
+}
 
 /**
  * 'Local Business' is the generic placeholder Business.create() falls back to
@@ -147,8 +163,9 @@ export async function dispatchAuditForBusiness(business: any, trigger: string): 
  * category yet, so the first report can't be built. New workspaces are
  * hard-gated into /dashboard/onboarding/intake (src/proxy.ts) which collects
  * this — but pre-gate workspaces, or a lull between the two conditions
- * landing, can reach here. Nudge in-app + WhatsApp, throttled, and let the
- * hourly cron pick the audit up the moment a category exists.
+ * landing, can reach here. Nudge in-app (every 3 days) and on WhatsApp (at
+ * most CATEGORY_NUDGE_WHATSAPP_LIMIT times in total), and let the hourly cron
+ * pick the audit up the moment a category exists.
  */
 async function nudgeForCategory(business: {
   _id: any;
@@ -160,10 +177,17 @@ async function nudgeForCategory(business: {
     : 0;
   if (Date.now() - last < CATEGORY_NUDGE_THROTTLE_MS) return;
 
-  await Business.updateOne(
-    { _id: business._id },
-    { $set: { auditAutopilotCategoryNudgedAt: new Date() } }
-  );
+  // Atomic: the hourly cron and the activation hooks can overlap — only the
+  // caller that moves the timestamp it read sends this round's nudge.
+  const before = await Business.findOneAndUpdate(
+    {
+      _id: business._id,
+      auditAutopilotCategoryNudgedAt: business.auditAutopilotCategoryNudgedAt ? new Date(business.auditAutopilotCategoryNudgedAt) : { $in: [null] },
+    },
+    { $set: { auditAutopilotCategoryNudgedAt: new Date() } },
+    { new: false, projection: { auditAutopilotCategoryNudgedAt: 1, auditAutopilotCategoryNudgeWhatsApps: 1 } }
+  ).lean<{ auditAutopilotCategoryNudgedAt?: Date; auditAutopilotCategoryNudgeWhatsApps?: number }>();
+  if (!before) return;
 
   const name = business.name || 'your business';
   await notifyBusinessUsers(business._id.toString(), {
@@ -173,8 +197,30 @@ async function nudgeForCategory(business: {
     link: '/dashboard/onboarding/intake',
   }).catch(() => {});
 
-  await notifyOwner(business._id.toString(), {
+  // WhatsApp: two sends in total, then in-app only. The count is taken before
+  // sending and given back when nothing went out (opted out, no phone, failed).
+  const sent = categoryNudgeWhatsAppsSent(before);
+  if (sent >= CATEGORY_NUDGE_WHATSAPP_LIMIT) return;
+  const counted = await Business.updateOne(
+    { _id: business._id, auditAutopilotCategoryNudgeWhatsApps: typeof before.auditAutopilotCategoryNudgeWhatsApps === 'number' ? before.auditAutopilotCategoryNudgeWhatsApps : { $in: [null] } },
+    { $set: { auditAutopilotCategoryNudgeWhatsApps: sent + 1 } }
+  );
+  if (!counted.modifiedCount) return;
+
+  const res = await notifyOwner(business._id.toString(), {
     event: 'profile_incomplete',
-    text: `GrowwMatics: your monthly Google Business Profile report for ${name} is ready to start — please add your business category in your dashboard profile so we can generate it.`,
-  }).catch(() => {});
+    text: composeOwnerMessage({
+      name,
+      body: 'We are ready to create your Google Business Profile report. Please add your business category so we can generate it.',
+      linkLabel: 'Add your category',
+      link: appLink('/dashboard/onboarding/intake'),
+      noLinkText: 'Add it from your profile in the Growwmatics dashboard.',
+    }),
+  }).catch(() => null);
+  if (res?.status !== 'sent') {
+    await Business.updateOne(
+      { _id: business._id, auditAutopilotCategoryNudgeWhatsApps: sent + 1 },
+      { $set: { auditAutopilotCategoryNudgeWhatsApps: sent } }
+    ).catch(() => {});
+  }
 }

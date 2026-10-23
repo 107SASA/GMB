@@ -95,9 +95,18 @@ export async function bookAppointment(
   // booking; notifyOwner respects the demoBookingWhatsApp preference.
   try {
     const { notifyOwner } = await import('@/services/ownerNotify');
+    const { appLink, composeOwnerMessage } = await import('@/lib/whatsappOutbound');
+    const { default: BusinessModel } = await import('@/models/Business');
+    const biz: any = await BusinessModel.findById(input.businessId).select('name').lean();
     await notifyOwner(input.businessId, {
       event: 'demo_booking',
-      text: `📅 GrowwMatics: ${input.customerName || 'a customer'} just booked an appointment via your WhatsApp agent for ${input.date} at ${input.time}${input.serviceRequested ? ` (${input.serviceRequested})` : ''}.`,
+      text: composeOwnerMessage({
+        name: biz?.name || 'there',
+        body: `${input.customerName || 'A customer'} booked an appointment through your WhatsApp assistant for ${input.date} at ${input.time}${input.serviceRequested ? ` (${input.serviceRequested})` : ''}.`,
+        linkLabel: 'View your dashboard',
+        link: appLink('/dashboard'),
+        noLinkText: 'Open your Growwmatics dashboard for the details.',
+      }),
     });
   } catch (e: any) {
     console.error('[ownerNotify] appointment-booked failed:', e?.message);

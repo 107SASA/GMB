@@ -10,6 +10,7 @@ interface Policy {
   maximumFollowUps: number;
   minimumIntervalDays: number;
   stopOnOptOut: boolean;
+  stopOnClick: boolean;
 }
 
 const inputClass = 'w-full px-3 py-2 rounded-lg border border-outline-variant text-sm bg-surface-container-lowest';
@@ -163,6 +164,19 @@ export default function ReviewFollowUpAdminPage() {
           <span className="text-sm font-bold text-on-surface">Stop when the customer opts out</span>
           <input type="checkbox" checked disabled className="w-4 h-4 accent-primary" />
         </label>
+
+        <label className="flex items-center justify-between gap-4">
+          <span className="text-sm font-bold text-on-surface">Stop reminders after the customer clicks the review link</span>
+          <input
+            type="checkbox"
+            checked={policy.stopOnClick}
+            onChange={e => setPolicy({ ...policy, stopOnClick: e.target.checked })}
+            className="w-4 h-4 accent-primary"
+          />
+        </label>
+        <p className="text-xs text-outline">
+          On by default. Pending reminders are skipped once the link was opened. Customers who have not clicked keep the normal schedule.
+        </p>
         <p className="text-xs text-outline">
           Follow-ups also stop when the maximum is reached, or when the customer no longer has a phone, Place ID, or link to the business.
         </p>

@@ -234,6 +234,18 @@ export interface IBusiness extends Document {
   crmGrowthReportNotifiedFor?: string | null;
   /** Last 15-day Google performance WhatsApp (claimed atomically before sending). */
   performanceDigestLastSentAt?: Date;
+  /** Most recent routine performance-update WhatsApp sends (at most 2 kept) — the rolling 2-per-15-days limit, lib/ownerWhatsAppLimits.ts. */
+  performanceUpdateSentAt?: Date[];
+  /** ISO week ("2026-W43") of the last reviews-need-attention WhatsApp — one per week, claimed atomically. */
+  reviewAttentionWeekKey?: string;
+  /**
+   * Billing WhatsApp notices already claimed for this workspace
+   * (services/billing/billingWhatsApp.ts): 'payment-first:<subId>',
+   * 'payment-renewal:<subId>:<paidCount>', 'trial-ending:<trialEndsAt>',
+   * 'trial-expired:<trialEndsAt>'. $addToSet claim → one message per key
+   * across webhook retries, reconciliation and out-of-order events.
+   */
+  billingNoticeKeys?: string[];
   // ADDITIVE — automatic audit autopilot anchor (see src/lib/auditAutopilot.ts
   // + auditAutopilotCron in services/inngest/functions.ts). Set the first time
   // this workspace has an active subscription + connected Google Business
@@ -247,6 +259,13 @@ export interface IBusiness extends Document {
    *  category so their automatic audit can run — throttles that nudge to once
    *  every few days. */
   auditAutopilotCategoryNudgedAt?: Date;
+  /** How many category-nudge WhatsApps were sent (capped at 2; unset on
+   *  businesses nudged before Oct 2026 — counted as one already sent). */
+  auditAutopilotCategoryNudgeWhatsApps?: number;
+  /** A monthly-report notice held back by quiet hours (21:00–09:00 IST): the
+   *  hourly sweep delivers it after dueAt if the queued job never did.
+   *  Cleared once the report's notice is claimed. */
+  monthlyReportNoticePending?: { auditId: mongoose.Types.ObjectId; dueAt: Date };
   // ADDITIVE — WhatsApp AI Agent booking configuration (Feature 1).
   // Opt-in only: bookingEnabled defaults to false so existing businesses
   // are completely unaffected until they explicitly configure this.
@@ -453,6 +472,9 @@ const BusinessSchema: Schema = new Schema(
     // ADDITIVE — weekly content autopilot anchor (see IBusiness above).
     autopilotNextRunAt: { type: Date },
     performanceDigestLastSentAt: { type: Date },
+    performanceUpdateSentAt: { type: [Date], default: undefined },
+    reviewAttentionWeekKey: { type: String },
+    billingNoticeKeys: { type: [String], default: undefined },
     crmInvestment: {
       monthlyAmount: { type: Number, min: 0 },
       currency: { type: String, default: 'INR' },
@@ -462,6 +484,11 @@ const BusinessSchema: Schema = new Schema(
     // ADDITIVE — automatic audit autopilot (see IBusiness above + src/lib/auditAutopilot.ts).
     auditAutopilotNextRunAt: { type: Date },
     auditAutopilotCategoryNudgedAt: { type: Date },
+    auditAutopilotCategoryNudgeWhatsApps: { type: Number },
+    monthlyReportNoticePending: {
+      type: new Schema({ auditId: { type: Schema.Types.ObjectId, ref: 'Audit' }, dueAt: { type: Date } }, { _id: false }),
+      default: undefined,
+    },
     // ADDITIVE — see whatsappBookingSettings in IBusiness above. Not required,
     // no default object is forced onto existing documents; the WhatsApp
     // appointment agent treats a missing/disabled config as "booking off".

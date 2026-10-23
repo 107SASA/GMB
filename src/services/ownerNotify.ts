@@ -3,7 +3,14 @@ import Business from '@/models/Business';
 import User from '@/models/User';
 import OwnerNotifyDigest from '@/models/OwnerNotifyDigest';
 import { sendOutboundMessage } from '@/services/whatsapp/send';
-import { isBillingOwnerEvent, ownerBusinessWhatsAppAllowed, type OwnerBusinessEvent } from '@/services/ownerNotifyEligibility';
+import {
+  isBillingOwnerEvent,
+  ownerBusinessWhatsAppAllowed,
+  ownerWhatsAppDelivery,
+  type OwnerBusinessEvent,
+} from '@/services/ownerNotifyEligibility';
+import { performanceUpdateClaimFilter, performanceUpdateClaimUpdate } from '@/lib/ownerWhatsAppLimits';
+import { isoWeekKey } from '@/services/lifecycle/weekly';
 
 /**
  * Owner-facing WhatsApp notification layer.
@@ -11,66 +18,69 @@ import { isBillingOwnerEvent, ownerBusinessWhatsAppAllowed, type OwnerBusinessEv
  * This is PURELY the WhatsApp channel — it does not touch the in-app bell
  * (notifyBusinessUsers) or mobile push (sendPushToBusinessUsers). Call sites
  * keep their existing in-app/push calls; notifyOwner() is added alongside
- * them so the workspace owner also gets a WhatsApp message about what the
- * platform is doing on their account (posts published, review replies sent,
- * their report being ready, billing, a critical review, a new CRM lead).
+ * them so the workspace owner also gets a WhatsApp message when something
+ * needs them (a new lead, a critical review, billing, a report being ready).
  *
- * Two delivery modes:
- *  - immediate: sent right now via the platform WhatsApp number. Used for
- *    high-value, time-sensitive events (new lead, demo booking, critical
- *    review, report ready, billing).
- *  - digest (immediate: false): queued to OwnerNotifyDigest; the once-a-day
- *    ownerWhatsAppDigestCron (~7pm IST) sends one consolidated message. Used
- *    for routine automation activity that would be spammy one-by-one.
+ * Which events reach WhatsApp at all — and how often — is decided here, for
+ * every caller (OWNER_WHATSAPP_DELIVERY in ownerNotifyEligibility.ts):
+ *  - immediate: sent now via the platform WhatsApp number.
+ *  - performance_update: routine performance summaries; at most 2 per
+ *    business in any rolling 15 days (lib/ownerWhatsAppLimits.ts), claimed
+ *    atomically on the Business before sending and released if the send fails.
+ *  - performance_priority: the monthly report summary — sent regardless of
+ *    that limit (once per report), then recorded as one of its slots.
+ *  - weekly: the reviews-need-attention reminder; one per business per ISO week.
+ *  - off: routine activity (posts/photos published, content generated, review
+ *    replies sent or drafted, festival prompts) — dashboard / in-app only.
+ *    Nothing is sent or queued.
  *
- * Every send/queue respects the owner's User.notificationPreferences:
+ * Every send respects the owner's User.notificationPreferences:
  *  - `whatsAppNotificationsEnabled` is the master switch (off → nothing).
  *  - each event maps to one per-event toggle (below).
- *  - digest events additionally require `dailyDigestWhatsApp`.
+ * Billing notices are the exception — they are about the subscription itself.
  *
- * Best-effort: never throws. A missing owner phone, an opted-out owner, or a
- * send failure is logged (where useful) and swallowed — this can never break
- * the workflow that produced the activity.
+ * Best-effort: never throws. The result says what happened, for callers that
+ * record it; a missing phone, an opted-out owner, a reached limit or a send
+ * failure can never break the workflow that produced the activity.
  */
 
 export type OwnerNotifyEvent = OwnerBusinessEvent;
 
-interface EventMeta {
-  /** notificationPreferences key gating this event. */
-  pref:
-    | 'newLeadWhatsApp'
-    | 'demoBookingWhatsApp'
-    | 'criticalReviewWhatsApp'
-    | 'billingWhatsApp'
-    | 'postPublishedWhatsApp'
-    | 'reviewReplyWhatsApp'
-    | 'reportReadyWhatsApp'
-    | 'weeklyUpdateWhatsApp'
-    | 'performanceDigestWhatsApp'
-    | 'whatsAppNotificationsEnabled';
-  /** false → queued to the daily digest instead of sent immediately. */
-  immediate: boolean;
-}
+type PrefKey =
+  | 'newLeadWhatsApp'
+  | 'demoBookingWhatsApp'
+  | 'criticalReviewWhatsApp'
+  | 'billingWhatsApp'
+  | 'postPublishedWhatsApp'
+  | 'reviewReplyWhatsApp'
+  | 'reportReadyWhatsApp'
+  | 'weeklyUpdateWhatsApp'
+  | 'performanceDigestWhatsApp'
+  | 'whatsAppNotificationsEnabled';
 
-const EVENT_META: Record<OwnerNotifyEvent, EventMeta> = {
-  new_lead: { pref: 'newLeadWhatsApp', immediate: true },
-  demo_booking: { pref: 'demoBookingWhatsApp', immediate: true },
-  critical_review: { pref: 'criticalReviewWhatsApp', immediate: true },
-  report_ready: { pref: 'reportReadyWhatsApp', immediate: true },
-  billing_activated: { pref: 'billingWhatsApp', immediate: true },
-  billing_past_due: { pref: 'billingWhatsApp', immediate: true },
-  billing_canceled: { pref: 'billingWhatsApp', immediate: true },
-  profile_incomplete: { pref: 'whatsAppNotificationsEnabled', immediate: true },
-  monthly_report: { pref: 'reportReadyWhatsApp', immediate: true },
-  weekly_update: { pref: 'weeklyUpdateWhatsApp', immediate: true },
-  festival_prompt: { pref: 'weeklyUpdateWhatsApp', immediate: true },
-  review_reminder: { pref: 'weeklyUpdateWhatsApp', immediate: true },
-  performance_digest: { pref: 'performanceDigestWhatsApp', immediate: true },
-  post_published: { pref: 'postPublishedWhatsApp', immediate: false },
-  photo_published: { pref: 'postPublishedWhatsApp', immediate: false },
-  review_reply_sent: { pref: 'reviewReplyWhatsApp', immediate: false },
-  review_reply_drafted: { pref: 'reviewReplyWhatsApp', immediate: false },
-  content_batch_generated: { pref: 'postPublishedWhatsApp', immediate: false },
+/** notificationPreferences key gating each event. */
+const EVENT_PREF: Record<OwnerNotifyEvent, PrefKey> = {
+  new_lead: 'newLeadWhatsApp',
+  demo_booking: 'demoBookingWhatsApp',
+  critical_review: 'criticalReviewWhatsApp',
+  report_ready: 'reportReadyWhatsApp',
+  billing_activated: 'billingWhatsApp',
+  billing_past_due: 'billingWhatsApp',
+  billing_canceled: 'billingWhatsApp',
+  billing_trial_ending: 'billingWhatsApp',
+  billing_trial_expired: 'billingWhatsApp',
+  profile_incomplete: 'whatsAppNotificationsEnabled',
+  monthly_report: 'reportReadyWhatsApp',
+  weekly_update: 'weeklyUpdateWhatsApp',
+  performance_digest: 'performanceDigestWhatsApp',
+  review_attention: 'reviewReplyWhatsApp',
+  festival_prompt: 'weeklyUpdateWhatsApp',
+  review_reminder: 'weeklyUpdateWhatsApp',
+  post_published: 'postPublishedWhatsApp',
+  photo_published: 'postPublishedWhatsApp',
+  review_reply_sent: 'reviewReplyWhatsApp',
+  review_reply_drafted: 'reviewReplyWhatsApp',
+  content_batch_generated: 'postPublishedWhatsApp',
 };
 
 /** Defaults for every WhatsApp-notification preference (all opt-out). */
@@ -91,11 +101,28 @@ export const OWNER_NOTIFY_PREF_DEFAULTS = {
 
 export interface NotifyOwnerInput {
   event: OwnerNotifyEvent;
-  /** Full WhatsApp message text (immediate) / one-line summary (digest). */
+  /** Full WhatsApp message text. */
   text: string;
-  /** How many underlying items this represents — collapses a batch to one digest line. */
+  /** How many underlying items this represents (kept for older callers; digest-only). */
   count?: number;
+  /** weekly events: the ISO week being claimed (defaults to the current week). */
+  weekKey?: string;
 }
+
+export type NotifyOwnerResult =
+  | { status: 'sent' }
+  | {
+      status: 'skipped';
+      reason:
+        | 'whatsapp_off_for_event'
+        | 'no_business'
+        | 'not_eligible'
+        | 'opted_out'
+        | 'no_phone'
+        | 'performance_update_limit'
+        | 'already_sent_this_week';
+    }
+  | { status: 'failed'; error?: string };
 
 interface ResolvedOwner {
   businessId: string;
@@ -162,85 +189,60 @@ async function resolveOwner(businessId: string): Promise<ResolvedOwner | null> {
 }
 
 /** Whether the owner has opted into this specific event over WhatsApp. */
-function isOptedIn(prefs: Record<string, boolean>, meta: EventMeta): boolean {
+function isOptedIn(prefs: Record<string, boolean>, pref: PrefKey): boolean {
   if (prefs.whatsAppNotificationsEnabled === false) return false;
-  if (prefs[meta.pref] === false) return false;
-  if (!meta.immediate && prefs.dailyDigestWhatsApp === false) return false;
+  if (prefs[pref] === false) return false;
   return true;
 }
 
-/** Human label for each digest event, used to headline its section. */
-const DIGEST_EVENT_LABEL: Partial<Record<OwnerNotifyEvent, string>> = {
-  post_published: 'Posts published',
-  photo_published: 'Photos published',
-  review_reply_sent: 'Review replies sent',
-  review_reply_drafted: 'Review replies awaiting your approval',
-  content_batch_generated: 'New content scheduled',
-};
+/**
+ * Takes one of the business's routine performance-update slots, atomically.
+ * Returns the claimed timestamp (to release on a failed send), or null when
+ * the rolling limit is reached.
+ */
+async function claimPerformanceUpdateSlot(businessId: string, now: Date): Promise<Date | null> {
+  const claimed = await Business.findOneAndUpdate(
+    { _id: businessId, ...performanceUpdateClaimFilter(now) },
+    performanceUpdateClaimUpdate(now),
+    { returnDocument: 'after', projection: { _id: 1 } }
+  ).lean();
+  return claimed ? now : null;
+}
+
+async function releasePerformanceUpdateSlot(businessId: string, claimedAt: Date): Promise<void> {
+  await Business.updateOne({ _id: businessId }, { $pull: { performanceUpdateSentAt: claimedAt } });
+}
+
+/** Claims this ISO week's review reminder. Returns the previous week key (to restore on a failed send), or false. */
+async function claimWeeklySlot(businessId: string, weekKey: string): Promise<{ previous: string | null } | false> {
+  const before = await Business.findOneAndUpdate(
+    { _id: businessId, reviewAttentionWeekKey: { $ne: weekKey } },
+    { $set: { reviewAttentionWeekKey: weekKey } },
+    { returnDocument: 'before', projection: { reviewAttentionWeekKey: 1 } }
+  ).lean<{ reviewAttentionWeekKey?: string }>();
+  return before ? { previous: before.reviewAttentionWeekKey ?? null } : false;
+}
+
+async function releaseWeeklySlot(businessId: string, weekKey: string, previous: string | null): Promise<void> {
+  await Business.updateOne(
+    { _id: businessId, reviewAttentionWeekKey: weekKey },
+    previous ? { $set: { reviewAttentionWeekKey: previous } } : { $unset: { reviewAttentionWeekKey: '' } }
+  );
+}
 
 /**
- * Composes + sends the once-a-day WhatsApp digest for every workspace that
- * has unsent OwnerNotifyDigest rows, then stamps those rows `sentAt`. Called
- * by ownerWhatsAppDigestCron (~7pm IST). Best-effort per workspace — one
- * failure never blocks the rest.
+ * Daily digest cron (~7pm IST). No owner event is digest-delivered any more
+ * (routine activity is dashboard-only), so this only retires rows queued
+ * before that change — marked sent, never messaged. Kept registered so an
+ * already-scheduled run has something safe to call.
  */
 export async function sendPendingOwnerDigests(): Promise<{ businesses: number; sent: number }> {
   await dbConnect();
-
   const businessIds: any[] = await OwnerNotifyDigest.distinct('businessId', { sentAt: null });
-  let sent = 0;
-
-  for (const businessId of businessIds) {
-    try {
-      const rows = await OwnerNotifyDigest.find({ businessId, sentAt: null })
-        .sort({ createdAt: 1 })
-        .lean<Array<{ _id: any; event: string; text: string; count: number }>>();
-      if (rows.length === 0) continue;
-
-      const rowIds = rows.map((r) => r._id);
-
-      const owner = await resolveOwner(businessId.toString());
-      // A free-report lead is not a customer. Drop the queued lines instead of
-      // sending them later, the day they subscribe.
-      if (
-        !owner ||
-        !owner.phone ||
-        !ownerBusinessWhatsAppAllowed(owner, 'post_published') ||
-        owner.prefs.whatsAppNotificationsEnabled === false ||
-        owner.prefs.dailyDigestWhatsApp === false
-      ) {
-        await OwnerNotifyDigest.updateMany({ _id: { $in: rowIds } }, { $set: { sentAt: new Date() } });
-        continue;
-      }
-
-      // Group by event, summing counts.
-      const byEvent = new Map<string, { count: number; samples: string[] }>();
-      for (const r of rows) {
-        const g = byEvent.get(r.event) || { count: 0, samples: [] };
-        g.count += r.count || 1;
-        if (g.samples.length < 3) g.samples.push(r.text);
-        byEvent.set(r.event, g);
-      }
-
-      const lines: string[] = [`📊 *Today on GrowwMatics — ${owner.businessName}*`, ''];
-      for (const [event, g] of byEvent) {
-        const label = DIGEST_EVENT_LABEL[event as OwnerNotifyEvent] || event;
-        lines.push(`*${label}* (${g.count})`);
-        for (const s of g.samples) lines.push(`• ${s}`);
-        if (g.count > g.samples.length) lines.push(`• …and ${g.count - g.samples.length} more`);
-        lines.push('');
-      }
-      lines.push('Open your dashboard for details.');
-
-      const res = await sendOutboundMessage(owner.phone!, lines.join('\n').trim(), undefined, businessId.toString());
-      await OwnerNotifyDigest.updateMany({ _id: { $in: rowIds } }, { $set: { sentAt: new Date() } });
-      if (res.success) sent++;
-    } catch (err: any) {
-      console.error('[ownerNotify] digest send failed for business', String(businessId), err?.message);
-    }
+  if (businessIds.length) {
+    await OwnerNotifyDigest.updateMany({ sentAt: null }, { $set: { sentAt: new Date() } });
   }
-
-  return { businesses: businessIds.length, sent };
+  return { businesses: businessIds.length, sent: 0 };
 }
 
 /** The owner's resolved WhatsApp preferences (defaults applied), for callers that gate on them. */
@@ -250,33 +252,50 @@ export async function ownerWhatsAppPrefs(businessId: string): Promise<{ phone?: 
   return o ? { phone: o.phone, prefs: o.prefs } : null;
 }
 
-export async function notifyOwner(businessId: string, input: NotifyOwnerInput): Promise<void> {
+export async function notifyOwner(businessId: string, input: NotifyOwnerInput): Promise<NotifyOwnerResult> {
   try {
+    const delivery = ownerWhatsAppDelivery(input.event);
+    // Routine activity: dashboard / in-app only — no lookup, no queue, no send.
+    if (delivery === 'off') return { status: 'skipped', reason: 'whatsapp_off_for_event' };
+
     await dbConnect();
-    const meta = EVENT_META[input.event];
-    if (!meta) return;
-
     const owner = await resolveOwner(businessId);
-    if (!owner) return;
-    if (!ownerBusinessWhatsAppAllowed(owner, input.event)) return;
+    if (!owner) return { status: 'skipped', reason: 'no_business' };
+    if (!ownerBusinessWhatsAppAllowed(owner, input.event)) return { status: 'skipped', reason: 'not_eligible' };
     // Billing reminders are not business-activity notifications.
-    if (!isBillingOwnerEvent(input.event) && !isOptedIn(owner.prefs, meta)) return;
+    if (!isBillingOwnerEvent(input.event) && !isOptedIn(owner.prefs, EVENT_PREF[input.event])) {
+      return { status: 'skipped', reason: 'opted_out' };
+    }
+    if (!owner.phone) return { status: 'skipped', reason: 'no_phone' };
 
-    if (meta.immediate) {
-      if (!owner.phone) return;
-      await sendOutboundMessage(owner.phone, input.text, undefined, businessId);
-      return;
+    // Limits are claimed only once the message would otherwise go out, so an
+    // opted-out owner or a missing phone never uses up a slot.
+    let release: (() => Promise<void>) | null = null;
+    if (delivery === 'performance_update') {
+      const claimedAt = await claimPerformanceUpdateSlot(businessId, new Date());
+      if (!claimedAt) return { status: 'skipped', reason: 'performance_update_limit' };
+      release = () => releasePerformanceUpdateSlot(businessId, claimedAt);
+    } else if (delivery === 'weekly') {
+      const weekKey = input.weekKey || isoWeekKey(new Date());
+      const claim = await claimWeeklySlot(businessId, weekKey);
+      if (!claim) return { status: 'skipped', reason: 'already_sent_this_week' };
+      release = () => releaseWeeklySlot(businessId, weekKey, claim.previous);
     }
 
-    // Digest — queue a line; the cron composes + sends the daily message.
-    await OwnerNotifyDigest.create({
-      businessId,
-      userId: owner.userId,
-      event: input.event,
-      text: input.text,
-      count: input.count ?? 1,
-    });
+    const res = await sendOutboundMessage(owner.phone, input.text, undefined, businessId, undefined, owner.businessName);
+    if (res.success) {
+      // The monthly summary takes priority: it was not checked against the
+      // performance limit, but it counts toward it from now on.
+      if (delivery === 'performance_priority') {
+        await Business.updateOne({ _id: businessId }, performanceUpdateClaimUpdate(new Date())).catch((err) =>
+          console.error(`[ownerNotify] could not record the ${input.event} performance slot for ${businessId}:`, err?.message));
+      }
+      return { status: 'sent' };
+    }
+    if (release) await release().catch(() => {});
+    return { status: 'failed', error: res.error };
   } catch (err: any) {
     console.error(`[ownerNotify] ${input.event} for business ${businessId} failed:`, err?.message);
+    return { status: 'failed', error: err?.message };
   }
 }

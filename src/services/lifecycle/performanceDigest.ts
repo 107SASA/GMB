@@ -72,7 +72,12 @@ const fmtDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString
 /** The WhatsApp text. Rows with zero now and zero before are left out (noise); the total is always shown. */
 export function composePerformanceDigest(d: PerformanceDigest, businessName: string, link: string): string | null {
   if (!d.rows) return null;
-  const lines = [`📈 Your Google profile — last ${DIGEST_DAYS} days (${fmtDate(d.period.start)}–${fmtDate(d.period.end)})`, businessName, ''];
+  const lines = [
+    `Hi ${businessName},`,
+    '',
+    `Here is your Growwmatics performance update for the last ${DIGEST_DAYS} days (${fmtDate(d.period.start)}–${fmtDate(d.period.end)}):`,
+    '',
+  ];
   for (const r of d.rows) {
     if (r.label !== 'Total views' && r.current === 0 && !r.previous) continue;
     const change =
@@ -81,7 +86,7 @@ export function composePerformanceDigest(d: PerformanceDigest, businessName: str
           : '';
     lines.push(`• ${r.label}: ${r.current}${change}`);
   }
-  if (!d.previousMeasured) lines.push('', 'First full period measured — next update will compare with this one.');
-  lines.push('', 'Measured by Google for your Business Profile.', `Details: ${link}`);
+  lines.push('', `Measured by Google for your Business Profile.${d.previousMeasured ? '' : ' First full period measured — the next update will compare with this one.'}`);
+  lines.push('', `View your insights: ${link}`, '', '— Team Growwmatics');
   return lines.join('\n');
 }

@@ -16,6 +16,9 @@ import {
 import { TRIAL_CHARGE_PROCESSING_MS, failureSnapshot, type FailureKind, type FailureSnapshot } from './billingPolicy';
 import { getFailurePolicy, getReminderPolicy } from '@/services/billing/trialPolicyStore';
 
+/** Absolute Billing page link for WhatsApp copy (falls back to the public domain). */
+const billingLink = () => `${(process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://growwmatics.com').replace(/\/$/, '')}/dashboard/billing`;
+
 /**
  * Fetches the workspace owner's email/name for a billing email. Best-effort —
  * returns null on any failure so a lookup problem can never block the
@@ -125,12 +128,9 @@ export async function activateBusinessPlan(
     console.error('[billing] activateBusinessPlan notification failed:', e.message);
   }
 
-  await notifyOwner(businessId, {
-    event: 'billing_activated',
-    text: isRenewal
-      ? `GrowwMatics: payment received — your subscription for ${workspaceName} is renewed. ✅`
-      : `GrowwMatics: your subscription for ${workspaceName} is now active — every feature is unlocked, and your monthly Google Business Profile report will generate automatically. ✅`,
-  });
+  // The payment WhatsApp (first payment vs renewal, decided from Razorpay's
+  // paid_count, one per charge) is sent by the caller after activation —
+  // services/billing/billingWhatsApp.ts notifyPaymentConfirmed.
 
   // If this workspace's Google Business Profile was already connected before
   // now, activation is the second of the two conditions weekly content
@@ -215,7 +215,7 @@ export async function markBusinessPastDue(
   if (!(await getReminderPolicy()).enabled) {
     await notifyOwner(businessId, {
       event: 'billing_past_due',
-      text: `GrowwMatics: we couldn't process your payment for ${workspaceName}. ${consequence} Update it from Billing.`,
+      text: `Hi ${workspaceName},\n\nThere is an issue with your Growwmatics subscription payment — we couldn't process it. ${consequence}\n\nManage billing: ${billingLink()}\n\n— Team Growwmatics`,
     });
   }
 
@@ -343,7 +343,11 @@ export async function markTrialCancelled(
   }
 }
 
-export async function cancelBusinessPlan(businessId: string): Promise<void> {
+export async function cancelBusinessPlan(
+  businessId: string,
+  /** trialEnded: an unpaid trial reached its end — the caller sends the trial-expired WhatsApp instead of "cancelled". */
+  opts: { trialEnded?: boolean } = {}
+): Promise<void> {
   await dbConnect();
   // Fully canceled now — clear the "pending cancel" flag so the gate locks it.
   const business = await Business.findOneAndUpdate(
@@ -364,10 +368,12 @@ export async function cancelBusinessPlan(businessId: string): Promise<void> {
     console.error('[billing] cancelBusinessPlan notification failed:', e.message);
   }
 
-  await notifyOwner(businessId, {
-    event: 'billing_canceled',
-    text: `GrowwMatics: the subscription for ${workspaceName} has been canceled. You can reactivate any time from Billing.`,
-  });
+  if (!opts.trialEnded) {
+    await notifyOwner(businessId, {
+      event: 'billing_canceled',
+      text: `Hi ${workspaceName},\n\nYour Growwmatics subscription has been cancelled. You can reactivate it any time.\n\nManage billing: ${billingLink()}\n\n— Team Growwmatics`,
+    });
+  }
 
   const contact = await resolveBillingContact(businessId);
   if (contact) {

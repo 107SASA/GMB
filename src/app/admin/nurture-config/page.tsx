@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Plus, Save, Trash2 } from 'lucide-react';
+import { SALES_FOLLOW_UP_DELAY_MINUTES, SALES_FOLLOW_UP_LIMIT, SALES_INVITE_MIN_DELAY_MINUTES, SALES_QUIET_HOURS, SALES_TIMEZONE } from '@/lib/preSalesRules';
 
 type Unit = 'minutes' | 'hours' | 'days';
 
@@ -185,6 +186,9 @@ export default function NurtureConfigPage() {
             onChange={(enabled) => setConfig({ ...config, quietHours: { ...config.quietHours, enabled } })}
           />
         </label>
+        <p className="text-xs text-outline">
+          When off, automated sales messages still wait out {SALES_QUIET_HOURS.start}–{SALES_QUIET_HOURS.end} ({SALES_TIMEZONE}). When on, the hours below are used instead.
+        </p>
         <div className="grid grid-cols-2 gap-3">
           <label className="text-sm">Start
             <input className={`${cls} mt-1`} value={config.quietHours.start} onChange={(e) => setConfig({ ...config, quietHours: { ...config.quietHours, start: e.target.value } })} />
@@ -214,12 +218,15 @@ export default function NurtureConfigPage() {
           units={['minutes', 'hours']}
           onChange={(delayMinutes) => setConfig({ ...config, firstMessage: { ...config.firstMessage, delayMinutes } })}
         />
-        <p className="text-xs text-outline">Currently {first.value} {first.unit}. Stored production default is 2 minutes until this is saved.</p>
+        <p className="text-xs text-outline">
+          Currently {first.value} {first.unit}. Effective: never sooner than {SALES_INVITE_MIN_DELAY_MINUTES / 60} hours after the report — a shorter value here is raised to that minimum.
+        </p>
       </section>
 
       <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-sm">Follow-up sequence</h2>
+          <h2 className="font-semibold text-sm">Follow-up</h2>
+          {config.followUps.length < SALES_FOLLOW_UP_LIMIT && (
           <button
             type="button"
             className="inline-flex items-center gap-1 text-xs font-semibold text-primary"
@@ -236,11 +243,21 @@ export default function NurtureConfigPage() {
           >
             <Plus className="w-3.5 h-3.5" /> Add step
           </button>
+          )}
         </div>
+        <p className="text-xs text-outline">
+          Effective rule: only Step 1 can send — once, about {SALES_FOLLOW_UP_DELAY_MINUTES / 60} hours after the first message, and only if the lead has not replied (any reply stops it, whatever “Only if no reply” says).
+          Turning Step 1 off sends no follow-up. Later steps are kept as saved but are not sent.
+        </p>
         {config.followUps.map((step, index) => (
-          <div key={step.id} className="border border-outline-variant rounded-lg p-3 space-y-2">
+          <div key={step.id} className={`border border-outline-variant rounded-lg p-3 space-y-2 ${index >= SALES_FOLLOW_UP_LIMIT ? 'opacity-60' : ''}`}>
             <div className="flex items-center justify-between text-sm">
-              <span className="font-medium">Step {index + 1}</span>
+              <span className="font-medium">
+                Step {index + 1}
+                {index < SALES_FOLLOW_UP_LIMIT
+                  ? <span className="ml-2 text-xs font-normal text-outline">sends about {SALES_FOLLOW_UP_DELAY_MINUTES / 60}h after the first message{step.delayMinutes !== SALES_FOLLOW_UP_DELAY_MINUTES ? ' (the delay below is not used)' : ''}</span>
+                  : <span className="ml-2 text-xs font-normal text-outline">not sent</span>}
+              </span>
               <button
                 type="button"
                 className="text-error"

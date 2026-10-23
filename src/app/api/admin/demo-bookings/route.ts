@@ -55,7 +55,19 @@ export async function PATCH(req: Request) {
     }
 
     await connectDB();
-    const { bookingId, status, action, targetAgent } = await req.json();
+    const { bookingId, status, action, targetAgent, attendance } = await req.json();
+
+    // A person records what happened at a demo that has ended: attended,
+    // no_show, declined or not_ready. The only path that can schedule a
+    // post-demo WhatsApp message (one per demo time) — see
+    // services/sales/preSalesPolicy.ts confirmDemoAttendance.
+    if (attendance !== undefined) {
+      if (!bookingId) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      const { confirmDemoAttendance } = await import('@/services/sales/preSalesPolicy');
+      const result = await confirmDemoAttendance({ bookingId, outcome: attendance, staffUserId: authResult.userId });
+      if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+      return NextResponse.json({ success: true, followUpScheduled: result.scheduled });
+    }
 
     // Phase 8 — "Return to AI": a human admin releases a HUMAN-owned lead
     // back to an agent (SALES/DEMO/IN_HOUSE), clearing humanHandoff.active.
@@ -122,10 +134,9 @@ export async function PATCH(req: Request) {
       // Post-demo analysis (Phase 6) — classifies the outcome from the real
       // conversation transcript and updates Lead.intent/objections/
       // leadScore/currentStage, then hands ownership back to SALES. This is
-      // the "manual mark complete" trigger the task specifies; the no-show
-      // path (services/inngest/functions.ts's runNoShowCheck) runs the same
-      // analysis automatically when a demo's end time passes with no
-      // manual completion. Best-effort — never fails this admin request if
+      // the "manual mark complete" trigger the task specifies (the automatic
+      // no-show timeout no longer runs it — a timeout is not attendance
+      // data; see runNoShowCheck). Best-effort — never fails this admin request if
       // the analysis itself fails; the status update above still stands.
       if (booking.leadId) {
         try {
@@ -142,6 +153,8 @@ export async function PATCH(req: Request) {
         }
       }
     }
+    // A status edit never sends a post-demo WhatsApp message: only the
+    // explicit attendance confirmation above (attendance: ...) does.
 
     // A cancelled demo invalidates any still-pending nurture/reminder
     // actions scheduled for this lead (Phase 5's orchestration engine) —

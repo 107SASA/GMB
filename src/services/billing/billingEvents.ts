@@ -27,6 +27,8 @@ import {
 import { consumeTrialClaim, settleTrialReservation } from '@/lib/billing/trialClaims';
 import { razorpaySettleDeps } from '@/services/billing/trialEligibility';
 import { openRecoveryEpisode, closeRecoveryEpisodes } from '@/services/billing/recoveryRemindersService';
+import { stopPreSalesNurtureForWorkspace } from '@/services/sales/preSalesPolicy';
+import { notifyPaymentConfirmed, paymentNoticeKind } from '@/services/billing/billingWhatsApp';
 
 /**
  * Loads the facts for one Razorpay subscription event, asks the pure state
@@ -187,6 +189,8 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
         break;
       case 'start_trial':
         await startTrialAccess(businessId!, userId, { subscriptionId: sub!.id, trialEndsAt: action.trialEndsAt, eventAt: stampAt, cancelled: action.cancelled === true });
+        // A trial user is out of pre-sales nurture (no more sales follow-ups).
+        if (businessId) await stopPreSalesNurtureForWorkspace(businessId, 'trial-started');
         break;
       case 'reject_trial':
         console.error(`[billing] trial rejected for ${sub?.id} (business ${businessId}): ${action.reason}`);
@@ -202,10 +206,14 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
           break;
         }
         let held = false;
+        // First charge vs renewal from Razorpay's own counter (paid_count),
+        // not the workspace's current status: an `activated` and a `charged`
+        // event for the same first charge are both "first".
+        const isRenewalCharge = paymentNoticeKind(sub!.paidCount) === 'renewal';
         if (businessId) {
           ({ held } = await activateBusinessPlan(businessId, {
             currentPeriodEnd: action.periodEnd ?? undefined,
-            eventType: action.renewal ? 'subscription.charged' : 'subscription.activated',
+            eventType: isRenewalCharge ? 'subscription.charged' : 'subscription.activated',
             subscriptionId: sub!.id,
             eventAt: stampAt,
           }));
@@ -215,10 +223,20 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
         await activatePlan(userId, { razorpaySubscriptionId: sub!.id, currentPeriodEnd: action.periodEnd ?? undefined, held });
         // Verified payment: the failure is over — stop its reminders now.
         if (businessId) await closeRecoveryEpisodes(businessId, 'resolved', 'payment_recovered');
-        if (source === 'webhook') {
-          // Sent once per subscription (guarded) — see paymentReceivedNotice.ts.
-          const { sendPaymentReceivedMessage } = await import('@/services/billing/paymentReceivedNotice');
-          await sendPaymentReceivedMessage(userId, businessId);
+        // ...and pre-sales nurture, even when no platform Lead matches the phone.
+        if (businessId) await stopPreSalesNurtureForWorkspace(businessId, 'payment-verified');
+        // One WhatsApp per verified charge (first payment or renewal), for
+        // webhook AND reconciliation activations — the per-charge claim makes
+        // whichever arrives second a no-op. Skipped while access is held.
+        // Never throws and never touches payment/entitlement state.
+        if (businessId) {
+          await notifyPaymentConfirmed({
+            businessId,
+            subscriptionId: sub!.id,
+            paidCount: sub!.paidCount,
+            subscriptionNotes: subEntity?.notes,
+            periodEnd: action.periodEnd ?? null,
+          });
         }
         // Idempotent post-payment sequence (each step guarded by its own flag).
         try {

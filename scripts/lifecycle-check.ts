@@ -206,7 +206,7 @@ async function run() {
   check('T6 weekly with zero new reviews states it, no blame', wm2.lines.some((l: string) => /no new Google reviews were detected this week/.test(l)) && !wm2.lines.some((l: string) => /fail/i.test(l)), wm2.lines.join(' | '));
   const weeklyNotes = await Notification.find({ businessId: business._id, type: /^weekly_/ }).lean();
   check('T13 weekly in-app notifications stored with links', weeklyNotes.length > 0 && weeklyNotes.every((n: any) => !!n.link), weeklyNotes.map((n: any) => n.type).join(', '));
-  const weeklyWa = whatsapp.filter((w) => w.body.startsWith('GrowwMatics Weekly Update'));
+  const weeklyWa = whatsapp.filter((w) => /Here is your weekly Growwmatics update:/.test(w.body));
   check('T12 weekly WhatsApp only for a meaningful week (or opt-in)', weeklyWa.length >= 1 && (wm2.meaningful || wm2.whatsappSkipReason === 'suppressed_nothing_new' || wm2.whatsappSent), `${weeklyWa.length} weekly message(s); week 2: meaningful=${wm2.meaningful}, ${wm2.whatsappSkipReason || 'sent'}`);
 
   fs.writeFileSync(path.join(OUT, 'lifecycle-results.json'), JSON.stringify({ results, whatsapp, monthly: m, baselineLineage: bl.auditData?.lineage, monthlyLineage: mo.auditData?.lineage, monthlyUsage: mo.auditData?.providerUsage, weekly: [wm, wm2], inngestEvents: inngestEvents.length }, null, 2));

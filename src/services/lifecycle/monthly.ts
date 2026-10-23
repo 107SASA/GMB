@@ -239,6 +239,8 @@ export interface MonthlyReport {
   declined: string[];
 }
 
+const SEVERITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
 export function buildMonthlyReport(input: {
   periodStart: string;
   periodEnd: string;
@@ -318,38 +320,84 @@ export function buildMonthlyReport(input: {
     profileHealth,
     planCompleted: input.actions.filter((a) => a.status === 'VERIFIED' || a.status === 'EXECUTED'),
     planPending: input.actions.filter((a) => a.status === 'PLANNED' || a.status === 'READY' || a.status === 'BLOCKED'),
-    remainingIssues: (curData?.findings || []).filter((f: any) => f.category !== 'data_quality' && !f.verificationOnly).map((f: any) => String(f.title)),
+    // Most important first (high → medium → low; the audit's order within a severity).
+    remainingIssues: (curData?.findings || [])
+      .filter((f: any) => f.category !== 'data_quality' && !f.verificationOnly)
+      .map((f: any, i: number) => ({ title: String(f.title), rank: SEVERITY_RANK[f.severity] ?? 3, i }))
+      .sort((a: any, b: any) => a.rank - b.rank || a.i - b.i)
+      .map((f: any) => f.title),
     improved,
     declined,
   };
 }
 
+/** Longest single bullet in the monthly WhatsApp (an issue title or a ranking line can be long). */
+const MONTHLY_BULLET_MAX = 90;
+/** The whole summary, flattened to one line for the notification template, stays within this (NOTIFICATION_BODY_MAX is 900). */
+export const MONTHLY_WHATSAPP_FLAT_MAX = 850;
+
+const bullet = (s: string) => `• ${s.length > MONTHLY_BULLET_MAX ? `${s.slice(0, MONTHLY_BULLET_MAX - 1).trimEnd()}…` : s}`;
+
 /**
- * Monthly WhatsApp summary — every value comes from the MonthlyReport (itself
- * built from measured data). Missing data says so; no revenue, no projection.
+ * The monthly-report WhatsApp. Every value comes from the stored MonthlyReport
+ * (itself built from measured data and execution records):
+ *  - this month: new reviews, Google performance status, plan actions done
+ *    (and how many a re-check verified) / pending;
+ *  - what improved: up to 2 of the deterministic `improved` lines;
+ *  - needs attention: up to 1 `declined` line and the 2 most important
+ *    `remainingIssues`, with how many more are in the report.
+ * Nothing is inferred: no section appears without stored evidence, missing
+ * data says so, and there is no revenue or projection. One link to the report.
+ * Optional lines are dropped (issues first) if the summary would not fit the
+ * notification template when flattened.
  */
 export function composeMonthlyWhatsApp(m: MonthlyReport | null | undefined, businessName: string, link: string): string {
-  const lines = [`Your GrowwMatics monthly report for ${businessName} is ready.`, ''];
-  if (!m) return [...lines, `Open the full report: ${link}`].join('\n');
-  const r = m.reviews;
-  lines.push(`• New Google reviews: ${r.newReviews}${r.ratingAfter != null ? ` (rating ${r.ratingAfter}★)` : ''}`);
-  if (m.performance.status === 'compared') {
-    for (const row of m.performance.rows.filter((x) => x.metric !== 'Profile views')) {
-      lines.push(`• ${row.metric}: ${row.previous} → ${row.current}${row.pctChange != null ? ` (${row.pctChange > 0 ? '+' : ''}${row.pctChange}%)` : ''}`);
-    }
-  } else if (m.performance.status === 'current_only') {
-    const calls = m.performance.rows.find((x) => x.metric === 'Calls');
-    if (calls?.current != null) lines.push(`• Calls from Google this period: ${calls.current} (first measured period — no comparison yet)`);
-  } else {
-    lines.push('• Google performance data: unavailable for this period');
+  const head = [`Hi ${businessName},`, '', '*📊 Your monthly Google report is ready*', ''];
+  const tail = ['', `View your full report: ${link}`, '', '— Team Growwmatics'];
+  if (!m) {
+    return [...head, 'It covers your Google reviews, profile performance and the work completed this month, with next steps.', ...tail].join('\n');
   }
-  const gm = m.growwmaticsOptimized.map((x) => `${x.count} ${x.what.toLowerCase()}`);
-  if (gm.length) lines.push(`• GrowwMatics this month: ${gm.join(', ')}`);
-  lines.push(`• Plan: ${m.planCompleted.length} done, ${m.planPending.length} pending`);
-  const rank = m.ranking.filter((x) => x.change !== 'Not directly comparable');
-  if (rank.length) lines.push(`• Rankings: ${rank.map((x) => `${x.metric} ${x.before} → ${x.after}`).join('; ')}`);
-  else if (m.ranking.length) lines.push('• Rankings: searches changed since last month — not directly comparable');
-  return [...lines, '', `Open the full report: ${link}`].join('\n');
+
+  const month: string[] = [];
+  const r = m.reviews;
+  month.push(`New Google reviews: ${r.newReviews}${r.ratingAfter != null ? ` (rating ${r.ratingAfter}★)` : ''}`);
+  const calls = m.performance.rows.find((x) => x.metric === 'Calls');
+  if (m.performance.status === 'current_only' && calls?.current != null) {
+    month.push(`Calls from Google: ${calls.current} (first measured month)`);
+  } else if (m.performance.status !== 'compared') {
+    month.push('Google performance data: unavailable for this period');
+  }
+  const verified = m.planCompleted.filter((a) => a.status === 'VERIFIED').length;
+  month.push(`Plan actions: ${m.planCompleted.length} completed${verified ? ` (${verified} verified)` : ''}, ${m.planPending.length} pending`);
+
+  const issueCount = m.remainingIssues.length;
+  const build = (shownIssues: number, declinedShown: number, improvedShown: number) => {
+    const attention = [...m.declined.slice(0, declinedShown), ...m.remainingIssues.slice(0, shownIssues)].map(bullet);
+    const more = issueCount - shownIssues;
+    if (more > 0) attention.push(`• ${shownIssues ? `${more} more` : `${more}`} issue${more === 1 ? '' : 's'} in the report`);
+    const improved = m.improved.slice(0, improvedShown);
+    const lines = [
+      ...head,
+      'This month:',
+      ...month.map(bullet),
+      ...(improved.length ? ['', 'What improved:', ...improved.map(bullet)] : []),
+      ...(attention.length ? ['', 'Needs attention:', ...attention] : []),
+      ...tail,
+    ];
+    // Roughly what the notification template's {{2}} will hold (greeting and sign-off dropped).
+    return { text: lines.join('\n'), flat: lines.slice(1, -2).filter((l) => l.trim()).join(' ') };
+  };
+  // Optional detail gives way in this order — issue titles, the decline, the
+  // improvements — never the heading, this month's facts or the report link.
+  const variants: Array<[number, number, number]> = [];
+  for (let i = Math.min(2, issueCount); i >= 0; i--) variants.push([i, Math.min(1, m.declined.length), Math.min(2, m.improved.length)]);
+  variants.push([0, 0, Math.min(2, m.improved.length)], [0, 0, Math.min(1, m.improved.length)], [0, 0, 0]);
+  let last = build(0, 0, 0);
+  for (const [i, d, imp] of variants) {
+    last = build(i, d, imp);
+    if (last.flat.length <= MONTHLY_WHATSAPP_FLAT_MAX) return last.text;
+  }
+  return last.text; // only the fixed lines are left; the link is always kept whole
 }
 
 const PURPOSE_LABEL: Record<string, string> = {

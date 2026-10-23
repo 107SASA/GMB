@@ -16,14 +16,22 @@ import twilio from "twilio";
 import mongoose from "mongoose";
 import { sendOutboundMessage } from "@/services/whatsapp/send";
 import { AGENT_SCOPE_GUARDRAIL } from "@/lib/agentGuardrails";
+import { appLink, composeOwnerMessage } from "@/lib/whatsappOutbound";
+import { SALES_FOLLOW_UP_DELAY_MINUTES, SALES_FOLLOW_UP_LIMIT, SALES_INVITE_MIN_DELAY_MINUTES } from "@/lib/preSalesRules";
+import { usablePersonName } from "@/lib/personName";
 import {
   choosePrimaryReviewSend,
   chooseReviewTemplateRetry,
   generateReviewRequestToken,
+  identicalReviewTemplateCapReached,
+  REVIEW_REMINDER_1_DEFAULT,
+  REVIEW_REMINDER_2_DEFAULT,
+  REVIEW_REQUEST_INITIAL_DEFAULT,
   syncFailureFields,
 } from "@/lib/reviewRequestFlow";
 import { decideFollowUpEligibility, resolveReviewFollowUpSettingsWithGlobal } from "@/lib/reviewFollowUpSettings";
 import { loadReviewFollowUpPolicy } from "@/lib/reviewFollowUpPolicyStore";
+import { nextIstBusinessHourStart } from "@/lib/istSchedule";
 import { evaluateReviewSendEligibility } from "@/lib/reviewSendEligibility";
 
 const FALLBACK_MESSAGE = "I'm having a little trouble connecting to my brain right now. Please hold on or call our main line!";
@@ -850,8 +858,13 @@ export const subscriptionExpiryWorker = inngest.createFunction(
       for (const b of due as any[]) {
         const id = b._id.toString();
         if (b.trialCancelledAt) {
-          await cancelBusinessPlan(id);
+          // An unpaid (cancelled) trial reached its end: one "trial ended"
+          // WhatsApp instead of the generic "subscription cancelled" one —
+          // re-checked inside (not extended, nothing paid), claimed once.
+          await cancelBusinessPlan(id, { trialEnded: true });
           if (b.userId) await cancelPlan(b.userId.toString());
+          const { sendTrialExpiredNotice } = await import("@/services/billing/billingWhatsApp");
+          await sendTrialExpiredNotice(id);
           ended++;
           continue;
         }
@@ -868,7 +881,14 @@ export const subscriptionExpiryWorker = inngest.createFunction(
       return { due: due.length, ended, unconfirmed };
     });
 
-    return { success: true, ...result, trials };
+    // One WhatsApp reminder TRIAL_REMINDER_DAYS (3) before an active, unpaid
+    // trial ends — this same daily run, re-checked per workspace before sending.
+    const trialReminders = await step.run("trial-ending-reminders", async () => {
+      const { runTrialEndingReminders } = await import("@/services/billing/billingWhatsApp");
+      return runTrialEndingReminders();
+    });
+
+    return { success: true, ...result, trials, trialReminders };
   }
 );
 
@@ -1081,8 +1101,10 @@ export const applyWeeklyOfferJob = inngest.createFunction(
 // owner-configurable reminder delays, editable message templates, group
 // targeting, business-hours sending, and stop-on-review.
 
-const DEFAULT_REMINDER_1 = `Hi {{name}}, just a quick reminder! We'd really appreciate a review of your recent {{service}}: {{link}}\nReply STOP to opt-out.`;
-const DEFAULT_REMINDER_2 = `Hi {{name}}, last bother from us! If you have a minute, a review would mean the world to our team at {{business}}: {{link}}\nReply STOP to opt-out.`;
+// Free-text copy (lib/reviewRequestFlow.ts) — used only when the approved
+// utility template is not configured; that template's copy is fixed.
+const DEFAULT_REMINDER_1 = REVIEW_REMINDER_1_DEFAULT;
+const DEFAULT_REMINDER_2 = REVIEW_REMINDER_2_DEFAULT;
 
 interface TemplateVars { name: string; service: string; business: string; link: string; }
 
@@ -1193,15 +1215,11 @@ async function sendReviewRequest(
   return { ...result, templateKind: 'free_text' };
 }
 
-// ISO date of the next moment inside the business-hours window, or null if already inside it.
+// ISO date of the next moment inside the business-hours window, or null if
+// already inside it. The hours are Asia/Kolkata — never the server's own
+// timezone (the droplet runs in UTC).
 function nextBizHourDate(startHour: number, endHour: number): string | null {
-  const now = new Date();
-  const h = now.getHours();
-  if (h >= startHour && h < endHour) return null;
-  const next = new Date(now);
-  if (h >= endHour) next.setDate(next.getDate() + 1);
-  next.setHours(startHour, 0, 0, 0);
-  return next.toISOString();
+  return nextIstBusinessHourStart(new Date(), startHour, endHour)?.toISOString() ?? null;
 }
 
 export const processReviewCampaign = inngest.createFunction(
@@ -1227,11 +1245,14 @@ export const processReviewCampaign = inngest.createFunction(
     const target = await step.run("fetch-customer", async () => {
       const customer: any = await Customer.findById(customerId).lean();
       const business: any = await Business.findById(businessId).select('name placeId').lean();
-      return { customer, businessName: business?.name || 'our business', placeId: business?.placeId || '' };
+      const { isWhatsAppSuppressed } = await import("@/services/messaging/inboundOptOut");
+      // A number that replied STOP to this business stays suppressed even if the customer was re-added.
+      const suppressed = !!customer && await isWhatsAppSuppressed(businessId, customer.phone);
+      return { customer, suppressed, businessName: business?.name || 'our business', placeId: business?.placeId || '' };
     });
 
-    const { customer, businessName, placeId } = target as any;
-    if (!customer || customer.optedOut) return { skipped: true, reason: 'Customer opted out or not found' };
+    const { customer, suppressed, businessName, placeId } = target as any;
+    if (!customer || customer.optedOut || suppressed) return { skipped: true, reason: 'Customer opted out or not found' };
     if (!customer.phone) return { skipped: true, reason: 'Customer has no phone number (WhatsApp required)' };
 
     // 3. Create the request log first so the tracking link exists
@@ -1279,7 +1300,7 @@ export const processReviewCampaign = inngest.createFunction(
         } catch (e) {
           msg = '';
         }
-        if (!msg) msg = `Hi ${templateVars.name}! We'd love a review of your recent ${templateVars.service}: ${trackLink}\nReply STOP to opt-out.`;
+        if (!msg) msg = fillTemplate(REVIEW_REQUEST_INITIAL_DEFAULT, templateVars);
         if (!msg.includes(trackLink)) msg += `\n${trackLink}`;
       }
       await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { message: msg });
@@ -1296,6 +1317,17 @@ export const processReviewCampaign = inngest.createFunction(
     // 6. Send the initial WhatsApp message. On a Twilio rejection the request
     //    is marked Failed (never "Sent") and the reminder sequence is skipped.
     const initialSend = await step.run("send-initial-message", async () => {
+      // The customer was read before any business-hours wait: a STOP received
+      // since then (or a stopped request) cancels the first message too.
+      const [fresh, current] = await Promise.all([
+        Customer.findById(customerId).select('optedOut phone').lean() as Promise<any>,
+        ReviewRequest.findById(reviewRequest._id).select('automationStatus').lean() as Promise<any>,
+      ]);
+      const { isWhatsAppSuppressed } = await import("@/services/messaging/inboundOptOut");
+      if (!fresh || fresh.optedOut || current?.automationStatus === 'Stopped' || await isWhatsAppSuppressed(businessId, fresh.phone)) {
+        await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { status: 'Cancelled', automationStatus: 'Stopped' });
+        return { sent: false, error: 'Customer opted out before the first message' };
+      }
       const result = await sendReviewRequest(customer.phone, initialMessage, businessId, {
         name: templateVars.name, business: businessName, placeId, token: reviewRequest.token,
       });
@@ -1356,14 +1388,16 @@ export const processReviewCampaign = inngest.createFunction(
       return { success: false, reason: `WhatsApp send failed: ${initialSend.error}` };
     }
 
-    // Follow-up gate. A click is not a review and does not stop the sequence.
-    // reviewReceived is not a verified Google signal, so it is not consulted.
-    // The sleep duration stays the one captured in load-config. This check
-    // only decides whether that already-scheduled follow-up may still send.
+    // Follow-up gate. A click is not a review; it stops the sequence only
+    // while the Super Admin "stop after a click" setting is on (read fresh
+    // here, default on). reviewReceived is not a verified Google signal, so
+    // it is not consulted. The sleep duration stays the one captured in
+    // load-config. This check only decides whether that already-scheduled
+    // follow-up may still send.
     const followUpStillEligible = async (stage: 1 | 2) => {
       const [policy, req, cust, business] = await Promise.all([
         loadReviewFollowUpPolicy(),
-        ReviewRequest.findById(reviewRequest._id).select('status automationStatus followUpStage messageHistory businessId').lean() as Promise<any>,
+        ReviewRequest.findById(reviewRequest._id).select('status automationStatus followUpStage messageHistory businessId token clicked clickedAt').lean() as Promise<any>,
         Customer.findById(customerId).select('optedOut phone businessId').lean() as Promise<any>,
         Business.findById(businessId).select('placeId').lean() as Promise<{ placeId?: string } | null>,
       ]);
@@ -1388,12 +1422,22 @@ export const processReviewCampaign = inngest.createFunction(
         const camp: any = await Campaign.findById(campaignId).select('status').lean();
         if (camp && camp.status !== 'ACTIVE') return false;
       }
+      // With the utility template configured every stage sends the same
+      // approved copy (sendReviewRequest). A customer gets it at most twice —
+      // the first request and one reminder — never a third identical message.
+      const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
+      const nextTemplateSid = req?.token ? WA_TEMPLATES.reviewRequestUtility.trim() : '';
+      if (identicalReviewTemplateCapReached(req?.messageHistory, nextTemplateSid)) {
+        console.log(`[reviewCampaign] reminder ${stage} skipped for request ${reviewRequest._id}: same template already sent twice`);
+        return false;
+      }
       const decision = decideFollowUpEligibility({
         stage,
         policy,
         customerExists: !!cust,
         hasPhone: !!cust?.phone,
-        optedOut: !!cust?.optedOut,
+        // The gate also sees the persistent STOP suppression (lib/reviewSendEligibility.ts).
+        optedOut: !!cust?.optedOut || gate.code === 'OPTED_OUT',
         hasPlaceId: !!business?.placeId,
         businessMatches,
         dailyLimitReached: gate.code === 'DAILY_LIMIT',
@@ -1401,7 +1445,11 @@ export const processReviewCampaign = inngest.createFunction(
         requestOpen,
         followUpStage: req?.followUpStage ?? 0,
         alreadySentThisStage: alreadySent,
+        clicked: !!(req?.clicked || req?.clickedAt),
       });
+      if (decision.code === 'CLICKED') {
+        console.log(`[reviewCampaign] reminder ${stage} skipped for request ${reviewRequest._id}: review link already clicked`);
+      }
       return decision.send;
     };
 
@@ -1568,9 +1616,10 @@ export const processReviewCampaign = inngest.createFunction(
       }
     }
 
-    // 9. Close out this customer's automation
+    // 9. Close out this customer's automation (a request stopped by the
+    //    customer's STOP stays 'Stopped').
     await step.run("mark-completed", async () => {
-      await ReviewRequest.findByIdAndUpdate(reviewRequest._id, { automationStatus: 'Completed' });
+      await ReviewRequest.updateOne({ _id: reviewRequest._id, automationStatus: { $ne: 'Stopped' } }, { $set: { automationStatus: 'Completed' } });
     });
 
     return { success: true };
@@ -1930,19 +1979,27 @@ export const generateAuditJob = inngest.createFunction(
       data: { auditId },
     });
 
-    // For a FULL audit (the automatic monthly report for a paying customer —
-    // fastMode is false), tell the workspace owner over WhatsApp that their
-    // fresh report is ready. notifyOwner respects the reportReadyWhatsApp
-    // preference and no-ops without a phone.
+    // The FIRST full report after connecting Google (connected_baseline):
+    // tell the workspace owner over WhatsApp it is ready. Monthly reports send
+    // their own notice (lifecycle/notify.ts), and a report the owner re-ran
+    // from the dashboard is already in front of them — neither gets this one.
+    // claimReportOwnerNotice makes it one notice per report across retries
+    // and duplicate events. notifyOwner respects reportReadyWhatsApp.
     await step.run('owner-whatsapp-report-ready', async () => {
       const dbConnect = (await import('@/lib/mongodb')).default;
       await dbConnect();
       const { default: Audit } = await import('@/models/Audit');
       const { notifyOwner } = await import('@/services/ownerNotify');
-      const audit: any = await Audit.findById(auditId).select('status fastMode businessId businessName auditKind').lean();
+      const { auditKindOf } = await import('@/services/audit/optimizationPlan');
+      const { claimReportOwnerNotice } = await import('@/services/lifecycle/notify');
+      const audit: any = await Audit.findById(auditId).select('status fastMode businessId businessName auditKind metadata.trigger').lean();
       if (!audit || audit.status !== 'COMPLETED' || audit.fastMode) return { skip: true };
-      // Monthly reports send their own verified summary (lifecycle/notify.ts).
-      if (audit.auditKind === 'monthly') return { skip: 'monthly summary sent by the audit' };
+      const kind = audit.auditKind || auditKindOf(audit);
+      if (kind === 'monthly') return { skip: 'monthly summary sent by the audit' };
+      if (kind !== 'connected_baseline') return { skip: `no WhatsApp for a ${kind} report` };
+      const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '');
+      if (!/^https?:\/\//.test(base)) return { skip: 'no absolute app URL for the report link' };
+      if (!(await claimReportOwnerNotice(auditId))) return { skip: 'already notified' };
       // Share the plan itself — the top open actions from this report's
       // optimization plan, with who does each (GrowwMatics or the owner).
       const { default: OptimizationAction } = await import('@/models/OptimizationAction');
@@ -1951,18 +2008,22 @@ export const generateAuditJob = inngest.createFunction(
         .select('description priority growwmaticsAction').lean() as any[])
         .sort((a, b) => (order[a.priority] ?? 1) - (order[b.priority] ?? 1))
         .slice(0, 3);
-      const planLines = actions.map((a, i) => `${i + 1}. ${String(a.description).slice(0, 140)}${a.growwmaticsAction ? ' (GrowwMatics will do this)' : ' (needs you)'}`);
-      const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '');
-      await notifyOwner(audit.businessId.toString(), {
+      const planLines = actions.map((a, i) => `${i + 1}. ${String(a.description).replace(/\s+/g, ' ').trim().slice(0, 140)}${a.growwmaticsAction ? ' (Growwmatics will do this)' : ' (needs you)'}`);
+      const name = audit.businessName || 'your business';
+      const res = await notifyOwner(audit.businessId.toString(), {
         event: 'report_ready',
         text: [
-          `📄 Your Google Business Profile report for ${audit.businessName || 'your business'} is ready.`,
-          ...(planLines.length ? ['', 'Your plan — top actions:', ...planLines] : []),
+          `Hi ${name},`,
           '',
-          `Full report and plan: ${base}/dashboard/audit/${auditId}`,
+          'Your first Growwmatics Google Business Profile report is ready.',
+          ...(planLines.length ? ['', 'Top actions from your plan:', ...planLines] : []),
+          '',
+          `View your report: ${base}/dashboard/audit/${auditId}`,
+          '',
+          '— Team Growwmatics',
         ].join('\n'),
       });
-      return { sent: true };
+      return { whatsapp: res.status };
     });
 
     return { success: true, auditId };
@@ -1999,6 +2060,11 @@ export const sendReportReadyNotification = inngest.createFunction(
       const business: any = await Business.findById(audit.businessId).lean();
       if (!business) return { skip: 'no business' as const };
       if (business.reportReadySentAt) return { skip: 'already sent' as const };
+      // A report the lead connected over WhatsApp is delivered by
+      // reportCardDeliver (PDF + summary with the link) — this template on top
+      // would be a third message about the same report.
+      const { default: ReportConversation } = await import('@/models/ReportConversation');
+      if (await ReportConversation.exists({ auditId: audit._id })) return { skip: 'delivered by the report agent' as const };
 
       const owner: any = business.userId
         ? await User.findById(business.userId).select('fullName phone').lean()
@@ -2008,7 +2074,7 @@ export const sendReportReadyNotification = inngest.createFunction(
 
       const { sendTemplateMessage } = await import('@/services/twilio/client');
       const res = await sendTemplateMessage(phone, WA_TEMPLATES.reportReady, {
-        '1': owner?.fullName || business.name || 'there',
+        '1': usablePersonName(owner?.fullName) || business.name || 'there',
         '2': business.name || 'your business',
         '3': String(audit._id),
       }, business._id.toString());
@@ -2161,7 +2227,14 @@ export const auditAutopilotCron = inngest.createFunction(
       return { firstRuns, reAudits, nudged, candidates: candidates.length };
     });
 
-    return { success: true, ...result };
+    // Safety net for monthly-report notices deferred out of quiet hours whose
+    // 09:00 IST job never ran (lifecycle/notify.ts). Never sends at night.
+    const monthlyNotices = await step.run("send-due-monthly-notices", async () => {
+      const { sendDueMonthlyReportNotices } = await import("@/services/lifecycle/notify");
+      return await sendDueMonthlyReportNotices();
+    });
+
+    return { success: true, ...result, monthlyNotices };
   }
 );
 
@@ -2206,6 +2279,43 @@ export const performanceDigestCron = inngest.createFunction(
   }
 );
 
+// A STOP / UNSUBSCRIBE / CANCEL whose opt-out could not be saved while the
+// webhook handled it (the message was left unprocessed for the provider to
+// redeliver). Second, independent path: re-applies the same idempotent opt-out
+// with retries (services/messaging/inboundOptOut.ts). Sends nothing.
+export const inboundOptOutRetry = inngest.createFunction(
+  { id: "whatsapp-inbound-opt-out-retry", retries: 6, triggers: [{ event: "whatsapp/opt-out.retry" }] },
+  async ({ event, step }) => {
+    const { line, phone, keyword, messageId } = event.data as { line: any; phone: string; keyword?: string; messageId?: string };
+    const result = await step.run("apply-opt-out", async () => {
+      const { applyInboundOptOut } = await import("@/services/messaging/inboundOptOut");
+      return applyInboundOptOut(line, phone, { keyword: keyword || 'STOP', messageId });
+    });
+    return { success: true, ...result };
+  }
+);
+
+// A monthly report that completed in owner quiet hours (21:00–09:00 IST):
+// sleep durably until 09:00 IST, then send the one notice for that report
+// (in-app + WhatsApp). Queued by deliverMonthlyReportNotice (lifecycle/notify.ts).
+export const monthlyReportNotice = inngest.createFunction(
+  { id: "monthly-report-notice", retries: 3, triggers: [{ event: "lifecycle/monthly-report.notice" }] },
+  async ({ event, step }) => {
+    const { businessId, auditId } = event.data as { businessId: string; auditId: string };
+    const wakeAt = await step.run("check-quiet-hours", async () => {
+      const { ownerQuietHoursDeferUntil } = await import("@/lib/istSchedule");
+      return ownerQuietHoursDeferUntil(new Date())?.toISOString() ?? null;
+    });
+    if (wakeAt) await step.sleepUntil("wait-until-0900-ist", wakeAt);
+    await step.run("notify-owner", async () => {
+      await dbConnect();
+      const { notifyMonthlyReport } = await import("@/services/lifecycle/notify");
+      await notifyMonthlyReport(businessId, auditId);
+    });
+    return { success: true, deferredUntil: wakeAt };
+  }
+);
+
 export const seoPlanWeeklySummary = inngest.createFunction(
   // Id kept so the existing Inngest registration/cron is replaced, not orphaned.
   { id: "seo-plan-weekly-summary", triggers: [{ cron: "0 12 * * 1" }] }, // Mondays ~17:30 IST
@@ -2232,7 +2342,9 @@ export const seoPlanWeeklySummary = inngest.createFunction(
  * step-name namespace is used.
  */
 async function runSalesFollowUpDrip(step: any, conversationId: string, followUpCount: number) {
-  for (let i = 0; i < followUpCount; i++) {
+  // At most SALES_FOLLOW_UP_LIMIT (1) follow-up, whatever the stored config lists.
+  const limit = Math.min(followUpCount, SALES_FOLLOW_UP_LIMIT);
+  for (let i = 0; i < limit; i++) {
     const cfg = await step.run(`load-followup-${i}`, async () => {
       const dbConnect = (await import('@/lib/mongodb')).default;
       await dbConnect();
@@ -2269,29 +2381,17 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
     };
     if (typeof row.maxNurtureMessages === 'number' && i >= row.maxNurtureMessages) break;
 
-    const delayMinutes = row.delayMinutes ?? Math.round((row.delayHours || 0) * 60);
-    if (delayMinutes > 0) {
-      await step.sleep(`wait-followup-${i}`, `${delayMinutes}m`);
-    }
+    // The one follow-up comes ~48h after the invitation (not the stored delay).
+    const delayMinutes = SALES_FOLLOW_UP_DELAY_MINUTES;
+    await step.sleep(`wait-followup-${i}`, `${delayMinutes}m`);
 
     const quietMinutes = await step.run(`quiet-gap-followup-${i}`, async () => {
-      if (!row.quietHours?.enabled) {
-        if (!row.minimumMessageGapMinutes) return 0;
-      }
       const dbConnect = (await import('@/lib/mongodb')).default;
       await dbConnect();
       const { default: SalesConversation } = await import('@/models/SalesConversation');
-      const { minutesUntilSendable } = await import('@/services/nurture/nurtureSchedule');
-      const convo: any = await SalesConversation.findById(conversationId).select('lastAgentAt nurtureTiming').lean();
-      const timing = convo?.nurtureTiming;
-      if (!timing?.quietHours && !timing?.minimumMessageGapMinutes) return 0;
-      return minutesUntilSendable({
-        now: new Date(),
-        quietHours: timing.quietHours || { enabled: false, start: '21:00', end: '09:00' },
-        timezone: timing.timezone || 'Asia/Kolkata',
-        minimumMessageGapMinutes: timing.minimumMessageGapMinutes || 0,
-        lastAgentAt: convo?.lastAgentAt || null,
-      });
+      const { minutesUntilSalesSendable } = await import('@/lib/preSalesRules');
+      const convo: any = await SalesConversation.findById(conversationId).select('nurtureTiming').lean();
+      return minutesUntilSalesSendable(new Date(), convo?.nurtureTiming?.quietHours);
     });
     if (quietMinutes > 0) {
       await step.sleep(`quiet-wait-followup-${i}`, `${quietMinutes}m`);
@@ -2306,8 +2406,17 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
 
       const convo: any = await SalesConversation.findById(conversationId);
       if (!convo || convo.status !== 'active') return true; // stop drip
-      // If the lead engaged, hand off to the live agent — stop the drip.
-      if (row.onlyIfNoReply && convo.lastLeadReplyAt && convo.firstSentAt && convo.lastLeadReplyAt > convo.firstSentAt) {
+      // Final eligibility check right before sending (Oct 2026): any reply
+      // since the invitation ends the sequence (whatever onlyIfNoReply says),
+      // as does a trial/payment on the workspace, a demo in hand, an
+      // opt-out or "not interested". Fails closed.
+      const { preSalesSendBlockedReason } = await import('@/services/sales/preSalesPolicy');
+      const preSalesBlocked = await preSalesSendBlockedReason({ kind: 'follow-up', conversationId });
+      if (preSalesBlocked) {
+        const { logLeadEvent } = await import('@/services/leadEvents');
+        logLeadEvent('NURTURE_ACTION_SKIPPED', { reason: preSalesBlocked, agent: 'sales-agent-drip' }, 'sales-agent', {
+          phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id,
+        });
         return true;
       }
 
@@ -2435,9 +2544,12 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
         return false; // drip continues to the next follow-up on its own delay, same as the legacy path
       }
 
-      // --- Legacy path: send inline, completely unchanged from before ---------
+      // --- Legacy path: send inline, claimed once per follow-up ----------------
+      const { claimSalesSend, releaseSalesSend } = await import('@/services/sales/preSalesPolicy');
+      if (!(await claimSalesSend(conversationId, `followup-${i}`))) return true; // already sent (retry)
       const msg = await composeFollowUp(f, config, convo.scores, convo.leadName);
       const res = await sendOutboundMessage(convo.leadPhone, msg, undefined, convo.businessId.toString());
+      if (!res.success) await releaseSalesSend(conversationId, `followup-${i}`);
       if (res.success) {
         convo.messages.push({ role: 'agent', text: msg, at: new Date() });
         convo.lastAgentAt = new Date();
@@ -2519,6 +2631,39 @@ async function applyQuietStageForConversation(
   return next;
 }
 
+/**
+ * The one sales invitation / first message (after the report, or right
+ * after a YES). Re-checks eligibility immediately before sending and claims
+ * the send on the conversation, so an Inngest retry or an overlapping run
+ * can never send it twice.
+ */
+export async function sendSalesFirstMessage(conversationId: string): Promise<{ sent: boolean; reason?: string }> {
+  const dbConnect = (await import('@/lib/mongodb')).default;
+  await dbConnect();
+  const { default: SalesConversation } = await import('@/models/SalesConversation');
+  const { getSalesAgentConfig, composeFirstMessage } = await import('@/services/sales/salesAgent');
+  const { sendOutboundMessage } = await import('@/services/whatsapp/send');
+  const { preSalesSendBlockedReason, claimSalesSend, releaseSalesSend } = await import('@/services/sales/preSalesPolicy');
+
+  const blocked = await preSalesSendBlockedReason({ kind: 'invite', step: 'first', conversationId });
+  if (blocked) return { sent: false, reason: blocked };
+  if (!(await claimSalesSend(conversationId, 'first'))) return { sent: false, reason: 'already-sent' };
+
+  const convo: any = await SalesConversation.findById(conversationId);
+  const config = await getSalesAgentConfig();
+  const msg = await composeFirstMessage(config, convo.scores, convo.leadName);
+  const res = await sendOutboundMessage(convo.leadPhone, msg, undefined, convo.businessId.toString());
+  if (!res.success) {
+    await releaseSalesSend(conversationId, 'first');
+    return { sent: false, reason: `send-failed: ${res.error || 'unknown'}` };
+  }
+  convo.messages.push({ role: 'agent', text: msg, at: new Date() });
+  convo.firstSentAt = new Date();
+  convo.lastAgentAt = new Date();
+  await convo.save();
+  return { sent: true };
+}
+
 // 7b. WhatsApp Sales Nurture drip (platform → lead, after a free audit).
 // Timing (first-message delay + follow-up delays) and content come from the
 // super-admin SalesAgentConfig. Durable sleeps survive restarts.
@@ -2591,7 +2736,7 @@ export const salesNurtureRequested = inngest.createFunction(
       if (!existingLead) {
         const leadId = await ensurePlatformLeadForReportPhone({
           phone: normalizedOwnerPhone,
-          name: owner?.fullName || business.name || normalizedOwnerPhone,
+          name: usablePersonName(owner?.fullName) || business.name || normalizedOwnerPhone,
           businessName: business.name || undefined,
         });
         if (leadId) {
@@ -2604,8 +2749,24 @@ export const salesNurtureRequested = inngest.createFunction(
       if (isHumanOwned(existingLead) || isOptedOutOrDoNotContact(existingLead)) {
         return { skip: 'human-owned-or-opted-out' as const };
       }
+      // Pre-sales eligibility (Oct 2026): no invitation for someone who has
+      // started a trial or paid (checked by workspace, not only the Lead),
+      // already has a demo in hand, declined, or is in another live thread.
+      const { preSalesSendBlockedReason } = await import('@/services/sales/preSalesPolicy');
+      const notEligible = await preSalesSendBlockedReason({ kind: 'invite', phone: normalizedOwnerPhone, leadId: existingLead?._id, businessId: business._id });
+      if (notEligible) return { skip: `not eligible: ${notEligible}` };
 
       const phoneKey = phoneDedupeKey(phone);
+      if (phoneKey && await SalesConversation.exists({ phoneKey, status: 'active' })) {
+        return { skip: 'sales conversation already active' as const };
+      }
+      // Send-once guard, claimed atomically BEFORE the conversation exists —
+      // a duplicate or concurrent run for the same business stops here.
+      const claimedNurture = await Business.findOneAndUpdate(
+        { _id: business._id, auditNurtureSentAt: null },
+        { $set: { auditNurtureSentAt: new Date() } }
+      );
+      if (!claimedNurture) return { skip: 'already sent' as const };
       const priorContact = await hasPhoneMessagedPlatformBefore(phoneKey);
       const scores = extractScores(audit, business);
       const { snapshotFromStoredAgent } = await import('@/services/nurture/nurtureSchedule');
@@ -2615,23 +2776,23 @@ export const salesNurtureRequested = inngest.createFunction(
         auditId: audit._id,
         leadPhone: normalizePhoneE164(phone) || phone,
         phoneKey,
-        leadName: owner?.fullName || business.name || '',
+        // Business name until the owner gives theirs — never the "New User" placeholder.
+        leadName: usablePersonName(owner?.fullName) || business.name || '',
         status: 'active',
         consentStatus: priorContact ? 'not_required' : 'pending',
         scores,
         nurtureConfigVersion: nurtureTiming.version,
         nurtureTiming,
       });
-      // Send-once guard so re-runs don't double-message.
-      await Business.updateOne({ _id: business._id }, { $set: { auditNurtureSentAt: new Date() } });
 
       return {
         conversationId: convo._id.toString(),
         phone,
-        leadName: owner?.fullName || '',
+        leadName: usablePersonName(owner?.fullName) || business.name || '',
         needsConsent: !priorContact,
-        firstDelayMinutes: Math.max(0, config.firstMessage.delayMinutes || 0),
-        followUpCount: config.followUps.length,
+        // Never in the same few minutes as the report itself.
+        firstDelayMinutes: Math.max(SALES_INVITE_MIN_DELAY_MINUTES, config.firstMessage.delayMinutes || 0),
+        followUpCount: Math.min(config.followUps.length, SALES_FOLLOW_UP_LIMIT),
       };
     });
 
@@ -2645,18 +2806,12 @@ export const salesNurtureRequested = inngest.createFunction(
       const dbConnect = (await import('@/lib/mongodb')).default;
       await dbConnect();
       const { default: SalesConversation } = await import('@/models/SalesConversation');
-      const { minutesUntilSendable } = await import('@/services/nurture/nurtureSchedule');
-      const convo: any = await SalesConversation.findById(prep.conversationId).select('nurtureTiming lastAgentAt').lean();
+      const { minutesUntilSalesSendable } = await import('@/lib/preSalesRules');
+      const convo: any = await SalesConversation.findById(prep.conversationId).select('nurtureTiming').lean();
       const timing = convo?.nurtureTiming;
-      if (!timing) return 0;
-      if (timing.firstMessage?.enabled === false) return -1;
-      return minutesUntilSendable({
-        now: new Date(),
-        quietHours: timing.quietHours || { enabled: false, start: '21:00', end: '09:00' },
-        timezone: timing.timezone || 'Asia/Kolkata',
-        minimumMessageGapMinutes: timing.minimumMessageGapMinutes || 0,
-        lastAgentAt: convo.lastAgentAt || null,
-      });
+      if (timing?.firstMessage?.enabled === false) return -1;
+      // Sales quiet hours always apply (the stored config's, else 21:00–09:00 IST).
+      return minutesUntilSalesSendable(new Date(), timing?.quietHours);
     });
     if (quietBeforeFirst < 0) return { skipped: 'first-message-disabled' };
     if (quietBeforeFirst > 0) {
@@ -2679,6 +2834,10 @@ export const salesNurtureRequested = inngest.createFunction(
 
         const convo: any = await SalesConversation.findById(prep.conversationId);
         if (!convo || convo.status !== 'active' || convo.consentStatus !== 'pending') return;
+        // Final check right before sending, then a send-once claim (retries / overlapping runs).
+        const { preSalesSendBlockedReason, claimSalesSend, releaseSalesSend } = await import('@/services/sales/preSalesPolicy');
+        if (await preSalesSendBlockedReason({ kind: 'invite', step: 'consent', conversationId: prep.conversationId })) return;
+        if (!(await claimSalesSend(prep.conversationId, 'consent'))) return;
 
         // This is a cold, business-initiated first touch — never inside a
         // 24h session window — so it must go out as an approved template,
@@ -2703,31 +2862,17 @@ export const salesNurtureRequested = inngest.createFunction(
           convo.messages.push({ role: 'agent', text: sentText, at: new Date() });
           convo.lastAgentAt = new Date();
           await convo.save();
+        } else {
+          await releaseSalesSend(prep.conversationId, 'consent');
         }
       });
+      // No follow-up to an unanswered consent request: nothing is sent to a
+      // number that hasn't opted in, and it isn't re-nudged.
       return { success: true, conversationId: prep.conversationId, awaitingConsent: true };
     }
 
-    // Send first message.
-    await step.run('send-first-message', async () => {
-      const dbConnect = (await import('@/lib/mongodb')).default;
-      await dbConnect();
-      const { default: SalesConversation } = await import('@/models/SalesConversation');
-      const { getSalesAgentConfig, composeFirstMessage } = await import('@/services/sales/salesAgent');
-      const { sendOutboundMessage } = await import('@/services/whatsapp/send');
-
-      const convo: any = await SalesConversation.findById(prep.conversationId);
-      if (!convo || convo.status !== 'active') return;
-      const config = await getSalesAgentConfig();
-      const msg = await composeFirstMessage(config, convo.scores, convo.leadName);
-      const res = await sendOutboundMessage(convo.leadPhone, msg, undefined, convo.businessId.toString());
-      if (res.success) {
-        convo.messages.push({ role: 'agent', text: msg, at: new Date() });
-        convo.firstSentAt = new Date();
-        convo.lastAgentAt = new Date();
-        await convo.save();
-      }
-    });
+    // Send first message (the one invitation).
+    await step.run('send-first-message', () => sendSalesFirstMessage(prep.conversationId));
 
     await runSalesFollowUpDrip(step, prep.conversationId, prep.followUpCount);
 
@@ -2771,30 +2916,13 @@ export const salesNurtureConsented = inngest.createFunction(
 
       const config = await getSalesAgentConfig();
       if (!config.enabled) return { skip: 'agent disabled' as const };
-      return { followUpCount: config.followUps.length };
+      return { followUpCount: Math.min(config.followUps.length, SALES_FOLLOW_UP_LIMIT) };
     });
 
     if ('skip' in prep) return { skipped: prep.skip };
 
-    await step.run('send-first-message-after-consent', async () => {
-      const dbConnect = (await import('@/lib/mongodb')).default;
-      await dbConnect();
-      const { default: SalesConversation } = await import('@/models/SalesConversation');
-      const { getSalesAgentConfig, composeFirstMessage } = await import('@/services/sales/salesAgent');
-      const { sendOutboundMessage } = await import('@/services/whatsapp/send');
-
-      const convo: any = await SalesConversation.findById(conversationId);
-      if (!convo || convo.status !== 'active') return;
-      const config = await getSalesAgentConfig();
-      const msg = await composeFirstMessage(config, convo.scores, convo.leadName);
-      const res = await sendOutboundMessage(convo.leadPhone, msg, undefined, convo.businessId.toString());
-      if (res.success) {
-        convo.messages.push({ role: 'agent', text: msg, at: new Date() });
-        convo.firstSentAt = new Date();
-        convo.lastAgentAt = new Date();
-        await convo.save();
-      }
-    });
+    // They just replied YES — the findings go out now (a response, not a cold pitch).
+    await step.run('send-first-message-after-consent', () => sendSalesFirstMessage(conversationId));
 
     await runSalesFollowUpDrip(step, conversationId, prep.followUpCount);
 
@@ -2807,6 +2935,8 @@ export const salesNurtureConsented = inngest.createFunction(
 // at all — no menu, no acknowledgement. This fires every time a reply would
 // otherwise be produced but the config says the agent is disabled.
 const AGENT_DISABLED_FALLBACK_MESSAGE = "Thanks for reaching out — a team member will get back to you shortly.";
+// Sent once when a lead says they're not interested — no further sales messages follow.
+const SALES_DECLINED_ACK_MESSAGE = "No problem — thanks for letting us know. We won't send you any more follow-ups. If you ever want help with your Google profile, just message us here.";
 
 // 7c. Live inbound reply from a sales lead → AI sales-agent response.
 export const salesAgentReply = inngest.createFunction(
@@ -2822,6 +2952,28 @@ export const salesAgentReply = inngest.createFunction(
 
       const convo: any = await SalesConversation.findById(conversationId);
       if (!convo || convo.status !== 'active') return;
+
+      // Converted out of pre-sales (Oct 2026): a workspace that started a
+      // trial or paid is a customer even if no platform Lead matches this
+      // phone. Close the sales thread and hand the message to support — the
+      // same path the webhook takes for a customer with no sales thread.
+      const { trialOrPaidForPhone, cancelGenericSalesActions, claimSalesSend, releaseSalesSend } = await import('@/services/sales/preSalesPolicy');
+      if (await trialOrPaidForPhone(convo.leadPhone, convo.businessId)) {
+        convo.status = 'completed';
+        await convo.save();
+        // Segment 4A: deterministic support intake — the message is captured
+        // and acknowledged once (no AI, no sales content).
+        const { identifySupportSender, captureSupportMessage } = await import('@/services/support/supportIntake');
+        const sender = await identifySupportSender(convo.leadPhone);
+        await captureSupportMessage({
+          phone: convo.leadPhone,
+          profileName: convo.leadName || '',
+          body: body || '',
+          match: 'sales_handoff',
+          sender: { ...sender, businessId: sender.businessId || convo.businessId },
+        });
+        return;
+      }
 
       // P0 FIX — SalesConversation has no leadId field at all (confirmed:
       // it's keyed by businessId+phone, not Lead — see LeadEvent.ts's
@@ -2869,11 +3021,23 @@ export const salesAgentReply = inngest.createFunction(
         return;
       }
 
+      // A reply supersedes anything still queued for this lead: the live
+      // agent answers it now, and no generic follow-up or next-best-action
+      // message fires on top of that reply later.
+      if (salesLead?._id && body) await cancelGenericSalesActions(salesLead._id, 'lead-replied');
+
       if (salesLead && body) {
         const { checkHandoffTriggers } = await import('@/services/agentHandoff/checkHandoffTriggers');
         const handoff = await checkHandoffTriggers(salesLead._id, body, 'sales-agent');
         if (handoff.handedOff) return;
       }
+
+      // One reply per inbound message: an Inngest retry of this step after the
+      // reply already went out finds the claim and sends nothing more.
+      const replyKey = event.id ? `reply:${event.id}` : null;
+      if (replyKey && !(await claimSalesSend(conversationId, replyKey))) return;
+      const giveBackReplyClaim = async () => { if (replyKey) await releaseSalesSend(conversationId, replyKey); };
+      try {
 
       // A reply exits silence stages back to NURTURING / SALES (unless human,
       // opted out, or already CUSTOMER — those are blocked above).
@@ -2901,6 +3065,8 @@ export const salesAgentReply = inngest.createFunction(
           convo.messages.push({ role: 'agent', text: AGENT_DISABLED_FALLBACK_MESSAGE, at: new Date() });
           convo.lastAgentAt = new Date();
           await convo.save();
+        } else {
+          await giveBackReplyClaim();
         }
         return;
       }
@@ -2927,6 +3093,24 @@ export const salesAgentReply = inngest.createFunction(
           await extractLeadIntelligence(salesLead._id, body, history);
         } catch (err: any) {
           console.warn('[salesAgentReply] lead intelligence extraction failed:', err?.message);
+        }
+      }
+
+      // Declined ("not interested"): one short acknowledgement instead of
+      // another pitch, and this sales thread ends. A later message from them
+      // starts fresh through the normal menu / demo / report routing.
+      if (salesLead && body) {
+        const { default: Lead } = await import('@/models/Lead');
+        const now: any = await Lead.findById(salesLead._id).select('intent').lean();
+        if (now?.intent === 'NOT_INTERESTED') {
+          const res = await sendOutboundMessage(convo.leadPhone, SALES_DECLINED_ACK_MESSAGE, undefined, convo.businessId.toString());
+          if (res.success) convo.messages.push({ role: 'agent', text: SALES_DECLINED_ACK_MESSAGE, at: new Date() });
+          else await giveBackReplyClaim();
+          convo.status = 'stopped';
+          convo.lastAgentAt = new Date();
+          await convo.save();
+          await cancelGenericSalesActions(salesLead._id, 'not-interested');
+          return;
         }
       }
 
@@ -2985,6 +3169,12 @@ export const salesAgentReply = inngest.createFunction(
           conversationType: 'sales',
           conversationId: convo._id,
         });
+      } else {
+        await giveBackReplyClaim();
+      }
+      } catch (err) {
+        await giveBackReplyClaim();
+        throw err;
       }
     });
     return { success: true };
@@ -3694,144 +3884,21 @@ async function cancelBookingCalendarAndReminders(booking: any): Promise<void> {
   }
 }
 
-// 7d. Live inbound support request. Two modes, branching on whether the
-// associated Lead (resolved by phone — SupportConversation has no leadId
-// field, same structural gap as Sales/Report) is currentAgent==='IN_HOUSE':
-//   - PRE-SALE prospect (any other currentAgent, or no Lead yet): UNCHANGED
-//     one-shot AI acknowledgment, then a human takes over via WhatsApp/
-//     Twilio/Meta Business Suite directly — see SupportConversation's own
-//     doc comment for why this isn't a multi-turn agent.
-//   - PAYING CUSTOMER (currentAgent==='IN_HOUSE'): Phase 8's real multi-turn
-//     In-House Agent — composeInHouseAgentReply, grounded in actual product
-//     knowledge (see that function's own doc comment for sources). Gated by
-//     SupportConversation.aiEnabled: false skips the LLM entirely and
-//     pages a human instead (sendPushToSuperAdmins — the platform-side
-//     equivalent of the tenant push-notify-human-inbox pattern, since a
-//     platform lead has no Business to notify tenant users about).
+// 7d. Live inbound support request (platform line).
+// Segment 4A: support on the platform line is a deterministic intake
+// (services/support/supportIntake.ts) — the webhook captures each message and
+// sends the one fixed acknowledgement itself. This job no longer calls the AI
+// agents; it stays registered so an event queued before the change is
+// handled the same way: at most one acknowledgement per issue, nothing else.
 export const supportAgentReply = inngest.createFunction(
   { id: 'support-agent-reply', retries: 2, triggers: [{ event: 'support/agent.reply' }] },
   async ({ event, step }) => {
-    const { conversationId, body } = event.data;
-
-    await step.run('reply', async () => {
-      const dbConnect = (await import('@/lib/mongodb')).default;
-      await dbConnect();
-      const { default: SupportConversation } = await import('@/models/SupportConversation');
-      const { default: Lead } = await import('@/models/Lead');
-      const { composeSupportReply, composeInHouseAgentReply } = await import('@/services/support/supportAgent');
-      const { sendOutboundMessage } = await import('@/services/whatsapp/send');
-      const { normalizePhoneE164 } = await import('@/lib/phone');
-
-      const convo: any = await SupportConversation.findById(conversationId);
-      if (!convo || convo.status !== 'active') return;
-
-      const normalizedPhone = normalizePhoneE164(convo.leadPhone) || convo.leadPhone;
-      const lead: any = await Lead.findOne({ phone: normalizedPhone, tenantId: 'gmbboost-internal' });
-      const isCustomer = lead?.currentAgent === 'IN_HOUSE';
-
-      // P0 FIX — this HUMAN check used to live INSIDE the `isCustomer`
-      // branch only (further down, right before composeInHouseAgentReply).
-      // That meant a lead whose currentAgent === 'HUMAN' — which is NOT
-      // 'IN_HOUSE' — fell straight into the `!isCustomer` branch below and
-      // got a real Groq-generated acknowledgment with zero handoff check at
-      // all. Moved here, BEFORE the isCustomer branch decision is even
-      // made, so neither branch can be reached for a HUMAN-owned lead
-      // regardless of whether they also happen to be a customer.
-      const { isHumanOwned } = await import('@/services/agentHandoff/isHumanOwned');
-      if (isHumanOwned(lead)) {
-        // 'in-house-agent' is the closest HandoffAgent value for this line
-        // regardless of isCustomer — Support/In-House share one agent
-        // identity in this codebase's handoff vocabulary (there is no
-        // separate 'support-agent' value); only used for logging, doesn't
-        // affect the stop behavior.
-        if (body) {
-          const { checkHandoffTriggers } = await import('@/services/agentHandoff/checkHandoffTriggers');
-          await checkHandoffTriggers(lead._id, body, 'in-house-agent');
-        }
-        const { logLeadEvent } = await import('@/services/leadEvents');
-        logLeadEvent(
-          'NURTURE_ACTION_SKIPPED',
-          { reason: 'human-owned', agent: 'in-house-agent' },
-          'in-house-agent',
-          { leadId: lead?._id, phone: convo.leadPhone, conversationType: 'support', conversationId: convo._id }
-        );
-        return;
-      }
-
-      if (!isCustomer) {
-        // Pre-Phase-8 behavior, completely unchanged — only reached now
-        // for a genuinely non-HUMAN-owned, non-customer lead.
-        const reply = await composeSupportReply(convo);
-        const res = await sendOutboundMessage(convo.leadPhone, reply, undefined);
-        if (res.success) {
-          convo.messages.push({ role: 'agent', text: reply, at: new Date() });
-          await convo.save();
-
-          const { logLeadEvent } = await import('@/services/leadEvents');
-          logLeadEvent('MESSAGE_SENT', { channel: 'whatsapp', acknowledgment: true, userId: convo.userId, source: 'AGENT_REPLY' }, 'support-agent', {
-            phone: convo.leadPhone,
-            conversationType: 'support',
-            conversationId: convo._id,
-          });
-        }
-        return;
-      }
-
-      // Still-active handoff-TRIGGER check (explicit request / low-confidence
-      // streak / stuck-hot-lead) for a genuine IN_HOUSE customer — the
-      // isHumanOwned() check above only covers "already HUMAN"; this covers
-      // "a trigger fires on THIS turn".
-      if (body) {
-        const { checkHandoffTriggers } = await import('@/services/agentHandoff/checkHandoffTriggers');
-        const handoff = await checkHandoffTriggers(lead._id, body, 'in-house-agent');
-        if (handoff.handedOff) return;
-      }
-
-      if (convo.aiEnabled === false) {
-        // Human is handling this conversation — page the team instead of
-        // calling the LLM at all. Same "never fail the workflow" push
-        // pattern as the tenant-side push-notify-human-inbox step.
-        try {
-          const { sendPushToSuperAdmins } = await import('@/services/push');
-          await sendPushToSuperAdmins({
-            title: 'New customer support message',
-            body: `${lead.name || convo.leadPhone} sent a support message (AI disabled for this conversation)`,
-            data: { leadId: String(lead._id), conversationId: convo._id.toString() },
-          });
-        } catch (e: any) {
-          console.error('[support-agent] push-notify-human failed:', e?.message);
-        }
-        return;
-      }
-
-      const reply = await composeInHouseAgentReply(convo);
-      const res = await sendOutboundMessage(convo.leadPhone, reply, lead._id.toString());
-      if (res.success) {
-        convo.messages.push({ role: 'agent', text: reply, at: new Date() });
-        await convo.save();
-
-        const { logLeadEvent } = await import('@/services/leadEvents');
-        logLeadEvent('MESSAGE_SENT', { channel: 'whatsapp', agent: 'in-house', userId: convo.userId, source: 'IN_HOUSE' }, 'in-house-agent', {
-          leadId: lead._id,
-          phone: convo.leadPhone,
-          conversationType: 'support',
-          conversationId: convo._id,
-        });
-
-        if (body) {
-          import('@/services/leadIntelligence/extract')
-            .then(({ extractLeadIntelligence }) => {
-              const history = convo.messages
-                .slice(-10)
-                .map((m: any) => ({ role: m.role === 'lead' ? 'lead' as const : 'agent' as const, text: m.text }));
-              return extractLeadIntelligence(lead._id, body, history);
-            })
-            .catch((err) => console.warn('[supportAgentReply] lead intelligence extraction failed:', err?.message));
-        }
-      }
+    const { conversationId } = event.data;
+    const acknowledgement = await step.run('acknowledge', async () => {
+      const { acknowledgeSupportIssue } = await import('@/services/support/supportIntake');
+      return acknowledgeSupportIssue(conversationId);
     });
-
-    return { success: true };
+    return { success: true, acknowledgement };
   }
 );
 
@@ -4270,10 +4337,13 @@ export const criticalAlertWorker = inngest.createFunction(
       const { notifyOwner } = await import("@/services/ownerNotify");
       await notifyOwner(business._id.toString(), {
         event: 'critical_review',
-        text:
-          typeof rating === 'number'
-            ? `🚨 GrowwMatics: ${business.name} just received a ${rating}★ review. Open your Reviews dashboard to respond quickly and protect your rating.`
-            : `🚨 GrowwMatics: ${business.name} just received a critical review. Open your Reviews dashboard to respond quickly and protect your rating.`,
+        text: composeOwnerMessage({
+          name: business.name || 'there',
+          body: `${business.name || 'Your business'} just received a ${typeof rating === 'number' ? `${rating}★` : 'critical'} review on Google. A quick, polite reply can help protect your rating.`,
+          linkLabel: 'View reviews',
+          link: appLink('/dashboard/reviews'),
+          noLinkText: 'Open Reviews in your Growwmatics dashboard to reply.',
+        }),
       });
     });
 
@@ -4363,9 +4433,17 @@ export const scheduleLeadFollowUpsJob = inngest.createFunction(
       if (lead.tenantId === 'gmbboost-internal') return;
       const organic = typeof (event.data as any).notifyOwner === 'boolean' ? (event.data as any).notifyOwner : ORGANIC_SOURCES.has(lead.source);
       if (!organic) return;
+      const { default: BusinessModel } = await import("@/models/Business");
+      const biz: any = await BusinessModel.findById(lead.businessId).select('name').lean();
       await notifyOwner(lead.businessId.toString(), {
         event: 'new_lead',
-        text: `New lead: ${lead.name || lead.phone || 'someone'} just came in via ${lead.source}. Open your CRM to follow up.`,
+        text: composeOwnerMessage({
+          name: biz?.name || 'there',
+          body: `You have a new lead: ${lead.name || lead.phone || 'a new contact'} (via ${lead.source}). Following up soon gives you the best chance of winning them.`,
+          linkLabel: 'View lead',
+          link: appLink('/dashboard/crm'),
+          noLinkText: 'Open your Growwmatics CRM to follow up.',
+        }),
       });
     });
 
@@ -4948,47 +5026,33 @@ export const nurtureSchedulerTick = inngest.createFunction(
         );
         if (!action) return 'already-handled';
 
-        // Phase 9: EXECUTE_NBA — a proactive next-best-action step. Runs the
-        // NBA executor, which does its own fresh HUMAN/opt-out/customer
-        // re-check and routes any send through the orchestrator (falling back
-        // to a direct send for non-cohort leads). payload.action is the
-        // NBAAction decideNextAction chose when this row was scheduled;
-        // re-decide at fire time so a lead whose state changed gets the
-        // currently-correct action, not a stale one.
+        // EXECUTE_NBA (proactive next-best-action) is retired (Oct 2026): it
+        // was armed by every inbound reply, so a lead who wrote to us got the
+        // live answer AND an unsolicited AI message 15–45 minutes later.
+        // Replies are still answered inline by salesAgentReply (including the
+        // NBA executor's pricing/objection/demo actions). A row still queued
+        // from before is skipped, never sent.
         if (action.actionType === 'EXECUTE_NBA') {
+          action.status = 'SKIPPED';
+          action.reason = 'proactive-nba-retired';
+          await action.save();
+          return 'skipped';
+        }
+
+        // One post-demo message (attended follow-up or missed-demo reschedule),
+        // re-checked at fire time — services/sales/preSalesPolicy.ts.
+        if (action.actionType === 'FOLLOW_UP_AFTER_DEMO') {
           try {
-            const { default: Lead } = await import('@/models/Lead');
-            const { decideNextAction } = await import('@/services/nba/decideNextAction');
-            const { executeNextAction } = await import('@/services/nba/executeNextAction');
-            const nbaLead: any = await Lead.findById(action.leadId);
-            if (!nbaLead) {
-              action.status = 'SKIPPED';
-              action.reason = 'lead-not-found';
-              await action.save();
-              return 'skipped';
-            }
-            // Fresh decision (rule lookup only — no LLM) so we execute the
-            // action that fits the lead's CURRENT state. advanceNextActionAt
-            // false: this row is already due and we're just re-deciding it —
-            // re-stamping nextActionAt to `now` here would make the proactive
-            // scheduler re-qualify this same unchanged lead every tick.
-            const { action: freshAction } = await decideNextAction(nbaLead, {}, { advanceNextActionAt: false });
-            const result = await executeNextAction(action.leadId, freshAction, {
-              trigger: 'proactive',
-              businessId: nbaLead.businessId?.toString(),
-            });
-            action.status = ['sent', 'handoff', 'noop'].includes(result.outcome) ? 'EXECUTED' : 'SKIPPED';
-            if (result.outcome !== 'sent' && result.outcome !== 'handoff') {
-              action.reason = `nba-${result.outcome}${'reason' in result ? `:${result.reason}` : ''}`;
-            }
-            await action.save();
-            return action.status === 'EXECUTED' ? 'executed' : 'skipped';
+            const { sendPostDemoFollowUp } = await import('@/services/sales/preSalesPolicy');
+            const result = await sendPostDemoFollowUp(action);
+            action.status = result.sent ? 'EXECUTED' : 'SKIPPED';
+            if (!result.sent) action.reason = result.reason;
           } catch (err: any) {
             action.status = 'SKIPPED';
-            action.reason = `execute-nba-threw: ${err?.message || 'unknown error'}`;
-            await action.save();
-            return 'skipped';
+            action.reason = `post-demo-threw: ${err?.message || 'unknown error'}`;
           }
+          await action.save();
+          return action.status === 'EXECUTED' ? 'executed' : 'skipped';
         }
 
         // Phase 6: NO_SHOW_CHECK is NOT a message send — it runs a status
@@ -5065,6 +5129,27 @@ export const nurtureSchedulerTick = inngest.createFunction(
             return 'skipped';
           } catch (err: any) {
             skip(`send-threw: ${err?.message || 'unknown error'}`);
+            await action.save();
+            return 'skipped';
+          }
+        }
+
+        // Every row left here is a generic sales follow-up (the gated drip).
+        // Final eligibility check at fire time: within the follow-up limit,
+        // no reply since the invitation, not trial/paid, no demo in hand, not
+        // opted out. A row without a conversation to check against is skipped.
+        {
+          const { preSalesSendBlockedReason } = await import('@/services/sales/preSalesPolicy');
+          const conversationId = action.payload?.conversationId;
+          const index = Number(action.payload?.followUpIndex ?? 0);
+          const blocked = !conversationId
+            ? 'no-conversation-to-check'
+            : index >= SALES_FOLLOW_UP_LIMIT
+              ? 'follow-up-limit'
+              : await preSalesSendBlockedReason({ kind: 'follow-up', conversationId: String(conversationId) });
+          if (blocked) {
+            action.status = 'SKIPPED';
+            action.reason = `pre-sales: ${blocked}`;
             await action.save();
             return 'skipped';
           }
@@ -5215,100 +5300,17 @@ export const nurtureSchedulerTick = inngest.createFunction(
   }
 );
 
-// Phase 9 — proactive NBA scheduler. decideNextAction writes
-// Lead.nextBestAction + Lead.nextActionAt on every intelligence extraction;
-// this cron turns a DUE proactive next-action into an EXECUTE_NBA
-// ScheduledAction that nurtureSchedulerTick then runs through the NBA
-// executor. Only PROACTIVE-appropriate actions are scheduled here — a
-// reply-driven action (ANSWER_QUESTION, SEND_PRICING, etc.) is executed
-// inline by salesAgentReply when the lead messages, never proactively pushed
-// at them out of nowhere.
-//
-// Gated on LEAD_ENGINE_V2 + cohort (via isLeadInCohort) exactly like the
-// gated sales drip — with the flag off this creates nothing. Runs every 30
-// minutes; nextActionAt granularity doesn't need finer.
-//
-// Double-nurture safety vs runSalesFollowUpDrip's gated SHOW_VALUE rows:
-// both this and the drip create ScheduledActions that fire through
-// nurtureSchedulerTick -> requestOutboundMessage, whose Step 4 cooldown
-// (Lead.lastProactiveMessageAt, ORCHESTRATOR_COOLDOWN_HOURS / 4h default)
-// rejects a second proactive send inside the window. So even if both
-// schedule for the same lead, only one message actually goes out per
-// cooldown period — the later one is SKIPPED 'cooldown-active'. The legacy
-// dispatchWhatsappFollowUpJob never runs for platform ('gmbboost-internal')
-// leads (they get no crm/lead-created event), so there is no third path.
-const PROACTIVE_NBA_ACTIONS = new Set(['REENGAGE', 'FOLLOW_UP_AFTER_DEMO', 'SHOW_VALUE', 'SHARE_USE_CASE', 'EDUCATE']);
-
+// Proactive NBA scheduler — RETIRED (Oct 2026). decideNextAction stamps
+// Lead.nextActionAt = now on every inbound message, so this cron turned each
+// reply into an unsolicited AI message 15–45 minutes after the live answer.
+// Replies are answered inline (salesAgentReply); the only automated sales
+// messages are the post-report invitation, one follow-up, and the post-demo
+// message (services/sales/preSalesPolicy.ts). Kept registered (same id) so
+// Inngest replaces the schedule instead of orphaning it; it schedules nothing.
 export const proactiveNbaScheduler = inngest.createFunction(
   { id: 'proactive-nba-scheduler', triggers: [{ cron: '*/30 * * * *' }] },
-  async ({ step }) => {
-    if (process.env.LEAD_ENGINE_V2 !== 'true') {
-      return { success: true, skipped: 'LEAD_ENGINE_V2 off', scheduled: 0 };
-    }
-
-    const scheduled = await step.run('schedule-due-proactive-nba', async () => {
-      await dbConnect();
-      const { default: Lead } = await import('@/models/Lead');
-      const { default: ScheduledAction } = await import('@/models/ScheduledAction');
-      const { isLeadInCohort } = await import('@/services/orchestration/outboundOrchestrator');
-      const { isHumanOwned, isOptedOutOrDoNotContact } = await import('@/services/agentHandoff/isHumanOwned');
-
-      // Candidate leads: a proactive next action is due, and the lead is
-      // still AI-owned and contactable. tenantId scoped to the platform.
-      const candidates = await Lead.find({
-        tenantId: 'gmbboost-internal',
-        nextActionAt: { $lte: new Date() },
-        nextBestAction: { $in: [...PROACTIVE_NBA_ACTIONS] },
-        currentAgent: { $in: ['SALES', 'DEMO'] },
-        nurtureStatus: 'ACTIVE',
-      }).select('_id nextBestAction currentAgent currentStage humanHandoff nurtureStatus').limit(100).lean();
-
-      let created = 0;
-      for (const lead of candidates as any[]) {
-        if (isHumanOwned(lead) || isOptedOutOrDoNotContact(lead)) continue;
-        if (!(await isLeadInCohort(String(lead._id)))) continue;
-
-        // One row per lead per hour bucket — the unique idempotencyKey is the
-        // real guard against duplicates from an overlapping run.
-        const bucket = new Date().toISOString().slice(0, 13);
-        const idempotencyKey = `${lead._id}-EXECUTE_NBA-${bucket}`;
-        try {
-          await ScheduledAction.create({
-            leadId: lead._id,
-            actionType: 'EXECUTE_NBA',
-            dueAt: new Date(),
-            status: 'PENDING',
-            idempotencyKey,
-            createdBy: 'proactive-nba-scheduler',
-            payload: { action: lead.nextBestAction },
-          });
-          created++;
-          // Clear the "proactive action due" marker now that it's been
-          // scheduled. Without this, nextActionAt stays <= now forever
-          // (decideNextAction stamps it to `now`), so this cron re-scheduled
-          // an EXECUTE_NBA for the SAME unchanged lead on every tick — a
-          // proactive action manufactured purely from re-evaluation, not from
-          // any new lead activity. A real new inbound message runs
-          // decideNextAction again (advanceNextActionAt defaults true) and
-          // re-populates nextActionAt, re-arming the lead. Guarded on the
-          // current value so a decideNextAction that ran between the find
-          // above and here isn't clobbered.
-          await Lead.updateOne(
-            { _id: lead._id, nextActionAt: { $lte: new Date() } },
-            { $set: { nextActionAt: null } }
-          );
-          const { logLeadEvent } = await import('@/services/leadEvents');
-          logLeadEvent('NURTURE_ACTION_SCHEDULED', {
-            action: lead.nextBestAction, source: 'V2_NURTURE', kind: 'proactive-nba',
-          }, 'nba-engine', { leadId: lead._id, phone: (lead as any).phone });
-        } catch (err: any) {
-          if (err?.code !== 11000) throw err; // already scheduled this bucket — fine
-        }
-      }
-      return created;
-    });
-
-    return { success: true, scheduled };
+  async () => {
+    return { success: true, skipped: 'proactive NBA retired — replies are answered inline', scheduled: 0 };
   }
 );
 
@@ -5356,39 +5358,38 @@ async function buildMessageForAction(action: any): Promise<string> {
 }
 
 /**
- * NO_SHOW_CHECK's execution — deliberately NOT a message send (per the
- * task: "execution means running a check, not sending a message"). Runs
- * shortly after a demo's scheduled end time; if the booking is still not
- * marked Completed by then, marks it No Show and runs the same post-demo
- * analysis pipeline a manually-completed demo would ("outcome=NO_SHOW" per
- * the task), so ownership/Lead fields update consistently regardless of
- * which path (manual completion vs. no-show) actually closed the demo out.
+ * NO_SHOW_CHECK — runs shortly after a demo's scheduled end. If nobody has
+ * recorded an outcome yet, the booking is marked 'No Show' (kept for the
+ * existing views and analytics) with attendance 'unconfirmed' / source
+ * 'auto-timeout'. A timeout is NOT attendance data: it sends nothing, does
+ * not run the post-demo analysis, and leaves the Lead as it is (no
+ * "demo completed" claim) until a person confirms the outcome from the
+ * Demos page (services/sales/preSalesPolicy.ts confirmDemoAttendance).
+ * Atomic and conditional on status 'Confirmed', so it never overwrites an
+ * outcome a person recorded first.
  */
 async function runNoShowCheck(action: any): Promise<void> {
   const bookingId = action.payload?.bookingId;
   if (!bookingId) throw new Error('NO_SHOW_CHECK ScheduledAction has no bookingId in payload');
   const { default: DemoBooking } = await import('@/models/DemoBooking');
-  const booking: any = await DemoBooking.findById(bookingId);
-  if (!booking) return; // booking deleted entirely — nothing to check
-  if (booking.status !== 'Confirmed') return; // already Completed/Cancelled/Rescheduled — no-show doesn't apply
-
-  booking.status = 'No Show';
-  await booking.save();
+  const booking: any = await DemoBooking.findOneAndUpdate(
+    // A staff confirmation always moves status off 'Confirmed', so this never
+    // overwrites one; a stale record from before a reschedule is replaced.
+    { _id: bookingId, status: 'Confirmed' },
+    { $set: { status: 'No Show', attendance: { outcome: 'unconfirmed', source: 'auto-timeout', at: new Date() } } },
+    { returnDocument: 'after' }
+  ).lean();
+  if (!booking) return; // deleted, or already Completed / No Show / Cancelled / Rescheduled
+  // The unconfirmed record belongs to this demo time (forStartUtc), like a staff one.
+  if (booking.startUtc) await DemoBooking.updateOne({ _id: booking._id }, { $set: { 'attendance.forStartUtc': booking.startUtc } });
 
   const { logLeadEvent } = await import('@/services/leadEvents');
   logLeadEvent(
     'DEMO_NO_SHOW',
-    { bookingId: booking._id, date: booking.date, timeSlot: booking.timeSlot },
+    { bookingId: booking._id, date: booking.date, timeSlot: booking.timeSlot, confirmed: false, source: 'auto-timeout' },
     'demo-agent',
     { leadId: booking.leadId, phone: booking.phone }
   );
-
-  const { default: BookingConversation } = await import('@/models/BookingConversation');
-  const convo: any = await BookingConversation.findOne({ bookingId: booking._id }).lean();
-  const history = (convo?.messages || []).map((m: any) => ({ role: m.role === 'lead' ? 'lead' as const : 'agent' as const, text: m.text }));
-
-  const { runPostDemoAnalysis } = await import('@/services/demo/postDemoAnalysis');
-  await runPostDemoAnalysis(booking.leadId, history, 'NO_SHOW');
 }
 
 /**

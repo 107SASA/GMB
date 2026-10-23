@@ -13,7 +13,7 @@ export async function GET() {
     policy,
     reviewCompletionStop: {
       available: false,
-      reason: 'No verified Google review-completion signal exists. A click is not a submitted review.',
+      reason: 'No verified Google review-completion signal exists. A click only means the customer opened the review link, not that a review was posted.',
     },
   });
 }

@@ -9,8 +9,9 @@
  * connected — calendar fields show as "not linked" and never block the view.
  *
  * Read: GET /api/admin/conversion/demos (grouped + counts).
- * Write: the existing PATCH /api/admin/demo-bookings (status change +
- * "Return to AI") — unchanged.
+ * Write: PATCH /api/admin/demo-bookings — status change, "Return to AI",
+ * and attendance confirmation (Attended / No show / Declined / Not ready),
+ * the only action that can schedule a post-demo WhatsApp message.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -33,9 +34,21 @@ interface DemoRow {
   meetingLink: string | null;
   calendarLinked: boolean;
   outcome: string | null;
+  /** Outcome a person recorded for this demo time (null = unknown). */
+  attendance: 'attended' | 'no_show' | 'declined' | 'not_ready' | null;
+  /** Marked No Show by the automatic timeout — nobody has confirmed it. */
+  attendanceUnconfirmed: boolean;
+  canConfirmAttendance: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+const ATTENDANCE_OPTIONS: { value: NonNullable<DemoRow['attendance']>; label: string }[] = [
+  { value: 'attended', label: 'Attended' },
+  { value: 'no_show', label: 'No show' },
+  { value: 'declined', label: 'Declined' },
+  { value: 'not_ready', label: 'Not ready' },
+];
 
 interface Data {
   counts: Record<string, number>;
@@ -91,13 +104,16 @@ export default function DemosPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const [actionError, setActionError] = useState<string | null>(null);
   const patch = async (body: Record<string, unknown>) => {
+    setActionError(null);
     const res = await fetch('/api/admin/demo-bookings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     if (res.ok) load();
+    else setActionError((await res.json().catch(() => null))?.error || 'Update failed');
   };
 
   if (loading && !data) {
@@ -161,6 +177,8 @@ export default function DemosPage() {
         ))}
       </div>
 
+      {actionError && <p className="text-sm text-error">{actionError}</p>}
+
       {/* Rows */}
       <div className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow overflow-hidden">
         {rows.length === 0 ? (
@@ -175,6 +193,7 @@ export default function DemosPage() {
                   <th className="text-left px-3 py-2.5">Channel</th>
                   <th className="text-left px-3 py-2.5">Meeting</th>
                   <th className="text-left px-3 py-2.5">Outcome</th>
+                  <th className="text-left px-3 py-2.5">Attendance</th>
                   <th className="text-left px-3 py-2.5">Status</th>
                 </tr>
               </thead>
@@ -205,6 +224,33 @@ export default function DemosPage() {
                     </td>
                     <td className="px-3 py-2.5 text-xs text-on-surface-variant">{r.outcome || '—'}</td>
                     <td className="px-3 py-2.5">
+                      {r.canConfirmAttendance ? (
+                        <div className="flex flex-wrap gap-1">
+                          {ATTENDANCE_OPTIONS.map((o) => (
+                            <button
+                              key={o.value}
+                              type="button"
+                              onClick={() => patch({ bookingId: r._id, attendance: o.value })}
+                              className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${
+                                r.attendance === o.value
+                                  ? 'bg-primary text-white border-primary'
+                                  : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant hover:border-primary'
+                              }`}
+                            >
+                              {o.label}
+                            </button>
+                          ))}
+                          {!r.attendance && (
+                            <span className="text-[11px] text-outline w-full">
+                              {r.attendanceUnconfirmed ? 'Auto-marked no-show — not confirmed, nothing sent' : 'Not recorded — nothing sent'}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-outline">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5">
                       <select
                         value={r.status}
                         onChange={(e) => patch({ bookingId: r._id, status: e.target.value })}
@@ -221,6 +267,11 @@ export default function DemosPage() {
         )}
       </div>
 
+      <p className="text-xs text-outline">
+        Attendance is recorded by a person after the demo has ended. <strong>Attended</strong> sends one follow-up a few hours later;
+        <strong> No show</strong> sends one message offering to reschedule (replies go to the existing reschedule flow);
+        <strong> Declined</strong> and <strong>Not ready</strong> send nothing. The automatic no-show timeout and the status menu never send a message.
+      </p>
       <p className="text-xs text-outline flex items-center gap-1.5">
         <UserCheck className="w-3.5 h-3.5" />
         A lead handed to a human mid-booking is released from the lead detail page or the pipeline.

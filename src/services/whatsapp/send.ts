@@ -27,6 +27,7 @@ import { WA_TEMPLATES } from '@/lib/whatsappTemplates';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 import {
   buildNotificationVariables,
+  notificationBodyForTemplate,
   outboundChannel,
   realInboundAtFromMessages,
   recipientFirstName,
@@ -70,17 +71,20 @@ async function recipientWindow(phone: string, leadId?: string): Promise<{ lastIn
   const { default: SalesConversation } = await import('@/models/SalesConversation');
   const { default: BookingConversation } = await import('@/models/BookingConversation');
   const { default: Conversation } = await import('@/models/Conversation');
+  const { default: SupportConversation } = await import('@/models/SupportConversation');
 
   const phoneQuery = key ? { phoneKey: key } : { leadPhone: normalized };
-  const [leadById, leadByPhone, sales, bookings] = await Promise.all([
+  const [leadById, leadByPhone, sales, bookings, support] = await Promise.all([
     leadId ? Lead.findById(leadId).select('name').lean() as Promise<{ name?: string } | null> : null,
     Lead.findOne({ phone: normalized }).select('name _id').sort({ updatedAt: -1 }).lean() as Promise<{ name?: string; _id?: unknown } | null>,
     SalesConversation.find(phoneQuery).select('lastLeadReplyAt leadName').lean() as Promise<Array<{ lastLeadReplyAt?: Date; leadName?: string }>>,
     BookingConversation.find(phoneQuery).select('leadName messages').lean() as Promise<Array<{ leadName?: string; messages?: Array<{ role?: string; at?: Date; via?: string }> }>>,
+    // A support message just received over WhatsApp opens the window too (Segment 4A).
+    SupportConversation.find({ ...phoneQuery, status: 'active' }).select('leadName messages').lean() as Promise<Array<{ leadName?: string; messages?: Array<{ role?: string; at?: Date; via?: string }> }>>,
   ]);
 
   const inboundStamps: Array<Date | string | null | undefined> = sales.map((row) => row.lastLeadReplyAt);
-  for (const row of bookings) {
+  for (const row of [...bookings, ...support]) {
     inboundStamps.push(realInboundAtFromMessages(row.messages));
   }
   const leadIds = [leadId, leadByPhone?._id].filter(Boolean);
@@ -95,7 +99,8 @@ async function recipientWindow(phone: string, leadId?: string): Promise<{ lastIn
   const name = recipientFirstName(leadById?.name)
     || recipientFirstName(leadByPhone?.name)
     || recipientFirstName(sales.find((row) => row.leadName)?.leadName)
-    || recipientFirstName(bookings.find((row) => row.leadName)?.leadName);
+    || recipientFirstName(bookings.find((row) => row.leadName)?.leadName)
+    || recipientFirstName(support.find((row) => row.leadName)?.leadName);
 
   return {
     lastInboundAt: realInboundAtFromMessages(
@@ -111,13 +116,20 @@ async function sendNotificationTemplate(
   body: string,
   leadId?: string,
   businessId?: string,
-  name?: string
+  names: { displayName?: string; personName?: string } = {}
 ): Promise<SendResult> {
   if (!WA_TEMPLATES.notification) {
     return { success: false, error: 'Notification template is not configured (TWILIO_TEMPLATE_NOTIFICATION).' };
   }
-  const resolved = name || (await recipientWindow(phone, leadId)).name;
-  const built = buildNotificationVariables(resolved, body);
+  // The template has its own "Hi {{1}}," — drop the body's greeting/sign-off.
+  // {{1}}: an explicit display name (owner messages: the business name), else
+  // the name the message's own greeting used, both as written; else the
+  // recipient's first name from their lead/conversation.
+  const forTemplate = notificationBodyForTemplate(body);
+  const display = names.displayName || forTemplate.name;
+  const built = display
+    ? buildNotificationVariables(display, forTemplate.text, true)
+    : buildNotificationVariables(names.personName || (await recipientWindow(phone, leadId)).name, forTemplate.text);
   if (!built.ok) {
     console.error('[whatsapp] notification template refused:', built.error);
     return { success: false, error: built.error };
@@ -135,7 +147,9 @@ export async function sendOutboundMessage(
   body: string,
   leadId?: string,
   businessId?: string,
-  media?: OutboundMedia
+  media?: OutboundMedia,
+  /** {{1}} for the notification template when the window is closed (e.g. the business name for owner messages). */
+  recipientName?: string
 ): Promise<SendResult> {
   await dbConnect();
 
@@ -150,7 +164,7 @@ export async function sendOutboundMessage(
       if (media?.url) {
         return { success: false, error: 'Image sends have no template fallback outside the 24h window.' };
       }
-      return sendNotificationTemplate(phone, body, leadId, businessId, window.name);
+      return sendNotificationTemplate(phone, body, leadId, businessId, { displayName: recipientName, personName: window.name });
     }
 
     const result = await sendViaTwilio(phone, body, leadId, businessId, media?.url);
@@ -159,7 +173,7 @@ export async function sendOutboundMessage(
     // and Twilio still returned 63016. One sanitized template attempt, not
     // a second try if that attempt is invalid.
     if (!result.success && result.outsideWindow && result.isPlatformDefault && !media) {
-      const retry = await sendNotificationTemplate(phone, body, leadId, businessId, window.name);
+      const retry = await sendNotificationTemplate(phone, body, leadId, businessId, { displayName: recipientName, personName: window.name });
       if (retry.success) return retry;
       return { ...result, error: `${result.error} (template fallback also failed: ${retry.error})` };
     }

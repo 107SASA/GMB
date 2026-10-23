@@ -37,6 +37,7 @@ import {
   toBusinessReviewSummary,
 } from '../../src/lib/reviewRequestFlow.ts';
 import {
+  DEFAULT_GLOBAL_REVIEW_FOLLOW_UP,
   decideFollowUpEligibility,
   resolveReviewFollowUpSettingsWithGlobal,
   validateGlobalReviewFollowUpSettings,
@@ -441,13 +442,33 @@ test('invalid follow-up settings are rejected', () => {
   assert.equal(validateGlobalReviewFollowUpSettings({ ...GLOBAL_ON, initialFollowUpDelayDays: -1 }).ok, false);
   assert.equal(validateGlobalReviewFollowUpSettings({ ...GLOBAL_ON, maximumFollowUps: 3 }).ok, false);
   assert.equal(validateGlobalReviewFollowUpSettings({ ...GLOBAL_ON, secondFollowUpDelayDays: 3, minimumIntervalDays: 7 }).ok, false);
-  assert.equal(validateGlobalReviewFollowUpSettings({ ...GLOBAL_ON, stopOnClick: true }).ok, false);
+  assert.equal(validateGlobalReviewFollowUpSettings({ ...GLOBAL_ON, stopOnClick: 'yes' }).ok, false);
   assert.equal(validateGlobalReviewFollowUpSettings({ ...GLOBAL_ON, stopOnReview: true }).ok, false);
   const saved = validateGlobalReviewFollowUpSettings(GLOBAL_ON);
   assert.equal(saved.ok, true);
 });
 
-test('the review worker reads the persisted global policy and does not stop on a click', () => {
+test('stop after a click: a Super Admin setting, on by default; customers who did not click keep the schedule', () => {
+  assert.equal(DEFAULT_GLOBAL_REVIEW_FOLLOW_UP.stopOnClick, true);
+  const on = validateGlobalReviewFollowUpSettings({ ...GLOBAL_ON, stopOnClick: true });
+  assert.ok(on.ok && on.value.stopOnClick === true);
+  const off = validateGlobalReviewFollowUpSettings({ ...GLOBAL_ON, stopOnClick: false });
+  assert.ok(off.ok && off.value.stopOnClick === false);
+  const { stopOnClick: _omit, ...olderClient } = GLOBAL_ON;
+  const missing = validateGlobalReviewFollowUpSettings(olderClient);
+  assert.ok(missing.ok && missing.value.stopOnClick === true, 'an older client that does not send it keeps the default');
+
+  const stopping = { ...GLOBAL_ON, stopOnClick: true };
+  assert.equal(eligibleFollowUp({ policy: stopping, clicked: true }).code, 'CLICKED');
+  assert.equal(eligibleFollowUp({ policy: stopping, clicked: false }).send, true, 'not clicked → unchanged');
+  assert.equal(eligibleFollowUp({ policy: stopping }).send, true);
+  assert.equal(eligibleFollowUp({ policy: { ...GLOBAL_ON, stopOnClick: false }, clicked: true }).send, true, 'setting off → old behaviour');
+  // Opt-out and the maximum still come first; a click never adds a reminder.
+  assert.equal(eligibleFollowUp({ policy: stopping, clicked: true, optedOut: true }).send, false);
+  assert.equal(eligibleFollowUp({ policy: { ...stopping, maximumFollowUps: 1 }, stage: 2 }).code, 'MAX_FOLLOW_UPS');
+});
+
+test('the review worker reads the persisted global policy and passes the click to the gate', () => {
   const worker = readFileSync(new URL('../../src/services/inngest/functions.ts', import.meta.url), 'utf8');
   const admin = readFileSync(new URL('../../src/app/api/admin/review-follow-up/route.ts', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../../src/components/reviews/CampaignsDashboard.tsx', import.meta.url), 'utf8');
@@ -455,7 +476,8 @@ test('the review worker reads the persisted global policy and does not stop on a
   assert.match(worker, /resolveReviewFollowUpSettingsWithGlobal/);
   assert.match(worker, /followUpClaim/);
   assert.match(worker, /decideFollowUpEligibility/);
-  assert.doesNotMatch(worker, /req\.clicked/);
+  assert.match(worker, /clicked: !!\(req\?\.clicked \|\| req\?\.clickedAt\)/);
+  assert.doesNotMatch(worker, /reviewReceived: true/);
   assert.match(admin, /requireSuperAdmin/);
   assert.match(admin, /available: false/);
   assert.doesNotMatch(dashboard, /Create Campaign/);

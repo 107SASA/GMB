@@ -116,6 +116,19 @@ export function buildGoogleReviewUrl(
   return `https://search.google.com/local/writereview?placeid=${placeId}`;
 }
 
+/**
+ * Link-preview fetchers and crawlers (Meta/WhatsApp previews, social and
+ * search bots) open the review link without a person tapping it. Since a
+ * click can stop the follow-ups, such a fetch — or a HEAD request — is
+ * redirected like any other but is not recorded as the customer's click.
+ */
+const LINK_PREVIEW_AGENT = /facebookexternalhit|facebot|meta-externalagent|whatsapp\/|telegrambot|twitterbot|slackbot|linkedinbot|discordbot|skypeuripreview|googlebot|bingbot|applebot|\bbot\b|bot\/|crawler|spider|preview/i;
+
+export function isLinkPreviewRequest(input: { method?: string | null; userAgent?: string | null }): boolean {
+  if ((input.method || 'GET').toUpperCase() === 'HEAD') return true;
+  return LINK_PREVIEW_AGENT.test(input.userAgent || '');
+}
+
 export function applyClick(current: { clicked?: boolean; clickCount?: number }): {
   clicked: true;
   setClickedAt: boolean;
@@ -177,6 +190,38 @@ export function choosePrimaryReviewSend(input: {
     };
   }
   return { mode: 'legacy-free-text' };
+}
+
+/**
+ * Default free-text review-request copy, used only when the approved utility
+ * template is not configured (that template's own copy is fixed and is never
+ * changed here) and the owner has not written their own. Placeholders:
+ * {{name}}, {{service}}, {{business}}, {{link}} — the worker's fillTemplate
+ * fills them and appends the link if a custom message dropped it. One link,
+ * short paragraphs, a clear opt-out line; no claim that a review was posted.
+ */
+export const REVIEW_REQUEST_INITIAL_DEFAULT =
+  'Hi {{name}}, thank you for choosing {{business}}! 🙏\n\nIf you have a minute, we would really appreciate a short Google review of your recent {{service}}:\n{{link}}\n\nReply STOP to opt out.';
+export const REVIEW_REMINDER_1_DEFAULT =
+  'Hi {{name}}, a gentle reminder from {{business}}.\n\nIf you have a minute, a short Google review of your recent {{service}} would help us a lot:\n{{link}}\n\nReply STOP to opt out.';
+export const REVIEW_REMINDER_2_DEFAULT =
+  'Hi {{name}}, this is our last reminder from {{business}}.\n\nIf you have a moment, your Google review would mean a lot to our team:\n{{link}}\n\nReply STOP to opt out.';
+
+/**
+ * One review request never sends the same approved template more than this
+ * many times: the first request plus one reminder. When the utility template
+ * is configured, every reminder stage would otherwise repeat its exact copy.
+ */
+export const MAX_IDENTICAL_REVIEW_TEMPLATE_SENDS = 2;
+
+/** True when `contentSid` already went out MAX_IDENTICAL_REVIEW_TEMPLATE_SENDS times on this request (failed sends don't count). */
+export function identicalReviewTemplateCapReached(
+  history: Array<{ templateSid?: string | null; status?: string | null }> | null | undefined,
+  contentSid: string | null | undefined
+): boolean {
+  if (!contentSid) return false;
+  const sent = (history || []).filter((entry) => entry.templateSid === contentSid && entry.status !== 'Failed').length;
+  return sent >= MAX_IDENTICAL_REVIEW_TEMPLATE_SENDS;
 }
 
 /**

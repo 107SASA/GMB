@@ -1,5 +1,4 @@
 import dbConnect from '@/lib/mongodb';
-import Subscription from '@/models/Subscription';
 import User from '@/models/User';
 import Business from '@/models/Business';
 import Lead from '@/models/Lead';
@@ -7,8 +6,6 @@ import Audit from '@/models/Audit';
 import { setLeadOwnership } from '@/services/leadOwnership/setLeadOwnership';
 import { cancelScheduledActions } from '@/services/scheduler/cancelScheduledActions';
 import { logLeadEvent } from '@/services/leadEvents';
-import { sendTemplateMessage } from '@/services/twilio/client';
-import { WA_TEMPLATES } from '@/lib/whatsappTemplates';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { paymentSuccessStageSequence } from '@/services/billing/paymentLeadStages';
 
@@ -19,8 +16,9 @@ import { paymentSuccessStageSequence } from '@/services/billing/paymentLeadStage
  * purely additive on top of the existing in-app entitlement flip, which
  * this function never touches.
  *
- * Stage order (hard requirement): PAYMENT_VERIFIED, then invoice/welcome,
- * then CUSTOMER / IN_HOUSE. Never mark CUSTOMER before verification.
+ * Stage order (hard requirement): PAYMENT_VERIFIED, then CUSTOMER / IN_HOUSE.
+ * Never mark CUSTOMER before verification. Sends no WhatsApp — the payment
+ * confirmation is paymentReceivedNotice.ts.
  *
  * Every step is individually idempotent so a webhook retry only re-attempts
  * whatever hasn't actually succeeded yet.
@@ -62,32 +60,14 @@ export async function runCustomerActivationSequence(
       );
     }
 
-    const subscription = await Subscription.findOne({ userId });
-    const firstName = (lead.name || '').trim().split(/\s+/)[0] || 'there';
+    // Steps 3–4 (Oct 2026): the separate invoice-ready and welcome WhatsApp
+    // templates are no longer sent. Both repeated "your subscription is
+    // active", which the payment_received template (paymentReceivedNotice.ts)
+    // already tells every paying customer — one message per payment.
+    // Subscription.invoiceMessageSentAt / welcomeMessageSentAt stay as
+    // historical fields.
 
-    // Step 3 — invoice message, guarded by invoiceMessageSentAt.
-    if (subscription && !subscription.invoiceMessageSentAt) {
-      const res = await sendInvoiceMessage(lead.phone, { name: firstName });
-      if (res.success) {
-        subscription.invoiceMessageSentAt = new Date();
-        await subscription.save();
-      } else {
-        console.warn('[customerActivation] invoice message failed to send:', res.error);
-      }
-    }
-
-    // Step 4 — welcome message, guarded by welcomeMessageSentAt.
-    if (subscription && !subscription.welcomeMessageSentAt) {
-      const res = await sendWelcomeMessage(lead.phone, { name: firstName });
-      if (res.success) {
-        subscription.welcomeMessageSentAt = new Date();
-        await subscription.save();
-      } else {
-        console.warn('[customerActivation] welcome message failed to send:', res.error);
-      }
-    }
-
-    // Step 5 — CUSTOMER / IN_HOUSE only after PAYMENT_VERIFIED + helpers above.
+    // Step 5 — CUSTOMER / IN_HOUSE only after PAYMENT_VERIFIED.
     await setLeadOwnership(lead._id, 'IN_HOUSE', 'payment-verified', 'system', customerStage);
     await cancelScheduledActions(lead._id, 'converted');
 
@@ -137,32 +117,4 @@ export async function resolveLeadForPayment(userId: string, businessId: string |
   }
 
   return byPhone;
-}
-
-async function sendInvoiceMessage(
-  phone: string,
-  vars: { name: string }
-): Promise<{ success: boolean; error?: string }> {
-  if (!WA_TEMPLATES.invoiceReady) {
-    console.warn('[customerActivation] TWILIO_TEMPLATE_INVOICE_READY not configured — skipping invoice message');
-    return { success: false, error: 'invoiceReady template not configured' };
-  }
-  const res = await sendTemplateMessage(phone, WA_TEMPLATES.invoiceReady, {
-    '1': vars.name,
-  });
-  return res;
-}
-
-async function sendWelcomeMessage(
-  phone: string,
-  vars: { name: string }
-): Promise<{ success: boolean; error?: string }> {
-  if (!WA_TEMPLATES.welcomeCustomer) {
-    console.warn('[customerActivation] TWILIO_TEMPLATE_WELCOME_CUSTOMER not configured — skipping welcome message');
-    return { success: false, error: 'welcomeCustomer template not configured' };
-  }
-  const res = await sendTemplateMessage(phone, WA_TEMPLATES.welcomeCustomer, {
-    '1': vars.name,
-  });
-  return res;
 }

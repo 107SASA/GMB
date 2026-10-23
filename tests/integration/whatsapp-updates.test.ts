@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildPerformanceDigest, composePerformanceDigest, DIGEST_DAYS } from '../../src/services/lifecycle/performanceDigest.ts';
-import { reviewReminderText } from '../../src/services/lifecycle/weekly.ts';
+import { reviewAttentionText } from '../../src/services/lifecycle/weekly.ts';
 
 const NOW = new Date('2026-10-01T05:00:00Z');
 const DAY = 86_400_000;
@@ -52,13 +52,25 @@ test('15-day digest: first period → no comparison claimed', () => {
   assert.doesNotMatch(text, /vs previous/);
 });
 
-test('weekly review reminder: states only what the records show, includes the real review link', () => {
-  const t0 = reviewReminderText('Mulsetu', 'ChIJabc', 0);
-  assert.match(t0, /No new Google reviews for Mulsetu this week/);
-  assert.match(t0, /No review requests were sent through GrowwMatics this week/);
-  assert.match(t0, /writereview\?placeid=ChIJabc/);
-  const t3 = reviewReminderText('Mulsetu', null, 3);
-  assert.match(t3, /3 review requests were sent this week — no new reviews yet/);
-  assert.doesNotMatch(t3, /writereview/, 'no link invented without a place id');
-  assert.doesNotMatch(t3, /unhappy|losing|ranking will/i, 'no blame, no invented consequence');
+test('15-day digest: greeting, insights link and sign-off in the house style', () => {
+  const d = buildPerformanceDigest(series(DIGEST_DAYS, () => ({ views: 2 })), NOW);
+  const text = composePerformanceDigest(d, 'Mulsetu', 'https://app.example/dashboard/insights')!;
+  assert.match(text, /^Hi Mulsetu,\n/);
+  assert.match(text, /Here is your Growwmatics performance update for the last 15 days/);
+  assert.match(text, /View your insights: https:\/\/app\.example\/dashboard\/insights/);
+  assert.match(text, /— Team Growwmatics$/);
+});
+
+test('weekly review-attention reminder: verified counts only, no message when nothing is pending', () => {
+  const base = { businessName: 'Mulsetu', drafted: 0, weekKey: '2026-W44', reviewsLink: 'https://app.example/dashboard/reviews' };
+  assert.equal(reviewAttentionText({ ...base, pending: 0 }), null);
+  const one = reviewAttentionText({ ...base, pending: 1 })!;
+  assert.match(one, /^Hi Mulsetu,/);
+  assert.match(one, /1 customer review from the last 30 days is still waiting for your reply/);
+  assert.match(one, /View reviews: https:\/\/app\.example\/dashboard\/reviews/);
+  const drafted = reviewAttentionText({ ...base, pending: 3, drafted: 2 })!;
+  assert.match(drafted, /2 of them already have a suggested reply waiting for your approval/);
+  const noLink = reviewAttentionText({ ...base, pending: 2, reviewsLink: null })!;
+  assert.doesNotMatch(noLink, /https?:/, 'no link invented');
+  assert.doesNotMatch(one, /new review/i, 'a new review alone is never the reason');
 });

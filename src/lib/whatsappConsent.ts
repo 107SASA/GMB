@@ -14,7 +14,10 @@ import ReportConversation from '@/models/ReportConversation';
 export async function hasPhoneMessagedPlatformBefore(phoneKey: string | null | undefined): Promise<boolean> {
   if (!phoneKey) return false;
 
-  const leadMessageFilter = { phoneKey, messages: { $elemMatch: { role: 'lead' } } };
+  // A website demo form seeds its opening line as role 'lead', via 'form'
+  // (app/api/leads/book-demo) — the person typed that on our website, not on
+  // WhatsApp, so it is not consent to be messaged there.
+  const leadMessageFilter = { phoneKey, messages: { $elemMatch: { role: 'lead', via: { $ne: 'form' } } } };
 
   const [sales, booking, report] = await Promise.all([
     SalesConversation.exists(leadMessageFilter),

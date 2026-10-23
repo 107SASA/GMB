@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
+import Business from '@/models/Business';
 import { requireClient } from '@/lib/auth';
 import { phoneDedupeKey } from '@/lib/phone';
 import { usablePersonName } from '@/lib/personName';
@@ -114,7 +115,11 @@ export async function PATCH(req: Request) {
   // lead was filed as "New User" / the business name before they typed a real
   // name (checkout or profile), so carry it over unless the lead already has one.
   if (update.fullName && user?.phone) {
-    await syncPlatformLeadName(user.phone, update.fullName).catch((err) =>
+    const businessIds = (user as { businessIds?: unknown[] }).businessIds || [];
+    const businessNames = businessIds.length
+      ? (await Business.find({ _id: { $in: businessIds } }).select('name').lean<Array<{ name?: string }>>()).map((b) => b.name || '')
+      : [];
+    await syncPlatformLeadName(user.phone, update.fullName, businessNames).catch((err) =>
       console.warn('[user/profile] platform lead name sync failed:', err?.message)
     );
   }

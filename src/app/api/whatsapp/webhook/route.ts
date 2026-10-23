@@ -8,7 +8,6 @@ import Business from '@/models/Business';
 import Conversation from '@/models/Conversation';
 import MessageQueue from '@/models/MessageQueue';
 import { inngest } from '@/services/inngest/client';
-import Customer from '@/models/Customer';
 import SupportConversation from '@/models/SupportConversation';
 import User from '@/models/User';
 import { validateTwilioSignature } from '@/lib/twilioSignature';
@@ -17,6 +16,7 @@ import { checkRateLimit } from '@/lib/rateLimit';
 import ProcessedWebhookEvent from '@/models/ProcessedWebhookEvent';
 import { SUPPORT_MESSAGE } from '@/lib/whatsappCta';
 import { createOrUpdateCustomerLead, PLATFORM_TENANT } from '@/services/crm/customerLeads';
+import { handleInboundOptOut, isOptOutKeyword } from '@/services/messaging/inboundOptOut';
 
 export const dynamic = 'force-dynamic';
 
@@ -107,7 +107,7 @@ async function handleActiveSalesConversation(
     const convo = await BookingConversation.create({
       leadPhone: salesConvo.leadPhone,
       phoneKey: phoneDedupeKey(salesConvo.leadPhone),
-      leadName: salesConvo.leadName || leadForBooking?.name || '',
+      leadName: leadForBooking?.name || salesConvo.leadName || '',
       leadId: leadForBooking?._id,
       status: 'active',
       details: {
@@ -143,10 +143,13 @@ async function handleActiveSalesConversation(
       await salesConvo.save();
       await inngest.send({ name: 'sales/nurture.consented', data: { conversationId: salesConvo._id.toString() } });
     } else {
-      // Not a yes — stay silent rather than re-nudging (avoids turning the
-      // consent ask itself into the unsolicited-message problem it exists
-      // to prevent). They can still say "yes" later; nothing expires this.
+      // Not a yes, but they wrote to us — answer what they actually said
+      // (a question, "who is this?", "not interested"). This never starts
+      // the findings pitch or the follow-up: only a YES does that. Nothing
+      // is sent unless they write.
+      salesConvo.consentStatus = 'granted';
       await salesConvo.save();
+      await inngest.send({ name: 'sales/agent.reply', data: { conversationId: salesConvo._id.toString(), body } });
     }
     return true;
   }
@@ -309,13 +312,11 @@ async function processInboundMessage({ business, phone, profileName, body, messa
     await thread.save();
   }
 
-  // 2.5 Opt-out processing (Module 9)
-  const normalizedBody = body.trim().toUpperCase();
-  if (['STOP', 'UNSUBSCRIBE', 'CANCEL'].includes(normalizedBody)) {
-    await Customer.findOneAndUpdate(
-      { phone, businessId },
-      { optedOut: true }
-    );
+  // 2.5 Opt-out processing (Module 9). The opt-out itself (persistent
+  // suppression, every matching Customer however its phone was stored, their
+  // open review requests) was already applied durably by the webhook handler
+  // before this message was claimed (services/messaging/inboundOptOut.ts).
+  if (isOptOutKeyword(body)) {
     // We can also disable AI for the thread so the bot doesn't reply
     thread.aiEnabled = false;
     await thread.save();
@@ -348,6 +349,9 @@ async function processInboundMessage({ business, phone, profileName, body, messa
 //     support, just logged for a human — see SupportConversation)
 //   • an existing, verified GrowwMatics customer → SUPPORT agent, always
 //     (never the prospect report/demo menu below)
+//   • a business's customer who was sent a review request from this number
+//     → nothing (no menu, no support thread); STOP opts them out
+//     (services/reviews/reviewRecipientInbound.ts)
 //   • otherwise, brand-new thread                → classified by keyword/CTA
 //     text into report / booking / support / unknown (menu)
 // ---------------------------------------------------------------------------
@@ -389,17 +393,42 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
   const normalized = (body || '').trim().toUpperCase();
   const isOptOut = ['STOP', 'UNSUBSCRIBE', 'CANCEL'].includes(normalized);
 
-  // A platform-line STOP opts the Lead out at the Lead level regardless of
-  // which (if any) conversation is currently active — every branch below
-  // that handles isOptOut only stands down its own conversation. Best-effort.
+  // A platform-line STOP was already applied durably by the webhook handler
+  // before this message was claimed (services/messaging/inboundOptOut.ts):
+  // the Lead-level opt-out, and — review requests go out on this number too —
+  // the business customers asked for a review at this number, their open
+  // requests and a persistent suppression. Every branch below that handles
+  // isOptOut only stands down its own conversation.
+
+  // Support intake (Segment 4A, services/support/supportIntake.ts): one fixed
+  // acknowledgement per issue, no AI, no sales content.
+  const support = await import('@/services/support/supportIntake');
   if (isOptOut) {
-    const { optOutLeadByPhone } = await import('@/services/leadOwnership/optOutLead');
-    await optOutLeadByPhone(phone, 'inbound-stop:platform', 'system');
+    await support.closeSupportIssuesOnOptOut(phone);
+  } else {
+    // 0. An ongoing support issue keeps every message, even while a sales,
+    //    demo or report thread is open — captured, not acknowledged again.
+    const ongoing = await support.findOngoingSupportIssue(phone);
+    if (ongoing) {
+      await support.captureSupportMessage({ phone, profileName, body, match: ongoing.matchedBy || 'support_request' });
+      return;
+    }
   }
+  // An explicit request for help wins over an active sales / demo / report
+  // thread (strict matcher: "no problem, 3pm works" is not one).
+  const explicitSupport = !isOptOut && support.isExplicitSupportRequest(body);
+  const openSupportIssue = async (match: 'verified_user' | 'paying_customer' | 'support_request') => {
+    const sender = await support.identifySupportSender(phone);
+    await support.captureSupportMessage({ phone, profileName, body, match: sender.match || match, sender });
+  };
 
   // 1. Post-audit SALES nurture takes priority while active.
   const salesConvo = await SalesConversation.findOne({ phoneKey: key, status: 'active' });
   if (salesConvo) {
+    if (explicitSupport) {
+      await openSupportIssue('support_request');
+      return;
+    }
     await handleActiveSalesConversation(salesConvo, body, { allowBookingHandoff: true });
     return;
   }
@@ -416,6 +445,10 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
       await activeBooking.save();
       return;
     }
+    if (explicitSupport) {
+      await openSupportIssue('support_request');
+      return;
+    }
     if (!activeBooking.leadName && profileName) activeBooking.leadName = profileName;
     activeBooking.messages.push({ role: 'lead', text: body, at: new Date(), via: 'whatsapp' });
     await activeBooking.save();
@@ -430,6 +463,10 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     if (isOptOut) {
       activeReport.status = 'stopped';
       await activeReport.save();
+      return;
+    }
+    if (explicitSupport) {
+      await openSupportIssue('support_request');
       return;
     }
     if (!activeReport.leadName && profileName) activeReport.leadName = profileName;
@@ -461,36 +498,7 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     return;
   }
 
-  // 3.5. An active support thread. Pre-sale prospects: append and wait for
-  // a human, don't re-fire the AI acknowledgment on every follow-up message
-  // (one-shot "we've got it" reply, not a multi-turn conversation like
-  // sales/booking/report — repeating it on each message would read as the
-  // bot ignoring them). Phase 8: a paying customer (Lead.currentAgent ===
-  // 'IN_HOUSE') is the exception — see the currentAgent check below.
-  const activeSupport = await SupportConversation.findOne({ phoneKey: key, status: 'active' });
-  if (activeSupport) {
-    if (isOptOut) {
-      activeSupport.status = 'closed';
-      await activeSupport.save();
-      return;
-    }
-    activeSupport.messages.push({ role: 'lead', text: body, at: new Date() });
-    await activeSupport.save();
-
-    // Phase 8: a paying customer (Lead.currentAgent === 'IN_HOUSE') gets a
-    // REAL multi-turn conversation with the In-House Agent — re-fire
-    // support/agent.reply on every turn, not just the first. A pre-sale
-    // prospect (any other currentAgent, or no Lead at all yet) keeps the
-    // exact pre-Phase-8 behavior: append only, no re-fire, human takes over
-    // via WhatsApp Business app/Meta Business Suite directly.
-    const normalizedForLead = normalizePhoneE164(phone) || phone;
-    const lead = await Lead.findOne({ phone: normalizedForLead, tenantId: 'gmbboost-internal' }).select('currentAgent').lean() as any;
-    if (lead?.currentAgent === 'IN_HOUSE') {
-      await inngest.send({ name: 'support/agent.reply', data: { conversationId: activeSupport._id.toString(), body } });
-    }
-    return;
-  }
-
+  // 3.5. (An ongoing support issue is handled above, before sales.)
   if (isOptOut) return; // Nothing active to stop.
 
   // 3.7. An existing, verified GrowwMatics customer messaging this line —
@@ -501,19 +509,29 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     .select('_id activeBusinessId')
     .lean() as any;
 
-  // Verified customers stay on the existing support path. Support wording
-  // does too. Neither is the free-report / demo menu.
-  if (existingUser || isSupportRequest(body)) {
-    const convo = await SupportConversation.create({
-      leadPhone: normalizePhoneE164(phone) || phone,
-      phoneKey: key,
-      leadName: profileName || '',
-      status: 'active',
-      messages: [{ role: 'lead', text: body, at: new Date() }],
-      userId: existingUser?._id,
-      businessId: existingUser?.activeBusinessId,
-    });
-    await inngest.send({ name: 'support/agent.reply', data: { conversationId: convo._id.toString() } });
+  // 3.8. A business's customer replying to a review request sent from this
+  // number: not a Growwmatics prospect or support case, so no sales menu, no
+  // support thread and no automatic reply. (A verified Growwmatics user keeps
+  // the support path below.)
+  if (!existingUser) {
+    const { isRecentReviewRecipient } = await import('@/services/reviews/reviewRecipientInbound');
+    if (await isRecentReviewRecipient(phone)) {
+      console.log('[platform-inbound] reply from a review-request recipient — no automatic message');
+      return;
+    }
+  }
+
+  // Verified customers, paying / trial customers found by this phone (even
+  // with an unverified phone — context flagged unverified), and support
+  // wording all go to support intake. None of them sees the free-report /
+  // demo menu.
+  if (existingUser) {
+    await openSupportIssue('verified_user');
+    return;
+  }
+  const sender = await support.identifySupportSender(phone);
+  if (sender.customer || isSupportRequest(body)) {
+    await support.captureSupportMessage({ phone, profileName, body, match: sender.match || 'support_request', sender });
     return;
   }
 
@@ -744,8 +762,11 @@ async function observeLeadOwnershipShadow(phone: string): Promise<void> {
         if (activeReport) {
           agent = 'DEMO'; // report/connect flow is a pre-demo prospect touchpoint, not a Sales or in-house one
         } else {
+          // A support conversation says nothing about who owns the lead:
+          // asking for help never makes a prospect a customer (IN_HOUSE is
+          // set only by payment activation) — leave the classification as is.
           const activeSupport = await SupportConversation.findOne({ phoneKey: key, status: 'active' }).select('_id').lean();
-          if (activeSupport) agent = 'IN_HOUSE';
+          if (activeSupport) return;
         }
       }
     }
@@ -854,6 +875,7 @@ async function handleTemplateStatusUpdate(value: any): Promise<void> {
 }
 
 async function handleMetaWebhook(req: Request) {
+  let retryDelivery = false; // an opt-out in this delivery could not be saved
   try {
     const rawBody = await req.text();
 
@@ -929,8 +951,25 @@ async function handleMetaWebhook(req: Request) {
             : message[message.type]?.caption || message.button?.text || message.interactive?.button_reply?.title || '');
           const numMedia = ['image', 'video', 'audio', 'document', 'sticker'].includes(message.type) ? 1 : 0;
 
+          // STOP / UNSUBSCRIBE / CANCEL: durable opt-out before the id is
+          // claimed, outside the ordinary rate limit. A failure leaves this
+          // message unclaimed and makes the whole delivery retryable (the
+          // other messages in it are claimed, so a redelivery skips them).
+          const optOut = isOptOutKeyword(body);
+          if (optOut) {
+            const outcome = await handleInboundOptOut({
+              provider: 'meta',
+              messageId: message.id || '',
+              line: platform ? { kind: 'platform' } : { kind: 'tenant', businessId: String(business._id) },
+              phone,
+              body,
+            });
+            if (outcome === 'retry') { retryDelivery = true; continue; }
+            if (outcome === 'flood_skipped') continue;
+          }
+
           if (await isDuplicateInboundMessage('meta', message.id || '')) continue;
-          if (!isInboundMessageAllowed(phone, message.id || '')) continue;
+          if (!optOut && !isInboundMessageAllowed(phone, message.id || '')) continue;
 
           if (platform) {
             await processPlatformInbound({ phone, profileName, body, messageSid: message.id || '' });
@@ -951,10 +990,14 @@ async function handleMetaWebhook(req: Request) {
       }
     }
 
-    // Always 200 — Meta retries aggressively and disables webhooks that keep failing
+    // An opt-out that could not be saved: ask Meta to redeliver (only that
+    // message is unclaimed). Otherwise always 200 — Meta retries aggressively
+    // and disables webhooks that keep failing.
+    if (retryDelivery) return NextResponse.json({ ok: false, retry: 'opt-out not saved' }, { status: 500 });
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('[meta-webhook] Error:', error);
+    if (retryDelivery) return NextResponse.json({ ok: false, retry: 'opt-out not saved' }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
 }
@@ -997,12 +1040,29 @@ export async function handleTwilioWebhook(req: Request) {
     const verification = await validateTwilioSignature(req, formData, authToken);
     if (!verification.ok) return verification.response;
 
+    // STOP / UNSUBSCRIBE / CANCEL: applied durably BEFORE the message id is
+    // claimed, and outside the ordinary rate limit (services/messaging/
+    // inboundOptOut.ts). On failure the id stays unclaimed and Twilio gets a
+    // 500 (its fallback URL / a redelivery retries it; a retry job is queued too).
+    const optOut = isOptOutKeyword(body);
+    if (optOut) {
+      const outcome = await handleInboundOptOut({
+        provider: 'twilio',
+        messageId: messageSid || '',
+        line: platform ? { kind: 'platform' } : { kind: 'tenant', businessId: String(business!._id) },
+        phone,
+        body,
+      });
+      if (outcome === 'retry') return new NextResponse(EMPTY_TWIML, { status: 500, headers: { 'Content-Type': 'text/xml' } });
+      if (outcome === 'flood_skipped') return twimlOk();
+    }
+
     // Dedup BEFORE the rate limiter — a rejected/forged request never reaches
     // here (signature already verified above), so claiming the id only after
     // that check can't be used to suppress a real, later redelivery of the
     // same message from ever being processed.
     if (await isDuplicateInboundMessage('twilio', messageSid || '')) return twimlOk();
-    if (!isInboundMessageAllowed(phone, messageSid || '')) return twimlOk();
+    if (!optOut && !isInboundMessageAllowed(phone, messageSid || '')) return twimlOk();
 
     if (platform) {
       await processPlatformInbound({

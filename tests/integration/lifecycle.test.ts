@@ -181,7 +181,7 @@ test('weekly: performance and comparable ranking only', () => {
   const s = buildWeeklySummary(week({ performance: { calls: [12, 18], websiteClicks: [20, 31], directionRequests: [7, 7] }, ranking: { improved: 3, declined: 0, comparable: 5 } }));
   assert.ok(s.notifications.some((n) => n.body === 'Your Google Business Profile received 18 calls this week, up from 12.'));
   assert.ok(s.notifications.some((n) => n.body === 'Your visibility improved for 3 tracked searches.'));
-  assert.match(s.whatsappText, /^GrowwMatics Weekly Update/);
+  assert.match(s.whatsappText, /^Here is your weekly Growwmatics update:/);
   assert.equal(buildWeeklySummary(week({ ranking: { improved: 0, declined: 0, comparable: 0 } })).lines.some((l) => l.startsWith('Ranking')), false);
 });
 

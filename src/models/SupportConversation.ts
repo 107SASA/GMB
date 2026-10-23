@@ -5,6 +5,8 @@ export interface ISupportMessage {
   role: 'agent' | 'lead';
   text: string;
   at: Date;
+  /** 'whatsapp' when the line came from the WhatsApp webhook (opens the 24h reply window). */
+  via?: string;
 }
 
 /**
@@ -38,6 +40,15 @@ export interface ISupportConversation extends Document {
   // pattern. Defaults true so existing pre-Phase-8 conversations behave
   // exactly as before (AI-enabled) once this field starts being read.
   aiEnabled: boolean;
+  // Segment 4A (Oct 2026) — minimal support intake (services/support/supportIntake.ts).
+  /** How the sender was recognised: a verified user, a paying/trial workspace by phone, a support request, or a sales thread handed over. */
+  matchedBy?: 'verified_user' | 'paying_customer' | 'support_request' | 'sales_handoff';
+  /** false when userId/businessId come from an unverified phone match — staff must confirm identity before discussing the account. */
+  senderVerified?: boolean;
+  /** The one automatic acknowledgement for this issue (claimed atomically before sending). */
+  ackSentAt?: Date;
+  closedAt?: Date;
+  closedReason?: 'idle' | 'opt_out';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -55,6 +66,7 @@ const SupportConversationSchema: Schema = new Schema(
             role: { type: String, enum: ['agent', 'lead'], required: true },
             text: { type: String, required: true },
             at: { type: Date, default: Date.now },
+            via: { type: String },
           },
           { _id: false }
         ),
@@ -64,6 +76,11 @@ const SupportConversationSchema: Schema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: 'User' },
     businessId: { type: Schema.Types.ObjectId, ref: 'Business' },
     aiEnabled: { type: Boolean, default: true },
+    matchedBy: { type: String, enum: ['verified_user', 'paying_customer', 'support_request', 'sales_handoff'] },
+    senderVerified: { type: Boolean },
+    ackSentAt: { type: Date },
+    closedAt: { type: Date },
+    closedReason: { type: String, enum: ['idle', 'opt_out'] },
   },
   { timestamps: true }
 );

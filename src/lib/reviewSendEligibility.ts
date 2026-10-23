@@ -1,4 +1,6 @@
 import Business from '@/models/Business';
+import Customer from '@/models/Customer';
+import { isWhatsAppSuppressed } from '@/services/messaging/inboundOptOut';
 import ReviewRequest from '@/models/ReviewRequest';
 import { checkUsageLimit } from '@/lib/featureGating';
 import {
@@ -11,6 +13,11 @@ import {
  * One eligibility check for web send, web quick-add, mobile send, campaign
  * launch, and retry. The customer-level "3 attempts / 24 hours" rule is not
  * applied: REVIEW_SEND_COOLDOWN_ENFORCED stays false.
+ *
+ * A number that replied STOP to this business (MessagingSuppression) is
+ * treated as opted out even when the Customer record says otherwise — a
+ * deleted-and-re-added customer, or an owner un-ticking "opted out", does not
+ * make it messageable again. The Customer flag is brought back in line.
  */
 export async function evaluateReviewSendEligibility(opts: {
   source: ReviewSendSource;
@@ -44,9 +51,15 @@ export async function evaluateReviewSendEligibility(opts: {
     }));
   }
 
+  let optedOut = !!opts.customer.optedOut;
+  if (!optedOut && await isWhatsAppSuppressed(opts.businessId, opts.customer.phone)) {
+    optedOut = true;
+    await Customer.updateOne({ _id: opts.customer._id, businessId: opts.businessId }, { $set: { optedOut: true } }).catch(() => {});
+  }
+
   return decideReviewSendEligibility({
     source: opts.source,
-    optedOut: !!opts.customer.optedOut,
+    optedOut,
     hasPhone: !!opts.customer.phone,
     hasPlaceId: !!business?.placeId,
     dailyLimitReached,

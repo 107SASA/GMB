@@ -113,41 +113,77 @@ export const EMPTY_INTAKE: IntakeData = {
   targetAudience: '', competitorNames: [], primaryGoal: '',
 };
 
-/** Keywords the business's report / SEO plan already researched (server: seoBrainKeywords). */
-const keywordPrefillSchema = z
-  .object({
-    value: z.string().catch(''),
-    label: z.string().catch(''),
-    items: z
-      .array(z.object({ keyword: z.string(), source: z.string().catch('measured') }))
-      .optional()
-      .catch(undefined),
-  })
-  .nullable()
-  .optional()
-  .catch(null);
+/** Fields the server can suggest a sourced value for (server: services/intel/intakePrefill.ts). */
+export const SUGGEST_FIELDS = ['category', 'description', 'services', 'keywords', 'uniqueSellingPoints', 'offers'] as const;
+export type SuggestField = (typeof SUGGEST_FIELDS)[number];
 
-/** GET /api/onboarding/intake — prefill + whether it's already done. */
-export async function fetchIntake(): Promise<{ intakeCompleted: boolean; data: IntakeData; keywordPrefill: string[] }> {
+/**
+ * A sourced suggestion for an EMPTY intake field — from the business's website
+ * research, Google listing, report or SEO plan. The owner reviews it ("Use
+ * this") before it fills the field; nothing is saved until they submit.
+ */
+export const prefillSuggestionSchema = z.object({
+  value: z.string(),
+  source: z.enum(['website', 'google_listing', 'measured_report', 'seo_plan']),
+  sourceUrl: z.string().optional().catch(undefined),
+  label: z.string().catch(''),
+  /** Keywords only: each keyword with where it came from. */
+  items: z
+    .array(z.object({ keyword: z.string(), source: z.string().catch('measured') }))
+    .optional()
+    .catch(undefined),
+});
+export type PrefillSuggestion = z.infer<typeof prefillSuggestionSchema>;
+
+/** Keeps only well-formed suggestions for known fields; a bad one is dropped, not fatal. */
+function parseSuggestions(raw: unknown): Partial<Record<SuggestField, PrefillSuggestion>> {
+  const out: Partial<Record<SuggestField, PrefillSuggestion>> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const field of SUGGEST_FIELDS) {
+    const parsed = prefillSuggestionSchema.safeParse((raw as Record<string, unknown>)[field]);
+    if (parsed.success && parsed.data.value.trim()) out[field] = parsed.data;
+  }
+  return out;
+}
+
+/** GET /api/onboarding/intake — prefill, sourced suggestions, and whether it's already done. */
+export async function fetchIntake(): Promise<{
+  intakeCompleted: boolean;
+  data: IntakeData;
+  suggestions: Partial<Record<SuggestField, PrefillSuggestion>>;
+}> {
   const { data } = await api.get('/api/onboarding/intake');
   const parsed = z
     .object({
       success: z.boolean().catch(false),
       intakeCompleted: z.boolean().catch(false),
       data: intakeSchema.catch(EMPTY_INTAKE),
-      suggestions: z.object({ keywords: keywordPrefillSchema }).partial().nullable().optional().catch(null),
+      suggestions: z.unknown().optional(),
     })
     .parse(data);
-  const kw = parsed.suggestions?.keywords;
-  const keywordPrefill = (kw?.items?.map((i) => i.keyword) ?? (kw?.value ? kw.value.split(',') : []))
-    .map((k) => k.trim())
-    .filter(Boolean);
-  return { intakeCompleted: parsed.intakeCompleted, data: parsed.data, keywordPrefill };
+  return { intakeCompleted: parsed.intakeCompleted, data: parsed.data, suggestions: parseSuggestions(parsed.suggestions) };
 }
 
-/** POST /api/onboarding/intake — saves the profile + marks intakeCompleted. */
-export async function saveIntake(input: IntakeData): Promise<void> {
-  await api.post('/api/onboarding/intake', input);
+/** Keywords a keywords suggestion carries — its items, else its comma-separated value. */
+export function suggestionKeywords(s: PrefillSuggestion): string[] {
+  return (s.items?.map((i) => i.keyword) ?? s.value.split(','))
+    .map((k) => k.trim())
+    .filter((k) => /[a-zA-Z]/.test(k));
+}
+
+export interface AcceptedSuggestion {
+  field: SuggestField;
+  source: PrefillSuggestion['source'];
+  sourceUrl?: string;
+}
+
+/**
+ * POST /api/onboarding/intake — saves the profile + marks intakeCompleted.
+ * `acceptedSuggestions` records which fields the owner filled from a sourced
+ * suggestion (still used as-is), same as the web form.
+ */
+export async function saveIntake(input: IntakeData, acceptedSuggestions: AcceptedSuggestion[] = []): Promise<void> {
+  await api.post('/api/onboarding/intake', { ...input, acceptedSuggestions });
 }
 
 export interface SuggestedKeyword {

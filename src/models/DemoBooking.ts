@@ -37,6 +37,22 @@ const DemoBookingSchema = new mongoose.Schema({
   // of the same booking sees this and does not send another confirmation.
   whatsappConfirmationSentAt: { type: Date },
   rescheduledFrom: { type: mongoose.Schema.Types.ObjectId, ref: 'DemoBooking' },
+  // What happened at the demo, and who says so. 'unconfirmed' is the
+  // automatic no-show timeout (nobody recorded an outcome in time) — it is
+  // NOT attendance data and never triggers a message. Only source 'staff'
+  // counts. forStartUtc ties the record to one demo time: after a reschedule
+  // it no longer matches startUtc and is ignored. Absent on older bookings.
+  attendance: {
+    outcome: { type: String, enum: ['unconfirmed', 'attended', 'no_show', 'declined', 'not_ready'] },
+    source:  { type: String, enum: ['auto-timeout', 'staff'] },
+    forStartUtc: { type: Date },
+    at:      { type: Date },
+    by:      { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  },
+  // Demo time (startUtc ISO, or 'unscheduled') whose one post-demo WhatsApp
+  // message has been claimed — set atomically just before sending, cleared
+  // if the send fails. A rescheduled demo (new startUtc) can get its own.
+  postDemoMessageFor: { type: String },
   // The 24h-before/1h-before reminder ScheduledActions created alongside
   // this booking, so they can be found and cancelled together on
   // reschedule/cancel without a separate lookup query.

@@ -56,10 +56,10 @@ const SLIDES: Slide[] = [
     hero: 'sparkles',
     chips: [
       { icon: 'sparkles', text: 'AI drafted a reply' },
-      { icon: 'checkmark-circle', text: 'You approved' },
+      { icon: 'checkmark-circle', text: 'Reply posted' },
     ],
-    title: 'AI writes, you approve',
-    body: 'AI drafts replies to your reviews and posts for your profile. Nothing goes live until you approve it.',
+    title: 'AI replies for you',
+    body: 'AI replies to your reviews automatically after a fact check, and drafts posts for your profile. Prefer to approve each reply? Switch it in Review settings.',
   },
   {
     key: 'photos',

@@ -1,6 +1,7 @@
 import Groq from 'groq-sdk';
 import dbConnect from '@/lib/mongodb';
 import { GROQ_MODEL } from '@/lib/aiModel';
+import { usablePersonName } from '@/lib/personName';
 import SalesAgentConfig from '@/models/SalesAgentConfig';
 import type { ISalesConversation, ISalesScores } from '@/models/SalesConversation';
 import { leadMessageFacts, leadMessageScores, resolveRankHeadline } from '@/services/audit/reportMath';
@@ -11,7 +12,10 @@ import {
   LEGACY_FIRST_AI_PROMPT,
   LEGACY_FIRST_TEMPLATE,
   LEGACY_FOLLOWUP_TEMPLATES,
+  SEP_2026_FIRST_AI_PROMPT,
+  SEP_2026_FIRST_TEMPLATE,
   defaultSalesAgentConfig,
+  upgradeUnmodifiedDefault,
   renderTemplate,
   summariseKnowledge,
   type SalesAgentConfigShape,
@@ -92,10 +96,17 @@ export async function getSalesAgentConfig(): Promise<SalesAgentConfigShape> {
   const existing = await SalesAgentConfig.findOne({ key: 'default' }).lean() as any;
   if (existing) {
     const base = defaultSalesAgentConfig();
+    const storedFirst = { ...base.firstMessage, ...(existing.firstMessage ?? {}) };
     return {
       ...base,
       ...existing,
-      firstMessage: { ...base.firstMessage, ...(existing.firstMessage ?? {}) },
+      // An unmodified earlier default becomes the current one (exact match
+      // only — customized copy is kept). Read-time only; nothing is written.
+      firstMessage: {
+        ...storedFirst,
+        template: upgradeUnmodifiedDefault(storedFirst.template, [LEGACY_FIRST_TEMPLATE, SEP_2026_FIRST_TEMPLATE], DEFAULT_FIRST_TEMPLATE) ?? storedFirst.template,
+        aiSystemPrompt: upgradeUnmodifiedDefault(storedFirst.aiSystemPrompt, [LEGACY_FIRST_AI_PROMPT, SEP_2026_FIRST_AI_PROMPT], DEFAULT_FIRST_AI_PROMPT) ?? storedFirst.aiSystemPrompt,
+      },
       followUps: Array.isArray(existing.followUps) ? existing.followUps : base.followUps,
       // Existing configs predate the knowledge block — always hand callers a
       // real object so executor code can read config.knowledge.* unguarded.
@@ -113,7 +124,9 @@ export async function getSalesAgentConfig(): Promise<SalesAgentConfigShape> {
 
 function buildVars(scores: ISalesScores, leadName: string, config: SalesAgentConfigShape): Record<string, string> {
   return {
-    name: firstName(leadName),
+    // Owner's first name once known; until then the business name (a shadow
+    // account is "New User", whose first name would read "Hi New").
+    name: usablePersonName(leadName, scores.businessName) ? firstName(leadName) : scores.businessName || 'there',
     business: scores.businessName,
     rank: scores.rank != null ? String(scores.rank) : scores.rankStatus === 'unavailable' ? 'not measured yet' : 'beyond 20',
     // 'n/a' — never a placeholder 0 — when a value wasn't measured.

@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
@@ -20,6 +20,10 @@ export default function LoginScreen() {
   const { requestPhoneOtp, loginWithPhone } = useAuth();
 
   const [phoneStep, setPhoneStep] = useState<PhoneStep>('enter-phone');
+  // Small phones (<360dp, e.g. 320-wide): drop the form's extra inset so the
+  // full button label fits instead of truncating to "Send code on Whats…".
+  const { width } = useWindowDimensions();
+  const formInset = width < 360 ? 'px-0' : 'px-5';
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [maskedPhone, setMaskedPhone] = useState<string | undefined>();
@@ -78,14 +82,14 @@ export default function LoginScreen() {
               <Text className="font-display text-[32px] tracking-tight text-white">
                 GrowwMatics AI
               </Text>
-              <Text className="font-sans text-base text-zinc-400">
+              <Text className="text-center font-sans text-base text-zinc-400">
                 Grow your business, from your pocket
               </Text>
             </View>
           </View>
 
           {phoneStep === 'enter-phone' ? (
-            <View className="gap-4 px-5">
+            <View className={`gap-4 ${formInset}`}>
               <PhoneNumberField
                 value={phone}
                 onChange={setPhone}
@@ -104,7 +108,7 @@ export default function LoginScreen() {
               />
             </View>
           ) : (
-            <View className="gap-4 px-5">
+            <View className={`gap-4 ${formInset}`}>
               <Field
                 placeholder="······"
                 keyboardType="number-pad"

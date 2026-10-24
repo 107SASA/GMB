@@ -455,7 +455,8 @@ function Rows({ rows }: { rows: Array<{ label: string; value: string }> }) {
       {rows.map((r, i) => (
         <View key={`${r.label}-${i}`} className="flex-row justify-between gap-3 py-1">
           <Text className="flex-1 font-sans text-sm text-zinc-400">{r.label}</Text>
-          <Text className="font-sans-semibold text-sm text-white">{r.value}</Text>
+          {/* Capped + right-aligned so a long value wraps instead of running off narrow screens. */}
+          <Text className="text-right font-sans-semibold text-sm text-white" style={{ flexShrink: 1, maxWidth: '60%' }}>{r.value}</Text>
         </View>
       ))}
     </Card>

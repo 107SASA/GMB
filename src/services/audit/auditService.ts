@@ -1611,11 +1611,11 @@ async function processAuditJobInner(auditId: string) {
       }
 
       // Monthly report ready → in-app + (opted-in) WhatsApp, built only from
-      // the report's own measured values.
+      // the report's own measured values; deferred to 09:00 IST at night.
       if (auditKind === 'monthly') {
         try {
-          const { notifyMonthlyReport } = require('../lifecycle/notify');
-          await notifyMonthlyReport(audit.businessId.toString(), audit._id.toString(), auditData);
+          const { deliverMonthlyReportNotice } = require('../lifecycle/notify');
+          await deliverMonthlyReportNotice(audit.businessId.toString(), audit._id.toString(), auditData);
         } catch (nErr: any) {
           console.warn('[auditService] monthly notification failed:', nErr?.message);
         }

@@ -293,9 +293,31 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
     //   reviewAutopollCron, batched nurtureSchedulerTick steps.
     // + billing: a trial whose first charge Razorpay has not confirmed is re-checked
     //   and flagged for review, never assumed failed (subscriptionExpiryWorker) — not CRM code.
-    'src/services/inngest/functions.ts': ['processFollowUpJob', 'scheduleLeadFollowUpsJob', 'dispatchWhatsappFollowUpJob', 'crmFollowUpReminderCron', 'crmStaleLeadReminderCron', 'crmGrowthReportReadyCron', 'gbpNightlySyncScheduler', 'gbpSyncWorker', 'generateAuditJob', 'handleSlotSelection', 'bookConfirmedSlot', 'buildMessageForAction', 'deliverBookingReply', 'followUpCron', 'billingActivationReconcileCron', 'reviewAutopollCron', 'cleanupStalePendingAudits', 'nurtureSchedulerTick', 'subscriptionExpiryWorker'],
+    // + owner WhatsApp policy (Oct 2026, not CRM code): owner-alert copy helper
+    //   import, the review-request identical-template cap, no duplicate
+    //   report-ready template for a WhatsApp-connected report, critical-review copy.
+    // + Segment 1 sales lifecycle (Oct 2026, the sales flow itself, not CRM):
+    //   one invitation + one ~48h follow-up, final eligibility check before
+    //   every scheduled sales send, retired proactive NBA, decline handling,
+    //   reply-retry claim (services/sales/preSalesPolicy.ts). The automatic
+    //   no-show timeout records 'unconfirmed' attendance and sends nothing
+    //   (runNoShowCheck) — demo lifecycle, not CRM.
+    // + Segment 3 owner notifications & customer review requests (Oct 2026, not
+    //   CRM): free-text review reminder copy, business hours in Asia/Kolkata,
+    //   and the durable 09:00 IST monthly-report notice, with its hourly
+    //   safety-net sweep in auditAutopilotCron.
+    // + Segment 3.1 STOP reliability (Oct 2026, not CRM): the retry job for an
+    //   inbound opt-out that could not be saved (inboundOptOutRetry).
+    // + Segment 4A support intake (Oct 2026, not CRM): the support job sends the
+    //   one deterministic acknowledgement instead of AI replies (supportAgentReply).
+    'src/services/inngest/functions.ts': ['DEFAULT_REMINDER_1', 'DEFAULT_REMINDER_2', 'nextBizHourDate', 'monthlyReportNotice', 'auditAutopilotCron', 'inboundOptOutRetry', 'supportAgentReply','processFollowUpJob', 'scheduleLeadFollowUpsJob', 'dispatchWhatsappFollowUpJob', 'crmFollowUpReminderCron', 'crmStaleLeadReminderCron', 'crmGrowthReportReadyCron', 'gbpNightlySyncScheduler', 'gbpSyncWorker', 'generateAuditJob', 'handleSlotSelection', 'bookConfirmedSlot', 'buildMessageForAction', 'deliverBookingReply', 'followUpCron', 'billingActivationReconcileCron', 'reviewAutopollCron', 'cleanupStalePendingAudits', 'nurtureSchedulerTick', 'subscriptionExpiryWorker', '__header__', 'processReviewCampaign', 'sendReportReadyNotification', 'criticalAlertWorker', 'runSalesFollowUpDrip', 'salesNurtureRequested', 'salesNurtureConsented', 'salesAgentReply', 'PROACTIVE_NBA_ACTIONS', 'proactiveNbaScheduler', 'sendSalesFirstMessage', 'SALES_DECLINED_ACK_MESSAGE', 'runNoShowCheck'],
     // Real WhatsApp inbound lines are tagged via: 'whatsapp' so a website form cannot open the 24h window.
-    'src/app/api/whatsapp/webhook/route.ts': ['__header__', 'processInboundMessage', 'handleActiveSalesConversation', 'processPlatformInbound', 'openDemoThread'],
+    // + Segment 3.1 STOP reliability (Oct 2026, not CRM): both provider handlers
+    //   apply an opt-out durably before claiming the message id, outside the
+    //   ordinary rate limit (services/messaging/inboundOptOut.ts).
+    // + Segment 4A (Oct 2026): the ownership shadow sync no longer turns a
+    //   support conversation into IN_HOUSE (observeLeadOwnershipShadow).
+    'src/app/api/whatsapp/webhook/route.ts': ['__header__', 'processInboundMessage', 'handleActiveSalesConversation', 'processPlatformInbound', 'openDemoThread', 'handleTwilioWebhook', 'handleMetaWebhook', 'observeLeadOwnershipShadow'],
   };
   for (const [file, ok] of Object.entries(allowed)) {
     const head = atHead(file);

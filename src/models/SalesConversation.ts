@@ -57,6 +57,7 @@ export interface ISalesConversation extends Document {
   lastAgentAt?: Date;
   lastLeadReplyAt?: Date;
   followUpsSent: number;
+  nurtureSentKeys?: string[];
   lastReadAt?: Date;
   nurtureConfigVersion?: number;
   createdAt: Date;
@@ -106,6 +107,10 @@ const SalesConversationSchema: Schema = new Schema(
     lastAgentAt: { type: Date },
     lastLeadReplyAt: { type: Date },
     followUpsSent: { type: Number, default: 0 },
+    // Automated sends already claimed on this conversation ('consent',
+    // 'first', 'followup-0', 'reply:<eventId>') — services/sales/preSalesPolicy.ts.
+    // A retry or an overlapping job finds its key here and sends nothing.
+    nurtureSentKeys: { type: [String], default: [] },
     lastReadAt: { type: Date },
     // Frozen when the nurture sequence is created. Later admin edits do not
     // rewrite this copy, so an in-flight drip keeps the timing it started with.

@@ -91,18 +91,18 @@ export interface IBusiness extends Document {
   };
   // How incoming reviews get replied to (Review Management screen) —
   // 'manual': AI drafts a reply, the owner reviews/edits/approves before it
-  // posts. 'auto': the AI agent drafts AND posts fact-checked replies on its
-  // own, only after the owner opted in (lib/reviewReplyConsent.ts). New
-  // businesses start on 'manual' (newBusinessReviewReplySettings, matching the
-  // schema default below). Read by syncReviewsForBusiness (see services/reviews/) right
+  // posts. 'auto' (DEFAULT): the AI agent drafts AND posts fact-checked
+  // replies on its own; failing drafts wait for the owner
+  // (lib/reviewReplyConsent.ts). New businesses start on 'auto'
+  // (newBusinessReviewReplySettings, matching the schema default below). Read by syncReviewsForBusiness (see services/reviews/) right
   // after new reviews are upserted, and by the reply-settings route when the
   // owner switches modes (to catch up the existing backlog of unreplied
   // reviews, not just future ones).
   reviewReplySettings: {
     mode: 'manual' | 'auto';
     tone: string;
-    /** Auto-publish runs only when the owner switched it on under the validated flow (set by
-     *  api/reviews/reply-settings). A legacy mode:'auto' without this stays drafts-only. */
+    /** Audit of the owner switching auto on themselves (set by api/reviews/reply-settings).
+     *  Not required for auto to run — auto is the default. */
     autoPublishConsentAt?: Date;
     autoPublishConsentBy?: string;
   };
@@ -147,6 +147,9 @@ export interface IBusiness extends Document {
    */
   pipelineStage?: string;
   razorpaySubscriptionId?: string;
+  /** Razorpay mode our checkout created `subscriptionId` in. Trusted only while it
+   *  names the current razorpaySubscriptionId (other writers don't record a mode). */
+  razorpaySubscriptionEnv?: { subscriptionId: string; mode: 'test' | 'live' };
   subscriptionCurrentPeriodEnd?: Date;
   /** True after the owner cancels: stays 'active' until the period ends (no
    *  refund — access continues to the paid-through date), then downgrades. */
@@ -160,6 +163,9 @@ export interface IBusiness extends Document {
   trialCancelledAt?: Date;
   /** The Razorpay subscription that currently grants access (trial or paid). Events for any other subscription can't change access. */
   billingSubscriptionId?: string;
+  /** Razorpay mode billingSubscriptionId was created in — copied only from a checkout-link record naming that
+   *  same id (never inferred). Trusted only while it names the current billingSubscriptionId. */
+  billingSubscriptionEnv?: { subscriptionId: string; mode: 'test' | 'live' };
   /** created_at of the last Razorpay event applied — older events are ignored (out-of-order delivery). */
   billingLastEventAt?: Date;
   /** Set when a charge fails (Day 0 of recovery); cleared when a payment succeeds. */
@@ -179,7 +185,7 @@ export interface IBusiness extends Document {
   /** One recovery at a time (lib/billing/paymentRecovery.ts). */
   recoveryLock?: { token: string; until: Date };
   /** The open replacement checkout, reused on repeated clicks until paid or expired. */
-  recoveryCheckout?: { subscriptionId: string; replacesSubscriptionId?: string | null; cycle: string; createdAt: Date; expiresAt: Date };
+  recoveryCheckout?: { subscriptionId: string; replacesSubscriptionId?: string | null; cycle: string; createdAt: Date; expiresAt: Date; mode?: 'test' | 'live' };
   /** When the post-audit WhatsApp sales nurture was sent (send-once guard). */
   auditNurtureSentAt?: Date;
   /** When the "your report is ready" WhatsApp ping was sent (send-once guard). */
@@ -234,6 +240,18 @@ export interface IBusiness extends Document {
   crmGrowthReportNotifiedFor?: string | null;
   /** Last 15-day Google performance WhatsApp (claimed atomically before sending). */
   performanceDigestLastSentAt?: Date;
+  /** Most recent routine performance-update WhatsApp sends (at most 2 kept) — the rolling 2-per-15-days limit, lib/ownerWhatsAppLimits.ts. */
+  performanceUpdateSentAt?: Date[];
+  /** ISO week ("2026-W43") of the last reviews-need-attention WhatsApp — one per week, claimed atomically. */
+  reviewAttentionWeekKey?: string;
+  /**
+   * Billing WhatsApp notices already claimed for this workspace
+   * (services/billing/billingWhatsApp.ts): 'payment-first:<subId>',
+   * 'payment-renewal:<subId>:<paidCount>', 'trial-ending:<trialEndsAt>',
+   * 'trial-expired:<trialEndsAt>'. $addToSet claim → one message per key
+   * across webhook retries, reconciliation and out-of-order events.
+   */
+  billingNoticeKeys?: string[];
   // ADDITIVE — automatic audit autopilot anchor (see src/lib/auditAutopilot.ts
   // + auditAutopilotCron in services/inngest/functions.ts). Set the first time
   // this workspace has an active subscription + connected Google Business
@@ -247,6 +265,13 @@ export interface IBusiness extends Document {
    *  category so their automatic audit can run — throttles that nudge to once
    *  every few days. */
   auditAutopilotCategoryNudgedAt?: Date;
+  /** How many category-nudge WhatsApps were sent (capped at 2; unset on
+   *  businesses nudged before Oct 2026 — counted as one already sent). */
+  auditAutopilotCategoryNudgeWhatsApps?: number;
+  /** A monthly-report notice held back by quiet hours (21:00–09:00 IST): the
+   *  hourly sweep delivers it after dueAt if the queued job never did.
+   *  Cleared once the report's notice is claimed. */
+  monthlyReportNoticePending?: { auditId: mongoose.Types.ObjectId; dueAt: Date };
   // ADDITIVE — WhatsApp AI Agent booking configuration (Feature 1).
   // Opt-in only: bookingEnabled defaults to false so existing businesses
   // are completely unaffected until they explicitly configure this.
@@ -357,7 +382,7 @@ const BusinessSchema: Schema = new Schema(
       messageTemplate: { type: String }
     },
     reviewReplySettings: {
-      mode: { type: String, enum: ['manual', 'auto'], default: 'manual' },
+      mode: { type: String, enum: ['manual', 'auto'], default: 'auto' },
       tone: { type: String, default: 'Professional' },
       autoPublishConsentAt: { type: Date },
       autoPublishConsentBy: { type: String },
@@ -394,6 +419,10 @@ const BusinessSchema: Schema = new Schema(
     // ADDITIVE — GrowwMatics' own sales pipeline stage (see IBusiness above).
     pipelineStage: { type: String, index: true },
     razorpaySubscriptionId: { type: String, index: true, sparse: true },
+    razorpaySubscriptionEnv: {
+      type: new Schema({ subscriptionId: { type: String, required: true }, mode: { type: String, enum: ['test', 'live'], required: true } }, { _id: false }),
+      default: undefined,
+    },
     subscriptionCurrentPeriodEnd: { type: Date },
     subscriptionCancelAtPeriodEnd: { type: Boolean, default: false },
     subscriptionRemindersSent: { type: [Number], default: [] },
@@ -402,6 +431,10 @@ const BusinessSchema: Schema = new Schema(
     trialEndsAt: { type: Date },
     trialCancelledAt: { type: Date },
     billingSubscriptionId: { type: String, index: true, sparse: true },
+    billingSubscriptionEnv: {
+      type: new Schema({ subscriptionId: { type: String, required: true }, mode: { type: String, enum: ['test', 'live'], required: true } }, { _id: false }),
+      default: undefined,
+    },
     billingLastEventAt: { type: Date },
     paymentFailedAt: { type: Date },
     paymentFailureReason: { type: String },
@@ -418,6 +451,7 @@ const BusinessSchema: Schema = new Schema(
       cycle: { type: String },
       createdAt: { type: Date },
       expiresAt: { type: Date },
+      mode: { type: String, enum: ['test', 'live'] },
     },
     // ADDITIVE — when the post-audit WhatsApp sales nurture was sent (send-once).
     auditNurtureSentAt: { type: Date },
@@ -453,6 +487,9 @@ const BusinessSchema: Schema = new Schema(
     // ADDITIVE — weekly content autopilot anchor (see IBusiness above).
     autopilotNextRunAt: { type: Date },
     performanceDigestLastSentAt: { type: Date },
+    performanceUpdateSentAt: { type: [Date], default: undefined },
+    reviewAttentionWeekKey: { type: String },
+    billingNoticeKeys: { type: [String], default: undefined },
     crmInvestment: {
       monthlyAmount: { type: Number, min: 0 },
       currency: { type: String, default: 'INR' },
@@ -462,6 +499,11 @@ const BusinessSchema: Schema = new Schema(
     // ADDITIVE — automatic audit autopilot (see IBusiness above + src/lib/auditAutopilot.ts).
     auditAutopilotNextRunAt: { type: Date },
     auditAutopilotCategoryNudgedAt: { type: Date },
+    auditAutopilotCategoryNudgeWhatsApps: { type: Number },
+    monthlyReportNoticePending: {
+      type: new Schema({ auditId: { type: Schema.Types.ObjectId, ref: 'Audit' }, dueAt: { type: Date } }, { _id: false }),
+      default: undefined,
+    },
     // ADDITIVE — see whatsappBookingSettings in IBusiness above. Not required,
     // no default object is forced onto existing documents; the WhatsApp
     // appointment agent treats a missing/disabled config as "booking off".

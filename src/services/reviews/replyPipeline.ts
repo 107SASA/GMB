@@ -7,14 +7,14 @@ import { validateReply, type ReplyEvidence, type ReplyValidation } from './valid
  *
  *   new review → verified business + SEO context → AI draft → fact/policy/
  *   quality check (one regeneration) → DRAFT (passed) | NEEDS_REVIEW (failed)
- *   → approval (owner; or auto-reply when the owner switched it on) →
+ *   → approval (owner; or auto-reply, which is on by default) →
  *   re-check of the exact text → publish to Google → POSTED only when Google
  *   confirms (blocked when live writes are off, FAILED with Google's error).
  *
- * Auto-publish runs only with reviewReplySettings.mode 'auto' + the owner's
- * own consent, recorded when the owner turns it on (lib/reviewReplyConsent.ts).
- * New businesses start in manual mode. Nothing that fails the check is ever
- * published — not by auto-reply, not by the Post button.
+ * Auto-publish runs with reviewReplySettings.mode 'auto' — the default for new
+ * businesses; the owner can switch to 'manual' (lib/reviewReplyConsent.ts).
+ * Nothing that fails the check is ever published — not by auto-reply, not by
+ * the Post button.
  */
 
 export const REPLY_BLOCKED_REASON = 'Approved in GrowwMatics — Google publishing has not been executed. Live Google Business Profile writes are turned off, so this reply is not on Google.';
@@ -26,7 +26,6 @@ export interface ReplyDeps {
 
 export {
   isAutoPublishActive,
-  DEFAULT_AUTO_REPLY_CONSENT_BY,
   newBusinessReviewReplySettings,
 } from '@/lib/reviewReplyConsent';
 

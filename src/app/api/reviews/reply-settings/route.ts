@@ -2,20 +2,17 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
-import Review from '@/models/Review';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import { isAutoPublishActive, replyModeUpdate } from '@/lib/reviewReplyConsent';
+import { queueUnrepliedBacklog } from '@/services/reviews/replyBacklog';
 
 /**
- * Review Management's reply-mode toggle. 'manual' (DEFAULT): every reply is a
- * fact-checked draft the owner approves before it is posted. 'auto': drafts
- * that pass the fact check are posted without waiting; drafts that fail wait
- * for the owner. Auto is active only when the owner switched it on here
- * (autoPublishConsentAt + their user id recorded) — a legacy mode:'auto' saved
- * before the fact-checked flow, or one set by the withdrawn new-business
- * default, is treated as manual until the owner turns it on.
+ * Review reply-mode toggle (web Review Management + the app's Review
+ * settings). 'auto' (DEFAULT): drafts that pass the fact check are posted
+ * without waiting; drafts that fail wait for the owner. 'manual': every reply
+ * is a fact-checked draft the owner approves before it is posted.
  * See lib/reviewReplyConsent.ts.
  */
 const bodySchema = z.object({
@@ -29,7 +26,7 @@ export async function GET() {
 
   await dbConnect();
   const business = await Business.findById(ctx.businessId).select('reviewReplySettings').lean<{
-    reviewReplySettings?: { mode?: string; tone?: string; autoPublishConsentAt?: Date; autoPublishConsentBy?: string };
+    reviewReplySettings?: { mode?: string; tone?: string; autoPublishConsentAt?: Date };
   }>();
   const s = business?.reviewReplySettings;
   const active = isAutoPublishActive(s);
@@ -38,9 +35,7 @@ export async function GET() {
     success: true,
     mode: active ? 'auto' : 'manual',
     tone: s?.tone ?? 'Professional',
-    autoPublishSince: active ? s?.autoPublishConsentAt : null,
-    // Saved as 'auto' before replies were fact-checked — paused until the owner turns it on again.
-    legacyAutoPaused: s?.mode === 'auto' && !active,
+    autoPublishSince: active ? s?.autoPublishConsentAt ?? null : null,
   });
 }
 
@@ -65,7 +60,7 @@ export async function POST(req: Request) {
     }>();
     const wasAuto = isAutoPublishActive(before?.reviewReplySettings);
 
-    // Turning auto on records the owner's explicit opt-in (only fact-checked replies publish).
+    // Turning auto on records who switched it on (only fact-checked replies publish).
     await Business.updateOne(
       { _id: ctx.businessId },
       replyModeUpdate({ mode, tone, wasAuto, ownerUserId: String(ctx.userId) })
@@ -75,23 +70,7 @@ export async function POST(req: Request) {
     // reviews get a reply" per how this was asked for — not just ones that
     // arrive from now on. Queue the full existing backlog of unreplied
     // reviews for the same background job a normal sync would use.
-    let queued = 0;
-    if (mode === 'auto' && !wasAuto) {
-      const pending = await Review.find({
-        businessId: ctx.businessId,
-        response: { $in: [null, undefined, ''] },
-        replyStatus: { $in: [null, 'PENDING'] },
-      }).select('_id').lean();
-
-      if (pending.length > 0) {
-        const { inngest } = await import('@/services/inngest/client');
-        await inngest.send({
-          name: 'reviews/auto-reply-batch',
-          data: { businessId: ctx.businessId, reviewIds: pending.map((r) => r._id.toString()) },
-        });
-        queued = pending.length;
-      }
-    }
+    const queued = mode === 'auto' && !wasAuto ? await queueUnrepliedBacklog(String(ctx.businessId)) : 0;
 
     return NextResponse.json({ success: true, mode, tone, queued });
   } catch (error: any) {

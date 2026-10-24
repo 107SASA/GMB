@@ -33,7 +33,9 @@ import { normalizePhoneE164 } from '@/lib/phone';
 export async function optOutLeadByPhone(
   phone: string | null | undefined,
   reason: string = 'inbound-stop',
-  actor: string = 'system'
+  actor: string = 'system',
+  /** throwOnError: rethrow instead of swallowing, for a caller that retries (the durable inbound STOP path). */
+  opts: { throwOnError?: boolean } = {}
 ): Promise<{ changed: boolean; leadId?: string }> {
   try {
     if (!phone) return { changed: false };
@@ -44,6 +46,7 @@ export async function optOutLeadByPhone(
     return optOutLeadDoc(lead, reason, actor);
   } catch (err: any) {
     console.warn('[optOutLead] optOutLeadByPhone failed:', err?.message);
+    if (opts.throwOnError) throw err;
     return { changed: false };
   }
 }

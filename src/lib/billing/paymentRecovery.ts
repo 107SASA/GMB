@@ -62,6 +62,8 @@ export interface RecoveryDeps {
   reconcilePaid: (businessId: string, subscriptionId: string) => Promise<void>;
   record: (entry: { businessId: string; type: string; note: string; subscriptionId?: string; needsReview?: boolean }) => Promise<void>;
   now: () => Date;
+  /** Razorpay mode (test/live keys) the replacement is created in — recorded with its checkout link. */
+  razorpayMode?: 'test' | 'live' | null;
 }
 
 export type RecoveryResult =
@@ -69,7 +71,23 @@ export type RecoveryResult =
   | { kind: 'already_paid' }
   | { kind: 'not_needed' }
   | { kind: 'busy' }
-  | { kind: 'unavailable'; reason: string };
+  | { kind: 'unavailable'; reason: string }
+  /** Recorded under the other Razorpay keys (e.g. test while live is configured): a person must handle it. */
+  | { kind: 'support_required'; reason: 'other_mode'; recordedMode: 'test' | 'live' };
+
+/**
+ * Mode recorded for `subscriptionId` by a record naming exactly that id (paying
+ * subscription, checkout link, open recovery checkout); null when none, or they
+ * disagree. Same rule as razorpayMode.recordedSubscriptionMode — inlined
+ * because this module stays import-free for its database tests.
+ */
+function recordedMode(ws: any, subscriptionId: string): 'test' | 'live' | null {
+  const modes = new Set<string>();
+  for (const r of [ws?.billingSubscriptionEnv, ws?.razorpaySubscriptionEnv, ws?.recoveryCheckout]) {
+    if (r?.subscriptionId === subscriptionId && (r.mode === 'test' || r.mode === 'live')) modes.add(r.mode);
+  }
+  return modes.size === 1 ? ([...modes][0] as 'test' | 'live') : null;
+}
 
 export async function prepareRecoveryCheckout(
   deps: RecoveryDeps,
@@ -78,7 +96,7 @@ export async function prepareRecoveryCheckout(
   const { Business } = deps;
   const businessId = input.businessId;
   const ws = await Business.findById(businessId)
-    .select('subscriptionStatus billingSubscriptionId razorpaySubscriptionId recoveryCheckout supersededSubscriptionIds')
+    .select('subscriptionStatus billingSubscriptionId billingSubscriptionEnv razorpaySubscriptionId razorpaySubscriptionEnv recoveryCheckout supersededSubscriptionIds')
     .lean<any>();
   if (!ws || ws.subscriptionStatus !== 'past_due') return { kind: 'not_needed' };
 
@@ -90,13 +108,23 @@ export async function prepareRecoveryCheckout(
     { $set: { recoveryLock: { token, until: new Date(now.getTime() + RECOVERY_LOCK_MS) } } },
     { returnDocument: 'after' }
   )
-    .select('subscriptionStatus billingSubscriptionId razorpaySubscriptionId recoveryCheckout supersededSubscriptionIds')
+    .select('subscriptionStatus billingSubscriptionId billingSubscriptionEnv razorpaySubscriptionId razorpaySubscriptionEnv recoveryCheckout supersededSubscriptionIds')
     .lean<any>();
   if (!locked) return { kind: 'busy' };
 
   const unavailable = async (reason: string, note: string, subscriptionId?: string): Promise<RecoveryResult> => {
     await deps.record({ businessId, type: 'recovery.blocked', note: `${reason}: ${note}`, subscriptionId, needsReview: true });
     return { kind: 'unavailable', reason };
+  };
+  // A subscription recorded under the other keys is never looked up, cancelled
+  // or replaced here (only when its mode is RECORDED — unknown stays as before).
+  const otherMode = (subscriptionId: string): 'test' | 'live' | null => {
+    const recorded = recordedMode(locked, subscriptionId);
+    return recorded && deps.razorpayMode && recorded !== deps.razorpayMode ? recorded : null;
+  };
+  const supportRequired = async (recorded: 'test' | 'live', note: string, subscriptionId: string): Promise<RecoveryResult> => {
+    await deps.record({ businessId, type: 'recovery.support_required', note: `${note} was created in ${recorded} mode; ${deps.razorpayMode} keys are configured`, subscriptionId, needsReview: true });
+    return { kind: 'support_required', reason: 'other_mode', recordedMode: recorded };
   };
 
   try {
@@ -105,6 +133,8 @@ export async function prepareRecoveryCheckout(
     // 2. An open recovery checkout from an earlier click → hand back the same one.
     const open = locked.recoveryCheckout;
     if (open?.subscriptionId && new Date(open.expiresAt).getTime() > deps.now().getTime()) {
+      const openOther = otherMode(open.subscriptionId);
+      if (openOther) return supportRequired(openOther, `open recovery checkout ${open.subscriptionId}`, open.subscriptionId);
       let state: RazorpaySubState;
       try {
         state = await deps.fetchSubscription(open.subscriptionId);
@@ -126,6 +156,8 @@ export async function prepareRecoveryCheckout(
     const original: string | null = locked.billingSubscriptionId || locked.razorpaySubscriptionId || null;
     const superseded: string[] = locked.supersededSubscriptionIds ?? [];
     if (original && original !== open?.subscriptionId && !superseded.includes(original)) {
+      const originalOther = otherMode(original);
+      if (originalOther) return supportRequired(originalOther, `original ${original}`, original);
       let before: RazorpaySubState;
       try {
         before = await deps.fetchSubscription(original);
@@ -185,8 +217,13 @@ export async function prepareRecoveryCheckout(
       {
         $set: {
           razorpaySubscriptionId: created.id,
-          recoveryCheckout: { subscriptionId: created.id, replacesSubscriptionId: original, cycle: input.cycle, createdAt: deps.now(), expiresAt: expireBy },
+          recoveryCheckout: {
+            subscriptionId: created.id, replacesSubscriptionId: original, cycle: input.cycle, createdAt: deps.now(), expiresAt: expireBy,
+            ...(deps.razorpayMode && { mode: deps.razorpayMode }),
+          },
+          ...(deps.razorpayMode && { razorpaySubscriptionEnv: { subscriptionId: created.id, mode: deps.razorpayMode } }),
         },
+        ...(!deps.razorpayMode && { $unset: { razorpaySubscriptionEnv: '' } }),
       }
     );
     await deps.record({ businessId, type: 'recovery.checkout_created', note: `replacement for ${original ?? 'none'} (${input.cycle})`, subscriptionId: created.id });

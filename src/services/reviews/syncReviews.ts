@@ -270,8 +270,8 @@ export async function syncReviewsForBusiness(
   // Reply drafting (Sep 2026): every newly synced review without a reply gets
   // a fact-checked DRAFT for the owner to approve (recent reviews only, so a
   // first sync of a long history doesn't burn AI calls on years-old reviews).
-  // It is published automatically ONLY when the owner switched auto-reply on
-  // (mode 'auto' + consent) and the draft passed the check — see
+  // It is published automatically when the business is in auto-reply mode
+  // (the default) and the draft passed the check — see
   // services/reviews/autoReply.ts + replyPipeline.ts.
   const business = await Business.findById(bid).select('reviewReplySettings').lean<{
     reviewReplySettings?: { mode?: string; autoPublishConsentAt?: Date; autoPublishConsentBy?: string };

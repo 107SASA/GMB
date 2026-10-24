@@ -790,13 +790,13 @@ export default function SettingsPage() {
                   key: 'weeklyUpdateWhatsApp',
                   icon: '🗓️',
                   label: 'Weekly update',
-                  desc: 'A weekly summary when there are new reviews, changes or actions for you',
+                  desc: 'A weekly summary when there are new reviews, changes or actions for you (performance updates are limited to 2 every 15 days)',
                 },
                 {
                   key: 'weeklyReportAlwaysWhatsApp',
                   icon: '🔁',
                   label: 'Weekly update every week',
-                  desc: 'Send the weekly summary even in weeks with nothing new',
+                  desc: 'Send the weekly summary even in weeks with nothing new (still limited to 2 every 15 days)',
                 },
                 {
                   key: 'performanceDigestWhatsApp',
@@ -805,22 +805,10 @@ export default function SettingsPage() {
                   desc: 'Views, calls, website clicks and directions from Google, compared with the previous 15 days',
                 },
                 {
-                  key: 'dailyDigestWhatsApp',
-                  icon: '📊',
-                  label: 'Daily activity digest',
-                  desc: 'One evening summary of posts published, photos, and review replies',
-                },
-                {
-                  key: 'postPublishedWhatsApp',
-                  icon: '📢',
-                  label: 'Posts & photos (in digest)',
-                  desc: 'Include published posts, photos and new content in the daily digest',
-                },
-                {
                   key: 'reviewReplyWhatsApp',
                   icon: '💬',
-                  label: 'Review replies (in digest)',
-                  desc: 'Include AI review replies sent / awaiting approval in the daily digest',
+                  label: 'Review reminders',
+                  desc: 'At most once a week, when Google reviews from the last 30 days are still waiting for your reply',
                 },
               ]}
               prefs={notifPrefs}

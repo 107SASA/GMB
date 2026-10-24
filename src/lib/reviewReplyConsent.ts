@@ -1,19 +1,17 @@
 /**
- * Review-reply auto-publish consent — pure rules, no imports, so the
- * integration tests can run them under plain Node.
+ * Review-reply mode rules — pure, no imports, so the integration tests can run
+ * them under plain Node.
  *
- * Automatic publishing to Google needs the OWNER's explicit opt-in, recorded
- * by the reply-settings route as autoPublishConsentAt + autoPublishConsentBy
- * (the owner's user id). New businesses start in manual mode with no consent.
+ * Auto-reply is the DEFAULT (owner's product decision, Oct 23 2026): new
+ * businesses start in 'auto', and existing ones were moved to 'auto' by
+ * scripts/migrate-review-reply-auto.ts. In 'auto', fact-checked drafts are
+ * posted to Google without waiting; drafts that fail the check wait for the
+ * owner. The owner can switch to 'manual' (approve every reply) from Review
+ * Management on the web or Review settings in the app.
+ *
+ * autoPublishConsentAt + autoPublishConsentBy are an audit of the owner
+ * switching auto on themselves; they are not required for auto to run.
  */
-
-/**
- * autoPublishConsentBy written by the Oct 2026 new-business default (auto-reply
- * on at creation). That was never the owner's consent: settings carrying it
- * stay drafts-only until the owner switches auto-reply on themselves. Kept so
- * those documents can still be recognised — never write it.
- */
-export const DEFAULT_AUTO_REPLY_CONSENT_BY = 'default:new-business';
 
 export interface ReplySettingsLike {
   mode?: string;
@@ -22,27 +20,23 @@ export interface ReplySettingsLike {
 }
 
 export function isAutoPublishActive(settings?: ReplySettingsLike | null): boolean {
-  return (
-    settings?.mode === 'auto' &&
-    !!settings?.autoPublishConsentAt &&
-    settings?.autoPublishConsentBy !== DEFAULT_AUTO_REPLY_CONSENT_BY
-  );
+  return settings?.mode === 'auto';
 }
 
 /**
- * Reply settings for a business at creation: manual (the owner approves every
- * reply), no consent recorded. Applied at each Business.create(), matching the
- * schema default.
+ * Reply settings for a business at creation: auto-reply on (fact-checked
+ * replies post automatically). Applied at each Business.create(), matching
+ * the schema default.
  */
 export function newBusinessReviewReplySettings() {
-  return { mode: 'manual' as const, tone: 'Professional' };
+  return { mode: 'auto' as const, tone: 'Professional' };
 }
 
 /**
  * The Business update for the owner saving the reply mode. Turning auto on
- * records the owner's own consent (now + their user id) unless their consent
- * is already active; turning it off clears consent. Throws without a real
- * owner id, so consent can never be recorded on someone's behalf.
+ * records who switched it on (now + their user id) unless auto is already
+ * active; turning it off clears that record. Throws without a real owner id,
+ * so the record never names anyone but the owner.
  */
 export function replyModeUpdate(input: { mode: 'manual' | 'auto'; tone?: string; wasAuto: boolean; ownerUserId: string; now?: Date }) {
   const tone = input.tone ? { 'reviewReplySettings.tone': input.tone } : {};
@@ -53,7 +47,7 @@ export function replyModeUpdate(input: { mode: 'manual' | 'auto'; tone?: string;
     };
   }
   const owner = String(input.ownerUserId ?? '').trim();
-  if (!owner || owner.startsWith('default:')) throw new Error('auto-publish consent needs the owner\'s user id');
+  if (!owner || owner.startsWith('default:')) throw new Error('auto-reply opt-in needs the owner\'s user id');
   return {
     $set: {
       'reviewReplySettings.mode': 'auto',

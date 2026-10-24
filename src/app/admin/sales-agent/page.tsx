@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Bot, Plus, Trash2, Save, Info } from 'lucide-react';
 import { SalesKnowledgeEditor, type KnowledgeShape } from '@/components/admin/SalesKnowledgeEditor';
+import { SALES_FOLLOW_UP_DELAY_MINUTES, SALES_FOLLOW_UP_LIMIT, SALES_INVITE_MIN_DELAY_MINUTES, SALES_QUIET_HOURS } from '@/lib/preSalesRules';
+
+const FOLLOW_UP_HOURS = SALES_FOLLOW_UP_DELAY_MINUTES / 60;
+const INVITE_MIN_HOURS = SALES_INVITE_MIN_DELAY_MINUTES / 60;
 
 type Mode = 'ai' | 'template';
 interface FollowUp { delayHours: number; mode: Mode; template: string; aiSystemPrompt?: string; onlyIfNoReply: boolean; }
@@ -161,6 +165,9 @@ export default function SalesAgentAdminPage() {
             </button>
           ))}
         </div>
+        <p className="text-xs text-on-surface-variant">
+          Effective timing: at least {INVITE_MIN_HOURS} hours after the report{config.firstMessage.delayMinutes > SALES_INVITE_MIN_DELAY_MINUTES ? ` (your ${config.firstMessage.delayMinutes} minutes)` : ''}, and never between {SALES_QUIET_HOURS.start} and {SALES_QUIET_HOURS.end} (IST) unless Nurturing Configuration sets other quiet hours. A number that has never messaged us gets only the approved “Reply YES” template instead.
+        </p>
         {config.firstMessage.mode === 'template' ? (
           <div>
             <label className="text-xs font-semibold text-on-surface-variant">Template</label>
@@ -177,20 +184,33 @@ export default function SalesAgentAdminPage() {
       {/* Follow-ups */}
       <section className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-5 mb-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-bold text-on-surface">Follow-up drip</h2>
-          <button type="button" onClick={() => setConfig({ ...config, followUps: [...config.followUps, { delayHours: 24, mode: 'template', template: '', onlyIfNoReply: true }] })}
-            className="flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary">
-            <Plus className="w-4 h-4" /> Add follow-up
-          </button>
+          <h2 className="font-bold text-on-surface">Follow-up</h2>
+          {config.followUps.length < SALES_FOLLOW_UP_LIMIT && (
+            <button type="button" onClick={() => setConfig({ ...config, followUps: [...config.followUps, { delayHours: FOLLOW_UP_HOURS, mode: 'template', template: '', onlyIfNoReply: true }] })}
+              className="flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary">
+              <Plus className="w-4 h-4" /> Add follow-up
+            </button>
+          )}
         </div>
-        {config.followUps.length === 0 && <p className="text-sm text-outline">No follow-ups. Add one to nudge leads who don&apos;t reply.</p>}
+        <div className="flex items-start gap-2 bg-surface border border-outline-variant rounded-xl px-4 py-3 text-xs text-on-surface-variant">
+          <Info className="w-4 h-4 mt-0.5 shrink-0 text-outline" />
+          <div>
+            At most {SALES_FOLLOW_UP_LIMIT} follow-up is sent, about {FOLLOW_UP_HOURS} hours after the first message, and only if the lead hasn&apos;t replied.
+            It is skipped when they book a demo, start a trial or pay, opt out, or say they&apos;re not interested — and never sent to a number that hasn&apos;t opted in.
+            Turning Step 1 off in Nurturing Configuration sends no follow-up.
+            {config.followUps.length > SALES_FOLLOW_UP_LIMIT && ' Additional follow-ups below are kept in your configuration but are not sent.'}
+          </div>
+        </div>
+        {config.followUps.length === 0 && <p className="text-sm text-outline">No follow-up. Add one to send a single reminder to leads who don&apos;t reply.</p>}
         {config.followUps.map((f, i) => (
-          <div key={i} className="border border-outline-variant rounded-xl p-4 space-y-3">
+          <div key={i} className={`border border-outline-variant rounded-xl p-4 space-y-3 ${i >= SALES_FOLLOW_UP_LIMIT ? 'opacity-60' : ''}`}>
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <span className="font-semibold text-on-surface">#{i + 1}</span>
-              <label className="text-on-surface-variant">Send</label>
-              <input type="number" min={0} className="w-20 px-2 py-1 rounded-lg border border-outline-variant" value={f.delayHours} onChange={(e) => setFollowUp(i, { delayHours: Number(e.target.value) })} />
-              <span className="text-on-surface-variant">hours after previous</span>
+              {i < SALES_FOLLOW_UP_LIMIT ? (
+                <span className="text-on-surface-variant">Sent about {FOLLOW_UP_HOURS} hours after the first message{f.delayHours !== FOLLOW_UP_HOURS ? ` (stored value ${f.delayHours}h is not used)` : ''}</span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-surface-container text-on-surface-variant border border-outline-variant">Not sent</span>
+              )}
               <div className="flex gap-1 ml-auto">
                 {(['ai', 'template'] as Mode[]).map((m) => (
                   <button key={m} type="button" onClick={() => setFollowUp(i, { mode: m })}
@@ -200,8 +220,8 @@ export default function SalesAgentAdminPage() {
               </div>
             </div>
             <label className="flex items-center gap-2 text-xs text-on-surface-variant">
-              <input type="checkbox" checked={f.onlyIfNoReply} onChange={(e) => setFollowUp(i, { onlyIfNoReply: e.target.checked })} />
-              Only send if the lead hasn&apos;t replied
+              <input type="checkbox" checked disabled readOnly />
+              Only sent if the lead hasn&apos;t replied (always — any reply stops it)
             </label>
             {f.mode === 'template' ? (
               <textarea rows={5} className={area} value={f.template} onChange={(e) => setFollowUp(i, { template: e.target.value })} placeholder="Message template…" />

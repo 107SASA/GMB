@@ -13,12 +13,12 @@ export const dynamic = 'force-dynamic';
  * and is not stored as part of the token.
  */
 export async function GET(
-  _: Request,
+  req: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
     const { token } = await params;
-    const url = await handleReviewRedirectByToken(token);
+    const url = await handleReviewRedirectByToken(token, { method: req.method, userAgent: req.headers.get('user-agent') });
     return NextResponse.redirect(url, 302);
   } catch (error) {
     console.error('Review token redirect error:', error);

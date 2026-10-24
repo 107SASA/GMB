@@ -100,6 +100,29 @@ test('cancellation delivered before authorization → the trial is used and canc
   assert.equal(new Date(sub.trialStatus.endsAt).toISOString(), TRIAL_END.toISOString());
 });
 
+test('claim already settled as used, then cancellation before authorization → started cancelled, no "Free trial started"', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const { businessId, userId } = await workspace({ razorpaySubscriptionId: 'sub_t3' });
+  // A later checkout settled the reservation against Razorpay (authorized) before
+  // the authorization webhook was processed: the claim is consumed, no trial yet.
+  await m.TrialClaim.create({
+    phoneHash: `hash3_${Date.now()}`, status: 'consumed', userId, businessId, razorpaySubscriptionId: 'sub_t3',
+    reservedAt: new Date(), reservedUntil: new Date(Date.now() - 1000), consumedAt: new Date(),
+    offer: { trialMonths: 3, trialEndsAt: TRIAL_END, razorpayPlanId: 'plan_yearly', amountPaise: AMOUNT, currency: 'INR', policyVersion: 1, decidedAt: new Date() },
+  } as any);
+
+  await m.events.applyRazorpayEvent({ type: 'subscription.cancelled', eventAt: new Date('2027-01-15T10:02:00Z'), source: 'webhook', subEntity: trialEntity('sub_t3', businessId, userId, 'cancelled'), paymentEntity: null });
+  const claim: any = await m.TrialClaim.findOne({ razorpaySubscriptionId: 'sub_t3' }).lean();
+  assert.ok(claim.subscriptionEndedAt, 'the end is remembered even though the claim is already consumed');
+
+  await m.events.applyRazorpayEvent({ type: 'subscription.authenticated', eventAt: new Date('2027-01-15T10:01:00Z'), source: 'webhook', subEntity: trialEntity('sub_t3', businessId, userId, 'authenticated'), paymentEntity: null });
+  const ws: any = await m.Business.findById(businessId).lean();
+  assert.equal(ws.subscriptionStatus, 'trial_active');
+  assert.ok(ws.trialCancelledAt, 'started as cancelled — no charge expected');
+  assert.equal(await m.Notification.countDocuments({ businessId, type: 'billing_trial_started' }), 0, 'no "Free trial started"');
+  assert.equal(await m.Notification.countDocuments({ businessId, type: 'billing_trial_cancelled' }), 1, 'one "Free trial cancelled" notice');
+});
+
 test('an in-order authorization still sends "Free trial started"', async (t) => {
   if (skipReason) return t.skip(skipReason);
   const { businessId, userId } = await workspace({ razorpaySubscriptionId: 'sub_t2' });

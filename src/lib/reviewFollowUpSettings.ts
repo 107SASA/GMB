@@ -14,7 +14,10 @@
  *
  * A click is not a submitted Google review. Nothing in the app writes a
  * verified review-completion signal onto ReviewRequest.reviewReceived, so
- * follow-ups do not stop because a review was "completed".
+ * follow-ups do not stop because a review was "completed". They do stop when
+ * the customer has clicked the review link and `stopOnClick` is on (the
+ * default): the customer already reached the review page, so reminding them
+ * again is unnecessary — whether they posted a review is not known.
  */
 
 import { decideReviewSendEligibility } from './reviewRequestFlow.ts';
@@ -34,7 +37,7 @@ export interface GlobalReviewFollowUpSettings {
   maximumFollowUps: number;
   minimumIntervalDays: number;
   stopOnOptOut: boolean;
-  /** Unused. A click does not stop follow-ups and is not a review. */
+  /** Skip pending follow-ups once the customer clicked the review link. A click is not a review. */
   stopOnClick: boolean;
   /** Unused. No verified Google review-completion signal exists. */
   stopOnReview: boolean;
@@ -51,7 +54,7 @@ export const DEFAULT_GLOBAL_REVIEW_FOLLOW_UP: GlobalReviewFollowUpSettings = {
   maximumFollowUps: 2,
   minimumIntervalDays: 1,
   stopOnOptOut: true,
-  stopOnClick: false,
+  stopOnClick: true,
   stopOnReview: false,
 };
 
@@ -167,8 +170,8 @@ export function validateGlobalReviewFollowUpSettings(
     return { ok: false, error: 'Follow-up settings are missing.' };
   }
   const body = input as Record<string, unknown>;
-  if (body.stopOnClick === true) {
-    return { ok: false, error: 'A click is not a submitted review and cannot stop follow-ups.' };
+  if (body.stopOnClick !== undefined && typeof body.stopOnClick !== 'boolean') {
+    return { ok: false, error: 'Stop after a click must be on or off.' };
   }
   if (body.stopOnReview === true) {
     return {
@@ -210,7 +213,8 @@ export function validateGlobalReviewFollowUpSettings(
       maximumFollowUps: max,
       minimumIntervalDays: interval.value,
       stopOnOptOut: true,
-      stopOnClick: false,
+      // Not sent (an older client) → the default, on.
+      stopOnClick: body.stopOnClick !== false,
       stopOnReview: false,
     },
   };
@@ -229,6 +233,8 @@ export interface FollowUpEligibilityInput {
   requestOpen: boolean;
   followUpStage: number;
   alreadySentThisStage: boolean;
+  /** The customer clicked the review link (ReviewRequest.clicked). Not a review. */
+  clicked?: boolean;
   /** When set, the follow-up is too early if now is before this instant. */
   earliestSendAt?: Date | string | null;
   now?: Date | string | null;
@@ -236,7 +242,8 @@ export interface FollowUpEligibilityInput {
 
 /**
  * Follow-up gate. Customer, phone, Place ID, opt-out, and the daily cap go
- * through decideReviewSendEligibility. Click and reviewReceived are not inputs.
+ * through decideReviewSendEligibility. A click stops follow-ups only when the
+ * policy's stopOnClick is on. reviewReceived is not an input.
  */
 export function decideFollowUpEligibility(
   input: FollowUpEligibilityInput
@@ -258,6 +265,9 @@ export function decideFollowUpEligibility(
   }
   if (input.followUpStage >= input.stage || input.alreadySentThisStage) {
     return { send: false, code: 'ALREADY_SENT', message: 'This follow-up was already sent.' };
+  }
+  if (input.policy.stopOnClick && input.clicked) {
+    return { send: false, code: 'CLICKED', message: 'The customer already opened the review link.' };
   }
   if (input.earliestSendAt && input.now) {
     const earliest = new Date(input.earliestSendAt).getTime();

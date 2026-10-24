@@ -422,6 +422,8 @@ export interface IAudit extends Document {
   baselineAuditId?: mongoose.Types.ObjectId;
   /** The previous comparable (baseline or monthly) audit. */
   previousAuditId?: mongoose.Types.ObjectId;
+  /** When the owner was told this report is ready (monthly or first report) — claimed atomically, so one notice per report. */
+  ownerNotifiedAt?: Date;
 
   createdAt: Date;
   updatedAt: Date;
@@ -470,6 +472,7 @@ const AuditSchema = new Schema<IAudit>(
     failedPeriod: { type: String },
     baselineAuditId: { type: Schema.Types.ObjectId, ref: 'Audit' },
     previousAuditId: { type: Schema.Types.ObjectId, ref: 'Audit' },
+    ownerNotifiedAt: { type: Date },
   },
   { timestamps: true }
 );

@@ -7,9 +7,9 @@ import { approveReply, draftReply, isAutoPublishActive, publishReply, type Reply
 
 /**
  * Background handling of a newly synced review (processAutoReplyBatchJob):
- * always drafts a fact-checked reply for the owner; publishes it ONLY when
- * the owner has switched on auto-reply (mode 'auto' + consent recorded) AND
- * the draft passed the check. Everything else waits for owner approval.
+ * always drafts a fact-checked reply; publishes it when the business is in
+ * auto-reply mode (the default) AND the draft passed the check. Everything
+ * else waits for owner approval.
  */
 export async function autoReplyToReview(businessId: string, review: IReview, deps?: ReplyDeps): Promise<{ drafted: string; published: string | null }> {
   // Never overwrite a reply that exists or a draft the owner is already handling.

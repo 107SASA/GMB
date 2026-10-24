@@ -28,6 +28,8 @@ export interface CheckoutGuardDeps {
 export type CheckoutGuardResult =
   | { kind: 'clear' }
   | { kind: 'cancelled_previous'; subscriptionId: string }
+  /** Created with test keys, now on live keys: it can never charge real money (left untouched). */
+  | { kind: 'test_checkout_ignored'; subscriptionId: string }
   | { kind: 'payment_in_progress'; subscriptionId: string; status: string }
   | { kind: 'unavailable'; subscriptionId: string; reason: string };
 
@@ -64,8 +66,41 @@ export function previousUnpaidCheckout(ws: {
   return previous;
 }
 
-export async function retirePreviousCheckout(deps: CheckoutGuardDeps, previousId: string | null): Promise<CheckoutGuardResult> {
+/**
+ * The Razorpay mode our checkout recorded for `subscriptionId` — only when the
+ * record names that exact id (other writers of razorpaySubscriptionId don't
+ * record a mode, so a stale record never applies to a newer id). Null = unknown.
+ */
+export function recordedCheckoutMode(
+  ws: { razorpaySubscriptionEnv?: { subscriptionId?: string | null; mode?: string | null } | null } | null | undefined,
+  subscriptionId: string | null
+): 'test' | 'live' | null {
+  const env = ws?.razorpaySubscriptionEnv;
+  if (!subscriptionId || !env || env.subscriptionId !== subscriptionId) return null;
+  return env.mode === 'test' || env.mode === 'live' ? env.mode : null;
+}
+
+export interface CheckoutModes {
+  /** Mode recorded when our checkout created the previous subscription (null = unknown / legacy). */
+  previousMode: 'test' | 'live' | null;
+  /** Mode of the keys configured now. */
+  currentMode: 'test' | 'live' | null;
+}
+
+export async function retirePreviousCheckout(
+  deps: CheckoutGuardDeps,
+  previousId: string | null,
+  modes?: CheckoutModes
+): Promise<CheckoutGuardResult> {
   if (!previousId) return { kind: 'clear' };
+  // Proven test-mode checkout while live keys are configured: it exists only
+  // in Razorpay test mode, where nothing can charge real money, so it can't
+  // double-charge a live checkout. Live keys can't see it — not fetched, not
+  // cancelled. Every other case (unknown mode, live → test, same mode) asks
+  // Razorpay exactly as before and stays fail-closed.
+  if (modes?.previousMode === 'test' && modes.currentMode === 'live') {
+    return { kind: 'test_checkout_ignored', subscriptionId: previousId };
+  }
 
   let before: PreviousCheckoutState;
   try {

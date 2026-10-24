@@ -1,6 +1,6 @@
 import Business from '@/models/Business';
 import BillingEvent from '@/models/BillingEvent';
-import { getRazorpay } from '@/lib/billing/razorpay';
+import { getRazorpay, getRazorpayMode } from '@/lib/billing/razorpay';
 import { ensureRazorpayPlanIdForCycle, getActivePlan, CYCLES, isBillingCycle, type BillingCycle } from '@/lib/billing/planCatalog';
 import { reconcileWorkspaceSubscription } from '@/lib/billing/razorpayReconcile';
 import { prepareRecoveryCheckout, type RecoveryResult } from '@/lib/billing/paymentRecovery';
@@ -12,12 +12,14 @@ import { prepareRecoveryCheckout, type RecoveryResult } from '@/lib/billing/paym
  */
 export async function startRecoveryCheckout(input: { businessId: string; userId: string; cycle: string }): Promise<RecoveryResult> {
   const razorpay = getRazorpay();
-  if (!razorpay) return { kind: 'unavailable', reason: 'billing_not_configured' };
+  const razorpayMode = getRazorpayMode();
+  if (!razorpay || !razorpayMode) return { kind: 'unavailable', reason: 'billing_not_configured' };
   const cycle: BillingCycle = isBillingCycle(input.cycle) ? input.cycle : 'yearly';
 
   return prepareRecoveryCheckout(
     {
       Business,
+      razorpayMode,
       now: () => new Date(),
       fetchSubscription: async (id) => {
         const sub: any = await razorpay.subscriptions.fetch(id);

@@ -66,18 +66,19 @@ async function run() {
   const WebsiteIntelligence = (await import('../src/models/WebsiteIntelligence')).default;
   const Review = (await import('../src/models/Review')).default;
   const ReviewReply = (await import('../src/models/ReviewReply')).default;
-  const { draftReply, approveReply, publishReply, isAutoPublishActive } = await import('../src/services/reviews/replyPipeline');
+  const { draftReply, approveReply, publishReply, isAutoPublishActive, newBusinessReviewReplySettings } = await import('../src/services/reviews/replyPipeline');
   const { autoReplyToReview } = await import('../src/services/reviews/autoReply');
 
   let seq = 0;
-  async function mkBiz(settings?: any) {
+  // Manual unless a case says otherwise — new businesses default to auto (R2).
+  async function mkBiz(settings: any = { mode: 'manual', tone: 'Professional' }) {
     seq++;
     const user: any = await User.create({ fullName: `Owner ${seq}`, email: `rr${seq}@example.invalid`, phone: `+9198888${String(seq).padStart(5, '0')}`, role: 'CLIENT' });
     const org: any = await Organization.create({ name: `Org ${seq}`, ownerId: user._id, subscriptionPlan: 'Pro' });
     const b: any = await Business.create({
       name: 'Sahyadri Tile Works', category: 'Tile contractor', address: 'Gangapur Road, Nashik', area: 'Gangapur Road', city: 'Nashik', country: 'India',
       website: 'https://sahyadri-tiles.example', services: 'Tile installation, Bathroom renovation', organizationId: org._id, userId: user._id,
-      subscriptionStatus: 'active', googleConnected: true, ...(settings ? { reviewReplySettings: settings } : {}),
+      subscriptionStatus: 'active', googleConnected: true, reviewReplySettings: settings,
     } as any);
     await SeoPlan.create({ businessId: b._id, version: 1, status: 'active',
       keywordTable: [
@@ -100,20 +101,23 @@ async function run() {
   let googleCalls = 0;
   const googleOk = async () => { googleCalls++; return { liveWriteApplied: true, googleResponse: '{"comment":"...","updateTime":"2026-09-30T10:00:00Z"}' }; };
 
-  // ── Auto-publish OFF by default ──
+  // ── Manual mode: drafts only ──
   const A = await mkBiz();
   const aSaved: any = await Business.findById(A._id).lean();
   const rA = await mkReview(A, { text: POS, rating: 5 });
   const outA = await autoReplyToReview(String(A._id), rA as any, { generate: genConst(goodReply), postToGoogle: googleOk });
   const docA: any = await Review.findById(rA._id).lean();
-  check('R1', 'automatic publishing disabled by default: new review → validated DRAFT, nothing sent to Google',
+  check('R1', 'manual mode: new review → validated DRAFT, nothing sent to Google',
     aSaved.reviewReplySettings.mode === 'manual' && !isAutoPublishActive(aSaved.reviewReplySettings) && outA.published === null && docA.replyStatus === 'DRAFT' && googleCalls === 0 && !docA.response,
-    `default mode ${aSaved.reviewReplySettings.mode}, status ${docA.replyStatus}, Google calls ${googleCalls}`);
+    `mode ${aSaved.reviewReplySettings.mode}, status ${docA.replyStatus}, Google calls ${googleCalls}`);
 
-  const L = await mkBiz({ mode: 'auto', tone: 'Professional' }); // saved before the fact-checked flow: no consent
+  // ── Auto-reply ON by default for new businesses ──
+  const L = await mkBiz(newBusinessReviewReplySettings());
   const rL = await mkReview(L, { text: POS, rating: 5 });
-  const outL = await autoReplyToReview(String(L._id), rL as any, { generate: genConst(goodReply), postToGoogle: googleOk });
-  check('R2', 'legacy mode:"auto" without the owner\'s new consent → drafts only (paused)', outL.published === null && googleCalls === 0 && ((await Review.findById(rL._id).lean()) as any).replyStatus === 'DRAFT', `published ${outL.published}`);
+  let googleCallsL = 0; // counted apart so the running googleCalls totals below stay as they were
+  const outL = await autoReplyToReview(String(L._id), rL as any, { generate: genConst(goodReply), postToGoogle: async () => { googleCallsL++; return { liveWriteApplied: true, googleResponse: '{}' }; } });
+  const lSaved: any = await Business.findById(L._id).lean();
+  check('R2', 'new business defaults to auto-reply: validated reply posted automatically', lSaved.reviewReplySettings.mode === 'auto' && outL.published === 'published' && googleCallsL === 1, `default mode ${lSaved.reviewReplySettings.mode}, published ${outL.published}`, 'SIMULATED Google');
 
   // ── Owner approval required ──
   const refused = await publishReply(String(A._id), String(rA._id), { deps: { postToGoogle: googleOk } });

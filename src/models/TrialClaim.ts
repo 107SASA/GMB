@@ -37,6 +37,8 @@ export interface ITrialOfferSnapshot {
   currency: 'INR';
   policyVersion: number;
   decidedAt: Date;
+  /** Razorpay mode (test/live keys) the attached subscription was created in. Missing = legacy. */
+  razorpayMode?: 'test' | 'live';
 }
 
 export interface ITrialClaim extends Document {
@@ -102,6 +104,7 @@ const TrialClaimSchema = new Schema<ITrialClaim>(
           currency: { type: String, enum: ['INR'], required: true },
           policyVersion: { type: Number, required: true },
           decidedAt: { type: Date, required: true },
+          razorpayMode: { type: String, enum: ['test', 'live'] },
         },
         { _id: false }
       ),

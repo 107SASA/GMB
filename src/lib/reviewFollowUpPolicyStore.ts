@@ -13,6 +13,7 @@ function toSettings(doc: {
   maximumFollowUps?: number;
   minimumIntervalDays?: number;
   stopOnOptOut?: boolean;
+  stopOnLinkClick?: boolean;
 }): GlobalReviewFollowUpSettings {
   return {
     enabled: doc.enabled !== false,
@@ -21,7 +22,10 @@ function toSettings(doc: {
     maximumFollowUps: doc.maximumFollowUps ?? DEFAULT_GLOBAL_REVIEW_FOLLOW_UP.maximumFollowUps,
     minimumIntervalDays: doc.minimumIntervalDays ?? DEFAULT_GLOBAL_REVIEW_FOLLOW_UP.minimumIntervalDays,
     stopOnOptOut: true,
-    stopOnClick: false,
+    // Stored as stopOnLinkClick: the older stopOnClick field was always written
+    // as false (it could not be turned on), so it is not a Super Admin choice.
+    // Unset → the default, on.
+    stopOnClick: doc.stopOnLinkClick !== false,
     stopOnReview: false,
   };
 }
@@ -34,9 +38,11 @@ export async function loadReviewFollowUpPolicy(): Promise<GlobalReviewFollowUpSe
   if (existing) return toSettings(existing);
 
   try {
+    const { stopOnClick, ...defaults } = DEFAULT_GLOBAL_REVIEW_FOLLOW_UP;
     const created = await ReviewFollowUpPolicy.create({
       key: 'global',
-      ...DEFAULT_GLOBAL_REVIEW_FOLLOW_UP,
+      ...defaults,
+      stopOnLinkClick: stopOnClick,
     });
     return toSettings(created);
   } catch (error: unknown) {
@@ -56,9 +62,10 @@ export async function saveReviewFollowUpPolicy(
   if (!validated.ok) return validated;
 
   await dbConnect();
+  const { stopOnClick, ...rest } = validated.value;
   await ReviewFollowUpPolicy.findOneAndUpdate(
     { key: 'global' },
-    { $set: { key: 'global', ...validated.value } },
+    { $set: { key: 'global', ...rest, stopOnLinkClick: stopOnClick } },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
   return { ok: true, value: validated.value };

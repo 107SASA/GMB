@@ -1,7 +1,7 @@
 /**
  * Owner WhatsApp updates on a throwaway in-memory MongoDB:
  * 15-day Google performance update (sent once per 15 days, never twice),
- * weekly "no new reviews" reminder, opt-out respected.
+ * no weekly "no new reviews" WhatsApp nudge, opt-out respected.
  *   npx tsx scripts/whatsapp-updates-check.ts
  * WhatsApp is NEVER sent — sendOutboundMessage is intercepted and captured.
  * No provider calls: everything reads stored data.
@@ -54,7 +54,7 @@ const check = (t: string, what: string, pass: boolean, detail: string) => { resu
     const org = new mongoose.Types.ObjectId();
     const user: any = await User.create({ fullName: 'Owner', email: 'owner@example.invalid', phone: '+919999900003', role: 'CLIENT' });
     const biz: any = await Business.create({ name: 'Mulsetu', category: 'Software company', address: 'Ojhar, Nashik', organizationId: org, userId: user._id,
-      subscriptionStatus: 'active', googleConnected: true, googlePlaceId: 'ChIJtestplace', googleReviewTotals: { rating: 5, total: 3, capturedAt: new Date() } });
+      subscriptionStatus: 'active', googleConnected: true, googleLocationId: 'locations/1', googlePlaceId: 'ChIJtestplace', googleReviewTotals: { rating: 5, total: 3, capturedAt: new Date() } });
     const now = new Date('2026-10-01T05:00:00Z');
     const edge = Date.UTC(2026, 9, 1) - 3 * 86_400_000;
     await GBPInsights.insertMany(Array.from({ length: 30 }, (_, i) => ({
@@ -70,7 +70,7 @@ const check = (t: string, what: string, pass: boolean, detail: string) => { resu
     const twice = await sendPerformanceDigest(String(biz._id), new Date(now.getTime() + 2 * 86_400_000));
     check('P2', 'no duplicate: rerun the same day and 2 days later → not sent again', whatsapp.filter((w) => /last 15 days/.test(w.body)).length === 1 && twice.status === 'not_due', `second call: ${twice.status}`);
     const later = await sendPerformanceDigest(String(biz._id), new Date(now.getTime() + 15 * 86_400_000));
-    check('P3', '15 days later → next update is due', later.status === 'sent_if_opted_in' || later.status === 'not_enough_data', later.status);
+    check('P3', '15 days later → next update is due', later.status === 'sent' || later.status === 'not_enough_data', later.status);
 
     // Opt-out.
     await User.updateOne({ _id: user._id }, { $set: { 'notificationPreferences.performanceDigestWhatsApp': false } });
@@ -79,13 +79,13 @@ const check = (t: string, what: string, pass: boolean, detail: string) => { resu
     await sendPerformanceDigest(String(biz._id), now);
     check('P4', 'owner turned the 15-day update off → nothing sent', whatsapp.length === before, `messages ${whatsapp.length - before}`);
 
-    // Weekly: no new reviews this week → WhatsApp reminder with the review link.
+    // Weekly: "no new reviews this week" is in-app only (Oct 2026) — no WhatsApp nudge.
     const before2 = whatsapp.length;
     const w = await runWeeklyMonitoring(String(biz._id), now);
-    const rem = whatsapp.slice(before2).find((x) => /No new Google reviews/.test(x.body));
-    check('W1', 'weekly: no new reviews → WhatsApp reminder with the real review link (once per week)', !!rem && /writereview\?placeid=ChIJtestplace/.test(rem.body), `${w.status} / ${w.whatsapp} · ${rem?.body.split('\n')[0] ?? 'none'}`);
+    const nudge = whatsapp.slice(before2).find((x) => /No new Google reviews/.test(x.body));
+    check('W1', 'weekly: no new reviews → no WhatsApp nudge (dashboard only)', !nudge, `${w.status} / ${w.whatsapp}`);
     const again = await runWeeklyMonitoring(String(biz._id), now);
-    check('W2', 'weekly rerun the same week → no second reminder', again.status === 'already_ran' && whatsapp.filter((x) => /No new Google reviews/.test(x.body)).length === 1, again.status);
+    check('W2', 'weekly rerun the same week → nothing runs twice', again.status === 'already_ran' && whatsapp.length === before2 + (w.whatsapp === 'sent' || w.whatsapp === 'review_attention_sent' ? 1 : 0), again.status);
 
     check('safety', 'WhatsApp intercepted — nothing delivered', intercepted, `captured ${whatsapp.length}`);
   } finally {

@@ -134,8 +134,8 @@ function TimelineRow({ entry }: { entry: TimelineEntry }) {
         <Ionicons name={timelineIcon(entry)} size={14} color={t.textFaint} />
       </View>
       <View className="flex-1">
-        <View className="flex-row items-center justify-between">
-          <Text className="font-sans-semibold text-sm text-zinc-200">{label}</Text>
+        <View className="flex-row items-center justify-between gap-2">
+          <Text className="flex-1 font-sans-semibold text-sm text-zinc-200">{label}</Text>
           <Text className="font-sans text-xs text-zinc-500">{formatDateTime(entry.date)}</Text>
         </View>
         {!!body && <Text className="mt-0.5 font-sans text-sm text-zinc-400">{body}</Text>}

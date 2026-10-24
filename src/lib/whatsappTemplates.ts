@@ -35,12 +35,21 @@
  *                     activity notifications (services/ownerNotify.ts), and
  *                     the free-text→template retry in whatsapp/send.ts +
  *                     webhook/twilio/status.
- *                     Live template: `new_growwmatics_notification` (the
- *                     earlier `growwmatics_notification` / HX955e0797… was
- *                     mis-built — its variable set didn't match {{1}},{{2}},
- *                     so every send failed Twilio 21656 "ContentVariables
- *                     invalid"). Body: "Hi {{1}}, Here's an update from
- *                     GrowwMatics: {{2}} ...". Submit as UTILITY category.
+ *                     Live template: `new_growwmatics_notification`
+ *                     (HX955e0797…, UTILITY, approved). The older
+ *                     `growwmatics_notification` (HX9473a6f0…) has the same
+ *                     body and is unused. Body: "Hi {{1}},\n\nHere's an update
+ *                     from GrowwMatics:\n\n{{2}}\n\nIf you have any questions,
+ *                     simply reply to this message." The Twilio 21656 errors
+ *                     seen until 2026-10-07 came from a {{2}} carrying line
+ *                     breaks, not from the template — {{2}} is now sanitized
+ *                     to one line and length-checked (lib/whatsappOutbound.ts),
+ *                     and a greeting/sign-off in the body is dropped so the
+ *                     "Hi {{1}}," is not repeated.
+ *  - invoiceReady / welcomeCustomer: NOT SENT since Oct 2026 — both repeated
+ *                     "your subscription is active", which paymentReceived
+ *                     already says. Kept here (and approved in Twilio) until
+ *                     production usage is confirmed zero.
  *  - invoiceReady:   {{1}} customer first name — only variable. The approved
  *                     template body just tells the customer their invoice is
  *                     available in their Growwmatics account (no amount, no

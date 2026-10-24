@@ -278,6 +278,16 @@ export function decideBillingEvent(input: {
         };
       }
       if (superseded) return ignore('superseded by a recovery checkout (cancelled on purpose)');
+      if (sub.isTrial && claim?.status === 'consumed' && claim.attachedSubscriptionId === sub.id && ws.billingSubscriptionId !== sub.id) {
+        // The claim was settled as used (Razorpay showed it authorized) before
+        // the authorization itself was processed: remember the end so a late
+        // authorization starts the trial cancelled, never as a running trial.
+        return {
+          actions: [{ kind: 'record_trial_subscription_ended' }],
+          recordEvent: false,
+          note: 'trial subscription ended before its authorization was processed',
+        };
+      }
       if (!linked) return ignore('not the subscription granting access');
       if (stale(ws)) return ignore('older than the last applied event');
       if (status === 'trial_active') {

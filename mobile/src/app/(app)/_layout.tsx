@@ -89,6 +89,7 @@ export default function AppLayout() {
       <Tabs.Screen name="scheduler" options={{ href: null }} />
       <Tabs.Screen name="whatsapp" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
+      <Tabs.Screen name="review-settings" options={{ href: null }} />
       <Tabs.Screen name="billing" options={{ href: null }} />
       <Tabs.Screen name="profile" options={{ href: null }} />
       <Tabs.Screen name="notifications" options={{ href: null }} />

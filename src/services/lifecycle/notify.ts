@@ -3,16 +3,55 @@ import { runWithMeter } from '@/lib/providerMeter';
 import { notifyBusinessUsers } from '@/services/notifications';
 import { notifyOwner, ownerWhatsAppPrefs } from '@/services/ownerNotify';
 import { collectExecutions } from './collect';
-import { buildWeeklySummary, isoWeekKey, reviewReminderText, type WeeklyInput } from './weekly';
+import {
+  buildWeeklySummary,
+  composeWeeklyWhatsApp,
+  isoWeekKey,
+  reviewAttentionFilter,
+  reviewAttentionText,
+  REVIEW_ATTENTION_DRAFT_STATUSES,
+  type WeeklyInput,
+} from './weekly';
 import { composeMonthlyWhatsApp } from './monthly';
 
 const DAY = 86_400_000;
 const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '');
+/** An absolute link for a WhatsApp message, or null — a relative path is useless outside the app. */
+const absoluteLink = (path: string): string | null => (/^https?:\/\//.test(appUrl()) ? `${appUrl()}${path}` : null);
 
-/** Monthly report ready: in-app notification + (opted-in) WhatsApp summary of verified values only. */
-export async function notifyMonthlyReport(businessId: string, auditId: string, auditData: any): Promise<void> {
+/**
+ * One "report ready" notice per report: atomically marks a COMPLETED audit as
+ * announced. A retry, a duplicate job or a second caller for the same report
+ * gets false and sends nothing.
+ */
+export async function claimReportOwnerNotice(auditId: string): Promise<boolean> {
+  const { default: Audit } = await import('@/models/Audit');
+  const claimed = await Audit.findOneAndUpdate(
+    { _id: auditId, status: 'COMPLETED', ownerNotifiedAt: { $exists: false } },
+    { $set: { ownerNotifiedAt: new Date() } },
+    { projection: { _id: 1 } }
+  ).lean();
+  return !!claimed;
+}
+
+/**
+ * Monthly report ready: in-app notification + (opted-in) WhatsApp. Sent once
+ * per report — and there is one monthly report per business per month (the
+ * Audit (businessId, auditKind, period) unique index) — only after the audit
+ * completed, and the WhatsApp only with a real link to open it.
+ */
+export async function notifyMonthlyReport(businessId: string, auditId: string, auditData?: any): Promise<void> {
+  const claimed = await claimReportOwnerNotice(auditId);
+  // Claimed now or already announced: either way no deferred notice is owed any more.
+  await clearPendingMonthlyNotice(businessId, auditId);
+  if (!claimed) return;
   const link = `/dashboard/audit/${auditId}`;
+  if (auditData === undefined) {
+    const { default: Audit } = await import('@/models/Audit');
+    auditData = ((await Audit.findById(auditId).select('auditData.monthly').lean()) as any)?.auditData;
+  }
   const monthly = auditData?.monthly;
+  // The claim is taken: an in-app failure must not also cost the WhatsApp.
   await notifyBusinessUsers(businessId, {
     type: 'monthly_report',
     title: 'Your monthly report is ready',
@@ -20,10 +59,135 @@ export async function notifyMonthlyReport(businessId: string, auditId: string, a
       ? `${monthly.reviews.newReviews} new review${monthly.reviews.newReviews === 1 ? '' : 's'}, ${monthly.planCompleted.length} plan action${monthly.planCompleted.length === 1 ? '' : 's'} done, ${monthly.planPending.length} pending.`
       : 'Your monthly Google Business Profile report is ready.',
     link,
-  });
+  }).catch((err: any) => console.error(`[monthlyReport] in-app notice failed for audit ${auditId}:`, err?.message));
+  const reportLink = absoluteLink(link);
+  if (!reportLink) {
+    console.warn('[monthlyReport] NEXT_PUBLIC_APP_URL is not an absolute URL — WhatsApp skipped (no link to send).');
+    return;
+  }
   const Business = (await import('@/models/Business')).default;
   const b: any = await Business.findById(businessId).select('name').lean();
-  await notifyOwner(businessId, { event: 'monthly_report', text: composeMonthlyWhatsApp(monthly, b?.name || 'your business', `${appUrl()}${link}`) });
+  await notifyOwner(businessId, { event: 'monthly_report', text: composeMonthlyWhatsApp(monthly, b?.name || 'your business', reportLink) });
+}
+
+export const MONTHLY_REPORT_NOTICE_EVENT = 'lifecycle/monthly-report.notice';
+/** A deferred notice the sweep finds later than this is not sent — the owner has long seen the report in the dashboard. */
+export const MONTHLY_NOTICE_SWEEP_MAX_AGE_MS = 3 * DAY;
+
+async function clearPendingMonthlyNotice(businessId: string, auditId: string): Promise<void> {
+  const { default: Business } = await import('@/models/Business');
+  await Business.updateOne(
+    { _id: businessId, 'monthlyReportNoticePending.auditId': auditId },
+    { $unset: { monthlyReportNoticePending: '' } }
+  ).catch((err: any) => console.error(`[monthlyReport] could not clear the pending notice for audit ${auditId}:`, err?.message));
+}
+
+/**
+ * Entry point when a monthly report completes. The monthly audit runs on a
+ * 30-day anchor that can fall at night, so between 21:00 and 09:00 IST the
+ * notice (in-app + WhatsApp) is never sent immediately. It is deferred twice
+ * over, so one failure cannot lose it:
+ *  1. Business.monthlyReportNoticePending is written first (durable, in the
+ *     database) — the hourly sweep (sendDueMonthlyReportNotices, run by
+ *     audit-autopilot-cron) delivers it after 09:00 IST if nothing else did;
+ *  2. the monthlyReportNotice Inngest job is queued — it sleeps until 09:00
+ *     IST and delivers it on time. Its event id is per report, so a repeat
+ *     is dropped by Inngest.
+ * Whichever runs first claims the report (claimReportOwnerNotice) and clears
+ * the pending record; the other sends nothing. If neither could be recorded
+ * the failure is logged as an error and nothing is sent at night.
+ */
+export async function deliverMonthlyReportNotice(
+  businessId: string,
+  auditId: string,
+  auditData: any,
+  now = new Date()
+): Promise<'sent' | 'deferred' | 'unscheduled'> {
+  const { ownerQuietHoursDeferUntil } = await import('@/lib/istSchedule');
+  const deferUntil = ownerQuietHoursDeferUntil(now);
+  if (!deferUntil) {
+    await notifyMonthlyReport(businessId, auditId, auditData);
+    return 'sent';
+  }
+  let recorded = false;
+  try {
+    const { default: Business } = await import('@/models/Business');
+    const res = await Business.updateOne({ _id: businessId }, { $set: { monthlyReportNoticePending: { auditId, dueAt: deferUntil } } });
+    recorded = res.matchedCount > 0;
+  } catch (err: any) {
+    console.error(`[monthlyReport] could not record the pending notice for audit ${auditId}:`, err?.message);
+  }
+  let queued = false;
+  try {
+    const { inngest } = await import('@/services/inngest/client');
+    await inngest.send({ id: `monthly-report-notice-${auditId}`, name: MONTHLY_REPORT_NOTICE_EVENT, data: { businessId, auditId } });
+    queued = true;
+  } catch (err: any) {
+    console.error(`[monthlyReport] could not queue the 09:00 IST notice for audit ${auditId}${recorded ? ' — the hourly sweep will deliver it' : ''}:`, err?.message);
+  }
+  if (!recorded && !queued) {
+    console.error(`[monthlyReport] NOTICE NOT SCHEDULED for audit ${auditId} (business ${businessId}): neither the pending record nor the job could be saved; not sending during quiet hours.`);
+    return 'unscheduled';
+  }
+  return 'deferred';
+}
+
+/**
+ * Hourly safety net for deferred monthly notices (called by
+ * audit-autopilot-cron). Never sends in quiet hours; sends each due notice
+ * through notifyMonthlyReport, whose claim keeps it to one per report even
+ * when the queued job runs too. Notices overdue by more than
+ * MONTHLY_NOTICE_SWEEP_MAX_AGE_MS are dropped instead of sent late.
+ */
+export async function sendDueMonthlyReportNotices(now = new Date()): Promise<{ due: number; processed: number; expired: number; skipped?: 'quiet_hours' }> {
+  const { ownerQuietHoursDeferUntil } = await import('@/lib/istSchedule');
+  if (ownerQuietHoursDeferUntil(now)) return { due: 0, processed: 0, expired: 0, skipped: 'quiet_hours' };
+  await dbConnect();
+  const { default: Business } = await import('@/models/Business');
+  const due: any[] = await Business.find({ 'monthlyReportNoticePending.dueAt': { $lte: now } })
+    .select('_id monthlyReportNoticePending').limit(100).lean();
+  let processed = 0;
+  let expired = 0;
+  for (const b of due) {
+    const { auditId, dueAt } = b.monthlyReportNoticePending || {};
+    if (!auditId) continue;
+    if (now.getTime() - new Date(dueAt).getTime() > MONTHLY_NOTICE_SWEEP_MAX_AGE_MS) {
+      await clearPendingMonthlyNotice(String(b._id), String(auditId));
+      expired++;
+      continue;
+    }
+    try {
+      await notifyMonthlyReport(String(b._id), String(auditId));
+      processed++;
+    } catch (err: any) {
+      console.error(`[monthlyReport] sweep failed for audit ${auditId}:`, err?.message);
+    }
+  }
+  return { due: due.length, processed, expired };
+}
+
+/**
+ * The weekly reviews-need-attention reminder. Reads the review data fresh,
+ * right before sending; nothing is sent unless at least one review meets the
+ * definition in reviewAttentionFilter (lifecycle/weekly.ts). notifyOwner
+ * enforces once per ISO week and the owner's reviewReplyWhatsApp preference.
+ */
+export async function sendReviewAttentionReminder(
+  businessId: string,
+  businessName: string,
+  now = new Date()
+): Promise<{ status: 'nothing_pending' | 'sent' | 'skipped' | 'failed'; pending: number; reason?: string }> {
+  const { default: Review } = await import('@/models/Review');
+  const filter = reviewAttentionFilter(businessId, now);
+  const [pending, drafted] = await Promise.all([
+    Review.countDocuments(filter),
+    Review.countDocuments({ ...filter, replyStatus: { $in: [...REVIEW_ATTENTION_DRAFT_STATUSES] } }),
+  ]);
+  const weekKey = isoWeekKey(now);
+  const text = reviewAttentionText({ businessName, pending, drafted, weekKey, reviewsLink: absoluteLink('/dashboard/reviews') });
+  if (!text) return { status: 'nothing_pending', pending };
+  const res = await notifyOwner(businessId, { event: 'review_attention', text, weekKey });
+  return res.status === 'skipped' ? { status: 'skipped', pending, reason: res.reason } : { status: res.status, pending };
 }
 
 /**
@@ -110,26 +274,27 @@ export async function runWeeklyMonitoring(businessId: string, now = new Date()):
 
   for (const n of summary.notifications) await notifyBusinessUsers(businessId, n);
   await contentPrompts(businessId, now, b?.name || 'your business').catch((err) => console.error('[weeklyMonitor] content prompts failed:', err?.message));
+  // At most ONE WhatsApp from the weekly run. Reviews that verifiably need a
+  // reply come first (the weekly reminder); otherwise a meaningful week sends
+  // the performance update, which notifyOwner caps at 2 per rolling 15 days.
+  // "No new reviews this week" is in-app only (summary.notifications above).
   let whatsapp = 'not_sent';
+  const businessName = b?.name || 'your business';
   const prefs = await ownerWhatsAppPrefs(businessId);
-  // A synced week with no new Google reviews → a WhatsApp nudge to ask
-  // customers (only when the review sync actually ran — never a guess).
-  const noReviews = summary.input.reviews.syncedThisWeek && summary.input.reviews.newCount === 0;
-  const reviewNudge = noReviews ? reviewReminderText(b?.name || 'your business', b?.googlePlaceId || b?.placeId || null, summary.input.reviews.requestsSent) : null;
   if (!prefs?.phone) whatsapp = 'no_phone';
-  else if (!summary.meaningful && !prefs.prefs.weeklyReportAlwaysWhatsApp) {
-    if (reviewNudge) {
-      await notifyOwner(businessId, { event: 'review_reminder', text: reviewNudge });
-      whatsapp = 'review_reminder_sent_if_opted_in';
-    } else whatsapp = 'suppressed_nothing_new';
-  } else {
-    await notifyOwner(businessId, { event: 'weekly_update', text: `${summary.whatsappText}${reviewNudge ? `\n\n${reviewNudge}` : ''}\n${appUrl()}/dashboard` });
-    whatsapp = 'sent_if_opted_in';
+  else {
+    const attention = await sendReviewAttentionReminder(businessId, businessName, now);
+    if (attention.status === 'sent') whatsapp = 'review_attention_sent';
+    else if (!summary.meaningful && !prefs.prefs.weeklyReportAlwaysWhatsApp) whatsapp = 'suppressed_nothing_new';
+    else {
+      const res = await notifyOwner(businessId, { event: 'weekly_update', text: composeWeeklyWhatsApp(summary, businessName, absoluteLink('/dashboard')) });
+      whatsapp = res.status === 'sent' ? 'sent' : res.status === 'skipped' ? `skipped_${res.reason}` : 'failed';
+    }
   }
   const paidCalls = Object.entries(counts).filter(([k]) => !/CacheHit$|Token$/.test(k) && k !== 'websiteFetch').reduce((a, [, n]) => a + (n || 0), 0);
   await WeeklyMonitor.updateOne(
     { businessId, weekKey },
-    { $set: { status: 'done', lines: summary.lines, meaningful: summary.meaningful, notificationsCreated: summary.notifications.length, whatsappSent: whatsapp === 'sent_if_opted_in', whatsappSkipReason: whatsapp === 'sent_if_opted_in' ? undefined : whatsapp, inputs: summary.input, providerUsage: { counts, paidCalls } } },
+    { $set: { status: 'done', lines: summary.lines, meaningful: summary.meaningful, notificationsCreated: summary.notifications.length, whatsappSent: whatsapp === 'sent' || whatsapp === 'review_attention_sent', whatsappSkipReason: whatsapp === 'sent' ? undefined : whatsapp, inputs: summary.input, providerUsage: { counts, paidCalls } } },
   );
   return { status: 'done', weekKey, notifications: summary.notifications.length, whatsapp, paidCalls };
 }
@@ -138,8 +303,9 @@ export async function runWeeklyMonitoring(businessId: string, now = new Date()):
  * Weekly content prompts (Sep 2026), each sent at most once:
  *  - "Anything to promote this week?" (in-app) when this week's WeeklyOffer is unanswered —
  *    once per week because this whole pass is idempotent per week;
- *  - festivals in the next 14 days from the stored calendar — one in-app +
- *    (opted-in) WhatsApp per business per festival (FestivalPrompt unique).
+ *  - festivals in the next 14 days from the stored calendar — one in-app
+ *    notification per business per festival (FestivalPrompt unique). Not sent
+ *    over WhatsApp: it is an optional prompt, and a greeting is posted anyway.
  */
 export async function contentPrompts(businessId: string, now: Date, businessName: string): Promise<{ offerAsked: boolean; festivals: string[] }> {
   const [{ default: WeeklyOffer }, { default: FestivalPrompt }, { festivalsBetween }, { contentWeekKey }] = await Promise.all([
@@ -169,13 +335,7 @@ export async function contentPrompts(businessId: string, now: Date, businessName
       body: `${f.name} is on ${when}. Want a special offer or message in your Google posts? Add it from the dashboard — otherwise we’ll post a simple greeting.`,
       link: '/dashboard',
     });
-    const prefs = await ownerWhatsAppPrefs(businessId);
-    let whatsapp: 'sent_if_opted_in' | 'no_phone' = 'no_phone';
-    if (prefs?.phone) {
-      await notifyOwner(businessId, { event: 'festival_prompt', text: `${f.name} is on ${when}. Would ${businessName} like to share a special offer or message on Google? Add it in your dashboard: ${appUrl()}/dashboard` });
-      whatsapp = 'sent_if_opted_in';
-    }
-    await FestivalPrompt.updateOne({ businessId, festivalKey: f.key }, { $set: { inApp: true, whatsapp } });
+    await FestivalPrompt.updateOne({ businessId, festivalKey: f.key }, { $set: { inApp: true, whatsapp: 'not_sent' } });
     sent.push(f.key);
   }
   return { offerAsked: !answered, festivals: sent };
@@ -196,7 +356,9 @@ export async function sendPerformanceDigest(businessId: string, now = new Date()
   const since = new Date(now.getTime() - (2 * DIGEST_DAYS + DATA_LAG_DAYS + 2) * DAY);
   const rows: any[] = await GBPInsights.find({ businessId, date: { $gte: since } })
     .select('date views viewsSearch viewsMaps callClicks websiteClicks directionRequests conversations').lean();
-  const text = composePerformanceDigest(buildPerformanceDigest(rows, now), b.name || 'your business', `${appUrl()}/dashboard/insights`);
+  const insightsLink = absoluteLink('/dashboard/insights');
+  if (!insightsLink) return { status: 'no_app_url' };
+  const text = composePerformanceDigest(buildPerformanceDigest(rows, now), b.name || 'your business', insightsLink);
   if (!text) return { status: 'not_enough_data' };
   // Claim the 15-day slot first (half a day of slack so a daily cron isn't pushed later each cycle).
   const due = new Date(now.getTime() - (DIGEST_DAYS * DAY - 12 * 3_600_000));
@@ -205,8 +367,17 @@ export async function sendPerformanceDigest(businessId: string, now = new Date()
     { $set: { performanceDigestLastSentAt: now } },
   );
   if (!claimed) return { status: 'not_due' };
-  await notifyOwner(businessId, { event: 'performance_digest', text });
-  return { status: 'sent_if_opted_in' };
+  const res = await notifyOwner(businessId, { event: 'performance_digest', text });
+  // Held back by the 2-per-15-days performance-update limit (or a failed
+  // send): give the 15-day slot back so tomorrow's cron can try again.
+  if (res.status === 'failed' || (res.status === 'skipped' && res.reason === 'performance_update_limit')) {
+    await Business.updateOne(
+      { _id: businessId, performanceDigestLastSentAt: now },
+      b.performanceDigestLastSentAt ? { $set: { performanceDigestLastSentAt: b.performanceDigestLastSentAt } } : { $unset: { performanceDigestLastSentAt: '' } },
+    );
+    return { status: res.status === 'failed' ? 'failed' : 'performance_update_limit' };
+  }
+  return { status: res.status === 'sent' ? 'sent' : `skipped_${res.reason}` };
 }
 
 /** Daily cron entry: subscribed, Google-connected businesses whose 15-day update is due. */
@@ -227,7 +398,7 @@ export async function runPerformanceDigestAll(now = new Date()): Promise<{ busin
   let sent = 0;
   for (const b of list) {
     try {
-      if ((await sendPerformanceDigest(String(b._id), now)).status === 'sent_if_opted_in') sent++;
+      if ((await sendPerformanceDigest(String(b._id), now)).status === 'sent') sent++;
     } catch (err: any) {
       console.error(`[performanceDigest] business ${b._id} failed:`, err?.message);
     }

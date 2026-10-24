@@ -4,7 +4,8 @@ import Subscription from '@/models/Subscription';
 import BillingPlan from '@/models/BillingPlan';
 import TrialClaim from '@/models/TrialClaim';
 import BillingEvent from '@/models/BillingEvent';
-import { getRazorpay } from '@/lib/billing/razorpay';
+import { getRazorpay, getRazorpayMode } from '@/lib/billing/razorpay';
+import { subscriptionModeVerdict } from '@/lib/billing/razorpayMode';
 import { isPaidPlanType } from '@/lib/billing/planCatalog';
 import {
   activatePlan,
@@ -25,8 +26,11 @@ import {
   type WorkspaceFacts,
 } from '@/lib/billing/subscriptionMachine';
 import { consumeTrialClaim, settleTrialReservation } from '@/lib/billing/trialClaims';
+import { recordedCheckoutMode } from '@/lib/billing/checkoutGuard';
 import { razorpaySettleDeps } from '@/services/billing/trialEligibility';
 import { openRecoveryEpisode, closeRecoveryEpisodes } from '@/services/billing/recoveryRemindersService';
+import { stopPreSalesNurtureForWorkspace } from '@/services/sales/preSalesPolicy';
+import { notifyPaymentConfirmed, paymentNoticeKind } from '@/services/billing/billingWhatsApp';
 
 /**
  * Loads the facts for one Razorpay subscription event, asks the pure state
@@ -38,7 +42,7 @@ import { openRecoveryEpisode, closeRecoveryEpisodes } from '@/services/billing/r
 async function resolveBusiness(subEntity: any, paymentEntity: any): Promise<any | null> {
   const notesBusinessId = subEntity?.notes?.businessId ?? paymentEntity?.notes?.businessId;
   const fields =
-    '_id userId subscriptionStatus billingSubscriptionId razorpaySubscriptionId trialEndsAt trialCancelledAt billingLastEventAt supersededSubscriptionIds subscriptionCancelAtPeriodEnd';
+    '_id userId subscriptionStatus billingSubscriptionId billingSubscriptionEnv razorpaySubscriptionId razorpaySubscriptionEnv recoveryCheckout trialEndsAt trialCancelledAt billingLastEventAt supersededSubscriptionIds subscriptionCancelAtPeriodEnd';
   if (typeof notesBusinessId === 'string' && notesBusinessId) {
     const b = await Business.findById(notesBusinessId).select(fields).lean();
     if (b) return b;
@@ -137,6 +141,47 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
   const userId = await resolveUserId(subEntity, paymentEntity, business, claimDoc);
   const businessId = business?._id ? String(business._id) : null;
 
+  // Razorpay mode guard. The subscription is the one in the signed payload;
+  // its mode comes only from records naming exactly that id (paying
+  // subscription, checkout link, open recovery checkout, trial offer snapshot)
+  // — never from the configured keys. Recorded in the other mode, or records
+  // that disagree → nothing is applied (no grant, extension, failure or
+  // cancellation); a person reviews it. No record → unchanged behaviour below.
+  const currentMode = getRazorpayMode();
+  const recordedMode = sub
+    ? subscriptionModeVerdict(
+        [
+          business?.billingSubscriptionEnv,
+          business?.razorpaySubscriptionEnv,
+          business?.recoveryCheckout,
+          claimDoc?.razorpaySubscriptionId === sub.id ? { subscriptionId: sub.id, mode: claimDoc?.offer?.razorpayMode } : null,
+        ],
+        sub.id
+      )
+    : null;
+  if (sub && currentMode && recordedMode && recordedMode !== currentMode) {
+    const note =
+      recordedMode === 'ambiguous'
+        ? `records disagree on the Razorpay mode of ${sub.id} — ${type} not applied`
+        : `${sub.id} was created in ${recordedMode} mode but ${currentMode} keys are configured — ${type} not applied`;
+    console.error(`[billing] NEEDS REVIEW business ${businessId}: ${note}`);
+    await BillingEvent.create({
+      businessId: businessId ?? undefined,
+      userId: userId ?? undefined,
+      razorpaySubscriptionId: sub.id,
+      razorpayEventId: input.razorpayEventId,
+      eventType: type,
+      source,
+      eventAt,
+      statusBefore: business?.subscriptionStatus ?? undefined,
+      statusAfter: business?.subscriptionStatus ?? undefined,
+      actions: [],
+      note,
+      needsReview: true,
+    }).catch((err: any) => console.error('[billing] BillingEvent write failed:', err?.message));
+    return { decision: { actions: [], recordEvent: false, note }, businessId, userId };
+  }
+
   const workspace: WorkspaceFacts | null = business
     ? {
         id: businessId!,
@@ -178,7 +223,18 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
     authoritative: source === 'reconcile',
   });
   const stampAt = source === 'webhook' ? eventAt : undefined;
+  // The mode this subscription was created in — only when its checkout-link
+  // record names exactly this id; never inferred (null = unknown).
+  const subscriptionMode = sub ? recordedCheckoutMode(business, sub.id) : null;
   const reviewReasons: string[] = [];
+  // Mode not recorded anywhere (legacy): applied as before — it may be a real
+  // live payment — but a grant/extension under live keys goes to review.
+  if (
+    sub && currentMode === 'live' && recordedMode === null &&
+    decision.actions.some((a) => a.kind === 'start_trial' || a.kind === 'activate_paid')
+  ) {
+    reviewReasons.push(`Razorpay mode of ${sub.id} is not recorded — applied as before; confirm it is a live subscription`);
+  }
 
   for (const action of decision.actions) {
     switch (action.kind) {
@@ -186,7 +242,9 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
         await consumeTrialClaim(TrialClaim, { razorpaySubscriptionId: sub!.id, now: new Date() });
         break;
       case 'start_trial':
-        await startTrialAccess(businessId!, userId, { subscriptionId: sub!.id, trialEndsAt: action.trialEndsAt, eventAt: stampAt, cancelled: action.cancelled === true });
+        await startTrialAccess(businessId!, userId, { subscriptionId: sub!.id, trialEndsAt: action.trialEndsAt, eventAt: stampAt, cancelled: action.cancelled === true, subscriptionMode });
+        // A trial user is out of pre-sales nurture (no more sales follow-ups).
+        if (businessId) await stopPreSalesNurtureForWorkspace(businessId, 'trial-started');
         break;
       case 'reject_trial':
         console.error(`[billing] trial rejected for ${sub?.id} (business ${businessId}): ${action.reason}`);
@@ -202,11 +260,16 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
           break;
         }
         let held = false;
+        // First charge vs renewal from Razorpay's own counter (paid_count),
+        // not the workspace's current status: an `activated` and a `charged`
+        // event for the same first charge are both "first".
+        const isRenewalCharge = paymentNoticeKind(sub!.paidCount) === 'renewal';
         if (businessId) {
           ({ held } = await activateBusinessPlan(businessId, {
             currentPeriodEnd: action.periodEnd ?? undefined,
-            eventType: action.renewal ? 'subscription.charged' : 'subscription.activated',
+            eventType: isRenewalCharge ? 'subscription.charged' : 'subscription.activated',
             subscriptionId: sub!.id,
+            subscriptionMode,
             eventAt: stampAt,
           }));
         } else {
@@ -215,10 +278,20 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
         await activatePlan(userId, { razorpaySubscriptionId: sub!.id, currentPeriodEnd: action.periodEnd ?? undefined, held });
         // Verified payment: the failure is over — stop its reminders now.
         if (businessId) await closeRecoveryEpisodes(businessId, 'resolved', 'payment_recovered');
-        if (source === 'webhook') {
-          // Sent once per subscription (guarded) — see paymentReceivedNotice.ts.
-          const { sendPaymentReceivedMessage } = await import('@/services/billing/paymentReceivedNotice');
-          await sendPaymentReceivedMessage(userId, businessId);
+        // ...and pre-sales nurture, even when no platform Lead matches the phone.
+        if (businessId) await stopPreSalesNurtureForWorkspace(businessId, 'payment-verified');
+        // One WhatsApp per verified charge (first payment or renewal), for
+        // webhook AND reconciliation activations — the per-charge claim makes
+        // whichever arrives second a no-op. Skipped while access is held.
+        // Never throws and never touches payment/entitlement state.
+        if (businessId) {
+          await notifyPaymentConfirmed({
+            businessId,
+            subscriptionId: sub!.id,
+            paidCount: sub!.paidCount,
+            subscriptionNotes: subEntity?.notes,
+            periodEnd: action.periodEnd ?? null,
+          });
         }
         // Idempotent post-payment sequence (each step guarded by its own flag).
         try {

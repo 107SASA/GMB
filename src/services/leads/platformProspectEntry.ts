@@ -2,8 +2,8 @@ import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import Lead from '@/models/Lead';
 import { applyFormSignal } from '@/services/leadIntelligence/formSignals';
-import { usablePersonName } from '@/lib/personName';
-import { normalizePhoneE164 } from '@/lib/phone';
+import { PLACEHOLDER_PERSON_NAME, usablePersonName } from '@/lib/personName';
+import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 
 export interface FreeReportPlatformLeadInput {
   name: string;
@@ -144,16 +144,38 @@ export async function ensurePlatformLeadForReportPhone(input: {
 
 /**
  * Copies a name the person typed themselves (checkout / profile) onto their
- * platform lead, so the super admin CRM stops showing "New User" or the
- * business name. A real person name already on the lead is left alone.
+ * platform lead and their sales / booking WhatsApp threads, so the super
+ * admin CRM and later messages stop using "New User" or the business name.
+ * `businessNames` are the user's workspaces — any of them may have been used
+ * as the fallback name. A real person name already there is left alone.
  */
-export async function syncPlatformLeadName(phone: string, fullName: string): Promise<void> {
+export async function syncPlatformLeadName(phone: string, fullName: string, businessNames: string[] = []): Promise<void> {
   const name = usablePersonName(fullName);
   const normalized = normalizePhoneE164(phone) || phone;
   if (!name || !normalized) return;
   await dbConnect();
+  const fallbacks = businessNames.map((b) => b.trim()).filter(Boolean);
+  const isFallback = (value: unknown, businessType?: string) => {
+    const current = usablePersonName(value, businessType);
+    return !current || fallbacks.some((b) => b.toLowerCase() === current.toLowerCase());
+  };
+
   const lead = await Lead.findOne({ phone: normalized, tenantId: 'gmbboost-internal' });
-  if (!lead || usablePersonName(lead.name, lead.businessType)) return;
-  lead.name = name;
-  await lead.save();
+  if (lead && isFallback(lead.name, lead.businessType)) {
+    lead.name = name;
+    await lead.save();
+  }
+
+  const key = phoneDedupeKey(normalized);
+  if (!key) return;
+  const placeholders = ['', PLACEHOLDER_PERSON_NAME, ...fallbacks];
+  const [{ default: SalesConversation }, { default: BookingConversation }] = await Promise.all([
+    import('@/models/SalesConversation'),
+    import('@/models/BookingConversation'),
+  ]);
+  await Promise.all([
+    SalesConversation.updateMany({ phoneKey: key, leadName: { $in: placeholders } }, { $set: { leadName: name } }),
+    BookingConversation.updateMany({ phoneKey: key, leadName: { $in: placeholders } }, { $set: { leadName: name } }),
+    BookingConversation.updateMany({ phoneKey: key, 'details.name': { $in: placeholders } }, { $set: { 'details.name': name } }),
+  ]);
 }

@@ -8,21 +8,21 @@ type ReplyMode = 'manual' | 'auto';
 const TONES = ['Professional', 'Friendly', 'Apology', 'Empathetic'];
 
 /**
- * Review Management's reply-mode toggle. 'manual' is the existing flow
- * (AI drafts a reply, owner reviews/edits/approves, then posts — unchanged).
- * 'auto' hands the whole thing to the AI agent: draft AND post, no human
- * step, for every review — including the existing backlog the moment it's
- * switched on (see reply-settings/route.ts).
+ * Review Management's reply-mode toggle. 'auto' (DEFAULT) hands the whole
+ * thing to the AI agent: draft AND post fact-checked replies, no human step,
+ * for every review — including the existing backlog the moment it's switched
+ * on (see reply-settings/route.ts). 'manual': AI drafts a reply, the owner
+ * reviews/edits/approves, then posts. The app's Review settings screen
+ * (mobile/src/app/(app)/review-settings) saves the same setting.
  */
 export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: () => void }) {
-  const [mode, setMode] = useState<ReplyMode>('manual');
+  const [mode, setMode] = useState<ReplyMode>('auto');
   const [tone, setTone] = useState('Professional');
-  const [savedMode, setSavedMode] = useState<ReplyMode>('manual');
+  const [savedMode, setSavedMode] = useState<ReplyMode>('auto');
   const [savedTone, setSavedTone] = useState('Professional');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [legacyPaused, setLegacyPaused] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -34,7 +34,6 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
           setSavedMode(json.mode);
           setTone(json.tone);
           setSavedTone(json.tone);
-          setLegacyPaused(!!json.legacyAutoPaused);
         }
       } catch {
         /* keep defaults — not worth blocking the page over */
@@ -57,7 +56,6 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
       if (!res.ok || !json.success) throw new Error(json.error || 'Could not save.');
       setSavedMode(mode);
       setSavedTone(tone);
-      setLegacyPaused(false);
       setMsg({
         ok: true,
         text:
@@ -84,30 +82,7 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
         <p className="text-xs text-on-surface-variant mt-0.5">Choose per workspace — you can switch this anytime.</p>
       </div>
 
-      {legacyPaused && (
-        <p className="text-xs text-on-surface-variant bg-surface-container rounded-lg px-3 py-2">
-          Auto-reply is paused because you have not switched it on yourself, so replies wait for your approval.
-          Choose &quot;Auto-reply&quot; and save to turn it on under the fact-checked flow.
-        </p>
-      )}
-
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <button
-          type="button"
-          onClick={() => setMode('manual')}
-          className={`text-left p-4 rounded-xl border-2 transition-colors ${
-            mode === 'manual' ? 'border-primary bg-primary-fixed' : 'border-outline-variant hover:bg-surface-container'
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <UserCheck className={`w-4 h-4 ${mode === 'manual' ? 'text-primary' : 'text-on-surface-variant'}`} />
-            <span className="text-sm font-bold text-on-surface">AI drafts, I approve</span>
-          </div>
-          <p className="text-xs text-on-surface-variant leading-snug">
-            The AI drafts a fact-checked reply for each new review. Nothing posts to Google until you approve it and hit Post. (Default)
-          </p>
-        </button>
-
         <button
           type="button"
           onClick={() => setMode('auto')}
@@ -121,7 +96,23 @@ export default function ReplyModeSettings({ onModeChanged }: { onModeChanged?: (
           </div>
           <p className="text-xs text-on-surface-variant leading-snug">
             Replies that pass the fact check are posted without waiting for you. Replies that fail it are kept as
-            drafts for your review. Turning this on also covers your existing unanswered reviews.
+            drafts for your review. Also covers your existing unanswered reviews. (Default)
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMode('manual')}
+          className={`text-left p-4 rounded-xl border-2 transition-colors ${
+            mode === 'manual' ? 'border-primary bg-primary-fixed' : 'border-outline-variant hover:bg-surface-container'
+          }`}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <UserCheck className={`w-4 h-4 ${mode === 'manual' ? 'text-primary' : 'text-on-surface-variant'}`} />
+            <span className="text-sm font-bold text-on-surface">AI drafts, I approve</span>
+          </div>
+          <p className="text-xs text-on-surface-variant leading-snug">
+            The AI drafts a fact-checked reply for each new review. Nothing posts to Google until you approve it and hit Post.
           </p>
         </button>
       </div>

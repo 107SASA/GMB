@@ -5,14 +5,15 @@ import Business from '@/models/Business';
 import User from '@/models/User';
 import TrialClaim from '@/models/TrialClaim';
 import { requireBusinessContext } from '@/lib/tenant';
-import { getRazorpay, getRazorpayKeyId } from '@/lib/billing/razorpay';
+import { getRazorpay, getRazorpayKeyId, getRazorpayMode } from '@/lib/billing/razorpay';
+import { otherModeSupportMessage, savedModeUsable, type RazorpayMode } from '@/lib/billing/razorpayMode';
 import { ensureRazorpayPlanIdForCycle, getActivePlan, isBillingCycle, CYCLES, type BillingCycle } from '@/lib/billing/planCatalog';
 import { decideCheckoutTrial, offerAppliesToCycle } from '@/lib/billing/billingPolicy';
 import { attachSubscriptionToClaim, settleTrialReservation } from '@/lib/billing/trialClaims';
 import { getTrialPolicy } from '@/services/billing/trialPolicyStore';
 import { reserveTrialForCheckout, razorpaySettleDeps } from '@/services/billing/trialEligibility';
 import { startRecoveryCheckout } from '@/services/billing/paymentRecoveryService';
-import { decideTrialCheckoutReuse, previousUnpaidCheckout, retirePreviousCheckout } from '@/lib/billing/checkoutGuard';
+import { decideTrialCheckoutReuse, previousUnpaidCheckout, recordedCheckoutMode, retirePreviousCheckout } from '@/lib/billing/checkoutGuard';
 import { reconcileWorkspaceSubscription } from '@/lib/billing/razorpayReconcile';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
@@ -43,13 +44,14 @@ export async function POST(req: Request) {
 
     await dbConnect();
     const workspace = await Business.findById(ctx.businessId)
-      .select('subscriptionStatus trialEndsAt subscriptionCancelAtPeriodEnd paymentAccessHold razorpaySubscriptionId billingSubscriptionId')
+      .select('subscriptionStatus trialEndsAt subscriptionCancelAtPeriodEnd paymentAccessHold razorpaySubscriptionId razorpaySubscriptionEnv billingSubscriptionId')
       .lean<{
         subscriptionStatus?: string;
         trialEndsAt?: Date;
         subscriptionCancelAtPeriodEnd?: boolean;
         paymentAccessHold?: boolean;
         razorpaySubscriptionId?: string;
+        razorpaySubscriptionEnv?: { subscriptionId: string; mode: RazorpayMode };
         billingSubscriptionId?: string;
       }>();
     if (workspace?.subscriptionStatus === 'trial_active') {
@@ -76,7 +78,8 @@ export async function POST(req: Request) {
 
     // Workspace-state refusals above need no Razorpay; everything below does.
     const razorpay = getRazorpay();
-    if (!razorpay) {
+    const mode = getRazorpayMode();
+    if (!razorpay || !mode) {
       return NextResponse.json(
         { error: 'Billing is not configured on this server' },
         { status: 503 }
@@ -113,6 +116,7 @@ export async function POST(req: Request) {
     // unpaid checkout must not be able to charge alongside it (see
     // lib/billing/checkoutGuard.ts). Null = safe to create.
     const guardPreviousCheckout = async (): Promise<NextResponse | null> => {
+      const previous = previousUnpaidCheckout(workspace);
       const guard = await retirePreviousCheckout(
         {
           fetchSubscription: async (id) => {
@@ -123,9 +127,14 @@ export async function POST(req: Request) {
             await razorpay.subscriptions.cancel(id, false);
           },
         },
-        previousUnpaidCheckout(workspace)
+        previous,
+        { previousMode: recordedCheckoutMode(workspace, previous), currentMode: mode }
       );
       if (guard.kind === 'clear' || guard.kind === 'cancelled_previous') return null;
+      if (guard.kind === 'test_checkout_ignored') {
+        console.warn(`[billing/checkout] previous checkout ${guard.subscriptionId} for business ${ctx.businessId} was created with test keys — ignored under live keys`);
+        return null;
+      }
       if (guard.kind === 'payment_in_progress') {
         // Apply it now instead of waiting for a late webhook.
         await reconcileWorkspaceSubscription(ctx.businessId, { force: true, subscriptionId: guard.subscriptionId }).catch((err) =>
@@ -176,6 +185,18 @@ export async function POST(req: Request) {
             { error: 'Your billing status just changed. Please refresh the page.', code: 'STATE_CHANGED' },
             { status: 409 }
           );
+        case 'support_required':
+          // Recorded under the other Razorpay keys: nothing was looked up, cancelled or created.
+          return NextResponse.json(
+            { error: otherModeSupportMessage(recovery.recordedMode), code: 'SUBSCRIPTION_NEEDS_SUPPORT' },
+            { status: 409 }
+          );
+        default:
+          // Never fall through to a new checkout for a past-due workspace.
+          return NextResponse.json(
+            { error: "We couldn't safely set up a new payment right now, so nothing was charged. Please contact support.", code: 'RECOVERY_UNAVAILABLE' },
+            { status: 503 }
+          );
       }
     }
 
@@ -200,12 +221,19 @@ export async function POST(req: Request) {
         // while Razorpay says it can still be authorized.
         if (claim.razorpaySubscriptionId && claim.offer) {
           let reuse: ReturnType<typeof decideTrialCheckoutReuse>;
-          try {
-            const s: any = await razorpay.subscriptions.fetch(claim.razorpaySubscriptionId);
-            reuse = decideTrialCheckoutReuse({ status: String(s.status), paidCount: Number(s.paid_count ?? 0) });
-          } catch (err: any) {
-            console.error('[billing/checkout] could not check the attached trial checkout:', err?.error?.description || err?.message);
+          if (!savedModeUsable(claim.offer.razorpayMode, mode)) {
+            // Created under the other keys (or legacy, now live): never handed to
+            // this widget and not looked up — stays fail-closed (unknown).
+            console.error(`[billing/checkout] attached trial checkout ${claim.razorpaySubscriptionId} is from another Razorpay mode — not reused`);
             reuse = 'unknown';
+          } else {
+            try {
+              const s: any = await razorpay.subscriptions.fetch(claim.razorpaySubscriptionId);
+              reuse = decideTrialCheckoutReuse({ status: String(s.status), paidCount: Number(s.paid_count ?? 0) });
+            } catch (err: any) {
+              console.error('[billing/checkout] could not check the attached trial checkout:', err?.error?.description || err?.message);
+              reuse = 'unknown';
+            }
           }
           if (reuse === 'reuse') {
             return NextResponse.json({
@@ -272,6 +300,7 @@ export async function POST(req: Request) {
             currency: 'INR' as const,
             policyVersion: policy.version,
             decidedAt: now,
+            razorpayMode: mode,
           };
           const attached = await attachSubscriptionToClaim(TrialClaim, {
             claimId: claim._id,
@@ -292,7 +321,7 @@ export async function POST(req: Request) {
             );
           }
 
-          await linkCheckout(ctx.userId, ctx.businessId, rpSubscription.id);
+          await linkCheckout(ctx.userId, ctx.businessId, rpSubscription.id, mode);
           return NextResponse.json({
             success: true,
             checkout: widgetParams(rpSubscription.id, trialDescription(activePlan.displayName, duration.priceInr, decision.trialEndsAt)),
@@ -321,7 +350,7 @@ export async function POST(req: Request) {
       },
     });
 
-    await linkCheckout(ctx.userId, ctx.businessId, rpSubscription.id);
+    await linkCheckout(ctx.userId, ctx.businessId, rpSubscription.id, mode);
 
     return NextResponse.json({
       success: true,
@@ -329,6 +358,10 @@ export async function POST(req: Request) {
       trial: null,
     });
   } catch (error: any) {
+    if (error?.code === 'PLAN_CHANGED') {
+      // The price changed while its Razorpay plan was being created: nothing was created for the customer.
+      return NextResponse.json({ error: error.message, code: 'PLAN_CHANGED' }, { status: 409 });
+    }
     console.error('Checkout error:', error);
     // Razorpay's own error.error.description is already a clean, human
     // sentence when present ("The id provided does not exist", etc.) — only
@@ -345,10 +378,14 @@ export async function POST(req: Request) {
  * Link the Razorpay subscription now (entitlements unchanged until the webhook
  * confirms). Linked on both the workspace (per-workspace access gate) and the
  * user's Subscription doc (usage-limit plumbing). A Subscription doc created
- * here is a FREE one — never the schema's old 14-day trial.
+ * here is a FREE one — never the schema's old 14-day trial. The Razorpay mode
+ * it was created in is recorded with it (see checkoutGuard.recordedCheckoutMode).
  */
-async function linkCheckout(userId: string, businessId: string, subscriptionId: string) {
-  await Business.updateOne({ _id: businessId }, { $set: { razorpaySubscriptionId: subscriptionId } });
+async function linkCheckout(userId: string, businessId: string, subscriptionId: string, mode: RazorpayMode) {
+  await Business.updateOne(
+    { _id: businessId },
+    { $set: { razorpaySubscriptionId: subscriptionId, razorpaySubscriptionEnv: { subscriptionId, mode } } }
+  );
   await Subscription.findOneAndUpdate(
     { userId },
     {

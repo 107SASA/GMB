@@ -10,11 +10,15 @@ import {
   type SuggestedKeyword,
   saveIntake,
   suggestKeywords,
+  suggestionKeywords,
+  type AcceptedSuggestion,
   type IntakeData,
   type PlaceDetails,
+  type PrefillSuggestion,
+  type SuggestField,
 } from '@/api/endpoints/onboarding';
 import { Chip, ErrorText, Field, LabeledField, LoadingScreen, PrimaryButton } from '@/components/ui';
-import { useTheme } from '@/lib/theme';
+import { useTheme, withAlpha } from '@/lib/theme';
 
 interface Props {
   seed: PlaceDetails | null;
@@ -44,27 +48,78 @@ const isValidKeyword = (v: string) => /[a-zA-Z]/.test(v);
  * dashboard/onboarding/intake. Same fields and validation; POST
  * /api/onboarding/intake marks intakeCompleted, which clears the onboarding
  * gate. Prefills from any answers already saved for this workspace, falling
- * back to the Google Places result the previous step passed through.
+ * back to the Google Places result the previous step passed through. Empty
+ * fields show the server's sourced suggestions (website, Google listing,
+ * report, SEO plan) with "Use this", exactly like the web form.
  */
 export function StepIntake({ seed, onSaved }: Props) {
   const existing = useQuery({ queryKey: ['onboarding-intake'], queryFn: fetchIntake });
 
   if (existing.isLoading) return <LoadingScreen />;
 
+  let initial = mergeSeed(existing.data?.data ?? EMPTY_INTAKE, seed);
+  const suggestions = { ...(existing.data?.suggestions ?? {}) };
+  const initialAccepted: Partial<Record<SuggestField, PrefillSuggestion>> = {};
+  // No keywords yet but the report / SEO plan researched some → pre-fill them
+  // (removable) and count them as a used suggestion.
+  const kwSuggestion = suggestions.keywords;
+  if (!initial.keywords.length && kwSuggestion) {
+    const prefill = suggestionKeywords(kwSuggestion).slice(0, 10);
+    if (prefill.length) {
+      initial = { ...initial, keywords: prefill };
+      initialAccepted.keywords = kwSuggestion;
+    }
+  }
+  if (initial.keywords.length) delete suggestions.keywords;
+
   return (
     <IntakeForm
       key={existing.dataUpdatedAt}
-      initial={withKeywordPrefill(mergeSeed(existing.data?.data ?? EMPTY_INTAKE, seed), existing.data?.keywordPrefill ?? [])}
-      prefilledKeywords={!(existing.data?.data.keywords.length) && (existing.data?.keywordPrefill.length ?? 0) > 0}
+      initial={initial}
+      suggestions={suggestions}
+      initialAccepted={initialAccepted}
+      prefilledKeywords={!!initialAccepted.keywords}
       onSaved={onSaved}
     />
   );
 }
 
-/** No keywords yet but the report / SEO plan researched some → pre-fill them (removable). */
-function withKeywordPrefill(data: IntakeData, prefill: string[]): IntakeData {
-  if (data.keywords.length || !prefill.length) return data;
-  return { ...data, keywords: prefill.filter(isValidKeyword).slice(0, 10) };
+/** A sourced suggestion for an empty field — the owner reviews it before use. */
+function SuggestionNote({ s, onUse }: { s?: PrefillSuggestion; onUse: () => void }) {
+  const t = useTheme();
+  if (!s) return null;
+  return (
+    <View
+      style={{
+        marginBottom: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: withAlpha(t.brandBright, 0.5),
+        backgroundColor: withAlpha(t.brand, 0.08),
+        padding: 12,
+        gap: 6,
+      }}
+    >
+      <View className="flex-row items-center justify-between gap-2">
+        <View className="flex-1 flex-row items-center gap-1.5">
+          <Ionicons name="globe-outline" size={14} color={t.brandBright} />
+          <Text className="flex-1 font-sans-semibold text-xs text-brand-bright" numberOfLines={2}>
+            {s.label}
+          </Text>
+        </View>
+        <Pressable onPress={onUse} hitSlop={8} style={{ paddingVertical: 2, paddingHorizontal: 4 }}>
+          <Text className="font-sans-bold text-xs text-brand-bright">Use this</Text>
+        </Pressable>
+      </View>
+      <Text className="font-sans text-sm text-white">{s.value}</Text>
+      {!!s.sourceUrl && (
+        <Text className="font-sans text-[11px] text-zinc-500" numberOfLines={2}>
+          Source: {s.sourceUrl}
+        </Text>
+      )}
+    </View>
+  );
 }
 
 const KW_SOURCE_LABEL: Record<string, string> = { measured: 'in your report', proposed: 'SEO plan', ai: 'AI idea' };
@@ -80,9 +135,24 @@ function mergeSeed(data: IntakeData, seed: PlaceDetails | null): IntakeData {
   };
 }
 
-function IntakeForm({ initial, onSaved, prefilledKeywords = false }: { initial: IntakeData; onSaved: () => void; prefilledKeywords?: boolean }) {
+function IntakeForm({
+  initial,
+  suggestions: initialSuggestions,
+  initialAccepted,
+  onSaved,
+  prefilledKeywords = false,
+}: {
+  initial: IntakeData;
+  suggestions: Partial<Record<SuggestField, PrefillSuggestion>>;
+  initialAccepted: Partial<Record<SuggestField, PrefillSuggestion>>;
+  onSaved: () => void;
+  prefilledKeywords?: boolean;
+}) {
   const t = useTheme();
   const [form, setForm] = useState<IntakeData>(initial);
+  const [suggestions, setSuggestions] = useState(initialSuggestions);
+  // Suggestions the owner chose to use — recorded as owner-confirmed on save.
+  const [accepted, setAccepted] = useState(initialAccepted);
   const [keywordInput, setKeywordInput] = useState('');
   const [competitorInput, setCompetitorInput] = useState('');
   const [suggested, setSuggested] = useState<SuggestedKeyword[]>([]);
@@ -109,8 +179,27 @@ function IntakeForm({ initial, onSaved, prefilledKeywords = false }: { initial: 
     },
   });
 
+  function applySuggestion(field: SuggestField) {
+    const s = suggestions[field];
+    if (!s) return;
+    if (field === 'keywords') set('keywords', suggestionKeywords(s));
+    else set(field, s.value);
+    setAccepted((a) => ({ ...a, [field]: s }));
+    setSuggestions((p) => {
+      const next = { ...p };
+      delete next[field];
+      return next;
+    });
+  }
+
+  // Only suggestions still used as-is; an edited value is the owner's own answer.
+  const acceptedSuggestions = (): AcceptedSuggestion[] =>
+    (Object.entries(accepted) as [SuggestField, PrefillSuggestion][])
+      .filter(([field, s]) => (field === 'keywords' ? form.keywords.length > 0 : String(form[field]).trim() === s.value.trim()))
+      .map(([field, s]) => ({ field, source: s.source, ...(s.sourceUrl ? { sourceUrl: s.sourceUrl } : {}) }));
+
   const save = useMutation({
-    mutationFn: () => saveIntake(form),
+    mutationFn: () => saveIntake(form, acceptedSuggestions()),
     onSuccess: onSaved,
     onError: (err) => setError(getApiErrorMessage(err, 'Could not save. Please try again.')),
   });
@@ -157,6 +246,7 @@ function IntakeForm({ initial, onSaved, prefilledKeywords = false }: { initial: 
         onChangeText={(v) => set('category', v)}
         placeholder="e.g. Restaurant"
       />
+      {!form.category.trim() && <SuggestionNote s={suggestions.category} onUse={() => applySuggestion('category')} />}
 
       <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Business description *</Text>
       <Field
@@ -167,6 +257,7 @@ function IntakeForm({ initial, onSaved, prefilledKeywords = false }: { initial: 
         className="mb-3 min-h-[80px]"
         placeholder="What your business does, in a sentence or two."
       />
+      {!form.description.trim() && <SuggestionNote s={suggestions.description} onUse={() => applySuggestion('description')} />}
 
       <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Services you offer *</Text>
       <Field
@@ -177,6 +268,7 @@ function IntakeForm({ initial, onSaved, prefilledKeywords = false }: { initial: 
         className="mb-3 min-h-[64px]"
         placeholder="Comma-separated is fine."
       />
+      {!form.services.trim() && <SuggestionNote s={suggestions.services} onUse={() => applySuggestion('services')} />}
 
       {/* Target keywords + AI suggestions */}
       <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Target keywords *</Text>
@@ -217,6 +309,7 @@ function IntakeForm({ initial, onSaved, prefilledKeywords = false }: { initial: 
           ))}
         </View>
       )}
+      {form.keywords.length === 0 && <SuggestionNote s={suggestions.keywords} onUse={() => applySuggestion('keywords')} />}
       <Pressable
         onPress={() => form.category.trim() && suggest.mutate()}
         disabled={!form.category.trim() || suggest.isPending}
@@ -262,6 +355,7 @@ function IntakeForm({ initial, onSaved, prefilledKeywords = false }: { initial: 
           onChangeText={(v) => set('offers', v)}
           placeholder="Optional — used in promo posts."
         />
+        {!form.offers.trim() && <SuggestionNote s={suggestions.offers} onUse={() => applySuggestion('offers')} />}
         <LabeledField label="City" value={form.city} onChangeText={(v) => set('city', v)} />
         <LabeledField label="Area / locality" value={form.area} onChangeText={(v) => set('area', v)} />
         <LabeledField
@@ -280,6 +374,9 @@ function IntakeForm({ initial, onSaved, prefilledKeywords = false }: { initial: 
         textAlignVertical="top"
         className="mb-3 min-h-[64px]"
       />
+      {!form.uniqueSellingPoints.trim() && (
+        <SuggestionNote s={suggestions.uniqueSellingPoints} onUse={() => applySuggestion('uniqueSellingPoints')} />
+      )}
 
       <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Main competitors</Text>
       <View className="mb-2 flex-row gap-2">

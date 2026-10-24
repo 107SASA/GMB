@@ -38,6 +38,8 @@ const eslintConfig = defineConfig([
     // one — rules like @next/next/* are meaningless for React Native. Lint it
     // from inside mobile/ (`expo lint`), not from the web root.
     "mobile/**",
+    // The standalone iOS app (ios/) — same reasoning as mobile/ above.
+    "ios/**",
   ]),
 ]);
 

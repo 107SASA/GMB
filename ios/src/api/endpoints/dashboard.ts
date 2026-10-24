@@ -1,0 +1,150 @@
+import { z } from 'zod';
+import { api, businessHeaders } from '../client';
+
+/**
+ * GET /api/dashboard/stats — same aggregate the web dashboard renders.
+ * Only the fields the mobile dashboard shows are validated; the charts the
+ * web renders (donut, stars distribution) are ignored here.
+ */
+const recentLeadSchema = z.object({
+  _id: z.string(),
+  name: z.string().catch('Unknown'),
+  source: z.string().nullable().optional(),
+  pipelineStage: z.string().nullable().optional(),
+  createdAt: z.string().optional(),
+});
+export type RecentLead = z.infer<typeof recentLeadSchema>;
+
+const dashboardStatsSchema = z.object({
+  success: z.literal(true),
+  data: z.object({
+    metrics: z.object({
+      totalLeads: z.number().catch(0),
+      convertedLeads: z.number().catch(0),
+      conversionRate: z.number().catch(0),
+      totalReviews: z.number().catch(0),
+      avgRating: z.number().catch(0),
+      unansweredReviews: z.number().catch(0),
+      postsPublished: z.number().catch(0),
+    }),
+    charts: z.object({
+      // Used to derive "new leads in range" (each point is one day's count).
+      leadsOverTime: z.array(z.object({ date: z.string(), leads: z.number() })).catch([]),
+    }),
+    panels: z.object({
+      recentLeads: z.array(recentLeadSchema.nullable().catch(null)).catch([]),
+    }),
+  }),
+});
+export type DashboardStats = z.infer<typeof dashboardStatsSchema>['data'];
+
+export async function fetchDashboardStats(rangeDays = 30): Promise<DashboardStats> {
+  const { data } = await api.get('/api/dashboard/stats', { params: { range: rangeDays } });
+  return dashboardStatsSchema.parse(data).data;
+}
+
+/**
+ * GET /api/gbp/insights — Google Business Profile performance. Returns
+ * { connected: false } until the business has linked its Google account.
+ */
+const gbpInsightsSchema = z.object({
+  connected: z.boolean(),
+  // Same fields the web GBPSection renders — keep 1:1 so numbers match the site.
+  summary: z
+    .object({
+      totalViews: z.number().catch(0),
+      totalCallClicks: z.number().catch(0),
+      totalWebsiteClicks: z.number().catch(0),
+      totalDirectionRequests: z.number().catch(0),
+      totalConversations: z.number().catch(0),
+    })
+    .optional(),
+  changes: z
+    .object({
+      views: z.number().nullable().catch(null),
+      callClicks: z.number().nullable().catch(null),
+      websiteClicks: z.number().nullable().catch(null),
+      directionRequests: z.number().nullable().catch(null),
+      conversations: z.number().nullable().catch(null),
+    })
+    .optional(),
+  timeSeries: z
+    .array(
+      z.object({
+        date: z.string(),
+        views: z.number().catch(0),
+        callClicks: z.number().catch(0),
+        websiteClicks: z.number().catch(0),
+        directionRequests: z.number().catch(0),
+      })
+    )
+    .catch([])
+    .optional(),
+  // Before/After — split on the real GBP-connect date (GBPToken.connectedAt),
+  // not a fixed lookback window. Either side's fields are null when that side
+  // has no data yet (e.g. connected too recently for a "before" period to
+  // exist) — treat null as "not enough history", not zero.
+  impact: z
+    .object({
+      connectedAt: z.string(),
+      before: z.object({
+        views: z.number().nullable().catch(null),
+        callClicks: z.number().nullable().catch(null),
+        directionRequests: z.number().nullable().catch(null),
+        days: z.number().catch(0),
+      }),
+      after: z.object({
+        views: z.number().nullable().catch(null),
+        callClicks: z.number().nullable().catch(null),
+        directionRequests: z.number().nullable().catch(null),
+        days: z.number().catch(0),
+      }),
+    })
+    .optional(),
+  // Last 6 calendar months with data, monthly totals — Performance tab's
+  // trend chart. Independent of the `range` param above.
+  monthlyTrend: z
+    .array(
+      z.object({
+        month: z.string(),
+        views: z.number().catch(0),
+        callClicks: z.number().catch(0),
+        directionRequests: z.number().catch(0),
+      })
+    )
+    .catch([])
+    .optional(),
+});
+export type GbpInsights = z.infer<typeof gbpInsightsSchema>;
+
+export async function fetchGbpInsights(rangeDays: 7 | 14 | 28 | 90 = 28): Promise<GbpInsights> {
+  const { data } = await api.get('/api/gbp/insights', { params: { range: rangeDays } });
+  return gbpInsightsSchema.parse(data);
+}
+
+/**
+ * POST /api/gbp/sync — triggers a fresh pull from Google right now (views/
+ * calls/directions, keywords, profile fields, and the one-time 6-month
+ * history backfill — see services/gbpInsightsBackfill.ts) instead of
+ * waiting for the nightly cron. The website's Insights page already has
+ * this as a "Sync" button; the Performance tab previously had no way to
+ * trigger it at all, only ever reading whatever the last sync left behind.
+ */
+export async function syncGbpInsights(): Promise<void> {
+  await api.post('/api/gbp/sync');
+}
+
+/**
+ * GET /api/posts?status=scheduled&meta=1 — the real scheduled-post total
+ * for this business. A non-matching body throws so the UI can show an
+ * error instead of a fake 0.
+ */
+export async function fetchScheduledPostsCount(businessId: string): Promise<number> {
+  const { data } = await api.get('/api/posts', {
+    params: { status: 'scheduled', page: 1, limit: 1, meta: '1' },
+    ...businessHeaders(businessId),
+  });
+  const parsed = z.object({ total: z.number() }).safeParse(data);
+  if (!parsed.success) throw new Error('Unexpected posts response');
+  return parsed.data.total;
+}

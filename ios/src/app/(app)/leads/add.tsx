@@ -1,0 +1,227 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import * as Clipboard from 'expo-clipboard';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+
+import { getApiErrorMessage } from '@/api/client';
+import { logLeadActivity, quickAddLead } from '@/api/endpoints/leads';
+import { useBusiness } from '@/business/BusinessContext';
+import { useCrmCaptureConsent } from '@/components/consent-sheet';
+import {
+  BackChevron, ErrorText, Field, PrimaryButton, Screen
+} from '@/components/ui';
+import { parsePhoneCandidate } from '@/lib/phone';
+import { useTheme, withAlpha } from '@/lib/theme';
+
+/**
+ * Quick lead capture. Plain mode adds a lead; ?intent=call is the "Log a
+ * call" quick action — same capture, but with source "Phone Call" and a call
+ * Activity (+ optional note) appended.
+ */
+export default function AddLeadScreen() {
+  const { intent } = useLocalSearchParams<{ intent?: string }>();
+  const isCallLog = intent === 'call';
+  const router = useRouter();
+  const t = useTheme();
+  const queryClient = useQueryClient();
+  const { activeBusinessId } = useBusiness();
+  const { ensureConsent, consentSheet } = useCrmCaptureConsent();
+
+  const [phone, setPhone] = useState('');
+  const [name, setName] = useState('');
+  const [valuation, setValuation] = useState('');
+  const [note, setNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [clipboardPhone, setClipboardPhone] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Android: preview the clipboard number as a one-tap chip. iOS 14+ shows a
+  // system "pasted from" banner on every read, so there we only read on an
+  // explicit tap (generic "Paste number" chip instead of a preview).
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const text = await Clipboard.getStringAsync();
+        const candidate = parsePhoneCandidate(text);
+        if (!cancelled && candidate) setClipboardPhone(candidate);
+      } catch {
+        // No clipboard access — chip just doesn't appear.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function pasteFromClipboard() {
+    const text = await Clipboard.getStringAsync().catch(() => '');
+    const candidate = parsePhoneCandidate(text);
+    if (candidate) {
+      setPhone(candidate);
+      setNotice(null);
+    } else {
+      setNotice("The clipboard doesn't contain a phone number.");
+    }
+  }
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      const result = await quickAddLead({
+        phone: phone.trim(),
+        name: name.trim() || undefined,
+        source: isCallLog ? 'Phone Call' : 'Manual',
+        valuation: trimmedValuation ? Number(trimmedValuation) : undefined,
+      });
+      if (isCallLog) {
+        await logLeadActivity(result.lead._id, {
+          type: 'call',
+          content: note.trim() || 'Phone call logged from mobile',
+        });
+      }
+      return result;
+    },
+    onMutate: () => setError(null),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['crm-leads', activeBusinessId] });
+      if (isCallLog) {
+        void queryClient.invalidateQueries({
+          queryKey: ['lead-timeline', activeBusinessId, result.lead._id],
+        });
+      }
+      router.replace(`/leads/${result.lead._id}`);
+    },
+    onError: (err) => setError(getApiErrorMessage(err, 'Failed to add the lead.')),
+  });
+
+  const phoneValid = parsePhoneCandidate(phone) !== null;
+  const trimmedValuation = valuation.trim();
+  const valuationValid = !trimmedValuation || (Number.isFinite(Number(trimmedValuation)) && Number(trimmedValuation) >= 0);
+
+  return (
+    <Screen>
+      {consentSheet}
+      {/* Header */}
+      <View className="flex-row items-center gap-3 border-b border-surface-border px-4 pb-3 pt-2">
+        <Pressable onPress={() => router.back()} hitSlop={8}>
+          <BackChevron />
+        </Pressable>
+        <Text className="font-display-bold text-lg text-white">
+          {isCallLog ? 'Log a call' : 'Add lead'}
+        </Text>
+      </View>
+
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView
+        contentContainerClassName="gap-3 px-4 pb-16 pt-4"
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+      >
+        {/* Paste chip */}
+        {Platform.OS === 'android' && clipboardPhone && clipboardPhone !== phone ? (
+          <Pressable
+            onPress={() => setPhone(clipboardPhone)}
+            // No `className` — react-native-css-interop can swallow onPress
+            // on styled Pressables (see components/ui.tsx).
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              alignSelf: 'flex-start',
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: withAlpha(t.brand, 0.5),
+              backgroundColor: withAlpha(t.brand, 0.15),
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+            }}
+          >
+            <Ionicons name="clipboard-outline" size={14} color={t.brandBright} />
+            <Text className="font-sans-semibold text-sm text-indigo-300">
+              Paste {clipboardPhone}
+            </Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => void pasteFromClipboard()}
+            // No `className` — see note above.
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              alignSelf: 'flex-start',
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: t.border,
+              backgroundColor: t.card,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+            }}
+          >
+            <Ionicons name="clipboard-outline" size={14} color={t.textFaint} />
+            <Text className="font-sans-semibold text-sm text-zinc-300">Paste number</Text>
+          </Pressable>
+        )}
+        {!!notice && <Text className="font-sans text-sm text-zinc-500">{notice}</Text>}
+
+        <Field
+          value={phone}
+          onChangeText={(v) => {
+            setPhone(v);
+            setNotice(null);
+          }}
+          placeholder="Phone number (e.g. +91 98765 43210)"
+          keyboardType="phone-pad"
+          autoFocus
+        />
+        <Field value={name} onChangeText={setName} placeholder="Name (optional)" />
+        <Field
+          value={valuation}
+          onChangeText={setValuation}
+          placeholder="Valuation in ₹ (optional)"
+          keyboardType="numeric"
+        />
+        {isCallLog && (
+          <Field
+            value={note}
+            onChangeText={setNote}
+            placeholder="How did the call go? (optional)"
+            multiline
+            className="min-h-20"
+            textAlignVertical="top"
+          />
+        )}
+
+        {!!phone.trim() && !phoneValid && (
+          <Text className="font-sans text-sm text-zinc-500">
+            Enter a 10-digit number or use +country format.
+          </Text>
+        )}
+        {!valuationValid && (
+          <Text className="font-sans text-sm text-zinc-500">Valuation must be a non-negative number.</Text>
+        )}
+        <ErrorText>{error}</ErrorText>
+
+        <PrimaryButton
+          title={isCallLog ? 'Save call' : 'Add lead'}
+          loading={submit.isPending}
+          disabled={!phoneValid || !valuationValid}
+          onPress={() => {
+            void (async () => {
+              // Call capture counts as a CRM-capture feature — one-time consent.
+              if (isCallLog && !(await ensureConsent())) return;
+              submit.mutate();
+            })();
+          }}
+        />
+        <Text className="text-center font-sans text-xs text-zinc-600">
+          If this number already exists, you'll be taken to the existing lead.
+        </Text>
+      </ScrollView>
+      </KeyboardAvoidingView>
+    </Screen>
+  );
+}

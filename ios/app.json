@@ -1,0 +1,72 @@
+{
+  "expo": {
+    "name": "GrowwMatics AI",
+    "slug": "growwmatics-ios",
+    "version": "1.0.0",
+    "platforms": ["ios"],
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "growwmatics",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.growwmatics.app",
+      "buildNumber": "1",
+      "supportsTablet": false
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F4F6FC",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 76,
+          "dark": {
+            "backgroundColor": "#070B14"
+          }
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      "expo-notifications",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Allow $(PRODUCT_NAME) to access your contacts so you can add the ones you choose to your business CRM. Only contacts you explicitly select are saved."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos and videos so you can upload them to your Google Business Profile.",
+          "cameraPermission": "Allow $(PRODUCT_NAME) to use the camera so you can take photos and record videos for your Google Business Profile.",
+          "microphonePermission": "Allow $(PRODUCT_NAME) to use the microphone so videos you record for your Google Business Profile include sound."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location when you take a photo or record a video in the app, so it records where it was taken.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "motionUsagePermission": false
+        }
+      ],
+      "expo-web-browser",
+      "@react-native-community/datetimepicker",
+      "expo-image",
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {}
+    }
+  }
+}

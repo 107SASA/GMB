@@ -1,0 +1,74 @@
+import { useQuery } from '@tanstack/react-query';
+import { Text, View } from 'react-native';
+
+import { fetchGbpInsights } from '@/api/endpoints/dashboard';
+import { useBusiness } from '@/business/BusinessContext';
+import { ImpactBars } from '@/components/charts';
+import { AiActionsCard } from '@/components/gbp/ai-actions';
+import { GoogleG } from '@/components/google-g';
+import { Skeleton } from '@/components/ui';
+
+/**
+ * GBP → Overview: the "AI Impact" before/after card plus the AI Actions feed.
+ * "Before" = the profile's current monthly averages; "After" fills in once
+ * optimization has been running long enough to compare.
+ */
+export function OverviewTab() {
+  const { activeBusinessId } = useBusiness();
+
+  const gbp = useQuery({
+    queryKey: ['gbp-insights', activeBusinessId],
+    queryFn: () => fetchGbpInsights(28),
+    enabled: !!activeBusinessId,
+  });
+
+  return (
+    <View className="px-4">
+      <View className="mb-1 flex-row items-center gap-2 pt-2">
+        <GoogleG size={18} />
+        <Text className="font-display-bold text-lg text-white">GBP — AI Impact</Text>
+      </View>
+
+      {gbp.isLoading ? (
+        <Skeleton className="mt-3 h-56 rounded-card" />
+      ) : gbp.data?.connected && gbp.data.summary ? (
+        <View className="mt-3 flex-row rounded-card border border-surface-border bg-surface-raised p-4">
+          {/* Before */}
+          <View className="flex-1 pr-3">
+            <View className="mb-3 self-start rounded-full bg-surface-overlay px-3 py-1.5">
+              <Text className="font-sans-bold text-sm text-zinc-200">Before</Text>
+            </View>
+            <ImpactBars
+              items={[
+                { label: 'Views', value: gbp.data.summary.totalViews },
+                { label: 'Calls', value: gbp.data.summary.totalCallClicks },
+                { label: 'Directions', value: gbp.data.summary.totalDirectionRequests },
+              ]}
+            />
+            <Text className="mt-1 text-center font-sans text-xs text-zinc-500">Last 28 days</Text>
+          </View>
+          {/* After */}
+          <View className="w-px bg-surface-border" />
+          <View className="flex-1 items-center justify-center pl-3">
+            <View className="mb-3 self-center rounded-full bg-surface-overlay px-3 py-1.5">
+              <Text className="font-sans-bold text-sm text-zinc-200">After</Text>
+            </View>
+            <Text className="mb-2 text-lg">✨</Text>
+            <Text className="text-center font-sans text-sm leading-5 text-zinc-300">
+              Optimization is still in progress
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <View className="mt-3 rounded-card border border-surface-border bg-surface-raised px-4 py-5">
+          <Text className="font-sans text-sm leading-5 text-zinc-400">
+            Google Business Profile is not connected. Connect it from the web dashboard to see
+            impact here.
+          </Text>
+        </View>
+      )}
+
+      <AiActionsCard />
+    </View>
+  );
+}

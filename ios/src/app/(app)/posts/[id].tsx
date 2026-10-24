@@ -1,0 +1,231 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Image } from 'expo-image';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+
+import { getApiErrorMessage } from '@/api/client';
+import { geotagLine, imageOriginLine, postPlanLine, postStatusView } from '@/api/endpoints/content';
+import { deletePost, fetchPost, publishPost, schedulePost } from '@/api/endpoints/scheduler';
+import { useBusiness } from '@/business/BusinessContext';
+import { useDateTimePicker } from '@/components/datetime-picker';
+import { EditPostModal } from '@/components/gbp/edit-post-modal';
+import { Badge, BottomSheet, LoadingScreen, Screen, Skeleton, useConfirmSheet, useInfoSheet } from '@/components/ui';
+import { formatDateTime } from '@/lib/format';
+import { useTheme } from '@/lib/theme';
+
+/** "⋮" bottom-sheet options menu — Edit / Reschedule / Publish now / Delete,
+ *  matching the app's existing bottom-sheet pattern (business switcher,
+ *  EditPostModal) rather than Alert.alert, which gets cramped past 2-3
+ *  buttons. Actions are the same mutations SchedulerPanel already has. */
+function OptionsMenu({
+  visible,
+  onClose,
+  isPublished,
+  onEdit,
+  onReschedule,
+  onPublishNow,
+  onDelete,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  isPublished: boolean;
+  onEdit: () => void;
+  onReschedule: () => void;
+  onPublishNow: () => void;
+  onDelete: () => void;
+}) {
+  const t = useTheme();
+  const row = (icon: keyof typeof Ionicons.glyphMap, label: string, onPress: () => void, danger = false) => (
+    <Pressable
+      onPress={() => {
+        onClose();
+        onPress();
+      }}
+      // No `className` — react-native-css-interop can swallow onPress on
+      // styled Pressables (see components/ui.tsx).
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48, paddingVertical: 12, paddingHorizontal: 4 }}
+    >
+      <Ionicons name={icon} size={18} color={danger ? t.rose : t.text} />
+      <Text className="font-sans-semibold text-base" style={{ color: danger ? t.rose : t.text }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+  return (
+    <BottomSheet visible={visible} onClose={onClose}>
+        <View className="mb-2 self-center h-1 w-10 rounded-full bg-surface-overlay" />
+        {!isPublished && row('pencil-outline', 'Edit', onEdit)}
+        {!isPublished && row('calendar-outline', 'Reschedule', onReschedule)}
+        {!isPublished && row('send-outline', 'Publish now', onPublishNow)}
+        {!isPublished && row('trash-outline', 'Delete', onDelete, true)}
+        {isPublished && (
+          <Text className="py-4 font-sans text-sm text-zinc-500">
+            This post is already live — published posts can&apos;t be edited, rescheduled, or deleted.
+          </Text>
+        )}
+    </BottomSheet>
+  );
+}
+
+export default function PostDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { activeBusinessId } = useBusiness();
+  const router = useRouter();
+  const t = useTheme();
+  const queryClient = useQueryClient();
+  const picker = useDateTimePicker();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const info = useInfoSheet();
+  const confirmSheet = useConfirmSheet();
+
+  const post = useQuery({
+    queryKey: ['post', activeBusinessId, id],
+    queryFn: () => fetchPost(id!, activeBusinessId!),
+    enabled: !!id && !!activeBusinessId,
+    staleTime: 0,
+  });
+
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['post', activeBusinessId, id] });
+    void queryClient.invalidateQueries({ queryKey: ['scheduler-buffer', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['published-posts', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['scheduled-posts', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['scheduled-posts-count', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['dashboard-stats', activeBusinessId] });
+  };
+
+  const publish = useMutation({
+    mutationFn: () => publishPost(id!, activeBusinessId!),
+    onSuccess: (res) => {
+      invalidate();
+      if (res.outcome === 'blocked') info.show('Not sent to Google', res.message);
+    },
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not publish the post.')),
+  });
+  const reschedule = useMutation({
+    mutationFn: (date: Date) => schedulePost(id!, date, activeBusinessId!),
+    onSuccess: invalidate,
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not reschedule.')),
+  });
+  const remove = useMutation({
+    mutationFn: () => deletePost(id!, activeBusinessId!),
+    onSuccess: () => {
+      invalidate();
+      router.back();
+    },
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not delete the post.')),
+  });
+
+  if (post.isLoading) return <LoadingScreen />;
+  if (!post.data) {
+    return (
+      <Screen>
+        <View className="flex-1 items-center justify-center px-6">
+          <Text className="font-sans text-sm text-zinc-500">Couldn&apos;t load this post.</Text>
+        </View>
+      </Screen>
+    );
+  }
+
+  const p = post.data;
+  const isPublished = p.status === 'published';
+  const isUpdate = (p.postType ?? '').toLowerCase().includes('update') || !p.postType;
+  const sv = postStatusView(p);
+  const plan = postPlanLine(p);
+  const geo = geotagLine(p.imageGeotag);
+
+  return (
+    <Screen>
+      <ScrollView contentContainerClassName="pb-10">
+        <View className="flex-row items-center justify-between px-4 pb-3 pt-4">
+          <Pressable onPress={() => router.back()} hitSlop={10}>
+            <Ionicons name="arrow-back" size={22} color={t.text} />
+          </Pressable>
+          <Text className="font-display-bold text-lg text-white">Post</Text>
+          <Pressable onPress={() => setMenuOpen(true)} hitSlop={10}>
+            <Ionicons name="ellipsis-vertical" size={20} color={t.text} />
+          </Pressable>
+        </View>
+
+        {p.imageUrl && (
+          <Image source={{ uri: p.imageUrl }} style={{ width: '100%', aspectRatio: 4 / 3 }} contentFit="cover" />
+        )}
+
+        <View className="px-4 pt-4">
+          <View className="flex-row flex-wrap gap-2">
+            <Badge label={sv.label} tone={sv.tone} />
+            <Badge label={isUpdate ? 'Update Post' : (p.postType ?? 'Standard Post')} tone="neutral" />
+          </View>
+          {!!sv.note && (
+            <Text className="mt-2 font-sans text-sm text-amber-300">{sv.note}</Text>
+          )}
+          {!!plan && <Text className="mt-2 font-sans text-xs text-zinc-500">Plan: {plan}</Text>}
+          {!!p.contentMeta?.seoTheme && (
+            <Text className="mt-1 font-sans text-xs text-zinc-500">SEO theme: {p.contentMeta.seoTheme}</Text>
+          )}
+          {!!p.contentMeta?.keywordReason && (
+            <Text className="mt-1 font-sans text-xs text-zinc-500">Why this keyword: {p.contentMeta.keywordReason}</Text>
+          )}
+          {!!p.imageUrl && !!imageOriginLine(p.contentMeta) && (
+            <Text className="mt-1 font-sans text-xs text-zinc-500">{imageOriginLine(p.contentMeta)}</Text>
+          )}
+          {!!geo && !!p.imageUrl && <Text className="mt-1 font-sans text-xs text-zinc-500">{geo}</Text>}
+
+          <View className="mt-3 flex-row items-center gap-1.5">
+            <Ionicons name="calendar-outline" size={14} color={t.textFaint} />
+            <Text className="font-sans-semibold text-sm text-zinc-400">
+              {isPublished
+                ? `Posted on: ${formatDateTime(p.publishedAt)}`
+                : p.scheduledDate
+                  ? `Scheduled for: ${formatDateTime(p.scheduledDate)}`
+                  : 'Not scheduled yet'}
+            </Text>
+          </View>
+
+          {!!p.title && (
+            <Text className="mt-3 font-display-bold text-xl leading-7 text-white">{p.title}</Text>
+          )}
+          {!!p.content && (
+            <Text className="mt-3 font-sans text-base leading-6 text-zinc-300">{p.content}</Text>
+          )}
+        </View>
+      </ScrollView>
+
+      <OptionsMenu
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        isPublished={isPublished}
+        onEdit={() => setEditing(true)}
+        onReschedule={() =>
+          picker.open(p.scheduledDate ? new Date(p.scheduledDate) : new Date(), (date) =>
+            reschedule.mutate(date)
+          )
+        }
+        onPublishNow={() =>
+          confirmSheet.confirm({
+            title: 'Publish now?',
+            message: `"${p.title || 'This post'}" will go live immediately.`,
+            confirmLabel: 'Publish',
+            onConfirm: () => publish.mutate(),
+          })
+        }
+        onDelete={() =>
+          confirmSheet.confirm({
+            title: 'Delete post?',
+            message: 'This removes the post permanently.',
+            confirmLabel: 'Delete',
+            destructive: true,
+            onConfirm: () => remove.mutate(),
+          })
+        }
+      />
+      {picker.element}
+      {editing && <EditPostModal post={p} onClose={() => setEditing(false)} />}
+      {info.node}
+      {confirmSheet.node}
+    </Screen>
+  );
+}

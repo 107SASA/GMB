@@ -28,12 +28,14 @@ export interface SessionClaims {
 export async function signSessionToken(
   userId: string,
   role: string,
-  sessionEpoch: number = 0
+  sessionEpoch: number = 0,
+  /** jose duration, e.g. '15m' — only the iOS Google-connect handoff shortens it. */
+  expiresIn: string = '30d'
 ): Promise<string> {
   return new SignJWT({ userId, role, sv: sessionEpoch })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('30d')
+    .setExpirationTime(expiresIn)
     .sign(getSecret());
 }
 

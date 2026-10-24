@@ -71,6 +71,7 @@ export const PURGE_TARGETS: PurgeTarget[] = [
   // ── a: Google connection data ──
   { model: 'GBPToken', by: { businessId: 'businessId' }, category: 'a', what: 'Google OAuth tokens (revoked with Google first)' },
   { model: 'PendingGbpConnection', by: { businessId: 'businessId' }, category: 'a', what: 'pending Google connections' },
+  { model: 'GbpConnectHandoff', by: { businessId: 'businessId', userId: 'userId' }, category: 'a', what: 'iOS Google-connect handoff links' },
   { model: 'GBPInsights', by: { businessId: 'businessId' }, category: 'a', what: 'Google performance data' },
   { model: 'GBPKeyword', by: { businessId: 'businessId' }, category: 'a', what: 'Google search keywords' },
   { model: 'GBPKeywordIntel', by: { businessId: 'businessId' }, category: 'a', what: 'keyword intelligence' },

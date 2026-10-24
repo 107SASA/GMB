@@ -25,7 +25,7 @@ export default function DeleteAccountPage() {
   return (
     <LegalLayout
       title="Delete Your Account"
-      intro={`How to delete your ${COMPANY.name} account (the ${COMPANY.name} website and Android app, developed by ${COMPANY.legalName}) and what happens to your data.`}
+      intro={`How to delete your ${COMPANY.name} account (the ${COMPANY.name} website and the Android and iOS apps, developed by ${COMPANY.legalName}) and what happens to your data.`}
     >
       <LegalSection heading="How to delete your account">
         <ol className="list-decimal pl-6 space-y-2">
@@ -40,13 +40,13 @@ export default function DeleteAccountPage() {
             Open <strong>Profile</strong> from the sidebar and scroll to the <strong>Danger Zone</strong>.
           </li>
           <li>
-            Click <strong>Delete My Account</strong>, type your account email address to confirm, and click{" "}
-            <strong>Delete Account</strong>.
+            Click <strong>Delete My Account</strong>, type your account email address to confirm (or your login phone
+            number, if that is what the confirmation box asks for), and click <strong>Delete Account</strong>.
           </li>
         </ol>
         <p>
-          Account deletion is done from the website. The Android app uses the same account — deleting it on the website
-          signs you out of the app as well.
+          Account deletion is done from the website. The Android and iOS apps use the same account — deleting it on the
+          website signs you out of the apps as well.
         </p>
       </LegalSection>
 

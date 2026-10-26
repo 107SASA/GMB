@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -93,9 +94,26 @@ const adminGroups = [
   },
 ];
 
+/** Unopened WhatsApp chats, refreshed every 30 seconds. */
+function useInboxUnread(): number {
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const load = () => fetch('/api/admin/inbox/unread')
+      .then((res) => res.json())
+      .then((data) => { if (alive && data?.success) setUnread(data.unread || 0); })
+      .catch(() => {});
+    load();
+    const timer = setInterval(load, 30_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, []);
+  return unread;
+}
+
 export function AdminSidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const inboxUnread = useInboxUnread();
 
   const handleLogout = async () => {
     await fetch('/api/admin/auth', { method: 'DELETE' });
@@ -146,6 +164,11 @@ export function AdminSidebar() {
                     >
                       <MaterialIcon name={link.icon} size={20} filled={isActive} />
                       <span className="font-medium text-sm">{link.name}</span>
+                      {link.href === '/admin/inbox' && inboxUnread > 0 && (
+                        <span className="ml-auto min-w-5 rounded-full bg-error px-1.5 text-center text-[11px] font-semibold text-white" aria-label={`${inboxUnread} unread chats`}>
+                          {inboxUnread > 99 ? '99+' : inboxUnread}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}

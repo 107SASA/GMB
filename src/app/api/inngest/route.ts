@@ -56,6 +56,7 @@ import {
   dataRetentionCleanupCron,
   accountHardPurgeCron
 } from "@/services/inngest/functions";
+import { whatsappCampaignSend } from "@/services/inngest/whatsappCampaign";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -116,5 +117,6 @@ export const { GET, POST, PUT } = serve({
     ...(process.env.LEAD_ENGINE_V2 === 'true' ? [proactiveNbaScheduler] : []),
     dataRetentionCleanupCron,
     accountHardPurgeCron,
+    whatsappCampaignSend,
   ],
 });

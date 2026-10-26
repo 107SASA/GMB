@@ -14,6 +14,7 @@ import {
   PAID_PLAN_TYPE,
 } from './planCatalog';
 import { TRIAL_CHARGE_PROCESSING_MS, failureSnapshot, type FailureKind, type FailureSnapshot } from './billingPolicy';
+import { planAccessWorkspaceFilter } from './entitlements';
 import { getFailurePolicy, getReminderPolicy } from '@/services/billing/trialPolicyStore';
 
 /** Absolute Billing page link for WhatsApp copy (falls back to the public domain). */
@@ -466,6 +467,30 @@ export async function markPastDue(userId: string, snapshot: FailureSnapshot | nu
       },
     }
   );
+}
+
+/**
+ * True when the user owns another (not deleted) workspace that still has the
+ * paid plan — paid, an authorized trial, or a failure inside its grace.
+ * The user-level entitlements below are shared by every workspace the user
+ * owns, so one workspace ending or failing must not downgrade them while
+ * another one is still paid for (its data APIs would answer MODULE_LOCKED).
+ */
+export async function userHasOtherPlanWorkspace(userId: string, exceptBusinessId: string | null): Promise<boolean> {
+  await dbConnect();
+  const found = await Business.exists({
+    userId,
+    ...(exceptBusinessId && { _id: { $ne: exceptBusinessId } }),
+    isDeleted: { $ne: true },
+    ...planAccessWorkspaceFilter(),
+  });
+  return !!found;
+}
+
+/** cancelPlan, unless another workspace of this user still has the paid plan. */
+export async function endUserPlanUnlessOtherWorkspacePaid(userId: string, endedBusinessId: string | null): Promise<void> {
+  if (await userHasOtherPlanWorkspace(userId, endedBusinessId)) return;
+  await cancelPlan(userId);
 }
 
 /**

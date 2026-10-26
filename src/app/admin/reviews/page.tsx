@@ -47,6 +47,17 @@ function replyStatusBadge(status: string) {
   return map[status] ?? 'bg-surface-container text-on-surface-variant';
 }
 
+/** The reply's state in words — POSTED alone read like the review's own status. */
+const REPLY_LABEL: Record<string, string> = {
+  PENDING: 'No reply yet',
+  DRAFT: 'Draft ready',
+  NEEDS_REVIEW: 'Needs approval',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+  POSTED: 'Replied',
+  FAILED: 'Reply failed',
+};
+
 export default function ReviewMonitorPage() {
   const [data, setData] = useState<ReviewsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -166,7 +177,7 @@ export default function ReviewMonitorPage() {
       <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden">
         <div className="px-6 py-4 border-b border-outline-variant">
           <h2 className="font-semibold text-on-surface">Recent Reviews</h2>
-          <p className="text-xs text-outline mt-0.5">Latest 20 reviews across all businesses</p>
+          <p className="text-xs text-outline mt-0.5">Latest 20 reviews across all businesses, by the date they were posted on Google</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -176,7 +187,7 @@ export default function ReviewMonitorPage() {
                 <th className="text-left px-4 py-3">Reviewer</th>
                 <th className="text-left px-4 py-3">Rating</th>
                 <th className="text-left px-4 py-3">Review</th>
-                <th className="text-left px-4 py-3">Status</th>
+                <th className="text-left px-4 py-3">Reply</th>
                 <th className="text-left px-4 py-3">Date</th>
               </tr>
             </thead>
@@ -202,7 +213,7 @@ export default function ReviewMonitorPage() {
                     <td className="px-4 py-3 text-on-surface-variant max-w-xs truncate">{review.textSnippet || '—'}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${replyStatusBadge(review.replyStatus)}`}>
-                        {review.replyStatus}
+                        {REPLY_LABEL[review.replyStatus] ?? review.replyStatus}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-outline whitespace-nowrap">

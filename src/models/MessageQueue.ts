@@ -40,4 +40,20 @@ const MessageQueueSchema: Schema = new Schema(
   { timestamps: true }
 );
 
+// Every new outbound send also lands in the Super Admin WhatsApp Inbox
+// (services/inbox/whatsappLog.ts decides what is shown). Never throws.
+MessageQueueSchema.pre('save', function (this: any) {
+  this.$locals.wasNew = this.isNew;
+});
+MessageQueueSchema.post('save', async function (doc: any) {
+  if (!doc.$locals?.wasNew || doc.direction !== 'OUTBOUND') return;
+  doc.$locals.wasNew = false;
+  try {
+    const { recordOutboundFromQueue } = await import('@/services/inbox/whatsappLog');
+    await recordOutboundFromQueue(doc);
+  } catch (err: any) {
+    console.warn('[MessageQueue] inbox record failed:', err?.message);
+  }
+});
+
 export default mongoose.models.MessageQueue || mongoose.model<IMessageQueue>('MessageQueue', MessageQueueSchema);

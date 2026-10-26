@@ -144,3 +144,18 @@ test('a tap or typed reply picks only a listed slot', () => {
   assert.equal(pickOfferedSlotIndex('12', slots), null);
   assert.equal(pickOfferedSlotIndex('other-date', slots), null);
 });
+
+test('typed times: "5:30" / "11.30" with no am/pm pick the one offered time they can mean; "28 oct 4pm" is the 28th', async () => {
+  const { parseDemoTimeRequest } = await import('../../src/services/calendar/demoScheduling.ts');
+  const day = '2026-10-26';
+  const slots = ['10:30', '11:30', '12:30', '13:00', '17:30'].map((time) => ({ date: day, time }));
+  assert.equal(pickOfferedSlotIndex('5:30', slots), 4);
+  assert.equal(pickOfferedSlotIndex('11.30', slots), 1);
+  assert.equal(pickOfferedSlotIndex('1:00', slots), 3);
+  assert.equal(pickOfferedSlotIndex('9:15', slots), null, 'not offered');
+  assert.equal(pickOfferedSlotIndex('2', slots), 1, 'a tapped row id is still the row');
+  const now = new Date('2026-10-26T04:00:00Z'); // Mon 9:30 AM IST
+  assert.equal(parseDemoTimeRequest('28 oct 4pm', now, 'Asia/Kolkata')?.date, '2026-10-28');
+  assert.equal(parseDemoTimeRequest('tmrw 3pm', now, 'Asia/Kolkata')?.date, '2026-10-27');
+  assert.equal(parseDemoTimeRequest('11:30 AM\nMon 26 Oct', now, 'Asia/Kolkata')?.time, '11:30');
+});

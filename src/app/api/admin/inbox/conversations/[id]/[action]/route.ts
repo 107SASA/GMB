@@ -20,7 +20,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string; ac
   const body = await req.json().catch(() => ({}));
 
   const result = await (async () => {
-    if (action === 'send') return sendInboxMessage(conversationId, body);
+    if (action === 'send') return sendInboxMessage(conversationId, body, auth.userId);
     if (action === 'takeover') return takeOverInbox(conversationId, auth.userId);
     if (action === 'return-to-ai') return returnInboxToAi(conversationId, auth.userId);
     if (action === 'assign') return assignInbox(conversationId, body.userId || null);

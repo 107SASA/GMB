@@ -10,12 +10,13 @@ import { isBillingCycle, isPaidPlanType } from '@/lib/billing/planCatalog';
 import {
   activatePlan,
   activateBusinessPlan,
-  cancelPlan,
   cancelBusinessPlan,
   markPastDue,
   markBusinessPastDue,
   startTrialAccess,
   markTrialCancelled,
+  userHasOtherPlanWorkspace,
+  endUserPlanUnlessOtherWorkspacePaid,
 } from '@/lib/billing/applyEntitlements';
 import {
   decideBillingEvent,
@@ -312,7 +313,8 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
       case 'payment_failed': {
         // The workspace freezes the policy at Day 0; the user gets the same snapshot.
         const snapshot = businessId ? await markBusinessPastDue(businessId, { reason: action.reason, eventAt: stampAt }) : null;
-        if (userId) await markPastDue(userId, snapshot);
+        // User-level entitlements are shared by the user's workspaces — another still-paid one keeps them.
+        if (userId && !(await userHasOtherPlanWorkspace(userId, businessId))) await markPastDue(userId, snapshot);
         // A NEW failure (not a retry of an open one) → its reminder episode, Day 0 = now.
         if (snapshot && businessId) {
           await openRecoveryEpisode({ businessId, userId, razorpaySubscriptionId: sub?.id, snapshot });
@@ -327,7 +329,7 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
         if (businessId) await markTrialCancelled(businessId, userId, { eventAt: stampAt });
         break;
       case 'cancel_paid':
-        if (userId) await cancelPlan(userId);
+        if (userId) await endUserPlanUnlessOtherWorkspacePaid(userId, businessId);
         if (businessId) {
           await cancelBusinessPlan(businessId);
           await closeRecoveryEpisodes(businessId, 'stopped', 'subscription_cancelled');

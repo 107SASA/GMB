@@ -3,8 +3,9 @@
 export const SESSION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export type InboxFilter =
-  | 'all' | 'unread' | 'mine' | 'unassigned' | 'human' | 'ai'
-  | 'nurturing' | 'demo' | 'customers' | 'resolved';
+  | 'all' | 'unread' | 'needs-reply' | 'mine' | 'unassigned' | 'human' | 'ai'
+  | 'support' | 'sales' | 'nurturing' | 'demo' | 'report' | 'customers'
+  | 'review-replies' | 'new' | 'resolved';
 
 export interface InboxLeadView {
   currentAgent?: string | null;
@@ -29,7 +30,7 @@ export function scoreBand(score: number): 'COLD' | 'WARM' | 'HOT' | 'READY' {
 }
 
 export function ownershipLabel(lead: InboxLeadView, conversationStatus?: string | null): string {
-  if (conversationStatus === 'completed' || conversationStatus === 'stopped') return 'Resolved';
+  if (conversationStatus === 'completed' || conversationStatus === 'stopped' || conversationStatus === 'resolved') return 'Resolved';
   if (lead.humanHandoffActive || lead.currentAgent === 'HUMAN' || lead.currentStage === 'HUMAN_HANDOFF') return 'Human Owned';
   if (lead.currentAgent === 'DEMO' || lead.currentStage === 'DEMO_SCHEDULED' || lead.currentStage === 'DEMO_REQUESTED') return 'Demo Scheduled';
   if (lead.currentAgent === 'IN_HOUSE' || lead.currentStage === 'CUSTOMER') return 'Customer';
@@ -39,20 +40,27 @@ export function ownershipLabel(lead: InboxLeadView, conversationStatus?: string 
 }
 
 export function matchesInboxFilter(
-  item: InboxLeadView & { unread: boolean; status?: string | null },
+  item: InboxLeadView & { unread: boolean; status?: string | null; kind?: string | null; needsReply?: boolean },
   filter: InboxFilter,
   viewerUserId?: string | null
 ): boolean {
+  const resolved = item.status === 'resolved' || item.status === 'completed' || item.status === 'stopped';
   switch (filter) {
     case 'unread': return item.unread;
+    case 'needs-reply': return !!item.needsReply;
     case 'mine': return !!viewerUserId && item.assignedUserId === viewerUserId;
     case 'unassigned': return !item.assignedUserId && (item.humanHandoffActive || item.currentAgent === 'HUMAN');
     case 'human': return item.humanHandoffActive || item.currentAgent === 'HUMAN' || item.currentStage === 'HUMAN_HANDOFF';
-    case 'ai': return !item.humanHandoffActive && item.currentAgent !== 'HUMAN' && item.status !== 'completed';
+    case 'ai': return !item.humanHandoffActive && item.currentAgent !== 'HUMAN' && !resolved;
+    case 'support': return item.kind === 'support';
+    case 'sales': return item.kind === 'sales';
     case 'nurturing': return item.nurtureStatus === 'ACTIVE' && item.currentAgent === 'SALES';
-    case 'demo': return item.currentAgent === 'DEMO' || item.currentStage === 'DEMO_SCHEDULED' || item.intent === 'DEMO_INTEREST';
-    case 'customers': return item.currentAgent === 'IN_HOUSE' || item.currentStage === 'CUSTOMER';
-    case 'resolved': return item.status === 'completed' || item.status === 'stopped';
+    case 'demo': return item.kind === 'demo' || item.currentAgent === 'DEMO' || item.currentStage === 'DEMO_SCHEDULED' || item.intent === 'DEMO_INTEREST';
+    case 'report': return item.kind === 'report';
+    case 'customers': return item.kind === 'customer' || item.currentAgent === 'IN_HOUSE' || item.currentStage === 'CUSTOMER';
+    case 'review-replies': return item.kind === 'review-reply';
+    case 'new': return item.kind === 'new';
+    case 'resolved': return resolved;
     default: return true;
   }
 }

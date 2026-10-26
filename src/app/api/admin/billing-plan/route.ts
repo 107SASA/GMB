@@ -3,6 +3,8 @@ import type { NextRequest } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import BillingPlan from '@/models/BillingPlan';
+import AdminActionLog from '@/models/AdminActionLog';
+import { getClientIp } from '@/lib/rateLimit';
 import {
   getActivePlan,
   PLAN_FALLBACK,
@@ -23,6 +25,30 @@ import { getRazorpay, getRazorpayMode } from '@/lib/billing/razorpay';
  */
 
 const MAX_PRICE_INR = 500000;
+
+/** What a price change is audited as — the sellable terms only, never Razorpay ids. */
+function auditView(plan: Awaited<ReturnType<typeof getActivePlan>>) {
+  return {
+    displayName: plan.displayName,
+    priceInr: plan.priceInr,
+    durations: plan.durations.map((d) => ({ cycle: d.cycle, priceInr: d.priceInr, enabled: d.enabled })),
+  };
+}
+
+/** Every change to what customers pay goes to AdminActionLog with the old and new terms. */
+async function auditPlanChange(req: Request, auth: { userId: string; user: any }, action: string, before: ReturnType<typeof auditView>, after: ReturnType<typeof auditView>) {
+  try {
+    await AdminActionLog.create({
+      adminUserId: auth.userId,
+      adminEmail: auth.user?.email ?? '',
+      action,
+      ip: getClientIp(req),
+      metadata: { old: before, new: after },
+    });
+  } catch (e: any) {
+    console.error('[admin/billing-plan] audit log write failed:', e?.message);
+  }
+}
 
 async function planPayload() {
   const plan = await getActivePlan();
@@ -137,12 +163,14 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
+    const before = auditView(await getActivePlan());
     if ((await saveAdminPlan({ fields: update, durations })) === 'conflict') {
       return NextResponse.json(
         { error: 'The plan was updated at the same moment. Please reload and save again.', code: 'PLAN_SAVE_CONFLICT' },
         { status: 409 }
       );
     }
+    await auditPlanChange(req, auth, 'billing_plan.update', before, auditView(await getActivePlan()));
 
     // Razorpay plans for changed prices are created lazily at first checkout
     // (per duration), so a save never fails on a Razorpay error. Surface only a
@@ -160,13 +188,15 @@ export async function PATCH(req: NextRequest) {
 }
 
 // DELETE — reset the plan back to hardcoded defaults (removes the override).
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
   const auth = await requireSuperAdmin();
   if (!auth.ok) return auth.response;
 
   try {
     await dbConnect();
+    const before = auditView(await getActivePlan());
     await BillingPlan.deleteOne({ key: 'default' });
+    await auditPlanChange(req, auth, 'billing_plan.reset', before, auditView(await getActivePlan()));
     return NextResponse.json({
       success: true,
       data: await planPayload(),

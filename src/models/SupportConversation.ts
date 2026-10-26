@@ -48,7 +48,7 @@ export interface ISupportConversation extends Document {
   /** The one automatic acknowledgement for this issue (claimed atomically before sending). */
   ackSentAt?: Date;
   closedAt?: Date;
-  closedReason?: 'idle' | 'opt_out';
+  closedReason?: 'idle' | 'opt_out' | 'resolved';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -80,7 +80,7 @@ const SupportConversationSchema: Schema = new Schema(
     senderVerified: { type: Boolean },
     ackSentAt: { type: Date },
     closedAt: { type: Date },
-    closedReason: { type: String, enum: ['idle', 'opt_out'] },
+    closedReason: { type: String, enum: ['idle', 'opt_out', 'resolved'] },
   },
   { timestamps: true }
 );

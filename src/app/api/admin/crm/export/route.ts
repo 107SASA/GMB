@@ -24,6 +24,10 @@ export async function GET(req: Request) {
         row.createdAt ? new Date(row.createdAt).toISOString() : '', row.lastActivityAt ? new Date(row.lastActivityAt).toISOString() : '',
       ].map(csvField).join(','));
     }
+    {
+      const { logSecurityEvent } = await import('@/services/security/securityLog');
+      await logSecurityEvent(req, { type: 'admin.crm_export', outcome: 'success', userId: auth.userId, role: 'SUPER_ADMIN', detail: `${rows.length} leads exported`, metadata: { filters: new URL(req.url).search.slice(0, 300) } });
+    }
     const date = new Date().toISOString().slice(0, 10);
     return new NextResponse(lines.join('\n') + '\n', {
       headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="growwmatics-leads-${date}.csv"` },

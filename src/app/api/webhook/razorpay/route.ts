@@ -73,7 +73,11 @@ export async function POST(request: Request) {
     const rawBody = await request.text();
 
     const verification = verifySignature(rawBody, request.headers.get('x-razorpay-signature'));
-    if (!verification.ok) return verification.response;
+    if (!verification.ok) {
+      const { logSecurityEvent } = await import('@/services/security/securityLog');
+      await logSecurityEvent(request, { type: 'webhook.signature_invalid', outcome: 'blocked', status: verification.response.status, detail: 'Razorpay', metadata: { provider: 'razorpay' } });
+      return verification.response;
+    }
 
     const event = JSON.parse(rawBody);
     const eventType: string = event?.event ?? 'unknown';

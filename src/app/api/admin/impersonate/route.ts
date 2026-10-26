@@ -46,6 +46,14 @@ export async function POST(req: Request) {
     } catch (e: any) {
       console.error('[admin/impersonate] audit log write failed:', e?.message);
     }
+    {
+      const { logSecurityEvent } = await import('@/services/security/securityLog');
+      await logSecurityEvent(req, {
+        type: 'admin.impersonate', outcome: 'success', severity: 'warning', userId: authResult.userId, role: 'SUPER_ADMIN',
+        subject: (authResult.user as any)?.email, detail: `Signed in as the owner of ${business.name || business._id}`,
+        metadata: { businessId: String(business._id), targetUserId: business.userId ? String(business.userId) : undefined },
+      });
+    }
 
     const cookieStore = await cookies();
     // Set the activeBusinessId to the impersonated business

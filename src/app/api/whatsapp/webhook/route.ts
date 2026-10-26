@@ -938,6 +938,8 @@ async function handleMetaWebhook(req: Request) {
     const rawBody = await req.text();
 
     if (!verifyMetaSignature(rawBody, req.headers.get('x-hub-signature-256'))) {
+      const { logSecurityEvent } = await import('@/services/security/securityLog');
+      await logSecurityEvent(req, { type: 'webhook.signature_invalid', outcome: 'blocked', status: 403, detail: 'Meta WhatsApp', metadata: { provider: 'meta' } });
       return NextResponse.json({ error: 'Invalid Meta signature' }, { status: 403 });
     }
 

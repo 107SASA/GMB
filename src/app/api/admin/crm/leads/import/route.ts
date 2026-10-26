@@ -29,6 +29,10 @@ export async function POST(req: Request) {
     if (!rows.length) return NextResponse.json({ success: false, error: 'The file has no data rows.' }, { status: 400 });
     if (rows.length > MAX_ROWS) return NextResponse.json({ success: false, error: `The file has more than ${MAX_ROWS.toLocaleString()} rows. Please split it.` }, { status: 400 });
     const summary = await importPlatformLeads(rows, auth.userId, { updateStages: form.get('updateStages') === 'true' });
+    {
+      const { logSecurityEvent } = await import('@/services/security/securityLog');
+      await logSecurityEvent(req, { type: 'admin.crm_import', outcome: 'success', userId: auth.userId, role: 'SUPER_ADMIN', detail: `${summary.created} added, ${summary.updated} updated, ${summary.errors.length} rejected`, metadata: { file: (file as File).name?.slice(0, 120) } });
+    }
     return NextResponse.json({ success: true, ...summary });
   } catch (error: any) {
     console.error('[admin/crm/leads/import] POST failed:', error);

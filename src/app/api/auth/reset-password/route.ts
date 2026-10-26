@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { securityLogged } from '@/services/security/securityLog';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { verifyOTP } from '@/services/auth/otp';
@@ -6,7 +7,7 @@ import { hashPassword, validatePasswordStrength, verifyToken } from '@/services/
 
 const GENERIC_TOKEN_ERROR = 'This reset link has expired or is invalid. Please start the password reset process again.';
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   try {
     await dbConnect();
     const { resetToken, newPassword, confirmPassword } = await req.json();
@@ -83,3 +84,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: 'Something went wrong on our end. Please try again, and contact support if this keeps happening.' }, { status: 500 });
   }
 }
+
+/** Every call is recorded in the security log (Super Admin → Security Log). */
+export const POST = securityLogged('auth.password_reset', handlePOST);

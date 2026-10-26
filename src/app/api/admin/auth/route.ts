@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { securityLogged, emailSubject } from '@/services/security/securityLog';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { createSession, destroySession } from '@/lib/session';
@@ -6,7 +7,7 @@ import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
 import bcrypt from 'bcryptjs';
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   try {
     // SUPER_ADMIN is the highest-privilege role in the system — this had no
     // rate limiting at all, making it brute-forceable/credential-stuffable
@@ -84,3 +85,6 @@ export async function DELETE() {
     return NextResponse.json({ success: false, error: 'Logout failed' }, { status: 500 });
   }
 }
+
+/** Every call is recorded in the security log (Super Admin → Security Log). */
+export const POST = securityLogged('admin.login', handlePOST, { subjectOf: emailSubject, role: 'SUPER_ADMIN' });

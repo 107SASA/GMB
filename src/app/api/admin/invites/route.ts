@@ -104,6 +104,10 @@ export async function POST(req: Request) {
     const inviteView = invite.toObject();
     delete inviteView.tokenHash;
 
+    {
+      const { logSecurityEvent } = await import('@/services/security/securityLog');
+      await logSecurityEvent(req, { type: 'admin.invite_create', outcome: 'success', severity: 'warning', userId: auth.userId, role: 'SUPER_ADMIN', subject: email, detail: 'New super admin invited' });
+    }
     return NextResponse.json({
       success: true,
       data: { invite: inviteView, inviteLink },

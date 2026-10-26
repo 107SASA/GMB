@@ -118,6 +118,7 @@ export const NOT_PURGED: Record<string, string> = {
   PlatformSettings: 'platform configuration',
   OrchestrationConfig: 'platform configuration',
   PlatformCrmConfig: 'platform configuration (super admin CRM sub-stages)',
+  SecurityEvent: 'security log (sign-ins, failed attempts, admin actions) kept 12 months for abuse and fraud investigation, then dropped by TTL; holds an email or masked phone, never passwords or codes',
   ScoringRuleConfig: 'platform configuration',
   SalesAgentConfig: 'platform configuration',
   BookingAgentConfig: 'platform configuration',

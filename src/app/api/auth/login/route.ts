@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { securityLogged, emailSubject } from '@/services/security/securityLog';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { finalizeLogin } from '@/lib/authSession';
@@ -19,7 +20,7 @@ const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const ACCOUNT_LOCK_THRESHOLD = 10;
 const ACCOUNT_LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   try {
     await dbConnect();
     const { email, password } = await req.json();
@@ -115,3 +116,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: toFriendlyMessage(error) }, { status: 500 });
   }
 }
+
+/** Every call is recorded in the security log (Super Admin → Security Log). */
+export const POST = securityLogged('auth.login', handlePOST, { subjectOf: emailSubject });

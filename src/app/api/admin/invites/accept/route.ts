@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { securityLogged } from '@/services/security/securityLog';
 import crypto from 'crypto';
 import dbConnect from '@/lib/mongodb';
 import AdminInvite from '@/models/AdminInvite';
@@ -9,7 +10,7 @@ import { isQaTestingMode } from '@/lib/testingMode';
 import { validatePasswordStrength } from '@/lib/passwordPolicy';
 import { normalizePhoneE164 } from '@/lib/phone';
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   try {
     // This endpoint mints a SUPER_ADMIN account — cap attempts per IP so a
     // stolen/leaked link can't be paired with credential-stuffing, and so the
@@ -139,3 +140,6 @@ export async function POST(req: Request) {
     );
   }
 }
+
+/** Every call is recorded in the security log (Super Admin → Security Log). */
+export const POST = securityLogged('admin.invite_accept', handlePOST, { role: 'SUPER_ADMIN' });

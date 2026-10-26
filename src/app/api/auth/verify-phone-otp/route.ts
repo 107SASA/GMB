@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { securityLogged, phoneSubject } from '@/services/security/securityLog';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
@@ -24,7 +25,7 @@ const ACCOUNT_LOCK_THRESHOLD = 10;
 const ACCOUNT_LOCK_DURATION_MS = 15 * 60 * 1000;
 const GENERIC_ERROR = 'Incorrect or expired code.';
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   try {
     await dbConnect();
     const { phone, otp } = await req.json();
@@ -154,3 +155,6 @@ export async function PUT(req: Request) {
     return NextResponse.json({ success: false, error: 'Something went wrong on our end.' }, { status: 500 });
   }
 }
+
+/** Every call is recorded in the security log (Super Admin → Security Log). */
+export const POST = securityLogged('auth.signup_otp_verify', handlePOST, { subjectOf: phoneSubject });

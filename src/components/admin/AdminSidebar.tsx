@@ -88,6 +88,7 @@ const adminGroups = [
     links: [
       { name: 'Settings', icon: 'tune', href: '/admin/settings' },
       { name: 'Team Invites', icon: 'person_add', href: '/admin/invites' },
+      { name: 'Security Log', icon: 'shield', href: '/admin/security' },
     ],
   },
 ];

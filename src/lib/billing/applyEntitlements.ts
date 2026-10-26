@@ -61,6 +61,9 @@ export async function activateBusinessPlan(
     subscriptionMode?: 'test' | 'live' | null;
     /** Razorpay event time, so older events delivered later are ignored. */
     eventAt?: Date;
+    /** Cycle and per-cycle amount of this verified charge — recorded for revenue reporting only. */
+    billingCycle?: 'monthly' | 'quarterly' | 'halfyearly' | 'yearly';
+    amountInr?: number;
   } = {}
 ): Promise<{ held: boolean }> {
   await dbConnect();
@@ -98,6 +101,8 @@ export async function activateBusinessPlan(
         // event, so this always wins over whatever stage the admin had it in.
         pipelineStage: 'Customer',
         ...(opts.currentPeriodEnd && { subscriptionCurrentPeriodEnd: opts.currentPeriodEnd }),
+        ...(opts.billingCycle && { billingCycle: opts.billingCycle }),
+        ...(typeof opts.amountInr === 'number' && opts.amountInr > 0 && { billingAmountInr: opts.amountInr }),
       },
     },
     { new: true }
@@ -353,6 +358,11 @@ export async function cancelBusinessPlan(
   opts: { trialEnded?: boolean } = {}
 ): Promise<void> {
   await dbConnect();
+  // Stamp the moment it became canceled (once — a repeated cancel event keeps the first time).
+  await Business.updateOne(
+    { _id: businessId, subscriptionStatus: { $ne: 'canceled' } },
+    { $set: { subscriptionCanceledAt: new Date(), subscriptionCanceledReason: opts.trialEnded ? 'trial_ended' : 'canceled' } }
+  );
   // Fully canceled now — clear the "pending cancel" flag so the gate locks it.
   const business = await Business.findOneAndUpdate(
     { _id: businessId },

@@ -117,6 +117,7 @@ export const NOT_PURGED: Record<string, string> = {
   PlanConfig: 'platform configuration',
   PlatformSettings: 'platform configuration',
   OrchestrationConfig: 'platform configuration',
+  PlatformCrmConfig: 'platform configuration (super admin CRM sub-stages)',
   ScoringRuleConfig: 'platform configuration',
   SalesAgentConfig: 'platform configuration',
   BookingAgentConfig: 'platform configuration',

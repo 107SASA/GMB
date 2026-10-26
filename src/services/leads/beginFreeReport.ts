@@ -76,6 +76,7 @@ export async function beginFreeReport(input: {
     name: usablePersonName(input.name, businessName) || usablePersonName(user.fullName) || businessName,
     phone: normalizePhoneE164(input.phone) || input.phone,
     businessName,
+    channel: 'whatsapp',
   }).catch((err) => {
     console.warn('[beginFreeReport] lead wiring failed:', (err as Error)?.message);
     return null;

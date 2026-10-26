@@ -18,6 +18,8 @@ import { RangePicker } from '@/components/admin/conversion/primitives';
 interface Metric { value: number | null; unavailable?: string; num?: number; den?: number; sampleSize?: number }
 
 interface Analytics {
+  range?: { label: string };
+  leads?: number;
   conversion: Record<string, Metric>;
   agents: {
     sales: Record<string, number>;
@@ -38,16 +40,22 @@ function Val({ m, unit = '%' }: { m?: Metric; unit?: string }) {
 }
 
 export default function ConversionAnalyticsPage() {
-  const [range, setRange] = useState('90d');
+  const [range, setRange] = useState('all');
   const [a, setA] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`/api/admin/conversion/analytics?range=${range}`);
-      const json = await res.json();
-      if (json.success) setA(json);
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(json?.error || `Request failed (${res.status})`);
+      setA(json);
+    } catch (err: any) {
+      setA(null);
+      setError(err?.message || 'Could not load analytics');
     } finally {
       setLoading(false);
     }
@@ -78,6 +86,15 @@ export default function ConversionAnalyticsPage() {
         </div>
         <RangePicker value={range} onChange={setRange} />
       </div>
+      {error ? (
+        <div role="alert" className="rounded-xl border border-error-container bg-error-container/40 p-4 text-sm text-on-error-container">
+          Couldn&apos;t load analytics: {error}. <button onClick={load} className="underline font-semibold">Retry</button>
+        </div>
+      ) : (
+        <p className="text-xs text-on-surface-variant">
+          {a?.range?.label ?? 'All leads'} · {(a?.leads ?? 0).toLocaleString()} lead{a?.leads === 1 ? '' : 's'}. Every rate below is for these leads.
+        </p>
+      )}
 
       {/* Conversion rates */}
       <section className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-5">
@@ -129,13 +146,13 @@ export default function ConversionAnalyticsPage() {
             ['Human handoffs', ag?.sales.humanHandoffs],
             ['Opt-outs', ag?.sales.optOuts],
           ]} />
-          <AgentCard title="Demo Agent" rows={[
-            ['Requested', ag?.demo.requested],
-            ['Scheduled', ag?.demo.scheduled],
+          <AgentCard title="Demo Agent (bookings)" rows={[
+            ['All bookings', ag?.demo.requested],
+            ['Upcoming', ag?.demo.scheduled],
+            ['Confirmed / rescheduled', ag?.demo.rescheduled],
             ['Completed', ag?.demo.completed],
-            ['Cancelled', ag?.demo.cancelled],
             ['No-show', ag?.demo.noShow],
-            ['Rescheduled', ag?.demo.rescheduled],
+            ['Cancelled', ag?.demo.cancelled],
           ]} />
           <AgentCard title="In-House Agent" rows={[
             ['Activated customers', ag?.inHouse.activatedCustomers],

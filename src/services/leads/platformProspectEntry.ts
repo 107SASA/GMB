@@ -9,6 +9,8 @@ export interface FreeReportPlatformLeadInput {
   name: string;
   phone: string; // E.164 with '+'
   businessName: string;
+  /** Where the free report was requested (default: the website form). */
+  channel?: 'website' | 'whatsapp';
 }
 
 /**
@@ -27,7 +29,7 @@ export async function upsertPlatformProspectLead(
   const { name, phone, businessName } = input;
   const notes =
     input.notes ?? `Submitted the Free Business Report form for "${businessName}"`;
-  const source = input.source ?? 'Website';
+  const source = input.source ?? 'Website Free Report';
   const ownershipActor = input.ownershipActor ?? 'platform-prospect-entry';
 
   const incomingName = usablePersonName(name, businessName) || businessName.trim() || name.trim();
@@ -37,7 +39,9 @@ export async function upsertPlatformProspectLead(
     // Replace a missing name, a phone-as-name, the "New User" placeholder, or
     // a business-name fallback. A real person name already on the lead is left alone.
     if (!usablePersonName(lead.name, lead.businessType || businessName)) lead.name = incomingName;
-    if (!lead.source || lead.source === 'Website') lead.source = source;
+    // The first channel stays the source; a placeholder one is replaced.
+    const { PLACEHOLDER_SOURCES } = await import('@/services/leads/captureSource');
+    if (PLACEHOLDER_SOURCES.has(lead.source || '')) lead.source = source;
     lead.leadType = 'Platform Prospect';
     if (!lead.businessType) lead.businessType = businessName;
     if (notes) lead.notes = notes;
@@ -75,11 +79,13 @@ export async function upsertPlatformProspectLead(
   if (created) {
     await logLeadEvent(
       'LEAD_CREATED',
-      { channel: source === 'Website' ? 'free-report' : source, businessName },
+      { channel: source, businessName },
       ownershipActor,
       { leadId: lead._id, phone }
     );
   }
+  const { recordCaptureSource } = await import('@/services/leads/captureSource');
+  await recordCaptureSource(lead, source, { created, detail: { businessName } });
 
   return { leadId: String(lead._id), created };
 }
@@ -91,11 +97,14 @@ export async function upsertPlatformProspectLead(
 export async function fileFreeReportPlatformLead(
   input: FreeReportPlatformLeadInput
 ): Promise<{ leadId: string; created: boolean }> {
+  const whatsapp = input.channel === 'whatsapp';
   const result = await upsertPlatformProspectLead({
     ...input,
-    notes: `Submitted the Free Business Report form for "${input.businessName}"`,
-    source: 'Website',
-    ownershipActor: 'free-report-form',
+    notes: whatsapp
+      ? `Asked for the free Business Report on WhatsApp for "${input.businessName}"`
+      : `Submitted the Free Business Report form for "${input.businessName}"`,
+    source: whatsapp ? 'WhatsApp Free Report' : 'Website Free Report',
+    ownershipActor: whatsapp ? 'whatsapp-free-report' : 'free-report-form',
   });
 
   await applyFormSignal(result.leadId, 'FREE_REPORT_SUBMITTED', 'free-report').catch((err: any) =>

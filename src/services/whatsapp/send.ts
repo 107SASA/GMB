@@ -6,11 +6,13 @@
  *
  * Routing rules:
  *  1. WHATSAPP_PROVIDER=twilio forces Twilio globally.
- *  2. Otherwise Meta is used when configured (META_WHATSAPP_ACCESS_TOKEN +
- *     META_WHATSAPP_PHONE_NUMBER_ID); a business whose
- *     whatsappConfig.provider is 'twilio' still goes through Twilio.
- *  3. If Meta env vars are absent, falls back to Twilio so an existing
- *     Twilio/sandbox deployment keeps working before the Meta keys are set.
+ *  2. WHATSAPP_PROVIDER=meta forces Meta — and when Meta is NOT configured
+ *     (META_WHATSAPP_ACCESS_TOKEN + META_WHATSAPP_PHONE_NUMBER_ID) every send
+ *     fails visibly with PROVIDER_CONFIG_MISSING. It never switches to
+ *     Twilio behind the operator's back.
+ *  3. Unset: Meta when configured (a business whose whatsappConfig.provider
+ *     is 'twilio' still goes through Twilio), else Twilio — the selection is
+ *     logged once so it is never invisible.
  *
  * Meta 24h-window handling: business-initiated messages (campaigns,
  * reminders, follow-ups) are rejected by Meta with a re-engagement error
@@ -25,6 +27,7 @@ import { sendOutboundMessage as sendViaTwilio, sendListPicker, sendQuickReply, s
 import { getMetaConfig, isReengagementError, sendMetaTemplate, sendMetaText, sendMetaImage } from './meta';
 import { WA_TEMPLATES } from '@/lib/whatsappTemplates';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
+import { logWhatsAppDiagnostic, redactPhone, templateConfigMissing } from '@/lib/whatsappDiagnostics';
 import {
   buildNotificationVariables,
   notificationBodyForTemplate,
@@ -41,11 +44,17 @@ export interface OutboundMedia {
   caption?: string;
 }
 
-async function resolveProvider(businessId?: string): Promise<'meta' | 'twilio'> {
-  const envProvider = (process.env.WHATSAPP_PROVIDER || 'meta').toLowerCase();
-  if (envProvider === 'twilio') return 'twilio';
+let autoProviderLogged = false;
+
+async function resolveProvider(businessId?: string): Promise<'meta' | 'twilio' | 'unconfigured'> {
+  const explicit = (process.env.WHATSAPP_PROVIDER || '').trim().toLowerCase();
+  if (explicit === 'twilio') return 'twilio';
   if (!getMetaConfig()) {
-    console.warn('[whatsapp] Meta provider selected but not configured — falling back to Twilio');
+    if (explicit === 'meta') return 'unconfigured';
+    if (!autoProviderLogged) {
+      autoProviderLogged = true;
+      console.warn('[whatsapp] WHATSAPP_PROVIDER is not set and Meta is not configured — sending through Twilio. Set WHATSAPP_PROVIDER to make this explicit.');
+    }
     return 'twilio';
   }
   if (businessId) {
@@ -64,6 +73,24 @@ async function resolveProvider(businessId?: string): Promise<'meta' | 'twilio'> 
  * taken from the lead or a conversation the webhook actually wrote.
  * A website-form `via: 'form'` line is ignored.
  */
+/**
+ * Inbound messages received by this process in the last 24h, by phone key.
+ * The webhook notes each one before replying, so a reply to someone with no
+ * stored conversation yet (a first "Hi", a report-intake answer) is known to
+ * be inside the 24h window — it used to be treated as outside it and the
+ * template fallback refused for want of a name, so nothing was sent.
+ */
+const recentInbound = new Map<string, number>();
+const WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function noteInboundMessage(phone: string, at: Date = new Date()): void {
+  const key = phoneDedupeKey(phone);
+  if (!key) return;
+  const now = Date.now();
+  for (const [k, t] of recentInbound) if (now - t > WINDOW_MS) recentInbound.delete(k);
+  recentInbound.set(key, Math.max(recentInbound.get(key) ?? 0, at.getTime()));
+}
+
 async function recipientWindow(phone: string, leadId?: string): Promise<{ lastInboundAt: Date | null; name: string }> {
   const normalized = normalizePhoneE164(phone) || phone;
   const key = phoneDedupeKey(phone);
@@ -84,6 +111,8 @@ async function recipientWindow(phone: string, leadId?: string): Promise<{ lastIn
   ]);
 
   const inboundStamps: Array<Date | string | null | undefined> = sales.map((row) => row.lastLeadReplyAt);
+  const noted = key ? recentInbound.get(key) : undefined;
+  if (noted) inboundStamps.push(new Date(noted));
   for (const row of [...bookings, ...support]) {
     inboundStamps.push(realInboundAtFromMessages(row.messages));
   }
@@ -119,7 +148,7 @@ async function sendNotificationTemplate(
   names: { displayName?: string; personName?: string } = {}
 ): Promise<SendResult> {
   if (!WA_TEMPLATES.notification) {
-    return { success: false, error: 'Notification template is not configured (TWILIO_TEMPLATE_NOTIFICATION).' };
+    return templateConfigMissing({ feature: 'notification', template: 'new_growwmatics_notification', envKey: 'TWILIO_TEMPLATE_NOTIFICATION', recipient: phone });
   }
   // The template has its own "Hi {{1}}," — drop the body's greeting/sign-off.
   // {{1}}: an explicit display name (owner messages: the business name), else
@@ -131,8 +160,8 @@ async function sendNotificationTemplate(
     ? buildNotificationVariables(display, forTemplate.text, true)
     : buildNotificationVariables(names.personName || (await recipientWindow(phone, leadId)).name, forTemplate.text);
   if (!built.ok) {
-    console.error('[whatsapp] notification template refused:', built.error);
-    return { success: false, error: built.error };
+    logWhatsAppDiagnostic({ event: 'whatsapp_send_failed', feature: 'notification', kind: 'CONTENT_VARIABLES_INVALID', template: 'new_growwmatics_notification', recipient: redactPhone(phone), detail: built.error });
+    return { success: false, error: built.error, errorKind: 'CONTENT_VARIABLES_INVALID' };
   }
   return sendTemplateMessage(phone, WA_TEMPLATES.notification, built.variables, businessId);
 }
@@ -154,6 +183,7 @@ export async function sendOutboundMessage(
   await dbConnect();
 
   const provider = await resolveProvider(businessId);
+  if (provider === 'unconfigured') return metaUnconfigured('message', phone);
   if (provider === 'twilio') {
     const window = await recipientWindow(phone, leadId);
     const channel = outboundChannel(window.lastInboundAt);
@@ -172,10 +202,22 @@ export async function sendOutboundMessage(
     // Exceptional only: the local window said the customer was inside 24h
     // and Twilio still returned 63016. One sanitized template attempt, not
     // a second try if that attempt is invalid.
+    // This is the documented WhatsApp channel switch, not a hidden substitute:
+    // it is logged against the failed attempt, and its own failure is returned.
     if (!result.success && result.outsideWindow && result.isPlatformDefault && !media) {
       const retry = await sendNotificationTemplate(phone, body, leadId, businessId, { displayName: recipientName, personName: window.name });
-      if (retry.success) return retry;
-      return { ...result, error: `${result.error} (template fallback also failed: ${retry.error})` };
+      logWhatsAppDiagnostic({
+        event: retry.success ? 'whatsapp_send_recovered' : 'whatsapp_send_failed',
+        feature: 'free-text',
+        kind: retry.success ? 'RECOVERED_AS_TEMPLATE' : (retry.errorKind || 'SEND_FAILED'),
+        template: 'new_growwmatics_notification',
+        errorCode: result.errorCode,
+        correlationId: result.correlationId,
+        recipient: redactPhone(phone),
+        detail: retry.success ? `63016 outside window → notification template ${retry.correlationId}` : retry.error,
+      });
+      if (retry.success) return { ...retry, recoveredFrom: result.correlationId };
+      return { ...result, error: `${result.error} (template fallback also failed: ${retry.error})`, errorKind: retry.errorKind || result.errorKind };
     }
 
     return result;
@@ -200,6 +242,7 @@ export async function sendOutboundMessage(
       result.error = `${result.error} (image sends have no template fallback outside the 24h window)`;
     } else if (templateName) {
       const language = process.env.META_TEMPLATE_LANGUAGE || 'en';
+      logWhatsAppDiagnostic({ event: 'whatsapp_send_recovered', feature: 'free-text', kind: 'RECOVERED_AS_TEMPLATE', template: templateName, errorCode: result.errorCode != null ? String(result.errorCode) : undefined, correlationId: String(msgLog._id), recipient: redactPhone(phone), detail: 'Meta re-engagement → utility template' });
       result = await sendMetaTemplate(phone, templateName, language, [body]);
       msgLog.payload = { ...msgLog.payload, sentAsTemplate: templateName };
       msgLog.markModified('payload');
@@ -216,7 +259,8 @@ export async function sendOutboundMessage(
   } else {
     msgLog.status = 'FAILED';
     msgLog.failedReason = result.error;
-    console.error('[whatsapp][meta] send failed:', result.error);
+    msgLog.errorCode = result.errorCode;
+    logWhatsAppDiagnostic({ event: 'whatsapp_send_failed', feature: 'meta', kind: 'SEND_FAILED', errorCode: result.errorCode != null ? String(result.errorCode) : undefined, correlationId: String(msgLog._id), recipient: redactPhone(phone), detail: result.error });
   }
   await msgLog.save();
 
@@ -232,6 +276,7 @@ export async function sendButtonChoice(
   businessId?: string,
 ): Promise<SendResult> {
   const provider = await resolveProvider(businessId);
+  if (provider === 'unconfigured') return metaUnconfigured('buttons', phone);
   if (provider !== 'twilio') return { success: false, error: 'Buttons are sent through Twilio.' };
   return sendQuickReply(phone, body, actions, leadId);
 }
@@ -246,6 +291,7 @@ export async function sendListChoice(
   businessId?: string,
 ): Promise<SendResult> {
   const provider = await resolveProvider(businessId);
+  if (provider === 'unconfigured') return metaUnconfigured('list', phone);
   if (provider !== 'twilio') return { success: false, error: 'Lists are sent through Twilio.' };
   return sendListPicker(phone, body, button, items, leadId);
 }
@@ -273,10 +319,10 @@ export async function sendListChoice(
  * template failure this returns that failure straight away and the route
  * answers fast with a real 502 the user can see and retry.
  *
- * `message` (the full human-readable line) is only used when the auth
- * template SID isn't configured at all (local/dev before approval) — then it
- * falls back to a best-effort free-text send, which still lands for a
- * recipient inside a 24h window.
+ * There is NO free-text fallback: without the approved auth template (or
+ * without the bare code) this fails with TEMPLATE_CONFIG_MISSING, so the
+ * login route answers with a visible error instead of sending the code as
+ * ordinary text. `message` is kept in the signature for the callers.
  *
  * HISTORY: this previously went out only as free text (reliable ONLY inside a
  * 24h window) after an earlier attempt via the GENERIC growwmatics_notification
@@ -288,19 +334,26 @@ export async function sendOtpMessage(
   message: string,
   code?: string
 ): Promise<SendResult> {
+  void message;
   const provider = await resolveProvider();
-
-  // Twilio auth-template path — the reliable one, and the only send attempted
-  // when it's available. Content Template SIDs are WABA-scoped so this is
-  // platform-Twilio-number only; needs the bare code for {{1}}.
-  if (provider === 'twilio' && code && WA_TEMPLATES.loginOtp) {
-    const res = await sendTemplateMessage(phone, WA_TEMPLATES.loginOtp, { '1': code });
-    if (!res.success) {
-      console.error('[whatsapp] login-OTP auth template send failed:', res.error);
-    }
-    return res;
+  if (provider === 'unconfigured') return metaUnconfigured('login-otp', phone);
+  // Only Twilio has the approved authentication template.
+  if (provider !== 'twilio' || !WA_TEMPLATES.loginOtp) {
+    return templateConfigMissing({ feature: 'login-otp', template: 'growwmatics_login_otp', envKey: 'TWILIO_TEMPLATE_LOGIN_OTP (with WHATSAPP_PROVIDER=twilio)', recipient: phone });
   }
+  if (!code) {
+    logWhatsAppDiagnostic({ event: 'whatsapp_send_failed', feature: 'login-otp', kind: 'CONTENT_VARIABLES_INVALID', template: 'growwmatics_login_otp', recipient: redactPhone(phone), detail: 'no code given for {{1}}' });
+    return { success: false, error: 'No code was given for the login template.', errorKind: 'CONTENT_VARIABLES_INVALID' };
+  }
+  const res = await sendTemplateMessage(phone, WA_TEMPLATES.loginOtp, { '1': code });
+  if (!res.success) {
+    logWhatsAppDiagnostic({ event: 'whatsapp_send_failed', feature: 'login-otp', kind: res.errorKind || 'SEND_FAILED', template: 'growwmatics_login_otp', errorCode: res.errorCode, correlationId: res.correlationId, recipient: redactPhone(phone) });
+  }
+  return res;
+}
 
-  // No auth template configured — best-effort free text (works inside a 24h window).
-  return sendOutboundMessage(phone, message);
+function metaUnconfigured(feature: string, phone: string): SendResult {
+  const error = 'PROVIDER_CONFIG_MISSING: WHATSAPP_PROVIDER=meta but META_WHATSAPP_ACCESS_TOKEN / META_WHATSAPP_PHONE_NUMBER_ID are not set.';
+  logWhatsAppDiagnostic({ event: 'whatsapp_send_failed', feature, kind: 'PROVIDER_CONFIG_MISSING', recipient: redactPhone(phone), detail: error });
+  return { success: false, error, errorKind: 'PROVIDER_CONFIG_MISSING' };
 }

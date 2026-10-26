@@ -310,14 +310,24 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
     //   inbound opt-out that could not be saved (inboundOptOutRetry).
     // + Segment 4A support intake (Oct 2026, not CRM): the support job sends the
     //   one deterministic acknowledgement instead of AI replies (supportAgentReply).
-    'src/services/inngest/functions.ts': ['DEFAULT_REMINDER_1', 'DEFAULT_REMINDER_2', 'nextBizHourDate', 'monthlyReportNotice', 'auditAutopilotCron', 'inboundOptOutRetry', 'supportAgentReply','processFollowUpJob', 'scheduleLeadFollowUpsJob', 'dispatchWhatsappFollowUpJob', 'crmFollowUpReminderCron', 'crmStaleLeadReminderCron', 'crmGrowthReportReadyCron', 'gbpNightlySyncScheduler', 'gbpSyncWorker', 'generateAuditJob', 'handleSlotSelection', 'bookConfirmedSlot', 'buildMessageForAction', 'deliverBookingReply', 'followUpCron', 'billingActivationReconcileCron', 'reviewAutopollCron', 'cleanupStalePendingAudits', 'nurtureSchedulerTick', 'subscriptionExpiryWorker', '__header__', 'processReviewCampaign', 'sendReportReadyNotification', 'criticalAlertWorker', 'runSalesFollowUpDrip', 'salesNurtureRequested', 'salesNurtureConsented', 'salesAgentReply', 'PROACTIVE_NBA_ACTIONS', 'proactiveNbaScheduler', 'sendSalesFirstMessage', 'SALES_DECLINED_ACK_MESSAGE', 'runNoShowCheck'],
+    'src/services/inngest/functions.ts': ['DEFAULT_REMINDER_1', 'DEFAULT_REMINDER_2', 'nextBizHourDate', 'monthlyReportNotice', 'auditAutopilotCron', 'inboundOptOutRetry', 'supportAgentReply','processFollowUpJob', 'scheduleLeadFollowUpsJob', 'dispatchWhatsappFollowUpJob', 'crmFollowUpReminderCron', 'crmStaleLeadReminderCron', 'crmGrowthReportReadyCron', 'gbpNightlySyncScheduler', 'gbpSyncWorker', 'generateAuditJob', 'handleSlotSelection', 'bookConfirmedSlot', 'buildMessageForAction', 'deliverBookingReply', 'followUpCron', 'billingActivationReconcileCron', 'reviewAutopollCron', 'cleanupStalePendingAudits', 'nurtureSchedulerTick', 'subscriptionExpiryWorker', '__header__', 'processReviewCampaign', 'sendReportReadyNotification', 'criticalAlertWorker', 'runSalesFollowUpDrip', 'salesNurtureRequested', 'salesNurtureConsented', 'salesAgentReply', 'PROACTIVE_NBA_ACTIONS', 'proactiveNbaScheduler', 'sendSalesFirstMessage', 'SALES_DECLINED_ACK_MESSAGE', 'runNoShowCheck',
+      // + a question from someone with a demo booked gets a grounded answer
+      //   (composeBookedQuestionReply) instead of only the fixed status reply.
+      'handleBookedReply',
+      // + a list / button send that falls back to the same choices as text is
+      //   now logged with its Twilio reason (lib/whatsappDiagnostics.ts).
+      'sendButtonsOrText', 'presentSlots'],
     // Real WhatsApp inbound lines are tagged via: 'whatsapp' so a website form cannot open the 24h window.
     // + Segment 3.1 STOP reliability (Oct 2026, not CRM): both provider handlers
     //   apply an opt-out durably before claiming the message id, outside the
     //   ordinary rate limit (services/messaging/inboundOptOut.ts).
     // + Segment 4A (Oct 2026): the ownership shadow sync no longer turns a
     //   support conversation into IN_HOUSE (observeLeadOwnershipShadow).
-    'src/app/api/whatsapp/webhook/route.ts': ['__header__', 'processInboundMessage', 'handleActiveSalesConversation', 'processPlatformInbound', 'openDemoThread', 'handleTwilioWebhook', 'handleMetaWebhook', 'observeLeadOwnershipShadow'],
+    // + sendExistingReport: an in-session "view report" reply is free text with
+    //   the link — no template attempt whose failure a text send could hide.
+    'src/app/api/whatsapp/webhook/route.ts': ['__header__', 'processInboundMessage', 'handleActiveSalesConversation', 'processPlatformInbound', 'openDemoThread', 'handleTwilioWebhook', 'handleMetaWebhook', 'observeLeadOwnershipShadow', 'sendExistingReport',
+      // + capturePlatformContact: a first WhatsApp message creates the platform lead (super admin CRM).
+      'capturePlatformContact'],
   };
   for (const [file, ok] of Object.entries(allowed)) {
     const head = atHead(file);

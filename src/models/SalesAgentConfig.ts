@@ -65,6 +65,9 @@ const SalesAgentConfigSchema: Schema = new Schema(
   {
     key: { type: String, default: 'default', unique: true },
     enabled: { type: Boolean, default: false },
+    // Automated invitation + follow-up, separate from live replies (enabled).
+    // No default: an older document without it inherits `enabled`.
+    nurtureEnabled: { type: Boolean },
     firstMessage: {
       mode: { type: String, enum: ['ai', 'template'], default: 'ai' },
       enabled: { type: Boolean, default: true },

@@ -20,6 +20,7 @@ import {
   statusForAttendance,
   leadPreSalesBlockedReason,
   minutesUntilSalesSendable,
+  nurtureSendsEnabled,
   postDemoMessage,
   workspaceStartedTrialOrPaid,
 } from '../../src/lib/preSalesRules.ts';
@@ -76,11 +77,24 @@ test('conversation rules: the sequence ends at the first reply after it started'
   assert.equal(conversationSalesBlockedReason({ status: 'active', consentStatus: 'granted' }, 'invite', 'consent'), 'consent-not-pending');
 });
 
-test('quiet hours always apply to automated sales messages (21:00–09:00 IST by default)', () => {
-  // 22:30 IST = 17:00 UTC → wait until 09:00 IST = 630 minutes.
-  assert.equal(minutesUntilSalesSendable(new Date('2026-10-22T17:00:00Z'), null), 630);
-  assert.equal(minutesUntilSalesSendable(new Date('2026-10-22T06:00:00Z'), { enabled: false, start: '21:00', end: '09:00' }), 0);
+test('quiet hours apply only when switched on — no built-in window — in the configured timezone', () => {
+  // 22:30 IST = 17:00 UTC.
+  assert.equal(minutesUntilSalesSendable(new Date('2026-10-22T17:00:00Z'), null), 0, 'nothing configured → no restriction');
+  assert.equal(minutesUntilSalesSendable(new Date('2026-10-22T17:00:00Z'), { enabled: false, start: '21:00', end: '09:00' }), 0, 'switched off → no restriction');
+  assert.equal(minutesUntilSalesSendable(new Date('2026-10-22T17:00:00Z'), { enabled: true, start: '21:00', end: '09:00' }), 630, 'on → wait until 09:00 IST');
   assert.equal(minutesUntilSalesSendable(new Date('2026-10-22T06:00:00Z'), { enabled: true, start: '11:00', end: '12:00' }), 30);
+  // Same instant in Dubai (UTC+4) is 21:00 → inside a 20:00–08:00 window there, 11 hours left.
+  assert.equal(minutesUntilSalesSendable(new Date('2026-10-22T17:00:00Z'), { enabled: true, start: '20:00', end: '08:00' }, 'Asia/Dubai'), 660);
+  assert.equal(minutesUntilSalesSendable(new Date('2026-10-22T17:00:00Z'), { enabled: true, start: '21:00', end: '09:00' }, 'Not/AZone'), 630, 'invalid zone → IST');
+});
+
+test('nurturing is its own switch, but never sends while the Sales agent is off', () => {
+  assert.equal(nurtureSendsEnabled({ enabled: true, nurtureEnabled: true }), true);
+  assert.equal(nurtureSendsEnabled({ enabled: true, nurtureEnabled: false }), false, 'nurture off, live replies still on');
+  assert.equal(nurtureSendsEnabled({ enabled: false, nurtureEnabled: true }), false, 'agent off stops everything');
+  assert.equal(nurtureSendsEnabled({ enabled: true }), true, 'never saved → follows the agent switch (unchanged behaviour)');
+  assert.equal(nurtureSendsEnabled({ enabled: false }), false);
+  assert.equal(nurtureSendsEnabled(null), false);
 });
 
 test('post-demo copy: attended thanks + next step; missed asks to reschedule; declined / not ready sends nothing', () => {
@@ -124,9 +138,14 @@ test('admin screens show the effective follow-up rules and never rewrite stored 
   assert.doesNotMatch(salesAdmin, /setFollowUp\(i, \{ delayHours:/, 'the ignored delay is no longer editable');
   assert.doesNotMatch(salesAdmin, /setFollowUp\(i, \{ onlyIfNoReply:/, 'the always-on rule is not a toggle here');
   const nurtureAdmin = src('app/admin/nurture-config/page.tsx');
-  assert.match(nurtureAdmin, /only Step 1 can send/);
-  assert.match(nurtureAdmin, /never sooner than \{SALES_INVITE_MIN_DELAY_MINUTES \/ 60\} hours after the report/);
-  assert.match(nurtureAdmin, /When off, automated sales messages still wait out/);
+  assert.match(nurtureAdmin, /<strong>one invitation<\/strong>/);
+  assert.match(nurtureAdmin, /<strong>one follow-up<\/strong>/);
+  assert.match(nurtureAdmin, /Minimum \{minHours\} hours/);
+  assert.match(nurtureAdmin, /When off, there is no time restriction/);
+  // Controls the sender never read are gone.
+  for (const dead of [/rolloutPercentage/, /leadIdAllowlist/, /minimumMessageGapMinutes/, /maxNurtureMessages/, /onlyIfNoReply/, /Add step/]) {
+    assert.doesNotMatch(nurtureAdmin, dead, String(dead));
+  }
 });
 
 test('wiring: proactive NBA retired, drip capped, every scheduled sales send re-checked', () => {
@@ -135,7 +154,10 @@ test('wiring: proactive NBA retired, drip capped, every scheduled sales send re-
   assert.doesNotMatch(proactive, /ScheduledAction\.create/);
   assert.match(jobs, /action\.reason = 'proactive-nba-retired'/);
   assert.match(jobs, /const limit = Math\.min\(followUpCount, SALES_FOLLOW_UP_LIMIT\)/);
-  assert.match(jobs, /preSalesSendBlockedReason\(\{ kind: 'follow-up', conversationId \}\)/);
+  // The drip and the Nurturing preview share one follow-up check.
+  assert.match(jobs, /followUpBlockedReason\(conversationId, i\)/);
+  assert.match(src('services/sales/preSalesPolicy.ts'), /preSalesSendBlockedReason\(\{ kind: 'follow-up', conversationId \}\)/);
+  assert.match(src('services/nurture/nurtureAdminConfig.ts'), /followUpBlockedReason\(String\(convo\._id\), 0\)/);
   assert.match(jobs, /preSalesSendBlockedReason\(\{ kind: 'invite', step: 'consent', conversationId: prep\.conversationId \}\)/);
   assert.match(jobs, /cancelGenericSalesActions\(salesLead\._id, 'lead-replied'\)/);
   // Trial / payment take the workspace out of pre-sales.

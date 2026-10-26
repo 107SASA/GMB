@@ -7,6 +7,9 @@ import { Users, Building2, DollarSign, BrainCircuit, UserPlus, CheckCircle, XCir
 interface DashboardData {
   totalUsers: number;
   totalBusinesses: number;
+  activeBusinesses: number;
+  payingBusinesses: number;
+  trialBusinesses: number;
   mrr: number;
   aiRequestsToday: number;
   newLeadsLast7Days: number;
@@ -45,27 +48,37 @@ function SkeletonRow() {
 export default function AdminRootPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  // Which sources failed — their numbers show as "—", never as a real-looking 0.
+  const [failed, setFailed] = useState<string[]>([]);
 
   useEffect(() => {
     async function fetchAll() {
+      const load = async (name: string, url: string) => {
+        try {
+          const res = await fetch(url);
+          const json = await res.json();
+          if (!res.ok || json.success === false) throw new Error(json.error || res.statusText);
+          return { name, json, ok: true };
+        } catch {
+          return { name, json: {} as any, ok: false };
+        }
+      };
       try {
-        const [statsRes, revenueRes, aiRes, healthRes] = await Promise.all([
-          fetch('/api/admin/stats'),
-          fetch('/api/admin/revenue'),
-          fetch('/api/admin/ai-usage?range=1'),
-          fetch('/api/admin/system-health'),
+        const results = await Promise.all([
+          load('Platform stats', '/api/admin/stats'),
+          load('Revenue', '/api/admin/revenue'),
+          load('AI usage', '/api/admin/ai-usage?range=1'),
+          load('System health', '/api/admin/system-health'),
         ]);
-
-        const [stats, revenue, ai, health] = await Promise.all([
-          statsRes.json(),
-          revenueRes.json(),
-          aiRes.json(),
-          healthRes.json(),
-        ]);
+        setFailed(results.filter((r) => !r.ok).map((r) => r.name));
+        const [stats, revenue, ai, health] = results.map((r) => r.json);
 
         setData({
           totalUsers: stats.data?.stats?.totalUsers ?? 0,
           totalBusinesses: stats.data?.stats?.totalBusinesses ?? 0,
+          activeBusinesses: stats.data?.stats?.activeBusinesses ?? 0,
+          payingBusinesses: stats.data?.stats?.payingBusinesses ?? 0,
+          trialBusinesses: stats.data?.stats?.trialBusinesses ?? 0,
           mrr: revenue.data?.mrr ?? 0,
           aiRequestsToday: ai.data?.period?.generations ?? 0,
           newLeadsLast7Days: stats.data?.stats?.newLeadsLast7Days ?? 0,
@@ -74,8 +87,6 @@ export default function AdminRootPage() {
           messageBacklog: health.data?.messages?.messageBacklog ?? 0,
           recentSignups: stats.data?.recentSignups ?? [],
         });
-      } catch {
-        // leave loading skeleton visible; errors will surface as zero values
       } finally {
         setLoading(false);
       }
@@ -84,34 +95,41 @@ export default function AdminRootPage() {
     fetchAll();
   }, []);
 
-  const statCards = [
+  const shown = (source: string, value: string) => (failed.includes(source) ? '—' : value);
+  const statCards: Array<{ label: string; value: string | null; sub?: string; icon: any; color: string; href?: string }> = [
     {
       label: 'Total Customers',
-      value: loading ? null : data?.totalUsers.toLocaleString() ?? '0',
+      value: loading ? null : shown('Platform stats', (data?.totalUsers ?? 0).toLocaleString()),
       icon: Users,
       color: 'text-primary bg-primary-fixed',
+      href: '/admin/customers',
     },
     {
       label: 'Active Businesses',
-      value: loading ? null : data?.totalBusinesses.toLocaleString() ?? '0',
+      value: loading ? null : shown('Platform stats', (data?.activeBusinesses ?? 0).toLocaleString()),
+      sub: failed.includes('Platform stats') ? undefined : `${data?.payingBusinesses ?? 0} paying · ${data?.trialBusinesses ?? 0} on trial · ${data?.totalBusinesses ?? 0} total`,
       icon: Building2,
       color: 'text-primary bg-primary-fixed',
+      href: '/admin/businesses',
     },
     {
       label: 'MRR',
-      value: loading ? null : `₹${(data?.mrr ?? 0).toLocaleString()}`,
+      value: loading ? null : shown('Revenue', `₹${(data?.mrr ?? 0).toLocaleString('en-IN')}`),
       icon: DollarSign,
       color: 'text-secondary bg-secondary-container/40',
+      href: '/admin/revenue',
     },
     {
       label: 'AI Requests Today',
-      value: loading ? null : (data?.aiRequestsToday ?? 0).toLocaleString(),
+      value: loading ? null : shown('AI usage', (data?.aiRequestsToday ?? 0).toLocaleString()),
       icon: BrainCircuit,
       color: 'text-primary bg-primary-fixed',
+      href: '/admin/ai-usage',
     },
     {
-      label: 'New Leads (7d)',
-      value: loading ? null : (data?.newLeadsLast7Days ?? 0).toLocaleString(),
+      label: 'New Customer Leads (7d)',
+      value: loading ? null : shown('Platform stats', (data?.newLeadsLast7Days ?? 0).toLocaleString()),
+      sub: "Leads in customers' own CRMs",
       icon: UserPlus,
       color: 'text-secondary bg-secondary-container/40',
       href: '/admin/crm',
@@ -124,6 +142,13 @@ export default function AdminRootPage() {
         <h1 className="font-heading text-2xl font-bold text-on-surface">Platform Operations Center</h1>
         <p className="text-on-surface-variant text-sm mt-1">Live platform metrics — all numbers pulled directly from the database.</p>
       </div>
+
+      {failed.length > 0 && !loading && (
+        <div className="flex items-start gap-2 rounded-xl border border-error-container bg-error-container/40 p-4 text-sm text-on-error-container" role="alert">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>Couldn&apos;t load: {failed.join(', ')}. Those numbers show as “—”; refresh to retry.</span>
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -139,6 +164,7 @@ export default function AdminRootPage() {
                     </div>
                   </div>
                   <p className="text-2xl font-bold text-on-surface">{card.value}</p>
+                  {card.sub && <p className="text-xs text-outline mt-1">{card.sub}</p>}
                 </div>
               );
               return card.href ? (
@@ -223,7 +249,11 @@ export default function AdminRootPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-on-surface-variant">Database</span>
-                {data?.dbStatus === 'healthy' ? (
+                {failed.includes('System health') ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-container text-on-surface-variant rounded-full text-xs font-semibold">
+                    Unknown
+                  </span>
+                ) : data?.dbStatus === 'healthy' ? (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-secondary-container/40 text-on-secondary-container rounded-full text-xs font-semibold">
                     <CheckCircle className="w-3.5 h-3.5" /> Healthy
                   </span>

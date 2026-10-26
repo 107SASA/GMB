@@ -102,7 +102,7 @@ test('accepting a real admin invite creates a user with role SUPER_ADMIN, not a 
   // stored/returned invite object carries no usable token (only its hash, DB
   // side).
   const inviteLink: string = inviteBody?.data?.inviteLink || '';
-  const token = inviteLink.split('/admin/invite/')[1];
+  const token = inviteLink.split('/admin-invite/')[1];
   assert.ok(typeof token === 'string' && token.length > 0, 'inviteLink should contain a real invite token');
   assert.equal(inviteBody?.data?.invite?.token, undefined, 'the invite object must NOT expose a usable token');
   assert.equal(inviteBody?.data?.invite?.tokenHash, undefined, 'the invite object must NOT expose the token hash');

@@ -161,6 +161,12 @@ export interface IBusiness extends Document {
   trialEndsAt?: Date;
   /** Cancelled during the trial: access continues until trialEndsAt, no charge. */
   trialCancelledAt?: Date;
+  /** Billing cycle and per-cycle amount (INR) of the last verified charge — revenue reporting only, never access. */
+  billingCycle?: 'monthly' | 'quarterly' | 'halfyearly' | 'yearly';
+  billingAmountInr?: number;
+  /** When the workspace moved to 'canceled', and whether that was an unpaid trial reaching its end. */
+  subscriptionCanceledAt?: Date;
+  subscriptionCanceledReason?: 'canceled' | 'trial_ended';
   /** The Razorpay subscription that currently grants access (trial or paid). Events for any other subscription can't change access. */
   billingSubscriptionId?: string;
   /** Razorpay mode billingSubscriptionId was created in — copied only from a checkout-link record naming that
@@ -430,6 +436,10 @@ const BusinessSchema: Schema = new Schema(
     trialStartedAt: { type: Date },
     trialEndsAt: { type: Date },
     trialCancelledAt: { type: Date },
+    billingCycle: { type: String, enum: ['monthly', 'quarterly', 'halfyearly', 'yearly'] },
+    billingAmountInr: { type: Number },
+    subscriptionCanceledAt: { type: Date },
+    subscriptionCanceledReason: { type: String, enum: ['canceled', 'trial_ended'] },
     billingSubscriptionId: { type: String, index: true, sparse: true },
     billingSubscriptionEnv: {
       type: new Schema({ subscriptionId: { type: String, required: true }, mode: { type: String, enum: ['test', 'live'], required: true } }, { _id: false }),

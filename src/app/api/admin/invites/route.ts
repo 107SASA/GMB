@@ -4,6 +4,7 @@ import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import AdminInvite from '@/models/AdminInvite';
 import User from '@/models/User';
 import crypto from 'crypto';
+import { buildInviteLink, effectiveInviteStatus, normalizeInviteEmail } from '@/lib/admin/inviteLink';
 
 // GET - list all invites
 export async function GET() {
@@ -19,7 +20,10 @@ export async function GET() {
       .populate('invitedBy', 'fullName email')
       .lean();
 
-    return NextResponse.json({ success: true, data: invites });
+    // A pending invite past its expiry can no longer be accepted.
+    const now = new Date();
+    const data = (invites as any[]).map((i) => ({ ...i, status: effectiveInviteStatus(i, now) }));
+    return NextResponse.json({ success: true, data });
   } catch (error: any) {
     console.error('Invites GET Error:', error);
     return NextResponse.json(
@@ -37,17 +41,18 @@ export async function POST(req: Request) {
   try {
     await dbConnect();
 
-    const { email } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const email = normalizeInviteEmail(body?.email);
 
     if (!email) {
       return NextResponse.json(
-        { success: false, error: 'Email is required' },
+        { success: false, error: 'A valid email is required' },
         { status: 400 }
       );
     }
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
       return NextResponse.json(
         { success: false, error: 'A user with this email already exists' },
@@ -57,8 +62,9 @@ export async function POST(req: Request) {
 
     // Check if pending invite already exists
     const existingInvite = await AdminInvite.findOne({
-      email: email.toLowerCase(),
+      email,
       status: 'pending',
+      expiresAt: { $gt: new Date() },
     });
     if (existingInvite) {
       return NextResponse.json(
@@ -76,14 +82,23 @@ export async function POST(req: Request) {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 48);
 
+    const inviteLink = buildInviteLink(rawToken, process.env, req.headers, req.url);
+    if (!inviteLink) {
+      return NextResponse.json(
+        { success: false, error: 'Could not build the invite link — set NEXT_PUBLIC_APP_URL.' },
+        { status: 500 }
+      );
+    }
+
+    // An expired pending invite for this email no longer blocks a new one.
+    await AdminInvite.updateMany({ email, status: 'pending', expiresAt: { $lte: new Date() } }, { status: 'expired' });
+
     const invite = await AdminInvite.create({
-      email: email.toLowerCase(),
+      email,
       tokenHash,
       invitedBy: auth.userId,
       expiresAt,
     });
-
-    const inviteLink = `${process.env.NEXTAUTH_URL}/admin/invite/${rawToken}`;
 
     // Don't echo the stored hash back to the client.
     const inviteView = invite.toObject();

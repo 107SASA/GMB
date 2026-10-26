@@ -155,7 +155,10 @@ export default function BookingAgentAdminPage() {
       {/* Agent persona */}
       <section className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-5 mb-5 space-y-3">
         <h2 className="font-bold text-on-surface">Agent persona</h2>
-        <p className="text-xs text-on-surface-variant">Tone &amp; style the agent uses while chatting. (The fields it must collect and the booking logic are fixed and can&apos;t be broken by edits here.)</p>
+        <p className="text-xs text-on-surface-variant">
+          Tone &amp; style for the AI&apos;s answers when someone who already has a demo booked asks a question (&quot;what will you show me?&quot;).
+          Picking a day and time uses fixed buttons and lists, so it isn&apos;t affected. Leave empty to use the Sales Agent&apos;s instructions.
+        </p>
         <textarea rows={12} className={area} value={config.agentSystemPrompt} onChange={(e) => setConfig({ ...config, agentSystemPrompt: e.target.value })} />
       </section>
 

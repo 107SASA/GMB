@@ -2051,7 +2051,11 @@ export const sendReportReadyNotification = inngest.createFunction(
       const { default: User } = await import('@/models/User');
       const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
 
-      if (!WA_TEMPLATES.reportReady) return { skip: 'template not configured' as const };
+      if (!WA_TEMPLATES.reportReady) {
+        const { templateConfigMissing } = await import('@/lib/whatsappDiagnostics');
+        templateConfigMissing({ feature: 'report-ready', template: 'copy_of_growwmatics_report_ready', envKey: 'TWILIO_TEMPLATE_REPORT_READY' });
+        return { skip: 'TEMPLATE_CONFIG_MISSING' as const };
+      }
 
       const audit: any = await Audit.findById(auditId).lean();
       if (!audit || audit.status !== 'COMPLETED') return { skip: 'audit not completed' as const };
@@ -2083,7 +2087,8 @@ export const sendReportReadyNotification = inngest.createFunction(
         // Send-once guard so a retried event doesn't double-message.
         await Business.updateOne({ _id: business._id }, { $set: { reportReadySentAt: new Date() } });
       } else {
-        console.warn(`[report-ready] send failed for audit ${auditId}: ${res.error}`);
+        const { logWhatsAppDiagnostic, redactPhone } = await import('@/lib/whatsappDiagnostics');
+        logWhatsAppDiagnostic({ event: 'whatsapp_send_failed', feature: 'report-ready', kind: res.errorKind || 'SEND_FAILED', template: 'copy_of_growwmatics_report_ready', errorCode: res.errorCode, correlationId: res.correlationId, recipient: redactPhone(phone), detail: `audit ${auditId}` });
       }
       return { sent: res.success };
     });
@@ -2359,8 +2364,6 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
           onlyIfNoReply: snap.onlyIfNoReply !== false,
           quietHours: convo.nurtureTiming.quietHours,
           timezone: convo.nurtureTiming.timezone,
-          minimumMessageGapMinutes: convo.nurtureTiming.minimumMessageGapMinutes || 0,
-          maxNurtureMessages: convo.nurtureTiming.maxNurtureMessages,
         };
       }
       const { getSalesAgentConfig } = await import('@/services/sales/salesAgent');
@@ -2371,15 +2374,6 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
         : null;
     });
     if (!cfg || ('skip' in cfg && cfg.skip)) continue;
-    const row = cfg as {
-      delayMinutes?: number;
-      delayHours?: number;
-      onlyIfNoReply?: boolean;
-      quietHours?: { enabled?: boolean; start?: string; end?: string };
-      minimumMessageGapMinutes?: number;
-      maxNurtureMessages?: number;
-    };
-    if (typeof row.maxNurtureMessages === 'number' && i >= row.maxNurtureMessages) break;
 
     // The one follow-up comes ~48h after the invitation (not the stored delay).
     const delayMinutes = SALES_FOLLOW_UP_DELAY_MINUTES;
@@ -2391,7 +2385,7 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
       const { default: SalesConversation } = await import('@/models/SalesConversation');
       const { minutesUntilSalesSendable } = await import('@/lib/preSalesRules');
       const convo: any = await SalesConversation.findById(conversationId).select('nurtureTiming').lean();
-      return minutesUntilSalesSendable(new Date(), convo?.nurtureTiming?.quietHours);
+      return minutesUntilSalesSendable(new Date(), convo?.nurtureTiming?.quietHours, convo?.nurtureTiming?.timezone);
     });
     if (quietMinutes > 0) {
       await step.sleep(`quiet-wait-followup-${i}`, `${quietMinutes}m`);
@@ -2406,67 +2400,18 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
 
       const convo: any = await SalesConversation.findById(conversationId);
       if (!convo || convo.status !== 'active') return true; // stop drip
-      // Final eligibility check right before sending (Oct 2026): any reply
-      // since the invitation ends the sequence (whatever onlyIfNoReply says),
-      // as does a trial/payment on the workspace, a demo in hand, an
-      // opt-out or "not interested". Fails closed.
-      const { preSalesSendBlockedReason } = await import('@/services/sales/preSalesPolicy');
-      const preSalesBlocked = await preSalesSendBlockedReason({ kind: 'follow-up', conversationId });
-      if (preSalesBlocked) {
-        const { logLeadEvent } = await import('@/services/leadEvents');
-        logLeadEvent('NURTURE_ACTION_SKIPPED', { reason: preSalesBlocked, agent: 'sales-agent-drip' }, 'sales-agent', {
-          phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id,
-        });
-        return true;
-      }
-
-      // P0 FIX (post-implementation-audit) — this drip step had ZERO
-      // human-handoff awareness: the only existing gate below is the
-      // LEAD_ENGINE_V2 cohort check, which is a no-op while that flag is
-      // unset (confirmed unset in both .env.local/.env.production) and even
-      // when on only redirects a lead to the SCHEDULED path — it never
-      // blocks a HUMAN-owned lead from being sent to at all. A lead who
-      // said "talk to a human" (or was otherwise handed off) mid-drip could
-      // still receive every remaining scheduled follow-up message with no
-      // check whatsoever. Resolved the same read-only, never-creates-a-Lead
-      // way every other platform-side agent in this file now does — a
-      // SalesConversation with no matching Lead simply proceeds (nothing to
-      // be human-owned by), same precedent as salesAgentReply above.
-      const { normalizePhoneE164 } = await import('@/lib/phone');
-      const { default: Lead } = await import('@/models/Lead');
-      const { salesReplyBlockedReason } = await import('@/services/agentHandoff/isHumanOwned');
-      const normalizedDripPhone = normalizePhoneE164(convo.leadPhone) || convo.leadPhone;
-      const dripLead: any = await Lead.findOne({ phone: normalizedDripPhone, tenantId: 'gmbboost-internal' });
-      const dripBlocked = salesReplyBlockedReason(dripLead);
+      // Final eligibility check right before sending — the SAME function the
+      // Nurturing preview uses (services/sales/preSalesPolicy.ts
+      // followUpBlockedReason): any reply since the invitation, a
+      // trial/payment, a demo in hand, an opt-out or "not interested", human
+      // ownership, an intent that owns the next step, the follow-up step
+      // switched off, or the agent / nurturing switched off. Fails closed.
+      const { followUpBlockedReason } = await import('@/services/sales/preSalesPolicy');
+      const { reason: dripBlocked, lead: dripLead } = await followUpBlockedReason(conversationId, i);
       if (dripBlocked) {
-        const { logLeadEvent } = await import('@/services/leadEvents');
-        logLeadEvent(
-          'NURTURE_ACTION_SKIPPED',
-          { reason: dripBlocked, agent: 'sales-agent-drip' },
-          'sales-agent',
-          { leadId: dripLead?._id, phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id }
-        );
+        const { logSalesSkip } = await import('@/services/sales/preSalesPolicy');
+        await logSalesSkip({ reason: dripBlocked, category: 'follow-up', followUpIndex: i, path: 'inline', leadId: dripLead?._id, phone: convo.leadPhone, conversationId });
         return true; // stop drip — do not send this or any later follow-up in the loop
-      }
-
-      const { genericFollowUpSkipReason } = await import('@/services/nurture/nurtureSchedule');
-      const intelligenceSkip = genericFollowUpSkipReason({
-        intent: dripLead?.intent,
-        nextBestAction: dripLead?.nextBestAction,
-        currentAgent: dripLead?.currentAgent,
-        currentStage: dripLead?.currentStage,
-        nurtureStatus: dripLead?.nurtureStatus,
-        humanHandoffActive: !!dripLead?.humanHandoff?.active,
-      });
-      if (intelligenceSkip) {
-        const { logLeadEvent } = await import('@/services/leadEvents');
-        logLeadEvent(
-          'NURTURE_ACTION_SKIPPED',
-          { reason: intelligenceSkip, agent: 'sales-agent-drip' },
-          'sales-agent',
-          { leadId: dripLead?._id, phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id }
-        );
-        return true;
       }
 
       const config = await getSalesAgentConfig();
@@ -2519,8 +2464,8 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
         // second real drip) can't create a duplicate row for the same
         // logical follow-up — the unique index on idempotencyKey is the
         // actual guarantee, this is just what makes the key stable.
-        const dueAtBucket = new Date().toISOString().slice(0, 13); // e.g. "2026-08-29T14"
-        const idempotencyKey = `${gatedLeadId}-SHOW_VALUE-${dueAtBucket}-followup${i}`;
+        // One row per conversation + follow-up step, however often the step retries.
+        const idempotencyKey = `${gatedLeadId}-SHOW_VALUE-${conversationId}-followup${i}`;
         try {
           await ScheduledAction.create({
             leadId: gatedLeadId,
@@ -2534,7 +2479,7 @@ async function runSalesFollowUpDrip(step: any, conversationId: string, followUpC
           const { logLeadEvent } = await import('@/services/leadEvents');
           logLeadEvent(
             'NURTURE_ACTION_SCHEDULED',
-            { followUpIndex: i, delayMinutes: row.delayMinutes ?? null, gated: true, source: 'V2_NURTURE' },
+            { followUpIndex: i, delayMinutes: SALES_FOLLOW_UP_DELAY_MINUTES, gated: true, source: 'V2_NURTURE' },
             'sales-agent',
             { leadId: gatedLeadId, phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id }
           );
@@ -2646,7 +2591,12 @@ export async function sendSalesFirstMessage(conversationId: string): Promise<{ s
   const { preSalesSendBlockedReason, claimSalesSend, releaseSalesSend } = await import('@/services/sales/preSalesPolicy');
 
   const blocked = await preSalesSendBlockedReason({ kind: 'invite', step: 'first', conversationId });
-  if (blocked) return { sent: false, reason: blocked };
+  if (blocked) {
+    // Visible on Nurturing Configuration → Skipped messages.
+    const { logSalesSkip } = await import('@/services/sales/preSalesPolicy');
+    await logSalesSkip({ reason: blocked, category: 'invitation', conversationId });
+    return { sent: false, reason: blocked };
+  }
   if (!(await claimSalesSend(conversationId, 'first'))) return { sent: false, reason: 'already-sent' };
 
   const convo: any = await SalesConversation.findById(conversationId);
@@ -2693,7 +2643,15 @@ export const salesNurtureRequested = inngest.createFunction(
       const { hasPhoneMessagedPlatformBefore } = await import('@/lib/whatsappConsent');
 
       const config = await getSalesAgentConfig();
-      if (!config.enabled) return { skip: 'agent disabled' as const };
+      const { nurtureSendsEnabled } = await import('@/lib/preSalesRules');
+      // Switched off: record it against the report's owner so the admin can see why nothing went out.
+      const switchedOff = !config.enabled ? 'agent-disabled' : !nurtureSendsEnabled(config) ? 'nurture-disabled' : null;
+      if (switchedOff) {
+        const offAudit: any = await Audit.findById(auditId).select('businessId status').lean();
+        const offBiz: any = offAudit?.status === 'COMPLETED' && offAudit.businessId ? await Business.findById(offAudit.businessId).select('userId phone').lean() : null;
+        const offOwner: any = offBiz?.userId ? await User.findById(offBiz.userId).select('phone').lean() : null;
+        return { skip: switchedOff === 'agent-disabled' ? 'agent disabled' as const : 'nurture disabled' as const, log: { reason: switchedOff, phone: offOwner?.phone || offBiz?.phone || null } };
+      }
 
       const audit: any = await Audit.findById(auditId).lean();
       if (!audit || audit.status !== 'COMPLETED') return { skip: 'audit not completed' as const };
@@ -2747,14 +2705,14 @@ export const salesNurtureRequested = inngest.createFunction(
         await linkPlatformLeadAudit(existingLead._id, audit._id).catch(() => {});
       }
       if (isHumanOwned(existingLead) || isOptedOutOrDoNotContact(existingLead)) {
-        return { skip: 'human-owned-or-opted-out' as const };
+        return { skip: 'human-owned-or-opted-out' as const, log: { reason: isHumanOwned(existingLead) ? 'human-owned' : 'opted-out-or-do-not-contact', phone: normalizedOwnerPhone, leadId: existingLead?._id ? String(existingLead._id) : null } };
       }
       // Pre-sales eligibility (Oct 2026): no invitation for someone who has
       // started a trial or paid (checked by workspace, not only the Lead),
       // already has a demo in hand, declined, or is in another live thread.
       const { preSalesSendBlockedReason } = await import('@/services/sales/preSalesPolicy');
       const notEligible = await preSalesSendBlockedReason({ kind: 'invite', phone: normalizedOwnerPhone, leadId: existingLead?._id, businessId: business._id });
-      if (notEligible) return { skip: `not eligible: ${notEligible}` };
+      if (notEligible) return { skip: `not eligible: ${notEligible}`, log: { reason: notEligible, phone: normalizedOwnerPhone, leadId: existingLead?._id ? String(existingLead._id) : null } };
 
       const phoneKey = phoneDedupeKey(phone);
       if (phoneKey && await SalesConversation.exists({ phoneKey, status: 'active' })) {
@@ -2796,7 +2754,16 @@ export const salesNurtureRequested = inngest.createFunction(
       };
     });
 
-    if ('skip' in prep) return { skipped: prep.skip };
+    if ('skip' in prep) {
+      const log = (prep as { log?: { reason: string; phone?: string | null; leadId?: string | null } }).log;
+      if (log?.phone || log?.leadId) {
+        await step.run('record-preparation-skip', async () => {
+          const { logSalesSkip } = await import('@/services/sales/preSalesPolicy');
+          await logSalesSkip({ category: 'preparation', reason: log.reason, phone: log.phone ?? null, leadId: log.leadId ?? undefined });
+        });
+      }
+      return { skipped: prep.skip };
+    }
 
     if (prep.firstDelayMinutes > 0) {
       await step.sleep('wait-before-first', `${prep.firstDelayMinutes}m`);
@@ -2810,8 +2777,8 @@ export const salesNurtureRequested = inngest.createFunction(
       const convo: any = await SalesConversation.findById(prep.conversationId).select('nurtureTiming').lean();
       const timing = convo?.nurtureTiming;
       if (timing?.firstMessage?.enabled === false) return -1;
-      // Sales quiet hours always apply (the stored config's, else 21:00–09:00 IST).
-      return minutesUntilSalesSendable(new Date(), timing?.quietHours);
+      // Quiet hours only when switched on in Nurturing Configuration, in its timezone.
+      return minutesUntilSalesSendable(new Date(), timing?.quietHours, timing?.timezone);
     });
     if (quietBeforeFirst < 0) return { skipped: 'first-message-disabled' };
     if (quietBeforeFirst > 0) {
@@ -2835,8 +2802,12 @@ export const salesNurtureRequested = inngest.createFunction(
         const convo: any = await SalesConversation.findById(prep.conversationId);
         if (!convo || convo.status !== 'active' || convo.consentStatus !== 'pending') return;
         // Final check right before sending, then a send-once claim (retries / overlapping runs).
-        const { preSalesSendBlockedReason, claimSalesSend, releaseSalesSend } = await import('@/services/sales/preSalesPolicy');
-        if (await preSalesSendBlockedReason({ kind: 'invite', step: 'consent', conversationId: prep.conversationId })) return;
+        const { preSalesSendBlockedReason, claimSalesSend, releaseSalesSend, logSalesSkip } = await import('@/services/sales/preSalesPolicy');
+        const consentBlocked = await preSalesSendBlockedReason({ kind: 'invite', step: 'consent', conversationId: prep.conversationId });
+        if (consentBlocked) {
+          await logSalesSkip({ reason: consentBlocked, category: 'consent', conversationId: prep.conversationId });
+          return;
+        }
         if (!(await claimSalesSend(prep.conversationId, 'consent'))) return;
 
         // This is a cold, business-initiated first touch — never inside a
@@ -2844,8 +2815,9 @@ export const salesNurtureRequested = inngest.createFunction(
         // not free text. growwmatics_sales_intro (short teaser + "YES"
         // quick-reply) is that template; it opens the session the same way
         // CONSENT_REQUEST_MESSAGE used to, so the isAffirmativeReply() gate
-        // below is unchanged. Falls back to the old free-text message only
-        // if the template SID isn't configured (keeps local/dev working).
+        // below is unchanged. Without the template nothing is sent: a cold
+        // number cannot receive free text, and the generic notification
+        // template must not stand in for the approved sales intro.
         let sentText = CONSENT_REQUEST_MESSAGE;
         let res;
         if (WA_TEMPLATES.salesIntro) {
@@ -2856,7 +2828,8 @@ export const salesNurtureRequested = inngest.createFunction(
             '2': business?.name || 'your business',
           }, convo.businessId.toString());
         } else {
-          res = await sendOutboundMessage(convo.leadPhone, CONSENT_REQUEST_MESSAGE, undefined, convo.businessId.toString());
+          const { templateConfigMissing } = await import('@/lib/whatsappDiagnostics');
+          res = templateConfigMissing({ feature: 'sales-intro', template: 'copy_of_growwmatics_sales_intro', envKey: 'TWILIO_TEMPLATE_SALES_INTRO', recipient: convo.leadPhone });
         }
         if (res.success) {
           convo.messages.push({ role: 'agent', text: sentText, at: new Date() });
@@ -2872,7 +2845,9 @@ export const salesNurtureRequested = inngest.createFunction(
     }
 
     // Send first message (the one invitation).
-    await step.run('send-first-message', () => sendSalesFirstMessage(prep.conversationId));
+    const firstSent = await step.run('send-first-message', () => sendSalesFirstMessage(prep.conversationId));
+    // No invitation went out (blocked at send time — already recorded) → there is nothing to follow up.
+    if (!firstSent.sent && firstSent.reason !== 'already-sent') return { skipped: `invitation not sent: ${firstSent.reason}` };
 
     await runSalesFollowUpDrip(step, prep.conversationId, prep.followUpCount);
 
@@ -2922,7 +2897,8 @@ export const salesNurtureConsented = inngest.createFunction(
     if ('skip' in prep) return { skipped: prep.skip };
 
     // They just replied YES — the findings go out now (a response, not a cold pitch).
-    await step.run('send-first-message-after-consent', () => sendSalesFirstMessage(conversationId));
+    const firstSent = await step.run('send-first-message-after-consent', () => sendSalesFirstMessage(conversationId));
+    if (!firstSent.sent && firstSent.reason !== 'already-sent') return { skipped: `first message not sent: ${firstSent.reason}` };
 
     await runSalesFollowUpDrip(step, conversationId, prep.followUpCount);
 
@@ -3014,7 +2990,7 @@ export const salesAgentReply = inngest.createFunction(
         const { logLeadEvent } = await import('@/services/leadEvents');
         logLeadEvent(
           'NURTURE_ACTION_SKIPPED',
-          { reason: blockedReason, agent: 'sales-agent' },
+          { reason: blockedReason, agent: 'sales-agent', category: 'live-reply' },
           'sales-agent',
           { leadId: salesLead?._id, phone: convo.leadPhone, conversationType: 'sales', conversationId: convo._id }
         );
@@ -3155,7 +3131,23 @@ export const salesAgentReply = inngest.createFunction(
         }
       }
 
-      const reply = await composeAgentReply(config, convo);
+      // Continuity beyond this thread: their latest demo booking and the
+      // most recent demo-booking conversation (e.g. a cancelled or held demo).
+      const replyContext = await (async () => {
+        const { phoneDedupeKey } = await import('@/lib/phone');
+        const { default: BookingConversation } = await import('@/models/BookingConversation');
+        const { default: DemoBooking } = await import('@/models/DemoBooking');
+        const key = phoneDedupeKey(convo.leadPhone);
+        const [lastBooking, lastDemo]: any[] = await Promise.all([
+          key ? BookingConversation.findOne({ phoneKey: key }).sort({ updatedAt: -1 }).select('messages').lean() : null,
+          salesLead?._id ? DemoBooking.findOne({ leadId: salesLead._id }).sort({ updatedAt: -1 }).select('status date timeSlot meetingLink').lean() : null,
+        ]);
+        return {
+          demo: lastDemo ? { status: lastDemo.status, whenLabel: lastDemo.date && lastDemo.timeSlot ? `${lastDemo.date} at ${lastDemo.timeSlot}` : null, meetingLink: lastDemo.meetingLink ?? null } : null,
+          earlier: lastBooking?.messages?.length ? { label: 'demo-booking conversation', messages: lastBooking.messages } : null,
+        };
+      })().catch(() => undefined);
+      const reply = await composeAgentReply(config, convo, replyContext);
       const res = await sendOutboundMessage(convo.leadPhone, reply, undefined, convo.businessId.toString());
       if (res.success) {
         convo.messages.push({ role: 'agent', text: reply, at: new Date() });
@@ -3389,6 +3381,9 @@ async function sendButtonsOrText(convo: any, body: string, buttons: { id: string
     convo.messages.push({ role: 'agent', text: `${body} [${buttons.map((button) => button.title).join(' | ')}]`, at: new Date() });
     return;
   }
+  // Same choices as text (an in-session reply) — logged so the button failure is visible.
+  const { logWhatsAppDiagnostic, redactPhone } = await import('@/lib/whatsappDiagnostics');
+  logWhatsAppDiagnostic({ event: 'whatsapp_send_failed', feature: 'booking-buttons', kind: res.errorKind || 'SEND_FAILED', errorCode: res.errorCode, correlationId: res.correlationId, recipient: redactPhone(convo.leadPhone), detail: `sending the same choices as text: ${res.error || ''}` });
   await deliverBookingReply(convo, fallback);
 }
 
@@ -3518,6 +3513,8 @@ async function presentSlots(convo: any, slots: any[], intro: string): Promise<vo
     convo.messages.push({ role: 'agent', text: `${intro} [${items.map((row) => row.item).join(' | ')}]`, at: new Date() });
     return;
   }
+  const { logWhatsAppDiagnostic, redactPhone } = await import('@/lib/whatsappDiagnostics');
+  logWhatsAppDiagnostic({ event: 'whatsapp_send_failed', feature: 'booking-slot-list', kind: res.errorKind || 'SEND_FAILED', errorCode: res.errorCode, correlationId: res.correlationId, recipient: redactPhone(convo.leadPhone), detail: `sending the same times as text: ${res.error || ''}` });
   await deliverBookingReply(convo, slotOfferText(intro, offered));
 }
 
@@ -3813,10 +3810,42 @@ async function handleBookedReply(convo: any, body: string, config: any): Promise
   const intent = classifyBookedReplyIntent(body);
   if (intent === 'none') {
     // The webhook already stored this inbound message on the conversation.
-    const booking: any = convo.bookingId ? await DemoBooking.findById(convo.bookingId).select('date timeSlot meetingLink').lean() : null;
+    const booking: any = convo.bookingId ? await DemoBooking.findById(convo.bookingId).select('date timeSlot meetingLink status').lean() : null;
     const { bookedStatusReply } = await import('@/services/whatsapp/prospectChoice');
     const when = booking?.date && booking?.timeSlot ? `${booking.date} at ${booking.timeSlot}` : '';
-    await deliverBookingReply(convo, bookedStatusReply({ whenLabel: when, meetingLink: booking?.meetingLink }));
+    // Never describe a demo that is no longer on as booked.
+    if (booking?.status === 'Cancelled') {
+      convo.status = 'stopped';
+      await deliverBookingReply(convo, `Your Growwmatics demo${when ? ` on ${when}` : ''} was cancelled. If you'd still like one, reply DEMO and we'll find a new time.`);
+      return;
+    }
+    if (booking?.status === 'Rescheduled') {
+      await deliverBookingReply(convo, `Your Growwmatics demo${when ? ` on ${when}` : ''} needs a new time. Reply RESCHEDULE and I'll share the open slots.`);
+      return;
+    }
+    // Answer what they actually asked (grounded, never moving the booking) —
+    // unless a human owns the lead; the fixed status reply is the fallback.
+    const answer = await (async () => {
+      const { default: Lead } = await import('@/models/Lead');
+      const { isHumanOwned } = await import('@/services/agentHandoff/isHumanOwned');
+      const lead: any = convo.leadId ? await Lead.findById(convo.leadId).select('currentAgent humanHandoff').lean() : null;
+      if (isHumanOwned(lead)) return null;
+      const { getSalesAgentConfig, composeBookedQuestionReply } = await import('@/services/sales/salesAgent');
+      const { default: SalesConversation } = await import('@/models/SalesConversation');
+      const sales: any = convo.phoneKey ? await SalesConversation.findOne({ phoneKey: convo.phoneKey }).sort({ updatedAt: -1 }).select('scores messages').lean() : null;
+      return composeBookedQuestionReply(await getSalesAgentConfig(), {
+        leadName: convo.leadName,
+        scores: sales?.scores ?? null,
+        demo: { whenLabel: when || null, meetingLink: booking?.meetingLink ?? null },
+        messages: convo.messages || [],
+        earlier: sales?.messages?.length ? { label: 'sales conversation', messages: sales.messages } : null,
+        persona: config?.agentSystemPrompt, // the Booking Agent's own instructions
+      });
+    })().catch((err: any) => {
+      console.warn('[bookingAgent] booked-question answer failed:', err?.message);
+      return null;
+    });
+    await deliverBookingReply(convo, answer || bookedStatusReply({ whenLabel: when, meetingLink: booking?.meetingLink }));
     return;
   }
 
@@ -4467,10 +4496,16 @@ export const dispatchWhatsappFollowUpJob = inngest.createFunction(
 export const crmFollowUpReminderCron = inngest.createFunction(
   { id: "crm-follow-up-reminders", triggers: [{ cron: "*/15 * * * *" }] },
   async ({ step }) => {
-    return await step.run("send-due-reminders", async () => {
+    const customers = await step.run("send-due-reminders", async () => {
       const { sendDueFollowUpReminders } = await import("@/services/crm/followUps");
       return await sendDueFollowUpReminders();
     });
+    // Super admin CRM follow-ups (platform leads) — same cadence, same once-only claim.
+    const platform = await step.run("send-due-platform-reminders", async () => {
+      const { sendDuePlatformFollowUpReminders } = await import("@/services/admin/platformCrmActivity");
+      return await sendDuePlatformFollowUpReminders();
+    });
+    return { ...customers, platform };
   }
 );
 
@@ -5092,7 +5127,7 @@ export const nurtureSchedulerTick = inngest.createFunction(
           const skip = (reason: string) => {
             action.status = 'SKIPPED';
             action.reason = reason;
-            logLeadEvent('NURTURE_ACTION_SKIPPED', { reason, agent: 'demo-agent', actionType: 'DEMO_REMINDER' }, 'demo-agent', {
+            logLeadEvent('NURTURE_ACTION_SKIPPED', { reason, agent: 'demo-agent', actionType: 'DEMO_REMINDER', category: 'demo-reminder' }, 'demo-agent', {
               leadId: action.leadId, phone: remLead?.phone,
             });
           };
@@ -5135,24 +5170,46 @@ export const nurtureSchedulerTick = inngest.createFunction(
         }
 
         // Every row left here is a generic sales follow-up (the gated drip).
-        // Final eligibility check at fire time: within the follow-up limit,
-        // no reply since the invitation, not trial/paid, no demo in hand, not
-        // opted out. A row without a conversation to check against is skipped.
+        // It obeys EXACTLY the rules of the inline drip: the same eligibility
+        // check (followUpBlockedReason), quiet hours re-checked now, the same
+        // send-once claim on the conversation, and skips recorded as
+        // NURTURE_ACTION_SKIPPED so they show on Nurturing Configuration.
+        const followUpConversationId = action.payload?.conversationId ? String(action.payload.conversationId) : null;
+        const followUpIndex = Number(action.payload?.followUpIndex ?? 0);
+        const {
+          followUpBlockedReason, claimSalesSend, releaseSalesSend, logSalesSkip,
+        } = await import('@/services/sales/preSalesPolicy');
+        const skipFollowUp = async (reason: string) => {
+          action.status = 'SKIPPED';
+          action.reason = `pre-sales: ${reason}`;
+          await action.save();
+          await logSalesSkip({ reason, category: 'follow-up', followUpIndex, path: 'scheduled', leadId: action.leadId, conversationId: followUpConversationId });
+          return 'skipped' as const;
+        };
+        if (!followUpConversationId) return skipFollowUp('no-conversation-to-check');
+        if (followUpIndex >= SALES_FOLLOW_UP_LIMIT) return skipFollowUp('follow-up-limit');
         {
-          const { preSalesSendBlockedReason } = await import('@/services/sales/preSalesPolicy');
-          const conversationId = action.payload?.conversationId;
-          const index = Number(action.payload?.followUpIndex ?? 0);
-          const blocked = !conversationId
-            ? 'no-conversation-to-check'
-            : index >= SALES_FOLLOW_UP_LIMIT
-              ? 'follow-up-limit'
-              : await preSalesSendBlockedReason({ kind: 'follow-up', conversationId: String(conversationId) });
-          if (blocked) {
-            action.status = 'SKIPPED';
-            action.reason = `pre-sales: ${blocked}`;
+          const { reason } = await followUpBlockedReason(followUpConversationId, followUpIndex);
+          if (reason) return skipFollowUp(reason);
+        }
+        {
+          // Quiet hours (only when switched on for this sequence): wait, don't skip.
+          const { default: SalesConversation } = await import('@/models/SalesConversation');
+          const { minutesUntilSalesSendable } = await import('@/lib/preSalesRules');
+          const timingConvo: any = await SalesConversation.findById(followUpConversationId).select('nurtureTiming').lean();
+          const waitMinutes = minutesUntilSalesSendable(new Date(), timingConvo?.nurtureTiming?.quietHours, timingConvo?.nurtureTiming?.timezone);
+          if (waitMinutes > 0) {
+            action.dueAt = new Date(Date.now() + waitMinutes * 60_000);
+            action.claimedAt = null;
             await action.save();
-            return 'skipped';
+            return 'already-handled';
           }
+        }
+        if (!(await claimSalesSend(followUpConversationId, `followup-${followUpIndex}`))) {
+          action.status = 'SKIPPED';
+          action.reason = 'already-sent';
+          await action.save();
+          return 'skipped';
         }
 
         // Captured so the SalesConversation update below (after a confirmed
@@ -5183,6 +5240,7 @@ export const nurtureSchedulerTick = inngest.createFunction(
             idempotencyKey: action.idempotencyKey,
           });
         } catch (err: any) {
+          await releaseSalesSend(followUpConversationId, `followup-${followUpIndex}`);
           action.status = 'SKIPPED';
           action.reason = `builder-or-send-threw: ${err?.message || 'unknown error'}`;
           await action.save();
@@ -5205,9 +5263,16 @@ export const nurtureSchedulerTick = inngest.createFunction(
         // was already true when this row was created) FALL_BACK_TO_LEGACY
         // outcome mean this row does not get to fire — mark it SKIPPED
         // rather than leaving it PENDING forever.
+        // Not sent: give the send-once claim back and record why.
+        await releaseSalesSend(followUpConversationId, `followup-${followUpIndex}`);
+        const notSent = result.decision === 'REJECTED' ? result.reason : 'flag-or-cohort-no-longer-applies';
         action.status = 'SKIPPED';
-        action.reason = result.decision === 'REJECTED' ? result.reason : 'flag-or-cohort-no-longer-applies';
+        action.reason = notSent;
         await action.save();
+        // A REJECTED decision is already recorded by the orchestrator itself.
+        if (result.decision !== 'REJECTED') {
+          await logSalesSkip({ reason: notSent, category: 'follow-up', followUpIndex, path: 'scheduled', leadId: action.leadId, conversationId: followUpConversationId });
+        }
         return 'skipped';
       }
     };

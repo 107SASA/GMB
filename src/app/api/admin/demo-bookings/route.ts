@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
+import dbConnect from '@/lib/mongodb';
 import DemoBooking from '@/models/DemoBooking';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { demoHasEnded } from '@/lib/preSalesRules';
 
-const connectDB = async () => {
-  if (mongoose.connections[0].readyState) return;
-  await mongoose.connect(process.env.MONGODB_URI!);
-};
+// The shared connection (lib/mongodb) — same settings as every other route.
+const connectDB = dbConnect;
 
 // Fetch all demo bookings for Super Admin dashboard
 export async function GET() {
@@ -116,6 +115,19 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
     }
 
+    const before: any = await DemoBooking.findById(bookingId).lean();
+    if (!before) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+    }
+    // A demo can't be "completed" before it has happened — that would mark the
+    // lead as having had a demo and stop its reminders.
+    if (status === 'Completed' && demoHasEnded(before) === false) {
+      return NextResponse.json(
+        { error: "This demo hasn't ended yet. Once it has, record what happened with the Attendance buttons." },
+        { status: 409 }
+      );
+    }
+
     const booking = await DemoBooking.findByIdAndUpdate(
       bookingId,
       { status },
@@ -156,28 +168,17 @@ export async function PATCH(req: Request) {
     // A status edit never sends a post-demo WhatsApp message: only the
     // explicit attendance confirmation above (attendance: ...) does.
 
-    // A cancelled demo invalidates any still-pending nurture/reminder
-    // actions scheduled for this lead (Phase 5's orchestration engine) —
-    // e.g. a "demo reminder" ScheduledAction that would otherwise still
-    // fire for a demo that no longer exists. Best-effort; never fails this
-    // admin status-update request.
-    if (status === 'Cancelled' && booking.leadId) {
-      const { cancelScheduledActions } = await import('@/services/scheduler/cancelScheduledActions');
-      await cancelScheduledActions(booking.leadId, 'demo-cancelled');
+    // Cancelled / Rescheduled by the team: free the calendar slot, stop the
+    // reminders, make the booking chat stop claiming the demo is on, and
+    // tell the customer once if the demo was still upcoming.
+    let customerNotified = false;
+    let notifyError: string | undefined;
+    if ((status === 'Cancelled' || status === 'Rescheduled') && before.status !== status) {
+      const { applyAdminDemoChange } = await import('@/services/demo/adminDemoChange');
+      ({ customerNotified, notifyError } = await applyAdminDemoChange({ bookingId: String(booking._id), change: status, previousStatus: before.status }));
     }
 
-    // Also free the salesperson's calendar slot — otherwise a cancelled demo
-    // keeps blocking the time and the prospect still sees the Meet invite.
-    if (status === 'Cancelled' && booking.calendarEventId) {
-      try {
-        const { cancelBookedEvent } = await import('@/services/calendar/bookDemoOnCalendar');
-        await cancelBookedEvent(booking);
-      } catch (err) {
-        console.warn('[demo-bookings PATCH] calendar event cancel failed:', err instanceof Error ? err.message : err);
-      }
-    }
-
-    return NextResponse.json({ success: true, booking });
+    return NextResponse.json({ success: true, booking, customerNotified, ...(notifyError ? { notifyError } : {}) });
   } catch (error: any) {
     return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }

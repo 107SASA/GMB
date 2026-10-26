@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
 import { validatePasswordStrength } from '@/lib/passwordPolicy';
+import { normalizePhoneE164 } from '@/lib/phone';
 
 export async function POST(req: Request) {
   try {
@@ -42,8 +43,11 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    if (phone !== undefined && typeof phone !== 'string') {
-      return NextResponse.json({ success: false, error: 'Invalid phone.' }, { status: 400 });
+    // Every user needs a phone, and it must be unique (User.phone) — a shared
+    // placeholder let only the first admin without one be created.
+    const normalizedPhone = typeof phone === 'string' ? normalizePhoneE164(phone) : null;
+    if (!normalizedPhone) {
+      return NextResponse.json({ success: false, error: 'A valid mobile number is required.' }, { status: 400 });
     }
 
     const strength = validatePasswordStrength(password);
@@ -65,13 +69,13 @@ export async function POST(req: Request) {
 
     if (invite.status !== 'pending') {
       return NextResponse.json(
-        { success: false, error: 'This invite has already been used' },
+        { success: false, error: invite.status === 'expired' ? 'This invite link has expired' : 'This invite has already been used' },
         { status: 400 }
       );
     }
 
     if (new Date() > invite.expiresAt) {
-      await AdminInvite.findByIdAndUpdate(invite._id, { status: 'expired' });
+      await AdminInvite.updateOne({ _id: invite._id, status: 'pending' }, { status: 'expired' });
       return NextResponse.json(
         { success: false, error: 'This invite link has expired' },
         { status: 400 }
@@ -86,22 +90,42 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    if (await User.exists({ phone: normalizedPhone })) {
+      return NextResponse.json(
+        { success: false, error: 'This mobile number is already used by another account' },
+        { status: 400 }
+      );
+    }
 
-    // Hash password
+    // Single use: claim the invite atomically before creating the account, so
+    // two concurrent submissions of the same link can't both mint an admin.
+    const claimed = await AdminInvite.findOneAndUpdate(
+      { _id: invite._id, status: 'pending', expiresAt: { $gt: new Date() } },
+      { status: 'accepted' },
+      { new: true }
+    );
+    if (!claimed) {
+      return NextResponse.json(
+        { success: false, error: 'This invite has already been used' },
+        { status: 400 }
+      );
+    }
+
     const hashedPassword = await bcrypt.hash(password, 12);
-
-    // Create the super admin user
-    await User.create({
-      fullName: name.trim(),
-      email: invite.email,
-      passwordHash: hashedPassword,
-      phone: phone && phone.trim() ? phone.trim() : '+910000000000',
-      role: 'SUPER_ADMIN',
-      isEmailVerified: true,
-    });
-
-    // Mark invite as accepted
-    await AdminInvite.findByIdAndUpdate(invite._id, { status: 'accepted' });
+    try {
+      await User.create({
+        fullName: name.trim(),
+        email: invite.email,
+        passwordHash: hashedPassword,
+        phone: normalizedPhone,
+        role: 'SUPER_ADMIN',
+        isEmailVerified: true,
+      });
+    } catch (err) {
+      // Account not created — give the invite back so the link still works.
+      await AdminInvite.updateOne({ _id: invite._id, status: 'accepted' }, { status: 'pending' });
+      throw err;
+    }
 
     return NextResponse.json({
       success: true,

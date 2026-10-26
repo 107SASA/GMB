@@ -20,9 +20,20 @@ export const SALES_INVITE_MIN_DELAY_MINUTES = 120;
 /** Automated sales follow-ups after the invitation, regardless of the stored sales-agent config. */
 export const SALES_FOLLOW_UP_LIMIT = 1;
 export const SALES_FOLLOW_UP_DELAY_MINUTES = 48 * 60;
-/** Quiet hours for every automated sales message, even when the stored config has them off. */
-export const SALES_QUIET_HOURS = { enabled: true, start: '21:00', end: '09:00' } as const;
+/** Timezone for quiet hours when the stored config has none (or an invalid one). */
 export const SALES_TIMEZONE = 'Asia/Kolkata';
+
+/**
+ * Automated (proactive) sales messages — the invitation and its one
+ * follow-up — need the Sales agent on AND nurturing on. nurtureEnabled is
+ * separate from the agent's own switch (which also governs live replies);
+ * a config saved before it existed inherits the agent switch, so nothing
+ * changes until someone saves Nurturing Configuration.
+ */
+export function nurtureSendsEnabled(cfg: { enabled?: boolean | null; nurtureEnabled?: boolean | null } | null | undefined): boolean {
+  if (!cfg || cfg.enabled !== true) return false;
+  return typeof cfg.nurtureEnabled === 'boolean' ? cfg.nurtureEnabled : true;
+}
 /** Attended-demo follow-up: a few hours after it is marked complete (well within a day). */
 export const POST_DEMO_FOLLOW_UP_DELAY_MINUTES = 3 * 60;
 export const MISSED_DEMO_MESSAGE_DELAY_MINUTES = 10;
@@ -100,12 +111,25 @@ export function conversationSalesBlockedReason(convo: {
   return null;
 }
 
-/** Minutes to wait so an automated sales message lands outside quiet hours. */
-export function minutesUntilSalesSendable(now: Date, quietHours?: { enabled?: boolean; start?: string; end?: string } | null): number {
-  const q = quietHours?.enabled && quietHours.start && quietHours.end
-    ? { enabled: true, start: quietHours.start, end: quietHours.end }
-    : { ...SALES_QUIET_HOURS };
-  return minutesUntilSendable({ now, quietHours: q, timezone: SALES_TIMEZONE, minimumMessageGapMinutes: 0 });
+/**
+ * Minutes to wait so an automated sales message lands outside quiet hours.
+ * Quiet hours apply ONLY when switched on in Nurturing Configuration — there
+ * is no built-in window — and are read in the configured timezone.
+ */
+export function minutesUntilSalesSendable(
+  now: Date,
+  quietHours?: { enabled?: boolean; start?: string; end?: string } | null,
+  timezone?: string | null
+): number {
+  if (!quietHours?.enabled || !quietHours.start || !quietHours.end) return 0;
+  let tz = SALES_TIMEZONE;
+  if (timezone) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+      tz = timezone;
+    } catch { /* invalid stored zone → default */ }
+  }
+  return minutesUntilSendable({ now, quietHours: { enabled: true, start: quietHours.start, end: quietHours.end }, timezone: tz, minimumMessageGapMinutes: 0 });
 }
 
 const firstWord = (name?: string | null) => (name || '').trim().split(/\s+/)[0] || '';
@@ -123,8 +147,11 @@ export function attendedFollowUpAllowed(outcome?: string | null): boolean {
 
 // ── Demo attendance (who says what happened at the demo) ────────────────────
 
-/** Outcomes a person can record for a demo that has ended. */
-export const STAFF_ATTENDANCE_OUTCOMES = ['attended', 'no_show', 'declined', 'not_ready'] as const;
+/**
+ * Outcomes a person can record for a demo that has ended. team_missed: the
+ * Growwmatics side didn't make it — never the customer's no-show.
+ */
+export const STAFF_ATTENDANCE_OUTCOMES = ['attended', 'no_show', 'declined', 'not_ready', 'team_missed'] as const;
 export type StaffAttendanceOutcome = (typeof STAFF_ATTENDANCE_OUTCOMES)[number];
 
 type BookingTimes = { startUtc?: Date | string | null; endUtc?: Date | string | null };
@@ -158,16 +185,34 @@ export function confirmedAttendance(booking: BookingAttendance): StaffAttendance
   return a.outcome as StaffAttendanceOutcome;
 }
 
+export type PostDemoKind = 'attended' | 'missed' | 'apology';
+
 /** Which post-demo message (if any) a confirmed outcome allows. Declined / not ready / unknown → none. */
-export function postDemoKindFor(outcome: string | null | undefined): 'attended' | 'missed' | null {
+export function postDemoKindFor(outcome: string | null | undefined): PostDemoKind | null {
   if (outcome === 'attended') return 'attended';
   if (outcome === 'no_show') return 'missed';
+  if (outcome === 'team_missed') return 'apology';
   return null;
 }
 
-/** Booking status that matches a confirmed outcome (kept for the existing views and analytics). */
-export function statusForAttendance(outcome: StaffAttendanceOutcome): 'Completed' | 'No Show' {
-  return outcome === 'no_show' ? 'No Show' : 'Completed';
+/**
+ * Booking status that matches a confirmed outcome (kept for the existing
+ * views and analytics). A demo our team missed needs a new time — it is
+ * neither held nor the customer's no-show.
+ */
+export function statusForAttendance(outcome: StaffAttendanceOutcome): 'Completed' | 'No Show' | 'Rescheduled' {
+  if (outcome === 'no_show') return 'No Show';
+  if (outcome === 'team_missed') return 'Rescheduled';
+  return 'Completed';
+}
+
+/** Whether a person may record (or correct) the outcome of a booking in this state. */
+export function attendanceEditable(booking: { status?: string | null; attendance?: { outcome?: string | null; source?: string | null } | null }): boolean {
+  // Pending too: a demo arranged by a person (no calendar connected) is never
+  // auto-confirmed, but it still happens and needs its outcome recorded.
+  if (['Pending', 'Confirmed', 'Completed', 'No Show'].includes(booking.status || '')) return true;
+  // A demo marked "our team missed it" can still be corrected.
+  return booking.status === 'Rescheduled' && booking.attendance?.source === 'staff' && booking.attendance?.outcome === 'team_missed';
 }
 
 /** Post-demo analysis outcome forced by a confirmed outcome (attended → classified from the conversation). */
@@ -184,7 +229,7 @@ export function analysisOutcomeForAttendance(outcome: StaffAttendanceOutcome): '
  * says not to follow up (declined, or not ready yet).
  */
 export function postDemoMessage(input: {
-  kind: 'attended' | 'missed';
+  kind: PostDemoKind;
   name?: string | null;
   businessName?: string | null;
   outcome?: string | null;
@@ -192,6 +237,10 @@ export function postDemoMessage(input: {
   subscribeUrl?: string | null;
 }): string | null {
   const hi = firstWord(input.name) ? `Hi ${firstWord(input.name)},` : 'Hi,';
+  if (input.kind === 'apology') {
+    const when = input.whenLabel ? ` on ${input.whenLabel}` : '';
+    return `${hi} we're very sorry — our team couldn't join your Growwmatics demo${when} as planned. That's on us. Would you like to pick another time? Reply RESCHEDULE and I'll share the open slots.`;
+  }
   if (input.kind === 'missed') {
     const when = input.whenLabel ? ` on ${input.whenLabel}` : '';
     return `${hi} sorry we missed you at your Growwmatics demo${when}. Would you like to pick another time? Reply RESCHEDULE and I'll share the open slots.`;

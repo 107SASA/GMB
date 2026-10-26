@@ -17,11 +17,15 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Loader2, ArrowLeft, Bot, User, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { OwnershipBadge, ScoreBar, RelTime } from '@/components/admin/conversion/primitives';
+import { LeadCrmPanel } from '@/components/admin/crm/LeadCrmPanel';
+import { LeadActivityPanel } from '@/components/admin/crm/LeadActivityPanel';
 
 interface Detail {
   lead: any;
-  timeline: { type: string; payload: any; actor: string; conversationType: string | null; at: string }[];
+  timeline: { type: string; payload: any; actor: string; actorName?: string | null; conversationType: string | null; at: string }[];
   conversation: any;
+  conversations?: { type: string; label: string; status: string; followUpsSent?: number; messages: { role: string; text: string; at: string; by?: 'lead' | 'ai' | 'team' }[] }[];
+  timelineTruncated?: boolean;
   demos: any[];
   pendingActions: { actionType: string; dueAt: string; createdBy: string; payload: any }[];
 }
@@ -50,6 +54,14 @@ const EVENT_LABEL: Record<string, string> = {
   NBA_SELECTED: 'Next best action selected',
   NBA_EXECUTED: 'Next best action executed',
   NBA_OVERRIDDEN: 'AI suggestion overridden',
+  NOTE_ADDED: 'Team note',
+  LEAD_UPDATED: 'Details edited',
+  STAGE_CHANGED: 'Stage changed',
+  LEAD_IMPORTED: 'Imported from CSV',
+  LEAD_CAPTURED: 'Came in again',
+  CALL_LOGGED: 'Call logged',
+  FOLLOW_UP_SCHEDULED: 'Follow-up scheduled',
+  FOLLOW_UP_DONE: 'Follow-up done',
 };
 
 function eventTone(type: string): string {
@@ -65,14 +77,22 @@ export default function LeadDetailPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [returning, setReturning] = useState(false);
+  const [returnMsg, setReturnMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [convoTab, setConvoTab] = useState<string | null>(null);
+  const [team, setTeam] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    fetch('/api/admin/inbox/team').then((r) => r.json()).then((j) => setTeam(j?.team ?? [])).catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/conversion/leads/${params.id}`);
-      const json = await res.json();
-      if (json.success) setD(json);
-      else setErr(json.error || 'Failed to load');
+      const json = await res.json().catch(() => null);
+      if (json?.success) { setD(json); setErr(null); }
+      else setErr(json?.error || `Failed to load (${res.status})`);
+    } catch (e: any) {
+      setErr(e?.message || 'Failed to load');
     } finally {
       setLoading(false);
     }
@@ -83,14 +103,23 @@ export default function LeadDetailPage() {
   const returnToAI = async () => {
     if (!d) return;
     setReturning(true);
+    setReturnMsg(null);
     try {
       // Reuse the existing generic release endpoint — no new mutation path.
       const res = await fetch('/api/admin/leads/return-to-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadId: params.id, targetAgent: 'SALES', resumeStage: 'NURTURING' }),
+        body: JSON.stringify({ leadId: params.id, targetAgent: 'SALES' }),
       });
-      if (res.ok) await load();
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) {
+        setReturnMsg({ ok: true, text: 'Returned to the Sales agent.' });
+        await load();
+      } else {
+        setReturnMsg({ ok: false, text: json?.error || `Could not return this lead to the AI (${res.status}).` });
+      }
+    } catch (e: any) {
+      setReturnMsg({ ok: false, text: e?.message || 'Could not return this lead to the AI.' });
     } finally {
       setReturning(false);
     }
@@ -112,11 +141,11 @@ export default function LeadDetailPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="font-heading text-xl font-bold text-on-surface">{l.name || l.phone || 'Lead'}</h1>
+              <h1 className="font-heading text-xl font-bold text-on-surface">{l.displayName || l.name || l.phone || 'Lead'}</h1>
               <OwnershipBadge ownership={l.isCustomer ? 'CUSTOMER' : l.currentAgent === 'HUMAN' ? 'HUMAN' : 'AI'} />
             </div>
             <p className="text-sm text-on-surface-variant mt-0.5">
-              {l.phone || '—'}{l.email ? ` · ${l.email}` : ''}{l.business ? ` · ${l.business.name}` : ''}
+              {l.phone || '—'}{l.email ? ` · ${l.email}` : ''}{l.businessName ? ` · ${l.businessName}` : ''}
             </p>
             <p className="text-xs text-outline mt-1">
               {l.source ? `Source: ${l.source} · ` : ''}Created <RelTime date={l.createdAt} />
@@ -128,13 +157,13 @@ export default function LeadDetailPage() {
         </div>
 
         {/* Human handoff banner */}
-        {l.humanHandoff?.active && (
+        {(l.humanHandoff?.active || l.currentAgent === 'HUMAN') && (
           <div className="mt-4 flex items-start gap-2 bg-warning/15 border border-warning/40 rounded-lg px-3 py-2.5 text-sm">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-warning-text" />
             <div className="flex-1">
               <p className="font-semibold text-warning-text">Human-owned — AI is paused</p>
               <p className="text-xs text-on-surface-variant mt-0.5">
-                Reason: {l.humanHandoff.reason || 'unspecified'} · since <RelTime date={l.humanHandoff.since} />.
+                Reason: {l.humanHandoff?.reason || 'unspecified'}{l.humanHandoff?.since ? <> · since <RelTime date={l.humanHandoff.since} /></> : null}.
                 {' '}AI does not resume automatically.
               </p>
             </div>
@@ -147,7 +176,27 @@ export default function LeadDetailPage() {
             </button>
           </div>
         )}
+        {returnMsg && (
+          <p role="status" className={`mt-3 text-xs font-medium ${returnMsg.ok ? 'text-secondary' : 'text-error'}`}>{returnMsg.text}</p>
+        )}
       </div>
+
+      {(l.captureSources || []).length > 0 && (
+        <p className="text-xs text-on-surface-variant -mt-2">
+          Came in through: {(l.captureSources as string[]).map((s) => <span key={s} className="ml-1 px-1.5 py-0.5 rounded bg-surface-container">{s}</span>)}
+        </p>
+      )}
+      <LeadCrmPanel
+        lead={l}
+        onSaved={load}
+        notes={[...d.timeline].reverse().filter((e) => e.type === 'NOTE_ADDED').map((e) => ({ text: e.payload?.text || '', at: e.at, by: e.actorName ?? null }))}
+      />
+      <LeadActivityPanel
+        leadId={l._id}
+        team={team}
+        onChanged={load}
+        calls={[...d.timeline].reverse().filter((e) => e.type === 'CALL_LOGGED').map((e) => ({ at: e.at, payload: e.payload, actorName: e.actorName }))}
+      />
 
       {/* Intelligence + state grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -272,31 +321,48 @@ export default function LeadDetailPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Conversation */}
-        <Panel title="Sales conversation" subtitle={d.conversation ? `${d.conversation.status} · ${d.conversation.followUpsSent} follow-ups sent` : undefined}>
-          {!d.conversation ? (
-            <p className="text-xs text-outline">No sales conversation on record.</p>
-          ) : (
-            <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-              {d.conversation.messages.length === 0 && <p className="text-xs text-outline">No messages yet.</p>}
-              {d.conversation.messages.map((m: any, i: number) => (
-                <div key={i} className={`flex ${m.role === 'lead' ? 'justify-start' : 'justify-end'}`}>
-                  <div className={`max-w-[80%] rounded-lg px-3 py-1.5 text-xs ${m.role === 'lead' ? 'bg-surface-container text-on-surface' : 'bg-primary-fixed text-primary'}`}>
-                    <div className="flex items-center gap-1 mb-0.5 opacity-70">
-                      {m.role === 'lead' ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3" />}
-                      <span>{m.role === 'lead' ? 'Lead' : 'AI'}</span>
-                      <span>· {new Date(m.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+        {/* Conversations — every agent that has talked to this lead */}
+        {(() => {
+          const convos = d.conversations ?? (d.conversation ? [{ type: 'sales', label: 'Sales agent', ...d.conversation }] : []);
+          const active = convos.find((c) => c.type === convoTab) ?? convos[0];
+          return (
+            <Panel title="Conversations" subtitle={active ? `${active.label} · ${active.status}${active.type === 'sales' && active.followUpsSent != null ? ` · ${active.followUpsSent} follow-ups sent` : ''}` : undefined}>
+              {convos.length === 0 ? (
+                <p className="text-xs text-outline">No agent conversation on record.</p>
+              ) : (
+                <>
+                  {convos.length > 1 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {convos.map((c) => (
+                        <button key={c.type} onClick={() => setConvoTab(c.type)} className={`text-xs px-2 py-1 rounded-md ${c.type === active?.type ? 'bg-primary text-white' : 'bg-surface-container text-on-surface-variant'}`}>
+                          {c.label}
+                        </button>
+                      ))}
                     </div>
-                    <p className="whitespace-pre-wrap">{m.text}</p>
+                  )}
+                  <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                    {active!.messages.length === 0 && <p className="text-xs text-outline">No messages yet.</p>}
+                    {active!.messages.map((m: any, i: number) => (
+                      <div key={i} className={`flex ${m.role === 'lead' ? 'justify-start' : 'justify-end'}`}>
+                        <div className={`max-w-[80%] rounded-lg px-3 py-1.5 text-xs ${m.role === 'lead' ? 'bg-surface-container text-on-surface' : m.by === 'team' ? 'bg-secondary-container/40 text-on-secondary-container' : 'bg-primary-fixed text-primary'}`}>
+                          <div className="flex items-center gap-1 mb-0.5 opacity-70">
+                            {m.role === 'lead' || m.by === 'team' ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3" />}
+                            <span>{m.role === 'lead' ? (l.displayName || 'Lead') : m.by === 'team' ? 'Team' : 'AI'}</span>
+                            <span>· {new Date(m.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                          <p className="whitespace-pre-wrap">{m.text}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Panel>
+                </>
+              )}
+            </Panel>
+          );
+        })()}
 
         {/* Timeline */}
-        <Panel title="Timeline" subtitle={`${d.timeline.length} events`}>
+        <Panel title="Timeline" subtitle={d.timelineTruncated ? `latest ${d.timeline.length} events — older ones not shown` : `${d.timeline.length} events`}>
           <ol className="relative border-l border-outline-variant ml-1.5 space-y-3 max-h-96 overflow-y-auto pr-1">
             {d.timeline.length === 0 && <li className="text-xs text-outline ml-4">No events yet.</li>}
             {d.timeline.map((e, i) => (
@@ -307,7 +373,7 @@ export default function LeadDetailPage() {
                   <RelTime date={e.at} />
                 </div>
                 <p className="text-[11px] text-on-surface-variant">
-                  {e.actor}
+                  {e.actorName || e.actor}
                   {e.payload && renderPayload(e.type, e.payload)}
                 </p>
               </li>
@@ -330,6 +396,12 @@ function renderPayload(type: string, p: any): string {
     if (type === 'NURTURE_ACTION_SKIPPED') return p.reason ? ` · ${p.reason}` : '';
     if (type === 'OPT_OUT') return p.reason ? ` · ${p.reason}` : '';
     if (type === 'MESSAGE_SENT') return p.nbaAction ? ` · ${p.nbaAction}` : '';
+    if (type === 'STAGE_CHANGED') return ` · ${p.from} → ${p.to}${p.reason ? ` (${p.reason})` : ''}`;
+    if (type === 'LEAD_UPDATED') return Array.isArray(p.fields) ? ` · ${p.fields.join(', ')}${p.via ? ` (${p.via})` : ''}` : '';
+    if (type === 'NOTE_ADDED') return p.text ? ` · ${String(p.text).slice(0, 120)}` : '';
+    if (type === 'LEAD_CAPTURED' || type === 'LEAD_CREATED') return p.source || p.channel ? ` · ${p.source || p.channel}` : '';
+    if (type === 'CALL_LOGGED') return ` · ${p.direction === 'inbound' ? 'they called' : 'we called'} — ${p.outcomeLabel || p.outcome}`;
+    if (type === 'FOLLOW_UP_SCHEDULED') return ` · ${p.type} ${p.dueAt ? new Date(p.dueAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : ''}`;
   } catch {
     /* ignore */
   }

@@ -35,7 +35,7 @@ interface DemoRow {
   calendarLinked: boolean;
   outcome: string | null;
   /** Outcome a person recorded for this demo time (null = unknown). */
-  attendance: 'attended' | 'no_show' | 'declined' | 'not_ready' | null;
+  attendance: 'attended' | 'no_show' | 'declined' | 'not_ready' | 'team_missed' | null;
   /** Marked No Show by the automatic timeout — nobody has confirmed it. */
   attendanceUnconfirmed: boolean;
   canConfirmAttendance: boolean;
@@ -48,6 +48,7 @@ const ATTENDANCE_OPTIONS: { value: NonNullable<DemoRow['attendance']>; label: st
   { value: 'no_show', label: 'No show' },
   { value: 'declined', label: 'Declined' },
   { value: 'not_ready', label: 'Not ready' },
+  { value: 'team_missed', label: 'Our team missed it' },
 ];
 
 interface Data {
@@ -80,23 +81,29 @@ export default function DemosPage() {
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabKey | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await fetch('/api/admin/conversion/demos');
-      const json = await res.json();
-      if (json.success) {
-        setData(json);
-        // First load: land on the first tab that has something, so a fresh
-        // booking is never hidden behind an empty default tab.
-        setTab((cur) => {
-          if (cur) return cur;
-          const g = json.groups;
-          const order: (keyof Data['groups'])[] = ['today', 'needsScheduling', 'upcoming', 'overdue', 'completed', 'cancelledOrNoShow'];
-          return order.find((k) => (g[k] ?? []).length > 0) ?? 'upcoming';
-        });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        setLoadError(json?.error || `Could not load demos (${res.status})`);
+        return;
       }
+      setData(json);
+      // First load: land on the first tab that has something, so a fresh
+      // booking is never hidden behind an empty default tab.
+      setTab((cur) => {
+        if (cur) return cur;
+        const g = json.groups;
+        const order: (keyof Data['groups'])[] = ['today', 'needsScheduling', 'upcoming', 'overdue', 'completed', 'cancelledOrNoShow'];
+        return order.find((k) => (g[k] ?? []).length > 0) ?? 'upcoming';
+      });
+    } catch (e: any) {
+      setLoadError(e?.message || 'Could not load demos');
     } finally {
       setLoading(false);
     }
@@ -105,19 +112,41 @@ export default function DemosPage() {
   useEffect(() => { load(); }, [load]);
 
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNote, setActionNote] = useState<string | null>(null);
   const patch = async (body: Record<string, unknown>) => {
     setActionError(null);
+    setActionNote(null);
     const res = await fetch('/api/admin/demo-bookings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (res.ok) load();
-    else setActionError((await res.json().catch(() => null))?.error || 'Update failed');
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      setActionError(json?.error || 'Update failed');
+      return;
+    }
+    if (body.status === 'Cancelled' || body.status === 'Rescheduled') {
+      setActionNote(
+        json?.customerNotified
+          ? `Done — the customer was told on WhatsApp${body.status === 'Rescheduled' ? ' and asked to reply RESCHEDULE' : ''}.`
+          : json?.notifyError
+            ? `Done, but the WhatsApp message to the customer failed: ${json.notifyError}`
+            : 'Done. No message sent (the demo was not upcoming, or the customer was already told).'
+      );
+    }
+    load();
   };
 
   if (loading && !data) {
     return <div className="flex items-center justify-center py-32"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  }
+  if (loadError && !data) {
+    return (
+      <div role="alert" className="rounded-xl border border-error-container bg-error-container/40 p-6 text-sm text-on-error-container">
+        Couldn&apos;t load demos: {loadError}. <button onClick={load} className="underline font-semibold">Retry</button>
+      </div>
+    );
   }
 
   const c = data?.counts ?? {};
@@ -127,7 +156,7 @@ export default function DemosPage() {
     { key: 'needsScheduling', label: 'Needs scheduling', count: (data?.groups.needsScheduling ?? []).length },
     { key: 'overdue', label: 'Needs outcome', count: c.overdue ?? 0 },
     { key: 'completed', label: 'Completed', count: c.completed ?? 0 },
-    { key: 'cancelledOrNoShow', label: 'Cancelled / no-show', count: (c.cancelled ?? 0) + (c.noShow ?? 0) + (c.rescheduled ?? 0) },
+    { key: 'cancelledOrNoShow', label: 'Cancelled / no-show / rescheduled', count: (c.cancelled ?? 0) + (c.noShow ?? 0) + (c.rescheduled ?? 0) },
     { key: 'all', label: 'All', count: c.total ?? 0 },
   ];
   const activeTab: TabKey = tab ?? 'upcoming';
@@ -177,7 +206,9 @@ export default function DemosPage() {
         ))}
       </div>
 
-      {actionError && <p className="text-sm text-error">{actionError}</p>}
+      {actionError && <p role="alert" className="text-sm text-error">{actionError}</p>}
+      {actionNote && <p role="status" className="text-sm text-secondary">{actionNote}</p>}
+      {loadError && data && <p role="alert" className="text-sm text-error">Couldn&apos;t refresh: {loadError}</p>}
 
       {/* Rows */}
       <div className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow overflow-hidden">
@@ -270,7 +301,8 @@ export default function DemosPage() {
       <p className="text-xs text-outline">
         Attendance is recorded by a person after the demo has ended. <strong>Attended</strong> sends one follow-up a few hours later;
         <strong> No show</strong> sends one message offering to reschedule (replies go to the existing reschedule flow);
-        <strong> Declined</strong> and <strong>Not ready</strong> send nothing. The automatic no-show timeout and the status menu never send a message.
+        <strong> Our team missed it</strong> sends one apology offering to reschedule; <strong>Declined</strong> and <strong>Not ready</strong> send nothing.
+        Choosing <strong>Cancelled</strong> or <strong>Rescheduled</strong> in the status menu for an upcoming demo frees the calendar slot and tells the customer once; other status changes never send a message.
       </p>
       <p className="text-xs text-outline flex items-center gap-1.5">
         <UserCheck className="w-3.5 h-3.5" />

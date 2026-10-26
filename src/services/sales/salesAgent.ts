@@ -218,10 +218,34 @@ export async function composeFollowUp(
   return renderTemplate(template, vars);
 }
 
+/** What else we know about this person beyond the sales thread itself. */
+export interface ReplyContext {
+  /** Their latest demo booking, if any. */
+  demo?: { status: string; whenLabel?: string | null; meetingLink?: string | null } | null;
+  /** The most recent other conversation with them (e.g. the demo-booking thread), last few messages. */
+  earlier?: { label: string; messages: Array<{ role: string; text: string }> } | null;
+}
+
+function contextBlock(context?: ReplyContext): string {
+  if (!context) return '';
+  let block = '';
+  if (context.demo) {
+    block += `\nDEMO BOOKING: status ${context.demo.status}${context.demo.whenLabel ? `, ${context.demo.whenLabel}` : ''}` +
+      `${context.demo.meetingLink ? `, meeting link ${context.demo.meetingLink}` : ''}. Never change or promise a different time — ` +
+      `to move it they reply RESCHEDULE, to cancel they reply CANCEL.\n`;
+  }
+  if (context.earlier?.messages?.length) {
+    block += `\nEARLIER ${context.earlier.label.toUpperCase()} (for continuity — don't repeat it):\n` +
+      context.earlier.messages.slice(-6).map((m) => `${m.role === 'lead' ? 'Lead' : 'You'}: ${m.text}`).join('\n') + '\n';
+  }
+  return block;
+}
+
 /** Composes a live reply to an inbound lead message, using the full history. */
 export async function composeAgentReply(
   config: SalesAgentConfigShape,
-  convo: Pick<ISalesConversation, 'scores' | 'leadName' | 'messages'>
+  convo: Pick<ISalesConversation, 'scores' | 'leadName' | 'messages'>,
+  context?: ReplyContext
 ): Promise<string> {
   const vars = buildVars(convo.scores, convo.leadName, config);
 
@@ -244,8 +268,9 @@ export async function composeAgentReply(
     `Subscribe link: ${vars.subscribeUrl || '(none)'} · Platform link: ${vars.shopUrl || '(none)'}.\n` +
     `You have no other links, no demo video, and no ability to schedule or confirm a specific meeting time — ` +
     `never invent one. If the lead wants a live demo, call, or walkthrough, tell them you'll get a specific ` +
-    `time booked for them and hand them to booking — don't propose times or links yourself.\n\n` +
-    `Reply to the lead's latest message. Conversation so far:\n` +
+    `time booked for them and hand them to booking — don't propose times or links yourself.\n` +
+    contextBlock(context) +
+    `\nReply to the lead's latest message. Conversation so far:\n` +
     convo.messages
       .slice(-10)
       .map((m) => `${m.role === 'lead' ? 'Lead' : 'You'}: ${m.text}`)
@@ -257,4 +282,38 @@ export async function composeAgentReply(
     `Thanks ${vars.name}! I'd love to help you fix your Google visibility and get ahead of ${vars.competitor}. ` +
       (vars.subscribeUrl ? `You can get started here: ${vars.subscribeUrl}` : `Reply here and I'll guide you.`)
   );
+}
+
+/**
+ * A real answer for someone who has a demo booked and writes something that
+ * is not a cancel / reschedule request (a question about the demo, the
+ * product, their report). Grounded in the approved business knowledge, their
+ * report scores and the booking itself; it never offers or confirms another
+ * time. Null when the AI is unavailable — the caller then sends the fixed
+ * "you're booked for…" reply.
+ */
+export async function composeBookedQuestionReply(
+  config: SalesAgentConfigShape,
+  input: {
+    leadName?: string | null;
+    scores?: ISalesScores | null;
+    demo: { whenLabel?: string | null; meetingLink?: string | null };
+    messages: Array<{ role: string; text: string }>;
+    earlier?: ReplyContext['earlier'];
+    /** Booking Agent → Agent persona. Empty → the Sales Agent's instructions. */
+    persona?: string | null;
+  }
+): Promise<string | null> {
+  const knowledge = summariseKnowledge(config.knowledge, { maxItems: 6, includeFaqs: true });
+  const scores = input.scores;
+  const context =
+    `${currentTimeLine()}\n` +
+    (knowledge ? `\nGROWWMATICS BUSINESS KNOWLEDGE (approved — never add a price, feature, guarantee or number that is NOT below):\n${knowledge}\n` : '') +
+    (scores?.businessName ? `\nTHEIR FREE REPORT: business ${scores.businessName}, Google rank ${scores.rankText || scores.rank || 'not measured'}, profile ${scores.profileText || 'n/a'}, reviews ${scores.reviewText || 'n/a'}.\n` : '') +
+    contextBlock({ demo: { status: 'booked', whenLabel: input.demo.whenLabel, meetingLink: input.demo.meetingLink }, earlier: input.earlier }) +
+    `\nThey already have this demo booked. Answer their latest message briefly and warmly. Mention the booked time only if it helps. ` +
+    `Never offer, suggest or confirm another time or link. If they want a different time, tell them to reply RESCHEDULE; to cancel, reply CANCEL.\n\n` +
+    `Conversation so far:\n` +
+    input.messages.slice(-10).map((m) => `${m.role === 'lead' ? 'Lead' : 'You'}: ${m.text}`).join('\n');
+  return aiMessage(withGuardrail((input.persona || '').trim() || config.agentSystemPrompt), context);
 }

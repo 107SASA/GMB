@@ -8,10 +8,12 @@ import BookingConversation from '@/models/BookingConversation';
 import SupportConversation from '@/models/SupportConversation';
 import DemoBooking from '@/models/DemoBooking';
 import ScheduledAction from '@/models/ScheduledAction';
+import SalesAgentConfig from '@/models/SalesAgentConfig';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 import { logLeadEvent } from '@/services/leadEvents';
 import {
   analysisOutcomeForAttendance,
+  attendanceEditable,
   attendedFollowUpAllowed,
   confirmedAttendance,
   conversationSalesBlockedReason,
@@ -20,9 +22,11 @@ import {
   leadPreSalesBlockedReason,
   MISSED_DEMO_MESSAGE_DELAY_MINUTES,
   minutesUntilSalesSendable,
+  nurtureSendsEnabled,
   POST_DEMO_FOLLOW_UP_DELAY_MINUTES,
   postDemoKindFor,
   postDemoMessage,
+  type PostDemoKind,
   STAFF_ATTENDANCE_OUTCOMES,
   statusForAttendance,
   workspaceStartedTrialOrPaid,
@@ -38,6 +42,12 @@ import {
  */
 
 const PLATFORM_TENANT = 'gmbboost-internal';
+
+/** Just the switches and quiet hours — read straight from the settings document (no AI client). */
+async function salesSwitches(): Promise<{ enabled?: boolean; nurtureEnabled?: boolean; quietHours?: any; timezone?: string }> {
+  const cfg: any = await SalesAgentConfig.findOne({ key: 'default' }).select('enabled nurtureEnabled quietHours timezone').lean();
+  return cfg ?? { enabled: false };
+}
 /** Generic sales/nurture rows. Demo reminders, the no-show check and post-demo messages are not generic. */
 const NON_GENERIC_ACTIONS = ['DEMO_REMINDER', 'NO_SHOW_CHECK', 'FOLLOW_UP_AFTER_DEMO'];
 
@@ -99,6 +109,7 @@ export async function preSalesSendBlockedReason(input: {
     await dbConnect();
     let phone = input.phone || null;
     let businessId = input.businessId;
+    let consentGranted = false;
     if (input.conversationId) {
       const convo: any = await SalesConversation.findById(input.conversationId)
         .select('status consentStatus firstSentAt lastLeadReplyAt leadPhone businessId').lean();
@@ -106,7 +117,9 @@ export async function preSalesSendBlockedReason(input: {
       if (convoReason) return convoReason;
       phone = convo.leadPhone || phone;
       businessId = businessId || convo.businessId;
+      consentGranted = convo.consentStatus === 'granted';
     }
+
     if (!phone && !input.leadId) return 'no-recipient';
 
     const lead = await findPlatformLead(phone, input.leadId);
@@ -126,10 +139,109 @@ export async function preSalesSendBlockedReason(input: {
       // A newer booking replaces this one's follow-up.
       if (await DemoBooking.exists({ leadId: lead._id, _id: { $ne: input.bookingId }, status: { $in: ['Pending', 'Confirmed'] } })) return 'demo-rebooked';
     }
+
+    // Switches, checked last so a lead-specific reason is the one reported.
+    // The agent switch covers everything; nurturing covers the automated
+    // invitation and follow-up. The findings sent right after a lead replies
+    // YES are an answer, not a nurture message.
+    if (input.kind !== 'post-demo') {
+      const cfg = await salesSwitches();
+      if (!cfg.enabled) return 'agent-disabled';
+      const answeringYes = input.kind === 'invite' && input.step === 'first' && consentGranted;
+      if (!answeringYes && !nurtureSendsEnabled(cfg)) return 'nurture-disabled';
+    }
     return null;
   } catch (err: any) {
     console.warn('[preSales] eligibility check failed — skipping the send:', err?.message);
     return 'eligibility-check-failed';
+  }
+}
+
+/**
+ * Why the automated follow-up (step `index`) for this conversation must not
+ * send now, or null. ONE function for the drip and the Nurturing preview,
+ * so the preview can't promise a send the drip would refuse.
+ */
+export async function followUpBlockedReason(
+  conversationId: string,
+  index = 0
+): Promise<{ reason: string | null; lead: any | null }> {
+  try {
+    await dbConnect();
+    const convo: any = await SalesConversation.findById(conversationId).select('leadPhone nurtureTiming').lean();
+    if (!convo) return { reason: 'conversation-missing', lead: null };
+    const pre = await preSalesSendBlockedReason({ kind: 'follow-up', conversationId });
+    const lead: any = await Lead.findOne({ phone: normalizePhoneE164(convo.leadPhone) || convo.leadPhone, tenantId: PLATFORM_TENANT }).lean();
+    if (pre) return { reason: pre, lead };
+    const { salesReplyBlockedReason } = await import('@/services/agentHandoff/isHumanOwned');
+    const ownership = salesReplyBlockedReason(lead);
+    if (ownership) return { reason: ownership, lead };
+    const { genericFollowUpSkipReason } = await import('@/services/nurture/nurtureSchedule');
+    const intelligence = genericFollowUpSkipReason({
+      intent: lead?.intent,
+      nextBestAction: lead?.nextBestAction,
+      currentAgent: lead?.currentAgent,
+      currentStage: lead?.currentStage,
+      nurtureStatus: lead?.nurtureStatus,
+      humanHandoffActive: !!lead?.humanHandoff?.active,
+    });
+    if (intelligence) return { reason: intelligence, lead };
+    if (convo.nurtureTiming?.followUps?.[index]?.enabled === false) return { reason: 'follow-up-step-disabled', lead };
+    return { reason: null, lead };
+  } catch (err: any) {
+    console.warn('[preSales] follow-up eligibility check failed — skipping the send:', err?.message);
+    return { reason: 'eligibility-check-failed', lead: null };
+  }
+}
+
+/**
+ * Automated-sales skip categories shown on Nurturing Configuration.
+ * preparation: decided when the free report completed (nothing was queued)
+ * consent / invitation / follow-up: a queued message refused at send time.
+ */
+export type SalesSkipCategory = 'preparation' | 'consent' | 'invitation' | 'follow-up';
+
+const SKIP_AGENT: Record<SalesSkipCategory, string> = {
+  preparation: 'sales-agent-prep',
+  consent: 'sales-agent-consent',
+  invitation: 'sales-agent-invite',
+  'follow-up': 'sales-agent-drip',
+};
+
+/** Records a skipped automated sales message (NURTURE_ACTION_SKIPPED) with its category. Never throws. */
+export async function logSalesSkip(input: {
+  reason: string;
+  category: SalesSkipCategory;
+  conversationId?: string | null;
+  leadId?: unknown;
+  phone?: string | null;
+  followUpIndex?: number;
+  path?: 'inline' | 'scheduled';
+}): Promise<void> {
+  try {
+    let phone = input.phone ?? null;
+    if (!phone && input.conversationId) {
+      const convo: any = await SalesConversation.findById(input.conversationId).select('leadPhone').lean();
+      phone = convo?.leadPhone ?? null;
+    }
+    await logLeadEvent(
+      'NURTURE_ACTION_SKIPPED',
+      {
+        reason: input.reason,
+        category: input.category,
+        agent: SKIP_AGENT[input.category],
+        ...(input.followUpIndex !== undefined && { followUpIndex: input.followUpIndex }),
+        ...(input.path && { path: input.path }),
+      },
+      'sales-agent',
+      {
+        ...(input.leadId ? { leadId: input.leadId as any } : {}),
+        ...(phone ? { phone } : {}),
+        ...(input.conversationId ? { conversationType: 'sales' as const, conversationId: new mongoose.Types.ObjectId(String(input.conversationId)) } : {}),
+      }
+    );
+  } catch (err: any) {
+    console.warn('[preSales] could not record skip:', err?.message);
   }
 }
 
@@ -201,7 +313,6 @@ export async function stopPreSalesNurtureForWorkspace(businessId: string, reason
 // A reschedule (new startUtc) makes the old attendance stale (unknown) and
 // lets the new demo time have its own single message.
 
-const ATTENDANCE_EDITABLE_STATUSES = ['Confirmed', 'Completed', 'No Show'];
 
 /**
  * A person records what happened at a demo. Refused before the recorded end
@@ -223,7 +334,7 @@ export async function confirmDemoAttendance(input: {
   }
   const booking: any = await DemoBooking.findById(input.bookingId).lean();
   if (!booking) return { ok: false, status: 404, error: 'Booking not found' };
-  if (!ATTENDANCE_EDITABLE_STATUSES.includes(booking.status)) {
+  if (!attendanceEditable(booking)) {
     return { ok: false, status: 409, error: `A ${booking.status} booking has no demo outcome to record` };
   }
   const ended = demoHasEnded(booking, now);
@@ -232,7 +343,7 @@ export async function confirmDemoAttendance(input: {
 
   // Conditional on the demo time we just checked, so a concurrent reschedule wins.
   const updated: any = await DemoBooking.findOneAndUpdate(
-    { _id: booking._id, status: { $in: ATTENDANCE_EDITABLE_STATUSES }, startUtc: booking.startUtc ?? null },
+    { _id: booking._id, status: booking.status, startUtc: booking.startUtc ?? null },
     {
       $set: {
         status: statusForAttendance(input.outcome),
@@ -262,8 +373,10 @@ export async function confirmDemoAttendance(input: {
 
   // Existing lifecycle: hand the lead back to SALES with the outcome merged
   // into its intent (declined → NOT_INTERESTED stops all sales messages).
+  // Not when our team missed it: no demo happened, so the lead is not
+  // "demo completed" and stays with the demo flow to pick a new time.
   let analysisOutcome: string | null = null;
-  if (booking.leadId) {
+  if (booking.leadId && input.outcome !== 'team_missed') {
     const convo: any = await BookingConversation.findOne({ bookingId: booking._id }).lean();
     const history = (convo?.messages || []).map((m: any) => ({ role: m.role === 'lead' ? 'lead' as const : 'agent' as const, text: m.text }));
     const { runPostDemoAnalysis } = await import('@/services/demo/postDemoAnalysis');
@@ -285,7 +398,7 @@ export async function confirmDemoAttendance(input: {
  */
 export async function schedulePostDemoFollowUp(input: {
   bookingId: string | mongoose.Types.ObjectId;
-  kind: 'attended' | 'missed';
+  kind: PostDemoKind;
   outcome?: string | null;
   now?: Date;
 }): Promise<boolean> {
@@ -299,7 +412,9 @@ export async function schedulePostDemoFollowUp(input: {
     if (input.kind === 'attended' && !attendedFollowUpAllowed(input.outcome)) return false;
     const timeKey = demoTimeKey(booking);
     const base = new Date(now.getTime() + (input.kind === 'attended' ? POST_DEMO_FOLLOW_UP_DELAY_MINUTES : MISSED_DEMO_MESSAGE_DELAY_MINUTES) * 60_000);
-    const dueAt = new Date(base.getTime() + minutesUntilSalesSendable(base) * 60_000);
+    // Quiet hours only when switched on in Nurturing Configuration.
+    const cfg = await salesSwitches();
+    const dueAt = new Date(base.getTime() + minutesUntilSalesSendable(base, cfg.quietHours, cfg.timezone) * 60_000);
     // One row per (booking, demo time, kind). The latest confirmation is the
     // source of truth: a row cancelled along the way (e.g. by the lead
     // hand-back that just ran, or an earlier correction) is re-activated —
@@ -342,7 +457,7 @@ export async function schedulePostDemoFollowUp(input: {
  */
 export async function sendPostDemoFollowUp(action: any): Promise<{ sent: boolean; reason?: string }> {
   await dbConnect();
-  const kind: 'attended' | 'missed' = action.payload?.kind === 'missed' ? 'missed' : 'attended';
+  const kind: PostDemoKind = action.payload?.kind === 'missed' ? 'missed' : action.payload?.kind === 'apology' ? 'apology' : 'attended';
   const booking: any = await DemoBooking.findById(action.payload?.bookingId).lean();
   if (!booking) return { sent: false, reason: 'booking-missing' };
   const timeKey = demoTimeKey(booking);

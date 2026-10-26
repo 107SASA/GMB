@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
-import { readNurtureAdminView, saveNurtureAdminView } from '@/services/nurture/nurtureAdminConfig';
-import type { NurtureScheduleInput } from '@/services/nurture/nurtureSchedule';
+import { readNurtureAdminView, saveNurtureAdminView, type NurtureAdminInput } from '@/services/nurture/nurtureAdminConfig';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +18,7 @@ export async function PUT(req: Request) {
   if (!body || typeof body !== 'object') {
     return NextResponse.json({ success: false, error: 'Invalid config' }, { status: 400 });
   }
-  const result = await saveNurtureAdminView(body as NurtureScheduleInput, {
+  const result = await saveNurtureAdminView(body as NurtureAdminInput, {
     userId: auth.userId,
     role: 'SUPER_ADMIN',
   });

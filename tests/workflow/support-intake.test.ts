@@ -191,6 +191,9 @@ test('a prospect asking for help is NOT relabelled a customer; sales stays alive
   // Once the issue is idle and closed, the prospect is eligible again.
   await m.Support.updateMany({ leadPhone: phone }, { $set: { updatedAt: new Date(Date.now() - 8 * DAY) } }, { timestamps: false });
   await m.intake.findOngoingSupportIssue(phone);
+  // Eligibility for an automated send also needs the Sales agent (and nurturing) switched on.
+  const { default: SalesAgentConfig } = await import('../../src/models/SalesAgentConfig');
+  await SalesAgentConfig.updateOne({ key: 'default' }, { $set: { enabled: true } }, { upsert: true });
   assert.equal(await m.policy.preSalesSendBlockedReason({ kind: 'invite', phone }), null);
   assert.equal((await m.SalesConversation.findById(convo._id).lean()).status, 'active');
 });

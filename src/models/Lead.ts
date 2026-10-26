@@ -76,6 +76,10 @@ export interface ILead extends Document {
   aiInsights?: string;
   qualificationStatus?: string;
   businessType?: string;
+  /** Super admin CRM: city / area, and why a lead was marked lost. */
+  city?: string;
+  lostReason?: string;
+  captureSources?: string[];
   budget?: string;
   urgency?: string;
   interest?: string;
@@ -234,7 +238,9 @@ const LeadSchema: Schema = new Schema(
     phone: { type: String },
     source: { 
       type: String, 
-      enum: ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking', 'Google Business Profile', 'Phone Call', 'Contacts Import', 'CSV Import', 'Campaign Import', 'Appointment'],
+      enum: ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking', 'Google Business Profile', 'Phone Call', 'Contacts Import', 'CSV Import', 'Campaign Import', 'Appointment',
+        // Platform (super admin CRM) capture channels.
+        'Website Free Report', 'Website Demo Booking', 'WhatsApp Free Report'],
       default: 'Manual'
     },
     leadType: {
@@ -279,6 +285,11 @@ const LeadSchema: Schema = new Schema(
     aiInsights: { type: String },
     qualificationStatus: { type: String },
     businessType: { type: String },
+    city: { type: String },
+    // Every channel this lead came in through (first one is `source`), e.g. a
+    // website free report and later a website demo booking.
+    captureSources: { type: [String], default: undefined },
+    lostReason: { type: String, maxlength: 500 },
     budget: { type: String },
     urgency: { type: String },
     interest: { type: String },

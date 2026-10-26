@@ -49,7 +49,8 @@ export async function sendPaymentReceivedMessage(
       // Template not configured/approved yet — same graceful-degradation
       // pattern as every other WA_TEMPLATES.* consumer. Left unstamped so a
       // later payment event (or a manual replay) sends it once it's set.
-      console.warn('[paymentReceivedNotice] TWILIO_TEMPLATE_PAYMENT_RECEIVED not configured — skipping');
+      const { templateConfigMissing } = await import('@/lib/whatsappDiagnostics');
+      templateConfigMissing({ feature: 'payment-received', template: 'payment_received', envKey: 'TWILIO_TEMPLATE_PAYMENT_RECEIVED' });
       return;
     }
 

@@ -16,7 +16,7 @@ export default function PrivacyPolicyPage() {
   return (
     <LegalLayout
       title="Privacy Policy"
-      intro={`This Privacy Policy explains how ${COMPANY.name} ("we", "us", "our") collects, uses, and protects information when you use our website and services at ${COMPANY.domain}.`}
+      intro={`This Privacy Policy explains how ${COMPANY.name} ("we", "us", "our") collects, uses, and protects information when you use our website, our Android and iOS apps, and our services at ${COMPANY.domain}.`}
     >
       <LegalSection heading="1. Information We Collect">
         <p>We collect the following categories of information:</p>
@@ -26,9 +26,39 @@ export default function PrivacyPolicyPage() {
             password (stored in hashed form) when you create an account.
           </li>
           <li>
+            <strong>Phone sign-in</strong> — when you sign in with your phone number, we send a
+            one-time code to that number over WhatsApp.
+          </li>
+          <li>
             <strong>Business information</strong> — details about the businesses (workspaces) you
             add, such as business name, category, address, website, and Google Business Profile
             details.
+          </li>
+          <li>
+            <strong>Photos and videos you upload</strong> — files you choose to upload for your Google
+            Business Profile. They are stored with our cloud storage provider at web addresses that
+            anyone with the link can open, and are published to your Google Business Profile when
+            you choose.
+          </li>
+          <li>
+            <strong>Location in photos and videos</strong> — if a file you upload already contains
+            location information, we keep it. Otherwise we may add your business&apos;s verified Google
+            location. When you take a photo or video with the camera in our mobile apps, and only if
+            you allow location access, the app also sends your phone&apos;s location at that moment; we
+            use it only when your business has no verified Google location. The location is saved in
+            the file and published with it. Our apps do not collect your location in the background.
+          </li>
+          <li>
+            <strong>Customer and lead information</strong> — details about your own customers and
+            leads that you add or that reach your business through our features, such as names, phone
+            numbers, email addresses, notes and follow-ups; WhatsApp messages exchanged with them; and,
+            if you use a call-tracking number, call details such as the caller&apos;s number, name, time
+            and duration. In our mobile apps you can import contacts from your phone — only the
+            contacts you select are sent; your address book is never uploaded as a whole.
+          </li>
+          <li>
+            <strong>Push notifications</strong> — if you allow notifications in our mobile apps, we
+            store a notification token for your device so we can send you notifications.
           </li>
           <li>
             <strong>Google account data</strong> — when you connect your Google Business Profile,
@@ -42,6 +72,11 @@ export default function PrivacyPolicyPage() {
           <li>
             <strong>Usage data</strong> — technical logs such as IP address, browser type, and
             actions taken within the application, used to operate and improve the service.
+          </li>
+          <li>
+            <strong>Website analytics</strong> — our website uses Google Analytics to measure page
+            views and how the website is used; Google Analytics sets cookies in your browser for this.
+            Our mobile apps do not include analytics or advertising tools.
           </li>
         </ul>
       </LegalSection>
@@ -104,8 +139,13 @@ export default function PrivacyPolicyPage() {
       <LegalSection heading="4. Sharing & Third-Party Services">
         <p>
           We share data only with service providers that help us operate, and only as needed. These
-          include Google (Business Profile APIs), Razorpay (payments), and AI/content and email
-          providers used to deliver features. We do not sell your personal information.
+          include Google (Business Profile APIs, Places and Maps, and Google Analytics on our
+          website), Razorpay (payments), Groq (AI features — for example, a review&apos;s text and your
+          business details are sent to generate a reply draft), Twilio and Meta (WhatsApp messages;
+          Twilio also provides call tracking), Resend and SendGrid (email), DigitalOcean (file
+          storage), Inngest (background processing), and Expo, Apple and Google (delivering push
+          notifications to our mobile apps, including the notification&apos;s content). We do not sell
+          your personal information.
         </p>
       </LegalSection>
 

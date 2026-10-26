@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { securityLogged, emailSubject } from '@/services/security/securityLog';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { hashOTP, verifyOTP } from '@/services/auth/otp';
@@ -10,7 +11,7 @@ const MAX_ATTEMPTS = 5;
 const RESET_TOKEN_TTL_MINUTES = 10;
 const GENERIC_ERROR = 'Invalid or expired code.';
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   try {
     await dbConnect();
 
@@ -81,3 +82,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: 'Something went wrong on our end. Please try again, and contact support if this keeps happening.' }, { status: 500 });
   }
 }
+
+/** Every call is recorded in the security log (Super Admin → Security Log). */
+export const POST = securityLogged('auth.password_reset_otp', handlePOST, { subjectOf: emailSubject });

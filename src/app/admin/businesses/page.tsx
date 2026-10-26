@@ -19,6 +19,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { workspaceStatusLabel } from '@/lib/admin/revenueMetrics';
 
 interface Business {
   _id: string;
@@ -37,7 +38,7 @@ interface Business {
   // real per-workspace source of truth) — not userId.subscriptionPlan, which
   // is a legacy per-user field that predates per-workspace billing and can
   // be stale for a user who owns multiple workspaces on different plans.
-  subscriptionStatus?: 'trialing' | 'active' | 'past_due' | 'canceled';
+  subscriptionStatus?: 'trialing' | 'trial_active' | 'active' | 'past_due' | 'canceled';
   userId?: {
     _id: string;
     fullName: string;
@@ -330,11 +331,11 @@ export default function AdminBusinessesPage() {
                                 ? 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed'
                                 : biz.subscriptionStatus === 'past_due'
                                 ? 'bg-error-container text-on-error-container border-error-container'
-                                : biz.subscriptionStatus === 'canceled'
-                                ? 'bg-surface text-on-surface-variant border-outline-variant'
-                                : 'bg-primary-fixed text-primary border-primary-fixed-dim', // trialing / unset
+                                : biz.subscriptionStatus === 'trial_active'
+                                ? 'bg-primary-fixed text-primary border-primary-fixed-dim'
+                                : 'bg-surface text-on-surface-variant border-outline-variant', // canceled / never paid
                             )}>
-                              {biz.subscriptionStatus ?? 'trialing'}
+                              {workspaceStatusLabel(biz.subscriptionStatus)}
                             </span>
                           </div>
                         ) : (

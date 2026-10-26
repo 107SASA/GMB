@@ -8,6 +8,11 @@ export interface IMessageQueue extends Document {
   sentAt?: Date;
   failedReason?: string;
   errorCode?: string;
+  /** lib/whatsappDiagnostics.ts kind — why a send failed, distinguishable. */
+  errorKind?: string;
+  /** Evidence from Twilio's delivery callback (status SENT only means "accepted"). */
+  deliveredAt?: Date;
+  readAt?: Date;
   payload: any;
   createdAt: Date;
   updatedAt: Date;
@@ -27,6 +32,9 @@ const MessageQueueSchema: Schema = new Schema(
     sentAt: { type: Date },
     failedReason: { type: String },
     errorCode: { type: String },
+    errorKind: { type: String },
+    deliveredAt: { type: Date },
+    readAt: { type: Date },
     payload: { type: Schema.Types.Mixed, required: true },
   },
   { timestamps: true }

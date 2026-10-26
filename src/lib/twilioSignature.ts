@@ -1,7 +1,21 @@
 import { NextResponse } from 'next/server';
 import twilio from 'twilio';
 
+/** Checks Twilio's signature; a rejected one is recorded in the security log. */
 export async function validateTwilioSignature(
+  req: Request,
+  formData: FormData,
+  authToken?: string
+): ReturnType<typeof checkTwilioSignature> {
+  const result = await checkTwilioSignature(req, formData, authToken);
+  if (!result.ok) {
+    const { logSecurityEvent } = await import('@/services/security/securityLog');
+    await logSecurityEvent(req, { type: 'webhook.signature_invalid', outcome: 'blocked', status: result.response.status, detail: 'Twilio', metadata: { provider: 'twilio' } });
+  }
+  return result;
+}
+
+async function checkTwilioSignature(
   req: Request,
   formData: FormData,
   authToken?: string

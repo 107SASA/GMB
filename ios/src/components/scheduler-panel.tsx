@@ -1,0 +1,308 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+
+import { getApiErrorMessage } from '@/api/client';
+import { postPlanLine, postStatusView, type ContentPost } from '@/api/endpoints/content';
+import { deletePost, fetchBuffer, publishPost, schedulePost } from '@/api/endpoints/scheduler';
+import { useBusiness } from '@/business/BusinessContext';
+import { ContentStatusStrip } from '@/components/content-status-strip';
+import { useDateTimePicker } from '@/components/datetime-picker';
+import { Badge, EmptyState, SectionLabel, Skeleton, useConfirmSheet, useInfoSheet } from '@/components/ui';
+import { formatDateTime } from '@/lib/format';
+import { useTheme, withAlpha } from '@/lib/theme';
+
+/**
+ * The Content Scheduler body — buffer health + scheduled/draft posts with
+ * publish / reschedule / delete. Shared by the Scheduler screen (scrollable)
+ * and the GBP → Posts tab (embedded inside that tab's own scroll view).
+ */
+
+const HEALTH_STYLES = {
+  Healthy: { tone: 'positive' as const, bar: 'bg-emerald-500' },
+  Warning: { tone: 'warning' as const, bar: 'bg-amber-400' },
+  Critical: { tone: 'negative' as const, bar: 'bg-rose-400' },
+};
+
+function BufferCard({
+  healthStatus,
+  scheduledThisWeek,
+  weeklyTarget,
+  postsNeeded,
+}: {
+  healthStatus: keyof typeof HEALTH_STYLES;
+  scheduledThisWeek: number;
+  weeklyTarget: number;
+  postsNeeded: number;
+}) {
+  const style = HEALTH_STYLES[healthStatus];
+  const pct = weeklyTarget > 0 ? Math.min(100, Math.round((scheduledThisWeek / weeklyTarget) * 100)) : 0;
+  return (
+    <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
+      <View className="flex-row items-center justify-between">
+        <Text className="font-sans-semibold text-sm text-white">This week&apos;s buffer</Text>
+        <Badge label={healthStatus} tone={style.tone} />
+      </View>
+      <View className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+        <View className={`h-full rounded-full ${style.bar}`} style={{ width: `${pct}%` }} />
+      </View>
+      <Text className="mt-2 font-sans text-xs text-zinc-400">
+        {scheduledThisWeek} of {weeklyTarget} posts scheduled this week
+        {postsNeeded > 0 ? ` · ${postsNeeded} more to stay active` : ''}
+      </Text>
+    </View>
+  );
+}
+
+function PostRow({
+  post,
+  onPublish,
+  onReschedule,
+  onDelete,
+}: {
+  post: ContentPost;
+  onPublish: () => void;
+  onReschedule: () => void;
+  onDelete: () => void;
+}) {
+  const t = useTheme();
+  const isPublished = post.status === 'published';
+  const sv = postStatusView(post);
+  const plan = postPlanLine(post);
+  return (
+    <View className="mb-3 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
+      <View className="flex-row items-center justify-between gap-2">
+        <Text className="flex-1 font-sans-semibold text-base text-white" numberOfLines={1}>
+          {post.title || 'Untitled post'}
+        </Text>
+        <Badge label={sv.label} tone={sv.tone} />
+      </View>
+      <Text className="mt-1 font-sans text-sm text-zinc-400" numberOfLines={2}>
+        {post.content}
+      </Text>
+      <Text className="mt-1.5 font-sans text-xs text-zinc-500">
+        {isPublished
+          ? `Published ${formatDateTime(post.publishedAt)}`
+          : post.scheduledDate
+            ? formatDateTime(post.scheduledDate)
+            : 'Not scheduled yet'}
+      </Text>
+      {!!plan && <Text className="mt-1 font-sans text-xs text-zinc-500">{plan}</Text>}
+      {!!sv.note && <Text className="mt-1 font-sans text-xs text-amber-300">{sv.note}</Text>}
+      {!isPublished && post.status !== 'publishing' && (
+        <View
+          // Wraps on narrow phones: at 320 px the three buttons overflowed and
+          // "Delete" was cut off. Layout kept in one style object (same as
+          // mt-3 flex-row gap-2) so it applies identically everywhere.
+          style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+        >
+          <Pressable
+            onPress={onPublish}
+            // No `className` — react-native-css-interop can swallow onPress
+            // on styled Pressables (see components/ui.tsx).
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingHorizontal: 12, paddingVertical: 6 }}
+          >
+            <Ionicons name="send-outline" size={13} color={t.textFaint} />
+            <Text className="font-sans-semibold text-xs text-zinc-300">Publish now</Text>
+          </Pressable>
+          <Pressable
+            onPress={onReschedule}
+            // No `className` — see note above.
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingHorizontal: 12, paddingVertical: 6 }}
+          >
+            <Ionicons name="calendar-outline" size={13} color={t.textFaint} />
+            <Text className="font-sans-semibold text-xs text-zinc-300">Reschedule</Text>
+          </Pressable>
+          <Pressable
+            onPress={onDelete}
+            // No `className` — see note above.
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, borderWidth: 1, borderColor: withAlpha(t.rose, 0.25), paddingHorizontal: 12, paddingVertical: 6 }}
+          >
+            <Ionicons name="trash-outline" size={13} color={t.rose} />
+            <Text className="font-sans-semibold text-xs text-rose-300">Delete</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
+  );
+}
+
+export function SchedulerPanel({
+  scrollable = true,
+  showUpcoming = true,
+}: {
+  scrollable?: boolean;
+  /** The Posts tab now has its own richer "Upcoming Posts" carousel above
+   *  this panel (see posts-tab.tsx) — pass false there to avoid showing the
+   *  same upcoming posts twice. The standalone Scheduler screen keeps the
+   *  default (true), where this is the only place they're shown. */
+  showUpcoming?: boolean;
+}) {
+  const { activeBusinessId } = useBusiness();
+  const queryClient = useQueryClient();
+  const picker = useDateTimePicker();
+  const t = useTheme();
+  const info = useInfoSheet();
+  const confirmSheet = useConfirmSheet();
+
+  const buffer = useQuery({
+    queryKey: ['scheduler-buffer', activeBusinessId],
+    queryFn: () => fetchBuffer(activeBusinessId!),
+    enabled: !!activeBusinessId,
+  });
+
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['scheduler-buffer', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['content-posts', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['published-posts', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['scheduled-posts', activeBusinessId] });
+    void queryClient.invalidateQueries({ queryKey: ['scheduled-posts-count', activeBusinessId] });
+  };
+
+  const publish = useMutation({
+    mutationFn: (postId: string) => publishPost(postId),
+    onSuccess: (res) => {
+      invalidate();
+      if (res.outcome === 'blocked') info.show('Not sent to Google', res.message);
+    },
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not publish the post.')),
+  });
+
+  const reschedule = useMutation({
+    mutationFn: ({ postId, date }: { postId: string; date: Date }) => schedulePost(postId, date),
+    onSuccess: invalidate,
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not reschedule.')),
+  });
+
+  const remove = useMutation({
+    mutationFn: (postId: string) => deletePost(postId),
+    onSuccess: invalidate,
+    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not delete the post.')),
+  });
+
+  function confirmPublish(post: ContentPost) {
+    confirmSheet.confirm({
+      title: 'Publish now?',
+      message: `"${post.title || 'This post'}" will go live immediately.`,
+      confirmLabel: 'Publish',
+      onConfirm: () => publish.mutate(post._id),
+    });
+  }
+
+  function confirmDelete(post: ContentPost) {
+    confirmSheet.confirm({
+      title: 'Delete post?',
+      message: 'This removes the post permanently.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => remove.mutate(post._id),
+    });
+  }
+
+  const data = buffer.data;
+  const upcoming = data?.upcomingPosts ?? [];
+  const drafts = (data?.allPosts ?? []).filter(
+    (p) => p.status !== 'published' && !p.scheduledDate
+  );
+
+  if (buffer.isLoading) {
+    return (
+      <View className="mt-3 gap-3 px-5">
+        <Skeleton className="h-24" />
+        <Skeleton className="h-28" />
+        <Skeleton className="h-28" />
+      </View>
+    );
+  }
+  if (buffer.isError) {
+    return (
+      <EmptyState
+        title="Couldn't load the scheduler"
+        hint={getApiErrorMessage(buffer.error, 'Pull down to retry.')}
+      />
+    );
+  }
+
+  const body = (
+    <>
+      <View className="px-5">
+        <ContentStatusStrip />
+      </View>
+      <View className="px-5">
+        <BufferCard
+          healthStatus={data!.healthStatus}
+          scheduledThisWeek={data!.scheduledThisWeek}
+          weeklyTarget={data!.weeklyTarget}
+          postsNeeded={data!.postsNeeded}
+        />
+      </View>
+
+      <View className="px-5">
+        {showUpcoming && (
+          <>
+            <SectionLabel>Upcoming posts</SectionLabel>
+            {upcoming.length === 0 ? (
+              <Text className="px-1 font-sans text-sm text-zinc-500">
+                Nothing scheduled yet. Your 4 weekly posts are scheduled here automatically.
+              </Text>
+            ) : (
+              upcoming.map((post) => (
+                <PostRow
+                  key={post._id}
+                  post={post}
+                  onPublish={() => confirmPublish(post)}
+                  onReschedule={() =>
+                    picker.open(
+                      post.scheduledDate ? new Date(post.scheduledDate) : new Date(),
+                      (date) => reschedule.mutate({ postId: post._id, date })
+                    )
+                  }
+                  onDelete={() => confirmDelete(post)}
+                />
+              ))
+            )}
+          </>
+        )}
+
+        {drafts.length > 0 && (
+          <>
+            <SectionLabel>Unscheduled drafts</SectionLabel>
+            {drafts.map((post) => (
+              <PostRow
+                key={post._id}
+                post={post}
+                onPublish={() => confirmPublish(post)}
+                onReschedule={() =>
+                  picker.open(new Date(Date.now() + 24 * 60 * 60 * 1000), (date) =>
+                    reschedule.mutate({ postId: post._id, date })
+                  )
+                }
+                onDelete={() => confirmDelete(post)}
+              />
+            ))}
+          </>
+        )}
+      </View>
+      {picker.element}
+      {info.node}
+      {confirmSheet.node}
+    </>
+  );
+
+  if (!scrollable) return <View>{body}</View>;
+
+  return (
+    <ScrollView
+      contentContainerClassName="pb-12 pt-3"
+      refreshControl={
+        <RefreshControl
+          refreshing={buffer.isRefetching}
+          onRefresh={() => void buffer.refetch()}
+          tintColor={t.brandBright}
+        />
+      }
+    >
+      {body}
+    </ScrollView>
+  );
+}

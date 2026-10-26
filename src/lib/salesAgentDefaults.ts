@@ -248,6 +248,8 @@ export interface SalesAgentConfigShape {
    * without a null check.
    */
   knowledge: SalesKnowledge;
+  /** Automated invitation + follow-up (Nurturing Configuration). Unset → follows `enabled`. */
+  nurtureEnabled?: boolean;
   timezone?: string;
   quietHours?: { enabled: boolean; start: string; end: string };
   minimumMessageGapMinutes?: number;

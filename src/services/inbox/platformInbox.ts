@@ -19,6 +19,8 @@ import { buildNotificationVariables, realInboundAtFromMessages, recipientFirstNa
 import { setLeadOwnership } from '@/services/leadOwnership/setLeadOwnership';
 import { releaseFromHuman } from '@/services/leadOwnership/releaseFromHuman';
 import { logLeadEvent } from '@/services/leadEvents';
+import { phoneDedupeKey } from '@/lib/phone';
+import { sendPushToSuperAdmins } from '@/services/push';
 import {
   duplicateClientKey,
   matchesInboxFilter,
@@ -102,6 +104,61 @@ async function humanInboxSettings() {
   };
 }
 
+/**
+ * Saves an inbound message from a HUMAN-owned platform lead that has no live
+ * sales or booking thread, so it reaches the team in the Inbox instead of
+ * being dropped. Never triggers an AI reply. Order: the most recent sales
+ * thread (any status — the Inbox lists all of them), else the most recent
+ * booking thread, else a new closed booking thread just to hold the
+ * conversation. The team is pushed a notification either way.
+ */
+export async function saveHumanOwnedInbound(input: { phone: string; body: string; profileName?: string; lead: any }): Promise<{ ref: string }> {
+  await dbConnect();
+  const key = phoneDedupeKey(input.phone);
+  const now = new Date();
+  const text = input.body || '[non-text message]';
+  let saved: { kind: 'sales' | 'booking'; id: string } | null = null;
+
+  const sales: any = key ? await SalesConversation.findOne({ phoneKey: key }).sort({ updatedAt: -1 }) : null;
+  if (sales) {
+    sales.messages.push({ role: 'lead', text, at: now });
+    sales.lastLeadReplyAt = now;
+    await sales.save();
+    saved = { kind: 'sales', id: String(sales._id) };
+  } else {
+    let booking: any = key ? await BookingConversation.findOne({ phoneKey: key }).sort({ updatedAt: -1 }) : null;
+    if (!booking) {
+      booking = new BookingConversation({
+        leadPhone: normalizePhoneE164(input.phone) || input.phone,
+        phoneKey: key,
+        leadName: input.lead?.name || input.profileName || '',
+        leadId: input.lead?._id,
+        // Closed: the booking agent never picks this thread up.
+        status: 'stopped',
+        messages: [],
+      });
+    }
+    booking.messages.push({ role: 'lead', text, at: now, via: 'whatsapp' });
+    booking.humanInboxAt = now;
+    await booking.save();
+    saved = { kind: 'booking', id: String(booking._id) };
+  }
+
+  await logLeadEvent('MESSAGE_RECEIVED', { channel: 'whatsapp', heldForHuman: true }, 'system', {
+    leadId: input.lead?._id, phone: input.phone, conversationType: saved.kind, conversationId: new mongoose.Types.ObjectId(saved.id),
+  });
+  try {
+    await sendPushToSuperAdmins({
+      title: 'New message for human-owned lead',
+      body: `${input.lead?.name || input.phone} sent a message (human-owned).`,
+      data: { leadId: input.lead?._id ? String(input.lead._id) : '', conversation: ref(saved.kind, saved.id) },
+    });
+  } catch (err: any) {
+    console.warn('[platformInbox] human-owned inbound push failed:', err?.message);
+  }
+  return { ref: ref(saved.kind, saved.id) };
+}
+
 export async function listInbox(input: { q?: string; filter?: string; sort?: string; viewerUserId?: string }) {
   await dbConnect();
   const filter = (input.filter || 'all') as InboxFilter;
@@ -116,8 +173,9 @@ export async function listInbox(input: { q?: string; filter?: string; sort?: str
   const extraPhones = (matchedLeads as any[]).map((lead) => lead.phone).filter(Boolean);
   const textQuery = rx ? { $or: [{ leadName: rx }, { leadPhone: rx }, { 'messages.text': rx }, ...(extraPhones.length ? [{ leadPhone: { $in: extraPhones } }] : [])] } : {};
   const sales = await SalesConversation.find(textQuery).sort({ updatedAt: -1 }).limit(80).select('leadName leadPhone status updatedAt lastLeadReplyAt lastReadAt messages').lean();
-  const booking = await BookingConversation.find(rx ? textQuery : { status: { $in: ['active', 'awaiting_slot_selection', 'booked'] } })
-    .sort({ updatedAt: -1 }).limit(40).select('leadName leadPhone status updatedAt messages').lean();
+  // Closed booking threads stay listed once a human-owned lead has written into them.
+  const booking = await BookingConversation.find(rx ? textQuery : { $or: [{ status: { $in: ['active', 'awaiting_slot_selection', 'booked'] } }, { humanInboxAt: { $exists: true } }] })
+    .sort({ updatedAt: -1 }).limit(40).select('leadName leadPhone status updatedAt messages lastReadAt humanInboxAt').lean();
 
   const phones = new Set<string>();
   for (const row of [...sales, ...booking] as any[]) phones.add(row.leadPhone);

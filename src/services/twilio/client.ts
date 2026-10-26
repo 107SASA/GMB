@@ -5,6 +5,13 @@ import MessageQueue from '@/models/MessageQueue';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { unsafeTemplateVariableReason } from '@/lib/whatsappOutbound';
 import { outboundSuppressed } from '@/lib/outboundSuppression';
+import { classifyTwilioError, logWhatsAppDiagnostic, redactPhone, safeSidRef, type WhatsAppErrorKind } from '@/lib/whatsappDiagnostics';
+
+/** The login-OTP template's code is a secret — never stored in the message log. */
+function loggableVariables(contentSid: string, variables: Record<string, string>): Record<string, string> {
+  const otpSid = process.env.TWILIO_TEMPLATE_LOGIN_OTP || '';
+  return otpSid && contentSid === otpSid ? Object.fromEntries(Object.keys(variables).map((k) => [k, '[redacted]'])) : variables;
+}
 
 /**
  * Builds Twilio's `whatsapp:+<e164>` recipient address, normalizing first.
@@ -85,6 +92,12 @@ export interface SendResult {
    * platform credentials entirely) where no account was ever resolved.
    */
   isPlatformDefault?: true;
+  /** Why it failed (lib/whatsappDiagnostics.ts) — distinguishable, never guessed. */
+  errorKind?: WhatsAppErrorKind;
+  /** The MessageQueue row for this attempt — the id to search logs by. */
+  correlationId?: string;
+  /** Set when this success is the logged 63016 recovery of an earlier failed attempt (its correlation id). */
+  recoveredFrom?: string;
 }
 
 interface TwilioCredentials {
@@ -149,23 +162,12 @@ export async function sendOutboundMessage(
     payload: { phone, body },
   });
 
-  if (!creds) {
-    const error = 'WhatsApp is not configured (missing Twilio credentials)';
-    msgLog.status = 'FAILED';
-    msgLog.error = error;
-    await msgLog.save();
-    console.error('Twilio Error:', error);
-    return { success: false, error };
-  }
+  const correlationId = String(msgLog._id);
+  if (!creds) return failLog(msgLog, 'free-text', 'PROVIDER_CONFIG_MISSING', 'WhatsApp is not configured (missing Twilio credentials)', phone);
 
   const toAddress = toWhatsAppAddress(phone);
   if (!toAddress) {
-    const error = `Invalid WhatsApp recipient number: "${phone}"`;
-    msgLog.status = 'FAILED';
-    msgLog.failedReason = error;
-    await msgLog.save();
-    console.error('[twilio] Refusing to send — could not normalize recipient number:', phone);
-    return { success: false, error, isPlatformDefault: creds.isPlatformDefault };
+    return { ...(await failLog(msgLog, 'free-text', 'RECIPIENT_INVALID', 'Invalid WhatsApp recipient number', phone)), isPlatformDefault: creds.isPlatformDefault };
   }
 
   // 15s HTTP timeout so a hung Twilio call can't stall the request (and, for
@@ -187,21 +189,34 @@ export async function sendOutboundMessage(
     msgLog.payload = { ...msgLog.payload, sid: message.sid };
     msgLog.markModified('payload');
     await msgLog.save();
-    return { success: true, sid: message.sid, isPlatformDefault: creds.isPlatformDefault };
+    return { success: true, sid: message.sid, isPlatformDefault: creds.isPlatformDefault, correlationId };
   } catch (e: any) {
-    msgLog.status = 'FAILED';
-    msgLog.failedReason = e.message;
-    msgLog.errorCode = e.code != null ? String(e.code) : undefined;
-    await msgLog.save();
-    console.error('Twilio Error:', e);
-    return {
-      success: false,
-      error: e.message,
-      errorCode: e.code != null ? String(e.code) : undefined,
-      outsideWindow: e.code === 63016,
-      isPlatformDefault: creds.isPlatformDefault,
-    };
+    const failed = await twilioRejected(msgLog, e, 'free-text', undefined, phone);
+    return { ...failed, outsideWindow: e.code === 63016, isPlatformDefault: creds.isPlatformDefault };
   }
+}
+
+/** Records a local (pre-Twilio) failure on the message log and logs it, redacted. */
+async function failLog(msgLog: any, feature: string, kind: WhatsAppErrorKind, error: string, phone: string, contentSid?: string): Promise<SendResult> {
+  msgLog.status = 'FAILED';
+  msgLog.failedReason = error;
+  msgLog.errorKind = kind;
+  await msgLog.save();
+  logWhatsAppDiagnostic({ event: 'whatsapp_send_failed', feature, kind, sidRef: contentSid ? safeSidRef(contentSid) : undefined, correlationId: String(msgLog._id), recipient: redactPhone(phone), detail: error });
+  return { success: false, error, errorKind: kind, correlationId: String(msgLog._id) };
+}
+
+/** Records Twilio's rejection (code + kind) on the message log and logs it, redacted. */
+async function twilioRejected(msgLog: any, e: any, feature: string, contentSid: string | undefined, phone: string): Promise<SendResult> {
+  const errorCode = e?.code != null ? String(e.code) : undefined;
+  const kind = classifyTwilioError(errorCode);
+  msgLog.status = 'FAILED';
+  msgLog.failedReason = e?.message;
+  msgLog.errorCode = errorCode;
+  msgLog.errorKind = kind;
+  await msgLog.save();
+  logWhatsAppDiagnostic({ event: 'whatsapp_send_failed', feature, kind, sidRef: contentSid ? safeSidRef(contentSid) : undefined, errorCode, correlationId: String(msgLog._id), recipient: redactPhone(phone), detail: e?.message });
+  return { success: false, error: e?.message, errorCode, errorKind: kind, correlationId: String(msgLog._id) };
 }
 
 /**
@@ -237,41 +252,35 @@ export async function sendTemplateMessage(
   variables: Record<string, string>,
   businessId?: string // no longer consulted for credentials — see resolveTwilioCredentials's doc comment. Kept in the signature so existing call sites across the codebase don't need to change their argument list.
 ): Promise<SendResult> {
+  if (!contentSid || !String(contentSid).trim()) {
+    // Callers check their own template first; this is the last guard against sending nothing-as-a-template.
+    logWhatsAppDiagnostic({ event: 'whatsapp_template_config_missing', feature: 'template', kind: 'TEMPLATE_CONFIG_MISSING', recipient: redactPhone(phone) });
+    return { success: false, error: 'TEMPLATE_CONFIG_MISSING: no Content SID was given for this template send.', errorKind: 'TEMPLATE_CONFIG_MISSING' };
+  }
   const unsafe = unsafeTemplateVariableReason(variables);
   if (unsafe) {
-    console.error('[twilio] template not sent:', unsafe);
-    return { success: false, error: unsafe };
+    logWhatsAppDiagnostic({ event: 'whatsapp_send_failed', feature: 'template', kind: 'CONTENT_VARIABLES_INVALID', sidRef: safeSidRef(contentSid), recipient: redactPhone(phone), detail: unsafe });
+    return { success: false, error: unsafe, errorKind: 'CONTENT_VARIABLES_INVALID' };
   }
 
   await dbConnect();
 
-  if (qaSendsSuppressed()) return logSuppressedSend({ phone, contentSid, variables });
+  if (qaSendsSuppressed()) return logSuppressedSend({ phone, contentSid, variables: loggableVariables(contentSid, variables) });
 
   const creds = await resolveTwilioCredentials();
 
   const msgLog = await MessageQueue.create({
     direction: 'OUTBOUND',
     status: 'PENDING',
-    payload: { phone, contentSid, variables },
+    payload: { phone, contentSid, variables: loggableVariables(contentSid, variables) },
   });
+  const correlationId = String(msgLog._id);
 
-  if (!creds) {
-    const error = 'WhatsApp is not configured (missing Twilio credentials)';
-    msgLog.status = 'FAILED';
-    msgLog.error = error;
-    await msgLog.save();
-    console.error('Twilio Error:', error);
-    return { success: false, error };
-  }
+  if (!creds) return failLog(msgLog, 'template', 'PROVIDER_CONFIG_MISSING', 'WhatsApp is not configured (missing Twilio credentials)', phone, contentSid);
 
   const toAddress = toWhatsAppAddress(phone);
   if (!toAddress) {
-    const error = `Invalid WhatsApp recipient number: "${phone}"`;
-    msgLog.status = 'FAILED';
-    msgLog.failedReason = error;
-    await msgLog.save();
-    console.error('[twilio] Refusing to send — could not normalize recipient number:', phone);
-    return { success: false, error, isPlatformDefault: creds.isPlatformDefault };
+    return { ...(await failLog(msgLog, 'template', 'RECIPIENT_INVALID', 'Invalid WhatsApp recipient number', phone, contentSid)), isPlatformDefault: creds.isPlatformDefault };
   }
 
   // Content Template SIDs are scoped to the WABA they were approved under —
@@ -305,18 +314,9 @@ export async function sendTemplateMessage(
     msgLog.payload = { ...msgLog.payload, sid: message.sid };
     msgLog.markModified('payload');
     await msgLog.save();
-    return { success: true, sid: message.sid, isPlatformDefault: creds.isPlatformDefault };
+    return { success: true, sid: message.sid, isPlatformDefault: creds.isPlatformDefault, correlationId };
   } catch (e: any) {
-    msgLog.status = 'FAILED';
-    msgLog.failedReason = e.message;
-    msgLog.errorCode = e.code != null ? String(e.code) : undefined;
-    await msgLog.save();
-    console.error('Twilio Error:', e);
-    return {
-      success: false,
-      error: e.message,
-      errorCode: e.code != null ? String(e.code) : undefined,
-    };
+    return twilioRejected(msgLog, e, 'template', contentSid, phone);
   }
 }
 
@@ -359,13 +359,16 @@ async function sendInteractive(
   if (qaSendsSuppressed()) return logSuppressedSend({ phone, ...logPayload }, leadId);
 
   const creds = await resolveTwilioCredentials();
-  if (!creds) return { success: false, error: 'WhatsApp is not configured (missing Twilio credentials)' };
+  if (!creds) return { success: false, error: 'WhatsApp is not configured (missing Twilio credentials)', errorKind: 'PROVIDER_CONFIG_MISSING' };
   const toAddress = toWhatsAppAddress(phone);
-  if (!toAddress) return { success: false, error: `Invalid WhatsApp recipient number: "${phone}"` };
+  if (!toAddress) return { success: false, error: 'Invalid WhatsApp recipient number', errorKind: 'RECIPIENT_INVALID' };
 
   const auth = Buffer.from(`${creds.sid}:${creds.authToken}`).toString('base64');
   const content = await contentSidFor(auth, kind, types);
-  if (!content.sid) return { success: false, error: content.error };
+  if (!content.sid) {
+    logWhatsAppDiagnostic({ event: 'whatsapp_send_failed', feature: `interactive-${kind}`, kind: 'SEND_FAILED', recipient: redactPhone(phone), detail: `could not create the in-session content: ${content.error || ''}` });
+    return { success: false, error: content.error, errorKind: 'SEND_FAILED' };
+  }
 
   const msgLog = await MessageQueue.create({
     leadId,
@@ -389,14 +392,9 @@ async function sendInteractive(
     msgLog.payload = { ...msgLog.payload, sid: message.sid };
     msgLog.markModified('payload');
     await msgLog.save();
-    return { success: true, sid: message.sid, isPlatformDefault: creds.isPlatformDefault };
+    return { success: true, sid: message.sid, isPlatformDefault: creds.isPlatformDefault, correlationId: String(msgLog._id) };
   } catch (e: any) {
-    msgLog.status = 'FAILED';
-    msgLog.failedReason = e.message;
-    msgLog.errorCode = e.code != null ? String(e.code) : undefined;
-    await msgLog.save();
-    console.error('Twilio Error:', e);
-    return { success: false, error: e.message, errorCode: e.code != null ? String(e.code) : undefined };
+    return twilioRejected(msgLog, e, `interactive-${kind}`, content.sid, phone);
   }
 }
 

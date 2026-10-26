@@ -357,6 +357,30 @@ async function processInboundMessage({ business, phone, profileName, body, messa
 // ---------------------------------------------------------------------------
 
 /** True when an inbound message hit the GrowwMatics platform number. */
+/** Creates the platform lead for a first-time WhatsApp contact (no reply, no change for a known number). */
+async function capturePlatformContact(phone: string, profileName?: string): Promise<void> {
+  try {
+    const { normalizePhoneE164 } = await import('@/lib/phone');
+    const normalized = normalizePhoneE164(phone) || phone;
+    if (await Lead.exists({ tenantId: 'gmbboost-internal', phone: normalized })) return;
+    const { usablePersonName } = await import('@/lib/personName');
+    const lead = await Lead.create({
+      tenantId: 'gmbboost-internal',
+      leadType: 'Platform Prospect',
+      name: usablePersonName(profileName) || normalized,
+      phone: normalized,
+      source: 'WhatsApp',
+      captureSources: ['WhatsApp'],
+      currentStage: 'NEW',
+    });
+    const { logLeadEvent } = await import('@/services/leadEvents');
+    await logLeadEvent('LEAD_CREATED', { source: 'WhatsApp', via: 'first-message' }, 'system', { leadId: lead._id, phone: normalized });
+  } catch (err: any) {
+    // 11000 = a concurrent message created it first. Never blocks the reply.
+    if (err?.code !== 11000) console.warn('[platform-inbound] could not capture the contact as a lead:', err?.message);
+  }
+}
+
 function isPlatformNumber(displayNumber?: string, phoneNumberId?: string): boolean {
   const pid = process.env.META_WHATSAPP_PHONE_NUMBER_ID;
   if (phoneNumberId && pid && phoneNumberId === pid) return true;
@@ -389,6 +413,12 @@ function isSupportRequest(body: string): boolean {
 
 async function processPlatformInbound({ phone, profileName, body }: PlatformInbound) {
   const { phoneDedupeKey, normalizePhoneE164 } = await import('@/lib/phone');
+  // This message opens/extends the 24h window for every reply sent below.
+  const { noteInboundMessage } = await import('@/services/whatsapp/send');
+  noteInboundMessage(phone);
+  // Every person who writes to us is a lead in the super admin CRM from their
+  // first message (stage New) — not only once they pick a report or a demo.
+  await capturePlatformContact(phone, profileName);
   const key = phoneDedupeKey(phone);
   const normalized = (body || '').trim().toUpperCase();
   const isOptOut = ['STOP', 'UNSUBSCRIBE', 'CANCEL'].includes(normalized);
@@ -469,6 +499,17 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
       await openSupportIssue('support_request');
       return;
     }
+    // Report threads aren't in the Inbox: a human-owned lead's message goes
+    // where the team can see it, and the report agent stays silent.
+    {
+      const { isHumanOwned } = await import('@/services/agentHandoff/isHumanOwned');
+      const reportLead = await Lead.findOne({ phone: normalizePhoneE164(phone) || phone, tenantId: 'gmbboost-internal' }).select('name phone currentAgent humanHandoff').lean() as any;
+      if (isHumanOwned(reportLead)) {
+        const { saveHumanOwnedInbound } = await import('@/services/inbox/platformInbox');
+        await saveHumanOwnedInbound({ phone, body, profileName, lead: reportLead });
+        return;
+      }
+    }
     if (!activeReport.leadName && profileName) activeReport.leadName = profileName;
     const { classifyProspectChoice } = await import('@/services/whatsapp/prospectChoice');
     if (classifyProspectChoice(body, 'new') === 'demo') {
@@ -536,8 +577,14 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
   }
 
   const { isHumanOwned } = await import('@/services/agentHandoff/isHumanOwned');
-  const menuLead = await Lead.findOne({ phone: normalizePhoneE164(phone) || phone, tenantId: 'gmbboost-internal' }).select('currentAgent humanHandoff').lean() as any;
-  if (isHumanOwned(menuLead)) return;
+  const menuLead = await Lead.findOne({ phone: normalizePhoneE164(phone) || phone, tenantId: 'gmbboost-internal' }).select('name phone currentAgent humanHandoff').lean() as any;
+  if (isHumanOwned(menuLead)) {
+    // A human owns this lead: no AI or menu reply — but the message must
+    // reach the team (it used to be dropped here, unsaved).
+    const { saveHumanOwnedInbound } = await import('@/services/inbox/platformInbox');
+    await saveHumanOwnedInbound({ phone, body, profileName, lead: menuLead });
+    return;
+  }
 
   const { loadPlatformProspectFacts } = await import('@/services/leads/beginFreeReport');
   const {
@@ -584,6 +631,23 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     return;
   }
 
+  // A returning lead whose sales thread was handed to the demo flow (a demo
+  // that was cancelled or is over) goes back to the Sales agent with that
+  // history, instead of the menu meant for a first contact.
+  if (menuLead) {
+    const { salesReplyBlockedReason } = await import('@/services/agentHandoff/isHumanOwned');
+    const fullLead = await Lead.findById(menuLead._id).select('currentAgent currentStage nurtureStatus humanHandoff').lean() as any;
+    const previous = !salesReplyBlockedReason(fullLead)
+      ? await SalesConversation.findOne({ phoneKey: key, status: 'handed_off' }).sort({ updatedAt: -1 })
+      : null;
+    if (previous) {
+      previous.status = 'active';
+      await previous.save();
+      await handleActiveSalesConversation(previous, body, { allowBookingHandoff: true });
+      return;
+    }
+  }
+
   await sendOutboundMessage(phone, menuFor(mode));
 }
 
@@ -616,19 +680,13 @@ async function openDemoThread(
   await inngest.send({ name: 'booking/agent.reply', data: { conversationId: convo._id.toString(), body } });
 }
 
+/**
+ * Answers a person who just messaged us asking for their report. It is a
+ * reply inside the 24h window they just opened, so it is ordinary free text
+ * with the link — deliberately, not as a substitute for a failed template
+ * (no template is attempted here, so none can fail silently).
+ */
 async function sendExistingReport(phone: string, facts: { name: string; businessName: string; auditId: string | null }): Promise<void> {
-  const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
-  const name = facts.name || 'there';
-  const businessName = facts.businessName || 'your business';
-  if (facts.auditId && WA_TEMPLATES.reportReady) {
-    const { sendTemplateMessage } = await import('@/services/twilio/client');
-    const res = await sendTemplateMessage(phone, WA_TEMPLATES.reportReady, {
-      '1': name,
-      '2': businessName,
-      '3': facts.auditId,
-    });
-    if (res.success) return;
-  }
   const base = (process.env.NEXT_PUBLIC_APP_URL || 'https://growwmatics.com').replace(/\/$/, '');
   const link = facts.auditId ? `${base}/free-report/result?auditId=${facts.auditId}` : `${base}/free-report`;
   await sendOutboundMessage(phone, `Your free Google Business Profile report is ready.\n\nView Report: ${link}`);
@@ -880,6 +938,8 @@ async function handleMetaWebhook(req: Request) {
     const rawBody = await req.text();
 
     if (!verifyMetaSignature(rawBody, req.headers.get('x-hub-signature-256'))) {
+      const { logSecurityEvent } = await import('@/services/security/securityLog');
+      await logSecurityEvent(req, { type: 'webhook.signature_invalid', outcome: 'blocked', status: 403, detail: 'Meta WhatsApp', metadata: { provider: 'meta' } });
       return NextResponse.json({ error: 'Invalid Meta signature' }, { status: 403 });
     }
 

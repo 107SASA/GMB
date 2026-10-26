@@ -13,16 +13,31 @@ import {
   Loader2,
 } from 'lucide-react';
 
+type CycleKey = 'monthly' | 'quarterly' | 'halfyearly' | 'yearly' | 'unknown';
+
 interface RevenueData {
   mrr: number;
   arr: number;
   activeCount: number;
-  trialingCount: number;
+  payingSubscriptions: number;
+  trialActiveCount: number;
+  neverPaidCount: number;
   pastDueCount: number;
   canceledThisMonth: number;
+  trialsEndedThisMonth: number;
+  estimatedCount: number;
+  byCycle: Record<CycleKey, { count: number; mrr: number }>;
   monthlyPriceInr: number;
   planName: string;
 }
+
+const CYCLE_LABEL: Record<CycleKey, string> = {
+  monthly: 'Monthly',
+  quarterly: 'Quarterly',
+  halfyearly: '6 months',
+  yearly: 'Yearly',
+  unknown: 'Cycle not recorded',
+};
 
 function StatCard({
   title,
@@ -77,11 +92,16 @@ export default function RevenuePage() {
   }, [fetchData]);
 
   const statusRows = data ? [
-    { label: 'Active',   count: data.activeCount,      color: 'bg-secondary-container/40 text-on-secondary-container', icon: Users },
-    { label: 'Trialing', count: data.trialingCount,     color: 'bg-primary-fixed text-primary',                        icon: Clock },
-    { label: 'Past Due', count: data.pastDueCount,      color: 'bg-error-container text-on-error-container',           icon: AlertTriangle },
-    { label: 'Canceled this month', count: data.canceledThisMonth, color: 'bg-surface-container text-on-surface-variant', icon: XCircle },
+    { label: 'Paying (active)',      count: data.activeCount,          color: 'bg-secondary-container/40 text-on-secondary-container', icon: Users },
+    { label: 'Free trial (mandate set up)', count: data.trialActiveCount, color: 'bg-primary-fixed text-primary',                     icon: Clock },
+    { label: 'Past due',             count: data.pastDueCount,         color: 'bg-error-container text-on-error-container',           icon: AlertTriangle },
+    { label: 'Signed up, never paid', count: data.neverPaidCount,      color: 'bg-surface-container text-on-surface-variant',         icon: Users },
+    { label: 'Canceled this month',  count: data.canceledThisMonth,    color: 'bg-surface-container text-on-surface-variant',         icon: XCircle },
+    { label: 'Trials ended unpaid this month', count: data.trialsEndedThisMonth, color: 'bg-surface-container text-on-surface-variant', icon: XCircle },
   ] : [];
+  const cycleRows = data
+    ? (Object.keys(CYCLE_LABEL) as CycleKey[]).filter((c) => data.byCycle?.[c]?.count > 0)
+    : [];
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -122,13 +142,25 @@ export default function RevenuePage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-3">
             <StatCard title="Monthly Recurring Revenue" value={data.mrr} icon={IndianRupee} color="bg-secondary" prefix="₹" />
             <StatCard title="Annual Recurring Revenue"   value={data.arr} icon={TrendingUp} color="bg-primary" prefix="₹" />
-            <StatCard title="Active Subscriptions"       value={data.activeCount} icon={Users} color="bg-primary-fixed-dim" />
+            <StatCard title="Paying Subscriptions"       value={data.payingSubscriptions} icon={Users} color="bg-primary-fixed-dim" />
             <StatCard title="Canceled This Month"        value={data.canceledThisMonth} icon={XCircle} color="bg-error" />
           </div>
-          <p className="text-xs text-on-surface-variant mb-8">
-            MRR = {data.activeCount} active workspace{data.activeCount === 1 ? '' : 's'} × ₹{data.monthlyPriceInr.toLocaleString()}/mo ({data.planName} plan's current monthly price).
-            Workspaces on a longer discounted cycle (quarterly/yearly) aren't tracked separately, so this is a monthly-equivalent estimate, not exact.
+          <p className="text-xs text-on-surface-variant mb-4">
+            MRR is the monthly equivalent of what each paying subscription is charged — a ₹12,000 yearly plan counts ₹1,000/month.
+            Each Razorpay subscription is counted once. Free trials are not revenue until their first charge.
+            {data.estimatedCount > 0 && (
+              <> {data.estimatedCount} subscription{data.estimatedCount === 1 ? ' has' : 's have'} no recorded cycle or charge, so {data.estimatedCount === 1 ? 'it is' : 'they are'} counted at the monthly price (₹{data.monthlyPriceInr.toLocaleString()}).</>
+            )}
           </p>
+          {cycleRows.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-8">
+              {cycleRows.map((c) => (
+                <span key={c} className="text-xs px-2.5 py-1 rounded-lg bg-surface-container text-on-surface-variant">
+                  {CYCLE_LABEL[c]}: {data.byCycle[c].count} · ₹{Math.round(data.byCycle[c].mrr).toLocaleString()}/mo
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* Subscription Status Breakdown */}
           <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow">

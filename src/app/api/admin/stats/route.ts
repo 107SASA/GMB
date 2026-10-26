@@ -5,6 +5,7 @@ import User from '@/models/User';
 import Business from '@/models/Business';
 import ContentGenerationLog from '@/models/ContentGenerationLog';
 import Lead from '@/models/Lead';
+import { workspaceStatusCounts } from '@/services/admin/platformMetrics';
 
 export async function GET() {
   const auth = await requireSuperAdmin();
@@ -38,6 +39,7 @@ export async function GET() {
       newBusinessesLast7Days,
       totalLeads,
       newLeadsLast7Days,
+      statuses,
     ] = await Promise.all([
       User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, ...notShadow }),
       Business.countDocuments(),
@@ -56,6 +58,7 @@ export async function GET() {
       Business.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
       Lead.countDocuments(clientLeads),
       Lead.countDocuments({ ...clientLeads, createdAt: { $gte: sevenDaysAgo } }),
+      workspaceStatusCounts(),
     ]);
 
     return NextResponse.json({
@@ -64,6 +67,10 @@ export async function GET() {
         stats: {
           totalUsers,
           totalBusinesses,
+          // Paying + authorised free trials (same status definitions as /admin/revenue).
+          activeBusinesses: statuses.active + statuses.trialActive,
+          payingBusinesses: statuses.active,
+          trialBusinesses: statuses.trialActive,
           totalContentGenerated,
           newUsersLast7Days,
           newBusinessesLast7Days,

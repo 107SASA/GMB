@@ -38,7 +38,8 @@ export async function POST(req: Request) {
 
     await dbConnect();
     const { default: Lead } = await import('@/models/Lead');
-    const lead: any = await Lead.findById(leadId).select('_id currentAgent humanHandoff').lean();
+    // Platform leads only — a customer's own CRM lead is never released from here.
+    const lead: any = await Lead.findOne({ _id: leadId, tenantId: 'gmbboost-internal' }).select('_id currentAgent humanHandoff').lean();
     if (!lead) {
       return NextResponse.json({ success: false, error: 'Lead not found.' }, { status: 404 });
     }

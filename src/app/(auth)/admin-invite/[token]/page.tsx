@@ -6,6 +6,12 @@ import { ShieldCheck, Loader2, Eye, EyeOff } from 'lucide-react';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 
+/**
+ * Public: the invited person is not signed in yet, so this lives under the
+ * (auth) group, outside the Super Admin layout guard. The token is checked
+ * by POST /api/admin/invites/accept. Old /admin/invite/<token> links are
+ * redirected here (next.config.ts).
+ */
 export default function AcceptInvitePage() {
   const params = useParams();
   const router = useRouter();
@@ -24,7 +30,7 @@ export default function AcceptInvitePage() {
   const handleSubmit = async () => {
     setError(null);
 
-    if (!name || !password || !confirmPassword) {
+    if (!name || !phone || !password || !confirmPassword) {
       setError('All fields are required');
       return;
     }
@@ -52,7 +58,7 @@ export default function AcceptInvitePage() {
       if (!json.success) throw new Error(json.error);
 
       setSuccess(true);
-      setTimeout(() => router.push('/admin/login'), 3000);
+      setTimeout(() => router.push('/admin-login'), 3000);
     } catch (err: any) {
       setError(friendlyClientMessage(err));
     } finally {
@@ -62,7 +68,7 @@ export default function AcceptInvitePage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-surface flex items-center justify-center p-4">
+      <div>
         <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-8 max-w-md w-full text-center">
           <div className="w-16 h-16 bg-secondary-container rounded-full flex items-center justify-center mx-auto mb-4">
             <ShieldCheck className="w-8 h-8 text-secondary" />
@@ -77,7 +83,7 @@ export default function AcceptInvitePage() {
   }
 
   return (
-    <div className="min-h-screen bg-surface flex items-center justify-center p-4">
+    <div>
       <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-8 max-w-md w-full">
         <div className="text-center mb-8">
           <div className="w-14 h-14 bg-primary rounded-xl flex items-center justify-center mx-auto mb-4">
@@ -106,7 +112,7 @@ export default function AcceptInvitePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-on-surface mb-1">Phone (optional)</label>
+            <label className="block text-sm font-medium text-on-surface mb-1">Mobile number</label>
             <PhoneNumberInput
               value={phone}
               onChange={setPhone}

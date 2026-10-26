@@ -1,0 +1,171 @@
+import axios from 'axios';
+import { Image } from 'expo-image';
+import * as WebBrowser from 'expo-web-browser';
+import { useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+
+import { getApiErrorMessage } from '@/api/client';
+import { useAuth } from '@/auth/AuthContext';
+import { PhoneNumberField } from '@/components/phone-number-field';
+import { ErrorText, Field, PrimaryButton, Screen } from '@/components/ui';
+import { NO_ACCOUNT_MESSAGE } from '@/lib/storeCompliance';
+import { getPrivacyPolicyUrl } from '@/lib/support';
+
+type PhoneStep = 'enter-phone' | 'enter-otp';
+
+// Phone + WhatsApp OTP is the only login method — matches the web app's
+// /login exactly (Aug 2026: web dropped email/password from its
+// customer-facing login the same way). This used to also offer an Email tab
+// (a SegmentedControl toggle, defaulting to Email) — removed per that same
+// decision. The backend's email/password endpoint (AuthContext's `login`)
+// is untouched and still used elsewhere (e.g. admin login on the website) —
+// this only removes the customer-facing mobile UI for it.
+export default function LoginScreen() {
+  const { requestPhoneOtp, loginWithPhone } = useAuth();
+
+  const [phoneStep, setPhoneStep] = useState<PhoneStep>('enter-phone');
+  // Small phones (<360dp, e.g. 320-wide): drop the form's extra inset so the
+  // full button label fits instead of truncating to "Send code on Whats…".
+  const { width } = useWindowDimensions();
+  const formInset = width < 360 ? 'px-0' : 'px-5';
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
+  const [maskedPhone, setMaskedPhone] = useState<string | undefined>();
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [phoneSubmitting, setPhoneSubmitting] = useState(false);
+  // Server rejects anything shorter than 8 digits (country code included).
+  const phoneReady = phone.replace(/\D/g, '').length >= 8;
+
+  async function handleRequestOtp() {
+    if (!phoneReady || phoneSubmitting) return;
+    setPhoneSubmitting(true);
+    setPhoneError(null);
+    try {
+      const { maskedPhone: masked } = await requestPhoneOtp(phone.trim());
+      setMaskedPhone(masked);
+      setPhoneStep('enter-otp');
+    } catch (err) {
+      // The server's "no account" copy sends people to the website's free
+      // report / demo booking — not allowed in the iOS app (lib/storeCompliance.ts).
+      const noAccount =
+        axios.isAxiosError(err) && (err.response?.data as { noAccount?: boolean } | undefined)?.noAccount === true;
+      setPhoneError(noAccount ? NO_ACCOUNT_MESSAGE : getApiErrorMessage(err, 'Could not send code. Please try again.'));
+    } finally {
+      setPhoneSubmitting(false);
+    }
+  }
+
+  async function handleVerifyOtp() {
+    if (otp.length !== 6 || phoneSubmitting) return;
+    setPhoneSubmitting(true);
+    setPhoneError(null);
+    try {
+      await loginWithPhone(phone.trim(), otp);
+      // Success: (auth)/_layout redirects to the tabs once isAuthenticated flips.
+    } catch (err) {
+      setPhoneError(getApiErrorMessage(err, 'Incorrect or expired code.'));
+      setPhoneSubmitting(false);
+    }
+  }
+
+  return (
+    <Screen safeBottom>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        className="flex-1"
+      >
+        <ScrollView
+          contentContainerClassName="flex-grow justify-center px-6 py-10"
+          keyboardShouldPersistTaps="handled"
+        >
+          <View className="mb-10 items-center gap-4">
+            {/* GrowwMatics logo — the same mark the web app uses (public/brand/icon.png). */}
+            <Image
+              source={require('../../../assets/images/splash-icon.png')}
+              style={{ width: 88, height: 88 }}
+              contentFit="contain"
+              accessibilityLabel="GrowwMatics AI logo"
+            />
+            <View className="items-center gap-1">
+              <Text className="font-display text-[32px] tracking-tight text-white">
+                GrowwMatics AI
+              </Text>
+              <Text className="text-center font-sans text-base text-zinc-400">
+                Grow your business, from your pocket
+              </Text>
+            </View>
+          </View>
+
+          {phoneStep === 'enter-phone' ? (
+            <View className={`gap-4 ${formInset}`}>
+              <PhoneNumberField
+                value={phone}
+                onChange={setPhone}
+                editable={!phoneSubmitting}
+                onSubmitEditing={handleRequestOtp}
+              />
+              <Text className="px-1 font-sans text-xs text-zinc-500">
+                We&apos;ll send a one-time code to this number on WhatsApp.
+              </Text>
+              <ErrorText>{phoneError}</ErrorText>
+              <PrimaryButton
+                title="Send code on WhatsApp"
+                onPress={handleRequestOtp}
+                loading={phoneSubmitting}
+                disabled={!phoneReady}
+              />
+            </View>
+          ) : (
+            <View className={`gap-4 ${formInset}`}>
+              <Field
+                placeholder="······"
+                keyboardType="number-pad"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={otp}
+                onChangeText={(v) => setOtp(v.replace(/\D/g, ''))}
+                editable={!phoneSubmitting}
+                onSubmitEditing={handleVerifyOtp}
+                returnKeyType="go"
+                style={{ textAlign: 'center', fontSize: 24, letterSpacing: 8 }}
+              />
+              <Text className="px-1 font-sans text-xs text-zinc-500">
+                Sent to {maskedPhone ?? phone} on WhatsApp.{' '}
+                <Text className="font-sans-semibold text-brand-bright" onPress={() => setPhoneStep('enter-phone')}>
+                  Wrong number?
+                </Text>
+              </Text>
+              <ErrorText>{phoneError}</ErrorText>
+              <PrimaryButton
+                title="Verify & sign in"
+                onPress={handleVerifyOtp}
+                loading={phoneSubmitting}
+                disabled={otp.length !== 6}
+              />
+              <Pressable
+                onPress={handleRequestOtp}
+                disabled={phoneSubmitting}
+                style={{ alignItems: 'center', paddingVertical: 4 }}
+              >
+                <Text className="font-sans-semibold text-sm text-brand-bright">Didn&apos;t get a code? Resend</Text>
+              </Pressable>
+            </View>
+          )}
+
+          <Text className="mt-10 text-center font-sans text-xs text-zinc-500">
+            Accounts are managed on the GrowwMatics AI website.
+          </Text>
+          {getPrivacyPolicyUrl() && (
+            <Text
+              accessibilityRole="link"
+              onPress={() => void WebBrowser.openBrowserAsync(getPrivacyPolicyUrl()!)}
+              className="mt-2 text-center font-sans-semibold text-xs text-brand-bright"
+            >
+              Privacy policy
+            </Text>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Screen>
+  );
+}

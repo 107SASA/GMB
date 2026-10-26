@@ -50,7 +50,18 @@ export type LeadEventType =
   // scheduled, or a no-op like WAIT). Distinct from NBA_OVERRIDDEN, which is
   // about the decision, not the execution.
   | 'NBA_SELECTED'
-  | 'NBA_EXECUTED';
+  | 'NBA_EXECUTED'
+  // Super admin CRM (services/admin/platformCrm.ts): a team member's note,
+  // edit, stage change, or a lead added by hand / CSV import.
+  | 'NOTE_ADDED'
+  | 'LEAD_UPDATED'
+  | 'STAGE_CHANGED'
+  | 'LEAD_IMPORTED'
+  // An existing lead came in again through another channel (website demo form…).
+  | 'LEAD_CAPTURED'
+  | 'CALL_LOGGED'
+  | 'FOLLOW_UP_SCHEDULED'
+  | 'FOLLOW_UP_DONE';
 
 const LEAD_EVENT_TYPES: LeadEventType[] = [
   'LEAD_CREATED',
@@ -76,6 +87,14 @@ const LEAD_EVENT_TYPES: LeadEventType[] = [
   'NBA_OVERRIDDEN',
   'NBA_SELECTED',
   'NBA_EXECUTED',
+  'NOTE_ADDED',
+  'LEAD_UPDATED',
+  'STAGE_CHANGED',
+  'LEAD_IMPORTED',
+  'LEAD_CAPTURED',
+  'CALL_LOGGED',
+  'FOLLOW_UP_SCHEDULED',
+  'FOLLOW_UP_DONE',
 ];
 
 // Which platform/tenant conversation collection produced this event, if any

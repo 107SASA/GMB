@@ -1,0 +1,71 @@
+import * as SecureStore from 'expo-secure-store';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { Pressable, Text } from 'react-native';
+
+import { BottomSheet } from '@/components/ui';
+import { useTheme } from '@/lib/theme';
+
+const CONSENT_KEY = 'crm_capture_consent_v1';
+
+/**
+ * First-use consent for contact/call capture (store-policy requirement:
+ * users must understand that selected contacts leave the device and land in
+ * their business CRM). Shown once; the choice is persisted.
+ *
+ * Usage:
+ *   const { ensureConsent, consentSheet } = useCrmCaptureConsent();
+ *   ...
+ *   if (!(await ensureConsent())) return; // user declined
+ *   ...
+ *   return <>{consentSheet}...</>
+ */
+export function useCrmCaptureConsent(): {
+  ensureConsent: () => Promise<boolean>;
+  consentSheet: ReactNode;
+} {
+  const [visible, setVisible] = useState(false);
+  const resolver = useRef<((granted: boolean) => void) | null>(null);
+  const t = useTheme();
+
+  const ensureConsent = useCallback(async () => {
+    const stored = await SecureStore.getItemAsync(CONSENT_KEY).catch(() => null);
+    if (stored === 'granted') return true;
+    return new Promise<boolean>((resolve) => {
+      resolver.current = resolve;
+      setVisible(true);
+    });
+  }, []);
+
+  const settle = useCallback((granted: boolean) => {
+    setVisible(false);
+    if (granted) {
+      void SecureStore.setItemAsync(CONSENT_KEY, 'granted').catch(() => {});
+    }
+    resolver.current?.(granted);
+    resolver.current = null;
+  }, []);
+
+  const consentSheet = (
+    <BottomSheet visible={visible} onClose={() => settle(false)}>
+          <Text className="font-display-bold text-lg" style={{ color: t.text }}>Save contacts to your CRM</Text>
+          <Text className="mt-2 font-sans text-sm leading-5" style={{ color: t.textDim }}>
+            Contacts and call details you explicitly select are saved to your business CRM so
+            you and your team can follow up. Nothing is read or uploaded automatically — only
+            the entries you choose.
+          </Text>
+          <Pressable
+            onPress={() => settle(true)}
+            // No `className` — react-native-css-interop can swallow onPress
+            // on styled Pressables (see components/ui.tsx).
+            style={{ marginTop: 20, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: t.brand, paddingVertical: 12 }}
+          >
+            <Text className="font-sans-bold text-base text-on-brand">Continue</Text>
+          </Pressable>
+          <Pressable onPress={() => settle(false)} style={{ marginTop: 8, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+            <Text className="font-sans-semibold text-sm" style={{ color: t.textDim }}>Not now</Text>
+          </Pressable>
+    </BottomSheet>
+  );
+
+  return { ensureConsent, consentSheet };
+}

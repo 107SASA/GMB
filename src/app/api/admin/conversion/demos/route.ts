@@ -6,7 +6,7 @@ import Lead from '@/models/Lead';
 import DemoBooking from '@/models/DemoBooking';
 import Business from '@/models/Business';
 import { PLATFORM_TENANT } from '@/lib/admin/conversionFunnel';
-import { confirmedAttendance, demoHasEnded } from '@/lib/preSalesRules';
+import { attendanceEditable, confirmedAttendance, demoHasEnded } from '@/lib/preSalesRules';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,8 +57,8 @@ export async function GET(_req: Request) {
     const bizMap = new Map((businesses as any[]).map((b) => [String(b._id), b.name]));
 
     const now = new Date();
-    const startOfToday = new Date(now);
-    startOfToday.setHours(0, 0, 0, 0);
+    // "Today" is the India day, whatever timezone the server runs in.
+    const startOfToday = startOfDayIn(DEMO_TIMEZONE, now);
     const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
 
     const rows = (bookings as any[]).map((b) => {
@@ -75,7 +75,7 @@ export async function GET(_req: Request) {
       const autoUnconfirmed = !staffOutcome && b.status === 'No Show' && b.attendance?.source === 'auto-timeout';
       let outcome: string | null = null;
       if (staffOutcome) {
-        outcome = { attended: 'Attended', no_show: 'No-show (confirmed)', declined: 'Declined', not_ready: 'Not ready' }[staffOutcome];
+        outcome = { attended: 'Attended', no_show: 'No-show (confirmed)', declined: 'Declined', not_ready: 'Not ready', team_missed: 'Our team missed it' }[staffOutcome];
       } else if (autoUnconfirmed) {
         outcome = 'No-show (auto, unconfirmed)';
       } else if (b.status === 'Completed' && lead) {
@@ -103,7 +103,11 @@ export async function GET(_req: Request) {
         attendance: staffOutcome,
         attendanceUnconfirmed: autoUnconfirmed,
         // Outcome buttons appear once the recorded demo time has passed.
-        canConfirmAttendance: ['Confirmed', 'Completed', 'No Show'].includes(b.status) && demoHasEnded(b, now) === true,
+        canConfirmAttendance: attendanceEditable(b) && demoHasEnded(b, now) === true,
+        // Over (recorded end, else ~1h after a parsed start) and nobody has said what happened.
+        needsOutcome: !staffOutcome && ['Pending', 'Confirmed'].includes(b.status) && (
+          demoHasEnded(b, now) ?? (parsed ? parsed.getTime() + 60 * 60 * 1000 <= now.getTime() : false)
+        ),
         createdAt: b.createdAt,
         updatedAt: b.updatedAt,
       };
@@ -126,18 +130,14 @@ export async function GET(_req: Request) {
         cancelled: rows.filter((r) => r.status === 'Cancelled').length,
         rescheduled: rows.filter((r) => r.status === 'Rescheduled').length,
         noShow: rows.filter((r) => r.status === 'No Show').length,
-        overdue: rows.filter(
-          (r) => (scheduledStatuses.includes(r.status) && r.parsedStart && new Date(r.parsedStart) < startOfToday) || r.attendanceUnconfirmed
-        ).length,
+        overdue: rows.filter((r) => r.needsOutcome || r.attendanceUnconfirmed).length,
       },
       groups: {
         today: rows.filter((r) => isToday(r) && scheduledStatuses.includes(r.status)),
         upcoming: rows.filter((r) => isFuture(r) && !isToday(r) && scheduledStatuses.includes(r.status)),
-        // Scheduled (Pending/Confirmed) but the slot has passed and nobody has
-        // marked it Completed / No Show yet.
-        overdue: rows.filter(
-          (r) => (scheduledStatuses.includes(r.status) && r.parsedStart && new Date(r.parsedStart) < startOfToday) || r.attendanceUnconfirmed
-        ),
+        // Scheduled (Pending/Confirmed), already over, and nobody has recorded
+        // what happened — as soon as it ends, not from the next day.
+        overdue: rows.filter((r) => r.needsOutcome || r.attendanceUnconfirmed),
         needsScheduling: rows.filter((r) => r.status === 'Pending' && !r.parsedStart),
         completed: rows.filter((r) => r.status === 'Completed').slice(0, 50),
         cancelledOrNoShow: rows
@@ -150,6 +150,20 @@ export async function GET(_req: Request) {
     console.error('[admin/conversion/demos] failed:', error);
     return NextResponse.json({ success: false, error: toFriendlyMessage(error) }, { status: 500 });
   }
+}
+
+const DEMO_TIMEZONE = 'Asia/Kolkata';
+
+/** Midnight of `now`'s calendar day in `timeZone`, as a UTC instant. */
+function startOfDayIn(timeZone: string, now = new Date()): Date {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+      .formatToParts(now)
+      .map((p) => [p.type, p.value])
+  );
+  const localAsUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  const offsetMs = localAsUtc - Math.floor(now.getTime() / 1000) * 1000;
+  return new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day) - offsetMs);
 }
 
 /**

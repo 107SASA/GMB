@@ -43,7 +43,7 @@ const DemoBookingSchema = new mongoose.Schema({
   // counts. forStartUtc ties the record to one demo time: after a reschedule
   // it no longer matches startUtc and is ignored. Absent on older bookings.
   attendance: {
-    outcome: { type: String, enum: ['unconfirmed', 'attended', 'no_show', 'declined', 'not_ready'] },
+    outcome: { type: String, enum: ['unconfirmed', 'attended', 'no_show', 'declined', 'not_ready', 'team_missed'] },
     source:  { type: String, enum: ['auto-timeout', 'staff'] },
     forStartUtc: { type: Date },
     at:      { type: Date },
@@ -53,6 +53,9 @@ const DemoBookingSchema = new mongoose.Schema({
   // message has been claimed — set atomically just before sending, cleared
   // if the send fails. A rescheduled demo (new startUtc) can get its own.
   postDemoMessageFor: { type: String },
+  // `${change}:${demo time}` of the one message sent when a super admin
+  // cancelled / moved this demo (services/demo/adminDemoChange.ts).
+  adminNoticeFor: { type: String },
   // The 24h-before/1h-before reminder ScheduledActions created alongside
   // this booking, so they can be found and cancelled together on
   // reschedule/cancel without a separate lookup query.

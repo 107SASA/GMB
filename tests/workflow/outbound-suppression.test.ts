@@ -159,11 +159,25 @@ test('WhatsApp OTP (Twilio auth template) — suppressed: no Twilio call', (t) =
     return app.send.sendOtpMessage(PHONE, 'Your code is 123456', '123456');
   }));
 
-test('WhatsApp OTP via Meta — suppressed: no Graph API call', (t) =>
-  both(t, 'meta', () => {
-    process.env.WHATSAPP_PROVIDER = 'meta';
-    return app.send.sendOtpMessage(PHONE, 'Your code is 123456', '123456');
-  }));
+test('WhatsApp OTP via Meta: no approved authentication template there — refused visibly, never sent as text', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const saved = process.env.WHATSAPP_PROVIDER;
+  process.env.WHATSAPP_PROVIDER = 'meta';
+  try {
+    for (const suppressed of [true, false]) {
+      setSuppression(suppressed);
+      providerCalls();
+      const res = await app.send.sendOtpMessage(PHONE, 'Your code is 123456', '123456');
+      assert.equal(res.success, false);
+      assert.equal(res.errorKind, 'TEMPLATE_CONFIG_MISSING');
+      assert.deepEqual(providerCalls(), [], 'no Graph API call, no Twilio call');
+    }
+  } finally {
+    setSuppression(true);
+    if (saved === undefined) delete process.env.WHATSAPP_PROVIDER;
+    else process.env.WHATSAPP_PROVIDER = saved;
+  }
+});
 
 test('email OTP — suppressed: no Resend or SendGrid call', (t) =>
   both(t, 'resend', () => app.email.sendEmailOtp(EMAIL, '123456', 'verify', 10)));

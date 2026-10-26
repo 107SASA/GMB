@@ -115,6 +115,7 @@ export async function POST(req: Request) {
       name: usablePersonName(user.fullName) || businessName,
       phone: normalizedPhone,
       businessName,
+      channel: 'website',
     }).catch((err) => {
       console.error('Free Report — CRM lead wiring failed (audit still dispatched):', err);
       return null;

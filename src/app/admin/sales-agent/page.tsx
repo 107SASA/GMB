@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Bot, Plus, Trash2, Save, Info } from 'lucide-react';
 import { SalesKnowledgeEditor, type KnowledgeShape } from '@/components/admin/SalesKnowledgeEditor';
-import { SALES_FOLLOW_UP_DELAY_MINUTES, SALES_FOLLOW_UP_LIMIT, SALES_INVITE_MIN_DELAY_MINUTES, SALES_QUIET_HOURS } from '@/lib/preSalesRules';
+import { SALES_FOLLOW_UP_DELAY_MINUTES, SALES_FOLLOW_UP_LIMIT, SALES_INVITE_MIN_DELAY_MINUTES } from '@/lib/preSalesRules';
 
 const FOLLOW_UP_HOURS = SALES_FOLLOW_UP_DELAY_MINUTES / 60;
 const INVITE_MIN_HOURS = SALES_INVITE_MIN_DELAY_MINUTES / 60;
@@ -50,7 +50,8 @@ export default function SalesAgentAdminPage() {
         const res = await fetch('/api/admin/sales-agent');
         const json = await res.json();
         if (json.success) {
-          setConfig(json.config);
+          // An older stored delay below the real minimum is shown as what actually happens.
+          setConfig({ ...json.config, firstMessage: { ...json.config.firstMessage, delayMinutes: Math.max(SALES_INVITE_MIN_DELAY_MINUTES, json.config.firstMessage?.delayMinutes || 0) } });
           setVars(json.variables || []);
           setDefaultKnowledge(json.defaultKnowledge || {});
         }
@@ -96,8 +97,8 @@ export default function SalesAgentAdminPage() {
             <p className="text-sm text-on-surface-variant">Post-audit lead nurture — fully customizable.</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-on-surface-variant">{config.enabled ? 'Enabled' : 'Disabled'}</span>
+        <div className="flex items-center gap-3" title="Off: the agent stops replying to leads and sends nothing automated. Automated invitations and follow-ups also need Nurturing switched on.">
+          <span className="text-sm font-medium text-on-surface-variant">{config.enabled ? 'Agent on (live replies)' : 'Agent off'}</span>
           <Toggle on={config.enabled} onChange={(v) => setConfig({ ...config, enabled: v })} />
         </div>
       </div>
@@ -153,7 +154,7 @@ export default function SalesAgentAdminPage() {
           <h2 className="font-bold text-on-surface">First message (after audit)</h2>
           <div className="flex items-center gap-3 text-sm">
             <label className="text-on-surface-variant">Send after</label>
-            <input type="number" min={0} className="w-20 px-2 py-1 rounded-lg border border-outline-variant text-sm" value={config.firstMessage.delayMinutes} onChange={(e) => setFirst({ delayMinutes: Number(e.target.value) })} />
+            <input type="number" min={SALES_INVITE_MIN_DELAY_MINUTES} step={15} className="w-20 px-2 py-1 rounded-lg border border-outline-variant text-sm" value={config.firstMessage.delayMinutes} onChange={(e) => setFirst({ delayMinutes: Number(e.target.value) })} />
             <span className="text-on-surface-variant">minutes</span>
           </div>
         </div>
@@ -166,7 +167,7 @@ export default function SalesAgentAdminPage() {
           ))}
         </div>
         <p className="text-xs text-on-surface-variant">
-          Effective timing: at least {INVITE_MIN_HOURS} hours after the report{config.firstMessage.delayMinutes > SALES_INVITE_MIN_DELAY_MINUTES ? ` (your ${config.firstMessage.delayMinutes} minutes)` : ''}, and never between {SALES_QUIET_HOURS.start} and {SALES_QUIET_HOURS.end} (IST) unless Nurturing Configuration sets other quiet hours. A number that has never messaged us gets only the approved “Reply YES” template instead.
+          Effective timing: at least {INVITE_MIN_HOURS} hours after the report{config.firstMessage.delayMinutes > SALES_INVITE_MIN_DELAY_MINUTES ? ` (your ${config.firstMessage.delayMinutes} minutes)` : ''}, and outside the quiet hours set in Nurturing Configuration (if switched on there). A number that has never messaged us gets only the approved “Reply YES” template instead.
         </p>
         {config.firstMessage.mode === 'template' ? (
           <div>

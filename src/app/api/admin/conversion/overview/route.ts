@@ -4,33 +4,22 @@ import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import Lead from '@/models/Lead';
 import LeadEvent from '@/models/LeadEvent';
-import DemoBooking from '@/models/DemoBooking';
-import Business from '@/models/Business';
-import BillingPlan from '@/models/BillingPlan';
-import {
-  FUNNEL_FILTERS,
-  FUNNEL_STEPS,
-  createdAtFilter,
-  resolveDateRange,
-  scoped,
-} from '@/lib/admin/conversionFunnel';
+import { rangeScopeLabel, resolveDateRange, scoped } from '@/lib/admin/conversionFunnel';
+import { SEGMENTS } from '@/lib/admin/leadMilestones';
+import { conversionReport } from '@/services/admin/conversionReport';
+import { platformRevenue } from '@/services/admin/platformMetrics';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * GET /api/admin/conversion/overview?range=30d
+ * GET /api/admin/conversion/overview?range=all
  *
- * The SuperAdmin conversion Overview in one call:
- *   - KPI counts (leads / new / active sales / demo interest / scheduled /
- *     completed / purchase intent / customers) for the date window
- *   - the conversion funnel (each step's count + drop-off), all-time by
- *     default so the shape is meaningful even with little recent data
- *   - side-state counts (lost / opted out / human handoffs)
- *   - revenue signals from real data (active workspaces × editable plan price)
- *   - compact "recent activity" lists
- *
- * Everything is platform-tenant scoped. No fake values — an empty platform
- * returns zeros and empty arrays; the UI shows "No data yet".
+ * The SuperAdmin Conversion Overview in one call. Every lead number is for
+ * the leads CREATED in the range (default: all time) and comes from the
+ * segment registry in lib/admin/leadMilestones.ts — the same predicates
+ * /admin/leads?segment=<key> filters with, so a KPI and its list match.
+ * Demo BOOKINGS are reported separately from leads that reached a demo.
+ * Revenue comes from the shared platform calculation (services/admin/platformMetrics.ts).
  */
 export async function GET(req: Request) {
   const auth = await requireSuperAdmin();
@@ -38,119 +27,57 @@ export async function GET(req: Request) {
 
   try {
     await dbConnect();
-    const url = new URL(req.url);
-    const range = resolveDateRange(url.searchParams);
-    const dateF = createdAtFilter(range);
+    const range = resolveDateRange(new URL(req.url).searchParams);
+    const [report, revenue] = await Promise.all([conversionReport(range), platformRevenue()]);
+    const platformIds = report.rows.map((r) => r.lead._id);
 
-    // Windowed lead counts (respect the date filter).
-    const windowMatch = (extra: Record<string, unknown> = {}) => scoped({ ...dateF, ...extra });
-
-    const [
-      totalLeadsAllTime,
-      newLeadsInWindow,
-      activeSales,
-      demoInterest,
-      purchaseIntent,
-      lost,
-      optedOut,
-      humanHandoffs,
-      customersAllTime,
-      customersInWindow,
-    ] = await Promise.all([
-      Lead.countDocuments(scoped()),
-      Lead.countDocuments(windowMatch()),
-      Lead.countDocuments(scoped(FUNNEL_FILTERS.salesNurturing)),
-      Lead.countDocuments(scoped(FUNNEL_FILTERS.demoInterest)),
-      Lead.countDocuments(scoped(FUNNEL_FILTERS.purchaseIntent)),
-      Lead.countDocuments(scoped(FUNNEL_FILTERS.lost)),
-      Lead.countDocuments(scoped(FUNNEL_FILTERS.optedOut)),
-      Lead.countDocuments(scoped(FUNNEL_FILTERS.humanHandoff)),
-      Lead.countDocuments(scoped(FUNNEL_FILTERS.customer)),
-      Lead.countDocuments(windowMatch(FUNNEL_FILTERS.customer)),
-    ]);
-
-    // Demo booking status counts (platform demos only — every DemoBooking has
-    // a leadId; join to platform leads).
-    const platformLeadIds = await Lead.find(scoped()).select('_id').lean();
-    const idSet = platformLeadIds.map((l: any) => l._id);
-    const demoAgg = await DemoBooking.aggregate([
-      { $match: { leadId: { $in: idSet } } },
-      { $group: { _id: '$status', count: { $sum: 1 } } },
-    ]);
-    const demoCount = (s: string) => demoAgg.find((d: any) => d._id === s)?.count ?? 0;
-    const demosScheduled = demoCount('Pending') + demoCount('Confirmed') + demoCount('Rescheduled');
-    const demosCompleted = demoCount('Completed');
-
-    // The funnel (all-time — shape needs history to be meaningful).
-    const funnel = await Promise.all(
-      FUNNEL_STEPS.map(async (step) => ({
-        key: step.key,
-        label: step.label,
-        count: await Lead.countDocuments(scoped(step.filter)),
-      }))
-    );
-
-    // Revenue signals — real data only. Active workspaces × editable plan
-    // price (same method as /api/admin/revenue; understates longer cycles).
-    const plan = await BillingPlan.findOne({ key: 'default' }).lean();
-    const monthlyPriceInr =
-      (plan as any)?.durations?.find((d: any) => d.cycle === 'monthly' && d.enabled)?.priceInr ??
-      (plan as any)?.priceInr ??
-      0;
-    const [activeWorkspaces, trialingWorkspaces, pastDueWorkspaces] = await Promise.all([
-      Business.countDocuments({ subscriptionStatus: 'active' }),
-      Business.countDocuments({ subscriptionStatus: 'trialing' }),
-      Business.countDocuments({ subscriptionStatus: 'past_due' }),
-    ]);
-
-    // Recent activity — compact, most-recent-first.
-    const [recentLeads, recentDemoEvents, recentHandoffs, recentPayments, recentCustomers] = await Promise.all([
-      Lead.find(scoped()).sort({ createdAt: -1 }).limit(6).select('name phone currentStage currentAgent createdAt').lean(),
-      LeadEvent.find({ type: { $in: ['DEMO_REQUESTED', 'DEMO_SCHEDULED'] } })
+    // Recent activity — platform leads only (never a customer tenant's events).
+    const platformEvent = (types: string[]) =>
+      LeadEvent.find({ type: { $in: types }, conversationType: { $ne: 'tenant' }, $or: [{ leadId: { $exists: false } }, { leadId: { $in: platformIds } }] })
         .sort({ createdAt: -1 })
         .limit(6)
         .select('type phone payload actor createdAt leadId')
-        .lean(),
-      LeadEvent.find({ type: 'HUMAN_HANDOFF' }).sort({ createdAt: -1 }).limit(6).select('phone payload actor createdAt leadId').lean(),
-      LeadEvent.find({ type: { $in: ['PAYMENT_SUCCESS', 'CUSTOMER_ACTIVATED'] } })
-        .sort({ createdAt: -1 })
-        .limit(6)
-        .select('type phone payload createdAt leadId')
-        .lean(),
-      Lead.find(scoped(FUNNEL_FILTERS.customer)).sort({ updatedAt: -1 }).limit(6).select('name phone updatedAt').lean(),
+        .lean();
+    const [recentLeads, recentDemoEvents, recentHandoffs, recentPayments] = await Promise.all([
+      Lead.find(scoped()).sort({ createdAt: -1 }).limit(6).select('name phone currentStage currentAgent createdAt').lean(),
+      platformEvent(['DEMO_REQUESTED', 'DEMO_SCHEDULED']),
+      platformEvent(['HUMAN_HANDOFF']),
+      platformEvent(['PAYMENT_SUCCESS', 'CUSTOMER_ACTIVATED']),
     ]);
+    const recentCustomers = report.rows
+      .filter((r) => r.reached.has('customer'))
+      .sort((a, b) => new Date(b.lead.lastActivityAt || b.lead.createdAt).getTime() - new Date(a.lead.lastActivityAt || a.lead.createdAt).getTime())
+      .slice(0, 6)
+      .map((r) => ({ _id: r.lead._id, name: r.lead.name, phone: r.lead.phone, at: r.lead.lastActivityAt || r.lead.createdAt }));
 
+    const s = report.segments;
     return NextResponse.json({
       success: true,
-      range: { key: range.key, since: range.since, until: range.until },
+      range: { key: range.key, since: range.since, until: range.until, label: rangeScopeLabel(range.key) },
       kpis: {
-        totalLeads: totalLeadsAllTime,
-        newLeads: newLeadsInWindow,
-        activeSalesLeads: activeSales,
-        demoInterested: demoInterest,
-        demosScheduled,
-        demosCompleted,
-        purchaseIntent,
-        convertedCustomers: customersAllTime,
-        convertedInWindow: customersInWindow,
-        conversionRate: totalLeadsAllTime > 0 ? Math.round((customersAllTime / totalLeadsAllTime) * 1000) / 10 : 0,
-        lostLeads: lost,
-        optedOut,
-        humanHandoffs,
+        totalLeads: report.leads,
+        activeSalesLeads: s.activeSales,
+        demoInterested: s.demoInterest,
+        demoScheduledLeads: s.demoScheduled,
+        demoCompletedLeads: s.demoCompleted,
+        purchaseIntent: s.purchaseIntent,
+        convertedCustomers: s.customer,
+        conversionRate: report.conversion.leadToCustomer.value ?? 0,
+        withHuman: s.withHuman,
+        optedOutOrLost: s.optedOutOrLost,
+        pendingPayments: s.pendingPayment,
       },
+      segments: Object.fromEntries(Object.entries(SEGMENTS).map(([k, d]) => [k, { label: d.label, description: d.description, kind: d.kind }])),
+      bookings: report.bookings,
       revenue: {
-        monthlyPriceInr,
-        activeWorkspaces,
-        trialingWorkspaces,
-        pastDueWorkspaces,
-        mrrInr: activeWorkspaces * monthlyPriceInr,
-        // Distinct from `activeWorkspaces`: pending = a lead that reached
-        // purchase intent / conversion-pending but has no verified payment yet.
-        pendingPayments: await Lead.countDocuments(
-          scoped({ currentStage: 'CONVERSION_PENDING' })
-        ),
+        mrrInr: revenue.mrr,
+        payingSubscriptions: revenue.payingSubscriptions,
+        estimatedCount: revenue.estimated,
+        trialActiveWorkspaces: revenue.statuses.trialActive,
+        pastDueWorkspaces: revenue.statuses.pastDue,
       },
-      funnel,
+      funnel: report.funnel,
+      conversion: report.conversion,
       recent: {
         leads: recentLeads,
         demoEvents: recentDemoEvents,

@@ -279,3 +279,60 @@ test('re-confirming the same outcome while its message is pending keeps exactly 
   await fireDue(d.leadId);
   assert.equal(await count(d.phone), 1);
 });
+
+// ── "Our team missed it" (team_missed) ──────────────────────────────────────
+
+test('team missed: booking needs a new time (not a customer no-show), lead not "demo completed", one apology that offers rescheduling', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const d = await bookedDemo(60);
+  assert.deepEqual(await confirm(d.bookingId, 'team_missed'), { ok: true, scheduled: true });
+  const b: any = await booking(d.bookingId);
+  assert.equal(b.status, 'Rescheduled', 'never counted as the customer\'s No Show');
+  assert.equal(b.attendance.outcome, 'team_missed');
+  const lead: any = await m.Lead.findById(d.leadId).lean();
+  assert.equal(lead.currentStage, 'DEMO_SCHEDULED', 'no demo happened — not DEMO_COMPLETED');
+  assert.equal(lead.currentAgent, 'DEMO', 'the demo flow keeps the lead to pick a new time');
+  const [row]: any[] = await postDemoRows(d.leadId);
+  assert.equal(row.payload.kind, 'apology');
+
+  await fireDue(d.leadId);
+  await fireDue(d.leadId); // a second pass never sends again
+  const sent = await rows(d.phone);
+  assert.equal(sent.length, 1);
+  assert.match(textOf(sent[0]), /we're very sorry — our team couldn't join your Growwmatics demo on Mon 26 Oct at 4:00 PM/);
+  assert.match(textOf(sent[0]), /Reply RESCHEDULE/);
+  assert.doesNotMatch(textOf(sent[0]), /we missed you/, 'never implies the customer missed it');
+
+  // The reply uses the existing reschedule flow in the booking thread.
+  dispatched.length = 0;
+  const form = new URLSearchParams({ MessageSid: `SMtm${Date.now()}`, From: `whatsapp:${d.phone}`, To: 'whatsapp:+919000000000', Body: 'RESCHEDULE', NumMedia: '0' });
+  await m.webhook.handleTwilioWebhook(new Request('http://localhost/api/whatsapp/webhook', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: form.toString() }));
+  assert.deepEqual(dispatched.map((e) => e.name), ['booking/agent.reply']);
+});
+
+test('team missed can be corrected afterwards, and a corrected outcome cancels the apology', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const d = await bookedDemo(60);
+  await confirm(d.bookingId, 'team_missed');
+  const corrected = await confirm(d.bookingId, 'no_show');
+  assert.equal(corrected.ok, true, 'still editable from Rescheduled');
+  const b: any = await booking(d.bookingId);
+  assert.equal(b.status, 'No Show');
+  const rowsNow: any[] = await postDemoRows(d.leadId);
+  assert.equal(rowsNow.find((r) => r.payload.kind === 'apology').status, 'CANCELLED');
+  // A booking the LEAD rescheduled (no team_missed record) still cannot take an outcome.
+  const other = await bookedDemo(60);
+  await m.DemoBooking.updateOne({ _id: other.bookingId }, { $set: { status: 'Rescheduled' } });
+  const refused = await confirm(other.bookingId, 'attended');
+  assert.equal(refused.ok, false);
+});
+
+test('team missed never counts toward the customer no-show rate', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const { bookingSummary } = await import('../../src/services/admin/conversionReport');
+  const s = bookingSummary([{ bookings: [{ status: 'Rescheduled', attendance: { outcome: 'team_missed' } }, { status: 'Completed' }] } as any]);
+  assert.equal(s.noShow, 0);
+  assert.equal(s.noShowRate.value, 0);
+  assert.equal(m.rules.postDemoKindFor('team_missed'), 'apology');
+  assert.equal(m.rules.statusForAttendance('team_missed'), 'Rescheduled');
+});

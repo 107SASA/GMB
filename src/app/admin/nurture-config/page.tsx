@@ -1,35 +1,28 @@
 'use client';
 
+/**
+ * SuperAdmin — Nurturing Configuration.
+ *
+ * Only settings the sender actually reads (services/nurture/nurtureAdminConfig.ts).
+ * The sequence itself is fixed (lib/preSalesRules.ts): one invitation after
+ * the free report, one follow-up 48h later if the lead hasn't replied.
+ */
+
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Plus, Save, Trash2 } from 'lucide-react';
-import { SALES_FOLLOW_UP_DELAY_MINUTES, SALES_FOLLOW_UP_LIMIT, SALES_INVITE_MIN_DELAY_MINUTES, SALES_QUIET_HOURS, SALES_TIMEZONE } from '@/lib/preSalesRules';
+import Link from 'next/link';
+import { Loader2, Save, RefreshCw } from 'lucide-react';
+import { RelTime } from '@/components/admin/conversion/primitives';
 
-type Unit = 'minutes' | 'hours' | 'days';
-
-interface FollowUp {
-  id: string;
-  enabled: boolean;
-  delayMinutes: number;
-  onlyIfNoReply: boolean;
-  description: string;
-}
-
-interface QuietHours {
-  enabled: boolean;
-  start: string;
-  end: string;
-}
+type Unit = 'hours' | 'days';
 
 interface NurtureConfig {
   enabled: boolean;
-  rolloutPercentage: number;
+  salesAgentEnabled: boolean;
   timezone: string;
-  quietHours: QuietHours;
-  minimumMessageGapMinutes: number;
-  maxNurtureMessages: number;
+  quietHours: { enabled: boolean; start: string; end: string };
   firstMessage: { enabled: boolean; delayMinutes: number };
-  followUps: FollowUp[];
-  leadIdAllowlist: string[];
+  followUp: { enabled: boolean; configured?: boolean };
+  rules: { minFirstDelayMinutes: number; followUpDelayMinutes: number; followUps: number };
   version: number;
   updatedAt: string | null;
   updatedBy: string | null;
@@ -40,31 +33,32 @@ interface Preview {
   leadScore: number;
   intent: string | null;
   nextBestAction: string | null;
+  step: 'invitation' | 'follow-up' | 'done';
   nurtureEligible: boolean;
+  reasonCode: string | null;
   reason: string;
   nextPossibleAction: string;
+  dueAt: string | null;
 }
+
+interface Skipped { at: string; leadId: string | null; name: string | null; phone: string | null; reasonCode: string; reason: string; category: string; categoryLabel: string }
 
 const cls = 'w-full px-3 py-2 rounded-lg border border-outline-variant text-sm bg-surface-container-lowest';
 
 function displayDelay(minutes: number): { value: number; unit: Unit } {
-  if (minutes >= 7 * 24 * 60 && minutes % (24 * 60) === 0) return { value: minutes / (24 * 60), unit: 'days' };
-  if (minutes >= 60 && minutes % 60 === 0) return { value: minutes / 60, unit: 'hours' };
-  return { value: minutes, unit: 'minutes' };
+  if (minutes % (24 * 60) === 0) return { value: minutes / (24 * 60), unit: 'days' };
+  return { value: Math.round((minutes / 60) * 100) / 100, unit: 'hours' };
 }
 
-function toMinutes(value: number, unit: Unit): number {
-  if (unit === 'days') return value * 24 * 60;
-  if (unit === 'hours') return value * 60;
-  return value;
-}
-
-function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
       onClick={() => onChange(!on)}
-      className={`relative w-12 h-6 rounded-full transition-colors ${on ? 'bg-primary' : 'bg-outline'}`}
+      className={`relative w-12 h-6 rounded-full transition-colors shrink-0 ${on ? 'bg-primary' : 'bg-outline'}`}
     >
       <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-surface-container-lowest rounded-full transition-transform ${on ? 'translate-x-6' : ''}`} />
     </button>
@@ -77,25 +71,47 @@ export default function NurtureConfigPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [allowId, setAllowId] = useState('');
+  const [delay, setDelay] = useState<{ value: string; unit: Unit }>({ value: '2', unit: 'hours' });
   const [previewId, setPreviewId] = useState('');
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [skipped, setSkipped] = useState<Skipped[] | null>(null);
+  const [skippedError, setSkippedError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await fetch('/api/admin/nurture-config');
-      const json = await res.json();
-      if (!json.success) setError(json.error || 'Could not load configuration');
-      else setConfig(json.config);
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(json?.error || `Request failed (${res.status})`);
+      setConfig(json.config);
+      const d = displayDelay(json.config.firstMessage.delayMinutes);
+      setDelay({ value: String(d.value), unit: d.unit });
+    } catch (e: any) {
+      setError(e?.message || 'Could not load configuration');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const loadSkipped = useCallback(async () => {
+    setSkippedError(null);
+    try {
+      const res = await fetch('/api/admin/nurture-config/skipped?limit=50');
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(json?.error || `Request failed (${res.status})`);
+      setSkipped(json.skipped);
+    } catch (e: any) {
+      setSkipped(null);
+      setSkippedError(e?.message || 'Could not load skipped messages');
+    }
+  }, []);
+
+  useEffect(() => { load(); loadSkipped(); }, [load, loadSkipped]);
+
+  const delayMinutes = Math.round(Number(delay.value) * (delay.unit === 'days' ? 24 * 60 : 60));
 
   const save = async () => {
     if (!config) return;
@@ -103,17 +119,24 @@ export default function NurtureConfigPage() {
     setError(null);
     setNotice(null);
     try {
+      const body = {
+        enabled: config.enabled,
+        timezone: config.timezone,
+        quietHours: config.quietHours,
+        firstMessage: { enabled: config.firstMessage.enabled, delayMinutes },
+        followUp: { enabled: config.followUp.enabled },
+      };
       const res = await fetch('/api/admin/nurture-config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+        body: JSON.stringify(body),
       });
-      const json = await res.json();
-      if (!json.success) setError(json.error || 'Save failed');
-      else {
-        setNotice(`Saved as version ${json.version}. Running sequences keep the version they started with.`);
-        await load();
-      }
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(json?.error || `Save failed (${res.status})`);
+      setNotice(json.changes?.length ? `Saved as version ${json.version}: ${json.changes.join('; ')}.` : 'No changes to save.');
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -122,289 +145,188 @@ export default function NurtureConfigPage() {
   const runPreview = async () => {
     setPreviewing(true);
     setPreview(null);
-    setError(null);
+    setPreviewError(null);
     try {
       const res = await fetch('/api/admin/nurture-config/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leadId: previewId.trim() }),
       });
-      const json = await res.json();
-      if (!json.success) setError(json.error || 'Preview failed');
-      else setPreview(json.preview);
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(json?.error || `Preview failed (${res.status})`);
+      setPreview(json.preview);
+    } catch (e: any) {
+      setPreviewError(e?.message || 'Preview failed');
     } finally {
       setPreviewing(false);
     }
   };
 
-  if (loading) {
+  if (loading && !config) {
     return <div className="flex items-center justify-center py-32"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
-  if (!config) return <div className="p-8 text-error">{error || 'Configuration unavailable'}</div>;
+  if (!config) {
+    return (
+      <div role="alert" className="p-8 text-error">
+        {error || 'Configuration unavailable'} <button onClick={load} className="underline font-semibold">Retry</button>
+      </div>
+    );
+  }
 
-  const first = displayDelay(config.firstMessage.delayMinutes);
+  const minHours = config.rules.minFirstDelayMinutes / 60;
+  const followHours = config.rules.followUpDelayMinutes / 60;
 
   return (
     <div className="space-y-5 max-w-4xl">
       <div>
         <h1 className="font-heading text-2xl font-bold text-on-surface">Nurturing Configuration</h1>
         <p className="text-sm text-on-surface-variant mt-1">
-          Timing and rollout for the existing sales nurture sequence. Version {config.version}.
-          Intelligence, consent, opt-out, and human handoff still decide whether a message may send.
+          Automated WhatsApp to free-report leads: <strong>one invitation</strong> at least {minHours} hours after the report, then <strong>one follow-up</strong> {followHours} hours later only if they haven&apos;t replied.
+          Message wording is on the <Link href="/admin/sales-agent" className="underline">Sales Agent</Link> page.
+        </p>
+        <p className="text-xs text-outline mt-1">
+          Version {config.version}{config.updatedAt ? <> · updated <RelTime date={config.updatedAt} /></> : null}
         </p>
       </div>
 
-      {error && <p className="text-sm text-error">{error}</p>}
-      {notice && <p className="text-sm text-secondary">{notice}</p>}
+      {error && <div role="alert" className="rounded-xl border border-error-container bg-error-container/40 p-3 text-sm text-on-error-container">{error}</div>}
+      {notice && <div role="status" className="rounded-xl border border-secondary-fixed bg-secondary-container/40 p-3 text-sm text-on-secondary-container">{notice}</div>}
 
-      <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 space-y-4">
-        <h2 className="font-semibold text-sm">Global controls</h2>
-        <label className="flex items-center justify-between gap-3 text-sm">
-          <span>Nurturing enabled</span>
-          <Toggle on={config.enabled} onChange={(enabled) => setConfig({ ...config, enabled })} />
-        </label>
-        <label className="block text-sm">
-          Rollout percentage
-          <input
-            type="number"
-            min={0}
-            max={100}
-            className={`${cls} mt-1`}
-            value={config.rolloutPercentage}
-            onChange={(e) => setConfig({ ...config, rolloutPercentage: Number(e.target.value) })}
-          />
-          <span className="block text-xs text-outline mt-1">0% selects no proactive cohort unless a lead is allowlisted. It does not bypass safety checks.</span>
-        </label>
-        <label className="block text-sm">
-          Timezone
-          <input className={`${cls} mt-1`} value={config.timezone} onChange={(e) => setConfig({ ...config, timezone: e.target.value })} />
-        </label>
-        <label className="flex items-center justify-between gap-3 text-sm">
-          <span>Quiet hours</span>
-          <Toggle
-            on={config.quietHours.enabled}
-            onChange={(enabled) => setConfig({ ...config, quietHours: { ...config.quietHours, enabled } })}
-          />
-        </label>
-        <p className="text-xs text-outline">
-          When off, automated sales messages still wait out {SALES_QUIET_HOURS.start}–{SALES_QUIET_HOURS.end} ({SALES_TIMEZONE}). When on, the hours below are used instead.
-        </p>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="text-sm">Start
-            <input className={`${cls} mt-1`} value={config.quietHours.start} onChange={(e) => setConfig({ ...config, quietHours: { ...config.quietHours, start: e.target.value } })} />
-          </label>
-          <label className="text-sm">End
-            <input className={`${cls} mt-1`} value={config.quietHours.end} onChange={(e) => setConfig({ ...config, quietHours: { ...config.quietHours, end: e.target.value } })} />
-          </label>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="text-sm">Minimum message gap (minutes)
-            <input type="number" min={0} className={`${cls} mt-1`} value={config.minimumMessageGapMinutes} onChange={(e) => setConfig({ ...config, minimumMessageGapMinutes: Number(e.target.value) })} />
-          </label>
-          <label className="text-sm">Maximum nurture messages
-            <input type="number" min={0} max={20} className={`${cls} mt-1`} value={config.maxNurtureMessages} onChange={(e) => setConfig({ ...config, maxNurtureMessages: Number(e.target.value) })} />
-          </label>
-        </div>
-      </section>
-
-      <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 space-y-3">
-        <h2 className="font-semibold text-sm">First message</h2>
-        <label className="flex items-center justify-between text-sm">
-          <span>Enabled</span>
-          <Toggle on={config.firstMessage.enabled} onChange={(enabled) => setConfig({ ...config, firstMessage: { ...config.firstMessage, enabled } })} />
-        </label>
-        <DelayEditor
-          minutes={config.firstMessage.delayMinutes}
-          units={['minutes', 'hours']}
-          onChange={(delayMinutes) => setConfig({ ...config, firstMessage: { ...config.firstMessage, delayMinutes } })}
-        />
-        <p className="text-xs text-outline">
-          Currently {first.value} {first.unit}. Effective: never sooner than {SALES_INVITE_MIN_DELAY_MINUTES / 60} hours after the report — a shorter value here is raised to that minimum.
-        </p>
-      </section>
-
-      <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-sm">Follow-up</h2>
-          {config.followUps.length < SALES_FOLLOW_UP_LIMIT && (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 text-xs font-semibold text-primary"
-            onClick={() => setConfig({
-              ...config,
-              followUps: [...config.followUps, {
-                id: `follow-up-${Date.now()}`,
-                enabled: true,
-                delayMinutes: 24 * 60,
-                onlyIfNoReply: true,
-                description: '',
-              }],
-            })}
-          >
-            <Plus className="w-3.5 h-3.5" /> Add step
-          </button>
-          )}
-        </div>
-        <p className="text-xs text-outline">
-          Effective rule: only Step 1 can send — once, about {SALES_FOLLOW_UP_DELAY_MINUTES / 60} hours after the first message, and only if the lead has not replied (any reply stops it, whatever “Only if no reply” says).
-          Turning Step 1 off sends no follow-up. Later steps are kept as saved but are not sent.
-        </p>
-        {config.followUps.map((step, index) => (
-          <div key={step.id} className={`border border-outline-variant rounded-lg p-3 space-y-2 ${index >= SALES_FOLLOW_UP_LIMIT ? 'opacity-60' : ''}`}>
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium">
-                Step {index + 1}
-                {index < SALES_FOLLOW_UP_LIMIT
-                  ? <span className="ml-2 text-xs font-normal text-outline">sends about {SALES_FOLLOW_UP_DELAY_MINUTES / 60}h after the first message{step.delayMinutes !== SALES_FOLLOW_UP_DELAY_MINUTES ? ' (the delay below is not used)' : ''}</span>
-                  : <span className="ml-2 text-xs font-normal text-outline">not sent</span>}
-              </span>
-              <button
-                type="button"
-                className="text-error"
-                onClick={() => setConfig({ ...config, followUps: config.followUps.filter((row) => row.id !== step.id) })}
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-            <DelayEditor
-              minutes={step.delayMinutes}
-              units={['minutes', 'hours', 'days']}
-              onChange={(delayMinutes) => {
-                const followUps = config.followUps.slice();
-                followUps[index] = { ...step, delayMinutes };
-                setConfig({ ...config, followUps });
-              }}
-            />
-            <label className="flex items-center justify-between text-sm">
-              <span>Enabled</span>
-              <Toggle on={step.enabled} onChange={(enabled) => {
-                const followUps = config.followUps.slice();
-                followUps[index] = { ...step, enabled };
-                setConfig({ ...config, followUps });
-              }} />
-            </label>
-            <label className="flex items-center justify-between text-sm">
-              <span>Only if no reply</span>
-              <Toggle on={step.onlyIfNoReply} onChange={(onlyIfNoReply) => {
-                const followUps = config.followUps.slice();
-                followUps[index] = { ...step, onlyIfNoReply };
-                setConfig({ ...config, followUps });
-              }} />
-            </label>
-            <input
-              className={cls}
-              placeholder="Optional description"
-              value={step.description}
-              onChange={(e) => {
-                const followUps = config.followUps.slice();
-                followUps[index] = { ...step, description: e.target.value };
-                setConfig({ ...config, followUps });
-              }}
-            />
-            <div className="flex gap-2 text-xs">
-              <button type="button" disabled={index === 0} className="disabled:opacity-40" onClick={() => move(config, index, -1, setConfig)}>Move up</button>
-              <button type="button" disabled={index === config.followUps.length - 1} className="disabled:opacity-40" onClick={() => move(config, index, 1, setConfig)}>Move down</button>
-            </div>
+      <section className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-5 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="font-semibold text-sm">Nurturing</h2>
+            <p className="text-xs text-outline">Automated invitation and follow-up. Takes effect immediately, including for sequences already running. Does not affect the Sales agent answering people who message you.</p>
           </div>
-        ))}
-      </section>
-
-      <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 space-y-3">
-        <h2 className="font-semibold text-sm">Allowlist</h2>
-        <p className="text-xs text-outline">Controlled cohort testing. An allowlisted lead still cannot bypass opt-out, human handoff, customer state, or consent.</p>
-        <div className="flex gap-2">
-          <input className={cls} placeholder="Lead id" value={allowId} onChange={(e) => setAllowId(e.target.value)} />
-          <button
-            type="button"
-            className="px-3 rounded-lg bg-primary text-white text-sm"
-            onClick={() => {
-              const id = allowId.trim();
-              if (!id || config.leadIdAllowlist.includes(id)) return;
-              setConfig({ ...config, leadIdAllowlist: [...config.leadIdAllowlist, id] });
-              setAllowId('');
-            }}
-          >Add</button>
+          <Toggle label="Nurturing" on={config.enabled} onChange={(enabled) => setConfig({ ...config, enabled })} />
         </div>
-        <ul className="text-xs space-y-1">
-          {config.leadIdAllowlist.length === 0 && <li className="text-outline">Allowlist is empty.</li>}
-          {config.leadIdAllowlist.map((id) => (
-            <li key={id} className="flex items-center justify-between">
-              <span className="font-mono">{id}</span>
-              <button type="button" className="text-error" onClick={() => setConfig({ ...config, leadIdAllowlist: config.leadIdAllowlist.filter((row) => row !== id) })}>Remove</button>
-            </li>
-          ))}
-        </ul>
-        {config.leadIdAllowlist.length > 0 && (
-          <button type="button" className="text-xs text-error" onClick={() => setConfig({ ...config, leadIdAllowlist: [] })}>Clear allowlist</button>
+        {!config.salesAgentEnabled && (
+          <p className="text-xs rounded-lg bg-warning/10 text-warning-text p-2">
+            The Sales agent itself is switched off, so nothing is sent and leads don&apos;t get live replies. Switch it on from the <Link href="/admin/sales-agent" className="underline font-semibold">Sales Agent</Link> page.
+          </p>
         )}
       </section>
 
-      <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 space-y-3">
-        <h2 className="font-semibold text-sm">Preview nurture decision</h2>
-        <p className="text-xs text-outline">Read only. This does not send a message, create a schedule, or change the lead.</p>
+      <section className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-5 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="font-semibold text-sm">Quiet hours</h2>
+            <p className="text-xs text-outline">When on, an invitation or follow-up due inside this window waits until it ends. When off, there is no time restriction. Applies to sequences that start after you save.</p>
+          </div>
+          <Toggle label="Quiet hours" on={config.quietHours.enabled} onChange={(enabled) => setConfig({ ...config, quietHours: { ...config.quietHours, enabled } })} />
+        </div>
+        {config.quietHours.enabled && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <label className="text-sm">From
+              <input type="time" className={cls} value={config.quietHours.start} onChange={(e) => setConfig({ ...config, quietHours: { ...config.quietHours, start: e.target.value } })} />
+            </label>
+            <label className="text-sm">Until
+              <input type="time" className={cls} value={config.quietHours.end} onChange={(e) => setConfig({ ...config, quietHours: { ...config.quietHours, end: e.target.value } })} />
+            </label>
+            <label className="text-sm">Timezone
+              <input className={cls} value={config.timezone} onChange={(e) => setConfig({ ...config, timezone: e.target.value })} placeholder="Asia/Kolkata" />
+            </label>
+          </div>
+        )}
+      </section>
+
+      <section className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-5 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="font-semibold text-sm">Invitation</h2>
+            <p className="text-xs text-outline">Sent after the free report completes. A number that has never messaged us first gets the approved “Reply YES” template; the findings follow only after they say yes.</p>
+          </div>
+          <Toggle label="Invitation" on={config.firstMessage.enabled} onChange={(enabled) => setConfig({ ...config, firstMessage: { ...config.firstMessage, enabled } })} />
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-sm">Send after
+            <input type="number" min={delay.unit === 'hours' ? minHours : 1} step="0.5" className={`${cls} w-28`} value={delay.value} onChange={(e) => setDelay({ ...delay, value: e.target.value })} />
+          </label>
+          <select className={`${cls} w-28`} value={delay.unit} onChange={(e) => setDelay({ ...delay, unit: e.target.value as Unit })} aria-label="Delay unit">
+            <option value="hours">hours</option>
+            <option value="days">days</option>
+          </select>
+          <span className="text-xs text-outline pb-2">Minimum {minHours} hours, maximum 7 days.</span>
+        </div>
+      </section>
+
+      <section className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="font-semibold text-sm">Follow-up</h2>
+            <p className="text-xs text-outline">
+              One follow-up {followHours} hours after the invitation, only if the lead hasn&apos;t replied. It is also skipped when a human has taken over, a demo is booked or being booked, they started a trial or paid, opted out, said they&apos;re not interested, or the AI has detected demo or purchase intent (those flows own the next step).
+            </p>
+          </div>
+          {config.followUp.configured === false
+            ? <span className="text-xs font-semibold text-outline shrink-0">Off</span>
+            : <Toggle label="Follow-up" on={config.followUp.enabled} onChange={(enabled) => setConfig({ ...config, followUp: { ...config.followUp, enabled } })} />}
+        </div>
+        {config.followUp.configured === false && (
+          <p className="mt-2 text-xs rounded-lg bg-warning/10 text-warning-text p-2">
+            No follow-up message exists, so none is sent. Add one on the <Link href="/admin/sales-agent" className="underline font-semibold">Sales Agent</Link> page to switch it on here.
+          </p>
+        )}
+      </section>
+
+      <div className="flex justify-end">
+        <button onClick={save} disabled={saving || !Number.isFinite(delayMinutes)} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-bold disabled:opacity-60">
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save
+        </button>
+      </div>
+
+      <section className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-5 space-y-3">
+        <h2 className="font-semibold text-sm">Preview a lead</h2>
+        <p className="text-xs text-outline">Read only — runs the same checks the sender runs right before sending. Does not send, schedule, or change the lead. Paste a lead id from <Link href="/admin/leads" className="underline">Leads &amp; Pipeline</Link>.</p>
         <div className="flex gap-2">
-          <input className={cls} placeholder="Lead id" value={previewId} onChange={(e) => setPreviewId(e.target.value)} />
-          <button type="button" disabled={previewing} className="px-3 rounded-lg border border-outline-variant text-sm" onClick={runPreview}>
+          <input className={cls} value={previewId} onChange={(e) => setPreviewId(e.target.value)} placeholder="Lead id" />
+          <button onClick={runPreview} disabled={previewing || !previewId.trim()} className="px-4 py-2 rounded-lg bg-primary-fixed text-primary text-sm font-semibold disabled:opacity-60">
             {previewing ? 'Checking…' : 'Preview'}
           </button>
         </div>
+        {previewError && <p role="alert" className="text-xs text-error">{previewError}</p>}
         {preview && (
-          <div className="text-sm space-y-1">
-            <p>Lead: {preview.name || '—'}</p>
-            <p>Score: {preview.leadScore}</p>
-            <p>Intent: {preview.intent || '—'}</p>
-            <p>NBA: {preview.nextBestAction || '—'}</p>
-            <p>Nurture eligible: {preview.nurtureEligible ? 'YES' : 'NO'}</p>
-            <p>Reason: {preview.reason}</p>
-            <p>Next possible action: {preview.nextPossibleAction}</p>
+          <div className="text-sm border border-outline-variant rounded-lg p-3 space-y-1">
+            <p><strong>{preview.name || 'Lead'}</strong> · score {preview.leadScore} · intent {preview.intent || '—'} · next action {preview.nextBestAction || '—'}</p>
+            <p>Next automated message: <strong>{preview.step === 'done' ? 'none (sequence finished)' : preview.step}</strong></p>
+            <p className={preview.nurtureEligible ? 'text-secondary' : 'text-warning-text'}>
+              {preview.nurtureEligible ? 'Would send.' : 'Would not send.'} {preview.reason}
+            </p>
+            <p className="text-xs text-on-surface-variant">{preview.nextPossibleAction}</p>
           </div>
         )}
       </section>
 
-      <button type="button" disabled={saving} onClick={save} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold disabled:opacity-60">
-        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-        Save configuration
-      </button>
+      <section className="bg-surface-container-lowest border border-outline-variant rounded-xl card-shadow p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-sm">Recently skipped messages</h2>
+            <p className="text-xs text-outline">Sequences that never started after a free report, and consent requests, invitations and follow-ups that were due but not sent — with the reason.</p>
+          </div>
+          <button onClick={loadSkipped} className="inline-flex items-center gap-1 text-xs font-semibold text-primary"><RefreshCw className="w-3.5 h-3.5" /> Refresh</button>
+        </div>
+        {skippedError ? (
+          <p role="alert" className="text-xs text-error">Couldn&apos;t load: {skippedError}</p>
+        ) : skipped === null ? (
+          <Loader2 className="w-4 h-4 animate-spin text-primary" />
+        ) : skipped.length === 0 ? (
+          <p className="text-xs text-outline">Nothing skipped yet.</p>
+        ) : (
+          <ul className="divide-y divide-outline-variant text-sm">
+            {skipped.map((s, i) => (
+              <li key={i} className="py-2 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  {s.leadId
+                    ? <Link href={`/admin/leads/${s.leadId}`} className="font-medium hover:text-primary">{s.name || s.phone || 'Lead'}</Link>
+                    : <span className="font-medium">{s.phone || 'Unknown number'}</span>}
+                  <p className="text-xs text-on-surface-variant">{s.reason} <span className="text-outline">({s.categoryLabel})</span></p>
+                </div>
+                <RelTime date={s.at} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
-}
-
-function DelayEditor({
-  minutes,
-  units,
-  onChange,
-}: {
-  minutes: number;
-  units: Unit[];
-  onChange: (minutes: number) => void;
-}) {
-  const shown = displayDelay(minutes);
-  const unit = units.includes(shown.unit) ? shown.unit : 'minutes';
-  const value = unit === shown.unit ? shown.value : minutes;
-  return (
-    <div className="flex gap-2">
-      <input
-        type="number"
-        min={1}
-        className={cls}
-        value={value}
-        onChange={(e) => onChange(toMinutes(Number(e.target.value), unit))}
-      />
-      <select
-        className={cls}
-        value={unit}
-        onChange={(e) => onChange(toMinutes(value, e.target.value as Unit))}
-      >
-        {units.map((item) => <option key={item} value={item}>{item}</option>)}
-      </select>
-    </div>
-  );
-}
-
-function move(config: NurtureConfig, index: number, delta: number, setConfig: (c: NurtureConfig) => void) {
-  const next = config.followUps.slice();
-  const target = index + delta;
-  const [row] = next.splice(index, 1);
-  next.splice(target, 0, row);
-  setConfig({ ...config, followUps: next });
 }

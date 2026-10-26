@@ -7,6 +7,7 @@ import Campaign from '@/models/Campaign';
 import Business from '@/models/Business';
 import Customer from '@/models/Customer';
 import { validateTwilioSignature } from '@/lib/twilioSignature';
+import { classifyTwilioError, logWhatsAppDiagnostic } from '@/lib/whatsappDiagnostics';
 import {
   chooseReviewTemplateRetry,
   interpretTwilioStatus,
@@ -133,6 +134,15 @@ async function retryGenericAsNotificationTemplate(failedSid: string): Promise<bo
 
     const { retryFreeformAsNotification } = await import('@/services/whatsapp/send');
     const retry = await retryFreeformAsNotification(log.payload.phone, log.payload.body);
+    logWhatsAppDiagnostic({
+      event: retry.success ? 'whatsapp_send_recovered' : 'whatsapp_send_failed',
+      feature: 'free-text',
+      kind: retry.success ? 'RECOVERED_AS_TEMPLATE' : (retry.errorKind || 'SEND_FAILED'),
+      template: 'new_growwmatics_notification',
+      errorCode: '63016',
+      correlationId: retry.correlationId,
+      detail: `async 63016 on ${failedSid}${retry.success ? '' : `: ${retry.error}`}`,
+    });
     return retry.success;
   } catch (e) {
     console.error('[twilio-status-webhook] generic template retry failed:', e);
@@ -168,8 +178,15 @@ export async function POST(req: Request) {
     if (interpreted.kind === 'failed') {
       await MessageQueue.updateMany(
         { 'payload.sid': messageSid },
-        { status: 'FAILED', failedReason: interpreted.failedReason, errorCode: interpreted.errorCode }
+        { status: 'FAILED', failedReason: interpreted.failedReason, errorCode: interpreted.errorCode, errorKind: classifyTwilioError(interpreted.errorCode) }
       );
+      logWhatsAppDiagnostic({ event: 'whatsapp_send_failed', feature: 'delivery-callback', kind: classifyTwilioError(interpreted.errorCode), errorCode: interpreted.errorCode || undefined, detail: `${messageSid}: ${interpreted.failedReason || ''}` });
+    } else if (interpreted.kind === 'delivered') {
+      // Evidence of delivery (status stays SENT — "accepted" — for existing counts).
+      await MessageQueue.updateMany({ 'payload.sid': messageSid, deliveredAt: { $exists: false } }, { $set: { deliveredAt: now } });
+    } else if (interpreted.kind === 'read') {
+      await MessageQueue.updateMany({ 'payload.sid': messageSid, readAt: { $exists: false } }, { $set: { readAt: now } });
+      await MessageQueue.updateMany({ 'payload.sid': messageSid, deliveredAt: { $exists: false } }, { $set: { deliveredAt: now } });
     }
 
     if (interpreted.kind === 'delivered' || interpreted.kind === 'read' || interpreted.kind === 'failed') {

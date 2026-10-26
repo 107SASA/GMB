@@ -25,6 +25,104 @@ interface ExpoPushTicket {
   details?: { error?: string };
 }
 
+interface ExpoRequestError {
+  code?: string;
+  message?: string;
+  details?: unknown;
+}
+
+/**
+ * Expo rejects a whole request whose tokens belong to more than one Expo
+ * project — the Android app (mobile/) and the iOS app (ios/) are separate
+ * projects, so a user signed in on both phones hits this on every push.
+ */
+const MIXED_PROJECTS = 'PUSH_TOO_MANY_EXPERIENCE_IDS';
+
+/**
+ * Splits a mixed-project chunk into single-project groups using the error's
+ * `details` ({ "@owner/project": [tokens] }). Tokens Expo didn't list go one
+ * per request, so a malformed `details` can never re-mix projects.
+ */
+export function groupByProject(chunk: string[], details: unknown): string[][] {
+  const inChunk = new Set(chunk);
+  const placed = new Set<string>();
+  const groups: string[][] = [];
+  if (details && typeof details === 'object') {
+    for (const listed of Object.values(details as Record<string, unknown>)) {
+      if (!Array.isArray(listed)) continue;
+      const group: string[] = [];
+      for (const t of listed) {
+        if (typeof t !== 'string' || !inChunk.has(t) || placed.has(t)) continue;
+        placed.add(t);
+        group.push(t);
+      }
+      if (group.length > 0) groups.push(group);
+    }
+  }
+  for (const token of chunk) if (!placed.has(token)) groups.push([token]);
+  return groups;
+}
+
+/**
+ * Posts one request (≤ CHUNK_SIZE tokens) and returns its DeviceNotRegistered
+ * tokens. On a mixed-project rejection it re-sends per project; `splits`
+ * bounds that to two levels (project groups, then single tokens).
+ */
+async function postChunk(chunk: string[], message: PushMessage, splits = 0): Promise<string[]> {
+  const payload = chunk.map((to) => ({
+    to,
+    title: message.title,
+    body: message.body,
+    data: message.data ?? {},
+    sound: 'default',
+    priority: 'high',
+  }));
+
+  let res: Response;
+  try {
+    res = await fetch(EXPO_PUSH_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (err: any) {
+    // Push is always best-effort — a delivery failure must never fail the
+    // calling workflow step.
+    console.error('[push] Failed to reach Expo push API:', err.message);
+    return [];
+  }
+
+  const body = (await res.json().catch(() => null)) as
+    | { data?: ExpoPushTicket[]; errors?: ExpoRequestError[] }
+    | null;
+
+  if (!res.ok) {
+    const mixed = body?.errors?.find((e) => e?.code === MIXED_PROJECTS);
+    if (mixed && chunk.length > 1 && splits < 2) {
+      const groups = splits === 0 ? groupByProject(chunk, mixed.details) : chunk.map((t) => [t]);
+      console.info(`[push] ${chunk.length} device(s) span several Expo projects — sending as ${groups.length} request(s)`);
+      const dead: string[] = [];
+      for (const group of groups) dead.push(...(await postChunk(group, message, splits + 1)));
+      return dead;
+    }
+    console.error(`[push] Expo push API returned ${res.status}${body?.errors?.[0]?.code ? ` (${body.errors[0].code})` : ''}`);
+    return [];
+  }
+
+  const dead: string[] = [];
+  const tickets = body?.data ?? [];
+  // Tickets come back in the same order as the messages sent.
+  tickets.forEach((ticket, idx) => {
+    if (ticket.status === 'error' && ticket.details?.error === 'DeviceNotRegistered') {
+      dead.push(chunk[idx]);
+    }
+  });
+  return dead;
+}
+
 /**
  * Sends one message to a list of tokens and returns the tokens Expo reported
  * as DeviceNotRegistered (uninstalled/expired), in ticket order.
@@ -38,42 +136,7 @@ async function sendToTokens(tokens: string[], message: PushMessage): Promise<str
   }
 
   for (let i = 0; i < tokens.length; i += CHUNK_SIZE) {
-    const chunk = tokens.slice(i, i + CHUNK_SIZE);
-    const payload = chunk.map((to) => ({
-      to,
-      title: message.title,
-      body: message.body,
-      data: message.data ?? {},
-      sound: 'default',
-      priority: 'high',
-    }));
-
-    try {
-      const res = await fetch(EXPO_PUSH_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        console.error(`[push] Expo push API returned ${res.status}`);
-        continue;
-      }
-      const body = (await res.json()) as { data?: ExpoPushTicket[] };
-      const tickets = body.data ?? [];
-      // Tickets come back in the same order as the messages sent.
-      tickets.forEach((ticket, idx) => {
-        if (ticket.status === 'error' && ticket.details?.error === 'DeviceNotRegistered') {
-          dead.push(chunk[idx]);
-        }
-      });
-    } catch (err: any) {
-      // Push is always best-effort — a delivery failure must never fail the
-      // calling workflow step.
-      console.error('[push] Failed to reach Expo push API:', err.message);
-    }
+    dead.push(...(await postChunk(tokens.slice(i, i + CHUNK_SIZE), message)));
   }
 
   return dead;

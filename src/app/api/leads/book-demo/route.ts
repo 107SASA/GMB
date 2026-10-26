@@ -117,9 +117,12 @@ export async function POST(req: Request) {
     // so a visitor who submits twice (or already came through free-report /
     // the WhatsApp agent) updates one record instead of spawning duplicates.
     let lead = await Lead.findOne({ phone: normalizedPhone, tenantId: 'gmbboost-internal' });
+    const createdNow = !lead;
     if (lead) {
       lead.name = lead.name || name;
-      lead.source = 'Demo Booking';
+      // First channel stays the source (e.g. a website free report); this one is recorded too.
+      const { PLACEHOLDER_SOURCES } = await import('@/services/leads/captureSource');
+      if (PLACEHOLDER_SOURCES.has(lead.source || '')) lead.source = 'Website Demo Booking';
       lead.leadType = 'Platform Prospect';
       if (businessName) lead.businessType = lead.businessType || businessName;
       if (budget) lead.budget = budget;
@@ -132,7 +135,7 @@ export async function POST(req: Request) {
         tenantId: 'gmbboost-internal',
         name,
         phone: normalizedPhone,
-        source: 'Demo Booking',
+        source: 'Website Demo Booking',
         leadType: 'Platform Prospect',
         pipelineStage: 'New Request',
         budget,
@@ -145,6 +148,11 @@ export async function POST(req: Request) {
     // 2-4. Best-effort: surface the request on every admin view and kick off
     // the WhatsApp booking conversation. Never fails the response — the Lead
     // above is already saved.
+    {
+      const { recordCaptureSource } = await import('@/services/leads/captureSource');
+      await recordCaptureSource(lead, 'Website Demo Booking', { created: createdNow, detail: { businessName: businessName || undefined } });
+    }
+
     const outcome = await fileDemoRequest(lead, {
       name,
       phone: normalizedPhone,

@@ -86,6 +86,11 @@ const nextConfig: NextConfig = {
   // `next dev`. Update this IP if it changes (DHCP can reassign it — same
   // caveat as mobile/.env, check with `ipconfig`).
   allowedDevOrigins: ['192.168.1.34'],
+  async redirects() {
+    // Invite links sent before the accept page moved out of the /admin
+    // layout guard (which requires an existing Super Admin session).
+    return [{ source: '/admin/invite/:token', destination: '/admin-invite/:token', permanent: false }];
+  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

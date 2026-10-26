@@ -6,7 +6,7 @@ import TrialClaim from '@/models/TrialClaim';
 import BillingEvent from '@/models/BillingEvent';
 import { getRazorpay, getRazorpayMode } from '@/lib/billing/razorpay';
 import { subscriptionModeVerdict } from '@/lib/billing/razorpayMode';
-import { isPaidPlanType } from '@/lib/billing/planCatalog';
+import { isBillingCycle, isPaidPlanType } from '@/lib/billing/planCatalog';
 import {
   activatePlan,
   activateBusinessPlan,
@@ -271,6 +271,9 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
             subscriptionId: sub!.id,
             subscriptionMode,
             eventAt: stampAt,
+            // Revenue reporting: the cycle from our own checkout notes and the captured amount.
+            ...(isBillingCycle(subEntity?.notes?.billingCycle) && { billingCycle: subEntity.notes.billingCycle }),
+            ...(payment?.status === 'captured' && typeof payment.amount === 'number' && { amountInr: payment.amount / 100 }),
           }));
         } else {
           console.warn(`[billing] ${type}: cannot resolve workspace for ${sub?.id}`);

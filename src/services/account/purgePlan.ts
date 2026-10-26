@@ -71,6 +71,7 @@ export const PURGE_TARGETS: PurgeTarget[] = [
   // ── a: Google connection data ──
   { model: 'GBPToken', by: { businessId: 'businessId' }, category: 'a', what: 'Google OAuth tokens (revoked with Google first)' },
   { model: 'PendingGbpConnection', by: { businessId: 'businessId' }, category: 'a', what: 'pending Google connections' },
+  { model: 'GbpConnectHandoff', by: { businessId: 'businessId', userId: 'userId' }, category: 'a', what: 'iOS Google-connect handoff links' },
   { model: 'GBPInsights', by: { businessId: 'businessId' }, category: 'a', what: 'Google performance data' },
   { model: 'GBPKeyword', by: { businessId: 'businessId' }, category: 'a', what: 'Google search keywords' },
   { model: 'GBPKeywordIntel', by: { businessId: 'businessId' }, category: 'a', what: 'keyword intelligence' },
@@ -116,6 +117,8 @@ export const NOT_PURGED: Record<string, string> = {
   PlanConfig: 'platform configuration',
   PlatformSettings: 'platform configuration',
   OrchestrationConfig: 'platform configuration',
+  PlatformCrmConfig: 'platform configuration (super admin CRM sub-stages)',
+  SecurityEvent: 'security log (sign-ins, failed attempts, admin actions) kept 12 months for abuse and fraud investigation, then dropped by TTL; holds an email or masked phone, never passwords or codes',
   ScoringRuleConfig: 'platform configuration',
   SalesAgentConfig: 'platform configuration',
   BookingAgentConfig: 'platform configuration',

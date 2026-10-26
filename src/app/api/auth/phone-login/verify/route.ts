@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { securityLogged, phoneSubject } from '@/services/security/securityLog';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
@@ -16,7 +17,7 @@ const VERIFY_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const ACCOUNT_LOCK_THRESHOLD = 10;
 const ACCOUNT_LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   try {
     await dbConnect();
     const { phone, otp } = await req.json();
@@ -95,3 +96,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: 'Something went wrong on our end. Please try again, and contact support if this keeps happening.' }, { status: 500 });
   }
 }
+
+/** Every call is recorded in the security log (Super Admin → Security Log). */
+export const POST = securityLogged('auth.phone_otp_verify', handlePOST, { subjectOf: phoneSubject });

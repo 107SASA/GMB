@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * GrowwMatics Precision — mobile design tokens (RGB triplets for Tailwind
+ * opacity). Matches the web app's Growth Green brand color (see
+ * src/app/globals.css --color-primary) — Aug 2026 re-theme; this used to be
+ * a separate deep-navy scheme. Hairline borders (no shadow) at every card
+ * tier and pill shapes everywhere are still mobile-specific. Keep in sync
+ * with src/lib/theme.ts.
+ */
+:root {
+  --surface: 247 249 251;
+  --surface-raised: 255 255 255; /* surface-container-lowest — card bg */
+  --surface-overlay: 230 232 234; /* surface-container-high — pressed/elevated */
+  --surface-border: 195 198 209; /* outline-variant — hairline border */
+  --outline: 115 119 128;
+
+  --fg: 25 28 30; /* on-surface */
+
+  /* Growth Green primary — matches web's --color-primary (#06b34c) */
+  --brand: 6 179 76; /* primary */
+  --brand-bright: 10 138 62; /* primary-container-ish — icons / active tint */
+  --brand-muted: 10 138 62; /* primary-container — pressed / disabled fill */
+  --on-primary-container: 189 240 207; /* matches web's --color-on-primary-container */
+
+  /* Growth Green secondary */
+  --secondary: 1 108 69;
+  --secondary-container: 154 242 192;
+  --on-secondary-container: 12 113 73;
+
+  /* Amber warning (score 40-69 / pending) */
+  --warning: 122 74 0;
+  --warning-container: 255 241 194;
+  --on-warning-container: 122 74 0;
+
+  /* Error / rose (score < 40 / critical) */
+  --error: 186 26 26;
+  --error-container: 255 218 214;
+  --on-error-container: 147 0 10;
+
+  /* Accents mapped to design system (keys kept for existing classnames) */
+  --accent-violet: 26 71 124;
+  --accent-cyan: 26 71 124;
+  --accent-emerald: 1 108 69; /* Growth Green */
+  --accent-amber: 122 74 0;
+  --accent-rose: 186 26 26; /* error */
+
+  /* Role-preserving gray ramp aligned to on-surface / outline-variant */
+  --zinc-50: 25 28 30;
+  --zinc-100: 67 71 79;
+  --zinc-200: 115 119 128;
+  --zinc-300: 115 119 128;
+  --zinc-400: 115 119 128;
+  --zinc-500: 67 71 79;
+  --zinc-600: 195 198 209;
+  --zinc-700: 224 227 229;
+  --zinc-800: 230 232 234;
+  --zinc-900: 242 244 246;
+  --zinc-950: 247 249 251;
+
+  --emerald-300: 12 113 73;
+  --emerald-400: 1 108 69;
+  --emerald-500: 1 108 69;
+  --amber-300: 122 74 0;
+  --amber-400: 122 74 0;
+  --amber-500: 122 74 0;
+  --rose-300: 147 0 10;
+  --rose-400: 186 26 26;
+  --rose-500: 186 26 26;
+  --indigo-300: 10 138 62; /* was a plain brand-color alias, not a distinct hue — kept in sync */
+  --indigo-400: 6 179 76;
+  --indigo-500: 6 179 76;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: 25 28 30;
+    --surface-raised: 36 40 44; /* surface-container-lowest — card bg */
+    --surface-overlay: 45 49 53; /* surface-container-high */
+    --surface-border: 55 60 65; /* outline-variant */
+    --outline: 141 145 153;
+
+    --fg: 239 241 243;
+
+    --brand: 31 157 92;
+    --brand-bright: 154 242 192;
+    --brand-muted: 1 108 69;
+    --on-primary-container: 154 242 192;
+
+    --secondary: 129 216 168;
+    --secondary-container: 0 82 51;
+    --on-secondary-container: 157 245 195;
+
+    --warning: 255 183 77;
+    --warning-container: 92 61 0;
+    --on-warning-container: 255 221 171;
+
+    --error: 255 180 171;
+    --error-container: 147 0 10;
+    --on-error-container: 255 218 214;
+
+    --accent-violet: 213 227 255;
+    --accent-cyan: 118 163 228;
+    --accent-emerald: 129 216 168;
+    --accent-amber: 255 183 77;
+    --accent-rose: 255 180 171;
+
+    --zinc-50: 239 241 243;
+    --zinc-100: 224 227 229;
+    --zinc-200: 195 198 209;
+    --zinc-300: 195 198 209;
+    --zinc-400: 141 145 153;
+    --zinc-500: 141 145 153;
+    --zinc-600: 55 60 65;
+    --zinc-700: 45 49 53;
+    --zinc-800: 36 40 44;
+    --zinc-900: 30 34 38;
+    --zinc-950: 25 28 30;
+
+    --emerald-300: 157 245 195;
+    --emerald-400: 129 216 168;
+    --emerald-500: 129 216 168;
+    --amber-300: 255 221 171;
+    --amber-400: 255 183 77;
+    --amber-500: 255 183 77;
+    --rose-300: 255 218 214;
+    --rose-400: 255 180 171;
+    --rose-500: 255 180 171;
+    --indigo-300: 154 242 192;
+    --indigo-400: 31 157 92;
+    --indigo-500: 31 157 92;
+  }
+}
+
+:root {
+  --font-display: PublicSans_800ExtraBold, Public Sans, ui-sans-serif, system-ui, sans-serif;
+  --font-display-bold: PublicSans_700Bold, Public Sans, ui-sans-serif, system-ui, sans-serif;
+  --font-sans: Inter_400Regular, Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-sans-semibold: Inter_600SemiBold, Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-sans-bold: Inter_700Bold, Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
+  --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;
+}

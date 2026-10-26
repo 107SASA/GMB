@@ -55,6 +55,8 @@ export interface IBookingConversation extends Document {
   bookingId?: mongoose.Types.ObjectId;
   bookedAt?: Date;
   lastReadAt?: Date;
+  /** Last inbound saved here while a human owned the lead and no live thread existed — keeps it in the Inbox. */
+  humanInboxAt?: Date;
   /** Set once, when automated scheduling cannot run. Later replies stay on this thread and the AI stays quiet. */
   schedulingHandoffAt?: Date;
   createdAt: Date;
@@ -107,6 +109,7 @@ const BookingConversationSchema: Schema = new Schema(
     bookingId: { type: Schema.Types.ObjectId, ref: 'DemoBooking' },
     bookedAt: { type: Date },
     lastReadAt: { type: Date },
+    humanInboxAt: { type: Date },
     schedulingHandoffAt: { type: Date },
   },
   { timestamps: true }

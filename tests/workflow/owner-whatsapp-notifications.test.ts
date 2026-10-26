@@ -417,7 +417,7 @@ test('login OTP still sends as the authentication template, one call', async (t)
   const rows: any[] = await sentTo(phone);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].payload.contentSid, 'HXotp_test');
-  assert.deepEqual(rows[0].payload.variables, { '1': '123456' });
+  assert.deepEqual(rows[0].payload.variables, { '1': '[redacted]' }, 'the login code is never stored in the message log');
 });
 
 test('a template with an invalid variable is refused before it is sent', async (t) => {

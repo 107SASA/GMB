@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { securityLogged, emailSubject } from '@/services/security/securityLog';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { generateOTP, hashOTP } from '@/services/auth/otp';
@@ -19,7 +20,7 @@ const GENERIC_MESSAGE = 'If an account exists with this email, an OTP has been s
  * Always responds with a generic success message so the caller can never
  * learn whether a given email address is registered.
  */
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   try {
     await dbConnect();
 
@@ -75,3 +76,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, message: GENERIC_MESSAGE });
   }
 }
+
+/** Every call is recorded in the security log (Super Admin → Security Log). */
+export const POST = securityLogged('auth.password_reset_request', handlePOST, { subjectOf: emailSubject, alwaysInfo: true });

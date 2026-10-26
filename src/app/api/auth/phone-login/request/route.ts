@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { securityLogged, phoneSubject } from '@/services/security/securityLog';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
@@ -16,7 +17,7 @@ const REQUEST_MAX_ATTEMPTS = 5;
 const REQUEST_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   try {
     await dbConnect();
     const { phone } = await req.json();
@@ -117,3 +118,6 @@ export async function POST(req: Request) {
 function maskPhone(phone: string): string {
   return phone.length > 4 ? `${phone.slice(0, -4).replace(/\d/g, '•')}${phone.slice(-4)}` : phone;
 }
+
+/** Every call is recorded in the security log (Super Admin → Security Log). */
+export const POST = securityLogged('auth.phone_otp_request', handlePOST, { subjectOf: phoneSubject });

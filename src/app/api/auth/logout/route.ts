@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { securityLogged } from '@/services/security/securityLog';
 import { destroySession, getSession } from '@/lib/session';
 import { invalidateUserSessions } from '@/lib/sessionInvalidation';
 
@@ -11,7 +12,7 @@ import { invalidateUserSessions } from '@/lib/sessionInvalidation';
  * sessionEpoch so every other session / mobile bearer token for the account
  * is revoked on its next request — "log out everywhere".
  */
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   let allDevices = false;
   try {
     const url = new URL(req.url);
@@ -38,3 +39,6 @@ export async function POST(req: Request) {
   await destroySession();
   return NextResponse.json({ success: true, allDevices });
 }
+
+/** Every call is recorded in the security log (Super Admin → Security Log). */
+export const POST = securityLogged('auth.logout', handlePOST);

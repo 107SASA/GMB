@@ -1,0 +1,220 @@
+import { z } from 'zod';
+import { api } from '../client';
+
+/**
+ * In-app onboarding — the mobile counterpart of the website's two onboarding
+ * phases:
+ *
+ *   1. Business creation. Find the business on Google (public autocomplete /
+ *      place-details endpoints — same ones the web signup wizard uses), then
+ *      POST /api/business/add-workspace to create the workspace. Only reached
+ *      when a signed-in user somehow has no workspace at all.
+ *   2. "Tell us about your business" intake — GET/POST /api/onboarding/intake,
+ *      the richer marketing profile the web hard-gates the dashboard behind.
+ *
+ * Google Business Profile connection is not an API call here: it opens the web
+ * OAuth flow in an in-app browser (see lib/connectGoogle.tsx), same as every
+ * other GBP-connect entry point in the app.
+ */
+
+// --- Google Places search ---------------------------------------------------
+
+export const placeSuggestionSchema = z.object({
+  placeId: z.string(),
+  mainText: z.string().catch(''),
+  secondaryText: z.string().catch(''),
+});
+export type PlaceSuggestion = z.infer<typeof placeSuggestionSchema>;
+
+/** GET /api/google/autocomplete — public (IP rate-limited) on the backend. */
+export async function searchPlaces(query: string): Promise<PlaceSuggestion[]> {
+  const { data } = await api.get('/api/google/autocomplete', { params: { q: query } });
+  return z
+    .object({ success: z.boolean().catch(false), data: z.array(placeSuggestionSchema).catch([]) })
+    .parse(data)
+    .data;
+}
+
+export const placeDetailsSchema = z.object({
+  name: z.string().catch(''),
+  formattedAddress: z.string().nullable().catch(null),
+  phoneNumber: z.string().nullable().catch(null),
+  website: z.string().nullable().catch(null),
+  googleMapsUrl: z.string().nullable().catch(null),
+  latitude: z.number().nullable().catch(null),
+  longitude: z.number().nullable().catch(null),
+  area: z.string().nullable().catch(null),
+  city: z.string().nullable().catch(null),
+  state: z.string().nullable().catch(null),
+  country: z.string().nullable().catch(null),
+  primaryCategory: z.string().nullable().catch(null),
+  editorialSummary: z.string().nullable().catch(null),
+});
+export type PlaceDetails = z.infer<typeof placeDetailsSchema>;
+
+/** GET /api/google/place-details — public (IP rate-limited) on the backend. */
+export async function fetchPlaceDetails(placeId: string): Promise<PlaceDetails> {
+  const { data } = await api.get('/api/google/place-details', { params: { placeId } });
+  return z
+    .object({ success: z.boolean().catch(false), data: placeDetailsSchema })
+    .parse(data)
+    .data;
+}
+
+// --- Workspace creation ---------------------------------------------------------
+
+export interface CreateWorkspaceInput {
+  businessName: string;
+  category: string;
+  city: string;
+  area?: string;
+  state?: string;
+  country?: string;
+  phone?: string;
+  website?: string;
+  address?: string;
+  description?: string;
+  googlePlaceId?: string;
+  googleMapsUrl?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+/** POST /api/business/add-workspace — returns the new workspace's id. */
+export async function createWorkspace(input: CreateWorkspaceInput): Promise<string> {
+  const { data } = await api.post('/api/business/add-workspace', input);
+  return z
+    .object({ success: z.literal(true), businessId: z.string() })
+    .parse(data)
+    .businessId;
+}
+
+// --- Intake ("Tell us about your business") -----------------------------------
+
+export const intakeSchema = z.object({
+  category: z.string().catch(''),
+  description: z.string().catch(''),
+  services: z.string().catch(''),
+  offers: z.string().catch(''),
+  keywords: z.array(z.string()).catch([]),
+  city: z.string().catch(''),
+  area: z.string().catch(''),
+  tone: z.string().catch('professional'),
+  uniqueSellingPoints: z.string().catch(''),
+  targetAudience: z.string().catch(''),
+  competitorNames: z.array(z.string()).catch([]),
+  primaryGoal: z.string().catch(''),
+});
+export type IntakeData = z.infer<typeof intakeSchema>;
+
+export const EMPTY_INTAKE: IntakeData = {
+  category: '', description: '', services: '', offers: '', keywords: [],
+  city: '', area: '', tone: 'professional', uniqueSellingPoints: '',
+  targetAudience: '', competitorNames: [], primaryGoal: '',
+};
+
+/** Fields the server can suggest a sourced value for (server: services/intel/intakePrefill.ts). */
+export const SUGGEST_FIELDS = ['category', 'description', 'services', 'keywords', 'uniqueSellingPoints', 'offers'] as const;
+export type SuggestField = (typeof SUGGEST_FIELDS)[number];
+
+/**
+ * A sourced suggestion for an EMPTY intake field — from the business's website
+ * research, Google listing, report or SEO plan. The owner reviews it ("Use
+ * this") before it fills the field; nothing is saved until they submit.
+ */
+export const prefillSuggestionSchema = z.object({
+  value: z.string(),
+  source: z.enum(['website', 'google_listing', 'measured_report', 'seo_plan']),
+  sourceUrl: z.string().optional().catch(undefined),
+  label: z.string().catch(''),
+  /** Keywords only: each keyword with where it came from. */
+  items: z
+    .array(z.object({ keyword: z.string(), source: z.string().catch('measured') }))
+    .optional()
+    .catch(undefined),
+});
+export type PrefillSuggestion = z.infer<typeof prefillSuggestionSchema>;
+
+/** Keeps only well-formed suggestions for known fields; a bad one is dropped, not fatal. */
+function parseSuggestions(raw: unknown): Partial<Record<SuggestField, PrefillSuggestion>> {
+  const out: Partial<Record<SuggestField, PrefillSuggestion>> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const field of SUGGEST_FIELDS) {
+    const parsed = prefillSuggestionSchema.safeParse((raw as Record<string, unknown>)[field]);
+    if (parsed.success && parsed.data.value.trim()) out[field] = parsed.data;
+  }
+  return out;
+}
+
+/** GET /api/onboarding/intake — prefill, sourced suggestions, and whether it's already done. */
+export async function fetchIntake(): Promise<{
+  intakeCompleted: boolean;
+  data: IntakeData;
+  suggestions: Partial<Record<SuggestField, PrefillSuggestion>>;
+}> {
+  const { data } = await api.get('/api/onboarding/intake');
+  const parsed = z
+    .object({
+      success: z.boolean().catch(false),
+      intakeCompleted: z.boolean().catch(false),
+      data: intakeSchema.catch(EMPTY_INTAKE),
+      suggestions: z.unknown().optional(),
+    })
+    .parse(data);
+  return { intakeCompleted: parsed.intakeCompleted, data: parsed.data, suggestions: parseSuggestions(parsed.suggestions) };
+}
+
+/** Keywords a keywords suggestion carries — its items, else its comma-separated value. */
+export function suggestionKeywords(s: PrefillSuggestion): string[] {
+  return (s.items?.map((i) => i.keyword) ?? s.value.split(','))
+    .map((k) => k.trim())
+    .filter((k) => /[a-zA-Z]/.test(k));
+}
+
+export interface AcceptedSuggestion {
+  field: SuggestField;
+  source: PrefillSuggestion['source'];
+  sourceUrl?: string;
+}
+
+/**
+ * POST /api/onboarding/intake — saves the profile + marks intakeCompleted.
+ * `acceptedSuggestions` records which fields the owner filled from a sourced
+ * suggestion (still used as-is), same as the web form.
+ */
+export async function saveIntake(input: IntakeData, acceptedSuggestions: AcceptedSuggestion[] = []): Promise<void> {
+  await api.post('/api/onboarding/intake', { ...input, acceptedSuggestions });
+}
+
+export interface SuggestedKeyword {
+  keyword: string;
+  /** measured = checked in your report · proposed = from your SEO plan · ai = AI idea */
+  source: 'measured' | 'proposed' | 'ai';
+}
+
+/**
+ * POST /api/onboarding/suggest-keywords — the report / SEO plan keywords
+ * first, then AI ideas to fill the batch. Throws when nothing could be
+ * suggested (the form shows the error instead of silently doing nothing).
+ */
+export async function suggestKeywords(input: {
+  category: string;
+  description?: string;
+  city?: string;
+  area?: string;
+  selectedKeywords?: string[];
+  excludeKeywords?: string[];
+}): Promise<SuggestedKeyword[]> {
+  const { data } = await api.post('/api/onboarding/suggest-keywords', input);
+  const parsed = z
+    .object({
+      success: z.boolean().catch(false),
+      keywords: z.array(z.string()).catch([]),
+      details: z
+        .array(z.object({ keyword: z.string(), source: z.enum(['measured', 'proposed', 'ai']).catch('ai') }))
+        .optional()
+        .catch(undefined),
+    })
+    .parse(data);
+  return parsed.details ?? parsed.keywords.map((keyword) => ({ keyword, source: 'ai' as const }));
+}

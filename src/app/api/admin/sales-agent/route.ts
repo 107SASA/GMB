@@ -5,6 +5,7 @@ import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import SalesAgentConfig from '@/models/SalesAgentConfig';
 import { getSalesAgentConfig } from '@/services/sales/salesAgent';
 import { SALES_TEMPLATE_VARS, DEFAULT_SALES_KNOWLEDGE } from '@/lib/salesAgentDefaults';
+import { SALES_INVITE_MIN_DELAY_MINUTES } from '@/lib/preSalesRules';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,7 +105,8 @@ const configSchema = z.object({
   enabled: z.boolean(),
   firstMessage: z.object({
     mode: z.enum(['ai', 'template']),
-    delayMinutes: z.number().min(0).max(60 * 24 * 7),
+    // The invitation never goes out sooner than this after the report (lib/preSalesRules.ts).
+    delayMinutes: z.number().int().min(SALES_INVITE_MIN_DELAY_MINUTES, `The first message can't go out sooner than ${SALES_INVITE_MIN_DELAY_MINUTES / 60} hours after the report.`).max(60 * 24 * 7),
     template: z.string().default(''),
     aiSystemPrompt: z.string().default(''),
   }),

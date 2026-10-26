@@ -50,6 +50,23 @@ export const DEMO_TIME_CLARIFY =
 export const SCHEDULE_HANDOFF_ONCE =
   "Sure — I'll have a team member help schedule this with you. Our team will message you here shortly.";
 
+/** Handoffs the booking agent makes when it cannot schedule by itself (not a team member's takeover). */
+export const SCHEDULING_HANDOFF_REASONS = ['no-open-slot', 'calendar-api-failure', 'no-salesperson-calendar'];
+
+/**
+ * Someone mid-booking asking for the free report ("I want free report as
+ * well"). Words only — "1" / "2" there are taps on the demo times, not this menu.
+ */
+export function asksForReport(text: string): boolean {
+  return /\breport\b/i.test(text || '');
+}
+
+/** "Report is on its way" for someone with a demo booked or being booked — never "or book a demo?". */
+export function reportProcessingDuringDemo(booked: boolean): string {
+  return "Sure! Your free report is being prepared 📊 We'll message you here as soon as it's ready.\n\n"
+    + (booked ? 'Your demo stays booked as planned.' : "Your demo booking is still open — pick a time whenever you're ready.");
+}
+
 const DEMO_RE = /\b(demo|book|schedule|walkthrough)\b/i;
 const VIEW_RE = /\b(?:show|view|see)\b[\s\S]{0,40}\breport\b|\breport\b[\s\S]{0,40}\b(?:show|view|see)\b/i;
 const REPORT_RE = /\b(report|google business|visibility)\b/i;

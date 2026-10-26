@@ -19,13 +19,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Loader2, Users, Search, ChevronLeft, ChevronRight, ArrowUpDown, Plus, Upload, Download, LayoutList, Columns, Layers, CalendarClock } from 'lucide-react';
+import { Loader2, Users, Search, ChevronLeft, ChevronRight, ArrowUpDown, Plus, Upload, Download, LayoutList, Columns, Layers, CalendarClock, MessageCircle } from 'lucide-react';
 import { SubStagesModal } from '@/components/admin/crm/SubStagesModal';
 import { FollowUpsPanel } from '@/components/admin/crm/FollowUpsPanel';
 import { CRM_SOURCES } from '@/lib/admin/platformCrm';
 import { StageSelect } from '@/components/admin/crm/StageSelect';
 import { AddLeadModal } from '@/components/admin/crm/AddLeadModal';
 import { ImportLeadsModal } from '@/components/admin/crm/ImportLeadsModal';
+import { SendWhatsAppModal } from '@/components/admin/crm/SendWhatsAppModal';
 import { LeadBoard } from '@/components/admin/crm/LeadBoard';
 import {
   OwnershipBadge,
@@ -81,7 +82,7 @@ export default function LeadsPipelinePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState(sp.get('q') ?? '');
-  const [modal, setModal] = useState<'add' | 'import' | 'stages' | 'followups' | null>(null);
+  const [modal, setModal] = useState<'add' | 'import' | 'stages' | 'followups' | 'whatsapp' | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkStage, setBulkStage] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -201,6 +202,7 @@ export default function LeadsPipelinePage() {
           <button onClick={() => setModal('add')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold"><Plus className="w-3.5 h-3.5" /> Add lead</button>
           <button onClick={() => setModal('import')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant text-xs font-semibold"><Upload className="w-3.5 h-3.5" /> Import CSV</button>
           <a href={exportHref()} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant text-xs font-semibold"><Download className="w-3.5 h-3.5" /> Export CSV</a>
+          <button onClick={() => setModal('whatsapp')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant text-xs font-semibold"><MessageCircle className="w-3.5 h-3.5" /> Send WhatsApp</button>
           <button onClick={() => setModal('followups')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant text-xs font-semibold"><CalendarClock className="w-3.5 h-3.5" /> Follow-ups</button>
           <button onClick={() => setModal('stages')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant text-xs font-semibold"><Layers className="w-3.5 h-3.5" /> Custom stages</button>
           <div className="inline-flex rounded-lg border border-outline-variant overflow-hidden">
@@ -214,6 +216,14 @@ export default function LeadsPipelinePage() {
       {modal === 'add' && <AddLeadModal onClose={() => setModal(null)} onCreated={(id) => router.push(`/admin/leads/${id}`)} />}
       {modal === 'import' && <ImportLeadsModal onClose={() => setModal(null)} onImported={load} />}
       {modal === 'stages' && <SubStagesModal onClose={() => setModal(null)} onSaved={() => load()} />}
+      {modal === 'whatsapp' && (
+        <SendWhatsAppModal
+          selectedIds={[...selected]}
+          filters={new URLSearchParams(Array.from(sp.entries())).toString()}
+          filteredTotal={pagination.total}
+          onClose={() => { setModal(null); load(); }}
+        />
+      )}
       {modal === 'followups' && <FollowUpsPanel onClose={() => setModal(null)} />}
       {notice && <p role={notice.ok ? 'status' : 'alert'} className={`text-sm ${notice.ok ? 'text-secondary' : 'text-error'}`}>{notice.text}</p>}
 
@@ -270,6 +280,7 @@ export default function LeadsPipelinePage() {
           <strong>{selected.size} selected</strong>
           <StageSelect value={bulkStage} onChange={setBulkStage} includeAll="Move to stage…" />
           <button onClick={moveSelected} disabled={!bulkStage} className="px-3 py-1.5 rounded-lg bg-primary text-white font-semibold disabled:opacity-50">Move</button>
+          <button onClick={() => setModal('whatsapp')} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-primary font-semibold"><MessageCircle className="w-3.5 h-3.5" /> Send WhatsApp</button>
           <button onClick={() => setSelected(new Set())} className="underline">Clear</button>
         </div>
       )}

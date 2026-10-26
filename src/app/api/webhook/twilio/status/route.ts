@@ -71,7 +71,10 @@ async function retryAsApprovedTemplate(
     if (choice.mode === 'none') return false;
 
     const { sendTemplateMessage } = await import('@/services/twilio/client');
-    const retry = await sendTemplateMessage(customer.phone, choice.contentSid, choice.variables, r.businessId.toString());
+    // A review request: not one of our chats, kept out of the WhatsApp Inbox.
+    const { withWhatsAppSendContext } = await import('@/services/inbox/whatsappLog');
+    const retry = await withWhatsAppSendContext({ exclude: 'review-request' }, () =>
+      sendTemplateMessage(customer.phone!, choice.contentSid, choice.variables, r.businessId.toString()));
     if (!retry.success) return false;
 
     await ReviewRequest.updateOne(

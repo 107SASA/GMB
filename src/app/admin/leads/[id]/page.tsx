@@ -390,7 +390,7 @@ function renderPayload(type: string, p: any): string {
     if (type === 'INTENT_CHANGED') return ` · ${p.from} → ${p.to}`;
     if (type === 'LEAD_SCORE_CHANGED') return ` · ${p.from} → ${p.to} (${p.signal})`;
     if (type === 'AGENT_HANDOFF') return ` · ${p.from} → ${p.to}${p.reason ? ` (${p.reason})` : ''}`;
-    if (type === 'HUMAN_HANDOFF') return p.reason ? ` · ${p.reason}` : '';
+    if (type === 'HUMAN_HANDOFF') return p.reason ? ` · ${p.reason}${p.detail ? ` — ${p.detail}` : ''}` : '';
     if (type === 'NBA_SELECTED' || type === 'NBA_EXECUTED') return ` · ${p.action}${p.outcome ? ` → ${p.outcome}` : ''}`;
     if (type === 'NBA_OVERRIDDEN') return ` · ${p.suggested} → ${p.used} (${p.reason})`;
     if (type === 'NURTURE_ACTION_SKIPPED') return p.reason ? ` · ${p.reason}` : '';

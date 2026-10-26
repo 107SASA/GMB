@@ -34,12 +34,13 @@ export async function GET() {
         .select('businessId title status scheduledDate createdAt')
         .lean(),
 
-      Business.find().select('_id businessName').lean(),
+      // The stored field is `name` (reading `businessName` left every name blank).
+      Business.find({ isDeleted: { $ne: true } }).select('_id name googleConnected subscriptionStatus').lean(),
     ]);
 
     // Business name map
     const bizMap: Record<string, string> = {};
-    allBusinesses.forEach((b: any) => { bizMap[b._id.toString()] = b.businessName; });
+    allBusinesses.forEach((b: any) => { bizMap[b._id.toString()] = b.name; });
 
     const recentPosts = recentPostsRaw.map((p: any) => ({
       _id: p._id,
@@ -50,28 +51,48 @@ export async function GET() {
       createdAt: p.createdAt,
     }));
 
-    // Buffer health: for each business, count scheduled posts with scheduledDate >= now
+    // Buffer health — only businesses that can post: Google connected, or
+    // already have posts. (Every free-report account used to be listed, all
+    // at 0, pushing the real ones off the top 10.) Per business: scheduled
+    // posts still ahead, scheduled posts whose time has passed without
+    // publishing (overdue — the hourly publisher retries them), and the next one.
     const bufferCounts = await Post.aggregate([
-      { $match: { status: 'scheduled', scheduledDate: { $gte: now } } },
-      { $group: { _id: '$businessId', scheduledAhead: { $sum: 1 } } },
+      { $match: { status: 'scheduled' } },
+      {
+        $group: {
+          _id: '$businessId',
+          scheduledAhead: { $sum: { $cond: [{ $gte: ['$scheduledDate', now] }, 1, 0] } },
+          overdue: { $sum: { $cond: [{ $lt: ['$scheduledDate', now] }, 1, 0] } },
+          nextPostAt: { $min: { $cond: [{ $gte: ['$scheduledDate', now] }, '$scheduledDate', null] } },
+        },
+      },
     ]);
+    const withPosts = new Set((await Post.distinct('businessId')).map(String));
 
-    const bufferMap: Record<string, number> = {};
-    bufferCounts.forEach((row: any) => { bufferMap[row._id?.toString()] = row.scheduledAhead; });
+    const bufferMap: Record<string, { scheduledAhead: number; overdue: number; nextPostAt: Date | null }> = {};
+    bufferCounts.forEach((row: any) => {
+      bufferMap[row._id?.toString()] = { scheduledAhead: row.scheduledAhead, overdue: row.overdue, nextPostAt: row.nextPostAt ?? null };
+    });
 
     const bufferHealth = allBusinesses
+      .filter((b: any) => b.googleConnected === true || withPosts.has(b._id.toString()))
       .map((b: any) => ({
         businessId: b._id.toString(),
-        businessName: b.businessName,
-        scheduledAhead: bufferMap[b._id.toString()] ?? 0,
+        businessName: b.name || '(unnamed business)',
+        googleConnected: b.googleConnected === true,
+        subscriptionStatus: b.subscriptionStatus ?? null,
+        scheduledAhead: bufferMap[b._id.toString()]?.scheduledAhead ?? 0,
+        overdue: bufferMap[b._id.toString()]?.overdue ?? 0,
+        nextPostAt: bufferMap[b._id.toString()]?.nextPostAt ?? null,
       }))
-      .sort((a, b) => a.scheduledAhead - b.scheduledAhead)
-      .slice(0, 10);
+      .sort((a, b) => a.scheduledAhead - b.scheduledAhead || b.overdue - a.overdue || a.businessName.localeCompare(b.businessName))
+      .slice(0, 50);
 
     return NextResponse.json({
       success: true,
       data: {
         stats: {
+          overdueCount: bufferCounts.reduce((sum: number, row: any) => sum + (row.overdue || 0), 0),
           totalPosts,
           scheduledCount,
           publishedCount,

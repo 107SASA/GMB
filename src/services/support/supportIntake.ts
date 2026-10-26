@@ -181,6 +181,17 @@ export async function captureSupportMessage(input: {
     });
     conversationId = String(convo._id);
     created = true;
+    // A new issue reaches the team at once — it is waiting in the WhatsApp Inbox.
+    try {
+      const { sendPushToSuperAdmins } = await import('@/services/push');
+      await sendPushToSuperAdmins({
+        title: input.match === 'support_request' ? 'New support request' : 'Support request from a customer',
+        body: `${input.profileName || input.phone}: ${(input.body || '').slice(0, 120)}`,
+        data: { url: '/admin/inbox' },
+      });
+    } catch (err: any) {
+      console.warn('[supportIntake] team notification failed:', err?.message);
+    }
   }
   const acknowledgement = await acknowledgeSupportIssue(conversationId, now);
   return { conversationId, created, acknowledgement };

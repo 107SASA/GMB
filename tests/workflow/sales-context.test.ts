@@ -177,3 +177,27 @@ test("the Booking Agent's own instructions shape answers to booked leads; empty 
     await m.BookingAgentConfig.updateOne({ key: 'default' }, { $set: { agentSystemPrompt: '' } });
   }
 });
+
+test('a time that can no longer be booked: the "team member will help" message is sent ONCE, the reason is on the timeline, later messages get no repeat', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  aiUp = false;
+  const { default: LeadEvent } = await import('../../src/models/LeadEvent');
+  const phone = `+9198776${String(++seq).padStart(5, '0')}`;
+  const lead = await m.Lead.create({ tenantId: 'gmbboost-internal', name: 'Sarvesh', phone, currentAgent: 'DEMO', currentStage: 'DEMO_REQUESTED' } as any);
+  const start = new Date(Date.now() + 3 * 3600_000);
+  const convo = await m.BookingConversation.create({
+    leadPhone: phone, phoneKey: phone.slice(-10), leadId: lead._id, status: 'awaiting_slot_selection',
+    details: { name: 'Sarvesh', businessName: 'Mulsetu' },
+    offeredSlots: [{ date: '2026-10-26', time: '11:30', startUtc: start }],
+    messages: [{ role: 'lead', text: '11:30 AM\nMon 26 Oct', at: new Date(), via: 'whatsapp' }],
+  } as any);
+  // No salesperson calendar is connected in this database → the slot can't be booked.
+  await bookedReply(convo, '11:30 AM\nMon 26 Oct');
+  await bookedReply(convo, 'Okay');
+  await bookedReply(convo, 'I want free report as well');
+  const handoffs = (await rows(phone)).filter((r: any) => /team member help schedule/.test(textOf(r)));
+  assert.equal(handoffs.length, 1, 'told once — not on every later message');
+  const ev: any = await LeadEvent.findOne({ leadId: lead._id, type: 'HUMAN_HANDOFF' }).lean();
+  assert.equal(ev.payload.reason, 'no-open-slot');
+  assert.match(ev.payload.detail, /No salesperson calendar is connected/, 'the real reason is recorded');
+});

@@ -168,6 +168,8 @@ test('skipped messages are listed newest first with a readable reason and the le
   if (skipReason) return t.skip(skipReason);
   const c = await convo();
   await m.LeadEvent.create({ phone: c.lead.phone, type: 'NURTURE_ACTION_SKIPPED', payload: { reason: 'lead-replied', agent: 'sales-agent-drip' }, actor: 'sales-agent', conversationType: 'sales' });
+  // Created in the same millisecond, "newest first" would be a coin toss.
+  await new Promise((resolve) => setTimeout(resolve, 5));
   await m.LeadEvent.create({ leadId: c.lead._id, phone: c.lead.phone, type: 'NURTURE_ACTION_SKIPPED', payload: { reason: 'nurture-disabled', agent: 'sales-agent-invite' }, actor: 'sales-agent', conversationType: 'sales' });
   await m.LeadEvent.create({ phone: c.lead.phone, type: 'NURTURE_ACTION_SKIPPED', payload: { reason: 'tenant-thing' }, actor: 'tenant', conversationType: 'tenant' });
   const json = await (await m.skipped.GET(new Request('https://x.invalid/api/admin/nurture-config/skipped'))).json();

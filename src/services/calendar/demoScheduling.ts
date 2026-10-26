@@ -183,10 +183,13 @@ export function parseRequestedDateTime(text: string, now: Date, timeZone: string
       date = addDays(date, delta === 0 ? 0 : delta, timeZone);
     }
   }
+  // A written date ("28 oct 4pm", "28/10 at 4pm") is that day, not today.
+  const written = parseDemoDate(text || '', now, timeZone);
+  if (written) date = written;
 
   const time = `${pad(hour)}:${pad(minute)}`;
   const startUtc = zonedLocalToUtc(date, time, timeZone);
-  if (!/\btoday\b|\btomorrow\b|sunday|monday|tuesday|wednesday|thursday|friday|saturday/.test(cleaned) && startUtc.getTime() <= now.getTime()) {
+  if (!written && !/\btoday\b|\btomorrow\b|sunday|monday|tuesday|wednesday|thursday|friday|saturday/.test(cleaned) && startUtc.getTime() <= now.getTime()) {
     return null;
   }
   return { date, time, startUtc };

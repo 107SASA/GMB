@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { SlidersHorizontal, AlertTriangle, Trash2, FileX, Check } from 'lucide-react';
+import { WhatsAppTemplatesCard } from '@/components/admin/WhatsAppTemplatesCard';
 
 interface Settings {
   supportEmail: string;
@@ -240,6 +241,8 @@ export default function SettingsPage() {
             )}
           </div>
         </div>
+
+        <WhatsAppTemplatesCard />
 
         {/* ── Danger Zone ──────────────────────────────────────────────────── */}
         <div className="bg-surface-container-lowest rounded-xl border-2 border-error-container card-shadow p-6">

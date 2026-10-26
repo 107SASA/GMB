@@ -2,6 +2,10 @@ import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import SalesConversation from '@/models/SalesConversation';
 import BookingConversation from '@/models/BookingConversation';
+import SupportConversation from '@/models/SupportConversation';
+import ReportConversation from '@/models/ReportConversation';
+import WhatsAppThread from '@/models/WhatsAppThread';
+import WhatsAppMessage from '@/models/WhatsAppMessage';
 import Lead from '@/models/Lead';
 import LeadEvent from '@/models/LeadEvent';
 import DemoBooking from '@/models/DemoBooking';
@@ -21,6 +25,8 @@ import { releaseFromHuman } from '@/services/leadOwnership/releaseFromHuman';
 import { logLeadEvent } from '@/services/leadEvents';
 import { phoneDedupeKey } from '@/lib/phone';
 import { sendPushToSuperAdmins } from '@/services/push';
+import { ensureThreadsBackfilled, threadForPhone, withWhatsAppSendContext } from '@/services/inbox/whatsappLog';
+import { THREAD_KIND_LABEL, needsReply, threadKind, threadUnread, type ThreadKind } from '@/services/inbox/whatsappLogRules';
 import {
   duplicateClientKey,
   matchesInboxFilter,
@@ -33,63 +39,29 @@ import {
 } from '@/services/inbox/inboxRules';
 
 const PLATFORM = 'gmbboost-internal';
+const LIST_LIMIT = 300;
+const OPEN_BOOKING = ['active', 'awaiting_slot_selection', 'booked'];
 
-function ref(kind: 'sales' | 'booking', id: string): string {
-  return `${kind}:${id}`;
+/**
+ * The Super Admin WhatsApp Inbox: every chat on the GrowwMatics platform line,
+ * one row per phone number (WhatsAppThread, written by services/inbox/
+ * whatsappLog.ts) — sales, demo, support, free report, review replies and
+ * first contacts. A row's id is `wa:<threadId>`; the older `sales:<id>` /
+ * `booking:<id>` ids still open the same chat.
+ */
+function threadRef(id: unknown): string {
+  return `wa:${String(id)}`;
 }
 
-function parseRef(value: string): { kind: 'sales' | 'booking'; id: string } | null {
-  const [kind, id] = value.split(':');
-  if ((kind !== 'sales' && kind !== 'booking') || !mongoose.Types.ObjectId.isValid(id || '')) return null;
+function parseRef(value: string): { kind: 'wa' | 'sales' | 'booking'; id: string } | null {
+  const [kind, id] = String(value || '').split(':');
+  if ((kind !== 'wa' && kind !== 'sales' && kind !== 'booking') || !mongoose.Types.ObjectId.isValid(id || '')) return null;
   return { kind, id };
 }
 
 async function leadByPhone(phone: string) {
   const normalized = normalizePhoneE164(phone) || phone;
   return Lead.findOne({ phone: normalized, tenantId: PLATFORM }).lean() as Promise<any>;
-}
-
-function preview(messages: any[]): string {
-  const last = messages?.[messages.length - 1];
-  return last?.text ? String(last.text).slice(0, 90) : '';
-}
-
-function unread(convo: any): boolean {
-  if (!convo?.lastLeadReplyAt && !(convo?.messages || []).some((m: any) => m.role === 'lead')) return false;
-  const inbound = convo.lastLeadReplyAt || [...(convo.messages || [])].reverse().find((m: any) => m.role === 'lead')?.at;
-  if (!inbound) return false;
-  if (!convo.lastReadAt) return true;
-  return new Date(inbound).getTime() > new Date(convo.lastReadAt).getTime();
-}
-
-function card(kind: 'sales' | 'booking', convo: any, lead: any) {
-  const view = {
-    currentAgent: lead?.currentAgent,
-    currentStage: lead?.currentStage,
-    intent: lead?.intent,
-    nurtureStatus: lead?.nurtureStatus,
-    humanHandoffActive: !!lead?.humanHandoff?.active,
-    assignedUserId: lead?.assignedUserId ? String(lead.assignedUserId) : lead?.humanHandoff?.assignedUserId ? String(lead.humanHandoff.assignedUserId) : null,
-    leadScore: typeof lead?.leadScore === 'number' ? lead.leadScore : 0,
-    unread: unread(convo),
-    status: convo.status,
-  };
-  return {
-    id: ref(kind, String(convo._id)),
-    name: lead?.name || convo.leadName || 'Unknown',
-    phone: convo.leadPhone,
-    preview: preview(convo.messages),
-    updatedAt: convo.updatedAt,
-    unread: view.unread,
-    leadScore: view.leadScore,
-    band: scoreBand(view.leadScore),
-    intent: lead?.intent || null,
-    ownership: ownershipLabel(view, convo.status),
-    status: convo.status,
-    assignedUserId: view.assignedUserId,
-    leadId: lead?._id ? String(lead._id) : null,
-    filterView: view,
-  };
 }
 
 function kolkataDate(date = new Date()): string {
@@ -104,13 +76,73 @@ async function humanInboxSettings() {
   };
 }
 
+/** What kind of chat each number is, from its open conversations and lead. */
+async function threadFacts(threads: any[], byPhone: Map<string, any>) {
+  const keys = threads.map((thread) => thread.phoneKey);
+  const [support, report, booking, sales] = await Promise.all([
+    SupportConversation.find({ phoneKey: { $in: keys }, status: 'active' }).distinct('phoneKey'),
+    ReportConversation.find({ phoneKey: { $in: keys }, status: { $ne: 'stopped' } }).distinct('phoneKey'),
+    BookingConversation.find({ phoneKey: { $in: keys }, status: { $in: OPEN_BOOKING } }).distinct('phoneKey'),
+    SalesConversation.find({ phoneKey: { $in: keys } }).distinct('phoneKey'),
+  ]);
+  const has = (list: unknown[]) => new Set(list.map(String));
+  const s = { support: has(support), report: has(report), booking: has(booking), sales: has(sales) };
+  return (thread: any): ThreadKind => {
+    const lead = byPhone.get(thread.phone);
+    return threadKind({
+      supportOpen: s.support.has(thread.phoneKey),
+      reviewReply: !!thread.reviewReply,
+      demoOpen: s.booking.has(thread.phoneKey) || lead?.currentAgent === 'DEMO' || lead?.currentStage === 'DEMO_SCHEDULED',
+      reportOpen: s.report.has(thread.phoneKey),
+      salesThread: s.sales.has(thread.phoneKey),
+      customer: !!thread.userId || lead?.currentStage === 'CUSTOMER' || lead?.currentAgent === 'IN_HOUSE',
+    });
+  };
+}
+
+function card(thread: any, lead: any, kind: ThreadKind) {
+  const view = {
+    currentAgent: lead?.currentAgent,
+    currentStage: lead?.currentStage,
+    intent: lead?.intent,
+    nurtureStatus: lead?.nurtureStatus,
+    humanHandoffActive: !!lead?.humanHandoff?.active,
+    assignedUserId: lead?.assignedUserId ? String(lead.assignedUserId) : lead?.humanHandoff?.assignedUserId ? String(lead.humanHandoff.assignedUserId) : null,
+    leadScore: typeof lead?.leadScore === 'number' ? lead.leadScore : 0,
+    unread: threadUnread(thread),
+    needsReply: needsReply(thread, kind),
+    status: thread.status,
+    kind,
+  };
+  return {
+    id: threadRef(thread._id),
+    name: lead?.name || thread.name || 'Unknown',
+    phone: thread.phone,
+    preview: String(thread.lastMessageText || '').slice(0, 90),
+    lastDirection: thread.lastDirection,
+    updatedAt: thread.lastMessageAt,
+    unread: view.unread,
+    needsReply: view.needsReply,
+    kind,
+    kindLabel: THREAD_KIND_LABEL[kind],
+    leadScore: view.leadScore,
+    band: scoreBand(view.leadScore),
+    intent: lead?.intent || null,
+    ownership: ownershipLabel(view, thread.status),
+    status: thread.status,
+    assignedUserId: view.assignedUserId,
+    leadId: lead?._id ? String(lead._id) : null,
+    filterView: view,
+  };
+}
+
 /**
  * Saves an inbound message from a HUMAN-owned platform lead that has no live
- * sales or booking thread, so it reaches the team in the Inbox instead of
- * being dropped. Never triggers an AI reply. Order: the most recent sales
- * thread (any status — the Inbox lists all of them), else the most recent
- * booking thread, else a new closed booking thread just to hold the
- * conversation. The team is pushed a notification either way.
+ * sales or booking thread onto a conversation, so the agents' own history has
+ * it too (the Inbox already has it from the webhook's record). Never triggers
+ * an AI reply. Order: the most recent sales thread (any status), else the most
+ * recent booking thread, else a new closed booking thread just to hold it. The
+ * team is pushed a notification either way.
  */
 export async function saveHumanOwnedInbound(input: { phone: string; body: string; profileName?: string; lead: any }): Promise<{ ref: string }> {
   await dbConnect();
@@ -147,61 +179,65 @@ export async function saveHumanOwnedInbound(input: { phone: string; body: string
   await logLeadEvent('MESSAGE_RECEIVED', { channel: 'whatsapp', heldForHuman: true }, 'system', {
     leadId: input.lead?._id, phone: input.phone, conversationType: saved.kind, conversationId: new mongoose.Types.ObjectId(saved.id),
   });
+  const thread = await threadForPhone(input.phone).catch(() => null);
+  const ref = thread ? threadRef(thread._id) : `${saved.kind}:${saved.id}`;
   try {
     await sendPushToSuperAdmins({
       title: 'New message for human-owned lead',
       body: `${input.lead?.name || input.phone} sent a message (human-owned).`,
-      data: { leadId: input.lead?._id ? String(input.lead._id) : '', conversation: ref(saved.kind, saved.id) },
+      data: { leadId: input.lead?._id ? String(input.lead._id) : '', conversation: ref },
     });
   } catch (err: any) {
     console.warn('[platformInbox] human-owned inbound push failed:', err?.message);
   }
-  return { ref: ref(saved.kind, saved.id) };
+  return { ref };
 }
 
 export async function listInbox(input: { q?: string; filter?: string; sort?: string; viewerUserId?: string }) {
   await dbConnect();
+  await ensureThreadsBackfilled();
   const filter = (input.filter || 'all') as InboxFilter;
   const q = (input.q || '').trim();
   const rx = q ? new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
-  const leadMatch: any[] = [];
-  if (rx) leadMatch.push({ name: rx }, { phone: rx }, { email: rx });
-  if (q && mongoose.Types.ObjectId.isValid(q)) leadMatch.push({ _id: q });
-  const matchedLeads = leadMatch.length
-    ? await Lead.find({ tenantId: PLATFORM, $or: leadMatch }).select('phone').limit(40).lean()
-    : [];
-  const extraPhones = (matchedLeads as any[]).map((lead) => lead.phone).filter(Boolean);
-  const textQuery = rx ? { $or: [{ leadName: rx }, { leadPhone: rx }, { 'messages.text': rx }, ...(extraPhones.length ? [{ leadPhone: { $in: extraPhones } }] : [])] } : {};
-  const sales = await SalesConversation.find(textQuery).sort({ updatedAt: -1 }).limit(80).select('leadName leadPhone status updatedAt lastLeadReplyAt lastReadAt messages').lean();
-  // Closed booking threads stay listed once a human-owned lead has written into them.
-  const booking = await BookingConversation.find(rx ? textQuery : { $or: [{ status: { $in: ['active', 'awaiting_slot_selection', 'booked'] } }, { humanInboxAt: { $exists: true } }] })
-    .sort({ updatedAt: -1 }).limit(40).select('leadName leadPhone status updatedAt messages lastReadAt humanInboxAt').lean();
 
-  const phones = new Set<string>();
-  for (const row of [...sales, ...booking] as any[]) phones.add(row.leadPhone);
-  const leads = await Lead.find({ tenantId: PLATFORM, phone: { $in: [...phones] } })
-    .select('name phone email leadScore intent currentStage currentAgent nurtureStatus humanHandoff assignedUserId nextBestAction painPoints objections buyingSignals businessProfile tags notes createdAt businessId')
+  let threadQuery: Record<string, unknown> = {};
+  if (rx) {
+    // Name, phone, email or lead id, and any message text — the Inbox's own
+    // record and the older conversations.
+    const leadMatch: any[] = [{ name: rx }, { phone: rx }, { email: rx }];
+    if (mongoose.Types.ObjectId.isValid(q)) leadMatch.push({ _id: q });
+    const textQuery = { 'messages.text': rx };
+    const [leads, logged, sales, booking, support, report] = await Promise.all([
+      Lead.find({ tenantId: PLATFORM, $or: leadMatch }).select('phone').limit(60).lean(),
+      WhatsAppMessage.find({ text: rx }).sort({ at: -1 }).limit(300).distinct('phoneKey'),
+      SalesConversation.find(textQuery).limit(60).distinct('phoneKey'),
+      BookingConversation.find(textQuery).limit(60).distinct('phoneKey'),
+      SupportConversation.find(textQuery).limit(60).distinct('phoneKey'),
+      ReportConversation.find(textQuery).limit(60).distinct('phoneKey'),
+    ]);
+    const keys = new Set<string>([...logged, ...sales, ...booking, ...support, ...report].map(String));
+    for (const lead of leads as any[]) { const key = phoneDedupeKey(lead.phone); if (key) keys.add(key); }
+    const or: any[] = [{ name: rx }, { phone: rx }, { phoneKey: { $in: [...keys] } }];
+    if (mongoose.Types.ObjectId.isValid(q)) or.push({ _id: q });
+    threadQuery = { $or: or };
+  }
+  const threads: any[] = await WhatsAppThread.find(threadQuery).sort({ lastMessageAt: -1 }).limit(LIST_LIMIT).lean();
+
+  const leads = await Lead.find({ tenantId: PLATFORM, phone: { $in: threads.map((thread) => thread.phone) } })
+    .select('name phone email leadScore intent currentStage currentAgent nurtureStatus humanHandoff assignedUserId createdAt businessId')
     .lean();
   const byPhone = new Map((leads as any[]).map((lead) => [lead.phone, lead]));
+  const kindOf = await threadFacts(threads, byPhone);
+  const rows = threads.map((thread) => card(thread, byPhone.get(thread.phone), kindOf(thread)));
 
-  const latestByPhone = new Map<string, ReturnType<typeof card>>();
-  for (const row of [
-    ...(sales as any[]).map((convo) => card('sales', convo, byPhone.get(convo.leadPhone))),
-    ...(booking as any[]).map((convo) => card('booking', convo, byPhone.get(convo.leadPhone))),
-  ]) {
-    const prev = latestByPhone.get(row.phone);
-    if (!prev || +new Date(row.updatedAt) > +new Date(prev.updatedAt)) latestByPhone.set(row.phone, row);
-  }
-  let rows = [...latestByPhone.values()];
-  if (q && mongoose.Types.ObjectId.isValid(q)) {
-    rows = rows.filter((row) => row.leadId === q || row.id.endsWith(q));
-  }
   const visible = rows.filter((row) => matchesInboxFilter(row.filterView, filter, input.viewerUserId));
-  if (input.sort === 'unread') visible.sort((a, b) => Number(b.unread) - Number(a.unread) || +new Date(b.updatedAt) - +new Date(a.updatedAt));
+  const latest = (a: any, b: any) => +new Date(b.updatedAt) - +new Date(a.updatedAt);
+  if (input.sort === 'unread') visible.sort((a, b) => Number(b.unread) - Number(a.unread) || latest(a, b));
+  else if (input.sort === 'needs-reply') visible.sort((a, b) => Number(b.needsReply) - Number(a.needsReply) || latest(a, b));
   else if (input.sort === 'score') visible.sort((a, b) => b.leadScore - a.leadScore);
-  else if (input.sort === 'human') visible.sort((a, b) => Number(b.ownership === 'Human Owned') - Number(a.ownership === 'Human Owned') || +new Date(b.updatedAt) - +new Date(a.updatedAt));
-  else if (input.sort === 'mine') visible.sort((a, b) => Number(b.assignedUserId === input.viewerUserId) - Number(a.assignedUserId === input.viewerUserId) || +new Date(b.updatedAt) - +new Date(a.updatedAt));
-  else visible.sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
+  else if (input.sort === 'human') visible.sort((a, b) => Number(b.ownership === 'Human Owned') - Number(a.ownership === 'Human Owned') || latest(a, b));
+  else if (input.sort === 'mine') visible.sort((a, b) => Number(b.assignedUserId === input.viewerUserId) - Number(a.assignedUserId === input.viewerUserId) || latest(a, b));
+  else visible.sort(latest);
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const [failedMessages, demoToday] = await Promise.all([
@@ -210,6 +246,8 @@ export async function listInbox(input: { q?: string; filter?: string; sort?: str
   ]);
   const counts = {
     unread: rows.filter((row) => row.unread).length,
+    needsReply: rows.filter((row) => row.needsReply).length,
+    support: rows.filter((row) => row.kind === 'support').length,
     human: rows.filter((row) => row.ownership === 'Human Owned').length,
     mine: rows.filter((row) => row.assignedUserId === input.viewerUserId).length,
     highIntent: rows.filter((row) => row.leadScore >= 51).length,
@@ -219,34 +257,121 @@ export async function listInbox(input: { q?: string; filter?: string; sort?: str
   return { conversations: visible.map(({ filterView: _view, ...row }) => row), counts };
 }
 
-export async function inboxDetail(conversationRef: string) {
-  await dbConnect();
+/** Thread, lead and the number's latest sales / demo conversation (the agents' own history). */
+async function loadConversation(conversationRef: string) {
   const parsed = parseRef(conversationRef);
   if (!parsed) return null;
-  const Model = parsed.kind === 'sales' ? SalesConversation : BookingConversation;
-  const convo: any = await Model.findById(parsed.id);
-  if (!convo) return null;
-  convo.lastReadAt = new Date();
-  await convo.save();
+  let thread: any = null;
+  let phone: string | null = null;
+  if (parsed.kind === 'wa') {
+    thread = await WhatsAppThread.findById(parsed.id);
+    phone = thread?.phone || null;
+  } else {
+    const Model: any = parsed.kind === 'sales' ? SalesConversation : BookingConversation;
+    const legacy: any = await Model.findById(parsed.id).select('leadPhone').lean();
+    phone = legacy?.leadPhone || null;
+    if (phone) thread = await threadForPhone(phone);
+  }
+  if (!phone) return null;
+  const key = phoneDedupeKey(phone);
+  const [sales, booking]: any[] = key
+    ? await Promise.all([
+      SalesConversation.findOne({ phoneKey: key }).sort({ updatedAt: -1 }),
+      BookingConversation.findOne({ phoneKey: key }).sort({ updatedAt: -1 }),
+    ])
+    : [null, null];
+  const convo = [sales, booking].filter(Boolean).sort((a: any, b: any) => +new Date(b.updatedAt) - +new Date(a.updatedAt))[0] || null;
+  const lead = await leadByPhone(phone);
+  return { thread, phone, phoneKey: key, convo, sales, booking, lead, kind: convo ? (convo === sales ? 'sales' : 'booking') : null };
+}
 
-  const lead = await leadByPhone(convo.leadPhone);
+/** The person's last real message, from the Inbox record or the conversation itself. */
+function lastInboundAt(loaded: { thread: any; convo: any }): Date | null {
+  const fromConvo = loaded.convo ? realInboundAtFromMessages(loaded.convo.messages, loaded.convo.lastLeadReplyAt) : null;
+  const fromThread = loaded.thread?.lastInboundAt ? new Date(loaded.thread.lastInboundAt) : null;
+  if (!fromConvo) return fromThread;
+  if (!fromThread) return fromConvo;
+  return fromConvo > fromThread ? fromConvo : fromThread;
+}
+
+const MESSAGE_LIMIT = 400;
+
+export async function inboxDetail(conversationRef: string) {
+  await dbConnect();
+  const loaded = await loadConversation(conversationRef);
+  if (!loaded) return null;
+  const { thread, convo, sales, lead, phone, phoneKey } = loaded;
+  const now = new Date();
+  if (thread) await WhatsAppThread.updateOne({ _id: thread._id }, { $set: { lastReadAt: now } });
+  if (convo) { convo.lastReadAt = now; await convo.save(); }
+
+  // Everything the Inbox recorded, then the older conversation history from
+  // before it existed (messages before the first recorded one).
+  const logged: any[] = thread
+    ? (await WhatsAppMessage.find({ threadId: thread._id }).sort({ at: -1 }).limit(MESSAGE_LIMIT).lean()).reverse()
+    : [];
+  const statuses = new Map(
+    (await MessageQueue.find({ _id: { $in: logged.map((row) => row.queueId).filter(Boolean) } }).select('status deliveredAt readAt failedReason').lean() as any[])
+      .map((row) => [String(row._id), row])
+  );
+  const firstLogged = logged.length ? new Date(logged[0].at).getTime() : Infinity;
+  const older: any[] = [];
+  if (phoneKey) {
+    const convos: any[] = (await Promise.all([
+      SalesConversation.find({ phoneKey }).select('messages').lean(),
+      BookingConversation.find({ phoneKey }).select('messages').lean(),
+      SupportConversation.find({ phoneKey }).select('messages').lean(),
+      ReportConversation.find({ phoneKey }).select('messages').lean(),
+    ])).flat();
+    for (const row of convos) {
+      for (const message of row.messages || []) {
+        if (message?.at && new Date(message.at).getTime() < firstLogged) older.push(message);
+      }
+    }
+  }
+  older.sort((a, b) => +new Date(a.at) - +new Date(b.at));
+  const messages = [
+    ...older.slice(-MESSAGE_LIMIT).map((message: any) => ({
+      role: message.role,
+      kind: messageKind(message.role, message.sender),
+      text: message.text,
+      at: message.at,
+      clientKey: message.clientKey || null,
+      status: null as string | null,
+      template: null as string | null,
+    })),
+    ...logged.map((row) => {
+      const queue: any = row.queueId ? statuses.get(String(row.queueId)) : null;
+      const status = !queue ? null : queue.readAt ? 'read' : queue.deliveredAt ? 'delivered' : queue.status === 'FAILED' ? 'failed' : queue.status === 'SENT' ? 'sent' : 'sending';
+      return {
+        role: row.direction === 'in' ? 'lead' : 'agent',
+        kind: (row.direction === 'in' ? 'customer' : row.sender === 'team' ? 'human' : 'ai') as 'customer' | 'ai' | 'human',
+        text: row.text,
+        at: row.at,
+        clientKey: row.clientKey || null,
+        status,
+        template: row.template || null,
+      };
+    }),
+  ];
+
   const events = lead
-    ? await LeadEvent.find({ $or: [{ leadId: lead._id }, { phone: convo.leadPhone }] }).sort({ createdAt: -1 }).limit(40).lean()
+    ? await LeadEvent.find({ $or: [{ leadId: lead._id }, { phone }] }).sort({ createdAt: -1 }).limit(40).lean()
     : [];
   const demo = lead ? await DemoBooking.findOne({ leadId: lead._id }).sort({ updatedAt: -1 }).lean() as any : null;
   const reminders = demo
     ? await ScheduledAction.find({ leadId: lead._id, actionType: 'DEMO_REMINDER', 'payload.bookingId': String(demo._id) }).select('status payload').lean()
     : [];
-  const business = lead?.businessId
-    ? await Business.findById(lead.businessId).select('name subscriptionStatus googleConnected city googleLocationId createdAt').lean() as any
+  const businessId = lead?.businessId || thread?.businessId;
+  const business = businessId
+    ? await Business.findById(businessId).select('name subscriptionStatus googleConnected city googleLocationId createdAt').lean() as any
     : null;
-  const subscription = lead?.businessId
-    ? await Subscription.findOne({ businessId: lead.businessId }).select('planType billingStatus status startDate').lean() as any
+  const subscription = businessId
+    ? await Subscription.findOne({ businessId }).select('planType billingStatus status startDate').lean() as any
     : null;
   const nextAction = lead
     ? await ScheduledAction.findOne({ leadId: lead._id, status: 'PENDING', actionType: { $nin: ['DEMO_REMINDER', 'NO_SHOW_CHECK'] } }).sort({ dueAt: 1 }).select('actionType dueAt reason').lean() as any
     : null;
-  const lastInbound = realInboundAtFromMessages(convo.messages, convo.lastLeadReplyAt);
   const view = {
     currentAgent: lead?.currentAgent,
     currentStage: lead?.currentStage,
@@ -254,27 +379,46 @@ export async function inboxDetail(conversationRef: string) {
     nurtureStatus: lead?.nurtureStatus,
     humanHandoffActive: !!lead?.humanHandoff?.active,
   };
+  const kind: ThreadKind = thread
+    ? (await threadFacts([thread], new Map(lead ? [[thread.phone, lead]] : [])))(thread)
+    : 'new';
+  const human = view.humanHandoffActive || lead?.currentAgent === 'HUMAN';
+  const banner = human
+    ? 'Human is handling this conversation'
+    : kind === 'support'
+      ? 'Support request — the customer got the automatic acknowledgement. Reply here; no bot answers support.'
+      : kind === 'review-reply'
+        ? "Reply from someone a customer's business asked for a review. No bot replies to them."
+        : kind === 'new'
+          ? 'New contact — the bot sent the welcome menu. Reply here to talk to them yourself.'
+          : 'AI is handling this conversation';
+  const status = thread?.status || (convo?.status === 'completed' || convo?.status === 'stopped' ? 'resolved' : 'open');
 
   return {
-    id: conversationRef,
-    windowOpen: sessionWindowOpen(lastInbound),
+    id: thread ? threadRef(thread._id) : conversationRef,
+    windowOpen: sessionWindowOpen(lastInboundAt(loaded)),
     blocked: lead ? outboundBlockedReason(lead) : null,
-    banner: view.humanHandoffActive || lead?.currentAgent === 'HUMAN'
-      ? 'Human is handling this conversation'
-      : 'AI Sales Agent is handling this conversation',
+    banner,
+    contact: {
+      name: lead?.name || thread?.name || convo?.leadName || 'Unknown',
+      phone,
+      kind,
+      kindLabel: THREAD_KIND_LABEL[kind],
+      status,
+    },
     lead: lead ? {
       id: String(lead._id),
-      name: lead.name || convo.leadName || null,
+      name: lead.name || convo?.leadName || null,
       phone: lead.phone,
       email: lead.email || null,
-      company: lead.businessProfile?.name || convo.scores?.businessName || null,
+      company: lead.businessProfile?.name || convo?.scores?.businessName || null,
       createdAt: lead.createdAt,
       leadScore: lead.leadScore ?? 0,
       band: scoreBand(lead.leadScore ?? 0),
       intent: lead.intent || null,
       stage: lead.currentStage || null,
       nextBestAction: lead.nextBestAction || null,
-      ownership: ownershipLabel(view, convo.status),
+      ownership: ownershipLabel(view, status),
       agent: lead.currentAgent || null,
       assignedUserId: lead.assignedUserId ? String(lead.assignedUserId) : null,
       painPoints: lead.painPoints || [],
@@ -286,11 +430,11 @@ export async function inboxDetail(conversationRef: string) {
       notes: lead.notes || '',
       nurtureStatus: lead.nurtureStatus || null,
     } : null,
-    nurture: parsed.kind === 'sales' ? {
-      status: lead?.nurtureStatus || convo.status,
-      followUpsSent: convo.followUpsSent || 0,
-      version: convo.nurtureConfigVersion || null,
-      lastAgentAt: convo.lastAgentAt || null,
+    nurture: sales ? {
+      status: lead?.nurtureStatus || sales.status,
+      followUpsSent: sales.followUpsSent || 0,
+      version: sales.nurtureConfigVersion || null,
+      lastAgentAt: sales.lastAgentAt || null,
       nextAction: nextAction?.actionType || null,
       nextAt: nextAction?.dueAt || null,
     } : null,
@@ -317,13 +461,7 @@ export async function inboxDetail(conversationRef: string) {
       city: business.city || null,
       since: business.createdAt,
     } : null,
-    messages: (convo.messages || []).map((message: any) => ({
-      role: message.role,
-      kind: messageKind(message.role, message.sender),
-      text: message.text,
-      at: message.at,
-      clientKey: message.clientKey || null,
-    })),
+    messages,
     events: (events as any[]).map((event) => ({
       type: event.type,
       at: event.createdAt,
@@ -333,50 +471,46 @@ export async function inboxDetail(conversationRef: string) {
   };
 }
 
-async function loadConversation(conversationRef: string) {
-  const parsed = parseRef(conversationRef);
-  if (!parsed) return null;
-  const Model = parsed.kind === 'sales' ? SalesConversation : BookingConversation;
-  const convo: any = await Model.findById(parsed.id);
-  if (!convo) return null;
-  const lead = await leadByPhone(convo.leadPhone);
-  return { convo, lead, kind: parsed.kind };
-}
-
-export async function sendInboxMessage(conversationRef: string, input: { text?: string; template?: string; clientKey?: string }) {
+export async function sendInboxMessage(conversationRef: string, input: { text?: string; template?: string; clientKey?: string }, userId?: string) {
   await dbConnect();
   const loaded = await loadConversation(conversationRef);
   if (!loaded) return { ok: false as const, error: 'Conversation not found', status: 404 };
   const settings = await humanInboxSettings();
   if (!settings.enabled) return { ok: false as const, error: 'Human inbox is disabled.', status: 403 };
-  const { convo, lead } = loaded;
+  const { convo, lead, thread, phone } = loaded;
   if (lead && outboundBlockedReason(lead)) {
     return { ok: false as const, error: 'This lead cannot be contacted.', status: 409 };
   }
-  if (input.clientKey && duplicateClientKey(convo.messages || [], input.clientKey)) {
-    return { ok: true as const, duplicate: true };
+  if (input.clientKey) {
+    const sentBefore = (thread && await WhatsAppMessage.exists({ threadId: thread._id, clientKey: input.clientKey }))
+      || (convo && duplicateClientKey(convo.messages || [], input.clientKey));
+    if (sentBefore) return { ok: true as const, duplicate: true };
   }
-  const lastInbound = realInboundAtFromMessages(convo.messages, convo.lastLeadReplyAt);
-  const open = sessionWindowOpen(lastInbound);
+  const open = sessionWindowOpen(lastInboundAt(loaded));
   let text = (input.text || '').trim();
   if (!open && input.template !== 'notification') {
     return { ok: false as const, error: 'WhatsApp customer-service window is closed. Select an approved template to continue.', status: 409 };
   }
-  let result;
-  if (!open) {
-    if (!WA_TEMPLATES.notification) return { ok: false as const, error: 'The notification template is not configured.', status: 409 };
-    text = text || 'A GrowwMatics teammate sent you an update.';
-    const built = buildNotificationVariables(recipientFirstName(lead?.name || convo.leadName), text);
-    if (!built.ok) return { ok: false as const, error: built.error, status: 400 };
-    result = await sendTemplateMessage(convo.leadPhone, WA_TEMPLATES.notification, built.variables);
-  } else {
-    if (!text) return { ok: false as const, error: 'Message is empty.', status: 400 };
-    result = await sendOutboundMessage(convo.leadPhone, text, lead?._id?.toString());
-  }
+  // Recorded in the Inbox as the team's message, by whoever sent it.
+  const result = await withWhatsAppSendContext({ sender: 'team', userId, clientKey: input.clientKey }, async () => {
+    if (!open) {
+      if (!WA_TEMPLATES.notification) return { refused: true as const, error: 'The notification template is not configured.', status: 409 };
+      text = text || 'A GrowwMatics teammate sent you an update.';
+      const built = buildNotificationVariables(recipientFirstName(lead?.name || thread?.name || convo?.leadName), text);
+      if (!built.ok) return { refused: true as const, error: built.error, status: 400 };
+      return sendTemplateMessage(phone, WA_TEMPLATES.notification, built.variables);
+    }
+    if (!text) return { refused: true as const, error: 'Message is empty.', status: 400 };
+    return sendOutboundMessage(phone, text, lead?._id?.toString());
+  });
+  if ('refused' in result) return { ok: false as const, error: result.error, status: result.status };
   if (!result.success) return { ok: false as const, error: 'Message failed to send', status: 502 };
-  convo.messages.push({ role: 'agent', text, at: new Date(), sender: 'human', clientKey: input.clientKey || undefined });
-  convo.lastAgentAt = new Date();
-  await convo.save();
+  // The agents read their own conversation: the team's reply goes there too.
+  if (convo) {
+    convo.messages.push({ role: 'agent', text, at: new Date(), sender: 'human', clientKey: input.clientKey || undefined });
+    convo.lastAgentAt = new Date();
+    await convo.save();
+  }
   return { ok: true as const, duplicate: false };
 }
 
@@ -434,21 +568,30 @@ export async function assignInbox(conversationRef: string, userId: string | null
   return { ok: true as const };
 }
 
+/**
+ * Resolve: the team has handled this chat — it leaves the open views, and an
+ * open support issue is closed (the next message opens a new one, with its
+ * own acknowledgement). It does not stop a bot; Take Over does that. A new
+ * message from the person reopens the chat.
+ */
 export async function resolveInbox(conversationRef: string, reopen: boolean) {
   await dbConnect();
   const loaded = await loadConversation(conversationRef);
   if (!loaded) return { ok: false as const, error: 'Conversation not found', status: 404 };
+  const thread = loaded.thread || await threadForPhone(loaded.phone);
+  if (!thread) return { ok: false as const, error: 'Conversation not found', status: 404 };
+  const now = new Date();
   if (reopen) {
-    if (loaded.convo.status === 'stopped' && loaded.lead?.nurtureStatus === 'OPTED_OUT') {
-      return { ok: false as const, error: 'An opted-out conversation stays closed.', status: 409 };
-    }
-    loaded.convo.status = 'active';
-  } else if (loaded.kind === 'booking' && loaded.convo.status === 'booked') {
-    return { ok: false as const, error: 'Cancel the demo before resolving this thread.', status: 409 };
-  } else {
-    loaded.convo.status = loaded.kind === 'booking' ? 'stopped' : 'completed';
+    await WhatsAppThread.updateOne({ _id: thread._id }, { $set: { status: 'open' }, $unset: { resolvedAt: '' } });
+    return { ok: true as const };
   }
-  await loaded.convo.save();
+  await WhatsAppThread.updateOne({ _id: thread._id }, { $set: { status: 'resolved', resolvedAt: now, lastReadAt: now } });
+  if (loaded.phoneKey) {
+    await SupportConversation.updateMany(
+      { phoneKey: loaded.phoneKey, status: 'active' },
+      { $set: { status: 'closed', closedAt: now, closedReason: 'resolved' } }
+    );
+  }
   return { ok: true as const };
 }
 
@@ -531,3 +674,14 @@ export function inboxTemplates() {
   ];
 }
 
+
+/** Chats with a message nobody has opened yet — the Inbox badge in the menu. */
+export async function inboxUnreadCount(): Promise<{ unread: number }> {
+  await dbConnect();
+  await ensureThreadsBackfilled();
+  const unread = await WhatsAppThread.countDocuments({
+    lastInboundAt: { $ne: null },
+    $or: [{ lastReadAt: null }, { $expr: { $gt: ['$lastInboundAt', '$lastReadAt'] } }],
+  });
+  return { unread };
+}

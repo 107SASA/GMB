@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Loader2, PanelRight, Search, Send, Settings, X } from 'lucide-react';
 
-type Filter = 'all' | 'unread' | 'mine' | 'unassigned' | 'human' | 'ai' | 'nurturing' | 'demo' | 'customers' | 'resolved';
+type Filter =
+  | 'all' | 'needs-reply' | 'unread' | 'support' | 'sales' | 'demo' | 'report' | 'customers' | 'review-replies' | 'new'
+  | 'human' | 'ai' | 'mine' | 'unassigned' | 'nurturing' | 'resolved';
 
 interface ConversationCard {
   id: string;
@@ -12,6 +14,10 @@ interface ConversationCard {
   preview: string;
   updatedAt: string;
   unread: boolean;
+  needsReply: boolean;
+  lastDirection: 'in' | 'out';
+  kind: string;
+  kindLabel: string;
   leadScore: number;
   band: string;
   intent: string | null;
@@ -23,13 +29,23 @@ interface ConversationCard {
 
 interface TeamMember { id: string; name: string; email: string; role: string; activeConversations: number }
 interface TimelineEvent { type: string; at: string; actor: string; payload: Record<string, unknown> }
-interface ChatMessage { role: string; kind: 'customer' | 'ai' | 'human'; text: string; at: string; clientKey?: string | null }
+interface ChatMessage {
+  role: string;
+  kind: 'customer' | 'ai' | 'human';
+  text: string;
+  at: string;
+  clientKey?: string | null;
+  /** Outbound only: sending, sent, delivered, read or failed. */
+  status?: string | null;
+  template?: string | null;
+}
 
 interface Detail {
   id: string;
   windowOpen: boolean;
   blocked: string | null;
   banner: string;
+  contact: { name: string; phone: string; kind: string; kindLabel: string; status: 'open' | 'resolved' };
   lead: null | {
     id: string; name: string | null; phone: string; email: string | null; company: string | null; createdAt: string;
     leadScore: number; band: string; intent: string | null; stage: string | null; nextBestAction: string | null;
@@ -46,16 +62,25 @@ interface Detail {
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'All' },
+  { id: 'needs-reply', label: 'Needs reply' },
   { id: 'unread', label: 'Unread' },
-  { id: 'mine', label: 'My Conversations' },
-  { id: 'unassigned', label: 'Unassigned' },
+  { id: 'support', label: 'Support' },
+  { id: 'sales', label: 'Sales' },
+  { id: 'demo', label: 'Demo' },
+  { id: 'report', label: 'Free report' },
+  { id: 'customers', label: 'Customers' },
+  { id: 'review-replies', label: 'Review replies' },
+  { id: 'new', label: 'New contacts' },
   { id: 'human', label: 'Human Required' },
   { id: 'ai', label: 'AI Active' },
+  { id: 'mine', label: 'My Conversations' },
+  { id: 'unassigned', label: 'Unassigned' },
   { id: 'nurturing', label: 'Nurturing' },
-  { id: 'demo', label: 'Demo' },
-  { id: 'customers', label: 'Customers' },
   { id: 'resolved', label: 'Resolved' },
 ];
+
+const SENDER_LABEL = { customer: 'Customer', human: 'Team', ai: 'Bot' } as const;
+const STATUS_LABEL: Record<string, string> = { sending: 'Sending…', sent: 'Sent', delivered: 'Delivered', read: 'Read', failed: 'Not delivered' };
 
 const SAFE_KEYS = ['from', 'to', 'reason', 'action', 'nextBestAction', 'outcome', 'signal', 'agent', 'reminderType'];
 
@@ -104,7 +129,7 @@ export default function WhatsAppInboxPage() {
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const [rows, setRows] = useState<ConversationCard[]>([]);
-  const [counts, setCounts] = useState({ unread: 0, human: 0, mine: 0, highIntent: 0, demoToday: 0, failedMessages: 0 });
+  const [counts, setCounts] = useState({ unread: 0, needsReply: 0, support: 0, human: 0, mine: 0, highIntent: 0, demoToday: 0, failedMessages: 0 });
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
@@ -246,7 +271,9 @@ export default function WhatsAppInboxPage() {
             <button type="button" aria-label="Inbox settings" onClick={() => setSettingsOpen(true)} className="rounded-lg p-1.5 hover:bg-surface-container"><Settings size={16} /></button>
           </div>
           <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+            <Chip>{`Needs reply ${counts.needsReply}`}</Chip>
             <Chip>{`Unread ${counts.unread}`}</Chip>
+            <Chip>{`Support ${counts.support}`}</Chip>
             <Chip>{`Human ${counts.human}`}</Chip>
             <Chip>{`Mine ${counts.mine}`}</Chip>
             <Chip>{`High intent ${counts.highIntent}`}</Chip>
@@ -259,6 +286,7 @@ export default function WhatsAppInboxPage() {
           </div>
           <select value={sort} onChange={(event) => setSort(event.target.value)} className="mt-2 w-full rounded-lg border border-outline-variant bg-transparent px-2 py-1.5 text-xs">
             <option value="latest">Latest activity</option>
+            <option value="needs-reply">Needs reply first</option>
             <option value="unread">Unread first</option>
             <option value="score">Highest intent</option>
             <option value="human">Human attention required</option>
@@ -283,11 +311,13 @@ export default function WhatsAppInboxPage() {
                     <span className="shrink-0 text-[11px] text-on-surface-variant">{when(row.updatedAt)}</span>
                   </span>
                   <span className="block truncate text-xs text-on-surface-variant">{row.phone}</span>
-                  <span className="mt-1 block truncate text-xs">{row.preview || 'No messages yet'}</span>
+                  <span className={`mt-1 block truncate text-xs ${row.unread ? 'font-semibold' : ''}`}>{row.lastDirection === 'out' ? 'You: ' : ''}{row.preview || 'No messages yet'}</span>
                   <span className="mt-1.5 flex flex-wrap items-center gap-1">
+                    <Chip>{row.kindLabel}</Chip>
                     <Chip>{row.ownership}</Chip>
-                    <Chip>{`${row.band} ${row.leadScore}`}</Chip>
+                    {row.leadId && <Chip>{`${row.band} ${row.leadScore}`}</Chip>}
                     {row.intent && <Chip>{row.intent}</Chip>}
+                    {row.needsReply && <span className="rounded-full bg-error px-1.5 text-[10px] text-white">Needs reply</span>}
                     {row.unread && <span className="rounded-full bg-primary px-1.5 text-[10px] text-white">New</span>}
                   </span>
                   {row.assignedUserId && <span className="mt-1 block text-[11px] text-on-surface-variant">{teammate.get(row.assignedUserId) || 'Assigned'}</span>}
@@ -308,21 +338,23 @@ export default function WhatsAppInboxPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <button type="button" className="mb-1 text-xs text-primary md:hidden" onClick={() => setMobileThread(false)}>Back</button>
-                  <h2 className="truncate text-base font-semibold">{detail.lead?.name || 'Unknown'}</h2>
-                  <p className="text-xs text-on-surface-variant">{detail.lead?.phone} · {detail.lead?.stage || detail.lead?.ownership || 'Lead'}</p>
+                  <h2 className="truncate text-base font-semibold">{detail.contact.name}</h2>
+                  <p className="text-xs text-on-surface-variant">{detail.contact.phone} · {detail.lead?.stage || detail.contact.kindLabel}</p>
                   <div className="mt-2 flex flex-wrap gap-1">
-                    <Chip>{`${detail.lead?.band || 'COLD'} ${detail.lead?.leadScore ?? 0}`}</Chip>
-                    <Chip>{textOr(detail.lead?.intent)}</Chip>
-                    <Chip>{textOr(detail.lead?.stage)}</Chip>
-                    <Chip>{detail.lead?.ownership || 'AI Active'}</Chip>
-                    <Chip>{detail.lead?.assignedUserId ? (teammate.get(detail.lead.assignedUserId) || 'Assigned') : 'Unassigned'}</Chip>
+                    <Chip>{detail.contact.kindLabel}</Chip>
+                    {detail.lead && <Chip>{`${detail.lead.band} ${detail.lead.leadScore}`}</Chip>}
+                    {detail.lead?.intent && <Chip>{detail.lead.intent}</Chip>}
+                    {detail.lead?.stage && <Chip>{detail.lead.stage}</Chip>}
+                    <Chip>{detail.lead?.ownership || (detail.contact.status === 'resolved' ? 'Resolved' : 'Open')}</Chip>
+                    {detail.lead && <Chip>{detail.lead.assignedUserId ? (teammate.get(detail.lead.assignedUserId) || 'Assigned') : 'Unassigned'}</Chip>}
                   </div>
                 </div>
                 <div className="flex flex-wrap justify-end gap-1.5">
-                  <button type="button" onClick={() => act('takeover')} className="rounded-lg bg-primary px-2.5 py-1.5 text-xs text-white">Take Over</button>
-                  <button type="button" onClick={() => setAssignOpen(true)} className="rounded-lg border border-outline-variant px-2.5 py-1.5 text-xs">Assign</button>
-                  <button type="button" onClick={() => act('return-to-ai')} className="rounded-lg border border-outline-variant px-2.5 py-1.5 text-xs">Return to AI</button>
-                  <button type="button" onClick={() => act(detail.lead?.ownership === 'Resolved' ? 'reopen' : 'resolve')} className="rounded-lg border border-outline-variant px-2.5 py-1.5 text-xs">{detail.lead?.ownership === 'Resolved' ? 'Reopen' : 'Resolve'}</button>
+                  {/* Taking over, assigning and handing back work on a lead; a chat without one can still be answered and resolved. */}
+                  <button type="button" disabled={!detail.lead} title={detail.lead ? undefined : 'No lead for this number'} onClick={() => act('takeover')} className="rounded-lg bg-primary px-2.5 py-1.5 text-xs text-white disabled:opacity-50">Take Over</button>
+                  <button type="button" disabled={!detail.lead} onClick={() => setAssignOpen(true)} className="rounded-lg border border-outline-variant px-2.5 py-1.5 text-xs disabled:opacity-50">Assign</button>
+                  <button type="button" disabled={!detail.lead} onClick={() => act('return-to-ai')} className="rounded-lg border border-outline-variant px-2.5 py-1.5 text-xs disabled:opacity-50">Return to AI</button>
+                  <button type="button" onClick={() => act(detail.contact.status === 'resolved' ? 'reopen' : 'resolve')} className="rounded-lg border border-outline-variant px-2.5 py-1.5 text-xs">{detail.contact.status === 'resolved' ? 'Reopen' : 'Resolve'}</button>
                   <button type="button" aria-label="Lead intelligence" onClick={() => setIntelOpen(true)} className="rounded-lg border border-outline-variant p-1.5 xl:hidden"><PanelRight size={14} /></button>
                 </div>
               </div>
@@ -335,9 +367,11 @@ export default function WhatsAppInboxPage() {
               ) : (
                 <div key={`m-${index}`} className={`flex ${item.message.kind === 'customer' ? 'justify-start' : 'justify-end'}`}>
                   <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${item.message.kind === 'customer' ? 'bg-surface-container' : item.message.kind === 'human' ? 'bg-primary text-white' : 'bg-primary-fixed text-on-surface'}`}>
-                    <p className="mb-1 text-[10px] uppercase tracking-wide opacity-70">{item.message.kind === 'customer' ? 'Customer' : item.message.kind === 'human' ? 'Human' : 'AI'}</p>
+                    <p className="mb-1 text-[10px] uppercase tracking-wide opacity-70">{SENDER_LABEL[item.message.kind]}{item.message.template ? ` · ${item.message.template}` : ''}</p>
                     <p className="whitespace-pre-wrap">{item.message.text}</p>
-                    <p className="mt-1 text-[10px] opacity-70">{when(item.message.at)}</p>
+                    <p className={`mt-1 text-[10px] ${item.message.status === 'failed' ? 'font-semibold' : 'opacity-70'}`}>
+                      {when(item.message.at)}{item.message.status ? ` · ${STATUS_LABEL[item.message.status] || item.message.status}` : ''}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -395,7 +429,7 @@ export default function WhatsAppInboxPage() {
       {templateOpen && (
         <Modal title="Approved template" onClose={() => setTemplateOpen(false)}>
           <p className="text-sm">GrowwMatics update</p>
-          <p className="mt-2 rounded-lg bg-surface-container p-3 text-sm">Hi {detail?.lead?.name || 'there'} — {draft || 'Your message'}</p>
+          <p className="mt-2 rounded-lg bg-surface-container p-3 text-sm">Hi {detail?.lead?.name || detail?.contact.name || 'there'} — {draft || 'Your message'}</p>
           <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} placeholder="Message inside the approved template" className="mt-3 w-full rounded-lg border border-outline-variant bg-transparent px-3 py-2 text-sm" />
           <button type="button" disabled={sending || !draft.trim()} onClick={() => send('notification')} className="mt-3 rounded-lg bg-primary px-3 py-2 text-sm text-white disabled:opacity-50">Send template</button>
         </Modal>

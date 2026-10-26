@@ -25,7 +25,9 @@ import { checkRateLimit } from '@/lib/rateLimit';
  *    for the same number on the same line in the last 10 minutes.
  */
 
-export const OPT_OUT_KEYWORDS = ['STOP', 'UNSUBSCRIBE', 'CANCEL'] as const;
+// 'STOP MESSAGES' is the opt-out quick-reply button on the Super Admin
+// templates sent to leads (Leads & Pipeline → Send WhatsApp).
+export const OPT_OUT_KEYWORDS = ['STOP', 'UNSUBSCRIBE', 'CANCEL', 'STOP MESSAGES'] as const;
 export const OPT_OUT_RETRY_EVENT = 'whatsapp/opt-out.retry';
 
 export function isOptOutKeyword(body: string | null | undefined): boolean {

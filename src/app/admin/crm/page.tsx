@@ -101,7 +101,7 @@ export default function CRMMonitorPage() {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={data?.pipelineBreakdown} layout="vertical" margin={{ left: 8, right: 16 }}>
-                <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                 <YAxis
                   type="category"
                   dataKey="stage"

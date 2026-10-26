@@ -116,9 +116,12 @@ test('takeover, return, resolve, and notes stay on the existing lead records', (
   const back = source.slice(source.indexOf('export async function returnInboxToAi'), source.indexOf('export async function assignInbox'));
   assert.ok(back.includes('releaseFromHuman'));
   assert.equal(back.includes('followUpsSent = 0'), false);
+  // Resolve marks the chat handled and closes an open support issue; it never
+  // restarts or stops a bot conversation (Take Over / Return to AI do that).
   const resolve = source.slice(source.indexOf('export async function resolveInbox'), source.indexOf('export async function saveInboxNotes'));
-  assert.ok(resolve.includes("'completed'"));
-  assert.ok(resolve.includes('OPTED_OUT'));
+  assert.ok(resolve.includes("status: 'resolved'"));
+  assert.ok(resolve.includes("closedReason: 'resolved'"));
+  assert.equal(/SalesConversation|BookingConversation|convo\.status/.test(resolve), false);
   const notes = source.slice(source.indexOf('export async function saveInboxNotes'), source.indexOf('export async function inboxTeam'));
   assert.equal(notes.includes('sendOutboundMessage'), false);
   assert.ok(notes.includes('notes'));
@@ -134,4 +137,28 @@ test('the inbox screen keeps the required empty states and does not call Meta fr
   assert.ok(page.includes('WhatsApp customer-service window is closed. Select an approved template to continue.'));
   assert.equal(page.includes('graph.facebook.com'), false);
   assert.equal(page.includes('/api/admin/inbox/'), true);
+});
+
+test('full inbox: chat labels, needs-reply, what a send reads as, and what stays out', async () => {
+  const rules = await import('../../src/services/inbox/whatsappLogRules.ts');
+  const sids = { reviewRequestUtility: 'HXrev', loginOtp: 'HXotp', notification: 'HXnote', reportReady: 'HXrep' };
+  assert.equal(rules.excludedTemplate('HXrev', sids), 'review-request');
+  assert.equal(rules.excludedTemplate('HXotp', sids), 'login-code');
+  assert.equal(rules.excludedTemplate('HXnote', sids), null);
+  assert.deepEqual(rules.outboundText({ contentSid: 'HXnote', variables: { '1': 'Asha', '2': 'Your demo is at 11' } }, sids), { text: 'Your demo is at 11', template: 'Notification' });
+  assert.equal(rules.outboundText({ contentSid: 'HXrep', variables: { '1': 'Asha', '2': 'Cafe', '3': 'a1' } }, sids).template, 'Report ready');
+  assert.equal(rules.outboundText({ body: 'Pick a day', buttons: [{ title: 'Today' }, { title: 'Tomorrow' }] }, sids).text, 'Pick a day\n[Today | Tomorrow]');
+  assert.equal(rules.inboundText('', 1), '📎 Attachment (1) — open WhatsApp to view');
+  assert.equal(rules.threadKind({ supportOpen: true, salesThread: true }), 'support');
+  assert.equal(rules.threadKind({ demoOpen: true, salesThread: true }), 'demo');
+  assert.equal(rules.threadKind({ reviewReply: true }), 'review-reply');
+  assert.equal(rules.threadKind({}), 'new');
+  assert.equal(rules.needsReply({ lastDirection: 'in', status: 'open' }), true);
+  assert.equal(rules.needsReply({ lastDirection: 'out', status: 'open' }, 'support'), true, 'the acknowledgement is not an answer');
+  assert.equal(rules.needsReply({ lastDirection: 'in', status: 'resolved' }), false);
+  assert.equal(rules.threadUnread({ lastInboundAt: new Date(2000), lastReadAt: new Date(1000) }), true);
+  assert.equal(matchesInboxFilter({ unread: false, kind: 'support' }, 'support'), true);
+  assert.equal(matchesInboxFilter({ unread: false, kind: 'review-reply' }, 'review-replies'), true);
+  assert.equal(matchesInboxFilter({ unread: false, needsReply: true }, 'needs-reply'), true);
+  assert.equal(matchesInboxFilter({ unread: false, status: 'resolved' }, 'resolved'), true);
 });

@@ -842,7 +842,7 @@ export const subscriptionExpiryWorker = inngest.createFunction(
       const dbConnect = (await import("@/lib/mongodb")).default;
       await dbConnect();
       const { default: Business } = await import("@/models/Business");
-      const { cancelBusinessPlan, cancelPlan } = await import("@/lib/billing/applyEntitlements");
+      const { cancelBusinessPlan, endUserPlanUnlessOtherWorkspacePaid } = await import("@/lib/billing/applyEntitlements");
       const { reconcileWorkspaceSubscription } = await import("@/lib/billing/razorpayReconcile");
       const { TRIAL_CHARGE_PROCESSING_MS } = await import("@/lib/billing/billingPolicy");
       const { flagUnconfirmedTrialCharge } = await import("@/services/billing/trialChargeVerification");
@@ -862,7 +862,7 @@ export const subscriptionExpiryWorker = inngest.createFunction(
           // WhatsApp instead of the generic "subscription cancelled" one —
           // re-checked inside (not extended, nothing paid), claimed once.
           await cancelBusinessPlan(id, { trialEnded: true });
-          if (b.userId) await cancelPlan(b.userId.toString());
+          if (b.userId) await endUserPlanUnlessOtherWorkspacePaid(b.userId.toString(), id);
           const { sendTrialExpiredNotice } = await import("@/services/billing/billingWhatsApp");
           await sendTrialExpiredNotice(id);
           ended++;
@@ -1137,7 +1137,14 @@ function fillTemplate(tpl: string, vars: TemplateVars): string {
  * other flow (see src/services/whatsapp/send.ts). If review campaigns ever
  * need to run over Meta instead of Twilio, this needs revisiting.
  */
-async function sendReviewRequest(
+async function sendReviewRequest(...args: Parameters<typeof sendReviewRequestToCustomer>): ReturnType<typeof sendReviewRequestToCustomer> {
+  // A workspace asking its own customer for a review: not one of our chats,
+  // so it stays out of the Super Admin WhatsApp Inbox.
+  const { withWhatsAppSendContext } = await import('@/services/inbox/whatsappLog');
+  return withWhatsAppSendContext({ exclude: 'review-request' }, () => sendReviewRequestToCustomer(...args));
+}
+
+async function sendReviewRequestToCustomer(
   phone: string,
   freeTextMsg: string,
   businessId: string,
@@ -3236,7 +3243,15 @@ export const bookingAgentReply = inngest.createFunction(
       const timezone = config.timezone || 'Asia/Kolkata';
       const namedTime = parseDemoTimeRequest(body || '', new Date(), timezone)
         || parseDemoDate(body || '', new Date(), timezone);
-      if (namedTime && convo.status !== 'booked') {
+      // Twilio sends a tapped list row as its id ("2") and the "Another day"
+      // row as 'other-date' — a tap on a list the bot just sent is booked
+      // too, even after a handoff.
+      const { pickOfferedSlotIndex, isOtherDateChoice } = await import('@/services/whatsapp/slotButtons');
+      const tapped = convo.status === 'awaiting_slot_selection' && (
+        isOtherDateChoice(body || '')
+        || pickOfferedSlotIndex(body || '', (convo.offeredSlots || []).map((s: any) => ({ date: s.date, time: s.time }))) !== null
+      );
+      if ((namedTime || tapped) && convo.status !== 'booked') {
         convo.schedulingHandoffAt = undefined;
         if (convo.status === 'awaiting_slot_selection') await handleSlotSelection(convo, body, config);
         else await handleCollecting(convo, body, config, Lead, Activity);
@@ -3252,8 +3267,14 @@ export const bookingAgentReply = inngest.createFunction(
         const { checkHandoffTriggers } = await import('@/services/agentHandoff/checkHandoffTriggers');
         const handoff = await checkHandoffTriggers(convo.leadId, body, 'demo-agent');
         if (handoff.handedOff) {
-          const { SCHEDULE_HANDOFF_ONCE } = await import('@/services/whatsapp/prospectChoice');
-          await deliverBookingReply(convo, SCHEDULE_HANDOFF_ONCE);
+          // A person already owns this chat: stay silent — the message is
+          // saved on the conversation and the team was just notified. The
+          // "a team member will help" line is sent only when the handoff
+          // happens, never again on every later message.
+          if (!handoff.alreadyHuman) {
+            const { SCHEDULE_HANDOFF_ONCE } = await import('@/services/whatsapp/prospectChoice');
+            await deliverBookingReply(convo, SCHEDULE_HANDOFF_ONCE);
+          }
           await convo.save();
           return;
         }
@@ -3440,8 +3461,9 @@ async function ensureBookingLead(convo: any, Lead: any): Promise<any> {
 }
 
 /** Marks the lead human-owned and stops further automated booking replies. Does not send. */
-async function markSchedulingPaused(convo: any, reason: string): Promise<void> {
+async function markSchedulingPaused(convo: any, reason: string, detail?: string): Promise<void> {
   if (convo.schedulingHandoffAt) return;
+  console.warn(`[bookingAgent] demo handed to a person (${reason})${detail ? `: ${detail}` : ''} — conversation ${convo._id}`);
   convo.schedulingHandoffAt = new Date();
   if (!convo.leadId) return;
   const { setLeadOwnership } = await import('@/services/leadOwnership/setLeadOwnership');
@@ -3456,7 +3478,7 @@ async function markSchedulingPaused(convo: any, reason: string): Promise<void> {
   );
   logLeadEvent(
     'HUMAN_HANDOFF',
-    { reason },
+    { reason, ...(detail ? { detail: detail.slice(0, 300) } : {}) },
     'demo-agent',
     { leadId: convo.leadId, phone: convo.leadPhone, conversationType: 'booking', conversationId: convo._id }
   );
@@ -3464,11 +3486,7 @@ async function markSchedulingPaused(convo: any, reason: string): Promise<void> {
 
 /** Sends the scheduling handoff once, then marks the lead human-owned so later replies stay silent. */
 async function pauseAutomatedScheduling(convo: any, reason: string): Promise<void> {
-  if (convo.schedulingHandoffAt) {
-    const { SCHEDULE_HANDOFF_ONCE } = await import('@/services/whatsapp/prospectChoice');
-    await deliverBookingReply(convo, SCHEDULE_HANDOFF_ONCE);
-    return;
-  }
+  if (convo.schedulingHandoffAt) return; // already told them once — the team takes it from here
   const { SCHEDULE_HANDOFF_ONCE } = await import('@/services/whatsapp/prospectChoice');
   await deliverBookingReply(convo, SCHEDULE_HANDOFF_ONCE);
   const toldThem = (convo.messages || []).some((message: any) => message.role === 'agent' && message.text === SCHEDULE_HANDOFF_ONCE);
@@ -3538,7 +3556,10 @@ async function handleSlotSelection(convo: any, body: string, config: any): Promi
   const { parseDemoDate } = await import('@/services/calendar/demoScheduling');
   const { isOtherDateChoice, ASK_DAY, ASK_CUSTOM_DATE } = await import('@/services/whatsapp/slotButtons');
 
-  const offeredSlots = (convo.offeredSlots || []).map((s: any) => ({ ...s, startUtc: new Date(s.startUtc) }));
+  // Plain values — spreading a stored sub-document copies Mongoose internals,
+  // not date/time, which made every tapped time unmatched (and crashed on
+  // date.split in the title match).
+  const offeredSlots = (convo.offeredSlots || []).map((s: any) => ({ date: s.date, time: s.time, startUtc: new Date(s.startUtc) }));
   const date = parseDemoDate(body || '', new Date(), config.timezone || 'Asia/Kolkata');
   const picked = offeredSlots.length === 1 && confirmsSingleSlot(body || '')
     ? offeredSlots[0]
@@ -3630,7 +3651,7 @@ async function bookConfirmedSlot(
         };
       }
       const { SCHEDULE_HANDOFF_ONCE } = await import('@/services/whatsapp/prospectChoice');
-      await markSchedulingPaused(convo, 'no-open-slot');
+      await markSchedulingPaused(convo, 'no-open-slot', `${(err as Error).message} — requested ${slot.date} ${slot.time}`);
       return { success: false, message: SCHEDULE_HANDOFF_ONCE };
     }
     // Anything else (network, token refresh, database) used to be rethrown,
@@ -3644,7 +3665,7 @@ async function bookConfirmedSlot(
 
     // Never fabricate a link/time — hand off to a human instead, per the
     // task's explicit requirement.
-    await markSchedulingPaused(convo, 'calendar-api-failure');
+    await markSchedulingPaused(convo, 'calendar-api-failure', `${(err as Error)?.message || 'unknown'} — requested ${slot.date} ${slot.time}`);
     return {
       success: false,
       message: `Thanks! I'm having trouble confirming that time automatically right now — a team member will personally confirm ${friendlyDateLabel(slot.date)} at ${friendlyTimeLabel(slot.time)} with you shortly.`,
@@ -3722,6 +3743,15 @@ async function bookConfirmedSlot(
   convo.bookingId = booking._id;
 
   if (convo.leadId) {
+    // A handoff made only because automatic scheduling failed ends once the
+    // demo is booked — left active, it would skip every demo reminder. A
+    // team member's own takeover is left alone.
+    const { default: Lead } = await import('@/models/Lead');
+    const { SCHEDULING_HANDOFF_REASONS } = await import('@/services/whatsapp/prospectChoice');
+    await Lead.updateOne(
+      { _id: convo.leadId, 'humanHandoff.active': true, 'humanHandoff.reason': { $in: SCHEDULING_HANDOFF_REASONS } },
+      { $set: { 'humanHandoff.active': false } }
+    );
     await setLeadOwnership(convo.leadId, 'DEMO', 'demo-scheduled', 'demo-agent', 'DEMO_SCHEDULED');
   }
 

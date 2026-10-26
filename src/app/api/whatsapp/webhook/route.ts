@@ -17,6 +17,7 @@ import ProcessedWebhookEvent from '@/models/ProcessedWebhookEvent';
 import { SUPPORT_MESSAGE } from '@/lib/whatsappCta';
 import { createOrUpdateCustomerLead, PLATFORM_TENANT } from '@/services/crm/customerLeads';
 import { handleInboundOptOut, isOptOutKeyword } from '@/services/messaging/inboundOptOut';
+import { recordInbound } from '@/services/inbox/whatsappLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,8 +53,7 @@ async function handleActiveSalesConversation(
   body: string,
   opts: { allowBookingHandoff?: boolean } = {}
 ): Promise<boolean> {
-  const normalized = body.trim().toUpperCase();
-  if (['STOP', 'UNSUBSCRIBE', 'CANCEL'].includes(normalized)) {
+  if (isOptOutKeyword(body)) {
     salesConvo.status = 'stopped';
     await salesConvo.save();
     // NOTE: the Lead-level opt-out (nurtureStatus='OPTED_OUT' + scheduled-
@@ -420,8 +420,7 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
   // first message (stage New) — not only once they pick a report or a demo.
   await capturePlatformContact(phone, profileName);
   const key = phoneDedupeKey(phone);
-  const normalized = (body || '').trim().toUpperCase();
-  const isOptOut = ['STOP', 'UNSUBSCRIBE', 'CANCEL'].includes(normalized);
+  const isOptOut = isOptOutKeyword(body);
 
   // A platform-line STOP was already applied durably by the webhook handler
   // before this message was claimed (services/messaging/inboundOptOut.ts):
@@ -482,6 +481,9 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     if (!activeBooking.leadName && profileName) activeBooking.leadName = profileName;
     activeBooking.messages.push({ role: 'lead', text: body, at: new Date(), via: 'whatsapp' });
     await activeBooking.save();
+    // The free report asked for mid-booking (or the answer to its business /
+    // city question) is served here; the demo stays exactly as it is.
+    if (await serveReportDuringBooking(activeBooking, phone, profileName, body)) return;
     await inngest.send({ name: 'booking/agent.reply', data: { conversationId: activeBooking._id.toString(), body } });
     return;
   }
@@ -588,7 +590,7 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
 
   const { loadPlatformProspectFacts } = await import('@/services/leads/beginFreeReport');
   const {
-    classifyProspectChoice, modeFor, menuFor, reportIntakeQuestion, REPORT_PROCESSING_MESSAGE,
+    classifyProspectChoice, modeFor, menuFor, REPORT_PROCESSING_MESSAGE,
   } = await import('@/services/whatsapp/prospectChoice');
   const facts = await loadPlatformProspectFacts(phone);
   const mode = modeFor(facts.reportStatus);
@@ -603,27 +605,7 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     return;
   }
   if (choice === 'report') {
-    const question = reportIntakeQuestion(facts);
-    if (!question) {
-      await startReportFromFacts(phone, profileName, facts);
-      return;
-    }
-    const { default: ReportConversation } = await import('@/models/ReportConversation');
-    const convo = await ReportConversation.create({
-      leadPhone: normalizePhoneE164(phone) || phone,
-      phoneKey: key,
-      leadName: facts.name || profileName || '',
-      status: 'awaiting_connection',
-      intakePhase: question.phase,
-      intakeBusinessName: facts.businessName,
-      intakeLocation: facts.location,
-      messages: [
-        { role: 'lead', text: body, at: new Date() },
-        { role: 'agent', text: question.text, at: new Date() },
-      ],
-    });
-    await convo.save();
-    await sendOutboundMessage(phone, question.text);
+    await startReportOrAsk(phone, profileName, body, facts);
     return;
   }
   if (choice === 'wait') {
@@ -692,13 +674,111 @@ async function sendExistingReport(phone: string, facts: { name: string; business
   await sendOutboundMessage(phone, `Your free Google Business Profile report is ready.\n\nView Report: ${link}`);
 }
 
+/** Starts the free report, or asks for the business name / city it still needs. */
+async function startReportOrAsk(
+  phone: string,
+  profileName: string,
+  body: string,
+  facts: { name: string; businessName: string; location: string }
+): Promise<void> {
+  const { phoneDedupeKey, normalizePhoneE164 } = await import('@/lib/phone');
+  const { reportIntakeQuestion } = await import('@/services/whatsapp/prospectChoice');
+  const question = reportIntakeQuestion(facts);
+  if (!question) {
+    await startReportFromFacts(phone, profileName, facts);
+    return;
+  }
+  const { default: ReportConversation } = await import('@/models/ReportConversation');
+  const convo = await ReportConversation.create({
+    leadPhone: normalizePhoneE164(phone) || phone,
+    phoneKey: phoneDedupeKey(phone),
+    leadName: facts.name || profileName || '',
+    status: 'awaiting_connection',
+    intakePhase: question.phase,
+    intakeBusinessName: facts.businessName,
+    intakeLocation: facts.location,
+    messages: [
+      { role: 'lead', text: body, at: new Date() },
+      { role: 'agent', text: question.text, at: new Date() },
+    ],
+  });
+  await convo.save();
+  await sendOutboundMessage(phone, question.text);
+}
+
+/**
+ * Someone with a demo being booked (or booked) asks for the free report, or
+ * answers the report's business / city question. A time tap, a date, or a
+ * reschedule / cancel stays with the booking agent (returns false), and so
+ * does a chat a team member took over — a handoff made only because
+ * scheduling failed does not stop the report.
+ */
+async function serveReportDuringBooking(booking: any, phone: string, profileName: string, body: string): Promise<boolean> {
+  if (await isBookingReply(booking, body)) return false;
+  const { phoneDedupeKey, normalizePhoneE164 } = await import('@/lib/phone');
+  const { asksForReport, SCHEDULING_HANDOFF_REASONS, reportProcessingDuringDemo } = await import('@/services/whatsapp/prospectChoice');
+  const { default: ReportConversation } = await import('@/models/ReportConversation');
+  const intake: any = await ReportConversation.findOne({
+    phoneKey: phoneDedupeKey(phone),
+    status: { $ne: 'stopped' },
+    intakePhase: { $nin: [null, ''] },
+    updatedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }, // asked just now, not a stale thread
+  }).sort({ updatedAt: -1 });
+  if (!intake && !asksForReport(body)) return false;
+
+  const { isHumanOwned } = await import('@/services/agentHandoff/isHumanOwned');
+  const lead: any = await Lead.findOne({ phone: normalizePhoneE164(phone) || phone, tenantId: 'gmbboost-internal' })
+    .select('currentAgent humanHandoff').lean();
+  const schedulingHandoff = SCHEDULING_HANDOFF_REASONS.includes(lead?.humanHandoff?.reason);
+  if (isHumanOwned(lead) && !schedulingHandoff) return false;
+
+  if (intake) {
+    intake.messages.push({ role: 'lead', text: body, at: new Date() });
+    await continueReportIntake(intake, phone, profileName);
+    return true;
+  }
+  const { loadPlatformProspectFacts } = await import('@/services/leads/beginFreeReport');
+  const facts = await loadPlatformProspectFacts(phone);
+  if (facts.reportStatus === 'completed' && facts.auditId) {
+    await sendExistingReport(phone, facts);
+    return true;
+  }
+  if (facts.reportStatus === 'processing') {
+    await sendOutboundMessage(phone, reportProcessingDuringDemo(booking.status === 'booked'));
+    return true;
+  }
+  // The booking already knows the business and often the city.
+  await startReportOrAsk(phone, profileName, body, {
+    name: facts.name || booking.details?.name || '',
+    businessName: facts.businessName || booking.details?.businessName || '',
+    location: facts.location || booking.details?.location || '',
+  });
+  return true;
+}
+
+/** A tap on the offered times, a day or date, "another day", or a reschedule / cancel of the booked demo. */
+async function isBookingReply(booking: any, body: string): Promise<boolean> {
+  const { pickOfferedSlotIndex, isOtherDateChoice } = await import('@/services/whatsapp/slotButtons');
+  const { parseDemoDate, parseDemoTimeRequest } = await import('@/services/calendar/demoScheduling');
+  const { classifyBookedReplyIntent, getBookingAgentConfig } = await import('@/services/booking/bookingAgent');
+  const text = body || '';
+  const timezone = (await getBookingAgentConfig()).timezone || 'Asia/Kolkata';
+  const now = new Date();
+  if (isOtherDateChoice(text) || parseDemoDate(text, now, timezone) || parseDemoTimeRequest(text, now, timezone)) return true;
+  if (booking.status === 'awaiting_slot_selection') {
+    const offered = (booking.offeredSlots || []).map((s: any) => ({ date: s.date, time: s.time }));
+    if (pickOfferedSlotIndex(text, offered) !== null) return true;
+  }
+  return booking.status === 'booked' && classifyBookedReplyIntent(text) !== 'none';
+}
+
 async function startReportFromFacts(
   phone: string,
   profileName: string,
   facts: { name: string; businessName: string; location: string }
 ): Promise<void> {
   const { beginFreeReport } = await import('@/services/leads/beginFreeReport');
-  const { REPORT_PROCESSING_MESSAGE } = await import('@/services/whatsapp/prospectChoice');
+  const { REPORT_PROCESSING_MESSAGE, reportProcessingDuringDemo } = await import('@/services/whatsapp/prospectChoice');
   const { usablePersonName } = await import('@/lib/personName');
   const started = await beginFreeReport({
     phone,
@@ -714,7 +794,12 @@ async function startReportFromFacts(
     await sendExistingReport(phone, { name: started.name, businessName: started.businessName, auditId: started.auditId });
     return;
   }
-  await sendOutboundMessage(phone, REPORT_PROCESSING_MESSAGE);
+  // Someone with a demo open is not asked "wait or book a demo?".
+  const { phoneDedupeKey } = await import('@/lib/phone');
+  const { default: BookingConversation } = await import('@/models/BookingConversation');
+  const demo: any = await BookingConversation.findOne({ phoneKey: phoneDedupeKey(phone), status: { $in: ['active', 'awaiting_slot_selection', 'booked'] } })
+    .sort({ updatedAt: -1 }).select('status').lean();
+  await sendOutboundMessage(phone, demo ? reportProcessingDuringDemo(demo.status === 'booked') : REPORT_PROCESSING_MESSAGE);
 }
 
 async function continueReportIntake(activeReport: any, phone: string, profileName: string): Promise<void> {
@@ -1032,6 +1117,14 @@ async function handleMetaWebhook(req: Request) {
           if (!optOut && !isInboundMessageAllowed(phone, message.id || '')) continue;
 
           if (platform) {
+            // The Inbox shows what the person saw: a tapped row's title, not its id.
+            await recordInbound({
+              phone,
+              profileName,
+              body: message.interactive?.list_reply?.title || message.interactive?.button_reply?.title || message.button?.text || body,
+              providerMessageId: message.id ? `meta:${message.id}` : undefined,
+              mediaCount: numMedia,
+            });
             await processPlatformInbound({ phone, profileName, body, messageSid: message.id || '' });
             // Shadow-mode only — see observeLeadOwnershipShadow's own doc
             // comment. Does not affect the routing/reply decision above.
@@ -1125,6 +1218,14 @@ export async function handleTwilioWebhook(req: Request) {
     if (!optOut && !isInboundMessageAllowed(phone, messageSid || '')) return twimlOk();
 
     if (platform) {
+      // The Inbox shows what the person saw: a tapped row's title, not its id.
+      await recordInbound({
+        phone,
+        profileName: profileName || '',
+        body: (formData.get('Body') as string) || body || '',
+        providerMessageId: messageSid ? `twilio:${messageSid}` : undefined,
+        mediaCount: numMedia,
+      });
       await processPlatformInbound({
         phone,
         profileName: profileName || '',

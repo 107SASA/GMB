@@ -133,6 +133,15 @@ export function pickOfferedSlotIndex(reply: string, slots: SlotChoice[]): number
       const named = matches.find((item) => Number(item.slot.date.slice(-2)) === Number(day[1]));
       if (named) return named.index;
     }
+  } else {
+    // "5:30" or "11.30" with no am/pm: the one offered time it can mean.
+    const bare = text.match(/\b(\d{1,2})[:.](\d{2})\b/);
+    if (bare) {
+      const hour = Number(bare[1]);
+      const options = [hour, hour + 12].filter((h) => h < 24).map((h) => `${String(h).padStart(2, '0')}:${bare[2]}`);
+      const matches = slots.map((slot, index) => ({ slot, index })).filter((item) => options.includes(item.slot.time));
+      if (matches.length === 1) return matches[0].index;
+    }
   }
 
   for (let index = 0; index < slots.length; index++) {

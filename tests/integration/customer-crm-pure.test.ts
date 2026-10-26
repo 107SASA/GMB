@@ -316,7 +316,13 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
       'handleBookedReply',
       // + a list / button send that falls back to the same choices as text is
       //   now logged with its Twilio reason (lib/whatsappDiagnostics.ts).
-      'sendButtonsOrText', 'presentSlots'],
+      'sendButtonsOrText', 'presentSlots',
+      // + demo booking handoff (not CRM): the "team member will help" message
+      //   goes out once, and the reason is logged and shown on the timeline.
+      'bookingAgentReply', 'markSchedulingPaused', 'pauseAutomatedScheduling',
+      // + full WhatsApp Inbox (not CRM): review requests a workspace sends to
+      //   its own customers are kept out of it.
+      'sendReviewRequest', 'sendReviewRequestToCustomer'],
     // Real WhatsApp inbound lines are tagged via: 'whatsapp' so a website form cannot open the 24h window.
     // + Segment 3.1 STOP reliability (Oct 2026, not CRM): both provider handlers
     //   apply an opt-out durably before claiming the message id, outside the
@@ -327,7 +333,11 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
     //   the link — no template attempt whose failure a text send could hide.
     'src/app/api/whatsapp/webhook/route.ts': ['__header__', 'processInboundMessage', 'handleActiveSalesConversation', 'processPlatformInbound', 'openDemoThread', 'handleTwilioWebhook', 'handleMetaWebhook', 'observeLeadOwnershipShadow', 'sendExistingReport',
       // + capturePlatformContact: a first WhatsApp message creates the platform lead (super admin CRM).
-      'capturePlatformContact'],
+      'capturePlatformContact',
+      // + the free report asked for mid-booking is served without touching the
+      //   demo (serveReportDuringBooking, isBookingReply, startReportOrAsk);
+      //   someone with a demo open is not asked "wait or book a demo?".
+      'serveReportDuringBooking', 'isBookingReply', 'startReportOrAsk', 'startReportFromFacts'],
   };
   for (const [file, ok] of Object.entries(allowed)) {
     const head = atHead(file);

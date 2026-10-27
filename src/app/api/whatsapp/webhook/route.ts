@@ -670,7 +670,11 @@ async function openDemoThread(
  */
 async function sendExistingReport(phone: string, facts: { name: string; businessName: string; auditId: string | null }): Promise<void> {
   const base = (process.env.NEXT_PUBLIC_APP_URL || 'https://growwmatics.com').replace(/\/$/, '');
-  const link = facts.auditId ? `${base}/free-report/result?auditId=${facts.auditId}` : `${base}/free-report`;
+  // The person opening this is not signed in — link with a share token, not the audit id.
+  const { reportShareToken } = await import('@/services/report/reportShareLink');
+  const link = facts.auditId
+    ? `${base}/free-report/result?auditId=${await reportShareToken(facts.auditId, 'whatsapp-report')}`
+    : `${base}/free-report`;
   await sendOutboundMessage(phone, `Your free Google Business Profile report is ready.\n\nView Report: ${link}`);
 }
 

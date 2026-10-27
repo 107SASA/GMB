@@ -8,6 +8,8 @@
 export type ProspectMode = 'new' | 'report-ready' | 'report-processing';
 export type ProspectChoice = 'demo' | 'report' | 'view-report' | 'wait' | 'unknown';
 export type IntakePhase = 'need-both' | 'need-name' | 'need-location';
+/** After the name and location: the lead picks their exact Google profile from a short list. */
+export type ProfilePhase = 'pick-profile';
 export type ReportStatus = 'completed' | 'processing' | 'none';
 
 export interface ProspectFacts {
@@ -40,6 +42,55 @@ export const REPORT_ASK_BOTH =
 export const REPORT_ASK_LOCATION = 'Great. I just need your business location.';
 
 export const REPORT_ASK_NAME = 'Great. I just need your business name.';
+
+/** One Google Maps listing offered to the lead (from Places Autocomplete). */
+export interface ProfileOption {
+  placeId: string;
+  name: string;
+  address: string;
+}
+
+/** At most this many listings are offered — a WhatsApp list longer than this is hard to read. */
+export const PROFILE_OPTIONS_MAX = 5;
+
+const KEYCAPS = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
+
+/** The same choice the website's business dropdown gives: pick the exact Google listing. */
+export function profileChoiceMessage(options: ProfileOption[]): string {
+  const lines = options.map((o, i) => `${KEYCAPS[i + 1]} ${o.name}${o.address ? ` — ${o.address}` : ''}`);
+  return (
+    'I found these businesses on Google. Which one is yours?\n\n' +
+    lines.join('\n\n') +
+    `\n\nReply with the number (1–${options.length}), or 0 if yours is not in the list.`
+  );
+}
+
+export const PROFILE_PICK_AGAIN =
+  "Please reply with the number of your business from the list above, or 0 if it's not there.";
+
+export const PROFILE_NOT_FOUND =
+  "I couldn't find that business on Google. Please send its name exactly as it appears on Google Maps, with the area and city — for example: Mulsetu, Ozar Mig, Nashik.";
+
+export function profileSearchOnWebsite(link: string): string {
+  return `No problem. You can search for your business and pick it here, and your free report will be ready in a few minutes:\n${link}`;
+}
+
+/**
+ * Reply to the profile list: the chosen index (0-based), 'none' for "0" /
+ * "not listed", or null when it is not an answer to the list.
+ */
+export function pickProfileReply(text: string, count: number): number | 'none' | null {
+  const raw = (text || '').trim().toLowerCase();
+  const keycap = KEYCAPS.findIndex((k) => raw === k);
+  const digits = keycap >= 0 ? String(keycap) : raw.match(/^(?:no\.?|number|option)?\s*(\d{1,2})\s*[.)]?$/)?.[1];
+  if (digits !== undefined) {
+    const n = Number(digits);
+    if (n === 0) return 'none';
+    return n >= 1 && n <= count ? n - 1 : null;
+  }
+  if (/^(none|no|nope|not (?:there|listed|in (?:the )?list)|none of (?:these|them)|other|neither)\b/.test(raw)) return 'none';
+  return null;
+}
 
 export const DEMO_TIME_ASK =
   "Absolutely! What date and time would be convenient for you? I'll check our team's availability and book the demo.";

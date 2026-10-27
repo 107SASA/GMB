@@ -43,9 +43,13 @@ export interface IReportConversation extends Document {
   businessId?: mongoose.Types.ObjectId;
   auditId?: mongoose.Types.ObjectId;
   /** Set only while we still need a business name or location before the existing free-report flow. */
-  intakePhase?: 'need-both' | 'need-name' | 'need-location' | null;
+  intakePhase?: 'need-both' | 'need-name' | 'need-location' | 'pick-profile' | null;
   intakeBusinessName?: string;
   intakeLocation?: string;
+  /** Google listings offered while intakePhase is 'pick-profile'. */
+  intakeProfiles?: Array<{ placeId: string; name: string; address: string }>;
+  /** Searches that found nothing / "not in the list" answers — after two, the lead is sent to the website search. */
+  intakeMisses?: number;
   connectedAt?: Date;
   reportSentAt?: Date;
   createdAt: Date;
@@ -103,9 +107,14 @@ const ReportConversationSchema: Schema = new Schema(
     pendingGoogleAuth: { type: PendingGoogleAuthSchema, default: undefined },
     businessId: { type: Schema.Types.ObjectId, ref: 'Business' },
     auditId: { type: Schema.Types.ObjectId, ref: 'Audit' },
-    intakePhase: { type: String, enum: ['need-both', 'need-name', 'need-location', null], default: null },
+    intakePhase: { type: String, enum: ['need-both', 'need-name', 'need-location', 'pick-profile', null], default: null },
     intakeBusinessName: { type: String, default: '' },
     intakeLocation: { type: String, default: '' },
+    intakeProfiles: {
+      type: [new Schema({ placeId: { type: String, required: true }, name: { type: String, default: '' }, address: { type: String, default: '' } }, { _id: false })],
+      default: undefined,
+    },
+    intakeMisses: { type: Number, default: 0 },
     connectedAt: { type: Date },
     reportSentAt: { type: Date },
   },

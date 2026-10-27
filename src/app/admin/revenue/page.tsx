@@ -26,6 +26,7 @@ interface RevenueData {
   canceledThisMonth: number;
   trialsEndedThisMonth: number;
   estimatedCount: number;
+  complimentaryCount?: number;
   byCycle: Record<CycleKey, { count: number; mrr: number }>;
   monthlyPriceInr: number;
   planName: string;
@@ -150,6 +151,9 @@ export default function RevenuePage() {
             Each Razorpay subscription is counted once. Free trials are not revenue until their first charge.
             {data.estimatedCount > 0 && (
               <> {data.estimatedCount} subscription{data.estimatedCount === 1 ? ' has' : 's have'} no recorded cycle or charge, so {data.estimatedCount === 1 ? 'it is' : 'they are'} counted at the monthly price (₹{data.monthlyPriceInr.toLocaleString()}).</>
+            )}
+            {!!data.complimentaryCount && (
+              <> {data.complimentaryCount} active workspace{data.complimentaryCount === 1 ? ' has' : 's have'} no Razorpay subscription or payment (e.g. the store reviewer demo) and {data.complimentaryCount === 1 ? 'is' : 'are'} not counted as revenue.</>
             )}
           </p>
           {cycleRows.length > 0 && (

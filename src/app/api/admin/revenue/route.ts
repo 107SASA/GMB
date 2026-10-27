@@ -26,6 +26,7 @@ export async function GET() {
         canceledThisMonth: r.canceledThisMonth,
         trialsEndedThisMonth: r.trialsEndedThisMonth,
         estimatedCount: r.estimated,
+        complimentaryCount: r.complimentary,
         byCycle: r.byCycle,
         monthlyPriceInr: r.monthlyPriceInr,
         planName: r.planName,

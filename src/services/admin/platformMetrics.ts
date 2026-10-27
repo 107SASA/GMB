@@ -29,6 +29,8 @@ export interface PlatformRevenue extends MrrResult {
   canceledThisMonth: number;
   /** Unpaid trials that reached their end this month without a payment. */
   trialsEndedThisMonth: number;
+  /** Active workspaces with no Razorpay subscription and no recorded charge (e.g. the store reviewer demo) — not revenue. */
+  complimentary: number;
 }
 
 export const REPORTING_TIMEZONE = 'Asia/Kolkata';
@@ -80,12 +82,12 @@ export async function platformRevenue(now = new Date()): Promise<PlatformRevenue
   const plan: any = await BillingPlan.findOne({ key: 'default' }).lean();
   const prices = planPricesFrom(plan);
 
-  const paying: any[] = await Business.find({ subscriptionStatus: 'active' })
-    .select('_id billingSubscriptionId billingCycle billingAmountInr')
+  const active: any[] = await Business.find({ subscriptionStatus: 'active' })
+    .select('_id billingSubscriptionId razorpaySubscriptionId billingCycle billingAmountInr')
     .lean();
 
   // Workspaces paid before the cycle was recorded: their last verified charge.
-  const needCharge = paying.filter((b) => !b.billingCycle && !b.billingAmountInr).map((b) => b._id);
+  const needCharge = active.filter((b) => !b.billingCycle && !b.billingAmountInr).map((b) => b._id);
   const lastCharge = new Map<string, number>();
   if (needCharge.length) {
     const charges: any[] = await BillingEvent.aggregate([
@@ -95,6 +97,12 @@ export async function platformRevenue(now = new Date()): Promise<PlatformRevenue
     ]);
     for (const c of charges) lastCharge.set(String(c._id), c.amountPaise / 100);
   }
+
+  // Active with no Razorpay subscription and no charge ever recorded = set
+  // active by hand (store reviewer demo, comped account): not revenue.
+  const paying = active.filter((b) =>
+    b.billingSubscriptionId || b.razorpaySubscriptionId || b.billingCycle || b.billingAmountInr || lastCharge.has(String(b._id))
+  );
 
   const mrr = computeMrr(
     paying.map((b) => ({
@@ -119,5 +127,6 @@ export async function platformRevenue(now = new Date()): Promise<PlatformRevenue
     statuses,
     canceledThisMonth: cancels.canceled,
     trialsEndedThisMonth: cancels.trialsEnded,
+    complimentary: active.length - paying.length,
   };
 }

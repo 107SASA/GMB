@@ -8,12 +8,12 @@ import { FreeReportButton } from "@/components/shared/FreeReportButton";
 import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 
 export const metadata: Metadata = {
-  title: "GBP Booster",
+  title: "Google Business Profile Optimization (GMB Booster)",
   description:
     "Rank higher on Google with GrowwMatics AI — profile analysis, review automation, and local SEO tips that get you more leads and customers.",
   alternates: { canonical: "/gbp-booster" },
   openGraph: {
-    title: "GBP Booster | GrowwMatics AI",
+    title: "Google Business Profile Optimization (GMB Booster) | GrowwMatics AI",
     description:
       "AI-powered Google Business Profile growth — audits, reviews, and ranking tips for local businesses.",
     url: "/gbp-booster",

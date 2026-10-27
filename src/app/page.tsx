@@ -7,8 +7,12 @@ import { GbpReportBanner } from "@/components/sections/GbpReportBanner";
 import { FAQ } from "@/components/sections/FAQ";
 import { FinalCTA } from "@/components/sections/SocialProof";
 import { JsonLd } from "@/components/seo/JsonLd";
+import { faqPageSchema } from "@/lib/seoSchemas";
+import { HOMEPAGE_FAQS } from "@/lib/faqData";
 
 export const metadata: Metadata = {
+  // The root title.default — the homepage carries the search terms people
+  // use ("Google Business Profile management", "local SEO"), not just the name.
   alternates: { canonical: "/" },
 };
 
@@ -27,6 +31,8 @@ export default function Home() {
   return (
     <main className="theme-marketing min-h-screen bg-(--mkt-surface) selection:bg-primary-fixed">
       <JsonLd data={softwareApplicationSchema} />
+      {/* The FAQ section below, marked up so Google can show it as rich results. */}
+      <JsonLd data={faqPageSchema(HOMEPAGE_FAQS)} />
       <Navbar />
 
       <HomeSplitExperience />

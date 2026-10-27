@@ -4,13 +4,13 @@ import { breadcrumbSchema } from "@/lib/seoSchemas";
 import { FeaturesPage } from "@/components/pages/FeaturesPage";
 
 export const metadata: Metadata = {
-  title: "Features",
+  title: "Features — AI Google Business Profile Management",
   description:
     "Everything included in GrowwMatics AI: AI Google Business Profile audits, AI content generation, review automation, CRM, and analytics — see the full feature list.",
   keywords: ["GrowwMatics AI features", "Google Business Profile automation", "review automation", "AI GBP audit"],
   alternates: { canonical: "/features" },
   openGraph: {
-    title: "Features | GrowwMatics AI",
+    title: "Features — AI Google Business Profile Management | GrowwMatics AI",
     description: "Everything included in GrowwMatics AI's Google Business Profile growth platform.",
     url: "/features",
     type: "website",

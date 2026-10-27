@@ -21,6 +21,15 @@ export default function robots(): MetadataRoute.Robots {
           "/admin-login",
           "/forgot-password",
           "/verify",
+          // Personal / one-time pages: links sent to a single person, never
+          // content for search (a crawler would only see an empty state).
+          "/free-report/result",
+          "/checkout",
+          "/connect-google/",
+          "/print/",
+          "/review/",
+          "/go/",
+          "/verify-phone",
         ],
       },
     ],

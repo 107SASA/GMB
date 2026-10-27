@@ -15,7 +15,9 @@ const organizationSchema = {
   "@type": "Organization",
   name: "GrowwMatics AI",
   url: "https://growwmatics.com",
-  logo: "https://growwmatics.com/favicon.ico",
+  logo: "https://growwmatics.com/icon.png",
+  description: "AI-powered Google Business Profile management and local SEO for local businesses in India.",
+  areaServed: { "@type": "Country", name: "India" },
   sameAs: [] as string[], // TODO: add real social profile URLs here once they exist — an empty/fake list actively hurts entity confidence, so leave empty until real ones are set.
 };
 
@@ -59,27 +61,36 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://growwmatics.com"),
 
   title: {
-    default: "GrowwMatics AI",
+    default: "GrowwMatics AI — Google Business Profile Management & Local SEO",
     template: "%s | GrowwMatics AI",
   },
 
   applicationName: "GrowwMatics AI",
 
   description:
-    "Automate your Google Business Profile, generate more reviews, convert leads instantly, and grow local visibility using AI.",
+    "AI that runs your Google Business Profile: Google posts, review replies, more 5-star reviews and WhatsApp lead follow-up for local businesses in India. Free GBP report.",
 
   keywords: [
-    "Google Business Profile",
-    "Local SEO",
-    "AI Marketing",
-    "WhatsApp Automation",
-    "Business Growth",
+    "Google Business Profile management",
+    "GMB management",
+    "Google My Business optimization",
+    "local SEO India",
+    "Google reviews",
+    "review management",
+    "WhatsApp automation",
+    "GrowwMatics",
   ],
 
+  // Search Console ownership tag — set GOOGLE_SITE_VERIFICATION in
+  // .env.production (the content="..." value Search Console gives you).
+  ...(process.env.GOOGLE_SITE_VERIFICATION
+    ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } }
+    : {}),
+
   openGraph: {
-    title: "GrowwMatics AI",
+    title: "GrowwMatics AI — Google Business Profile Management & Local SEO",
     description:
-      "Automate your Google Business Profile, generate more reviews, convert leads instantly, and grow local visibility using AI.",
+      "AI that runs your Google Business Profile: Google posts, review replies, more 5-star reviews and WhatsApp lead follow-up for local businesses in India. Free GBP report.",
     url: "https://growwmatics.com",
     siteName: "GrowwMatics AI",
     type: "website",
@@ -87,9 +98,9 @@ export const metadata: Metadata = {
 
   twitter: {
     card: "summary_large_image",
-    title: "GrowwMatics AI",
+    title: "GrowwMatics AI — Google Business Profile Management & Local SEO",
     description:
-      "Automate your Google Business Profile, generate more reviews, convert leads instantly, and grow local visibility using AI.",
+      "AI that runs your Google Business Profile: Google posts, review replies, more 5-star reviews and WhatsApp lead follow-up for local businesses in India. Free GBP report.",
   },
 };
 

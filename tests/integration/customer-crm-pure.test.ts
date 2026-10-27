@@ -322,7 +322,13 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
       'bookingAgentReply', 'markSchedulingPaused', 'pauseAutomatedScheduling',
       // + full WhatsApp Inbox (not CRM): review requests a workspace sends to
       //   its own customers are kept out of it.
-      'sendReviewRequest', 'sendReviewRequestToCustomer'],
+      'sendReviewRequest', 'sendReviewRequestToCustomer',
+      // + plan access for background work (Oct 2026, billing, not CRM): no Google
+      //   sync, AI review replies or scheduled post / photo publishing for a
+      //   cancelled or unpaid workspace; the two jobs that filtered on a
+      //   non-existent Business.isActive field are retired.
+      'bufferMonitorWorker', 'reviewSyncWorker', 'publishScheduledPostsCron', 'processPublishPostJob',
+      'publishScheduledMediaCron', 'processScheduledMediaPublishJob', 'processAutoReplyBatchJob'],
     // Real WhatsApp inbound lines are tagged via: 'whatsapp' so a website form cannot open the 24h window.
     // + Segment 3.1 STOP reliability (Oct 2026, not CRM): both provider handlers
     //   apply an opt-out durably before claiming the message id, outside the

@@ -523,32 +523,16 @@ export const processFollowUpJob = inngest.createFunction(
   }
 );
 
-// 3. Content Scheduler Automation Workflow (Module 3)
-export const bufferMonitorWorker = inngest.createFunction(
-  { id: "buffer-monitor-worker", triggers: [{ cron: "0 8 * * *" }] }, // Daily at 8 AM
-  async ({ step }) => {
-    const businesses = await step.run("fetch-businesses", async () => {
-      await dbConnect();
-      return await Business.find({ isActive: true }).select('_id').lean();
-    });
-
-    const events = businesses.map(b => ({
-      name: "scheduler/generate",
-      data: { businessId: b._id.toString() }
-    }));
-
-    if (events.length > 0) {
-      await step.sendEvent("dispatch-content-jobs", events);
-    }
-    return { success: true, dispatched: events.length };
-  }
-);
+// 3. (Retired Oct 2026) bufferMonitorWorker filtered on Business.isActive, a
+// field Business never had, so it never ran; reviving it would add a daily AI
+// top-up on top of weeklyContentAutopilot, which already generates content
+// for paid workspaces.
 
 // 3b. Weekly content reminder — Sunday evening in-app nudge.
 // Reminds ONLY businesses that don't have a full week of content scheduled for
 // the upcoming 7 days, so users who are already stocked up aren't pestered.
 // This is an in-app notification (the platform's supported channel), distinct
-// from bufferMonitorWorker which auto-generates content.
+// from weeklyContentAutopilot, which generates content.
 export const weeklyContentReminder = inngest.createFunction(
   { id: "weekly-content-reminder", triggers: [{ cron: "0 13 * * 0" }] }, // Sundays ~18:30 IST (evening)
   async ({ step }) => {
@@ -1696,10 +1680,15 @@ export const publishScheduledPostsCron = inngest.createFunction(
       const now = new Date();
       const { sweepStalePublishing } = await import("@/services/content/publishPost");
       await sweepStalePublishing(now);
-      const readyPosts = await Post.find({
+      const due = await Post.find({
         status: "scheduled",
         scheduledDate: { $lte: now }
       }).lean();
+      // A cancelled / unpaid workspace's posts stay scheduled (held) and are
+      // published by this cron within the hour after it pays.
+      const { businessesWithPlanAccess } = await import("@/services/billing/planAccess");
+      const allowed = await businessesWithPlanAccess(due.map((p: any) => p.businessId));
+      const readyPosts = due.filter((p: any) => allowed.has(String(p.businessId)));
 
       return readyPosts.map((p: any) => ({
         name: "scheduler/publish-post",
@@ -1722,6 +1711,14 @@ export const processPublishPostJob = inngest.createFunction(
     await step.run("publish-to-gmb", async () => {
       await dbConnect();
       const { default: Post } = await import("@/models/Post");
+      // Held (left 'scheduled') while the workspace is cancelled / unpaid —
+      // publishScheduledPostsCron publishes it after payment.
+      const { businessHasPlanAccess } = await import("@/services/billing/planAccess");
+      const target: any = await Post.findById(postId).select('businessId').lean();
+      if (target && !(await businessHasPlanAccess(String(target.businessId)))) {
+        console.log(`[GBP] post ${postId} held — workspace has no active plan`);
+        return;
+      }
       // scheduled → publishing → published (Google confirmed) | blocked (live
       // writes off — nothing reached Google) | failed (Google rejected). A
       // rejected post fails identically on every retry, so failures are
@@ -1813,10 +1810,14 @@ export const publishScheduledMediaCron = inngest.createFunction(
       await dbConnect();
       const { default: GbpMediaAsset } = await import("@/models/GbpMediaAsset");
       const now = new Date();
-      const ready = await GbpMediaAsset.find({
+      const due = await GbpMediaAsset.find({
         status: "staged",
         scheduledFor: { $lte: now },
       }).lean();
+      // Held while the workspace is cancelled / unpaid; published after it pays.
+      const { businessesWithPlanAccess } = await import("@/services/billing/planAccess");
+      const allowed = await businessesWithPlanAccess(due.map((a: any) => a.businessId));
+      const ready = due.filter((a: any) => allowed.has(String(a.businessId)));
 
       return ready.map((a: any) => ({
         name: "gbp-media/publish-scheduled",
@@ -1838,6 +1839,11 @@ export const processScheduledMediaPublishJob = inngest.createFunction(
 
     await step.run("publish-media", async () => {
       await dbConnect();
+      const { businessHasPlanAccess } = await import("@/services/billing/planAccess");
+      if (!(await businessHasPlanAccess(String(businessId)))) {
+        console.log(`[gbp-media] asset ${assetId} held — workspace has no active plan`);
+        return;
+      }
       const { publishAsset } = await import("@/lib/gbpMediaService");
       const { default: GbpMediaAsset } = await import("@/models/GbpMediaAsset");
 
@@ -4239,37 +4245,10 @@ export const reportCardDeliver = inngest.createFunction(
   }
 );
 
-// 8. Review Management Automation Workflow (Module 4)
-export const reviewSyncWorker = inngest.createFunction(
-  { id: "review-sync-worker", triggers: [{ cron: "0 2 * * *" }] }, // Nightly at 2 AM
-  async ({ step }) => {
-    // Only businesses with a connected GBP token get auto-synced here — for
-    // everyone else, syncReviewsForBusiness would silently fall back to
-    // SerpApi (a paid API), burning a credit every night for businesses that
-    // haven't connected Google yet. Unconnected businesses get reviews via
-    // the manual "Sync reviews" button instead (which requires GBP already —
-    // see reviews/fetch/route.ts), or as soon as they connect.
-    const businesses = await step.run("fetch-gbp-connected-businesses", async () => {
-      const dbConnect = (await import("@/lib/mongodb")).default;
-      await dbConnect();
-      const { default: Business } = await import("@/models/Business");
-      const { default: GBPToken } = await import("@/models/GBPToken");
-      const tokens = await GBPToken.find({}).select('businessId').lean();
-      const connectedIds = tokens.map(t => (t as any).businessId);
-      return await Business.find({ isActive: true, _id: { $in: connectedIds } }).select('_id').lean();
-    });
-
-    const events = businesses.map(b => ({
-      name: "reviews/sync",
-      data: { businessId: b._id.toString() }
-    }));
-
-    if (events.length > 0) {
-      await step.sendEvent("dispatch-review-syncs", events);
-    }
-    return { success: true, dispatched: events.length };
-  }
-);
+// 8. (Retired Oct 2026) reviewSyncWorker filtered on Business.isActive, a
+// field Business never had, so it never ran. Reviews are synced every 6 hours
+// by gbpSyncWorker (gbpNightlySyncScheduler), for workspaces with plan access.
+// processReviewSyncJob below still serves the admin "sync reviews" trigger.
 
 export const processReviewSyncJob = inngest.createFunction(
   { id: "process-review-sync-job", retries: 3, triggers: [{ event: "reviews/sync" }] },
@@ -4301,6 +4280,14 @@ export const processAutoReplyBatchJob = inngest.createFunction(
   { id: "process-auto-reply-batch-job", retries: 2, triggers: [{ event: "reviews/auto-reply-batch" }] },
   async ({ event, step }) => {
     const { businessId, reviewIds } = event.data as { businessId: string; reviewIds: string[] };
+
+    // No AI replies for a cancelled / unpaid workspace: the reviews stay "No
+    // reply yet" and are queued again when it pays (planAccess.resumeHeldWork).
+    const hasPlan = await step.run("check-plan-access", async () => {
+      const { businessHasPlanAccess } = await import('@/services/billing/planAccess');
+      return businessHasPlanAccess(businessId);
+    });
+    if (!hasPlan) return { success: true, skipped: 'no-plan-access', count: reviewIds.length };
 
     const result = await step.run("draft-and-maybe-publish", async () => {
       const dbConnect = (await import('@/lib/mongodb')).default;
@@ -4657,7 +4644,7 @@ export const gbpNightlySyncScheduler = inngest.createFunction(
     const { default: BusinessModel } = await import("@/models/Business");
     await dbConnect();
 
-    const connectedBusinesses = await BusinessModel.find(
+    const connected = await BusinessModel.find(
       {
         googleConnected: true,
         googleLocationId: { $exists: true, $nin: [null, ''] },
@@ -4665,6 +4652,12 @@ export const gbpNightlySyncScheduler = inngest.createFunction(
       },
       { _id: 1 }
     ).lean();
+    // Paid, trial or grace only: a cancelled / unpaid workspace stops being
+    // synced (and its new reviews stop getting AI replies) until it pays. The
+    // sync on first Google connect is not gated — the free report needs it.
+    const { businessesWithPlanAccess } = await import("@/services/billing/planAccess");
+    const allowed = await businessesWithPlanAccess(connected.map((b: any) => b._id));
+    const connectedBusinesses = connected.filter((b: any) => allowed.has(String(b._id)));
 
     // One batched sendEvent per chunk (not one step per business) — the
     // dispatched events are identical, but this costs ceil(N/500) steps
@@ -4680,7 +4673,7 @@ export const gbpNightlySyncScheduler = inngest.createFunction(
       );
     }
 
-    return { dispatched: connectedBusinesses.length };
+    return { dispatched: connectedBusinesses.length, skippedNoPlan: connected.length - connectedBusinesses.length };
   }
 );
 

@@ -25,14 +25,28 @@ process.env.NEXT_PUBLIC_APP_URL = 'https://app.example.test';
 process.env.GOOGLE_CLIENT_ID = 'test-client.apps.googleusercontent.com';
 process.env.GOOGLE_CLIENT_SECRET = 'test-secret';
 process.env.GOOGLE_TOKEN_SECRET = '0123456789abcdef'.repeat(4);
+delete process.env.GOOGLE_MAPS_API_KEY; // set only by the Google-listing tests below
 
 // ── Fake Google (token, free/busy, event insert) ──────────────────────────
 const google: { inserted: any[] } = { inserted: [] };
+// ── Fake Google Places (the WhatsApp version of the website's business dropdown) ──
+const places: { predictions: Array<{ place_id: string; main: string; secondary: string }>; queries: string[] } = { predictions: [], queries: [] };
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: any, init?: any) => {
   const url = String(input?.url ?? input);
   if (/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(url)) return realFetch(input, init);
   const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
+  if (url.startsWith('https://maps.googleapis.com/maps/api/place/autocomplete/json')) {
+    places.queries.push(new URL(url).searchParams.get('input') || '');
+    return json({ status: places.predictions.length ? 'OK' : 'ZERO_RESULTS', predictions: places.predictions.map((p) => ({ place_id: p.place_id, description: `${p.main}, ${p.secondary}`, structured_formatting: { main_text: p.main, secondary_text: p.secondary } })) });
+  }
+  if (url.startsWith('https://maps.googleapis.com/maps/api/place/textsearch/json')) return json({ status: 'ZERO_RESULTS', results: [] });
+  if (url.startsWith('https://maps.googleapis.com/maps/api/place/details/json')) {
+    const id = new URL(url).searchParams.get('place_id');
+    const p = places.predictions.find((x) => x.place_id === id);
+    return json({ status: 'OK', result: { place_id: id, name: p?.main, formatted_address: `${p?.secondary}, India`, rating: 4.8, user_ratings_total: 37, types: ['software_company', 'establishment'], address_components: [{ long_name: 'Nashik', short_name: 'Nashik', types: ['locality'] }, { long_name: 'Maharashtra', short_name: 'MH', types: ['administrative_area_level_1'] }] } });
+  }
+  if (url.startsWith('https://places.googleapis.com/v1/places/')) return json({}, 404);
   if (url.startsWith('https://oauth2.googleapis.com/token')) return json({ access_token: 'ya29.test', expires_in: 3600 });
   if (url.endsWith('/freeBusy')) return json({ calendars: { primary: { busy: [] } } });
   if (url.includes('/events')) {
@@ -227,4 +241,100 @@ test('a chat a team member took over: "free report" is left to the team', async 
   assert.equal(await inbound(phone, 'free report please'), 200);
   assert.equal((await sentTo(phone)).length, 0, 'the bot sends nothing');
   assert.ok(dispatched.some((e) => e.name === 'booking/agent.reply' && e.data.conversationId === String(convo._id)));
+});
+
+// ── Picking the exact Google listing (like the website's dropdown) ─────────
+
+async function withPlaces<T>(predictions: typeof places.predictions, fn: () => Promise<T>): Promise<T> {
+  process.env.GOOGLE_MAPS_API_KEY = 'test-maps-key';
+  places.predictions = predictions;
+  try { return await fn(); } finally { delete process.env.GOOGLE_MAPS_API_KEY; places.predictions = []; }
+}
+
+const MULSETU = [
+  { place_id: 'ChIJ_mulsetu_nashik', main: 'Mulsetu', secondary: 'Ozar Mig, Nashik, Maharashtra' },
+  { place_id: 'ChIJ_mulsetu_pune', main: 'Mulsetu Software', secondary: 'Baner, Pune, Maharashtra' },
+];
+
+test('report over WhatsApp: name + location → the lead picks their Google listing → the report is for that exact profile', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const phone = '+919877700011';
+  const auditsBefore = await m.Audit.countDocuments();
+  await withPlaces(MULSETU, async () => {
+    assert.equal(await inbound(phone, 'Hi'), 200);
+    assert.equal(await inbound(phone, '2'), 200);
+    assert.equal((await sentTo(phone)).at(-1), m.choice.REPORT_ASK_BOTH);
+    assert.equal(await inbound(phone, 'Mulsetu'), 200);
+    assert.equal((await sentTo(phone)).at(-1), m.choice.REPORT_ASK_LOCATION);
+    assert.equal(await inbound(phone, 'Ozar mig Nashik'), 200);
+
+    assert.equal(places.queries.at(-1), 'Mulsetu Ozar mig Nashik', 'searched Google with what they typed');
+    const list = (await sentTo(phone)).at(-1)!;
+    assert.match(list, /Which one is yours/);
+    assert.match(list, /1️⃣ Mulsetu — Ozar Mig, Nashik/);
+    assert.match(list, /2️⃣ Mulsetu Software — Baner, Pune/);
+    assert.equal(await m.Audit.countDocuments(), auditsBefore, 'no report until they pick');
+
+    assert.equal(await inbound(phone, '1'), 200, '"1" picks listing 1 — it does not open a demo');
+    assert.equal(await m.BookingConversation.countDocuments({ phoneKey: phone.slice(-10) }), 0);
+    const Business = (await import('../../src/models/Business')).default;
+    const biz: any = await Business.findOne({ googlePlaceId: 'ChIJ_mulsetu_nashik' }).lean();
+    assert.ok(biz, 'the workspace is tied to the chosen Google listing');
+    assert.equal(biz.placesReviewCount, 37, 'live Places details stored, as on the website');
+    assert.ok(await m.Audit.exists({ businessId: biz._id }), 'the report is generating for that listing');
+    const convo: any = await m.ReportConversation.findOne({ phoneKey: phone.slice(-10) }).sort({ createdAt: -1 }).lean();
+    assert.equal(convo.intakePhase, null);
+  });
+});
+
+test('listing choice: an unclear reply asks again; "0" asks for the exact Google name; a second miss sends the website search', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const phone = '+919877700012';
+  const auditsBefore = await m.Audit.countDocuments();
+  await withPlaces(MULSETU, async () => {
+    await inbound(phone, 'Hi');
+    await inbound(phone, '2');
+    await inbound(phone, 'Mulsetu, Nashik');
+    assert.match((await sentTo(phone)).at(-1)!, /Which one is yours/, 'name and city in one message → straight to the list');
+
+    await inbound(phone, 'hmm');
+    assert.equal((await sentTo(phone)).at(-1), m.choice.PROFILE_PICK_AGAIN);
+    await inbound(phone, '7');
+    assert.equal((await sentTo(phone)).at(-1), m.choice.PROFILE_PICK_AGAIN, 'not a number on the list');
+
+    await inbound(phone, '0');
+    assert.equal((await sentTo(phone)).at(-1), m.choice.PROFILE_NOT_FOUND);
+    await inbound(phone, 'Mulsetu Technologies, Ozar, Nashik');
+    assert.match((await sentTo(phone)).at(-1)!, /Which one is yours/);
+    await inbound(phone, 'not in the list');
+    assert.match((await sentTo(phone)).at(-1)!, /https:\/\/app\.example\.test\/free-report/, 'second miss → pick it on the website');
+    assert.equal(await m.Audit.countDocuments(), auditsBefore, 'no report started from a guess');
+    const convo: any = await m.ReportConversation.findOne({ phoneKey: phone.slice(-10) }).sort({ createdAt: -1 }).lean();
+    assert.equal(convo.status, 'stopped');
+  });
+});
+
+test('no listing found on Google: asks for the exact name instead of guessing', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const phone = '+919877700013';
+  await withPlaces([], async () => {
+    await inbound(phone, 'Hi');
+    await inbound(phone, '2');
+    await inbound(phone, 'Zzq Unknown Shop, Nashik');
+    assert.equal((await sentTo(phone)).at(-1), m.choice.PROFILE_NOT_FOUND);
+    assert.equal(await m.Audit.countDocuments({ businessName: /Zzq/ }), 0, 'no report for a guessed business');
+  });
+});
+
+test('reply parsing for the listing choice', () => {
+  const pick = m.choice?.pickProfileReply;
+  if (!pick) return;
+  assert.equal(pick('1', 2), 0);
+  assert.equal(pick(' 2. ', 2), 1);
+  assert.equal(pick('2️⃣', 2), 1);
+  assert.equal(pick('option 2', 2), 1);
+  assert.equal(pick('3', 2), null);
+  assert.equal(pick('0', 2), 'none');
+  assert.equal(pick('none of these', 2), 'none');
+  assert.equal(pick('Mulsetu', 2), null);
 });

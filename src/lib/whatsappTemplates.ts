@@ -11,7 +11,8 @@
  *  - salesIntro:     {{1}} lead name, {{2}} business name.
  *                     Quick-reply button "YES" — no URL variable.
  *  - reportReady:    {{1}} lead name, {{2}} business name,
- *                     {{3}} auditId (button URL: /free-report/result?auditId={{3}}).
+ *                     {{3}} report share token, not the audit id (button URL:
+ *                     /free-report/result?auditId={{3}} — the lead is not signed in).
  *  - reviewRequest:  LEGACY marketing template. {{1}} customer name,
  *                     {{2}} business name, {{3}} Google Place ID
  *                     (button URL: google.com/local/writereview?placeid={{3}}).

@@ -333,7 +333,7 @@ test('delivery callbacks: delivered/read are recorded as evidence; a failure kee
   assert.match(logs.join('\n'), /async 63016/);
 });
 
-test('contract: report-ready sends {{1}},{{2}} and the bare auditId as {{3}} (the button URL adds the rest)', async (t) => {
+test('contract: report-ready sends {{1}},{{2}} and a bare share token as {{3}} (the lead opens it signed out)', async (t) => {
   if (skipReason) return t.skip(skipReason);
   const p = phone();
   const userId = new m.mongoose.Types.ObjectId();
@@ -344,7 +344,11 @@ test('contract: report-ready sends {{1}},{{2}} and the bare auditId as {{3}} (th
   await m.fns.sendReportReadyNotification.fn({ event: { data: { auditId: String(audit._id) } }, step });
   const sent = calls.find((c) => c.contentSid === LIVE.TWILIO_TEMPLATE_REPORT_READY)!;
   assert.deepEqual(Object.keys(sent.variables!).sort(), LIVE_PLACEHOLDERS[LIVE.TWILIO_TEMPLATE_REPORT_READY]);
-  assert.equal(sent.variables!['3'], String(audit._id), 'not a full URL — the approved button already has ?auditId=');
+  const token = sent.variables!['3'];
+  assert.match(token, /^[a-f0-9]{48}$/, 'a share token, not a full URL — the approved button already has ?auditId=');
+  const { default: ReportShare } = await import('../../src/models/ReportShare');
+  const share: any = await ReportShare.findOne({ token }).lean();
+  assert.equal(String(share?.auditId), String(audit._id), 'opens this report without signing in (/api/reports/[token])');
   assert.equal(sent.variables!['2'], 'Asha Bakery');
 
   const saved = m.templates.WA_TEMPLATES.reportReady;

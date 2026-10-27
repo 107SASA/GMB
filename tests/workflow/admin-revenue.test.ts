@@ -114,6 +114,7 @@ test('revenue + stats routes: one definition — trials are not "trialing", MRR 
   await workspace({ subscriptionStatus: 'active', billingSubscriptionId: 'sub_m', billingCycle: 'monthly', billingAmountInr: 1499 });
   const legacy = await workspace({ subscriptionStatus: 'active', billingSubscriptionId: 'sub_legacy' });
   await m.BillingEvent.create({ businessId: legacy.businessId, eventType: 'subscription.charged', source: 'webhook', eventAt: new Date(), actions: ['activate_paid'], amountPaise: 399_900 });
+  await workspace({ subscriptionStatus: 'active' }); // set active by hand (store reviewer demo): no subscription, never charged
   await workspace({ subscriptionStatus: 'trial_active', trialEndsAt: new Date(Date.now() + 80 * 86400_000) });
   await workspace({}); // never paid (schema default 'trialing')
   await workspace({ subscriptionStatus: 'trialing' });
@@ -128,8 +129,9 @@ test('revenue + stats routes: one definition — trials are not "trialing", MRR 
 
   await signInAsSuperAdmin('rev-admin@example.invalid');
   const rev = (await (await m.revenueRoute.GET()).json()).data;
-  assert.equal(rev.activeCount, 3);
-  assert.equal(rev.payingSubscriptions, 3);
+  assert.equal(rev.activeCount, 4);
+  assert.equal(rev.payingSubscriptions, 3, 'the hand-activated demo workspace is not a paying subscription');
+  assert.equal(rev.complimentaryCount, 1);
   assert.equal(rev.mrr, Math.round(9999 / 12 + 1499 + 3999 / 3));
   assert.equal(rev.arr, rev.mrr * 12);
   assert.equal(rev.trialActiveCount, 1, 'only the authorised trial');
@@ -140,8 +142,8 @@ test('revenue + stats routes: one definition — trials are not "trialing", MRR 
   assert.equal(rev.estimatedCount, 0);
 
   const stats = (await (await m.statsRoute.GET()).json()).data.stats;
-  assert.equal(stats.activeBusinesses, 4, 'paying + authorised trial');
-  assert.equal(stats.payingBusinesses, 3);
+  assert.equal(stats.activeBusinesses, 5, 'active + authorised trial');
+  assert.equal(stats.payingBusinesses, 4);
   assert.equal(stats.trialBusinesses, 1);
-  assert.equal(stats.totalBusinesses, 11);
+  assert.equal(stats.totalBusinesses, 12);
 });

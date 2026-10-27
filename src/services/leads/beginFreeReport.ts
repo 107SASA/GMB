@@ -2,7 +2,8 @@ import dbConnect from '@/lib/mongodb';
 import Audit from '@/models/Audit';
 import Lead from '@/models/Lead';
 import SalesConversation from '@/models/SalesConversation';
-import { provisionShadowAccount, CLAIMED_OR_PAID_REUSE_ERROR } from '@/lib/shadowAccount';
+import { provisionShadowAccount, CLAIMED_OR_PAID_REUSE_ERROR, type ShadowBusinessData } from '@/lib/shadowAccount';
+import type { PlaceDetailsResult } from '@/services/google/places';
 import { createPendingAuditAndDispatch } from '@/lib/startAudit';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 import { fileFreeReportPlatformLead, linkPlatformLeadAudit } from '@/services/leads/platformProspectEntry';
@@ -43,6 +44,8 @@ export async function beginFreeReport(input: {
   name: string;
   businessName: string;
   location: string;
+  /** The Google listing the lead picked (Places Details), like the website's dropdown. */
+  place?: Partial<PlaceDetailsResult> & { placeId: string };
 }): Promise<BeginFreeReportResult> {
   const businessName = input.businessName.trim();
   const location = input.location.trim();
@@ -58,7 +61,7 @@ export async function beginFreeReport(input: {
       phone: input.phone,
       source: 'whatsapp-report',
       personName: input.name,
-      businessData: {
+      businessData: input.place ? placeBusinessData(businessName, location, input.place) : {
         name: businessName,
         city,
         state,
@@ -108,4 +111,28 @@ export async function beginFreeReport(input: {
   const audit = await createPendingAuditAndDispatch(business, organization, user, { trigger: 'whatsapp-report' });
   await attach(audit._id);
   return { ok: true, auditId: String(audit._id), status: 'PENDING', businessName, name: input.name || businessName };
+}
+
+/** Same fields the website sends to /api/free-report/start after a dropdown pick (BusinessAutocomplete). */
+function placeBusinessData(businessName: string, location: string, d: Partial<PlaceDetailsResult> & { placeId: string }): ShadowBusinessData {
+  return {
+    name: d.name || businessName,
+    category: d.primaryCategory,
+    address: d.formattedAddress || location,
+    area: d.area,
+    city: d.city,
+    state: d.state,
+    country: d.country,
+    phone: d.phoneNumber,
+    website: d.website,
+    googlePlaceId: d.placeId,
+    googleMapsUrl: d.googleMapsUrl,
+    coordinates: typeof d.latitude === 'number' && typeof d.longitude === 'number' ? { lat: d.latitude, lng: d.longitude } : undefined,
+    placesRating: d.rating,
+    placesReviewCount: d.totalReviews,
+    editorialSummary: d.editorialSummary,
+    photoCount: d.photoCount,
+    hasHours: d.hasHours,
+    googleTypes: d.categories,
+  };
 }

@@ -12,6 +12,7 @@ import SupportConversation from '@/models/SupportConversation';
 import User from '@/models/User';
 import { validateTwilioSignature } from '@/lib/twilioSignature';
 import { sendOutboundMessage } from '@/services/whatsapp/send';
+import type { PlaceDetailsResult } from '@/services/google/places';
 import { checkRateLimit } from '@/lib/rateLimit';
 import ProcessedWebhookEvent from '@/models/ProcessedWebhookEvent';
 import { SUPPORT_MESSAGE } from '@/lib/whatsappCta';
@@ -513,8 +514,10 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
       }
     }
     if (!activeReport.leadName && profileName) activeReport.leadName = profileName;
-    const { classifyProspectChoice } = await import('@/services/whatsapp/prospectChoice');
-    if (classifyProspectChoice(body, 'new') === 'demo') {
+    const { classifyProspectChoice, pickProfileReply } = await import('@/services/whatsapp/prospectChoice');
+    // While picking their Google listing, "1" means listing 1, not "book a demo".
+    const pickingProfile = activeReport.intakePhase === 'pick-profile' && pickProfileReply(body, activeReport.intakeProfiles?.length || 0) !== null;
+    if (!pickingProfile && classifyProspectChoice(body, 'new') === 'demo') {
       activeReport.status = 'stopped';
       await activeReport.save();
       await openDemoThread(phone, profileName, body);
@@ -670,11 +673,15 @@ async function openDemoThread(
  */
 async function sendExistingReport(phone: string, facts: { name: string; businessName: string; auditId: string | null }): Promise<void> {
   const base = (process.env.NEXT_PUBLIC_APP_URL || 'https://growwmatics.com').replace(/\/$/, '');
-  const link = facts.auditId ? `${base}/free-report/result?auditId=${facts.auditId}` : `${base}/free-report`;
+  // The person opening this is not signed in — link with a share token, not the audit id.
+  const { reportShareToken } = await import('@/services/report/reportShareLink');
+  const link = facts.auditId
+    ? `${base}/free-report/result?auditId=${await reportShareToken(facts.auditId, 'whatsapp-report')}`
+    : `${base}/free-report`;
   await sendOutboundMessage(phone, `Your free Google Business Profile report is ready.\n\nView Report: ${link}`);
 }
 
-/** Starts the free report, or asks for the business name / city it still needs. */
+/** Asks for the business name / city it still needs, then for the exact Google listing. */
 async function startReportOrAsk(
   phone: string,
   profileName: string,
@@ -684,26 +691,124 @@ async function startReportOrAsk(
   const { phoneDedupeKey, normalizePhoneE164 } = await import('@/lib/phone');
   const { reportIntakeQuestion } = await import('@/services/whatsapp/prospectChoice');
   const question = reportIntakeQuestion(facts);
-  if (!question) {
-    await startReportFromFacts(phone, profileName, facts);
-    return;
-  }
   const { default: ReportConversation } = await import('@/models/ReportConversation');
   const convo = await ReportConversation.create({
     leadPhone: normalizePhoneE164(phone) || phone,
     phoneKey: phoneDedupeKey(phone),
     leadName: facts.name || profileName || '',
     status: 'awaiting_connection',
-    intakePhase: question.phase,
+    intakePhase: question?.phase ?? null,
     intakeBusinessName: facts.businessName,
     intakeLocation: facts.location,
     messages: [
       { role: 'lead', text: body, at: new Date() },
-      { role: 'agent', text: question.text, at: new Date() },
+      ...(question ? [{ role: 'agent', text: question.text, at: new Date() }] : []),
     ],
   });
   await convo.save();
+  if (!question) {
+    await offerProfileChoices(convo, phone, profileName, facts);
+    return;
+  }
   await sendOutboundMessage(phone, question.text);
+}
+
+/**
+ * The WhatsApp version of the website's business dropdown: searches Google
+ * for "<name> <location>" and lets the lead pick their exact listing, so the
+ * report is about their profile and not the first text match. Without a
+ * Places key (or if Places errors) the report starts from the typed text, as
+ * before. Two empty searches or "not in the list" answers send the lead to
+ * the website search instead of looping.
+ */
+async function offerProfileChoices(
+  convo: any,
+  phone: string,
+  profileName: string,
+  facts: { name: string; businessName: string; location: string }
+): Promise<void> {
+  const { PROFILE_OPTIONS_MAX, profileChoiceMessage } = await import('@/services/whatsapp/prospectChoice');
+  let options: Array<{ placeId: string; name: string; address: string }> | null = null;
+  if (process.env.GOOGLE_MAPS_API_KEY) {
+    try {
+      const { GooglePlacesService } = await import('@/services/google/places');
+      const found = await GooglePlacesService.autocomplete(`${facts.businessName} ${facts.location}`.trim());
+      options = found.slice(0, PROFILE_OPTIONS_MAX).map((p) => ({ placeId: p.placeId, name: p.mainText, address: p.secondaryText }));
+    } catch (err: any) {
+      console.warn('[whatsapp] profile search failed, starting the report from the typed name:', err?.message);
+    }
+  }
+  if (options === null) {
+    convo.intakePhase = null;
+    await convo.save();
+    await startReportFromFacts(phone, profileName, facts);
+    return;
+  }
+  if (!options.length) {
+    await profileNotFound(convo, phone);
+    return;
+  }
+  const text = profileChoiceMessage(options);
+  convo.intakePhase = 'pick-profile';
+  convo.intakeProfiles = options;
+  convo.messages.push({ role: 'agent', text, at: new Date() });
+  await convo.save();
+  await sendOutboundMessage(phone, text);
+}
+
+/** Nothing matched, or the lead said their listing is not in the list. */
+async function profileNotFound(convo: any, phone: string): Promise<void> {
+  const { PROFILE_NOT_FOUND, profileSearchOnWebsite } = await import('@/services/whatsapp/prospectChoice');
+  convo.intakeMisses = (convo.intakeMisses || 0) + 1;
+  convo.intakeProfiles = undefined;
+  let text: string;
+  if (convo.intakeMisses >= 2) {
+    const base = (process.env.NEXT_PUBLIC_APP_URL || 'https://growwmatics.com').replace(/\/$/, '');
+    text = profileSearchOnWebsite(`${base}/free-report`);
+    convo.intakePhase = null;
+    convo.status = 'stopped';
+  } else {
+    text = PROFILE_NOT_FOUND;
+    convo.intakePhase = 'need-both';
+    convo.intakeBusinessName = '';
+    convo.intakeLocation = '';
+  }
+  convo.messages.push({ role: 'agent', text, at: new Date() });
+  await convo.save();
+  await sendOutboundMessage(phone, text);
+}
+
+/** The lead's answer to the listing choice. */
+async function continueProfilePick(convo: any, phone: string, profileName: string, reply: string): Promise<void> {
+  const { pickProfileReply, PROFILE_PICK_AGAIN } = await import('@/services/whatsapp/prospectChoice');
+  const options: Array<{ placeId: string; name: string; address: string }> = convo.intakeProfiles || [];
+  const pick = pickProfileReply(reply, options.length);
+  if (pick === 'none') {
+    await profileNotFound(convo, phone);
+    return;
+  }
+  if (pick === null || !options[pick]) {
+    convo.messages.push({ role: 'agent', text: PROFILE_PICK_AGAIN, at: new Date() });
+    await convo.save();
+    await sendOutboundMessage(phone, PROFILE_PICK_AGAIN);
+    return;
+  }
+  const chosen = options[pick];
+  const { GooglePlacesService } = await import('@/services/google/places');
+  const details = await GooglePlacesService.getDetails(chosen.placeId).catch((err: any) => {
+    console.warn('[whatsapp] place details failed, starting the report with the listing id only:', err?.message);
+    return null;
+  });
+  convo.intakePhase = null;
+  convo.intakeProfiles = undefined;
+  await convo.save();
+  const { usablePersonName } = await import('@/lib/personName');
+  await startReportFromFacts(phone, profileName, {
+    name: usablePersonName(convo.leadName) || usablePersonName(profileName) || '',
+    businessName: details?.name || chosen.name,
+    location: details?.formattedAddress || chosen.address || convo.intakeLocation,
+    place: { ...(details || {}), placeId: chosen.placeId },
+  });
 }
 
 /**
@@ -714,9 +819,8 @@ async function startReportOrAsk(
  * scheduling failed does not stop the report.
  */
 async function serveReportDuringBooking(booking: any, phone: string, profileName: string, body: string): Promise<boolean> {
-  if (await isBookingReply(booking, body)) return false;
   const { phoneDedupeKey, normalizePhoneE164 } = await import('@/lib/phone');
-  const { asksForReport, SCHEDULING_HANDOFF_REASONS, reportProcessingDuringDemo } = await import('@/services/whatsapp/prospectChoice');
+  const { asksForReport, SCHEDULING_HANDOFF_REASONS, reportProcessingDuringDemo, pickProfileReply } = await import('@/services/whatsapp/prospectChoice');
   const { default: ReportConversation } = await import('@/models/ReportConversation');
   const intake: any = await ReportConversation.findOne({
     phoneKey: phoneDedupeKey(phone),
@@ -724,6 +828,9 @@ async function serveReportDuringBooking(booking: any, phone: string, profileName
     intakePhase: { $nin: [null, ''] },
     updatedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }, // asked just now, not a stale thread
   }).sort({ updatedAt: -1 });
+  // Just sent the Google listing choice: "2" is listing 2, not the second demo time.
+  const pickingProfile = intake?.intakePhase === 'pick-profile' && pickProfileReply(body, intake.intakeProfiles?.length || 0) !== null;
+  if (!pickingProfile && await isBookingReply(booking, body)) return false;
   if (!intake && !asksForReport(body)) return false;
 
   const { isHumanOwned } = await import('@/services/agentHandoff/isHumanOwned');
@@ -775,7 +882,7 @@ async function isBookingReply(booking: any, body: string): Promise<boolean> {
 async function startReportFromFacts(
   phone: string,
   profileName: string,
-  facts: { name: string; businessName: string; location: string }
+  facts: { name: string; businessName: string; location: string; place?: Partial<PlaceDetailsResult> & { placeId: string } }
 ): Promise<void> {
   const { beginFreeReport } = await import('@/services/leads/beginFreeReport');
   const { REPORT_PROCESSING_MESSAGE, reportProcessingDuringDemo } = await import('@/services/whatsapp/prospectChoice');
@@ -785,6 +892,7 @@ async function startReportFromFacts(
     name: usablePersonName(facts.name) || usablePersonName(profileName) || '',
     businessName: facts.businessName,
     location: facts.location,
+    place: facts.place,
   });
   if (!started.ok) {
     await sendOutboundMessage(phone, "Sure — I'll have a team member help you with the report. Our team will message you here shortly.");
@@ -805,6 +913,10 @@ async function startReportFromFacts(
 async function continueReportIntake(activeReport: any, phone: string, profileName: string): Promise<void> {
   const { applyReportIntake } = await import('@/services/whatsapp/prospectChoice');
   const latest = [...(activeReport.messages || [])].reverse().find((message: any) => message.role === 'lead');
+  if (activeReport.intakePhase === 'pick-profile') {
+    await continueProfilePick(activeReport, phone, profileName, latest?.text || '');
+    return;
+  }
   const next = applyReportIntake(activeReport.intakePhase, latest?.text || '', {
     businessName: activeReport.intakeBusinessName,
     location: activeReport.intakeLocation,
@@ -818,10 +930,8 @@ async function continueReportIntake(activeReport: any, phone: string, profileNam
     await sendOutboundMessage(phone, next.question.text);
     return;
   }
-  activeReport.intakePhase = null;
-  await activeReport.save();
   const { usablePersonName } = await import('@/lib/personName');
-  await startReportFromFacts(phone, profileName, {
+  await offerProfileChoices(activeReport, phone, profileName, {
     name: usablePersonName(activeReport.leadName) || usablePersonName(profileName) || '',
     businessName: next.businessName,
     location: next.location,

@@ -2090,10 +2090,13 @@ export const sendReportReadyNotification = inngest.createFunction(
       if (!phone) return { skip: 'no phone' as const };
 
       const { sendTemplateMessage } = await import('@/services/twilio/client');
+      // The button opens /free-report/result?auditId={{3}} on the lead's phone,
+      // where they are not signed in: {{3}} is a share token, not the audit id.
+      const { reportShareToken } = await import('@/services/report/reportShareLink');
       const res = await sendTemplateMessage(phone, WA_TEMPLATES.reportReady, {
         '1': usablePersonName(owner?.fullName) || business.name || 'there',
         '2': business.name || 'your business',
-        '3': String(audit._id),
+        '3': await reportShareToken(String(audit._id), 'report-ready'),
       }, business._id.toString());
 
       if (res.success) {

@@ -343,7 +343,10 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
       // + the free report asked for mid-booking is served without touching the
       //   demo (serveReportDuringBooking, isBookingReply, startReportOrAsk);
       //   someone with a demo open is not asked "wait or book a demo?".
-      'serveReportDuringBooking', 'isBookingReply', 'startReportOrAsk', 'startReportFromFacts'],
+      'serveReportDuringBooking', 'isBookingReply', 'startReportOrAsk', 'startReportFromFacts',
+      // + the report lead picks their exact Google listing from a short list
+      //   (the website dropdown, over WhatsApp) before the report starts.
+      'continueReportIntake', 'offerProfileChoices', 'profileNotFound', 'continueProfilePick'],
   };
   for (const [file, ok] of Object.entries(allowed)) {
     const head = atHead(file);

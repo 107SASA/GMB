@@ -8,6 +8,7 @@ import { ReportGeneratingAnimation } from '@/components/graphics/ReportGeneratin
 import { usePublicPlan } from '@/components/billing/useRazorpayCheckout';
 import { pickDuration } from '@/components/billing/DurationPicker';
 import FreeReportView from '@/components/audit/FreeReportView';
+import { isReportShareToken } from '@/lib/reportShareToken';
 
 interface AuditDoc {
   _id: string;
@@ -65,11 +66,18 @@ function FreeReportResultContent() {
     let cancelled = false;
     const poll = async () => {
       try {
-        const res = await fetch(`/api/audit/${auditId}`);
+        // WhatsApp links carry a share token (no sign-in needed); the web
+        // form flow carries the audit id of the signed-in visitor.
+        const shared = isReportShareToken(auditId);
+        const res = await fetch(shared ? `/api/reports/${auditId}` : `/api/audit/${auditId}`);
         const json = await res.json();
         if (cancelled) return;
         if (!res.ok || !json.success) {
           setError(json.error || 'Could not load your report.');
+          return;
+        }
+        if (shared) {
+          setAudit({ ...json.audit, status: 'COMPLETED' }); // shares exist only for finished reports
           return;
         }
         setAudit(json.audit);

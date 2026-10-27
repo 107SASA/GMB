@@ -5,6 +5,7 @@ import User from '@/models/User';
 import Business from '@/models/Business';
 import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
 import { isSessionEpochValid } from '@/lib/sessionEpoch';
+import { publicUrl } from '@/lib/publicUrl';
 
 /**
  * Per-workspace subscription gate.
@@ -129,7 +130,7 @@ export default async function proxy(request: NextRequest) {
     // guards (requireClient/requireSuperAdmin) enforce the same check for
     // /api/* independently — this is the /dashboard/* half.
     if (!isSessionEpochValid(session.sessionEpoch, user.sessionEpoch)) {
-      const res = NextResponse.redirect(new URL('/login?error=session_expired', request.url));
+      const res = NextResponse.redirect(publicUrl('/login?error=session_expired', request));
       res.cookies.delete(SESSION_COOKIE);
       res.cookies.delete(ACTIVE_BUSINESS_COOKIE);
       return res;
@@ -167,7 +168,7 @@ export default async function proxy(request: NextRequest) {
       // OTP is the only supported login path.)
       const isNewWorkspace = !!business.createdAt && new Date(business.createdAt) >= INTAKE_ENFORCED_SINCE;
       if (isNewWorkspace && !business.intakeCompleted && !isAllowedBeforeIntake(pathname)) {
-        return NextResponse.redirect(new URL(INTAKE_PATH, request.url));
+        return NextResponse.redirect(publicUrl(INTAKE_PATH, request));
       }
       return NextResponse.next();
     }

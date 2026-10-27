@@ -898,6 +898,18 @@ async function startReportFromFacts(
     await sendOutboundMessage(phone, "Sure — I'll have a team member help you with the report. Our team will message you here shortly.");
     return;
   }
+  // The report is under way without connecting Google, so close the intake
+  // chat: left open ('awaiting_connection'), the next message went to the
+  // Report Agent, which asks them to connect Google with a link. Later
+  // messages get the platform menu (view report / book a demo) instead.
+  {
+    const { phoneDedupeKey } = await import('@/lib/phone');
+    const { default: ReportConversation } = await import('@/models/ReportConversation');
+    await ReportConversation.updateMany(
+      { phoneKey: phoneDedupeKey(phone), status: 'awaiting_connection' },
+      { $set: { status: 'stopped', intakePhase: null } }
+    );
+  }
   if (started.status === 'COMPLETED') {
     await sendExistingReport(phone, { name: started.name, businessName: started.businessName, auditId: started.auditId });
     return;
@@ -1007,7 +1019,8 @@ async function observeLeadOwnershipShadow(phone: string): Promise<void> {
     if (activeSales) {
       agent = 'SALES';
     } else {
-      const activeBooking = await BookingConversation.findOne({ phoneKey: key, status: 'active' }).select('_id').lean();
+      // A demo being scheduled or already booked is the demo agent's lead.
+      const activeBooking = await BookingConversation.findOne({ phoneKey: key, status: { $in: ['active', 'awaiting_slot_selection', 'booked'] } }).select('_id').lean();
       if (activeBooking) {
         agent = 'DEMO';
       } else {

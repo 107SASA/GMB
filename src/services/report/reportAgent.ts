@@ -66,7 +66,7 @@ export async function composeAgentReply(
       max_tokens: 400,
     });
     const text = res.choices?.[0]?.message?.content?.trim();
-    if (text) return text;
+    if (text) return withExactLink(text, connectLink);
   } catch (err: any) {
     console.warn('[reportAgent] AI reply failed:', err?.message);
   }
@@ -141,4 +141,13 @@ export function composeSummaryMessage(
     review: scores.review,
     dashboardLink,
   });
+}
+
+/**
+ * The model copies the long signed connect link and sometimes shortens it
+ * ("…eyJwaG9uZSI6IisiOTE..."), which then fails as an expired link. Every
+ * connect URL in its reply is replaced by the exact one.
+ */
+export function withExactLink(text: string, connectLink: string): string {
+  return text.replace(/https?:\/\/\S*\/api\/report-connect\/[^\s)>\]]*/g, connectLink);
 }

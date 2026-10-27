@@ -6,6 +6,7 @@ import { notifyBusinessUsers } from '@/services/notifications';
 import { notifyOwner } from '@/services/ownerNotify';
 import { maybeStartContentAutopilot } from '@/lib/contentAutopilot';
 import { maybeStartAuditAutopilot } from '@/lib/auditAutopilot';
+import { resumeHeldWork } from '@/services/billing/planAccess';
 import { sendPaymentFailedEmail, sendCancellationEmail } from './billingEmails';
 import {
   ALL_MODULES,
@@ -152,6 +153,9 @@ export async function activateBusinessPlan(
   // real category is on file, generate the first report now instead of
   // waiting for the hourly auditAutopilotCron. No-op if not yet qualified.
   await maybeStartAuditAutopilot(businessId);
+
+  // Reviews that arrived while it was unpaid get their AI replies now.
+  await resumeHeldWork(businessId);
   return { held: false };
 }
 
@@ -323,6 +327,7 @@ export async function startTrialAccess(
   // now if Google is already connected (no-ops otherwise), same as activation.
   await maybeStartContentAutopilot(businessId);
   await maybeStartAuditAutopilot(businessId);
+  await resumeHeldWork(businessId);
   return true;
 }
 

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { publicUrl } from '@/lib/publicUrl';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 import dbConnect from '@/lib/mongodb';
@@ -31,12 +32,12 @@ export async function GET(
     { $set: { usedAt: new Date() } }
   );
   if (!link) {
-    return NextResponse.redirect(new URL('/login?error=expired_link', req.url));
+    return NextResponse.redirect(publicUrl('/login?error=expired_link', req));
   }
 
   const user = await User.findById(link.userId).lean() as any;
   if (!user) {
-    return NextResponse.redirect(new URL('/login', req.url));
+    return NextResponse.redirect(publicUrl('/login', req));
   }
 
   await createSession(user._id.toString(), user.role, user.sessionEpoch ?? 0);

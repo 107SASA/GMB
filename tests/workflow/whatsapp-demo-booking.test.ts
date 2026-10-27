@@ -284,7 +284,33 @@ test('report over WhatsApp: name + location → the lead picks their Google list
     assert.ok(await m.Audit.exists({ businessId: biz._id }), 'the report is generating for that listing');
     const convo: any = await m.ReportConversation.findOne({ phoneKey: phone.slice(-10) }).sort({ createdAt: -1 }).lean();
     assert.equal(convo.intakePhase, null);
+    assert.equal(convo.status, 'stopped', 'intake chat closed once the report started');
+
+    // The next message must not reach the Report Agent ("connect your Google" + link).
+    const agentRepliesBefore = dispatched.filter((e) => e.name === 'report/agent.reply').length;
+    assert.equal(await inbound(phone, 'Wait let me check the report first'), 200);
+    assert.equal(dispatched.filter((e) => e.name === 'report/agent.reply').length, agentRepliesBefore, 'not handed to the connect-Google agent');
+    assert.ok(!(await sentTo(phone)).some((x) => /report-connect/.test(x)), 'no connect-Google link sent');
   });
+});
+
+test('the connect link in an AI reply is always the full one, even if the model shortened it', async () => {
+  const { withExactLink } = await import('../../src/services/report/reportAgent');
+  const link = 'https://growwmatics.com/api/report-connect/eyJhbGciOiJIUzI1NiJ9.eyJwaG9uZSI6Iis5MTg0ODU4NjAzMjMifQ.sig_full';
+  const shortened = 'Tap the link below:\nhttps://growwmatics.com/api/report-connect/eyJhbGciOiJIUzI1NiJ9.eyJwaG9u...\n\nAny questions?';
+  assert.equal(withExactLink(shortened, link), `Tap the link below:\n${link}\n\nAny questions?`);
+  assert.equal(withExactLink('No link here', link), 'No link here');
+});
+
+test('redirects use the public site address, not the server\'s own localhost', async () => {
+  const { publicUrl } = await import('../../src/lib/publicUrl');
+  const internal = { url: 'https://localhost:3000/api/report-connect/abc' };
+  assert.equal(publicUrl('/connect-google/error?reason=expired_link', internal).href, 'https://app.example.test/connect-google/error?reason=expired_link');
+  const saved = process.env.NEXT_PUBLIC_APP_URL;
+  delete process.env.NEXT_PUBLIC_APP_URL;
+  try {
+    assert.equal(publicUrl('/login', { url: 'http://localhost:3000/x' }).href, 'http://localhost:3000/login', 'local development keeps the request origin');
+  } finally { process.env.NEXT_PUBLIC_APP_URL = saved; }
 });
 
 test('listing choice: an unclear reply asks again; "0" asks for the exact Google name; a second miss sends the website search', async (t) => {

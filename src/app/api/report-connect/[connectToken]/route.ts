@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { publicUrl } from '@/lib/publicUrl';
 import crypto from 'crypto';
 import { SignJWT } from 'jose';
 import { verifyReportConnectToken } from '@/lib/reportConnect';
@@ -26,13 +27,13 @@ export async function GET(
   const { connectToken } = await params;
   const payload = await verifyReportConnectToken(connectToken);
   if (!payload) {
-    return NextResponse.redirect(new URL('/connect-google/error?reason=expired_link', req.url));
+    return NextResponse.redirect(publicUrl('/connect-google/error?reason=expired_link', req));
   }
 
   const redirectUri = process.env.GOOGLE_REPORT_CONNECT_REDIRECT_URI;
   if (!redirectUri) {
     console.error('[report-connect] GOOGLE_REPORT_CONNECT_REDIRECT_URI is not set');
-    return NextResponse.redirect(new URL('/connect-google/error?reason=not_configured', req.url));
+    return NextResponse.redirect(publicUrl('/connect-google/error?reason=not_configured', req));
   }
 
   const state = crypto.randomBytes(16).toString('hex');

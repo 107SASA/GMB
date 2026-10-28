@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 
 import type { ModuleKey } from '@/api/endpoints/auth';
 import { useAuth } from '@/auth/AuthContext';
+import { useBusiness } from '@/business/BusinessContext';
 import { ALL_MODULE_KEYS, computeEntitlements, type Entitlements } from './compute';
 
 /**
@@ -49,8 +50,19 @@ export const HIDE_TAB_WHEN_LOCKED: Record<ModuleKey, boolean> = {
 
 export function useEntitlements(): Entitlements {
   const { user } = useAuth();
+  const { workspaceRestrictedModules } = useBusiness();
   const sub = user?.subscription;
-  return useMemo(() => computeEntitlements(sub), [sub]);
+  return useMemo(() => {
+    const ent = computeEntitlements(sub);
+    if (!workspaceRestrictedModules?.length) return ent;
+    // The user-level plan is shared by all of the owner's workspaces; a
+    // failed payment on THIS workspace can still lock some of its modules.
+    const modules = { ...ent.modules };
+    for (const key of ALL_MODULE_KEYS) {
+      if (workspaceRestrictedModules.includes(key)) modules[key] = false;
+    }
+    return { ...ent, modules };
+  }, [sub, workspaceRestrictedModules]);
 }
 
 /** True when the given app surface should render as locked. */

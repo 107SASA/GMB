@@ -85,3 +85,31 @@ it('fails open when the billing check errors', async () => {
   await waitFor(() => expect(result.current.onboardingStep).toBe('intake'));
   expect(result.current.workspaceLocked).toBe(false);
 });
+
+it('a failed payment after the grace period locks with the "paused" reason', async () => {
+  (fetchBillingStatus as jest.Mock).mockResolvedValue({
+    ...billing(false),
+    workspace: {
+      ...billing(false).workspace,
+      subscriptionStatus: 'past_due',
+      access: { mode: 'restricted', restrictedModules: ['reputation_agent', 'sales_agent', 'content_studio', 'marketing_automation'] },
+    },
+  });
+  const { result } = renderHook(() => useBusiness(), { wrapper });
+  await waitFor(() => expect(result.current.workspaceLocked).toBe(true));
+  expect(result.current.workspaceLockReason).toBe('payment_failed');
+});
+
+it('a failed payment restricting only some modules keeps the workspace open, like the web', async () => {
+  (fetchBillingStatus as jest.Mock).mockResolvedValue({
+    ...billing(false),
+    workspace: {
+      ...billing(false).workspace,
+      subscriptionStatus: 'past_due',
+      access: { mode: 'restricted', restrictedModules: ['sales_agent'] },
+    },
+  });
+  const { result } = renderHook(() => useBusiness(), { wrapper });
+  await waitFor(() => expect(result.current.workspaceRestrictedModules).toEqual(['sales_agent']));
+  expect(result.current.workspaceLocked).toBe(false);
+});

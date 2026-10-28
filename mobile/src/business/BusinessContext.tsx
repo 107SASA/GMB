@@ -22,6 +22,9 @@ const BUSINESS_KEY = 'active_business_id';
 // Older workspaces are left alone (they predate the intake requirement).
 const INTAKE_ENFORCED_SINCE = new Date('2026-07-23T00:00:00.000Z');
 
+// Paid modules (every module but the always-free google_ranking_agent).
+const PAID_MODULE_COUNT = 4;
+
 /**
  * `'create'` — the user has no workspace at all; the wizard starts by finding
  * their business on Google and creating it.
@@ -57,6 +60,14 @@ interface BusinessContextValue {
    * shows the "workspace not active" screen instead of onboarding and tabs.
    */
   workspaceLocked: boolean;
+  /** Why it is locked, for the copy: never paid, payment failed, or ended. */
+  workspaceLockReason: 'unpaid' | 'payment_failed' | 'ended' | null;
+  /**
+   * Paid modules locked for the active workspace after a failed payment when
+   * the billing policy restricts only some of them (the rest stay usable,
+   * like the web). null = no workspace-level restriction.
+   */
+  workspaceRestrictedModules: string[] | null;
   /** Re-checks the active workspace's billing state (e.g. after paying). */
   refreshWorkspaceAccess: () => Promise<void>;
   selectBusiness: (businessId: string) => Promise<void>;
@@ -190,7 +201,22 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   // Fail open on a network/server error, like the web gate — the gated APIs
   // still enforce access server-side.
   const workspace = access.data?.workspace;
-  const workspaceLocked = hasActiveBusiness && !!workspace && !workspace.isActive;
+  // A failed payment that restricts only SOME paid modules keeps the rest
+  // usable — the web blurs just those pages (WorkspaceLockGate).
+  const partial =
+    workspace?.access?.mode === 'restricted' &&
+    Array.isArray(workspace.access.restrictedModules) &&
+    workspace.access.restrictedModules.length < PAID_MODULE_COUNT;
+  const workspaceLocked = hasActiveBusiness && !!workspace && !workspace.isActive && !partial;
+  const workspaceRestrictedModules =
+    hasActiveBusiness && partial ? (workspace?.access?.restrictedModules ?? null) : null;
+  const workspaceLockReason: BusinessContextValue['workspaceLockReason'] = !workspaceLocked
+    ? null
+    : workspace?.subscriptionStatus === 'past_due' || workspace?.access?.mode === 'held'
+      ? 'payment_failed'
+      : workspace?.subscriptionStatus === 'canceled' || workspace?.subscriptionStatus === 'trial_active'
+        ? 'ended'
+        : 'unpaid';
   const accessLoading = hasActiveBusiness && access.isPending && access.fetchStatus !== 'idle';
 
   const value = useMemo<BusinessContextValue>(() => {
@@ -223,6 +249,8 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       needsOnboarding: onboardingStep !== null,
       onboardingStep,
       workspaceLocked,
+      workspaceLockReason,
+      workspaceRestrictedModules,
       refreshWorkspaceAccess,
       selectBusiness,
       deleteBusiness,
@@ -235,6 +263,8 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     activeBusinessId,
     accessLoading,
     workspaceLocked,
+    workspaceLockReason,
+    workspaceRestrictedModules,
     refreshWorkspaceAccess,
     selectBusiness,
     deleteBusiness,

@@ -54,7 +54,11 @@ export default function BillingScreen() {
   const info = useInfoSheet();
   const confirmSheet = useConfirmSheet();
 
-  const subscription = useQuery({ queryKey: ['billing-status'], queryFn: fetchBillingStatus });
+  const subscription = useQuery({
+    // Per workspace — the status is for the active one (x-business-id).
+    queryKey: ['billing-status', activeBusinessId],
+    queryFn: fetchBillingStatus,
+  });
   const usage = useQuery({
     queryKey: ['usage', activeBusinessId],
     queryFn: fetchUsage,
@@ -69,6 +73,7 @@ export default function BillingScreen() {
       // moment before refetching so cancelAtPeriodEnd is already flipped.
       setTimeout(() => {
         void queryClient.invalidateQueries({ queryKey: ['billing-status'] });
+        void queryClient.invalidateQueries({ queryKey: ['workspace-access'] });
       }, 1500);
     },
     onError: (err) =>

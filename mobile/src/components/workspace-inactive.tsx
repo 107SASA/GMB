@@ -25,8 +25,15 @@ export const ACTIVATE_MESSAGE = "Hi, I'm not able to access my GrowwMatics dashb
  * no external-purchase steering, no "upgrade" wording. The only way forward
  * offered here is talking to the team on WhatsApp.
  */
+const COPY = {
+  unpaid: { title: "Your workspace isn't active yet" },
+  payment_failed: { title: 'Your workspace is paused' },
+  ended: { title: 'Your workspace is no longer active' },
+} as const;
+
 export function WorkspaceInactiveScreen() {
-  const { businesses, activeBusiness, refreshWorkspaceAccess } = useBusiness();
+  const { businesses, activeBusiness, workspaceLockReason, refreshWorkspaceAccess } = useBusiness();
+  const copy = COPY[workspaceLockReason ?? 'unpaid'];
   const { logout } = useAuth();
   const t = useTheme();
   const info = useInfoSheet();
@@ -67,9 +74,7 @@ export function WorkspaceInactiveScreen() {
               {activeBusiness.name}
             </Text>
           ) : null}
-          <Text className="text-center font-display-bold text-xl text-white">
-            Your workspace isn&apos;t active yet
-          </Text>
+          <Text className="text-center font-display-bold text-xl text-white">{copy.title}</Text>
           <Text className="text-center font-sans text-sm leading-5 text-zinc-400">
             Need help getting in? Message us on WhatsApp and we&apos;ll sort it out.
           </Text>

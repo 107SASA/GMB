@@ -2,25 +2,21 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { appStoreUrl, playStoreUrl } from "@/lib/appStoreLinks";
 
 export const metadata: Metadata = {
   title: "Get the App",
   description:
     "Download the GrowwMatics AI mobile app to manage your Google Business Profile, reviews, content, and leads from your phone.",
   alternates: { canonical: "/app" },
-  // Testers reach this from a WhatsApp link, not search — and the APK build
-  // shouldn't be indexed while it's a private testing artifact.
-  robots: { index: false, follow: false },
 };
 
-// Direct download URL for the signed Android APK. Set this once the build is
-// hosted (S3/R2/Play internal-testing direct link/etc.). While it's unset the
-// page shows a "coming soon" state instead of a dead button.
-const ANDROID_APK_URL = process.env.NEXT_PUBLIC_ANDROID_APK_URL || "";
+const PLAY_STORE_URL = playStoreUrl();
+// Set NEXT_PUBLIC_APP_STORE_URL once the iOS app is live on the App Store.
+const APP_STORE_URL = appStoreUrl();
 
 const ANDROID_STEPS = [
-  "Tap “Download for Android” — the APK file will start downloading.",
-  "Open the downloaded file. Android will ask permission to install apps from this source — allow it for your browser.",
+  "Tap “Get it on Google Play” to open the Play Store.",
   "Tap Install, then Open.",
   "Sign in with your registered phone number — we’ll send a one-time code on WhatsApp.",
 ] as const;
@@ -47,21 +43,28 @@ export default function GetTheAppPage() {
                 same one you use on the web portal.
               </p>
 
-              {ANDROID_APK_URL ? (
+              <div className="flex flex-wrap gap-3">
                 <a
-                  href={ANDROID_APK_URL}
+                  href={PLAY_STORE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-7 py-3.5 rounded-lg bg-[#006e2c] text-white font-semibold hover:bg-[#005a24] transition-colors"
                 >
-                  <span aria-hidden>⬇</span> Download for Android
+                  <span aria-hidden>▶</span> Get it on Google Play
                 </a>
-              ) : (
-                <span className="inline-flex items-center gap-2 px-7 py-3.5 rounded-lg bg-(--mkt-surface) border border-(--mkt-line) text-[#6b756f] font-semibold">
-                  Android download — coming very soon
-                </span>
-              )}
+                {APP_STORE_URL && (
+                  <a
+                    href={APP_STORE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-7 py-3.5 rounded-lg border border-[#006e2c] text-[#006e2c] font-semibold hover:bg-[#006e2c]/5 transition-colors"
+                  >
+                    Download on the App Store
+                  </a>
+                )}
+              </div>
               <p className="text-sm text-[#6b756f] mt-3">
-                Android 8.0 or newer. The app isn’t on the Play Store yet — this
-                is a direct install for early users.
+                Android 8.0 or newer. Your account is the same as on the web portal.
               </p>
             </div>
 
@@ -95,8 +98,13 @@ export default function GetTheAppPage() {
               iPhone / iOS
             </h2>
             <p className="text-[#3d4a3d] leading-relaxed">
-              The iOS app is on its way. In the meantime, you can use the full
-              web portal from any mobile browser.
+              {APP_STORE_URL ? (
+                <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer" className="text-[#006e2c] font-semibold hover:underline">
+                  Download the iPhone app on the App Store
+                </a>
+              ) : (
+                "The iOS app is on its way. In the meantime, you can use the full web portal from any mobile browser."
+              )}
             </p>
           </div>
           <div>

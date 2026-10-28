@@ -13,6 +13,7 @@ export type OwnerBusinessEvent =
   | 'billing_activated'
   | 'billing_past_due'
   | 'billing_canceled'
+  | 'billing_trial_started'
   | 'billing_trial_ending'
   | 'billing_trial_expired'
   | 'profile_incomplete'
@@ -54,6 +55,7 @@ export const OWNER_WHATSAPP_DELIVERY: Record<OwnerBusinessEvent, OwnerWhatsAppDe
   billing_activated: 'immediate',
   billing_past_due: 'immediate',
   billing_canceled: 'immediate',
+  billing_trial_started: 'immediate',
   billing_trial_ending: 'immediate',
   billing_trial_expired: 'immediate',
   profile_incomplete: 'immediate',
@@ -79,6 +81,7 @@ const BILLING_OWNER_EVENTS = new Set<OwnerBusinessEvent>([
   'billing_activated',
   'billing_past_due',
   'billing_canceled',
+  'billing_trial_started',
   'billing_trial_ending',
   'billing_trial_expired',
 ]);

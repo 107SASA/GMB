@@ -246,6 +246,11 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
         await startTrialAccess(businessId!, userId, { subscriptionId: sub!.id, trialEndsAt: action.trialEndsAt, eventAt: stampAt, cancelled: action.cancelled === true, subscriptionMode });
         // A trial user is out of pre-sales nurture (no more sales follow-ups).
         if (businessId) await stopPreSalesNurtureForWorkspace(businessId, 'trial-started');
+        // Welcome with the trial end date, dashboard and app links (once per subscription; never throws).
+        if (businessId) {
+          const { notifyTrialStarted } = await import('@/services/billing/billingWhatsApp');
+          await notifyTrialStarted({ businessId, subscriptionId: sub!.id });
+        }
         break;
       case 'reject_trial':
         console.error(`[billing] trial rejected for ${sub?.id} (business ${businessId}): ${action.reason}`);

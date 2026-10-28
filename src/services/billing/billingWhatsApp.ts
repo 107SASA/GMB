@@ -4,12 +4,14 @@ import User from '@/models/User';
 import Subscription from '@/models/Subscription';
 import { CYCLES, getActivePlan, isBillingCycle } from '@/lib/billing/planCatalog';
 import { notifyOwner } from '@/services/ownerNotify';
+import { appStoreUrl, playStoreUrl } from '@/lib/appStoreLinks';
 
 /**
  * Subscription & billing WhatsApp notices (Segment 2). One message per
  * real-world event, decided from verified billing facts and re-checked
  * against the database right before sending:
  *
+ *  - trial started   — 'trial-started:<subscriptionId>'           (welcome + app links)
  *  - first payment   — 'payment-first:<subscriptionId>'           (paid_count ≤ 1)
  *  - renewal         — 'payment-renewal:<subscriptionId>:<paid_count>' (paid_count ≥ 2)
  *  - trial ending    — 'trial-ending:<trialEndsAt>'  TRIAL_REMINDER_DAYS before the end
@@ -36,14 +38,12 @@ const absolute = (path: string) => (/^https?:\/\//.test(appBase()) ? `${appBase(
 /** Billing page link, or null when no absolute app URL is configured. */
 export const billingPageLink = () => absolute('/dashboard/billing');
 
-/**
- * The app download page (/app) — only when the Android APK URL that page
- * offers is actually configured (NEXT_PUBLIC_ANDROID_APK_URL). Without it
- * the page says "coming very soon", so no link is sent.
- */
-export function appDownloadLink(): string | null {
-  if (!(process.env.NEXT_PUBLIC_ANDROID_APK_URL || '').trim()) return null;
-  return absolute('/app');
+/** Store links for the app (Play Store now; App Store once NEXT_PUBLIC_APP_STORE_URL is set). */
+export function appDownloadLines(): string[] {
+  const lines = [`📱 Android app: ${playStoreUrl()}`];
+  const ios = appStoreUrl();
+  if (ios) lines.push(`📱 iPhone app: ${ios}`);
+  return lines;
 }
 
 /** First payment vs renewal, from Razorpay's own charge counter — never from the workspace's current status. */
@@ -67,14 +67,23 @@ export function paymentConfirmedText(input: { kind: 'first' | 'renewal'; busines
   if (input.kind === 'first') {
     lines.push(`Thank you — your payment was successful and your ${input.planName} subscription is now active.`);
     lines.push('', linkLine('Manage billing', billingPageLink(), BILLING_FALLBACK));
-    const app = appDownloadLink();
-    if (app) lines.push(`Get the app: ${app}`);
+    lines.push('', 'Manage everything from your phone:', ...appDownloadLines());
   } else {
     lines.push(`We received your payment — your ${input.planName} subscription has been renewed${input.periodEnd ? ` until ${dateLabel(input.periodEnd)}` : ''}. No action is needed.`);
     lines.push('', linkLine('Manage billing', billingPageLink(), BILLING_FALLBACK));
   }
   lines.push('', '— Team Growwmatics');
   return lines.join('\n');
+}
+
+export function trialStartedText(input: { businessName: string; trialEndsAt: Date | string }): string {
+  return [
+    `Hi ${input.businessName},`, '',
+    `Welcome to Growwmatics! 🎉 Your free trial is active until ${dateLabel(input.trialEndsAt)}.`, '',
+    linkLine('Open your dashboard', absolute('/dashboard'), 'Log in at growwmatics.com to open your dashboard.'),
+    '', 'Manage everything from your phone:', ...appDownloadLines(),
+    '', '— Team Growwmatics',
+  ].join('\n');
 }
 
 export function trialEndingText(input: { businessName: string; trialEndsAt: Date | string; cancelled: boolean; planName: string }): string {
@@ -89,9 +98,8 @@ export function trialExpiredText(input: { businessName: string; trialEndsAt: Dat
     `Hi ${input.businessName},`, '',
     `Your Growwmatics free trial ended on ${dateLabel(input.trialEndsAt)}. Subscribe to keep using Growwmatics — your data is safe.`,
     '', linkLine('Subscribe', billingPageLink(), BILLING_FALLBACK),
+    '', ...appDownloadLines(),
   ];
-  const app = appDownloadLink();
-  if (app) lines.push(`Get the app: ${app}`);
   lines.push('', '— Team Growwmatics');
   return lines.join('\n');
 }
@@ -124,7 +132,7 @@ async function ownerHasPaid(userId: unknown): Promise<boolean> {
 
 type NoticeResult = { status: 'sent' } | { status: 'skipped'; reason: string } | { status: 'failed'; error?: string };
 
-async function sendClaimed(businessId: string, key: string, event: 'billing_activated' | 'billing_trial_ending' | 'billing_trial_expired', text: string): Promise<NoticeResult> {
+async function sendClaimed(businessId: string, key: string, event: 'billing_activated' | 'billing_trial_started' | 'billing_trial_ending' | 'billing_trial_expired', text: string): Promise<NoticeResult> {
   if (!(await claim(businessId, key))) return { status: 'skipped', reason: 'already-sent' };
   const res = await notifyOwner(businessId, { event, text });
   if (res.status === 'sent') return { status: 'sent' };
@@ -173,6 +181,27 @@ export async function notifyPaymentConfirmed(input: {
     return await sendClaimed(input.businessId, key, 'billing_activated', text);
   } catch (err: any) {
     console.error('[billingWhatsApp] payment confirmation failed (state unchanged):', err?.message);
+    return { status: 'failed', error: err?.message };
+  }
+}
+
+/**
+ * One welcome when a free trial starts (the mandate is authorised): the trial
+ * end date, the dashboard and the app links. Re-checks the trial is really
+ * active for this subscription; never changes billing state.
+ */
+export async function notifyTrialStarted(input: { businessId: string; subscriptionId: string }): Promise<NoticeResult> {
+  try {
+    await dbConnect();
+    const b: any = await Business.findById(input.businessId).select('name userId subscriptionStatus trialEndsAt').lean();
+    if (!b) return { status: 'skipped', reason: 'no-business' };
+    if (b.subscriptionStatus !== 'trial_active' || !b.trialEndsAt) return { status: 'skipped', reason: 'trial-not-active' };
+    const owner: any = b.userId ? await User.findById(b.userId).select('notificationPreferences').lean() : null;
+    if (owner?.notificationPreferences?.billingWhatsApp === false) return { status: 'skipped', reason: 'opted-out' };
+    const text = trialStartedText({ businessName: b.name || 'your workspace', trialEndsAt: b.trialEndsAt });
+    return await sendClaimed(input.businessId, `trial-started:${input.subscriptionId}`, 'billing_trial_started', text);
+  } catch (err: any) {
+    console.error('[billingWhatsApp] trial welcome failed (state unchanged):', err?.message);
     return { status: 'failed', error: err?.message };
   }
 }

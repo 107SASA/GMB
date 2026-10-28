@@ -1,6 +1,10 @@
 import { gpsFromPickerExif } from '@/lib/photoLocation';
 import { geotagLine, postPlanLine, postStatusView } from '@/api/endpoints/content';
 
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+);
+
 describe('gpsFromPickerExif', () => {
   it('reads iOS nested {GPS} EXIF', () => {
     expect(gpsFromPickerExif({ '{GPS}': { Latitude: 19.99751, LatitudeRef: 'N', Longitude: 73.78982, LongitudeRef: 'E' } })).toEqual({

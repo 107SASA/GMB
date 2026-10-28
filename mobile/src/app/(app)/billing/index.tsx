@@ -1,8 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
-import * as WebBrowser from 'expo-web-browser';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Linking, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { cancelSubscription, fetchBillingStatus, fetchUsage } from '@/api/endpoints/account';
@@ -21,7 +20,10 @@ import {
 } from '@/components/ui';
 import { ALL_MODULE_KEYS, MODULE_NAMES } from '@/entitlements/entitlements';
 import { formatDateTime } from '@/lib/format';
+import { getSupportWhatsAppLink } from '@/lib/support';
 import { useTheme, withAlpha } from '@/lib/theme';
+
+const PLAN_HELP_MESSAGE = 'Hi, I have a question about my GrowwMatics plan';
 
 function billingTone(status: string): 'positive' | 'info' | 'warning' | 'negative' | 'neutral' {
   if (status === 'Active') return 'positive';
@@ -152,9 +154,21 @@ export default function BillingScreen() {
 
             <View className="mt-4 flex-row gap-3">
               <Pressable
-                onPress={() =>
-                  void WebBrowser.openBrowserAsync(`${process.env.EXPO_PUBLIC_API_URL}/pricing`)
-                }
+                // Store compliance: no link to plans/pricing on the web — plan
+                // changes go through the team on WhatsApp.
+                onPress={() => {
+                  const link = getSupportWhatsAppLink(PLAN_HELP_MESSAGE);
+                  if (!link) {
+                    info.show('Contact us', 'Reach us at support@growwmatics.com for help with your plan.');
+                    return;
+                  }
+                  Linking.openURL(link).catch(() =>
+                    info.show(
+                      'Could not open WhatsApp',
+                      'Make sure WhatsApp is installed, then try again — or reach us at support@growwmatics.com.'
+                    )
+                  );
+                }}
                 // No `className` — react-native-css-interop can swallow
                 // onPress on styled Pressables (see components/ui.tsx).
                 style={{
@@ -168,8 +182,8 @@ export default function BillingScreen() {
                   paddingVertical: 12,
                 }}
               >
-                <Ionicons name="open-outline" size={15} color="#ffffff" />
-                <Text className="font-sans-bold text-sm text-on-brand">View plans on the web</Text>
+                <Ionicons name="logo-whatsapp" size={15} color="#ffffff" />
+                <Text className="font-sans-bold text-sm text-on-brand">Questions? Chat with us</Text>
               </Pressable>
               {sub.hasPaymentMethod &&
                 sub.billingStatus !== 'Canceled' &&

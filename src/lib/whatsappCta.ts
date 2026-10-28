@@ -64,6 +64,15 @@ export function boostProfileLink(message: string = BOOST_PROFILE_MESSAGE): strin
 export const SUPPORT_MESSAGE = "Hi, I need help with my GrowwMatics account";
 
 /**
+ * Prefilled text for the mobile app's "workspace isn't active" screen
+ * (mobile/src/components/workspace-inactive.tsx — keep the two in sync).
+ * The webhook exact-matches it and, when the sender has no paid or trial
+ * workspace, answers with the fixed reply in
+ * services/whatsapp/appAccessHelp.ts.
+ */
+export const APP_ACCESS_MESSAGE = "Hi, I'm not able to access my GrowwMatics dashboard in the app";
+
+/**
  * Builds the "get help" link — same platform WhatsApp number, distinct
  * prefilled text so first-touch routing can tell it apart from the other
  * two. Falls back to /contact (no WhatsApp-only assumption here — support

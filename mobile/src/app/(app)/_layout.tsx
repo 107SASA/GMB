@@ -7,6 +7,7 @@ import { useBusiness } from '@/business/BusinessContext';
 import { AppTabBar } from '@/components/app-tab-bar';
 import { BusinessSwitcher } from '@/components/business-switcher';
 import { LoadingScreen, Screen, ScreenTitle } from '@/components/ui';
+import { WorkspaceInactiveScreen } from '@/components/workspace-inactive';
 import { useTheme } from '@/lib/theme';
 import { PendingCaptureRecovery } from '@/components/pending-capture-recovery';
 
@@ -29,7 +30,7 @@ function SelectBusinessScreen() {
 
 export default function AppLayout() {
   const { isAuthenticated } = useAuth();
-  const { isLoading, needsSelection, needsOnboarding } = useBusiness();
+  const { isLoading, needsSelection, needsOnboarding, workspaceLocked } = useBusiness();
   const t = useTheme();
   const router = useRouter();
 
@@ -52,6 +53,9 @@ export default function AppLayout() {
   if (isLoading) return <LoadingScreen />;
   if (needsOnboarding) return <LoadingScreen />;
   if (needsSelection) return <SelectBusinessScreen />;
+  // Unpaid workspace (no plan, no trial): no tabs, no intake — same as the
+  // web, which only lets a paid or trial workspace in.
+  if (workspaceLocked) return <WorkspaceInactiveScreen />;
 
   return (
     <>

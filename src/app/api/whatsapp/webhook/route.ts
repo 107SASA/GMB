@@ -433,6 +433,21 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
   // Support intake (Segment 4A, services/support/supportIntake.ts): one fixed
   // acknowledgement per issue, no AI, no sales content.
   const support = await import('@/services/support/supportIntake');
+
+  // The app's "workspace isn't active" button. An unpaid sender gets the
+  // fixed "complete your payment" reply, ahead of every other thread; a paid
+  // or trial sender falls through to support as a real access problem.
+  const { isAppAccessMessage, appAccessReplyText } = await import('@/services/whatsapp/appAccessHelp');
+  if (!isOptOut && isAppAccessMessage(body)) {
+    const { trialOrPaidForPhone } = await import('@/services/sales/preSalesPolicy');
+    if (!(await trialOrPaidForPhone(phone))) {
+      const { getSalesAgentConfig } = await import('@/services/sales/salesAgent');
+      const config = await getSalesAgentConfig().catch(() => null);
+      await sendOutboundMessage(phone, appAccessReplyText(config?.subscribeUrl));
+      return;
+    }
+  }
+
   if (isOptOut) {
     await support.closeSupportIssuesOnOptOut(phone);
   } else {

@@ -72,6 +72,17 @@ function weekFromGoogle(periods: Array<{ openDay: string; closeDay: string; open
   return week;
 }
 
+/** A link without utm_* tags (we add our own on save), for showing and comparing. */
+function withoutUtm(raw: string): string {
+  try {
+    const url = new URL(raw);
+    for (const key of [...url.searchParams.keys()]) if (key.startsWith('utm_')) url.searchParams.delete(key);
+    return url.toString();
+  } catch {
+    return raw.trim();
+  }
+}
+
 function sameDay(a: DayHours | undefined, b: DayHours | undefined): boolean {
   if (!a || !b) return !a && !b;
   return a.closed === b.closed && (a.closed || (a.open === b.open && a.close === b.close));
@@ -116,6 +127,8 @@ export default function ProfileOptimizationPage() {
   const [areaQuery, setAreaQuery] = useState('');
   const [areaHits, setAreaHits] = useState<Array<{ placeId: string; placeName: string; address: string | null }>>([]);
   const [pickedAreas, setPickedAreas] = useState<Array<{ placeId: string; placeName: string }>>([]);
+  const [removedAreas, setRemovedAreas] = useState<string[]>([]);
+  const [pickedHolidays, setPickedHolidays] = useState<string[]>([]);
   const [attrValues, setAttrValues] = useState<Record<string, string>>({});
   const [bulkBool, setBulkBool] = useState<Record<string, boolean | undefined>>({});
 
@@ -130,6 +143,16 @@ export default function ProfileOptimizationPage() {
       setGoogleReviewPending(typeof list.googleReviewPending === 'boolean' ? list.googleReviewPending : null);
       setRecs(opt.success ? opt : null);
       if (opt.success && opt.connected !== false) {
+        const links: Record<string, string> = {};
+        for (const key of ['appointment', 'menu', 'order']) {
+          const attr = opt.links?.attributes?.[key];
+          const uri = opt.links?.current?.[key];
+          // Shown without our tracking tags; they're added again on save.
+          if (attr?.name && uri) links[attr.name] = withoutUtm(String(uri));
+        }
+        setAttrValues((prev) => ({ ...links, ...prev }));
+        setPickedHolidays([]);
+        setRemovedAreas([]);
         const week = weekFromGoogle(opt.hours?.currentRegularHours);
         setGoogleHours(week);
         setHours(week);
@@ -228,6 +251,11 @@ export default function ProfileOptimizationPage() {
     const missing = changed.filter((d) => !hours[d]?.closed && !(hours[d]?.open && hours[d]?.close));
     if (missing.length) {
       setMessage(`Enter both an opening and a closing time for ${missing.map(dayLabel).join(', ')}, or tick Closed. Nothing was saved.`);
+      return;
+    }
+    const backwards = changed.filter((d) => !hours[d]?.closed && hours[d].open >= hours[d].close);
+    if (backwards.length) {
+      setMessage(`${backwards.map(dayLabel).join(', ')}: the closing time must be after the opening time. Nothing was saved.`);
       return;
     }
     if (!changed.length && !specialDate) {
@@ -424,6 +452,11 @@ export default function ProfileOptimizationPage() {
   const notAddable = (categories?.additional || []).length - addable.length;
   const linkKeys = (['appointment', 'menu', 'order'] as const).filter((key) => recs?.links?.attributes?.[key]?.name);
   const changedDays = DAYS.filter((d) => !sameDay(hours[d], googleHours[d])).length;
+  // Google accepts service areas only on a service-area profile.
+  const canSetArea = ['CUSTOMER_LOCATION_ONLY', 'CUSTOMER_AND_BUSINESS_LOCATION'].includes(recs?.serviceArea?.businessType);
+  const currentAreas: Array<{ placeId: string; placeName: string }> = (recs?.serviceArea?.places || [])
+    .filter((p: { placeId?: string | null }) => p?.placeId)
+    .map((p: { placeId: string; placeName?: string | null }) => ({ placeId: p.placeId, placeName: p.placeName || 'Area' }));
 
   return (
     <div className="w-full max-w-3xl mx-auto px-4 py-6 md:p-8 space-y-4">
@@ -538,14 +571,22 @@ export default function ProfileOptimizationPage() {
           </Panel>
 
           {linkKeys.length > 0 && (
-            <Panel title="Booking & order links" hint={`${linkKeys.length} available`}>
+            <Panel title="Booking & order links" hint={linkKeys.some((key) => recs.links?.current?.[key]) ? 'Set' : `${linkKeys.length} available`}>
+              <p className="text-xs text-on-surface-variant">Customers tap these on your Google listing. We add tracking tags so you can see visits from Google.</p>
               {linkKeys.map((key) => {
                 const link = recs.links.attributes[key];
+                const current = recs.links?.current?.[key] as string | null | undefined;
+                const label = `${key.charAt(0).toUpperCase()}${key.slice(1)} link`;
+                const value = (attrValues[link.name] || '').trim();
+                const unchanged = !!current && value !== '' && withoutUtm(current) === withoutUtm(value);
                 return (
-                  <div key={key} className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <span className="text-sm sm:w-28 capitalize">{key} link</span>
-                    <input className={`${input} w-full sm:flex-1`} placeholder="https://" value={attrValues[link.name] || ''} onChange={(e) => setAttrValues({ ...attrValues, [link.name]: e.target.value })} />
-                    <button disabled={busy || !(attrValues[link.name] || '').trim()} className={btnOutline} onClick={() => propose({ kind: 'attribute', proposed: { name: link.name, value: attrValues[link.name] || '' }, source: 'owner' })}>Save</button>
+                  <div key={key} className="space-y-1">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <span className="text-sm sm:w-32">{label}</span>
+                      <input className={`${input} w-full sm:flex-1`} placeholder="https://" value={attrValues[link.name] || ''} onChange={(e) => setAttrValues({ ...attrValues, [link.name]: e.target.value })} />
+                      <button disabled={busy || !value || unchanged} className={btnOutline} onClick={() => propose({ kind: 'attribute', proposed: { name: link.name, value }, source: 'owner' })}>{current ? 'Update' : 'Save'}</button>
+                    </div>
+                    {current && <p className="text-xs text-on-surface-variant sm:pl-32">On Google now ✓</p>}
                   </div>
                 );
               })}
@@ -613,39 +654,77 @@ export default function ProfileOptimizationPage() {
             </div>
             {recs?.hours?.status === 'READY' && reminders.length > 0 && (
               <div className="space-y-1.5 border-t border-outline-variant pt-3">
-                <p className="text-xs font-semibold">Upcoming holidays with no hours on Google</p>
+                <p className="text-xs font-semibold">Upcoming holidays with no hours on Google — tick the days you’ll be closed</p>
                 {reminders.map(([date, names]) => (
-                  <div key={date} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <label key={date} className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={pickedHolidays.includes(date)}
+                      onChange={(e) => setPickedHolidays(e.target.checked ? [...pickedHolidays, date] : pickedHolidays.filter((d) => d !== date))}
+                    />
                     <span>{date} — {names.join(', ')}</span>
-                    <button
-                      disabled={busy}
-                      className={btnOutline}
-                      onClick={() => propose({
-                        kind: 'hours',
-                        source: 'recommendation',
-                        proposed: { regularHours: { periods: [] }, specialHours: { specialHourPeriods: [...(recs?.hours?.currentSpecialHours || []), { startDate: date, closed: true }] } },
-                      })}
-                    >Mark closed</button>
-                  </div>
+                  </label>
                 ))}
+                {/* One proposal for all ticked days, so they can't block each other. */}
+                <button
+                  disabled={busy || pickedHolidays.length === 0}
+                  className={btnOutline}
+                  onClick={() => propose({
+                    kind: 'hours',
+                    source: 'recommendation',
+                    proposed: { regularHours: { periods: [] }, specialHours: { specialHourPeriods: pickedHolidays.map((date) => ({ startDate: date, closed: true })) } },
+                  })}
+                >{pickedHolidays.length ? `Mark ${pickedHolidays.length} day${pickedHolidays.length === 1 ? '' : 's'} closed` : 'Tick a holiday first'}</button>
               </div>
             )}
           </Panel>
 
-          <Panel title="Service area" hint={businessTypeText(recs?.serviceArea?.businessType)}>
-            <p className="text-xs text-on-surface-variant">For businesses that visit customers. One city or PIN code per line.</p>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-              <textarea rows={2} className={`${input} w-full`} value={areaQuery} onChange={(e) => setAreaQuery(e.target.value)} placeholder="Nashik" />
-              <button disabled={busy || !areaQuery.trim()} className={btnOutline} onClick={resolveAreas}>Find</button>
-            </div>
-            {areaHits.map((p) => (
-              <label key={p.placeId} className="flex items-start gap-2 text-sm">
-                <input type="checkbox" className="mt-1" checked={pickedAreas.some((x) => x.placeId === p.placeId)} onChange={(e) => setPickedAreas(e.target.checked ? [...pickedAreas, p] : pickedAreas.filter((x) => x.placeId !== p.placeId))} />
-                <span className="break-words">{p.placeName}{p.address ? ` — ${p.address}` : ''}</span>
-              </label>
-            ))}
-            {pickedAreas.length > 0 && (
-              <button disabled={busy} className={btnPrimary} onClick={() => propose({ kind: 'service_area', source: 'owner', proposed: { places: { placeInfos: pickedAreas } } })}>Add {pickedAreas.length} area{pickedAreas.length === 1 ? '' : 's'}</button>
+          <Panel title="Service area" hint={canSetArea ? businessTypeText(recs?.serviceArea?.businessType) : 'Storefront only'}>
+            {canSetArea ? (
+              <>
+                {currentAreas.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold">On Google now — tap to remove</p>
+                    <ul className="flex flex-wrap gap-2">
+                      {currentAreas.map((area) => {
+                        const removing = removedAreas.includes(area.placeId);
+                        return (
+                          <li key={area.placeId}>
+                            <button
+                              type="button"
+                              className={`rounded-full border px-3 py-1 text-xs ${removing ? 'border-error text-error line-through' : 'border-outline-variant'}`}
+                              onClick={() => setRemovedAreas(removing ? removedAreas.filter((id) => id !== area.placeId) : [...removedAreas, area.placeId])}
+                            >{area.placeName} {removing ? '↺' : '×'}</button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+                <p className="text-xs text-on-surface-variant">Add areas where you visit customers. One city or PIN code per line.</p>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                  <textarea rows={2} className={`${input} w-full`} value={areaQuery} onChange={(e) => setAreaQuery(e.target.value)} placeholder="Nashik" />
+                  <button disabled={busy || !areaQuery.trim()} className={btnOutline} onClick={resolveAreas}>Find</button>
+                </div>
+                {areaHits.map((p) => (
+                  <label key={p.placeId} className="flex items-start gap-2 text-sm">
+                    <input type="checkbox" className="mt-1" checked={pickedAreas.some((x) => x.placeId === p.placeId)} onChange={(e) => setPickedAreas(e.target.checked ? [...pickedAreas, p] : pickedAreas.filter((x) => x.placeId !== p.placeId))} />
+                    <span className="break-words">{p.placeName}{p.address ? ` — ${p.address}` : ''}</span>
+                  </label>
+                ))}
+                {(pickedAreas.length > 0 || removedAreas.length > 0) && (
+                  <button
+                    disabled={busy}
+                    className={btnPrimary}
+                    onClick={() => propose({ kind: 'service_area', source: 'owner', proposed: { places: { placeInfos: pickedAreas }, removePlaceIds: removedAreas } })}
+                  >Save areas ({[pickedAreas.length && `+${pickedAreas.length}`, removedAreas.length && `−${removedAreas.length}`].filter(Boolean).join(', ')})</button>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-on-surface-variant">
+                Your profile is set up as a shop or office customers visit, so Google doesn’t allow service areas on it. If you also travel to customers, turn on “service area” in Google Business Profile first, then add areas here.
+              </p>
             )}
           </Panel>
 

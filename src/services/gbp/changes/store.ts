@@ -362,12 +362,24 @@ function mirrorSimple(kind: string, after: unknown): GbpProfilePatch {
   return patch;
 }
 
+/**
+ * One line per "Apply to Google": what Google answered, so a rejection can be
+ * found in the server log (pm2 logs … | grep "gbp-apply"), not only in the DB.
+ */
+function logApplyResult(change: IGbpProfileChange, result: string, error: string | null, googleBody: unknown) {
+  const body = googleBody == null ? '' : ` google=${JSON.stringify(googleBody).replace(/\s+/g, ' ').slice(0, 400)}`;
+  const line = `[gbp-apply] business=${change.businessId} change=${change._id} kind=${change.kind} result=${result}${error ? ` error="${error}"` : ''}${result === 'VERIFIED' ? '' : body}`;
+  if (result === 'VERIFIED') console.log(line);
+  else console.warn(line);
+}
+
 async function settleOutcome(
   claimed: IGbpProfileChange,
   actor: { userId: string; businessId: string },
   outcome: { status: 'VERIFIED' | 'FAILED' | 'CONFLICT' | 'UNRESOLVED'; after: unknown; googleBody: unknown; error: string | null },
   now: string,
 ) {
+  logApplyResult(claimed, outcome.status, outcome.error, outcome.googleBody);
   if (outcome.status === 'VERIFIED') {
     const verified = markVerified(toRecord(claimed), outcome.after, outcome.googleBody, now);
     await saveRecord(claimed, verified);
@@ -492,6 +504,7 @@ export async function executeChange(id: string, actor: { userId: string; busines
     });
     return settleOutcome(claimed, actor, outcome, now);
   } catch (err: any) {
+    logApplyResult(claimed, err instanceof WriteNotAccepted ? 'NOT_ACCEPTED' : 'UNRESOLVED', err?.message ?? null, err?.googleBody ?? null);
     if (err instanceof WriteNotAccepted) {
       const blocked = failClosed(toRecord(claimed), 'BLOCKED', 'Google did not accept the write.', now);
       blocked.googleResult = err.googleBody ?? null;

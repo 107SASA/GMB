@@ -60,3 +60,10 @@ test('a new special date keeps the other special dates; the same date is replace
   assert.notEqual(christmas[0].closed, true);
   assert.ok(merged.specialHourPeriods.some((p) => p.startDate.month === 11 && p.startDate.day === 8));
 });
+
+test('a day ticked Closed loses its live hours; the other days are kept', () => {
+  const merged = mergeRegularHours(liveWeek, { periods: [] }, ['WEDNESDAY']) as { periods: any[] };
+  assert.equal(merged.periods.length, 2);
+  assert.ok(!merged.periods.some((p) => p.openDay === 'WEDNESDAY'));
+  assert.ok(merged.periods.some((p) => p.openDay === 'MONDAY'));
+});

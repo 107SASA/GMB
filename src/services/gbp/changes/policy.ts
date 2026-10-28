@@ -45,9 +45,17 @@ function words(s: string): string[] {
 /** Deterministic description from verified facts only. No links, prices, or rankings. */
 export function draftDescription(input: { name: string; category: string; city: string; services: string[] }): string {
   const services = input.services.map((s) => s.trim()).filter(Boolean).slice(0, 8);
-  const lead = `${input.name.trim()} provides ${services[0] || input.category.trim() || 'local services'} in ${input.city.trim()}.`;
-  const rest = services.length > 1 ? ` Services include ${services.join(', ')}.` : '';
-  const text = `${lead}${rest}`.replace(/\s+/g, ' ').trim();
+  const city = input.city.trim();
+  // "Software company" → "software company", but "SEO agency" keeps its caps.
+  const raw = input.category.trim() || 'local business';
+  const category = /^[A-Z][a-z]/.test(raw) ? raw.charAt(0).toLowerCase() + raw.slice(1) : raw;
+  const article = /^[aeiou]/i.test(category) ? 'an' : 'a';
+  const list = services.length > 1 ? `${services.slice(0, -1).join(', ')} and ${services[services.length - 1]}` : services[0];
+  const text = [
+    `${input.name.trim()} is ${article} ${category}${city ? ` in ${city}` : ''}.`,
+    list ? `We offer ${list}.` : '',
+    `We work with customers${city ? ` in and around ${city}` : ''} — get in touch to find out how we can help.`,
+  ].join(' ').replace(/\s+/g, ' ').trim();
   return text.slice(0, DESCRIPTION_MAX);
 }
 
@@ -170,10 +178,15 @@ function dateParts(iso: string): { year: number; month: number; day: number } {
 /**
  * Google replaces the whole hours field on write. Days the owner left blank
  * keep their live periods, untouched (an overnight period on another day is
- * not re-validated); the proposed days replace their own.
+ * not re-validated); the proposed days replace their own, and `closedDays`
+ * lose their live periods (closed on Google = no period that day).
  */
-export function mergeRegularHours(live: unknown, next: { periods: Array<{ openDay: string; closeDay: string }> }): { periods: unknown[] } {
-  const days = new Set(next.periods.flatMap((p) => [p.openDay, p.closeDay]));
+export function mergeRegularHours(
+  live: unknown,
+  next: { periods: Array<{ openDay: string; closeDay: string }> },
+  closedDays: string[] = [],
+): { periods: unknown[] } {
+  const days = new Set([...next.periods.flatMap((p) => [p.openDay, p.closeDay]), ...closedDays]);
   const periods = (live as { periods?: unknown[] } | null)?.periods;
   const kept = (Array.isArray(periods) ? periods : []).filter((p) => {
     const row = p as { openDay?: string; closeDay?: string };

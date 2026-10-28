@@ -3,31 +3,23 @@
 import { useCallback, useEffect, useState } from 'react';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import {
-  APPLY_CONFIRM,
-  APPLY_REQUIRES_BOTH_FLAGS,
-  APPROVAL_DOES_NOT_PUBLISH,
   ROLLBACK_CONFIRM,
-  SENSITIVE_CONFIRM,
-  VALIDATION_LIMIT,
-  VALIDATION_PASSED,
   validationReview,
   wordDiff,
 } from '@/app/dashboard/profile-optimization/textDiff';
 import {
-  PRODUCTS_TEXT,
   actionResultText,
   businessTypeText,
+  changedLines,
   dayLabel,
   formatValue,
   groupDuplicates,
   kindLabel,
-  lineChanges,
   usesWordDiff,
   pinText,
   shortReference,
   sourceLabel,
   statusInfo,
-  type StatusGroup,
 } from '@/app/dashboard/profile-optimization/presentation';
 import { attributeBatchRequestId } from '@/app/dashboard/profile-optimization/requestId';
 
@@ -41,6 +33,7 @@ interface ChangeRow {
   proposed: unknown;
   error?: string | null;
   createdAt?: string;
+  verifiedAt?: string | null;
   validation?: { valid?: boolean; violations?: Array<{ message?: string }>; warnings?: Array<{ message?: string }> };
 }
 
@@ -55,29 +48,67 @@ interface CategoryRec {
   risk?: string;
 }
 
-type Action = 'approve' | 'execute' | 'rollback';
+type Action = 'apply' | 'rollback' | 'discard';
 
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 
-const GROUPS: Array<{ key: StatusGroup; title: string; hint: string }> = [
-  { key: 'waiting', title: 'Waiting for your approval', hint: 'Nothing here has been sent to Google.' },
-  { key: 'approved', title: 'Approved — ready to apply', hint: 'Approved, but not on Google until you apply them.' },
-  { key: 'live', title: 'Applied to Google', hint: '' },
-  { key: 'closed', title: 'Not applied', hint: 'Stopped, rejected by Google, rolled back, or waiting for a check. These are not sent to Google again.' },
-];
+interface DayHours { open: string; close: string; closed: boolean; split?: boolean }
 
-const btnPrimary = 'px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-bold disabled:opacity-50';
-const btnOutline = 'px-4 py-2 rounded-lg border border-outline text-sm font-bold disabled:opacity-50';
+/**
+ * The synced Google week → one row per day. A day with no period is closed;
+ * a day with several periods (lunch break) or overnight hours shows its first
+ * period and is flagged — it is only replaced if the owner edits it.
+ * null (Google has no hours set) → every day blank and open.
+ */
+function weekFromGoogle(periods: Array<{ openDay: string; closeDay: string; openTime: string; closeTime: string }> | null | undefined): Record<string, DayHours> {
+  const week: Record<string, DayHours> = {};
+  for (const day of DAYS) {
+    if (!Array.isArray(periods)) { week[day] = { open: '', close: '', closed: false }; continue; }
+    const own = periods.filter((p) => p.openDay === day);
+    week[day] = own.length
+      ? { open: own[0].openTime, close: own[0].closeTime, closed: false, split: own.length > 1 || own[0].closeDay !== day }
+      : { open: '', close: '', closed: true };
+  }
+  return week;
+}
+
+function sameDay(a: DayHours | undefined, b: DayHours | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  return a.closed === b.closed && (a.closed || (a.open === b.open && a.close === b.close));
+}
+
+
+const btnPrimary = 'px-3.5 py-1.5 rounded-lg bg-primary text-on-primary text-sm font-bold disabled:opacity-50';
+const btnOutline = 'px-3.5 py-1.5 rounded-lg border border-outline text-sm font-bold disabled:opacity-50';
 const input = 'border border-outline-variant rounded-lg px-3 py-2 text-sm bg-transparent';
+
+/** One collapsible section — keeps the page short; the hint says what's inside. */
+function Panel({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <details className="group rounded-xl border border-outline-variant bg-surface-container-lowest">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+        <span className="text-sm font-semibold text-on-surface">{title}</span>
+        <span className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+          {hint}
+          <MaterialIcon name="expand_more" size={18} className="transition-transform group-open:rotate-180" />
+        </span>
+      </summary>
+      <div className="space-y-3 border-t border-outline-variant px-4 py-3">{children}</div>
+    </details>
+  );
+}
 
 export default function ProfileOptimizationPage() {
   const [changes, setChanges] = useState<ChangeRow[]>([]);
   const [recs, setRecs] = useState<any>(null);
+  const [googleReviewPending, setGoogleReviewPending] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ id: string; action: Action } | null>(null);
-  const [hours, setHours] = useState<Record<string, { open: string; close: string }>>({});
+  const [hours, setHours] = useState<Record<string, DayHours>>({});
+  // What Google has now, per day — only days that differ from it are proposed.
+  const [googleHours, setGoogleHours] = useState<Record<string, DayHours>>({});
   const [specialDate, setSpecialDate] = useState('');
   const [specialClosed, setSpecialClosed] = useState(true);
   const [specialOpen, setSpecialOpen] = useState('09:00');
@@ -96,7 +127,13 @@ export default function ProfileOptimizationPage() {
         fetch('/api/gbp/optimize').then((r) => r.json()),
       ]);
       setChanges(list.changes || []);
+      setGoogleReviewPending(typeof list.googleReviewPending === 'boolean' ? list.googleReviewPending : null);
       setRecs(opt.success ? opt : null);
+      if (opt.success && opt.connected !== false) {
+        const week = weekFromGoogle(opt.hours?.currentRegularHours);
+        setGoogleHours(week);
+        setHours(week);
+      }
     } finally {
       setLoading(false);
     }
@@ -154,7 +191,7 @@ export default function ProfileOptimizationPage() {
       ? json.error
       : failed.length
         ? `${stored.length} of ${results.length} attribute proposals were saved.${reusedText} Not saved — ${failureText}. Nothing was sent to Google.`
-        : `${stored.length} attribute proposal${stored.length === 1 ? ' is' : 's are'} ready for your approval below.${reusedText} Nothing was sent to Google.`);
+        : `${stored.length} attribute proposal${stored.length === 1 ? ' is' : 's are'} ready to apply below.${reusedText} Nothing was sent to Google yet.`);
     setBulkBool({});
     await load();
   });
@@ -169,12 +206,12 @@ export default function ProfileOptimizationPage() {
     setMessage(json.error || (json.reused && json.change?.status !== 'BLOCKED'
       ? 'This exact change is already in your proposals, so no duplicate was added. Nothing was sent to Google.'
       : json.change?.status === 'PROPOSED'
-      ? 'Proposal saved. Review it under “Waiting for your approval”. Nothing was sent to Google.'
+      ? 'Saved under “Ready to apply” below. Check what changes, then press “Apply to Google”. Nothing was sent yet.'
       : `This proposal did not pass our checks and was saved as “Not applied”.${json.change?.error ? ` ${json.change.error}` : ''}`));
     await load();
   });
 
-  const act = (id: string, action: Action, body?: object) => run(async () => {
+  const act = (id: string, action: 'execute' | 'rollback' | 'discard', body?: object) => run(async () => {
     const res = await fetch(`/api/gbp/changes/${id}/${action}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -182,6 +219,53 @@ export default function ProfileOptimizationPage() {
     });
     const json = await res.json();
     setMessage(actionResultText(action, json));
+    setConfirm(null);
+    await load();
+  });
+
+  const proposeHours = () => {
+    const changed = DAYS.filter((d) => !sameDay(hours[d], googleHours[d]));
+    const missing = changed.filter((d) => !hours[d]?.closed && !(hours[d]?.open && hours[d]?.close));
+    if (missing.length) {
+      setMessage(`Enter both an opening and a closing time for ${missing.map(dayLabel).join(', ')}, or tick Closed. Nothing was saved.`);
+      return;
+    }
+    if (!changed.length && !specialDate) {
+      setMessage('Nothing has changed yet. Edit a day or add a special date first. Nothing was saved.');
+      return;
+    }
+    const open = changed.filter((d) => !hours[d].closed);
+    propose({
+      kind: 'hours',
+      source: 'owner',
+      proposed: {
+        regularHours: { periods: open.map((d) => ({ openDay: d, closeDay: d, openTime: hours[d].open, closeTime: hours[d].close })) },
+        closedDays: changed.filter((d) => hours[d].closed),
+        specialHours: specialDate
+          ? { specialHourPeriods: [{ startDate: specialDate, closed: specialClosed, openTime: specialClosed ? null : specialOpen, closeTime: specialClosed ? null : specialClose }] }
+          : { specialHourPeriods: [] },
+      },
+    });
+  };
+
+  /** One step for the owner: approve (if still waiting) and send to Google. */
+  const applyNow = (change: ChangeRow) => run(async () => {
+    const post = (path: string, body: object = {}) =>
+      fetch(`/api/gbp/changes/${change._id}/${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then((r) => r.json());
+    if (change.status === 'PROPOSED') {
+      const approved = await post('approve', { confirmSensitive: true });
+      if (!approved.success) {
+        setMessage(actionResultText('approve', approved));
+        setConfirm(null);
+        await load();
+        return;
+      }
+    }
+    setMessage(actionResultText('execute', await post('execute')));
     setConfirm(null);
     await load();
   });
@@ -216,14 +300,22 @@ export default function ProfileOptimizationPage() {
 
   const renderCard = ({ change, duplicates }: { change: ChangeRow; duplicates: ChangeRow[] }) => {
     const review = validationReview(change.validation);
-    const status = statusInfo(change.status);
+    // Recently applied while Google still has edits under review: accepted,
+    // but not necessarily on the public listing yet.
+    const recent = change.verifiedAt ? Date.now() - new Date(change.verifiedAt).getTime() < 14 * 86_400_000 : false;
+    const inReview = change.status === 'VERIFIED' && recent && googleReviewPending === true;
+    const status = inReview
+      ? { ...statusInfo(change.status), label: 'Google is reviewing', explain: 'Accepted — Google is reviewing it. It can take a few hours to show.' }
+      : statusInfo(change.status);
     const before = formatValue(change.kind, change.before, attributeNames);
     const after = formatValue(change.kind, change.proposed, attributeNames);
     const prose = usesWordDiff(change.kind);
     const diff = prose ? wordDiff(before, after) : [];
-    const lines = lineChanges(before, after);
-    const changed = prose ? diff.some((part) => part.type !== 'equal') : before !== after;
+    const rows = prose ? [] : changedLines(before, after);
+    const changed = prose ? diff.some((part) => part.type !== 'equal') : rows.length > 0;
     const confirming = confirm?.id === change._id ? confirm.action : null;
+    const pending = change.status === 'PROPOSED' || change.status === 'APPROVED';
+    const canApply = pending && changed && (!change.validation || review.passed);
     return (
       <article key={change._id} className="bg-surface-container-lowest rounded-xl border border-outline-variant p-4 space-y-3 min-w-0">
         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -238,90 +330,67 @@ export default function ProfileOptimizationPage() {
           <span className="text-xs font-semibold rounded-full px-2.5 py-1 bg-surface-container text-on-surface">{status.label}</span>
         </div>
         {duplicates.length > 0 && (
-          <p className="text-xs text-on-surface-variant">
-            The same change was proposed {duplicates.length + 1} times. Only the newest one is shown; acting on it is enough.
-          </p>
+          <p className="text-xs text-on-surface-variant">Proposed {duplicates.length + 1} times — only the newest is shown.</p>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2 text-sm">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-on-surface-variant">Now on Google</p>
-            {prose ? (
-              <p className="whitespace-pre-wrap break-words mt-1">{before}</p>
-            ) : (
-              <div className="mt-1 break-words">
-                {lines.before.map((line, index) => line.changed && changed
-                  ? <del key={index} className="block text-error">{line.text}</del>
-                  : <span key={index} className="block">{line.text}</span>)}
-              </div>
-            )}
+        {!changed ? (
+          <p className="text-sm text-on-surface-variant">No change — this is already on your Google profile.</p>
+        ) : prose ? (
+          <div className="text-sm">
+            <p className="text-xs font-semibold text-on-surface-variant mb-1">New text <span className="font-normal">(green is added, red is removed)</span></p>
+            <p className="whitespace-pre-wrap break-words">
+              {diff.map((part, index) => part.type === 'equal'
+                ? <span key={index}>{part.value}</span>
+                : part.type === 'insert'
+                  ? <ins key={index} className="bg-primary-fixed text-primary no-underline">{part.value}</ins>
+                  : <del key={index} className="text-error">{part.value}</del>)}
+            </p>
           </div>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-on-surface-variant">Proposed</p>
-            {prose ? (
-              <p className="whitespace-pre-wrap break-words mt-1">
-                {changed
-                  ? diff.map((part, index) => part.type === 'equal'
-                    ? <span key={index}>{part.value}</span>
-                    : part.type === 'insert'
-                      ? <ins key={index} className="bg-primary-fixed text-primary no-underline">{part.value}</ins>
-                      : <del key={index} className="text-error">{part.value}</del>)
-                  : after}
-              </p>
-            ) : (
-              <div className="mt-1 break-words">
-                {lines.after.map((line, index) => line.changed && changed
-                  ? <ins key={index} className="block bg-primary-fixed text-primary no-underline">{line.text}</ins>
-                  : <span key={index} className="block">{line.text}</span>)}
-              </div>
-            )}
-            {!changed
-              ? <p className="text-xs text-on-surface-variant mt-1">Same as what is on Google now.</p>
-              : prose
-                ? <p className="text-xs text-on-surface-variant mt-1">Highlighted text is new; struck-through text is removed.</p>
-                : <p className="text-xs text-on-surface-variant mt-1">Highlighted lines change; struck-through lines are replaced or removed.</p>}
+        ) : (
+          <div className="text-sm">
+            <p className="text-xs font-semibold text-on-surface-variant mb-1">What changes</p>
+            <ul className="space-y-1">
+              {rows.map((row, index) => (
+                <li key={index} className="break-words">
+                  {row.label && <span className="font-medium">{row.label}: </span>}
+                  <span className="text-on-surface-variant line-through">{row.from ?? 'Not set'}</span>
+                  <span className="mx-1.5 text-on-surface-variant">→</span>
+                  <span className="font-semibold text-primary">{row.to ?? 'Removed'}</span>
+                </li>
+              ))}
+            </ul>
           </div>
-        </div>
-
-        {change.status === 'PROPOSED' && (
-          change.validation
-            ? <p className={`text-xs ${review.passed ? 'text-on-surface' : 'text-error'}`}>{review.passed ? VALIDATION_PASSED : 'Our checks found a problem with this change.'}</p>
-            : <p className="text-xs text-on-surface-variant">This change has not been checked.</p>
         )}
+
         {review.violations.map((text, index) => <p key={`violation-${index}`} className="text-xs text-error">{text}</p>)}
         {review.warnings.map((text, index) => <p key={`warning-${index}`} className="text-xs text-on-surface-variant">Note: {text}</p>)}
-        {status.explain && <p className="text-xs text-on-surface-variant">{status.explain}</p>}
-        {change.error && change.status !== 'PROPOSED' && change.error !== review.violations.join(' ') &&<p className="text-xs text-error">{change.error}</p>}
+        {!pending && status.explain && <p className="text-xs text-on-surface-variant">{status.explain}</p>}
+        {change.error && !pending && change.error !== review.violations.join(' ') && <p className="text-xs text-error">{change.error}</p>}
 
-        {change.status === 'PROPOSED' && (
-          <div className="space-y-2">
-            {change.sensitive && <p className="text-xs font-semibold text-on-surface">{SENSITIVE_CONFIRM}</p>}
-            {confirming === 'approve' ? (
+        {pending && (
+          confirming === 'apply' ? (
+            <div className="space-y-2 rounded-lg border border-outline-variant p-3">
+              <p className="text-sm text-on-surface">
+                Send this to your Google profile? You can roll it back later.
+              </p>
               <div className="flex flex-wrap gap-2">
-                <button disabled={busy} className={btnPrimary} onClick={() => act(change._id, 'approve', { confirmSensitive: true })}>Yes, approve this {kindLabel(change.kind).toLowerCase()} change</button>
+                <button disabled={busy} className={btnPrimary} onClick={() => applyNow(change)}>Yes, apply to Google</button>
                 <button disabled={busy} className={btnOutline} onClick={() => setConfirm(null)}>Cancel</button>
               </div>
-            ) : (
-              <button
-                disabled={busy}
-                className={btnPrimary}
-                onClick={() => (change.sensitive ? setConfirm({ id: change._id, action: 'approve' }) : act(change._id, 'approve'))}
-              >Approve</button>
-            )}
-          </div>
-        )}
-
-        {change.status === 'APPROVED' && (
-          confirming === 'execute' ? (
+            </div>
+          ) : confirming === 'discard' ? (
             <div className="space-y-2 rounded-lg border border-outline-variant p-3">
-              <p className="text-sm text-on-surface">{APPLY_CONFIRM}</p>
+              <p className="text-sm text-on-surface">Discard this change? Nothing is sent to Google.</p>
               <div className="flex flex-wrap gap-2">
-                <button disabled={busy} className={btnPrimary} onClick={() => act(change._id, 'execute')}>Yes, apply to Google</button>
+                <button disabled={busy} className={btnOutline} onClick={() => act(change._id, 'discard')}>Yes, discard</button>
                 <button disabled={busy} className={btnOutline} onClick={() => setConfirm(null)}>Cancel</button>
               </div>
             </div>
           ) : (
-            <button disabled={busy} className={btnPrimary} onClick={() => setConfirm({ id: change._id, action: 'execute' })}>Apply to Google…</button>
+            <div className="flex flex-wrap gap-2">
+              {canApply && <button disabled={busy} className={btnPrimary} onClick={() => setConfirm({ id: change._id, action: 'apply' })}>Apply to Google…</button>}
+              <button disabled={busy} className={btnOutline} onClick={() => setConfirm({ id: change._id, action: 'discard' })}>Discard</button>
+            </div>
           )
         )}
 
@@ -349,14 +418,21 @@ export default function ProfileOptimizationPage() {
     );
   };
 
+  const ready = grouped.filter((g) => ['waiting', 'approved'].includes(statusInfo(g.change.status).group));
+  const history = grouped.filter((g) => !ready.includes(g));
+  const addable: CategoryRec[] = (categories?.additional || []).filter((c: CategoryRec) => c.executable && c.categoryName);
+  const notAddable = (categories?.additional || []).length - addable.length;
+  const linkKeys = (['appointment', 'menu', 'order'] as const).filter((key) => recs?.links?.attributes?.[key]?.name);
+  const changedDays = DAYS.filter((d) => !sameDay(hours[d], googleHours[d])).length;
+
   return (
-    <div className="w-full max-w-4xl mx-auto px-4 py-6 md:p-8 space-y-6">
-      <div>
+    <div className="w-full max-w-3xl mx-auto px-4 py-6 md:p-8 space-y-4">
+      <div className="space-y-2">
         <h1 className="font-heading text-xl font-bold text-on-surface">Profile optimization</h1>
-        <p className="text-sm text-on-surface-variant mt-1">
-          Suggestions for your Google Business Profile. Every change waits for your approval. {APPROVAL_DOES_NOT_PUBLISH} {APPLY_REQUIRES_BOTH_FLAGS}
+        <p className="text-sm text-on-surface-variant">Improve your Google profile. Nothing changes on Google until you press “Apply to Google”.</p>
+        <p className="inline-flex items-center gap-1.5 rounded-full bg-surface-container px-3 py-1 text-xs text-on-surface-variant">
+          <MaterialIcon name="schedule" size={14} /> Google can take a few hours to show changes on your listing.
         </p>
-        <p className="text-xs text-on-surface-variant mt-1">{VALIDATION_LIMIT}</p>
       </div>
       <div role="status" aria-live="polite">
         {message && <p className="text-sm text-on-surface rounded-lg bg-surface-container px-3 py-2">{message}</p>}
@@ -364,86 +440,88 @@ export default function ProfileOptimizationPage() {
 
       {recs && recs.connected === false && (
         <p className="text-sm rounded-lg border border-outline-variant bg-surface-container px-3 py-2">
-          Your Google profile isn’t connected or hasn’t synced yet, so there are no suggestions to show.{' '}
+          Your Google profile isn’t connected or hasn’t synced yet.{' '}
           <a href="/api/auth/google" className="font-semibold text-primary underline">Connect Google</a> and check back in a few minutes.
         </p>
       )}
 
+      {ready.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="font-heading font-bold text-on-surface">Ready to apply ({ready.length})</h2>
+          {ready.map(renderCard)}
+        </section>
+      )}
+
       {recs && recs.connected !== false && (
-        <section className="bg-surface-container-lowest rounded-xl border border-outline-variant p-4 md:p-6 space-y-5">
-          <h2 className="font-heading font-bold">Recommendations</h2>
+        <div className="space-y-2">
+          <h2 className="font-heading font-bold text-on-surface pt-2">Improve your profile</h2>
 
           {description?.text && (
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold">Business description</h3>
+            <Panel title="Business description" hint="1 suggestion">
               <p className="text-sm whitespace-pre-wrap break-words">{description.text}</p>
               {description.validation?.valid ? (
-                <button disabled={busy} className={btnPrimary} onClick={() => propose({ kind: 'description', proposed: description.text, source: 'recommendation', context: { tokens: description.tokens || [], competitorNames: description.competitorNames || [] } })}>Propose this description</button>
+                <button disabled={busy} className={btnPrimary} onClick={() => propose({ kind: 'description', proposed: description.text, source: 'recommendation', context: { tokens: description.tokens || [], competitorNames: description.competitorNames || [] } })}>Use this description</button>
               ) : (
-                <p className="text-xs text-error">This draft did not pass our checks, so it can’t be proposed.</p>
+                <p className="text-xs text-error">This draft didn’t pass our checks.</p>
               )}
-            </div>
+            </Panel>
           )}
 
           {Boolean(categories?.primary || categories?.additional?.length) && (
-            <div className="space-y-2 text-sm">
-              <h3 className="font-semibold">Categories</h3>
+            <Panel title="Categories" hint={addable.length ? `${addable.length} to add` : 'Nothing to add'}>
               {categories?.primary && (
-                <div className="space-y-1">
-                  <p>Suggested primary category: <strong>{categories.primary.displayName}</strong>. {categories.primary.reason}</p>
-                  {categories.primary.risk === 'high' && <p className="text-xs text-on-surface-variant">Changing your primary category can noticeably change where you appear in search. Review carefully.</p>}
+                <div className="space-y-1 text-sm">
+                  <p>Main category: <strong>{categories.primary.displayName}</strong></p>
+                  {categories.primary.risk === 'high' && <p className="text-xs text-on-surface-variant">Changing the main category can change where you appear in search.</p>}
                   {categories.primary.executable && categories.primary.categoryName && (
-                    <button disabled={busy} className={btnOutline} onClick={() => propose({ kind: 'primary_category', proposed: { primaryCategory: { name: categories.primary.categoryName } }, source: 'recommendation' })}>Propose primary category</button>
+                    <button disabled={busy} className={btnOutline} onClick={() => propose({ kind: 'primary_category', proposed: { primaryCategory: { name: categories.primary.categoryName } }, source: 'recommendation' })}>Use as main category</button>
                   )}
                 </div>
               )}
-              {(categories?.additional || []).map((c: CategoryRec) => (
-                <div key={c.displayName} className="space-y-0.5">
-                  <p>Additional category: <strong>{c.displayName}</strong>{c.executable ? '' : ' (not available on Google, so it can’t be added)'}. {c.reason}</p>
-                  {c.competitors?.length ? <p className="text-xs text-on-surface-variant">Used by: {c.competitors.join(', ')}</p> : null}
-                </div>
-              ))}
-              {categories?.additional?.some((c: CategoryRec) => c.executable && c.categoryName) && (
-                <button
-                  disabled={busy}
-                  className={btnOutline}
-                  onClick={() => propose({
-                    kind: 'categories',
-                    source: 'recommendation',
-                    proposed: {
-                      additionalCategories: categories.additional.filter((c: CategoryRec) => c.executable && c.categoryName).map((c: CategoryRec) => ({ name: c.categoryName })),
-                    },
-                  })}
-                >Propose additional categories</button>
+              {addable.length > 0 && (
+                <>
+                  <ul className="flex flex-wrap gap-2">
+                    {addable.map((c) => (
+                      <li key={c.displayName} className="rounded-full border border-outline-variant px-3 py-1 text-xs">
+                        {c.displayName}{c.competitors?.length ? <span className="text-on-surface-variant"> · used by competitors</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    disabled={busy}
+                    className={btnOutline}
+                    onClick={() => propose({ kind: 'categories', source: 'recommendation', proposed: { additionalCategories: addable.map((c) => ({ name: c.categoryName })) } })}
+                  >Add {addable.length} categor{addable.length === 1 ? 'y' : 'ies'}</button>
+                </>
               )}
-            </div>
+              {notAddable > 0 && <p className="text-xs text-on-surface-variant">{notAddable} other categor{notAddable === 1 ? 'y' : 'ies'} used by competitors can’t be added through Google right now.</p>}
+            </Panel>
           )}
 
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold">Attributes</h3>
+          <Panel title="Attributes" hint={suggestions.length ? `${suggestions.length} not set` : 'All set'}>
             {suggestions.length === 0 ? (
-              <p className="text-sm text-on-surface-variant">{recs.attributes?.available === false ? 'Attribute suggestions are not available for your category right now.' : 'No missing attributes found.'}</p>
+              <p className="text-sm text-on-surface-variant">{recs.attributes?.available === false ? 'Not available for your category right now.' : 'Nothing missing.'}</p>
             ) : (
               <>
-                <p className="text-xs text-on-surface-variant">These are not set on your profile yet. Pick an answer for the ones that apply, then propose them together.</p>
-                <ul className="divide-y divide-outline-variant">
+                <p className="text-xs text-on-surface-variant">Answer the ones that apply. Skip the rest.</p>
+                <ul className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
                   {suggestions.map((a) => (
-                    <li key={a.name} className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
-                      <span className="text-sm">{a.displayName || attributeNames[a.name]}</span>
+                    <li key={a.name} className="flex items-center justify-between gap-2 py-0.5">
+                      <span className="text-sm min-w-0">{a.displayName || attributeNames[a.name]}</span>
                       {a.valueType === 'BOOL' ? (
-                        <div className="flex gap-2" role="group" aria-label={a.displayName}>
+                        <div className="flex shrink-0 gap-1" role="group" aria-label={a.displayName}>
                           {([true, false] as const).map((value) => (
                             <button
                               key={String(value)}
                               aria-pressed={bulkBool[a.name] === value}
-                              className={`px-4 py-2 rounded-lg border text-sm ${bulkBool[a.name] === value ? 'border-primary bg-primary-fixed text-primary font-bold' : 'border-outline-variant'}`}
+                              className={`px-2.5 py-0.5 rounded-full border text-xs ${bulkBool[a.name] === value ? 'border-primary bg-primary-fixed text-primary font-bold' : 'border-outline-variant'}`}
                               onClick={() => setBulkBool({ ...bulkBool, [a.name]: bulkBool[a.name] === value ? undefined : value })}
                             >{value ? 'Yes' : 'No'}</button>
                           ))}
                         </div>
                       ) : (
                         <input
-                          className={`${input} w-full sm:w-64`}
+                          className={`${input} w-40`}
                           placeholder={a.valueType === 'URL' ? 'https://' : 'Value'}
                           value={attrValues[a.name] || ''}
                           onChange={(e) => setAttrValues({ ...attrValues, [a.name]: e.target.value })}
@@ -453,156 +531,136 @@ export default function ProfileOptimizationPage() {
                   ))}
                 </ul>
                 <button disabled={busy || selectedCount === 0} className={btnPrimary} onClick={proposeSelectedAttributes}>
-                  Propose {selectedCount || ''} selected attribute{selectedCount === 1 ? '' : 's'}
+                  {selectedCount ? `Save ${selectedCount} answer${selectedCount === 1 ? '' : 's'}` : 'Pick at least one answer'}
                 </button>
               </>
             )}
-          </div>
+          </Panel>
 
-          {(['appointment', 'menu', 'order'] as const).some((key) => recs.links?.attributes?.[key]?.name) && (
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold">Booking and ordering links</h3>
-              {(['appointment', 'menu', 'order'] as const).map((key) => {
-                const link = recs.links?.attributes?.[key];
-                if (!link?.name) return null;
+          {linkKeys.length > 0 && (
+            <Panel title="Booking & order links" hint={`${linkKeys.length} available`}>
+              {linkKeys.map((key) => {
+                const link = recs.links.attributes[key];
                 return (
                   <div key={key} className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <span className="text-sm sm:w-32 capitalize">{key} link</span>
+                    <span className="text-sm sm:w-28 capitalize">{key} link</span>
                     <input className={`${input} w-full sm:flex-1`} placeholder="https://" value={attrValues[link.name] || ''} onChange={(e) => setAttrValues({ ...attrValues, [link.name]: e.target.value })} />
-                    <button disabled={busy || !(attrValues[link.name] || '').trim()} className={btnOutline} onClick={() => propose({ kind: 'attribute', proposed: { name: link.name, value: attrValues[link.name] || '' }, source: 'owner' })}>Propose</button>
+                    <button disabled={busy || !(attrValues[link.name] || '').trim()} className={btnOutline} onClick={() => propose({ kind: 'attribute', proposed: { name: link.name, value: attrValues[link.name] || '' }, source: 'owner' })}>Save</button>
+                  </div>
+                );
+              })}
+            </Panel>
+          )}
+
+          {((recs.services?.items || []).length > 0 || recs.services?.blocked) && (
+            <Panel title="Services" hint={recs.services?.items?.length ? `${recs.services.items.length} to add` : ''}>
+              {(recs.services?.items || []).length > 0 && (
+                <>
+                  <p className="text-sm">{recs.services.items.map((s: any) => s.name).join(', ')}</p>
+                  <button disabled={busy} className={btnOutline} onClick={() => propose({ kind: 'services', proposed: { additions: recs.services.items.map((s: any) => ({ name: s.name, description: s.description })) }, source: 'recommendation' })}>Add these services</button>
+                </>
+              )}
+              {recs.services?.blocked && <p className="text-sm">{recs.services.reason}</p>}
+            </Panel>
+          )}
+
+          <Panel title="Opening hours" hint={changedDays ? `${changedDays} changed` : reminders.length ? `${reminders.length} holiday${reminders.length === 1 ? '' : 's'} to set` : ''}>
+            <p className="text-xs text-on-surface-variant">Your hours on Google now. Change a day or tick Closed — days you don’t change stay as they are.</p>
+            <div className="space-y-1.5">
+              {DAYS.map((day) => {
+                const row = hours[day] || { open: '', close: '', closed: false };
+                const set = (next: Partial<DayHours>) => setHours({ ...hours, [day]: { ...row, ...next, split: false } });
+                return (
+                  <div key={day} className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="w-24 shrink-0 font-medium">{dayLabel(day)}</span>
+                    <label className="flex w-20 shrink-0 items-center gap-1.5 text-xs">
+                      <input type="checkbox" checked={row.closed} onChange={(e) => set({ closed: e.target.checked })} /> Closed
+                    </label>
+                    {!row.closed && (
+                      <>
+                        <input type="time" aria-label={`${dayLabel(day)} opens`} className={`${input} min-w-0 py-1`} value={row.open} onChange={(e) => set({ open: e.target.value })} />
+                        <span className="text-xs text-on-surface-variant">to</span>
+                        <input type="time" aria-label={`${dayLabel(day)} closes`} className={`${input} min-w-0 py-1`} value={row.close} onChange={(e) => set({ close: e.target.value })} />
+                        {row.open && row.close && (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-primary underline"
+                            onClick={() => setHours(Object.fromEntries(DAYS.map((d) => [d, hours[d]?.closed ? hours[d] : { open: row.open, close: row.close, closed: false }])))}
+                          >Copy to all</button>
+                        )}
+                      </>
+                    )}
+                    {!sameDay(row, googleHours[day]) && <span className="text-xs font-semibold text-primary">Changed</span>}
+                    {row.split && <span className="text-xs text-on-surface-variant">(has a break or overnight hours on Google)</span>}
                   </div>
                 );
               })}
             </div>
-          )}
-
-          {(recs.services?.items || []).length > 0 && (
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold">Services</h3>
-              <p className="text-sm">{recs.services.items.map((s: any) => s.name).join(', ')}</p>
-              <button disabled={busy} className={btnOutline} onClick={() => propose({ kind: 'services', proposed: { additions: recs.services.items.map((s: any) => ({ name: s.name, description: s.description })) }, source: 'recommendation' })}>Propose these services</button>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-xs font-medium">Special date</span>
+              <input type="date" className={`${input} py-1`} value={specialDate} onChange={(e) => setSpecialDate(e.target.value)} />
+              <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={specialClosed} onChange={(e) => setSpecialClosed(e.target.checked)} /> Closed</label>
+              {specialDate && !specialClosed && (
+                <>
+                  <input type="time" aria-label="Special date opens" className={`${input} py-1`} value={specialOpen} onChange={(e) => setSpecialOpen(e.target.value)} />
+                  <input type="time" aria-label="Special date closes" className={`${input} py-1`} value={specialClose} onChange={(e) => setSpecialClose(e.target.value)} />
+                </>
+              )}
             </div>
-          )}
-          {recs.services?.blocked && <p className="text-sm">{recs.services.reason}</p>}
+            <div className="flex flex-wrap items-center gap-3">
+              <button disabled={busy} className={btnPrimary} onClick={proposeHours}>Save hours</button>
+              {changedDays > 0 && <button type="button" disabled={busy} className="text-xs font-semibold text-on-surface-variant underline" onClick={() => setHours(googleHours)}>Undo changes</button>}
+            </div>
+            {recs?.hours?.status === 'READY' && reminders.length > 0 && (
+              <div className="space-y-1.5 border-t border-outline-variant pt-3">
+                <p className="text-xs font-semibold">Upcoming holidays with no hours on Google</p>
+                {reminders.map(([date, names]) => (
+                  <div key={date} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span>{date} — {names.join(', ')}</span>
+                    <button
+                      disabled={busy}
+                      className={btnOutline}
+                      onClick={() => propose({
+                        kind: 'hours',
+                        source: 'recommendation',
+                        proposed: { regularHours: { periods: [] }, specialHours: { specialHourPeriods: [...(recs?.hours?.currentSpecialHours || []), { startDate: date, closed: true }] } },
+                      })}
+                    >Mark closed</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
 
-          <div className="space-y-1 text-sm">
-            <h3 className="font-semibold">Map pin</h3>
-            <p>{pinText(recs.pin?.status)}</p>
-          </div>
-          <p className="text-xs text-on-surface-variant">{PRODUCTS_TEXT}</p>
-        </section>
+          <Panel title="Service area" hint={businessTypeText(recs?.serviceArea?.businessType)}>
+            <p className="text-xs text-on-surface-variant">For businesses that visit customers. One city or PIN code per line.</p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+              <textarea rows={2} className={`${input} w-full`} value={areaQuery} onChange={(e) => setAreaQuery(e.target.value)} placeholder="Nashik" />
+              <button disabled={busy || !areaQuery.trim()} className={btnOutline} onClick={resolveAreas}>Find</button>
+            </div>
+            {areaHits.map((p) => (
+              <label key={p.placeId} className="flex items-start gap-2 text-sm">
+                <input type="checkbox" className="mt-1" checked={pickedAreas.some((x) => x.placeId === p.placeId)} onChange={(e) => setPickedAreas(e.target.checked ? [...pickedAreas, p] : pickedAreas.filter((x) => x.placeId !== p.placeId))} />
+                <span className="break-words">{p.placeName}{p.address ? ` — ${p.address}` : ''}</span>
+              </label>
+            ))}
+            {pickedAreas.length > 0 && (
+              <button disabled={busy} className={btnPrimary} onClick={() => propose({ kind: 'service_area', source: 'owner', proposed: { places: { placeInfos: pickedAreas } } })}>Add {pickedAreas.length} area{pickedAreas.length === 1 ? '' : 's'}</button>
+            )}
+          </Panel>
+
+          <p className="flex items-center gap-1.5 px-1 pt-1 text-xs text-on-surface-variant">
+            <MaterialIcon name="location_on" size={14} /> {pinText(recs.pin?.status)}
+          </p>
+        </div>
       )}
 
-      <section className="bg-surface-container-lowest rounded-xl border border-outline-variant p-4 md:p-6 space-y-3">
-        <h2 className="font-heading font-bold">Opening hours</h2>
-        <p className="text-xs text-on-surface-variant">Days you leave blank stay as they are on Google, and so do special dates you don’t change.</p>
-        {DAYS.map((day) => (
-          <div key={day} className="grid grid-cols-[6.5rem_1fr_1fr] items-center gap-2 text-sm sm:flex">
-            <span className="sm:w-28">{dayLabel(day)}</span>
-            <input type="time" aria-label={`${dayLabel(day)} opens`} className={`${input} min-w-0`} value={hours[day]?.open || ''} onChange={(e) => setHours({ ...hours, [day]: { open: e.target.value, close: hours[day]?.close || '' } })} />
-            <input type="time" aria-label={`${dayLabel(day)} closes`} className={`${input} min-w-0`} value={hours[day]?.close || ''} onChange={(e) => setHours({ ...hours, [day]: { open: hours[day]?.open || '', close: e.target.value } })} />
-          </div>
-        ))}
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <span>Special date (optional)</span>
-          <input type="date" className={input} value={specialDate} onChange={(e) => setSpecialDate(e.target.value)} />
-          <label className="flex items-center gap-2"><input type="checkbox" checked={specialClosed} onChange={(e) => setSpecialClosed(e.target.checked)} /> Closed that day</label>
-          {specialDate && !specialClosed && (
-            <>
-              <input type="time" aria-label="Special date opens" className={input} value={specialOpen} onChange={(e) => setSpecialOpen(e.target.value)} />
-              <input type="time" aria-label="Special date closes" className={input} value={specialClose} onChange={(e) => setSpecialClose(e.target.value)} />
-            </>
-          )}
-        </div>
-        <button
-          disabled={busy}
-          className={btnOutline}
-          onClick={() => propose({
-            kind: 'hours',
-            source: 'owner',
-            proposed: {
-              regularHours: {
-                periods: DAYS.filter((d) => hours[d]?.open && hours[d]?.close).map((d) => ({ openDay: d, closeDay: d, openTime: hours[d].open, closeTime: hours[d].close })),
-              },
-              specialHours: specialDate ? { specialHourPeriods: [{ startDate: specialDate, closed: specialClosed, openTime: specialClosed ? null : specialOpen, closeTime: specialClosed ? null : specialClose }] } : { specialHourPeriods: [] },
-            },
-          })}
-        >Propose these hours</button>
-
-        <div className="space-y-2 pt-2">
-          <h3 className="text-sm font-semibold">Upcoming holidays</h3>
-          {recs?.hours?.status === 'READY'
-            ? (reminders.length === 0
-              ? <p className="text-sm text-on-surface-variant">Your upcoming holidays already have special hours.</p>
-              : <p className="text-xs text-on-surface-variant">These holidays have no special hours on Google yet. Propose “Closed” if you will be shut.</p>)
-            : <p className="text-sm text-on-surface-variant">Holiday reminders are not available for your business yet.</p>}
-          {reminders.map(([date, names]) => (
-            <div key={date} className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-              <span>{date} — {names.join(', ')}</span>
-              <button
-                disabled={busy}
-                className={btnOutline}
-                onClick={() => propose({
-                  kind: 'hours',
-                  source: 'recommendation',
-                  proposed: {
-                    regularHours: { periods: [] },
-                    specialHours: {
-                      specialHourPeriods: [
-                        ...(recs?.hours?.currentSpecialHours || []),
-                        { startDate: date, closed: true },
-                      ],
-                    },
-                  },
-                })}
-              >Propose closed</button>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="bg-surface-container-lowest rounded-xl border border-outline-variant p-4 md:p-6 space-y-3">
-        <h2 className="font-heading font-bold">Service area</h2>
-        <p className="text-sm">Profile type: {businessTypeText(recs?.serviceArea?.businessType)}</p>
-        <p className="text-xs text-on-surface-variant">Only businesses that serve customers at their location can set a service area. Enter one city or PIN code per line, then pick the matching places.</p>
-        <textarea rows={3} className={`${input} w-full`} value={areaQuery} onChange={(e) => setAreaQuery(e.target.value)} placeholder="Nashik" />
-        <button disabled={busy || !areaQuery.trim()} className={btnOutline} onClick={resolveAreas}>Find places</button>
-        {areaHits.map((p) => (
-          <label key={p.placeId} className="flex items-start gap-2 text-sm">
-            <input type="checkbox" className="mt-1" checked={pickedAreas.some((x) => x.placeId === p.placeId)} onChange={(e) => setPickedAreas(e.target.checked ? [...pickedAreas, p] : pickedAreas.filter((x) => x.placeId !== p.placeId))} />
-            <span className="break-words">{p.placeName}{p.address ? ` — ${p.address}` : ''}</span>
-          </label>
-        ))}
-        {pickedAreas.length > 0 && (
-          <button disabled={busy} className={btnOutline} onClick={() => propose({ kind: 'service_area', source: 'owner', proposed: { places: { placeInfos: pickedAreas } } })}>Propose {pickedAreas.length} area{pickedAreas.length === 1 ? '' : 's'}</button>
-        )}
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="font-heading font-bold">Your proposals</h2>
-        {changes.length === 0 && <p className="text-sm text-on-surface-variant">No proposals yet.</p>}
-        {GROUPS.map((group) => {
-          const items = grouped.filter((g) => statusInfo(g.change.status).group === group.key);
-          if (!items.length) return null;
-          const body = (
-            <div className="space-y-3">
-              {group.hint && <p className="text-xs text-on-surface-variant">{group.hint}</p>}
-              {items.map(renderCard)}
-            </div>
-          );
-          return group.key === 'closed' ? (
-            <details key={group.key} className="space-y-3" open={items.some((g) => g.change.status === 'UNRESOLVED')}>
-              <summary className="cursor-pointer text-sm font-semibold text-on-surface py-2">{group.title} ({items.length})</summary>
-              {body}
-            </details>
-          ) : (
-            <div key={group.key} className="space-y-2">
-              <h3 className="text-sm font-semibold text-on-surface">{group.title} ({items.length})</h3>
-              {body}
-            </div>
-          );
-        })}
-      </section>
+      {history.length > 0 && (
+        <details className="space-y-3 pt-2" open={history.some((g) => g.change.status === 'UNRESOLVED')}>
+          <summary className="cursor-pointer text-sm font-semibold text-on-surface py-2">History ({history.length})</summary>
+          <div className="space-y-3">{history.map(renderCard)}</div>
+        </details>
+      )}
     </div>
   );
 }

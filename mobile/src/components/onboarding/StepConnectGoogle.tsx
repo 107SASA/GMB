@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQueryClient } from '@tanstack/react-query';
-import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
-import { PrimaryButton, SecondaryButton } from '@/components/ui';
+import { getApiErrorMessage } from '@/api/client';
+import { ErrorText, PrimaryButton, SecondaryButton } from '@/components/ui';
+import { openGoogleConnect } from '@/lib/connectGoogle';
 import { useTheme } from '@/lib/theme';
 
 interface Props {
@@ -12,25 +12,30 @@ interface Props {
 }
 
 /**
- * Final onboarding step — connect Google Business Profile. GBP OAuth has no
- * native mobile flow, so this opens the web dashboard's /api/auth/google route
- * in an in-app browser, exactly like lib/connectGoogle.tsx does everywhere
- * else in the app. It's skippable: the connection can also be made later from
- * Settings → Google Business Profile.
+ * Final onboarding step — connect Google Business Profile, through the same
+ * single-use handoff + in-app browser flow as lib/connectGoogle.tsx. It's
+ * skippable: the connection can also be made later from Settings → Google
+ * Business Profile.
  */
 export function StepConnectGoogle({ onDone }: Props) {
   const t = useTheme();
-  const queryClient = useQueryClient();
   const [returned, setReturned] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function connect() {
-    await WebBrowser.openBrowserAsync(`${process.env.EXPO_PUBLIC_API_URL}/api/auth/google`);
-    // The in-app browser has no redirect back into the app, so we only know
-    // the user dismissed it — refresh the workspace data so a successful
-    // connection is reflected, and let them finish.
-    setReturned(true);
-    void queryClient.invalidateQueries({ queryKey: ['businesses'] });
-    void queryClient.invalidateQueries({ queryKey: ['business-detail'] });
+    setOpening(true);
+    setError(null);
+    try {
+      // Resolves once the user closes the sheet (the web flow doesn't
+      // redirect back); openGoogleConnect refetches everything then.
+      await openGoogleConnect();
+      setReturned(true);
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Couldn't start the Google connection. Please try again."));
+    } finally {
+      setOpening(false);
+    }
   }
 
   return (
@@ -52,9 +57,11 @@ export function StepConnectGoogle({ onDone }: Props) {
       </View>
 
       <View className="gap-3">
+        <ErrorText>{error}</ErrorText>
         <PrimaryButton
           title={returned ? 'Reconnect Google' : 'Connect Google Business Profile'}
           onPress={connect}
+          loading={opening}
         />
         <SecondaryButton
           title={returned ? 'Done — go to dashboard' : 'Skip for now'}

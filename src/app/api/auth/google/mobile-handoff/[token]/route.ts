@@ -4,8 +4,8 @@ import { consumeGbpConnectHandoff, WEB_SESSION_TTL_SECONDS } from '@/lib/gbpConn
 import { signSessionToken } from '@/lib/session';
 
 /**
- * GET /api/auth/google/mobile-handoff/<token> — opened by the iOS app in an
- * ephemeral in-app browser. Consumes the single-use handoff, gives this
+ * GET /api/auth/google/mobile-handoff/<token> — opened by the mobile apps in an
+ * in-app browser (ephemeral on iOS, a Chrome Custom Tab on Android). Consumes the single-use handoff, gives this
  * browser a short web session for the handoff's workspace, and continues
  * into the existing /api/auth/google OAuth flow (state cookie, Google
  * consent, callback and location picker unchanged).

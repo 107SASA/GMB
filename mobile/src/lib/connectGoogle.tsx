@@ -1,39 +1,37 @@
 import { useSyncExternalStore } from 'react';
+import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 
+import { getApiErrorMessage } from '@/api/client';
+import { createGoogleConnectLink } from '@/api/endpoints/googleConnect';
 import { queryClient } from '@/app/_layout';
 import { ConfirmSheet } from '@/components/ui';
 
 /**
- * Shared "connect Google Business Profile" prompt — GBP OAuth has no native
- * mobile flow, so this opens the web dashboard's `/api/auth/google` route in
- * an in-app browser. Used wherever a workspace-scoped GBP call comes back
- * not-connected (reviews sync, media, dashboard, etc).
+ * Shared "connect Google Business Profile" prompt + flow.
  *
- * `openBrowserAsync`'s promise resolves once the user dismisses the in-app
- * browser (there's no custom-scheme redirect wired up to intercept
- * completion earlier) — previously nothing happened at that point, so every
- * GBP-dependent screen (Settings' connection row, GBP tabs, Photos) kept
- * showing "not connected" until a manual pull-to-refresh or the global 60s
- * staleTime happened to lapse, even though the connection had actually
- * succeeded. Invalidating everything on return mirrors the pull-to-refresh
- * pattern already used elsewhere (e.g. dashboard.tsx) — this is a rare,
- * deliberate action, not a hot path, so a full refetch is cheap here.
+ * GBP OAuth has no native mobile flow, and the in-app browser (a Chrome Custom
+ * Tab) only has whatever web session Chrome happens to hold — usually none, or
+ * another workspace's — so the web's /api/auth/google route can't tell who the
+ * app user is. So, as in the iOS app, the app asks the backend for a
+ * single-use, 2-minute handoff link (POST /api/auth/google/mobile-handoff,
+ * authenticated by the app's own session + active workspace) and opens it in
+ * an auth session. The handoff gives that browser a short web session for
+ * exactly this workspace (on Android it stays in Chrome until it expires).
  *
- * Themed replacement for what used to be `Alert.alert(...)` (the OS's plain
- * system dialog, off-theme against the rest of the app — Aug 2026
- * feedback). `promptConnectGoogle` is called from six unrelated screens/
- * components, so — unlike a one-off confirm local to a single screen (see
- * ConfirmSheet usage in more.tsx) — this is the one case in the app where a
- * tiny module-level store + a single host mounted at the root (below) beats
- * threading local state through every call site: it keeps every caller's
- * `promptConnectGoogle(message)` call exactly as imperative as the
- * Alert.alert it replaces, no hook/JSX wiring required at each of the six
- * sites.
+ * The web flow doesn't redirect back into the app, so the sheet closes when
+ * the user taps Done; everything is refetched then, so every GBP-dependent
+ * screen reflects the new connection without a manual refresh.
+ *
+ * `promptConnectGoogle` is called from several unrelated screens, so a tiny
+ * module-level store + one host mounted at the root (below) keeps every call
+ * site a one-liner.
  */
 
 interface PromptState {
   message: string;
+  /** Set when getting the handoff link failed — the sheet offers a retry. */
+  failed?: boolean;
 }
 
 let state: PromptState | null = null;
@@ -55,6 +53,22 @@ export function useConnectGooglePromptState(): PromptState | null {
   );
 }
 
+/**
+ * Opens Google Business Profile OAuth for the active workspace and resolves
+ * when the sheet closes. Throws if the handoff link can't be created (offline,
+ * signed out, no workspace access).
+ */
+export async function openGoogleConnect(): Promise<void> {
+  const url = await createGoogleConnectLink();
+  try {
+    await WebBrowser.openAuthSessionAsync(url, Linking.createURL('google-connected'), {
+      preferEphemeralSession: true,
+    });
+  } finally {
+    void queryClient.invalidateQueries({ predicate: () => true });
+  }
+}
+
 export function promptConnectGoogle(message: string): void {
   setState({ message });
 }
@@ -65,8 +79,11 @@ export function dismissConnectGooglePrompt(): void {
 
 export function acceptConnectGooglePrompt(): void {
   setState(null);
-  void WebBrowser.openBrowserAsync(`${process.env.EXPO_PUBLIC_API_URL}/api/auth/google`).then(() => {
-    void queryClient.invalidateQueries({ predicate: () => true });
+  openGoogleConnect().catch((err) => {
+    setState({
+      message: getApiErrorMessage(err, "Couldn't start the Google connection. Please try again."),
+      failed: true,
+    });
   });
 }
 
@@ -78,9 +95,9 @@ export function ConnectGooglePromptHost() {
       visible={!!prompt}
       onCancel={dismissConnectGooglePrompt}
       onConfirm={acceptConnectGooglePrompt}
-      title="Connect Google Business Profile"
+      title={prompt?.failed ? "Couldn't open Google" : 'Connect Google Business Profile'}
       message={prompt?.message ?? ''}
-      confirmLabel="Connect"
+      confirmLabel={prompt?.failed ? 'Try again' : 'Connect'}
       cancelLabel="Not now"
     />
   );

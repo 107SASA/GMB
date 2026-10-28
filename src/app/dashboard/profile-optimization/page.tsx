@@ -80,6 +80,8 @@ export default function ProfileOptimizationPage() {
   const [hours, setHours] = useState<Record<string, { open: string; close: string }>>({});
   const [specialDate, setSpecialDate] = useState('');
   const [specialClosed, setSpecialClosed] = useState(true);
+  const [specialOpen, setSpecialOpen] = useState('09:00');
+  const [specialClose, setSpecialClose] = useState('17:00');
   const [areaQuery, setAreaQuery] = useState('');
   const [areaHits, setAreaHits] = useState<Array<{ placeId: string; placeName: string; address: string | null }>>([]);
   const [pickedAreas, setPickedAreas] = useState<Array<{ placeId: string; placeName: string }>>([]);
@@ -360,7 +362,14 @@ export default function ProfileOptimizationPage() {
         {message && <p className="text-sm text-on-surface rounded-lg bg-surface-container px-3 py-2">{message}</p>}
       </div>
 
-      {recs && (
+      {recs && recs.connected === false && (
+        <p className="text-sm rounded-lg border border-outline-variant bg-surface-container px-3 py-2">
+          Your Google profile isn’t connected or hasn’t synced yet, so there are no suggestions to show.{' '}
+          <a href="/api/auth/google" className="font-semibold text-primary underline">Connect Google</a> and check back in a few minutes.
+        </p>
+      )}
+
+      {recs && recs.connected !== false && (
         <section className="bg-surface-container-lowest rounded-xl border border-outline-variant p-4 md:p-6 space-y-5">
           <h2 className="font-heading font-bold">Recommendations</h2>
 
@@ -486,7 +495,7 @@ export default function ProfileOptimizationPage() {
 
       <section className="bg-surface-container-lowest rounded-xl border border-outline-variant p-4 md:p-6 space-y-3">
         <h2 className="font-heading font-bold">Opening hours</h2>
-        <p className="text-xs text-on-surface-variant">Days you leave blank stay as they are on Google.</p>
+        <p className="text-xs text-on-surface-variant">Days you leave blank stay as they are on Google, and so do special dates you don’t change.</p>
         {DAYS.map((day) => (
           <div key={day} className="grid grid-cols-[6.5rem_1fr_1fr] items-center gap-2 text-sm sm:flex">
             <span className="sm:w-28">{dayLabel(day)}</span>
@@ -498,6 +507,12 @@ export default function ProfileOptimizationPage() {
           <span>Special date (optional)</span>
           <input type="date" className={input} value={specialDate} onChange={(e) => setSpecialDate(e.target.value)} />
           <label className="flex items-center gap-2"><input type="checkbox" checked={specialClosed} onChange={(e) => setSpecialClosed(e.target.checked)} /> Closed that day</label>
+          {specialDate && !specialClosed && (
+            <>
+              <input type="time" aria-label="Special date opens" className={input} value={specialOpen} onChange={(e) => setSpecialOpen(e.target.value)} />
+              <input type="time" aria-label="Special date closes" className={input} value={specialClose} onChange={(e) => setSpecialClose(e.target.value)} />
+            </>
+          )}
         </div>
         <button
           disabled={busy}
@@ -509,7 +524,7 @@ export default function ProfileOptimizationPage() {
               regularHours: {
                 periods: DAYS.filter((d) => hours[d]?.open && hours[d]?.close).map((d) => ({ openDay: d, closeDay: d, openTime: hours[d].open, closeTime: hours[d].close })),
               },
-              specialHours: specialDate ? { specialHourPeriods: [{ startDate: specialDate, closed: specialClosed, openTime: specialClosed ? null : '09:00', closeTime: specialClosed ? null : '17:00' }] } : { specialHourPeriods: [] },
+              specialHours: specialDate ? { specialHourPeriods: [{ startDate: specialDate, closed: specialClosed, openTime: specialClosed ? null : specialOpen, closeTime: specialClosed ? null : specialClose }] } : { specialHourPeriods: [] },
             },
           })}
         >Propose these hours</button>

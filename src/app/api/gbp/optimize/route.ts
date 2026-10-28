@@ -76,7 +76,13 @@ export async function GET(req: Request) {
   const descriptionValidation = validateDescription(description, { tokens });
   const regionCode = loc?.address?.regionCode || ctx.business.country || null;
   const holidayList = holidayCalendarFor(regionCode);
-  const localDate = calendarDate(ctx.business.timezone, new Date());
+  // Business has no top-level timezone field — fall back to the booking
+  // settings' zone, then to IST for an Indian profile.
+  const timeZone =
+    ctx.business.timezone ||
+    ctx.business.whatsappBookingSettings?.timezone ||
+    (holidayList && String(regionCode).toUpperCase().startsWith('IN') ? 'Asia/Kolkata' : null);
+  const localDate = calendarDate(timeZone, new Date());
   const specials = Array.isArray(loc?.specialHours) ? loc.specialHours : [];
   const hours = !holidayList
     ? holidayReminders(specials, null, new Date().toISOString())
@@ -85,8 +91,10 @@ export async function GET(req: Request) {
       : holidayReminders(specials, holidayList, `${localDate}T12:00:00.000Z`);
 
   const url = new URL(req.url);
-  let pin: { status: PinStatus; distanceMeters: number | null; note: string } = { status: 'UNKNOWN', distanceMeters: null, note: 'Add ?address= to compare the Google pin with a geocoded address. The pin is not moved.' };
-  const address = url.searchParams.get('address');
+  let pin: { status: PinStatus; distanceMeters: number | null; note: string } = { status: 'UNKNOWN', distanceMeters: null, note: 'No address or pin on the Google profile to compare. The pin is not moved.' };
+  // Default: the profile's own address, so the page can say whether the pin
+  // sits where that address geocodes.
+  const address = url.searchParams.get('address') || loc?.address?.formatted || null;
   if (address && loc?.latlng) {
     const key = process.env.GOOGLE_MAPS_API_KEY;
     if (!key) {
@@ -105,6 +113,9 @@ export async function GET(req: Request) {
   return NextResponse.json({
     success: true,
     writes: false,
+    // false until the Google profile is connected and synced once — the
+    // recommendations below are then mostly empty.
+    connected: !!loc,
     products: PRODUCTS_SUPPORT,
     categories,
     attributes,

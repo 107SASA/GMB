@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireBusinessContext } from '@/lib/tenant';
 import GbpProfileChange from '@/models/GbpProfileChange';
 import { createProposal, locationIdFor, ProposalConflictError } from '@/services/gbp/changes/store';
-import { buildAttributeWrite, buildServiceWrite, toGoogleHours, validateBusinessName, validateDescription, validateRegularHours, validateServiceArea, validateSpecialHours, withGbpUtm, type HoursPeriodIn, type SpecialHourIn } from '@/services/gbp/changes/policy';
+import { buildAttributeWrite, buildServiceWrite, mergeRegularHours, mergeSpecialHours, toGoogleHours, validateBusinessName, validateDescription, validateRegularHours, validateServiceArea, validateSpecialHours, withGbpUtm, type HoursPeriodIn, type SpecialHourIn } from '@/services/gbp/changes/policy';
 import { listCategoryAttributes, readLocationAttributes, readLocationRaw } from '@/lib/gbpClient';
 import GbpLocationSnapshot from '@/models/GbpLocationSnapshot';
 
@@ -109,8 +109,12 @@ export async function POST(req: Request) {
       if (validation.valid) {
         const google = toGoogleHours({ regular, special });
         proposed = {
-          regularHours: regular.length ? google.regularHours : (live?.regularHours ?? { periods: [] }),
-          specialHours: special.length ? google.specialHours : (live?.specialHours ?? { specialHourPeriods: [] }),
+          regularHours: regular.length
+            ? mergeRegularHours(live?.regularHours, google.regularHours)
+            : (live?.regularHours ?? { periods: [] }),
+          specialHours: special.length
+            ? mergeSpecialHours(live?.specialHours, google.specialHours)
+            : (live?.specialHours ?? { specialHourPeriods: [] }),
         };
       }
     }

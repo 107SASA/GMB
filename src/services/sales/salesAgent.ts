@@ -241,6 +241,28 @@ function contextBlock(context?: ReplyContext): string {
   return block;
 }
 
+/**
+ * Appended after whatever persona is saved in Super Admin. The goal of every
+ * reply is the subscription: questions are welcome when their answer is used
+ * to show why the plan helps, never as an interview. (The Booking Agent
+ * persona once said "qualify them, collect one question at a time", and the
+ * post-booking chat asked a new, unused question on every message.)
+ */
+export function salesReplyRules(subscribeUrl?: string | null): string {
+  // Without a configured link the AI must not promise one.
+  const start = subscribeUrl ? 'share the Subscribe link' : 'offer to have our team help them get started';
+  return (
+    `\nREPLY RULES (these override the persona above). Your goal is to get them to subscribe — smartly, not pushily:\n` +
+    `- Every reply moves them one step closer: answer what they said, link it to a specific finding from their report or to what they told you, then give one clear next step.\n` +
+    `- Ask a question only when you will use the answer in your next reply to show how GrowwMatics solves it (their main problem, goal or doubt). At most one question per reply.\n` +
+    `- When they answer, use it — e.g. "0 calls from Google" → explain how fixing their profile/reviews/ranking brings calls, then recommend the plan. Never just move on to another question.\n` +
+    `- Never ask for anything already known from the report, the booking or this conversation (business, what it does, city, website).\n` +
+    `- After two of your questions have been answered, stop asking: recommend the plan and ${start}.\n` +
+    `- When they show interest, agree with a benefit, or ask about price or how to start — ${start} right away.\n` +
+    `- If they say you ask too many questions, apologise in a few words, stop asking, and give the recommendation (${start}).\n`
+  );
+}
+
 /** Composes a live reply to an inbound lead message, using the full history. */
 export async function composeAgentReply(
   config: SalesAgentConfigShape,
@@ -270,6 +292,7 @@ export async function composeAgentReply(
     `never invent one. If the lead wants a live demo, call, or walkthrough, tell them you'll get a specific ` +
     `time booked for them and hand them to booking — don't propose times or links yourself.\n` +
     contextBlock(context) +
+    salesReplyRules(vars.subscribeUrl) +
     `\nReply to the lead's latest message. Conversation so far:\n` +
     convo.messages
       .slice(-10)
@@ -310,9 +333,13 @@ export async function composeBookedQuestionReply(
     `${currentTimeLine()}\n` +
     (knowledge ? `\nGROWWMATICS BUSINESS KNOWLEDGE (approved — never add a price, feature, guarantee or number that is NOT below):\n${knowledge}\n` : '') +
     (scores?.businessName ? `\nTHEIR FREE REPORT: business ${scores.businessName}, Google rank ${scores.rankText || scores.rank || 'not measured'}, profile ${scores.profileText || 'n/a'}, reviews ${scores.reviewText || 'n/a'}.\n` : '') +
+    (config.subscribeUrl ? `Subscribe link: ${config.subscribeUrl}\n` : '') +
     contextBlock({ demo: { status: 'booked', whenLabel: input.demo.whenLabel, meetingLink: input.demo.meetingLink }, earlier: input.earlier }) +
     `\nThey already have this demo booked. Answer their latest message briefly and warmly. Mention the booked time only if it helps. ` +
-    `Never offer, suggest or confirm another time or link. If they want a different time, tell them to reply RESCHEDULE; to cancel, reply CANCEL.\n\n` +
+    `Never offer, suggest or confirm another demo time or meeting link. If they want a different time, tell them to reply RESCHEDULE; to cancel, reply CANCEL.\n` +
+    `Their contact details are already collected — don't ask for name, business or city again. If they ask for a demo, remind them of the booked one.` +
+    (config.subscribeUrl ? ` They don't have to wait for the demo: when they're keen, they can start right away with the Subscribe link.\n` : `\n`) +
+    salesReplyRules(config.subscribeUrl) + `\n` +
     `Conversation so far:\n` +
     input.messages.slice(-10).map((m) => `${m.role === 'lead' ? 'Lead' : 'You'}: ${m.text}`).join('\n');
   return aiMessage(withGuardrail((input.persona || '').trim() || config.agentSystemPrompt), context);

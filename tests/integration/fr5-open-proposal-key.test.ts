@@ -55,9 +55,11 @@ test('every proposal status write in the store goes through a path the release h
   for (const bypass of ['.collection.', 'insertMany(', 'bulkWrite(', 'replaceOne(', 'findOneAndReplace(', '$unset']) {
     assert.equal(store.includes(bypass), false, bypass);
   }
-  // Query-style status writes are only the approval and the two EXECUTING claims (all key-holding).
+  // Query-style status writes: the approval and the two EXECUTING claims (all
+  // key-holding), and the owner's discard (BLOCKED — a closing status whose
+  // key the findOneAndUpdate hook releases).
   const queryWrites = [...store.matchAll(/\$set: \{ status: '([A-Z]+)'/g)].map((m) => m[1]);
-  assert.deepEqual(queryWrites.sort(), ['APPROVED', 'EXECUTING', 'EXECUTING']);
+  assert.deepEqual(queryWrites.sort(), ['APPROVED', 'BLOCKED', 'EXECUTING', 'EXECUTING']);
   // The key is only ever written when a proposal is created.
   assert.equal([...store.matchAll(/openKey(,|:)/g)].length, 1);
   assert.match(store, /GbpProfileChange\.create\(\{[\s\S]*?status,\s*openKey,/);

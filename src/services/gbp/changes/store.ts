@@ -275,6 +275,22 @@ export async function approveChange(id: string, actor: { userId: string; busines
   return { ok: true as const, change: claimed };
 }
 
+/**
+ * The owner drops a proposal they don't want. Only PROPOSED or APPROVED
+ * (nothing sent to Google yet); it becomes BLOCKED, which frees its
+ * open-proposal key so the same change can be proposed again later.
+ */
+export async function discardChange(id: string, actor: { userId: string; businessId: string }) {
+  await dbConnect();
+  const claimed = await GbpProfileChange.findOneAndUpdate(
+    { _id: id, businessId: actor.businessId, status: { $in: ['PROPOSED', 'APPROVED'] } },
+    { $set: { status: 'BLOCKED', error: 'Discarded by you. Nothing was sent to Google.' } },
+    { new: true },
+  );
+  if (!claimed) return { ok: false as const, error: 'Only a change that has not been sent to Google can be discarded.' };
+  return { ok: true as const, change: claimed };
+}
+
 function sliceOf(raw: any, kind: string): unknown {
   if (!raw) return null;
   switch (kind) {

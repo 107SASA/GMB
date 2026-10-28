@@ -41,7 +41,7 @@ const STATUS: Record<string, { label: string; group: StatusGroup; explain: strin
   APPROVED: { label: 'Approved — not applied yet', group: 'approved', explain: 'Approved, but nothing has been sent to Google yet.' },
   EXECUTING: { label: 'Applying…', group: 'approved', explain: 'Being sent to Google now.' },
   APPLIED: { label: 'Sent to Google', group: 'live', explain: 'Sent to Google; waiting for Google to confirm the change.' },
-  VERIFIED: { label: 'Live on Google', group: 'live', explain: 'Google shows this change on the profile.' },
+  VERIFIED: { label: 'Accepted by Google', group: 'live', explain: 'Accepted. It can take a few hours to show on Google.' },
   REVERTED: { label: 'Rolled back', group: 'closed', explain: 'The previous value was restored on Google.' },
   BLOCKED: { label: 'Not applied', group: 'closed', explain: 'This change was stopped before anything was sent to Google.' },
   FAILED: { label: 'Not applied', group: 'closed', explain: 'Google did not accept this change.' },
@@ -142,8 +142,14 @@ export function formatValue(kind: string, value: unknown, attributeNames?: Recor
       const periods = Array.isArray(v?.regularHours?.periods) ? [...v.regularHours.periods] : [];
       periods.sort((a: any, b: any) => DAY_ORDER.indexOf(String(a?.openDay)) - DAY_ORDER.indexOf(String(b?.openDay)));
       if (v?.regularHours !== undefined) {
+        // Every day of the week; a day with no period is closed on Google.
         lines.push(periods.length
-          ? periods.map((p: any) => `${dayLabel(p.openDay)}: ${timeText(p.openTime)}–${timeText(p.closeTime)}`).join('\n')
+          ? DAY_ORDER.map((day) => {
+            const own = periods.filter((p: any) => p?.openDay === day);
+            return own.length
+              ? `${dayLabel(day)}: ${own.map((p: any) => `${timeText(p.openTime)}–${timeText(p.closeTime)}`).join(', ')}`
+              : `${dayLabel(day)}: Closed`;
+          }).join('\n')
           : 'Regular hours: not set');
       }
       const special = Array.isArray(v?.specialHours?.specialHourPeriods) ? v.specialHours.specialHourPeriods : [];
@@ -231,7 +237,7 @@ export function groupDuplicates<T extends GroupableChange>(changes: T[]): Array<
 }
 
 /** Friendly result text for an approve / apply / roll-back call. */
-export function actionResultText(action: 'approve' | 'execute' | 'rollback', res: { success?: boolean; error?: string | null; liveWriteApplied?: boolean }): string {
+export function actionResultText(action: 'approve' | 'execute' | 'rollback' | 'discard', res: { success?: boolean; error?: string | null; liveWriteApplied?: boolean }): string {
   if (!res.success) {
     const err = String(res.error || '');
     if (/live google writes are disabled/i.test(err)) {
@@ -241,9 +247,12 @@ export function actionResultText(action: 'approve' | 'execute' | 'rollback', res
     }
     return err || 'The change could not be updated. Please try again.';
   }
+  if (action === 'discard') return 'Discarded. Nothing was sent to Google.';
   if (action === 'approve') return 'Approved. Nothing has been sent to Google yet — use “Apply to Google” when you are ready.';
   if (action === 'rollback') return 'Rolled back. The previous value was restored on Google.';
-  return res.liveWriteApplied ? 'Applied to Google and confirmed on your profile.' : 'Sent to Google. We will show it as live once Google confirms it.';
+  return res.liveWriteApplied
+    ? 'Sent to Google and accepted. It can take a few hours to show on your public Google listing.'
+    : 'Sent to Google. We will show it as accepted once Google confirms it.';
 }
 
 const PIN_TEXT: Record<string, string> = {
@@ -264,3 +273,43 @@ export function businessTypeText(type: string | null | undefined): string {
 }
 
 export const PRODUCTS_TEXT = 'Products can’t be published through Google’s API, so they are not changed here.';
+
+export interface LineChange { label: string; from: string | null; to: string | null }
+
+function splitLine(line: string): [string, string] | null {
+  const i = line.indexOf(': ');
+  return i > 0 ? [line.slice(0, i), line.slice(i + 2)] : null;
+}
+
+/**
+ * Only what changes, as "label: from → to", from the readable text of the
+ * value now on Google and the proposed one. Lines are matched by their label
+ * ("Saturday", "Appointment link"); a side with no labelled lines ("Not set")
+ * stands for every label on the other side.
+ */
+export function changedLines(before: string, after: string): LineChange[] {
+  const parse = (text: string) => {
+    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+    const map = new Map<string, string>();
+    let bare: string | null = null;
+    for (const line of lines) {
+      const pair = splitLine(line);
+      if (pair) map.set(pair[0], pair[1]);
+      else bare = bare ? `${bare} ${line}` : line;
+    }
+    return { map, bare };
+  };
+  const b = parse(before);
+  const a = parse(after);
+  if (!b.map.size && !a.map.size) {
+    return before.trim() === after.trim() ? [] : [{ label: '', from: before.trim() || null, to: after.trim() || null }];
+  }
+  const labels = [...new Set([...b.map.keys(), ...a.map.keys()])];
+  const out: LineChange[] = [];
+  for (const label of labels) {
+    const from = b.map.get(label) ?? (b.map.size ? null : b.bare);
+    const to = a.map.get(label) ?? (a.map.size ? null : a.bare);
+    if (from !== to) out.push({ label, from, to });
+  }
+  return out;
+}

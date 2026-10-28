@@ -39,6 +39,7 @@ export function PricingCards() {
         setPlan(p);
         const preferred = getPreferredCycle();
         const initial = p?.durations?.find((d) => d.cycle === preferred)?.cycle
+          ?? p?.durations?.find((d) => d.cycle === "yearly")?.cycle
           ?? p?.durations?.find((d) => d.cycle === "monthly")?.cycle
           ?? p?.durations?.[0]?.cycle
           ?? null;

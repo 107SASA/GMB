@@ -523,7 +523,12 @@ export async function searchGbpCategories(businessId: string, displayName: strin
     filter: `displayName=${displayName}`,
   });
   const res = await fetch(`${BIZINFO_BASE}/categories?${params}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    // Logged so "not available on Google" suggestions can be told apart
+    // from a failing catalog lookup (profile optimization categories).
+    console.warn(`[gbp] categories.list "${displayName}" failed: ${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`);
+    return [];
+  }
   const data = await res.json();
   const want = displayName.trim().toLowerCase();
   return (Array.isArray(data?.categories) ? data.categories : [])

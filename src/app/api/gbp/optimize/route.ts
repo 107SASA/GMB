@@ -126,7 +126,9 @@ export async function GET(req: Request) {
       tokens,
       competitorNames: [...new Set(competitors.map((c) => c.name).filter(Boolean))].slice(0, 20),
     },
-    hours: { ...hours, currentSpecialHours: specials },
+    // Regular hours as last synced ("HH:MM"), to pre-fill the hours form.
+    // null = Google has no hours set.
+    hours: { ...hours, currentSpecialHours: specials, currentRegularHours: loc ? (loc.regularHours ?? null) : undefined },
     links: {
       website: loc?.websiteUri || null,
       appointment: 'Supported only when the attribute catalog contains attributes/url_appointment.',

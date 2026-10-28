@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireBusinessContext } from '@/lib/tenant';
 import GbpProfileChange from '@/models/GbpProfileChange';
 import { createProposal, locationIdFor, ProposalConflictError } from '@/services/gbp/changes/store';
-import { buildAttributeWrite, buildServiceWrite, mergeRegularHours, mergeSpecialHours, toGoogleHours, validateBusinessName, validateDescription, validateRegularHours, validateServiceArea, validateSpecialHours, withGbpUtm, type HoursPeriodIn, type SpecialHourIn } from '@/services/gbp/changes/policy';
+import { buildAttributeWrite, buildServiceWrite, canonicalFingerprint, mergeRegularHours, mergeSpecialHours, toGoogleHours, validateBusinessName, validateDescription, validateRegularHours, validateServiceArea, validateSpecialHours, withGbpUtm, type HoursPeriodIn, type SpecialHourIn } from '@/services/gbp/changes/policy';
 import { listCategoryAttributes, readLocationAttributes, readLocationRaw } from '@/lib/gbpClient';
 import GbpLocationSnapshot from '@/models/GbpLocationSnapshot';
 
@@ -33,7 +33,17 @@ export async function GET() {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
   const changes = await GbpProfileChange.find({ businessId: ctx.businessId }).sort({ createdAt: -1 }).limit(50).lean();
-  return NextResponse.json({ success: true, changes });
+  // Google's API returns submitted values straight away, even while Google
+  // still reviews them before they show publicly. metadata.hasPendingEdits
+  // says whether that review is open, so "live" is not claimed too early.
+  // Read only when something was applied; null = could not check.
+  let googleReviewPending: boolean | null = null;
+  if (changes.some((c: any) => c.status === 'VERIFIED' || c.status === 'APPLIED')) {
+    googleReviewPending = await readLocationRaw(ctx.businessId, 'metadata')
+      .then((raw) => raw?.metadata?.hasPendingEdits === true)
+      .catch(() => null);
+  }
+  return NextResponse.json({ success: true, changes, googleReviewPending });
 }
 
 export async function POST(req: Request) {
@@ -100,7 +110,9 @@ export async function POST(req: Request) {
   } else if (kind === 'hours') {
     const regular = humanRegular(proposed);
     const special = humanSpecial(proposed);
-    if (regular.length === 0 && special.length === 0) {
+    // Days the owner marked closed: removed from the live week.
+    const closedDays = closedDaysFrom(proposed).filter((d) => !regular.some((p) => p.openDay === d));
+    if (regular.length === 0 && special.length === 0 && closedDays.length === 0) {
       validation = { valid: false, violations: [{ code: 'empty', message: 'Add regular or special hours. An empty payload is not written.' }] };
     } else {
       const regularResult = validateRegularHours(regular);
@@ -109,13 +121,19 @@ export async function POST(req: Request) {
       if (validation.valid) {
         const google = toGoogleHours({ regular, special });
         proposed = {
-          regularHours: regular.length
-            ? mergeRegularHours(live?.regularHours, google.regularHours)
+          regularHours: regular.length || closedDays.length
+            ? mergeRegularHours(live?.regularHours, google.regularHours, closedDays)
             : (live?.regularHours ?? { periods: [] }),
           specialHours: special.length
             ? mergeSpecialHours(live?.specialHours, google.specialHours)
             : (live?.specialHours ?? { specialHourPeriods: [] }),
         };
+        const week = (proposed as { regularHours: { periods: unknown[] } }).regularHours.periods;
+        if (!week.length) {
+          validation = { valid: false, violations: [{ code: 'all_closed', message: 'At least one day must be open. To close for a holiday, use a special date.' }] };
+        } else if (canonicalFingerprint('hours', before) === canonicalFingerprint('hours', proposed)) {
+          return NextResponse.json({ success: false, error: 'These hours are the same as on Google now, so there is nothing to propose.' }, { status: 400 });
+        }
       }
     }
   } else if (kind === 'service_area') {
@@ -232,6 +250,13 @@ function asDate(value: unknown): string {
     return `${row.year}-${String(row.month ?? 0).padStart(2, '0')}-${String(row.day ?? 0).padStart(2, '0')}`;
   }
   return '';
+}
+
+const WEEK_DAYS = new Set(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']);
+
+function closedDaysFrom(proposed: unknown): string[] {
+  const days = (proposed as { closedDays?: unknown })?.closedDays;
+  return Array.isArray(days) ? [...new Set(days.map(String).filter((d) => WEEK_DAYS.has(d)))] : [];
 }
 
 function humanRegular(proposed: unknown): HoursPeriodIn[] {

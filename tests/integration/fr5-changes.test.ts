@@ -542,3 +542,12 @@ test('posts, review replies, and photos stay on the global write gate', () => {
     assert.equal(source.includes('gbpWritesEnabled'), true, file);
   }
 });
+
+test('description draft reads as a sentence, not "provides Software company"', () => {
+  const text = draftDescription({ name: 'Mulsetu', category: 'Software company', city: 'Ozar', services: [] });
+  assert.match(text, /^Mulsetu is a software company in Ozar\./);
+  assert.doesNotMatch(text, /provides Software company/);
+  const withServices = draftDescription({ name: 'Mulsetu', category: 'Accountant', city: 'Nashik', services: ['GST filing', 'Payroll', 'Audits'] });
+  assert.match(withServices, /^Mulsetu is an accountant in Nashik\. We offer GST filing, Payroll and Audits\./);
+  assert.equal(validateDescription(withServices, { tokens: ['accountant', 'nashik'] }).valid, true);
+});

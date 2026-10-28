@@ -40,7 +40,10 @@ test('hours read as days and times', () => {
     specialHours: { specialHourPeriods: [{ startDate: { year: 2026, month: 11, day: 8 }, endDate: { year: 2026, month: 11, day: 8 }, closed: true }] },
   };
   const text = formatValue('hours', value);
-  assert.equal(text, 'Monday: 09:00–18:00\nTuesday: 09:00–18:30\nSpecial hours 2026-11-08: Closed');
+  assert.equal(
+    text,
+    'Monday: 09:00–18:00\nTuesday: 09:00–18:30\nWednesday: Closed\nThursday: Closed\nFriday: Closed\nSaturday: Closed\nSunday: Closed\nSpecial hours 2026-11-08: Closed',
+  );
   assert.doesNotMatch(text, NO_RAW);
 });
 
@@ -103,7 +106,17 @@ test('action results explain what happened on Google', () => {
   assert.doesNotMatch(actionResultText('execute', { success: false, error: 'Live Google writes are disabled.' }), /Not applied/);
   assert.match(actionResultText('rollback', { success: false, error: 'Live Google writes are disabled.' }), /still live/);
   assert.doesNotMatch(actionResultText('execute', { success: false, error: 'Live Google writes are disabled.' }), /_ENABLED/);
-  assert.match(actionResultText('execute', { success: true, liveWriteApplied: true }), /confirmed/);
+  // Accepted by Google's API is not yet "on the public listing" — Google reviews edits first.
+  assert.match(actionResultText('execute', { success: true, liveWriteApplied: true }), /accepted.*public Google listing/);
   assert.match(actionResultText('rollback', { success: true }), /Rolled back/);
   assert.doesNotMatch(actionResultText('execute', { success: true }), /execute completed/);
+});
+
+test('changedLines lists only what changes, as from → to', async () => {
+  const { changedLines } = await import('../../src/app/dashboard/profile-optimization/presentation.ts');
+  const before = 'Monday: 09:00–17:00\nSaturday: Closed\nSunday: Closed';
+  const after = 'Monday: 09:00–17:00\nSaturday: 09:00–15:00\nSunday: Closed';
+  assert.deepEqual(changedLines(before, after), [{ label: 'Saturday', from: 'Closed', to: '09:00–15:00' }]);
+  assert.deepEqual(changedLines(before, before), []);
+  assert.deepEqual(changedLines('Not set', 'Appointment link: https://x.test'), [{ label: 'Appointment link', from: 'Not set', to: 'https://x.test' }]);
 });

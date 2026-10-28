@@ -23,7 +23,7 @@ const TRUST_POINTS = [
 export default function PricingPage() {
   const router = useRouter();
   const { plan, loading } = usePublicPlan();
-  const [cycle, setCycle] = useState(() => getPreferredCycle() ?? 'monthly');
+  const [cycle, setCycle] = useState(() => getPreferredCycle() ?? 'yearly');
 
   const selected = pickDuration(plan?.durations, cycle);
   const price = selected?.priceInr ?? plan?.priceInr;

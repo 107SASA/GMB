@@ -6,7 +6,7 @@ import { SERVICES } from "@/lib/servicesData";
 import { ServicesHub } from "@/components/services/ServicesHub";
 
 export const metadata: Metadata = {
-  title: "OnDemand Service",
+  title: "Local SEO & Digital Marketing Services",
   description:
     "SEO, Performance Marketing, Marketing Automation, Process Implementation and Business Consultation for local businesses — all built around your Google Business Profile.",
   keywords: [
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: "/services" },
   openGraph: {
-    title: "OnDemand Service | GrowwMatics AI",
+    title: "Local SEO & Digital Marketing Services | GrowwMatics AI",
     description:
       "SEO, Performance Marketing, Marketing Automation, Process Implementation and Business Consultation for local businesses.",
     url: "/services",

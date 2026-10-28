@@ -104,7 +104,13 @@ test('a question after booking gets a real, grounded answer — never a new time
   assert.match(prompt, /Asha Bakery/, 'knows their report');
   assert.match(prompt, /Growwmatics improves Google Business Profiles/, 'approved knowledge');
   assert.match(prompt, /what does it cost\?/, 'sees the earlier sales conversation');
-  assert.match(prompt, /Never offer, suggest or confirm another time/);
+  assert.match(prompt, /Never offer, suggest or confirm another demo time or meeting link/);
+  // Nurtures toward the subscription instead of interviewing them.
+  assert.match(prompt, /Your goal is to get them to subscribe/);
+  assert.match(prompt, /don't ask for name, business or city again/);
+  assert.match(prompt, /After two of your questions have been answered, stop asking/);
+  assert.match(prompt, /offer to have our team help them get started/, 'no subscribe link configured here — the AI must not promise one');
+  assert.doesNotMatch(prompt, /Subscribe link/);
   assert.equal((await m.DemoBooking.findById(b.booking._id).lean()).status, 'Confirmed', 'booking untouched');
 });
 

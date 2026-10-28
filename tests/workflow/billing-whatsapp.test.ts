@@ -205,24 +205,26 @@ test('trial expiry (daily job, real Inngest engine): one "trial ended" message, 
   assert.deepEqual(await m.notices.sendTrialExpiredNotice(extended.businessId), { status: 'skipped', reason: 'trial-extended' });
 });
 
-test('app download link only from real configuration; missing app URL falls back to plain instructions', async (t) => {
+test('app links: the Play Store listing in the first-payment message; the App Store only once configured; missing app URL falls back to plain instructions', async (t) => {
   if (skipReason) return t.skip(skipReason);
-  assert.equal(m.notices.appDownloadLink(), null, 'NEXT_PUBLIC_ANDROID_APK_URL unset → no link to a "coming soon" page');
-  process.env.NEXT_PUBLIC_ANDROID_APK_URL = 'https://cdn.example.test/growwmatics.apk';
+  assert.deepEqual(m.notices.appDownloadLines(), ['📱 Android app: https://play.google.com/store/apps/details?id=com.growwmatics.app']);
+  const w = await workspace();
+  await apply('subscription.activated', subEntity(w), captured());
+  assert.match(textOf((await rows(w.phone))[0]), /Android app: https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.growwmatics\.app/);
+  assert.doesNotMatch(textOf((await rows(w.phone))[0]), /iPhone/, 'no App Store link before the iOS app is live');
+  process.env.NEXT_PUBLIC_APP_STORE_URL = 'https://apps.apple.com/app/id000000';
   try {
-    assert.equal(m.notices.appDownloadLink(), 'https://app.example.test/app');
-    const w = await workspace();
-    await apply('subscription.activated', subEntity(w), captured());
-    assert.match(textOf((await rows(w.phone))[0]), /Get the app: https:\/\/app\.example\.test\/app/);
+    assert.deepEqual(m.notices.appDownloadLines().at(-1), '📱 iPhone app: https://apps.apple.com/app/id000000');
   } finally {
-    delete process.env.NEXT_PUBLIC_ANDROID_APK_URL;
+    delete process.env.NEXT_PUBLIC_APP_STORE_URL;
   }
   const base = process.env.NEXT_PUBLIC_APP_URL;
   delete process.env.NEXT_PUBLIC_APP_URL;
   try {
     const text = m.notices.paymentConfirmedText({ kind: 'first', businessName: 'X', planName: 'P' });
     assert.match(text, /Open Billing in your Growwmatics dashboard/);
-    assert.doesNotMatch(text, /https?:/, 'no invented link');
+    assert.doesNotMatch(text, /https?:\/\/(?!play\.google\.com)/, 'no invented link to our own site (the store listing is a real, fixed link)');
+    assert.match(m.notices.trialStartedText({ businessName: 'X', trialEndsAt: new Date() }), /Log in at growwmatics\.com to open your dashboard/);
   } finally {
     process.env.NEXT_PUBLIC_APP_URL = base;
   }
@@ -264,5 +266,13 @@ test('Segment 1 stays stopped: trial start and payment close the sales thread', 
   await apply('subscription.authenticated', subEntity(trial, { status: 'authenticated', paid_count: 0, start_at: Math.floor(trialEndsAt.getTime() / 1000), notes: { businessId: trial.businessId, userId: trial.userId, planType: 'Pro', trial: '1' } }), null);
   assert.equal((await m.Business.findById(trial.businessId).lean()).subscriptionStatus, 'trial_active');
   assert.equal((await m.SalesConversation.findOne({ businessId: trial.businessId }).lean()).status, 'completed');
-  assert.equal(await count(trial.phone), 0, 'starting a trial sends no payment confirmation');
+  const welcome = await rows(trial.phone);
+  assert.equal(welcome.length, 1, 'one message: the trial welcome');
+  assert.match(textOf(welcome[0]), /Your free trial is active until/);
+  assert.match(textOf(welcome[0]), /Open your dashboard: https:\/\/app\.example\.test\/dashboard/);
+  assert.match(textOf(welcome[0]), /Android app: https:\/\/play\.google\.com/);
+  assert.doesNotMatch(textOf(welcome[0]), /payment was successful/, 'not a payment confirmation');
+  // A webhook retry of the same authorisation sends nothing more.
+  assert.deepEqual(await m.notices.notifyTrialStarted({ businessId: trial.businessId, subscriptionId: trial.subId }), { status: 'skipped', reason: 'already-sent' });
+  assert.equal(await count(trial.phone), 1);
 });

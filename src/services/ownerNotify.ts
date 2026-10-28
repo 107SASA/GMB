@@ -67,6 +67,7 @@ const EVENT_PREF: Record<OwnerNotifyEvent, PrefKey> = {
   billing_activated: 'billingWhatsApp',
   billing_past_due: 'billingWhatsApp',
   billing_canceled: 'billingWhatsApp',
+  billing_trial_started: 'billingWhatsApp',
   billing_trial_ending: 'billingWhatsApp',
   billing_trial_expired: 'billingWhatsApp',
   profile_incomplete: 'whatsAppNotificationsEnabled',

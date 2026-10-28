@@ -7,10 +7,10 @@ import User from '@/models/User';
 
 /**
  * POST /api/auth/google/mobile-handoff — issues a single-use, 2-minute link
- * the iOS app opens to start Google Business Profile OAuth for the active
- * workspace (see src/lib/gbpConnectHandoff.ts). Requires the app's bearer
- * session and an x-business-id the caller is allowed to act on. The web and
- * Android flows don't use it.
+ * the mobile apps (iOS and Android) open to start Google Business Profile
+ * OAuth for the active workspace (see src/lib/gbpConnectHandoff.ts). Requires
+ * the app's bearer session and an x-business-id the caller is allowed to act
+ * on. The web flow doesn't use it.
  */
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();

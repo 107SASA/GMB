@@ -8,12 +8,13 @@ import GbpConnectHandoff from '@/models/GbpConnectHandoff';
 import User from '@/models/User';
 
 /**
- * iOS → web handoff for "Connect Google Business Profile".
+ * App → web handoff for "Connect Google Business Profile" (iOS and Android).
  *
  * GBP OAuth (/api/auth/google → Google → /api/auth/google/callback) needs a
- * web session cookie and an `activeBusinessId` cookie. The Android app relies
- * on Chrome Custom Tabs sharing Chrome's cookies; the iOS in-app browser
- * shares none, so /api/auth/google answers 401 there.
+ * web session cookie and an `activeBusinessId` cookie. The apps sign in with a
+ * bearer token, not a cookie: the iOS in-app browser shares no cookies, and an
+ * Android Chrome Custom Tab only has whatever Chrome holds (usually no session,
+ * or another workspace's), so /api/auth/google answered 401 there.
  *
  *  1. The app (bearer session + x-business-id, verified by
  *     requireBusinessContext) asks POST /api/auth/google/mobile-handoff for a

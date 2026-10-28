@@ -167,6 +167,38 @@ function dateParts(iso: string): { year: number; month: number; day: number } {
   return { year, month, day };
 }
 
+/**
+ * Google replaces the whole hours field on write. Days the owner left blank
+ * keep their live periods, untouched (an overnight period on another day is
+ * not re-validated); the proposed days replace their own.
+ */
+export function mergeRegularHours(live: unknown, next: { periods: Array<{ openDay: string; closeDay: string }> }): { periods: unknown[] } {
+  const days = new Set(next.periods.flatMap((p) => [p.openDay, p.closeDay]));
+  const periods = (live as { periods?: unknown[] } | null)?.periods;
+  const kept = (Array.isArray(periods) ? periods : []).filter((p) => {
+    const row = p as { openDay?: string; closeDay?: string };
+    return !days.has(String(row?.openDay)) && !days.has(String(row?.closeDay));
+  });
+  return { periods: [...kept, ...next.periods] };
+}
+
+function googleDateKey(value: unknown): string {
+  if (typeof value === 'string') return value;
+  const row = value as { year?: number; month?: number; day?: number } | null;
+  if (!row || typeof row !== 'object') return '';
+  return `${row.year}-${String(row.month ?? 0).padStart(2, '0')}-${String(row.day ?? 0).padStart(2, '0')}`;
+}
+
+/** Same for special hours: other dates already on Google are kept; a proposed date replaces its own. */
+export function mergeSpecialHours(live: unknown, next: { specialHourPeriods: Array<Record<string, unknown>> }): { specialHourPeriods: unknown[] } {
+  const dates = new Set(next.specialHourPeriods.map((p) => googleDateKey(p.startDate)));
+  const periods = (live as { specialHourPeriods?: unknown[] } | null)?.specialHourPeriods;
+  const kept = (Array.isArray(periods) ? periods : []).filter(
+    (p) => !dates.has(googleDateKey((p as { startDate?: unknown })?.startDate))
+  );
+  return { specialHourPeriods: [...kept, ...next.specialHourPeriods] };
+}
+
 /** Validated hours → the Business Information special/regular hours body. */
 export function toGoogleHours(input: { regular: HoursPeriodIn[]; special: SpecialHourIn[] }): {
   regularHours: { periods: Array<{ openDay: string; closeDay: string; openTime: { hours: number; minutes: number }; closeTime: { hours: number; minutes: number } }> };

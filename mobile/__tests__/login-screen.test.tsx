@@ -1,8 +1,10 @@
 import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import { Text } from 'react-native';
 
+// Login is phone + WhatsApp code only (the email/password form is gone).
 jest.mock('@/api/endpoints/auth', () => ({
-  login: jest.fn(async () => ({ token: 'test-token' })),
+  requestPhoneLoginOtp: jest.fn(async () => ({ maskedPhone: '+91 ••••• •3210' })),
+  verifyPhoneLoginOtp: jest.fn(async () => ({ token: 'test-token' })),
   fetchCurrentUser: jest.fn(async () => ({ id: 'u1', name: 'Test', email: 't@e.com' })),
 }));
 
@@ -38,7 +40,7 @@ function AppGroupStub() {
   return <Text>App group stub</Text>;
 }
 
-test('real app: type + press Sign in on the real nested (auth) Stack does not throw', async () => {
+test('real app: phone → WhatsApp code → Verify & sign in on the real nested (auth) Stack does not throw', async () => {
   const consoleError = jest.spyOn(console, 'error').mockImplementation((...args) => {
     console.log('[console.error]', args.map(String).join(' '));
   });
@@ -56,22 +58,28 @@ test('real app: type + press Sign in on the real nested (auth) Stack does not th
       { initialUrl: '/login' }
     );
 
-    console.log('[test] waiting for Email field...');
+    console.log('[test] waiting for the phone field...');
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('Email')).toBeTruthy();
+      expect(screen.getByPlaceholderText('98765 43210')).toBeTruthy();
     });
 
-    console.log('[test] typing credentials...');
+    console.log('[test] typing the phone number...');
     await act(async () => {
-      fireEvent.changeText(screen.getByPlaceholderText('Email'), 'a@b.com');
+      fireEvent.changeText(screen.getByPlaceholderText('98765 43210'), '9876543210');
     });
     await act(async () => {
-      fireEvent.changeText(screen.getByPlaceholderText('Password'), 'password123');
+      fireEvent.press(screen.getByText('Send code on WhatsApp'));
     });
 
-    console.log('[test] pressing Sign in...');
+    console.log('[test] entering the code...');
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('······')).toBeTruthy();
+    });
     await act(async () => {
-      fireEvent.press(screen.getByText('Sign in'));
+      fireEvent.changeText(screen.getByPlaceholderText('······'), '123456');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Verify & sign in'));
     });
 
     console.log('[test] press done, waiting for App group stub...');

@@ -120,6 +120,15 @@ export const workspaceBillingSchema = z
     isActive: z.boolean().catch(false),
     currentPeriodEnd: z.string().nullable().catch(null),
     cancelAtPeriodEnd: z.boolean().catch(false),
+    // Payment-failure state (lib/billing/entitlements.ts workspaceAccessState):
+    // 'restricted' lists the paid modules locked after the grace period.
+    access: z
+      .object({
+        mode: z.string().catch('none'),
+        restrictedModules: z.array(z.string()).nullable().catch(null),
+      })
+      .nullable()
+      .catch(null),
   })
   .nullable()
   .catch(null);

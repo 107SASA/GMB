@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireBusinessContext } from '@/lib/tenant';
 import GbpLocationSnapshot from '@/models/GbpLocationSnapshot';
 import Audit from '@/models/Audit';
-import { listCategoryAttributes, searchGbpCategories } from '@/lib/gbpClient';
+import { listCategoryAttributes, readLocationAttributes, readLocationRaw, searchGbpCategories } from '@/lib/gbpClient';
+import { normalizeLocation } from '@/services/gbp/intelligence/normalize';
 import { PRODUCTS_SUPPORT, comparePin, draftDescription, haversineMeters, holidayReminders, validateDescription, type PinStatus } from '@/services/gbp/changes/policy';
 import { calendarDate, holidayCalendarFor } from '@/services/gbp/changes/holidayCalendar';
 import { proposeServices, recommendCategories, suggestUnsetAttributes } from '@/services/gbp/changes/recommend';
@@ -18,7 +19,24 @@ export async function GET(req: Request) {
   if (!ctx.ok) return ctx.response;
   const snap = await GbpLocationSnapshot.findOne({ businessId: ctx.businessId }).lean();
   const loc = (snap as any)?.sections?.location?.data || null;
-  const attrs = (snap as any)?.sections?.attributes?.data || [];
+  // Attributes read live too, so one just applied (a booking link, "online
+  // appointments") isn't suggested again before the next sync.
+  const liveAttrs: any[] | null = loc
+    ? await readLocationAttributes(ctx.businessId).then((r) => (Array.isArray(r?.attributes) ? r.attributes : [])).catch(() => null)
+    : null;
+  const attrs = liveAttrs ?? ((snap as any)?.sections?.attributes?.data || []);
+  const currentUri = (name: string): string | null => {
+    const hit = (liveAttrs || []).find((a: any) => a?.name === name);
+    return hit?.uriValues?.[0]?.uri || null;
+  };
+  // Hours and service area read live: the snapshot syncs every few hours, so
+  // a change just applied (Saturday hours, a Diwali closure) would otherwise
+  // show as missing. Falls back to the snapshot if Google can't be read.
+  const live = loc
+    ? await readLocationRaw(ctx.businessId, 'regularHours,specialHours,serviceArea').then(normalizeLocation).catch(() => null)
+    : null;
+  const liveRegularHours = live ? live.regularHours : (loc?.regularHours ?? null);
+  const liveServiceArea = live ? live.serviceArea : (loc?.serviceArea ?? null);
   const audit = await Audit.findOne({ businessId: ctx.businessId, status: 'COMPLETED' }).sort({ createdAt: -1 })
     .select('auditData.fr4.competitorBenchmark auditData.facts').lean();
   const keywords = ((audit as any)?.auditData?.fr4?.competitorBenchmark?.keywords || []) as any[];
@@ -83,7 +101,7 @@ export async function GET(req: Request) {
     ctx.business.whatsappBookingSettings?.timezone ||
     (holidayList && String(regionCode).toUpperCase().startsWith('IN') ? 'Asia/Kolkata' : null);
   const localDate = calendarDate(timeZone, new Date());
-  const specials = Array.isArray(loc?.specialHours) ? loc.specialHours : [];
+  const specials = live ? live.specialHours : Array.isArray(loc?.specialHours) ? loc.specialHours : [];
   const hours = !holidayList
     ? holidayReminders(specials, null, new Date().toISOString())
     : !localDate
@@ -128,7 +146,7 @@ export async function GET(req: Request) {
     },
     // Regular hours as last synced ("HH:MM"), to pre-fill the hours form.
     // null = Google has no hours set.
-    hours: { ...hours, currentSpecialHours: specials, currentRegularHours: loc ? (loc.regularHours ?? null) : undefined },
+    hours: { ...hours, currentSpecialHours: specials, currentRegularHours: loc ? liveRegularHours : undefined },
     links: {
       website: loc?.websiteUri || null,
       appointment: 'Supported only when the attribute catalog contains attributes/url_appointment.',
@@ -139,6 +157,12 @@ export async function GET(req: Request) {
         menu: !!attributeCatalog?.some((a) => a.name === 'attributes/url_menu'),
         order: !!attributeCatalog?.some((a) => a.name === 'attributes/url_order_ahead'),
       },
+      // The link set on Google now (live read), shown and pre-filled on the page.
+      current: {
+        appointment: currentUri('attributes/url_appointment'),
+        menu: currentUri('attributes/url_menu'),
+        order: currentUri('attributes/url_order_ahead'),
+      },
       attributes: {
         appointment: attributeCatalog?.find((a) => a.name === 'attributes/url_appointment') || null,
         menu: attributeCatalog?.find((a) => a.name === 'attributes/url_menu') || null,
@@ -146,8 +170,8 @@ export async function GET(req: Request) {
       },
     },
     serviceArea: {
-      businessType: loc?.serviceArea?.businessType || null,
-      places: loc?.serviceArea?.places || [],
+      businessType: liveServiceArea?.businessType || null,
+      places: liveServiceArea?.places || [],
     },
     pin,
     current: loc ? { title: loc.title, description: loc.description, primaryCategory: loc.primaryCategory } : null,

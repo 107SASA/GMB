@@ -513,27 +513,65 @@ export async function resolveAreaPlaces(query: string): Promise<{ configured: bo
   return { configured: true, places };
 }
 
-/** Resolves a display name to a Google category resource. Empty when Google returns no exact match. */
-export async function searchGbpCategories(businessId: string, displayName: string, regionCode = 'IN'): Promise<Array<{ name: string; displayName: string }>> {
-  const accessToken = await getValidToken(businessId);
-  const params = new URLSearchParams({
-    regionCode,
-    languageCode: 'en',
-    view: 'BASIC',
-    filter: `displayName=${displayName}`,
-  });
-  const res = await fetch(`${BIZINFO_BASE}/categories?${params}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!res.ok) {
-    // Logged so "not available on Google" suggestions can be told apart
-    // from a failing catalog lookup (profile optimization categories).
-    console.warn(`[gbp] categories.list "${displayName}" failed: ${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`);
-    return [];
-  }
-  const data = await res.json();
+type CatalogCategory = { name: string; displayName: string };
+
+function exactCategoryMatches(categories: unknown, displayName: string): CatalogCategory[] {
   const want = displayName.trim().toLowerCase();
-  return (Array.isArray(data?.categories) ? data.categories : [])
+  return (Array.isArray(categories) ? categories : [])
     .filter((c: any) => String(c?.displayName || '').trim().toLowerCase() === want && typeof c?.name === 'string')
     .map((c: any) => ({ name: c.name, displayName: c.displayName }));
+}
+
+async function listCategoriesPage(accessToken: string, params: Record<string, string>): Promise<{ ok: true; data: any } | { ok: false; error: string }> {
+  const query = new URLSearchParams({ languageCode: 'en', view: 'BASIC', pageSize: '100', ...params });
+  const res = await fetch(`${BIZINFO_BASE}/categories?${query}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (res.ok) return { ok: true, data: await res.json() };
+  return { ok: false, error: `${res.status} ${(await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 400)}` };
+}
+
+// Whole category catalog per region, kept for a day — the fallback when
+// Google refuses filtered lookups (multi-word names have returned 400).
+const catalogCache = new Map<string, { at: number; categories: CatalogCategory[] }>();
+const CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
+const CATALOG_MAX_PAGES = 80;
+
+async function fullCategoryCatalog(accessToken: string, regionCode: string): Promise<CatalogCategory[] | null> {
+  const cached = catalogCache.get(regionCode);
+  if (cached && Date.now() - cached.at < CATALOG_TTL_MS) return cached.categories;
+  const categories: CatalogCategory[] = [];
+  let pageToken: string | undefined;
+  for (let page = 0; page < CATALOG_MAX_PAGES; page++) {
+    const result = await listCategoriesPage(accessToken, { regionCode, ...(pageToken && { pageToken }) });
+    if (!result.ok) {
+      console.warn(`[gbp] categories.list full catalog (${regionCode}) failed: ${result.error}`);
+      return categories.length ? categories : null;
+    }
+    for (const c of result.data?.categories || []) {
+      if (typeof c?.name === 'string' && typeof c?.displayName === 'string') categories.push({ name: c.name, displayName: c.displayName });
+    }
+    pageToken = result.data?.nextPageToken;
+    if (!pageToken) break;
+  }
+  catalogCache.set(regionCode, { at: Date.now(), categories });
+  return categories;
+}
+
+/**
+ * Resolves a display name to a Google category resource. Empty when Google
+ * has no exact match. Tries the filtered lookup, then a quoted filter, then
+ * the cached full catalog — each failure is logged with Google's reason.
+ */
+export async function searchGbpCategories(businessId: string, displayName: string, regionCode = 'IN'): Promise<CatalogCategory[]> {
+  const accessToken = await getValidToken(businessId);
+  const cached = catalogCache.get(regionCode);
+  if (cached && Date.now() - cached.at < CATALOG_TTL_MS) return exactCategoryMatches(cached.categories, displayName);
+  for (const filter of [`displayName=${displayName}`, `displayName="${displayName}"`]) {
+    const result = await listCategoriesPage(accessToken, { regionCode, filter });
+    if (result.ok) return exactCategoryMatches(result.data?.categories, displayName);
+    console.warn(`[gbp] categories.list filter ${filter} failed: ${result.error}`);
+  }
+  const catalog = await fullCategoryCatalog(accessToken, regionCode);
+  return catalog ? exactCategoryMatches(catalog, displayName) : [];
 }
 
 export async function readLocationAttributes(businessId: string): Promise<any> {

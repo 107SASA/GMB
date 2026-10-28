@@ -37,7 +37,7 @@ export function kindLabel(kind: string): string {
 export type StatusGroup = 'waiting' | 'approved' | 'live' | 'closed';
 
 const STATUS: Record<string, { label: string; group: StatusGroup; explain: string }> = {
-  PROPOSED: { label: 'Waiting for your approval', group: 'waiting', explain: 'Nothing has been sent to Google.' },
+  PROPOSED: { label: 'Not sent yet', group: 'waiting', explain: 'Nothing has been sent to Google.' },
   APPROVED: { label: 'Approved — not applied yet', group: 'approved', explain: 'Approved, but nothing has been sent to Google yet.' },
   EXECUTING: { label: 'Applying…', group: 'approved', explain: 'Being sent to Google now.' },
   APPLIED: { label: 'Sent to Google', group: 'live', explain: 'Sent to Google; waiting for Google to confirm the change.' },
@@ -45,7 +45,7 @@ const STATUS: Record<string, { label: string; group: StatusGroup; explain: strin
   REVERTED: { label: 'Rolled back', group: 'closed', explain: 'The previous value was restored on Google.' },
   BLOCKED: { label: 'Not applied', group: 'closed', explain: 'This change was stopped before anything was sent to Google.' },
   FAILED: { label: 'Not applied', group: 'closed', explain: 'Google did not accept this change.' },
-  CONFLICT: { label: 'Not applied — profile changed', group: 'closed', explain: 'The Google profile changed after this proposal was made, so it was not applied.' },
+  CONFLICT: { label: 'Not applied — profile changed', group: 'closed', explain: 'Your Google profile changed after this was proposed (for example by another change you applied), so it was not sent. Propose it again to use the latest profile.' },
   UNRESOLVED: { label: 'Needs checking', group: 'closed', explain: 'We could not confirm whether Google accepted this change.' },
 };
 

@@ -141,8 +141,11 @@ export async function POST(req: Request) {
     const incomingPlaces = Array.isArray((proposed as any)?.places?.placeInfos)
       ? (proposed as any).places.placeInfos
       : Array.isArray((proposed as any)?.places) ? (proposed as any).places : [];
-    const seenPlaces = new Set(livePlaces.map((p: any) => p.placeId));
-    const places = [...livePlaces, ...incomingPlaces.filter((p: any) => p?.placeId && !seenPlaces.has(p.placeId))];
+    // Owner-removed areas leave the live list; new ones are added once.
+    const removeIds = new Set(Array.isArray((proposed as any)?.removePlaceIds) ? (proposed as any).removePlaceIds.map(String) : []);
+    const keptPlaces = livePlaces.filter((p: any) => !removeIds.has(String(p?.placeId)));
+    const seenPlaces = new Set(keptPlaces.map((p: any) => p.placeId));
+    const places = [...keptPlaces, ...incomingPlaces.filter((p: any) => p?.placeId && !seenPlaces.has(p.placeId))];
     const area = validateServiceArea({ businessType: live?.serviceArea?.businessType ?? null, places });
     validation = { valid: area.valid, violations: area.violations };
     if (area.valid) {

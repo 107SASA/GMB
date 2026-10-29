@@ -204,7 +204,11 @@ function SubscriptionCard() {
       <div className="space-y-2.5 text-sm">
         <div className="flex items-center justify-between py-2 border-b border-outline-variant">
           <span className="text-on-surface-variant">Plan</span>
-          <PlanBadge plan={status.planType} />
+          {status.trialStatus?.isActive ? (
+            <span className="px-2.5 py-1 text-xs font-bold rounded-lg border bg-primary-fixed text-primary border-primary-fixed-dim">Pro · free trial</span>
+          ) : (
+            <PlanBadge plan={status.planType} />
+          )}
         </div>
         {status.trialStatus?.isActive && status.trialStatus.endsAt && (
           <div className="flex items-center justify-between py-2 border-b border-outline-variant">

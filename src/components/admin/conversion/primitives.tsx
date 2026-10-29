@@ -94,8 +94,13 @@ export function OwnershipBadge({ ownership }: { ownership: string }) {
 
 export function StageBadge({ stage }: { stage: string | null }) {
   if (!stage) return <span className="text-outline text-xs">—</span>;
+  const tone = stage === 'Free trial'
+    ? 'bg-primary-fixed text-primary font-semibold'
+    : stage === 'Customer' || stage === 'Payment verified'
+      ? 'bg-secondary-container text-on-secondary-container font-semibold'
+      : 'bg-surface-container text-on-surface-variant';
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-surface-container text-on-surface-variant">
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${tone}`}>
       {stage}
     </span>
   );

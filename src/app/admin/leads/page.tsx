@@ -56,6 +56,7 @@ interface Row {
   humanHandoff: { reason: string | null; since: string | null } | null;
   demoStatus: string | null;
   paymentStatus: string;
+  trialEndsAt?: string | null;
   source: string | null;
   city: string | null;
   tags: string[];
@@ -359,9 +360,14 @@ export default function LeadsPipelinePage() {
                     </td>
                     <td className="px-3 py-2.5 text-xs text-on-surface-variant">{r.demoStatus || '—'}</td>
                     <td className="px-3 py-2.5">
-                      <span className={`text-xs font-medium ${r.paymentStatus === 'verified' ? 'text-secondary' : r.paymentStatus === 'pending' ? 'text-warning-text' : 'text-outline'}`}>
-                        {r.paymentStatus}
+                      <span className={`text-xs font-medium ${r.paymentStatus === 'verified' ? 'text-secondary' : r.paymentStatus === 'trial' ? 'text-primary' : r.paymentStatus === 'pending' ? 'text-warning-text' : 'text-outline'}`}>
+                        {r.paymentStatus === 'trial' ? 'free trial' : r.paymentStatus}
                       </span>
+                      {r.paymentStatus === 'trial' && r.trialEndsAt && (
+                        <span className="block text-[11px] text-on-surface-variant">
+                          ends {new Date(r.trialEndsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5"><RelTime date={r.lastActivityAt} /></td>
                     <td className="px-3 py-2.5"><RelTime date={r.createdAt} /></td>

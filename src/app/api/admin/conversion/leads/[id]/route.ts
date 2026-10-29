@@ -1,3 +1,4 @@
+import { phoneVariants } from '@/services/billing/customerActivation';
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
@@ -51,12 +52,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     // The workspace this lead signed up with: its own businessId, else one
     // owned by an account on the same phone (platform prospects rarely have a businessId).
     let business: any = lead.businessId
-      ? await Business.findById(lead.businessId).select('name subscriptionStatus category city').lean()
+      ? await Business.findById(lead.businessId).select('name subscriptionStatus category city trialEndsAt trialCancelledAt').lean()
       : null;
     if (!business && phone) {
-      const owner: any = await User.findOne({ phone }).select('_id').lean();
+      const owner: any = await User.findOne({ phone: { $in: phoneVariants(phone) } }).select('_id').lean();
       if (owner) {
-        const owned: any[] = await Business.find({ userId: owner._id }).select('name subscriptionStatus category city').lean();
+        const owned: any[] = await Business.find({ userId: owner._id }).select('name subscriptionStatus category city trialEndsAt trialCancelledAt').lean();
         const rank = (st?: string) => { const i = ['active', 'trial_active', 'past_due'].indexOf(st || ''); return i === -1 ? 9 : i; };
         business = owned.sort((a, b) => rank(a.subscriptionStatus) - rank(b.subscriptionStatus))[0] ?? null;
       }

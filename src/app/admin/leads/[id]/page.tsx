@@ -71,6 +71,19 @@ function eventTone(type: string): string {
   return 'bg-outline';
 }
 
+/** "trial_active" → "Free trial · ends 5 Nov" — readable billing state. */
+function workspaceBillingText(b: { subscriptionStatus?: string | null; trialEndsAt?: string | null; trialCancelledAt?: string | null }): string {
+  const date = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+  switch (b.subscriptionStatus) {
+    case 'active': return 'Paid';
+    case 'trial_active':
+      return b.trialCancelledAt ? `Free trial (cancelled) · ends ${date(b.trialEndsAt)}` : `Free trial · ends ${date(b.trialEndsAt)}`;
+    case 'past_due': return 'Payment failed';
+    case 'canceled': return 'Cancelled';
+    default: return 'Not subscribed';
+  }
+}
+
 export default function LeadDetailPage() {
   const params = useParams<{ id: string }>();
   const [d, setD] = useState<Detail | null>(null);
@@ -256,7 +269,7 @@ export default function LeadDetailPage() {
             <p className="text-xs text-outline">Not yet extracted from the conversation.</p>
           )}
           {l.business && (
-            <Field label="Workspace billing">{l.business.subscriptionStatus || '—'}</Field>
+            <Field label="Workspace billing">{workspaceBillingText(l.business)}</Field>
           )}
           {l.auditId && <Field label="Linked audit">{l.auditId}</Field>}
         </Panel>

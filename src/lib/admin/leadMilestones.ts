@@ -39,6 +39,17 @@ export interface LeadFacts {
   nextBestAction?: string | null;
   nurtureStatus?: string | null;
   humanHandoff?: { active?: boolean | null } | null;
+  trial?: { status?: string | null; endsAt?: Date | string | null } | null;
+}
+
+/**
+ * On a free trial right now: started (a cancelled trial still runs to its
+ * end date) and not yet ended or paid.
+ */
+export function isOnTrialNow(lead: LeadFacts, now: Date = new Date()): boolean {
+  const t = lead.trial;
+  if (!t || (t.status !== 'active' && t.status !== 'cancelled')) return false;
+  return !t.endsAt || new Date(t.endsAt).getTime() > now.getTime();
 }
 
 export interface MilestoneEvent {
@@ -112,6 +123,7 @@ export function reachedMilestones(lead: LeadFacts, events: MilestoneEvent[] = []
 export function currentFunnelStage(lead: LeadFacts): string {
   if (isCustomerNow(lead)) return 'Customer';
   if (lead.currentStage === 'PAYMENT_VERIFIED') return 'Payment verified';
+  if (isOnTrialNow(lead)) return 'Free trial';
   if (lead.nurtureStatus === 'OPTED_OUT') return 'Opted out';
   if (lead.currentStage === 'LOST' || lead.currentStage === 'DO_NOT_CONTACT') return 'Lost';
   if (lead.currentAgent === 'HUMAN' || lead.currentStage === 'HUMAN_HANDOFF') return 'Human handoff';
@@ -131,7 +143,7 @@ export function currentFunnelStage(lead: LeadFacts): string {
 
 export const CURRENT_STAGE_LABELS = [
   'New', 'Qualified', 'Sales nurturing', 'Demo interest', 'Demo scheduled', 'Demo completed',
-  'Purchase intent', 'Payment verified', 'Customer', 'Human handoff', 'Inactive', 'Lost', 'Opted out',
+  'Purchase intent', 'Free trial', 'Payment verified', 'Customer', 'Human handoff', 'Inactive', 'Lost', 'Opted out',
 ];
 
 /** Everything a segment predicate may look at for one lead. */

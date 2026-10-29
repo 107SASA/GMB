@@ -37,6 +37,7 @@ const MENU: { section: string; items: MenuItem[] }[] = [
     items: [
       { label: 'Audit Engine', icon: 'flash', href: '/audit', tint: 'amber' },
       { label: 'Business Profile', icon: 'storefront', href: '/gbp', tint: 'brandBright', surface: 'dashboard' },
+      { label: 'Profile optimization', icon: 'checkmark-done-circle', href: '/profile-optimization', tint: 'emerald', surface: 'dashboard' },
       { label: 'Content', icon: 'megaphone', href: '/content', tint: 'violet', surface: 'content' },
       { label: 'Content Scheduler', icon: 'calendar', href: '/scheduler', tint: 'cyan', surface: 'scheduler' },
     ],

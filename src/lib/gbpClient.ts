@@ -558,14 +558,16 @@ async function fullCategoryCatalog(accessToken: string, regionCode: string): Pro
 
 /**
  * Resolves a display name to a Google category resource. Empty when Google
- * has no exact match. Tries the filtered lookup, then a quoted filter, then
- * the cached full catalog — each failure is logged with Google's reason.
+ * has no exact match. Tries a quoted filter, then an unquoted one, then the
+ * cached full catalog — each failure is logged with Google's reason.
  */
 export async function searchGbpCategories(businessId: string, displayName: string, regionCode = 'IN'): Promise<CatalogCategory[]> {
   const accessToken = await getValidToken(businessId);
   const cached = catalogCache.get(regionCode);
   if (cached && Date.now() - cached.at < CATALOG_TTL_MS) return exactCategoryMatches(cached.categories, displayName);
-  for (const filter of [`displayName=${displayName}`, `displayName="${displayName}"`]) {
+  // Quoted first: unquoted, a multi-word name ("Marketing agency") is
+  // refused with "displayName is the only supported filter".
+  for (const filter of [`displayName="${displayName}"`, `displayName=${displayName}`]) {
     const result = await listCategoriesPage(accessToken, { regionCode, filter });
     if (result.ok) return exactCategoryMatches(result.data?.categories, displayName);
     console.warn(`[gbp] categories.list filter ${filter} failed: ${result.error}`);

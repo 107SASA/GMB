@@ -1,7 +1,9 @@
 import User from '@/models/User';
 import Business from '@/models/Business';
 import { createdAtFilter, rangeScopeLabel, resolveDateRange } from '@/lib/admin/conversionFunnel';
-import { SEGMENTS, currentFunnelStage, isSegment, phoneSearchDigits } from '@/lib/admin/leadMilestones';
+import { SEGMENTS, currentFunnelStage, isOnTrialNow, isSegment, phoneSearchDigits } from '@/lib/admin/leadMilestones';
+import { phoneDedupeKey } from '@/lib/phone';
+import { phoneVariants } from '@/services/billing/customerActivation';
 import { crmDisplayName } from '@/lib/admin/platformCrm';
 import { loadLeadRows, type LeadRow } from '@/services/admin/conversionReport';
 
@@ -111,20 +113,23 @@ async function linkedWorkspaces(rows: LeadRow[]): Promise<Map<string, Workspace>
   const out = new Map<string, Workspace>();
   if (!rows.length) return out;
   const bizIds = rows.map((r) => r.lead.businessId).filter(Boolean);
+  // Match accounts by every common spelling of the lead's number (a CSV or
+  // manual lead may be "8485860323" while the account has "+918485860323").
   const phones = rows.map((r) => r.lead.phone).filter(Boolean);
-  const users: any[] = phones.length ? await User.find({ phone: { $in: phones } }).select('_id phone').lean() : [];
+  const variants = [...new Set(phones.flatMap((p: string) => phoneVariants(p)))];
+  const users: any[] = variants.length ? await User.find({ phone: { $in: variants } }).select('_id phone').lean() : [];
   const businesses: any[] = await Business.find({
     $or: [{ _id: { $in: bizIds } }, { userId: { $in: users.map((u) => u._id) } }],
   })
     .select('_id userId name subscriptionStatus')
     .lean();
   const byId = new Map(businesses.map((b) => [String(b._id), b]));
-  const userByPhone = new Map(users.map((u) => [u.phone, String(u._id)]));
+  const userByPhone = new Map(users.map((u) => [phoneDedupeKey(u.phone) || u.phone, String(u._id)]));
   const rank = (s?: string) => ['active', 'trial_active', 'past_due'].indexOf(s || '') === -1 ? 9 : ['active', 'trial_active', 'past_due'].indexOf(s || '');
   for (const r of rows) {
     let ws = r.lead.businessId ? byId.get(String(r.lead.businessId)) : undefined;
     if (!ws) {
-      const uid = userByPhone.get(r.lead.phone);
+      const uid = userByPhone.get(phoneDedupeKey(r.lead.phone) || r.lead.phone);
       const owned = uid ? businesses.filter((b) => String(b.userId) === uid).sort((a, b) => rank(a.subscriptionStatus) - rank(b.subscriptionStatus)) : [];
       ws = owned[0];
     }
@@ -135,7 +140,7 @@ async function linkedWorkspaces(rows: LeadRow[]): Promise<Map<string, Workspace>
 
 function paymentStatus(r: LeadRow, ws?: Workspace): 'verified' | 'trial' | 'pending' | 'none' {
   if (r.reached.has('paymentVerified') || ws?.subscriptionStatus === 'active') return 'verified';
-  if (ws?.subscriptionStatus === 'trial_active') return 'trial';
+  if (ws?.subscriptionStatus === 'trial_active' || isOnTrialNow(r.lead)) return 'trial';
   if (r.lead.currentStage === 'CONVERSION_PENDING') return 'pending';
   return 'none';
 }
@@ -173,5 +178,6 @@ export function toRow(r: LeadRow, ws?: Workspace) {
     humanHandoff: l.humanHandoff?.active ? { reason: l.humanHandoff.reason ?? null, since: l.humanHandoff.since ?? null } : null,
     demoStatus: r.bookings[0]?.status ?? null,
     paymentStatus: paymentStatus(r, ws),
+    trialEndsAt: isOnTrialNow(l) && l.trial?.endsAt ? l.trial.endsAt : null,
   };
 }

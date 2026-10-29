@@ -125,7 +125,9 @@ export default function BillingScreen() {
         ) : (
           <View className="rounded-card border border-surface-border bg-surface-raised px-4 py-4">
             <View className="flex-row items-center justify-between">
-              <Text className="font-display text-xl text-white">{sub.planType} plan</Text>
+              <Text className="font-display text-xl text-white">
+                {workspace?.subscriptionStatus === 'trial_active' || sub.billingStatus === 'Trialing' ? 'Free trial' : `${sub.planType} plan`}
+              </Text>
               <Badge label={sub.billingStatus} tone={billingTone(sub.billingStatus)} />
             </View>
 

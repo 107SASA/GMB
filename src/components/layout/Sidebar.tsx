@@ -131,11 +131,16 @@ function UsagePill() {
  */
 function UpgradeCta({ isSuperAdmin, mobile, onClick }: { isSuperAdmin: boolean; mobile?: boolean; onClick?: () => void }) {
   const [active, setActive] = useState<boolean | null>(null);
+  const [trialEnds, setTrialEnds] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/billing/status')
       .then((r) => r.json())
-      .then((json) => setActive(!json?.workspace || !!json.workspace.isActive))
+      .then((json) => {
+        const ws = json?.workspace;
+        setActive(!ws || !!ws.isActive);
+        setTrialEnds(ws?.isActive && ws.subscriptionStatus === 'trial_active' ? (ws.trial?.endsAt ?? '') : null);
+      })
       .catch(() => setActive(false));
   }, []);
 
@@ -151,7 +156,9 @@ function UpgradeCta({ isSuperAdmin, mobile, onClick }: { isSuperAdmin: boolean; 
         mobile && 'text-xs'
       )}>
         <MaterialIcon name="verified" size={18} className="text-secondary" />
-        You already have the Pro Plan
+        {trialEnds !== null
+          ? `Free trial${trialEnds ? ` · ends ${new Date(trialEnds).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}`
+          : 'You already have the Pro Plan'}
       </div>
     );
   }

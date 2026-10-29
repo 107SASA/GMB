@@ -84,6 +84,7 @@ export default function AppLayout() {
           links. `photos` stays registered so /photos and /photos/all deep
           links keep working; the Photos UI also renders under Posts. */}
       <Tabs.Screen name="gbp" options={{ href: null }} />
+      <Tabs.Screen name="profile-optimization" options={{ href: null }} />
       <Tabs.Screen name="photos" options={{ href: null }} />
       <Tabs.Screen name="media" options={{ href: null }} />
       <Tabs.Screen name="audit" options={{ href: null }} />

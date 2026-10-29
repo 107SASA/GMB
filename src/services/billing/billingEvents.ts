@@ -32,6 +32,7 @@ import { razorpaySettleDeps } from '@/services/billing/trialEligibility';
 import { openRecoveryEpisode, closeRecoveryEpisodes } from '@/services/billing/recoveryRemindersService';
 import { stopPreSalesNurtureForWorkspace } from '@/services/sales/preSalesPolicy';
 import { notifyPaymentConfirmed, paymentNoticeKind } from '@/services/billing/billingWhatsApp';
+import { syncLeadTrial } from '@/services/billing/leadTrialSync';
 
 /**
  * Loads the facts for one Razorpay subscription event, asks the pure state
@@ -246,6 +247,8 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
         await startTrialAccess(businessId!, userId, { subscriptionId: sub!.id, trialEndsAt: action.trialEndsAt, eventAt: stampAt, cancelled: action.cancelled === true, subscriptionMode });
         // A trial user is out of pre-sales nurture (no more sales follow-ups).
         if (businessId) await stopPreSalesNurtureForWorkspace(businessId, 'trial-started');
+        // Super Admin → Leads shows "Free trial" from now on.
+        await syncLeadTrial(userId, businessId, { kind: 'started', endsAt: action.trialEndsAt, cancelled: action.cancelled === true });
         // Welcome with the trial end date, dashboard and app links (once per subscription; never throws).
         if (businessId) {
           const { notifyTrialStarted } = await import('@/services/billing/billingWhatsApp');
@@ -285,6 +288,7 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
           console.warn(`[billing] ${type}: cannot resolve workspace for ${sub?.id}`);
         }
         await activatePlan(userId, { razorpaySubscriptionId: sub!.id, currentPeriodEnd: action.periodEnd ?? undefined, held });
+        if (!held) await syncLeadTrial(userId, businessId, { kind: 'converted' });
         // Verified payment: the failure is over — stop its reminders now.
         if (businessId) await closeRecoveryEpisodes(businessId, 'resolved', 'payment_recovered');
         // ...and pre-sales nurture, even when no platform Lead matches the phone.
@@ -332,6 +336,7 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
         break;
       case 'trial_cancelled':
         if (businessId) await markTrialCancelled(businessId, userId, { eventAt: stampAt });
+        await syncLeadTrial(userId, businessId, { kind: 'cancelled' });
         break;
       case 'cancel_paid':
         if (userId) await endUserPlanUnlessOtherWorkspacePaid(userId, businessId);

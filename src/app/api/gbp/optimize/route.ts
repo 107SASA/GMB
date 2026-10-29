@@ -76,7 +76,13 @@ export async function GET(req: Request) {
   if (loc?.primaryCategory?.name) {
     attributeCatalog = await listCategoryAttributes(ctx.businessId, loc.primaryCategory.name, loc?.address?.regionCode || 'IN').catch(() => null);
   }
-  const attributes = suggestUnsetAttributes(attributeCatalog, (attrs || []).map((a: any) => a.name));
+  // Booking/menu/order links have their own section — not repeated (and not
+  // taking one of the 20 suggestion slots) in the attribute list.
+  const LINK_ATTRIBUTES = new Set(['attributes/url_appointment', 'attributes/url_menu', 'attributes/url_order_ahead']);
+  const attributes = suggestUnsetAttributes(
+    attributeCatalog ? attributeCatalog.filter((a) => !LINK_ATTRIBUTES.has(a.name)) : null,
+    (attrs || []).map((a: any) => a.name),
+  );
   const servicePlan = proposeServices({
     existing: services,
     verified: services,

@@ -36,6 +36,30 @@ export function DashboardHeader() {
   const { activeBusiness, loading } = useBusiness();
   const { toggle } = useMobileNav();
   const [user, setUser] = useState<HeaderUser | null>(null);
+  // The active workspace's plan, which is what the owner is looking at — the
+  // user-level plan stays "Free" during a free trial.
+  const [planLabel, setPlanLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!activeBusiness?._id) return;
+    let cancelled = false;
+    fetch("/api/billing/status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled) return;
+        const ws = json?.workspace;
+        if (!ws) return setPlanLabel(null);
+        if (ws.subscriptionStatus === "trial_active" && ws.isActive) {
+          const ends = ws.trial?.endsAt
+            ? new Date(ws.trial.endsAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+            : null;
+          return setPlanLabel(ends ? `Free trial · ends ${ends}` : "Free trial");
+        }
+        setPlanLabel(ws.isActive ? "Pro Plan" : "Free Plan");
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeBusiness?._id]);
 
   useEffect(() => {
     fetch("/api/user/profile")
@@ -123,7 +147,7 @@ export function DashboardHeader() {
           <div className="text-right">
             <div className="text-sm font-bold text-on-surface">{usablePersonName(user?.fullName) || "Your name"}</div>
             <div className="text-label-sm text-on-surface-variant normal-case tracking-wider">
-              {user?.subscriptionPlan ? `${user.subscriptionPlan} Plan` : ""}
+              {planLabel ?? (user?.subscriptionPlan ? `${user.subscriptionPlan} Plan` : "")}
             </div>
           </div>
           <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-full bg-primary flex items-center justify-center font-bold text-on-primary text-sm">

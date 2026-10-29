@@ -847,6 +847,8 @@ export const subscriptionExpiryWorker = inngest.createFunction(
           // re-checked inside (not extended, nothing paid), claimed once.
           await cancelBusinessPlan(id, { trialEnded: true });
           if (b.userId) await endUserPlanUnlessOtherWorkspacePaid(b.userId.toString(), id);
+          const { syncLeadTrial } = await import("@/services/billing/leadTrialSync");
+          await syncLeadTrial(b.userId ? b.userId.toString() : null, id, { kind: "ended" });
           const { sendTrialExpiredNotice } = await import("@/services/billing/billingWhatsApp");
           await sendTrialExpiredNotice(id);
           ended++;

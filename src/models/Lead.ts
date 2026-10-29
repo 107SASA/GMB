@@ -117,6 +117,15 @@ export interface ILead extends Document {
     assignedUserId?: mongoose.Types.ObjectId;
     since?: Date;
   };
+  // Free trial of the workspace this lead signed up with, kept in step by the
+  // billing events (services/billing/leadTrialSync.ts). Absent = never trialled.
+  trial?: {
+    status: 'active' | 'cancelled' | 'ended' | 'converted';
+    startedAt?: Date;
+    endsAt?: Date;
+    businessId?: mongoose.Types.ObjectId;
+    updatedAt?: Date;
+  };
 
   // --- Lead intelligence (shadow mode, written by leadIntelligence/extract.ts) --
   // leadScore is a DELIBERATELY SEPARATE number from the existing aiLeadScore
@@ -323,6 +332,19 @@ const LeadSchema: Schema = new Schema(
       reason: { type: String },
       assignedUserId: { type: Schema.Types.ObjectId, ref: 'User' },
       since: { type: Date },
+    },
+    trial: {
+      type: new Schema(
+        {
+          status: { type: String, enum: ['active', 'cancelled', 'ended', 'converted'], required: true },
+          startedAt: { type: Date },
+          endsAt: { type: Date },
+          businessId: { type: Schema.Types.ObjectId, ref: 'Business' },
+          updatedAt: { type: Date },
+        },
+        { _id: false }
+      ),
+      default: undefined,
     },
 
     // --- Lead intelligence (shadow mode) ------------------------------------

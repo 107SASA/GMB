@@ -6,7 +6,7 @@ import Audit from '@/models/Audit';
 import { setLeadOwnership } from '@/services/leadOwnership/setLeadOwnership';
 import { cancelScheduledActions } from '@/services/scheduler/cancelScheduledActions';
 import { logLeadEvent } from '@/services/leadEvents';
-import { normalizePhoneE164 } from '@/lib/phone';
+import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 import { paymentSuccessStageSequence } from '@/services/billing/paymentLeadStages';
 
 /**
@@ -88,6 +88,22 @@ export async function runCustomerActivationSequence(
  * when it points at the same person as the phone match; otherwise phone match.
  * Never creates a Lead.
  */
+/** The spellings a stored lead phone may have for this number. */
+export function phoneVariants(raw: string): string[] {
+  const out = new Set<string>([raw, raw.trim()]);
+  const e164 = normalizePhoneE164(raw);
+  if (e164) out.add(e164);
+  const last10 = phoneDedupeKey(raw);
+  if (last10) {
+    out.add(last10);
+    out.add(`+91${last10}`);
+    out.add(`91${last10}`);
+    out.add(`0${last10}`);
+    out.add(`+91 ${last10.slice(0, 5)} ${last10.slice(5)}`);
+  }
+  return [...out].filter(Boolean);
+}
+
 export async function resolveLeadForPayment(userId: string, businessId: string | null): Promise<any | null> {
   const user = await User.findById(userId).select('phone').lean() as any;
   let phone: string | null = user?.phone || null;
@@ -98,8 +114,10 @@ export async function resolveLeadForPayment(userId: string, businessId: string |
   }
   if (!phone) return null;
 
-  const normalized = normalizePhoneE164(phone) || phone;
-  const byPhone = await Lead.findOne({ phone: normalized, tenantId: 'gmbboost-internal' });
+  // Every common spelling of the number, so a lead saved as "8485860323" or
+  // "+91 84858 60323" (CSV import, manual entry) still matches "+918485860323".
+  const byPhone = await Lead.findOne({ phone: { $in: phoneVariants(phone) }, tenantId: 'gmbboost-internal' })
+    .sort({ updatedAt: -1 });
 
   // Stronger link: auditId on a platform lead whose audit belongs to this business.
   if (businessId) {

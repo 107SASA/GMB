@@ -82,7 +82,7 @@ export async function GET() {
       const now = new Date();
       const day = now.getUTCDay();
       const startOfWeek = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (day === 0 ? 6 : day - 1)));
-      postsUsed = await Post.countDocuments({ businessId: ctx.businessId, createdAt: { $gte: startOfWeek } });
+      postsUsed = await Post.countDocuments({ businessId: ctx.businessId, aiGenerated: true, createdAt: { $gte: startOfWeek } });
     }
 
     const usage = {

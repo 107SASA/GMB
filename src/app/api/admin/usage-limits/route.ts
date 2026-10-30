@@ -6,7 +6,8 @@ import { displayPersonName } from '@/lib/personName';
 import User from '@/models/User';
 import Business from '@/models/Business';
 import UserLimitOverride from '@/models/UserLimitOverride';
-import { resolveEffectiveLimits } from '@/lib/planDefaults';
+import PlanConfig from '@/models/PlanConfig';
+import { getPlanDefaults, resolveEffectiveLimits, type PlanLimits } from '@/lib/planDefaults';
 
 export async function GET(req: NextRequest) {
   const auth = await requireSuperAdmin();
@@ -43,12 +44,29 @@ export async function GET(req: NextRequest) {
 
     const userIds = users.map((u: any) => u._id);
 
-    const [businesses, overrides] = await Promise.all([
+    const [businesses, overrides, planConfigs] = await Promise.all([
       Business.find({ userId: { $in: userIds } })
         .select('userId name category')
         .lean(),
       UserLimitOverride.find({ userId: { $in: userIds } }).lean(),
+      PlanConfig.find({}).lean(),
     ]);
+
+    // Saved plan limits win over the code defaults — same order as
+    // featureGating.getPlanLimitsFromDB, so the table shows what is enforced.
+    const planLimitsFor = (planName: string): PlanLimits => {
+      const name = planName === 'Enterprise' ? 'Pro' : planName;
+      const config: any = planConfigs.find((c: any) => c.plan === name);
+      if (!config) return getPlanDefaults(name);
+      return {
+        maxAuditsPerBusiness:      config.maxAuditsPerBusiness,
+        maxPostsPerMonth:          config.maxPostsPerMonth,
+        postLimitFrequency:        config.postLimitFrequency ?? 'monthly',
+        maxWhatsAppMessagesPerDay: config.maxWhatsAppMessagesPerDay,
+        reviewRequestCooldownDays: config.reviewRequestCooldownDays,
+        maxAIGenerations:          config.maxAIGenerations,
+      };
+    };
 
     const businessMap: Record<string, any> = {};
     businesses.forEach((b: any) => {
@@ -64,13 +82,14 @@ export async function GET(req: NextRequest) {
       const uid      = u._id.toString();
       const override = overrideMap[uid] ?? {};
       const plan     = u.subscriptionPlan || 'Free';
+      const planLimits = planLimitsFor(plan);
       const effective = resolveEffectiveLimits(plan, {
         maxAuditsPerBusiness:      override.maxAuditsPerBusiness,
         maxPostsPerMonth:          override.maxPostsPerMonth,
         maxWhatsAppMessagesPerDay: override.maxWhatsAppMessagesPerDay,
         reviewRequestCooldownDays: override.reviewRequestCooldownDays,
         maxAIGenerations:          override.maxAIGenerations,
-      });
+      }, planLimits);
 
       return {
         userId:   uid,
@@ -81,6 +100,7 @@ export async function GET(req: NextRequest) {
           ? { name: businessMap[uid].name, category: businessMap[uid].category }
           : null,
         effective,
+        planLimits,
         override: {
           maxAuditsPerBusiness:      override.maxAuditsPerBusiness      ?? null,
           maxPostsPerMonth:          override.maxPostsPerMonth          ?? null,

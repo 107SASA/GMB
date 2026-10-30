@@ -239,7 +239,7 @@ export default function BillingScreen() {
               limit={usage.data.limits.maxAuditsPerBusiness}
             />
             <UsageRow
-              label="Posts"
+              label={usage.data.limits.postLimitFrequency === 'weekly' ? 'Posts (this week)' : 'Posts'}
               used={usage.data.usage.postsUsed}
               limit={usage.data.limits.maxPostsPerMonth}
             />

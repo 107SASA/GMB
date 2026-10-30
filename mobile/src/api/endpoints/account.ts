@@ -167,6 +167,7 @@ export const usageSchema = z.object({
   limits: z.object({
     maxAuditsPerBusiness: z.number().catch(0),
     maxPostsPerMonth: z.number().catch(0),
+    postLimitFrequency: z.enum(['monthly', 'weekly']).catch('monthly'),
     maxWhatsAppMessagesPerDay: z.number().catch(0),
     maxAIGenerations: z.number().catch(0),
   }),

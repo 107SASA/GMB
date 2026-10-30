@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
-import { PLAN_DEFAULTS, getPlanDefaults } from '@/lib/planDefaults';
+import { PLAN_DEFAULTS, getPlanDefaults, type PlanLimits } from '@/lib/planDefaults';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared types
@@ -214,6 +214,8 @@ interface UsageLimitRow {
   plan:       string;
   business:   { name: string; category: string } | null;
   effective:  Record<LimitKey, number> & { overriddenFields: LimitKey[] };
+  /** The plan's saved limits (PlanConfig), or the code defaults when none is saved. */
+  planLimits: PlanLimits;
   override:   LimitOverride;
   hasOverride: boolean;
 }
@@ -230,7 +232,7 @@ function EditLimitsModal({
   onSave: (userId: string, updates: Partial<LimitOverride>) => Promise<void>;
   onClose: () => void;
 }) {
-  const planDefaults = getPlanDefaults(row.plan);
+  const planDefaults = row.planLimits ?? getPlanDefaults(row.plan);
 
   // Local draft: null = use plan default, number = custom override
   const [draft, setDraft] = useState<Record<LimitKey, number | null>>(() => ({
@@ -761,7 +763,7 @@ function UsageLimitsTab() {
                   <th className="px-5 py-3 text-left text-label-sm text-on-surface-variant">Plan</th>
                   {LIMIT_FIELDS.map(f => (
                     <th key={f.key} className="px-4 py-3 text-center text-label-sm text-on-surface-variant whitespace-nowrap">
-                      {f.label}
+                      {f.key === 'maxPostsPerMonth' ? 'Max AI Posts' : f.label}
                     </th>
                   ))}
                   <th className="px-4 py-3" />
@@ -776,7 +778,7 @@ function UsageLimitsTab() {
                   </tr>
                 )}
                 {rows.map(row => {
-                  const planDefs = getPlanDefaults(row.plan);
+                  const planDefs = row.planLimits ?? getPlanDefaults(row.plan);
                   const isSaved  = savedId === row.userId;
 
                   return (
@@ -823,6 +825,9 @@ function UsageLimitsTab() {
                                 isOverridden ? 'text-primary' : 'text-on-surface'
                               )}>
                                 {effective}
+                                {key === 'maxPostsPerMonth' && planDefs.postLimitFrequency === 'weekly' && (
+                                  <span className="text-xs font-medium text-outline"> / week</span>
+                                )}
                               </span>
                               {isOverridden ? (
                                 <span className="text-[10px] text-primary-fixed-dim font-medium">

@@ -81,6 +81,16 @@ export async function POST(req: Request) {
       );
     }
 
+    // Refuse before spending on AI when the post quota is already used up;
+    // the exact batch size is re-checked after generation below.
+    const postsPreCheck = await checkUsageLimit(ctx.userId, ctx.businessId, 'posts');
+    if (!postsPreCheck.allowed) {
+      return NextResponse.json(
+        { error: postsPreCheck.reason, code: postsPreCheck.code ?? 'UPGRADE_REQUIRED', limit: postsPreCheck.limit, used: postsPreCheck.used },
+        { status: 403 }
+      );
+    }
+
     const businessLocation =
       [business.city, business.state].filter(Boolean).join(', ') ||
       business.address ||

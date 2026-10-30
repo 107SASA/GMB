@@ -105,8 +105,9 @@ export async function checkUsageLimit(
       if (limits.postLimitFrequency === 'weekly') {
         // SubscriptionUsage only buckets by month, so a weekly cap can't
         // reuse that counter — count actual posts created since the start
-        // of this calendar week instead.
-        currentUsage = await Post.countDocuments({ businessId, createdAt: { $gte: startOfWeekUTC() } });
+        // of this calendar week instead. Only AI posts count — posts the
+        // owner writes by hand are not limited. Deleted AI posts still count.
+        currentUsage = await Post.countDocuments({ businessId, aiGenerated: true, createdAt: { $gte: startOfWeekUTC() } });
       } else {
         const usage = await SubscriptionUsage.findOne({ businessId, month }).lean() as any;
         currentUsage = usage?.postsUsed ?? 0;

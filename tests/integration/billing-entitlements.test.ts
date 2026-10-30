@@ -64,7 +64,9 @@ test('usage limits: a trial gets the paid plan (finite), never unlimited, never 
   for (const v of [pro.maxPostsPerMonth, pro.maxAIGenerations, pro.maxWhatsAppMessagesPerDay, pro.maxAuditsPerBusiness]) {
     assert.ok(Number.isFinite(v) && v > 0 && v < 10_000, `finite limit, got ${v}`);
   }
-  assert.ok(pro.maxPostsPerMonth > getPlanDefaults('Free').maxPostsPerMonth);
+  // Compare per month — a weekly post cap resets ~4.3 times a month.
+  const postsPerMonth = (l: typeof pro) => l.maxPostsPerMonth * (l.postLimitFrequency === 'weekly' ? 52 / 12 : 1);
+  assert.ok(postsPerMonth(pro) > postsPerMonth(getPlanDefaults('Free')));
 });
 
 test('owner business WhatsApp: an authorized trial counts as subscribed, an expired one does not', () => {

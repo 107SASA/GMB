@@ -42,15 +42,19 @@ export const PLAN_DEFAULTS: Record<string, PlanLimits> = {
     maxAuditsPerBusiness:      1,
     maxPostsPerMonth:          10,
     postLimitFrequency:        'monthly',
-    maxWhatsAppMessagesPerDay: 50,
+    maxWhatsAppMessagesPerDay: 10,
     reviewRequestCooldownDays: 30,
     maxAIGenerations:          20,
   },
   Pro: {
     maxAuditsPerBusiness:      1,
-    maxPostsPerMonth:          50,
-    postLimitFrequency:        'monthly',
-    maxWhatsAppMessagesPerDay: 200,
+    // 4 AI posts per week — the weekly autopilot batch (POSTS_PER_WEEK), no
+    // extra batches on top (Oct 2026, ₹10k/year plan).
+    maxPostsPerMonth:          4,
+    postLimitFrequency:        'weekly',
+    // ~300 review-request sends/month — sized for the ₹10k/year plan's
+    // WhatsApp cost (Oct 2026). Extra volume is meant to be sold as an add-on.
+    maxWhatsAppMessagesPerDay: 10,
     reviewRequestCooldownDays: 14,
     maxAIGenerations:          100,
   },
@@ -65,12 +69,15 @@ export function getPlanDefaults(plan: string): PlanLimits {
 
 /**
  * Merge: user override wins where set (non-null); falls back to plan defaults.
+ * Pass `planLimits` (the saved PlanConfig) when there is one, so the result
+ * matches what featureGating enforces.
  */
 export function resolveEffectiveLimits(
   plan: string,
-  override: Partial<Record<keyof PlanLimits, number | string | null>>
+  override: Partial<Record<keyof PlanLimits, number | string | null>>,
+  planLimits?: PlanLimits
 ): PlanLimits & { overriddenFields: (keyof PlanLimits)[] } {
-  const defaults = getPlanDefaults(plan);
+  const defaults = planLimits ?? getPlanDefaults(plan);
   const keys = Object.keys(defaults) as (keyof PlanLimits)[];
   const overriddenFields: (keyof PlanLimits)[] = [];
 

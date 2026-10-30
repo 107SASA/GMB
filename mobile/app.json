@@ -11,7 +11,7 @@
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.growwmatics.app",
       "buildNumber": "1",
-      "supportsTablet": true,
+      "supportsTablet": false,
       "config": {
         "usesNonExemptEncryption": false
       }

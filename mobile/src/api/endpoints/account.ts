@@ -215,6 +215,15 @@ export async function updateProfile(patch: {
   await api.patch('/api/user/profile', patch);
 }
 
+/**
+ * POST /api/user/delete-account — deactivates the account, signs out every
+ * device, cancels billing; data is erased after the grace period (see
+ * /delete-account on the website). Confirmed by the login phone number.
+ */
+export async function deleteAccount(phone: string): Promise<void> {
+  await api.post('/api/user/delete-account', { phone });
+}
+
 export async function changePassword(input: {
   currentPassword: string;
   newPassword: string;

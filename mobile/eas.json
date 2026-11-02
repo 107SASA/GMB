@@ -30,6 +30,14 @@
         "EXPO_PUBLIC_API_URL": "https://growwmatics.com",
         "EXPO_PUBLIC_WHATSAPP_NUMBER": "919405070323"
       }
+    },
+    "simulator": {
+      "extends": "production",
+      "channel": "preview",
+      "autoIncrement": false,
+      "ios": {
+        "simulator": true
+      }
     }
   },
   "submit": {
@@ -38,7 +46,8 @@
         "track": "internal"
       },
       "ios": {
-        "appleTeamId": "8UC58BJVF3"
+        "appleTeamId": "8UC58BJVF3",
+        "ascAppId": "6828734298"
       }
     }
   }

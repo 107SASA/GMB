@@ -1,14 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
-import { changePassword, fetchProfile, updateProfile, type Profile } from '@/api/endpoints/account';
+import { changePassword, deleteAccount, fetchProfile, updateProfile, type Profile } from '@/api/endpoints/account';
 import { useAuth } from '@/auth/AuthContext';
 import { getPasswordError } from '@/lib/passwordPolicy';
 import {
   Badge,
+  ConfirmSheet,
   EmptyState,
   ErrorText,
   LabeledField,
@@ -20,6 +21,7 @@ import {
   useInfoSheet,
 } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
+import { useTheme, withAlpha } from '@/lib/theme';
 
 function ProfileForm({ initial }: { initial: Profile }) {
   const queryClient = useQueryClient();
@@ -137,6 +139,89 @@ function PasswordForm() {
   );
 }
 
+/**
+ * In-app account deletion (App Store guideline 5.1.1(v)). Same endpoint and
+ * phone confirmation as the website's Profile → Danger Zone.
+ */
+function DeleteAccountSection() {
+  const { logout } = useAuth();
+  const t = useTheme();
+  const [phone, setPhone] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState('');
+
+  const remove = useMutation({
+    mutationFn: () => deleteAccount(phone.trim()),
+    onSuccess: async () => {
+      setConfirming(false);
+      // The server already ended every session; clear this device too.
+      // (app)/_layout redirects to /login once isAuthenticated flips.
+      await logout();
+    },
+    onError: (err) => {
+      setConfirming(false);
+      setError(getApiErrorMessage(err, 'Could not delete your account.'));
+    },
+  });
+
+  const disabled = !phone.trim() || remove.isPending;
+
+  return (
+    <View>
+      <Text className="mb-3 font-sans text-sm leading-5 text-zinc-400">
+        Deleting your account signs you out on every device, cancels your subscription and removes your
+        businesses. Your data is permanently erased after a short grace period. This can&apos;t be undone.
+      </Text>
+      <LabeledField
+        label="Type your login phone number to confirm"
+        value={phone}
+        onChangeText={(v) => {
+          setPhone(v);
+          setError('');
+        }}
+        keyboardType="phone-pad"
+        autoComplete="off"
+      />
+      {!!error && (
+        <View className="mb-3">
+          <ErrorText>{error}</ErrorText>
+        </View>
+      )}
+      <Pressable
+        onPress={() => setConfirming(true)}
+        disabled={disabled}
+        // No `className` — react-native-css-interop can swallow onPress on
+        // styled Pressables (see src/components/ui.tsx PrimaryButton).
+        style={{
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 999,
+          borderWidth: 1,
+          borderColor: withAlpha(t.rose, 0.25),
+          backgroundColor: t.errorContainer,
+          paddingVertical: 14,
+          opacity: disabled ? 0.5 : 1,
+        }}
+      >
+        <Text className="font-sans-bold text-base text-on-error-container">
+          {remove.isPending ? 'Deleting…' : 'Delete account'}
+        </Text>
+      </Pressable>
+
+      <ConfirmSheet
+        visible={confirming}
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => remove.mutate()}
+        title="Delete your account?"
+        message="You’ll be signed out everywhere and your subscription will be cancelled. This can’t be undone."
+        confirmLabel="Delete account"
+        destructive
+        loading={remove.isPending}
+      />
+    </View>
+  );
+}
+
 export default function ProfileScreen() {
   const profile = useQuery({ queryKey: ['profile'], queryFn: fetchProfile });
   const data = profile.data;
@@ -206,6 +291,9 @@ export default function ProfileScreen() {
                 You sign in with your phone number and a one-time code sent on WhatsApp — there is no password to manage.
               </Text>
             )}
+
+            <SectionLabel>Delete account</SectionLabel>
+            <DeleteAccountSection />
           </>
         )}
       </ScrollView>

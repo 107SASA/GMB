@@ -9,7 +9,7 @@ import { getRazorpay, getRazorpayKeyId, getRazorpayMode } from '@/lib/billing/ra
 import { otherModeSupportMessage, savedModeUsable, type RazorpayMode } from '@/lib/billing/razorpayMode';
 import { ensureRazorpayPlanIdForCycle, ensureRazorpayPlanIdForTrialPrice, getActivePlan, isBillingCycle, CYCLES, type BillingCycle } from '@/lib/billing/planCatalog';
 import { decideCheckoutTrial, effectiveTrialPrice, offerAppliesToCycle } from '@/lib/billing/billingPolicy';
-import { attachSubscriptionToClaim, settleTrialReservation } from '@/lib/billing/trialClaims';
+import { attachSubscriptionToClaim, releaseClaimForReplacedCheckout, settleTrialReservation } from '@/lib/billing/trialClaims';
 import { getTrialPolicy } from '@/services/billing/trialPolicyStore';
 import { reserveTrialForCheckout, razorpaySettleDeps } from '@/services/billing/trialEligibility';
 import { startRecoveryCheckout } from '@/services/billing/paymentRecoveryService';
@@ -142,7 +142,15 @@ export async function POST(req: Request) {
         previous,
         { previousMode: recordedCheckoutMode(workspace, previous), currentMode: mode }
       );
-      if (guard.kind === 'clear' || guard.kind === 'cancelled_previous') return null;
+      if (guard.kind === 'cancelled_previous') {
+        // Never authorized (confirmed before cancelling): if it was a trial
+        // checkout, free the phone's trial reservation it was holding.
+        await releaseClaimForReplacedCheckout(TrialClaim, { razorpaySubscriptionId: guard.subscriptionId, now: new Date() }).catch((err) =>
+          console.error('[billing/checkout] releasing the replaced trial checkout failed:', err?.message)
+        );
+        return null;
+      }
+      if (guard.kind === 'clear') return null;
       if (guard.kind === 'test_checkout_ignored') {
         console.warn(`[billing/checkout] previous checkout ${guard.subscriptionId} for business ${ctx.businessId} was created with test keys — ignored under live keys`);
         return null;

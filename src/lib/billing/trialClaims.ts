@@ -270,6 +270,22 @@ async function releaseClaim(model: ClaimModel, claim: any, reason: string, now: 
   ).lean<any>();
 }
 
+/**
+ * A trial checkout that a newer checkout replaced (e.g. the customer chose
+ * "skip the trial and pay now"): checkoutGuard confirmed with Razorpay that
+ * it was still 'created' — never authorized — before cancelling it, so it can
+ * never start a trial. The phone's reservation is released at once; otherwise
+ * it would stay attached to a cancelled subscription and block the trial.
+ */
+export async function releaseClaimForReplacedCheckout(
+  model: ClaimModel,
+  input: { razorpaySubscriptionId: string; now: Date }
+): Promise<any | null> {
+  const claim = await model.findOne({ razorpaySubscriptionId: input.razorpaySubscriptionId, status: 'reserved' }).lean<any>();
+  if (!claim) return null;
+  return releaseClaim(model, claim, 'checkout_replaced_unauthorized', input.now);
+}
+
 export interface SettleDeps {
   /** Razorpay subscription facts; throw or return 'unavailable' when Razorpay can't be reached. */
   fetchSubscription: (id: string) => Promise<RazorpaySubscriptionFacts | 'unavailable'>;

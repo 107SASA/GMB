@@ -612,3 +612,47 @@ test('checkout is rate limited per account (429), without creating more subscrip
     delete process.env.BILLING_CHECKOUT_RATE_LIMIT;
   }
 });
+
+// ── Trial → "skip and pay now" → trial again ────────────────────────────────
+
+test('skip-trial after an unauthorized trial checkout frees the trial; trying the trial again works', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  await policy(true, { enabled: true, priceInr: 35999 });
+  const { businessId } = await workspace();
+
+  // 1. Trial checkout; the customer's mandate fails, so it stays "created".
+  const trial = await checkout({ cycle: 'yearly' });
+  assert.equal(trial.status, 200, JSON.stringify(trial.json));
+  const trialSub = trial.json.checkout.subscriptionId;
+
+  // 2. "Skip the trial and pay ₹9,999 now": the unauthorized trial checkout is cancelled…
+  const skip = await checkout({ cycle: 'yearly', skipTrial: true });
+  assert.equal(skip.status, 200, JSON.stringify(skip.json));
+  assert.equal(rz.subs.get(trialSub)!.status, 'cancelled');
+  // …and the phone's trial reservation is released with it.
+  const claim: any = await m.TrialClaim.findOne({ businessId }).lean();
+  assert.equal(claim.status, 'released');
+  assert.equal(claim.releaseReason, 'checkout_replaced_unauthorized');
+  assert.equal(claim.holderBusinessId, undefined);
+
+  // 3. Back to the trial: a fresh trial checkout, not "previous checkout window was closed".
+  const again = await checkout({ cycle: 'yearly' });
+  assert.equal(again.status, 200, JSON.stringify(again.json));
+  assert.ok(again.json.trial, 'trial offered again');
+  assert.notEqual(again.json.checkout.subscriptionId, trialSub);
+  assert.equal(subAmount(again.json.checkout.subscriptionId), 3_599_900);
+  assert.equal(rz.subs.get(skip.json.checkout.subscriptionId)!.status, 'cancelled', 'the unpaid ₹9,999 checkout is retired too');
+  assert.equal(await m.TrialClaim.countDocuments({ businessId }), 1, 'still one claim per phone');
+});
+
+test('an authorized trial is never released by a later checkout (the guard refuses instead)', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  await policy(true, { enabled: true, priceInr: 35999 });
+  const { businessId } = await workspace();
+  const trial = await checkout({ cycle: 'yearly' });
+  rz.subs.get(trial.json.checkout.subscriptionId)!.status = 'authenticated';
+  const skip = await checkout({ cycle: 'yearly', skipTrial: true });
+  assert.equal(skip.status, 409);
+  assert.equal(skip.json.code, 'PAYMENT_IN_PROGRESS');
+  assert.equal(((await m.TrialClaim.findOne({ businessId }).lean()) as any).status === 'released', false);
+});

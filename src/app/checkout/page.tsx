@@ -340,7 +340,8 @@ function CheckoutForm() {
               />
             )}
 
-            {(formError || checkout.phase === 'error') && (
+            {/* Checkout errors show in the banner at the top; this is for the form's own checks. */}
+            {formError && (
               <div role="alert" className="mt-4 p-3 bg-error-container text-on-error-container rounded-lg text-sm font-medium flex items-start gap-2">
                 <MaterialIcon name="error" size={18} className="shrink-0 mt-0.5" />
                 <span>{formError}</span>

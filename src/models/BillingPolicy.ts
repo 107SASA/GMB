@@ -16,6 +16,14 @@ export interface IBillingPolicy extends Document {
     offerEnabled: boolean;
     trialMonths: number;
     eligibleCycle: 'yearly';
+    /** Custom yearly price for trial takers (parseTrialPolicy: missing/malformed → OFF). */
+    customPrice?: { enabled: boolean; priceInr: number };
+    /**
+     * Razorpay plan created for customPrice.priceInr (planCatalog
+     * ensureRazorpayPlanIdForTrialPrice). A cache only — the plan each trial
+     * agreed to is frozen in its TrialClaim.offer.
+     */
+    customPricePlan?: { razorpayPlanId: string; razorpayPlanPriceInr: number; razorpayPlanMode?: 'test' | 'live' };
   };
   /**
    * Failed-payment policy (lib/billing/billingPolicy.ts parseFailurePolicy):
@@ -44,6 +52,15 @@ const BillingPolicySchema = new Schema<IBillingPolicy>(
       offerEnabled: { type: Boolean, default: false },
       trialMonths: { type: Number, default: 3, min: 1, max: 12 },
       eligibleCycle: { type: String, enum: ['yearly'], default: 'yearly' },
+      customPrice: {
+        enabled: { type: Boolean, default: false },
+        priceInr: { type: Number, default: 35999, min: 1, max: 500000 },
+      },
+      customPricePlan: {
+        razorpayPlanId: { type: String },
+        razorpayPlanPriceInr: { type: Number },
+        razorpayPlanMode: { type: String, enum: ['test', 'live'] },
+      },
     },
     failure: {
       firstCharge: {

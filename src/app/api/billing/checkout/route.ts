@@ -7,8 +7,8 @@ import TrialClaim from '@/models/TrialClaim';
 import { requireBusinessContext } from '@/lib/tenant';
 import { getRazorpay, getRazorpayKeyId, getRazorpayMode } from '@/lib/billing/razorpay';
 import { otherModeSupportMessage, savedModeUsable, type RazorpayMode } from '@/lib/billing/razorpayMode';
-import { ensureRazorpayPlanIdForCycle, getActivePlan, isBillingCycle, CYCLES, type BillingCycle } from '@/lib/billing/planCatalog';
-import { decideCheckoutTrial, offerAppliesToCycle } from '@/lib/billing/billingPolicy';
+import { ensureRazorpayPlanIdForCycle, ensureRazorpayPlanIdForTrialPrice, getActivePlan, isBillingCycle, CYCLES, type BillingCycle } from '@/lib/billing/planCatalog';
+import { decideCheckoutTrial, effectiveTrialPrice, offerAppliesToCycle } from '@/lib/billing/billingPolicy';
 import { attachSubscriptionToClaim, settleTrialReservation } from '@/lib/billing/trialClaims';
 import { getTrialPolicy } from '@/services/billing/trialPolicyStore';
 import { reserveTrialForCheckout, razorpaySettleDeps } from '@/services/billing/trialEligibility';
@@ -16,6 +16,7 @@ import { startRecoveryCheckout } from '@/services/billing/paymentRecoveryService
 import { decideTrialCheckoutReuse, previousUnpaidCheckout, recordedCheckoutMode, retirePreviousCheckout } from '@/lib/billing/checkoutGuard';
 import { reconcileWorkspaceSubscription } from '@/lib/billing/razorpayReconcile';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { checkRateLimit, getRateLimitConfig } from '@/lib/rateLimit';
 
 /**
  * Creates a Razorpay Subscription for THE plan (there is only one), scoped to
@@ -35,6 +36,17 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+
+    // Each call can cancel and create Razorpay subscriptions (and plans): a
+    // per-account burst guard so one account can't hammer Razorpay through us.
+    const { limit, windowMs } = getRateLimitConfig('BILLING_CHECKOUT', 10, 60_000);
+    const rl = checkRateLimit(`billing-checkout:${ctx.userId}`, limit, windowMs);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many checkout attempts. Please wait a minute and try again.', code: 'RATE_LIMITED' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
+      );
+    }
 
     // The customer picks a billing duration (monthly/quarterly/6-month/yearly);
     // default to monthly for older clients that send no body.
@@ -157,13 +169,17 @@ export async function POST(req: Request) {
     if (workspace?.subscriptionStatus === 'past_due') {
       const recovery = await startRecoveryCheckout({ businessId: ctx.businessId, userId: ctx.userId, cycle });
       switch (recovery.kind) {
-        case 'checkout':
+        case 'checkout': {
+          // The replacement's own plan — a free-trial customer keeps their agreed price.
+          const recoveryCycle = recovery.cycle && isBillingCycle(recovery.cycle) ? recovery.cycle : cycle;
+          const recoveryPriceInr = recovery.amountPaise ? recovery.amountPaise / 100 : duration.priceInr;
           return NextResponse.json({
             success: true,
             recovery: true,
-            checkout: widgetParams(recovery.subscriptionId, `${activePlan.displayName} — ₹${duration.priceInr} / ${CYCLES[cycle].label}`),
+            checkout: widgetParams(recovery.subscriptionId, `${activePlan.displayName} — ₹${recoveryPriceInr} / ${CYCLES[recoveryCycle].label}`),
             trial: null,
           });
+        }
         case 'already_paid':
           // Razorpay's own retry went through — nothing to pay.
           return NextResponse.json({ success: true, alreadyPaid: true });
@@ -236,10 +252,11 @@ export async function POST(req: Request) {
             }
           }
           if (reuse === 'reuse') {
+            // The terms frozen when this checkout was created — never today's prices.
             return NextResponse.json({
               success: true,
-              checkout: widgetParams(claim.razorpaySubscriptionId, trialDescription(activePlan.displayName, duration.priceInr, claim.offer.trialEndsAt)),
-              trial: trialTerms(claim.offer, duration.priceInr),
+              checkout: widgetParams(claim.razorpaySubscriptionId, trialDescription(activePlan.displayName, claim.offer.amountPaise / 100, claim.offer.trialEndsAt)),
+              trial: trialTerms(claim.offer),
             });
           }
           if (reuse === 'payment_in_progress') {
@@ -271,11 +288,22 @@ export async function POST(req: Request) {
         const now = new Date();
         const decision = decideCheckoutTrial({ policy, cycle, eligible: true, now });
         if (decision.trial) {
+          // The yearly price this trial customer agrees to: the standard plan,
+          // or the super admin's custom trial price on its own Razorpay plan.
+          // Server-decided from the stored policy only.
+          const agreed = effectiveTrialPrice(policy, duration.priceInr);
+          const trialPlanId =
+            agreed.source === 'custom'
+              ? (await ensureRazorpayPlanIdForTrialPrice(agreed.priceInr)).razorpayPlanId
+              : duration.razorpayPlanId;
+          if (!trialPlanId) {
+            return NextResponse.json({ error: 'Billing is not configured on this server' }, { status: 503 });
+          }
           const blocked = await guardPreviousCheckout();
           if (blocked) return blocked;
           const reservedUntil = new Date(claim.reservedUntil);
           const rpSubscription = await razorpay.subscriptions.create({
-            plan_id: duration.razorpayPlanId,
+            plan_id: trialPlanId,
             customer_notify: 1,
             total_count: CYCLES[cycle].totalCount,
             start_at: Math.floor(decision.trialEndsAt.getTime() / 1000),
@@ -289,18 +317,20 @@ export async function POST(req: Request) {
               trialClaimId: String(claim._id),
               trialMonths: String(decision.trialMonths),
               policyVersion: String(policy.version),
+              priceSource: agreed.source,
             },
           } as any);
 
           const offer = {
             trialMonths: decision.trialMonths,
             trialEndsAt: decision.trialEndsAt,
-            razorpayPlanId: duration.razorpayPlanId,
-            amountPaise: duration.priceInr * 100,
+            razorpayPlanId: trialPlanId,
+            amountPaise: agreed.priceInr * 100,
             currency: 'INR' as const,
             policyVersion: policy.version,
             decidedAt: now,
             razorpayMode: mode,
+            priceSource: agreed.source,
           };
           const attached = await attachSubscriptionToClaim(TrialClaim, {
             claimId: claim._id,
@@ -324,8 +354,8 @@ export async function POST(req: Request) {
           await linkCheckout(ctx.userId, ctx.businessId, rpSubscription.id, mode);
           return NextResponse.json({
             success: true,
-            checkout: widgetParams(rpSubscription.id, trialDescription(activePlan.displayName, duration.priceInr, decision.trialEndsAt)),
-            trial: trialTerms(offer, duration.priceInr),
+            checkout: widgetParams(rpSubscription.id, trialDescription(activePlan.displayName, agreed.priceInr, decision.trialEndsAt)),
+            trial: trialTerms(offer),
           });
         }
       }
@@ -404,13 +434,13 @@ function trialDescription(planName: string, priceInr: number, trialEndsAt: Date 
   return `${planName} — free until ${formatDate(trialEndsAt)}, then ₹${priceInr} / year`;
 }
 
-/** Terms shown before authorization — all server-computed. */
-function trialTerms(offer: { trialMonths: number; trialEndsAt: Date | string; amountPaise: number }, priceInr: number) {
+/** Terms shown before authorization — from the checkout's frozen snapshot, all server-computed. */
+function trialTerms(offer: { trialMonths: number; trialEndsAt: Date | string; amountPaise: number }) {
   return {
     months: offer.trialMonths,
     trialEndsAt: new Date(offer.trialEndsAt).toISOString(),
     firstChargeAt: new Date(offer.trialEndsAt).toISOString(),
-    firstChargeInr: offer.amountPaise / 100 || priceInr,
+    firstChargeInr: offer.amountPaise / 100,
     billing: 'yearly',
   };
 }

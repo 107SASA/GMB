@@ -9,6 +9,10 @@
 
 export const DEFAULT_TRIAL_MONTHS = 3;
 export const MAX_TRIAL_MONTHS = 12;
+/** Suggested custom trial price until a super admin sets one. Never applied unless custom pricing is ON. */
+export const DEFAULT_CUSTOM_TRIAL_PRICE_INR = 35999;
+/** Same ceiling as the plan API (/api/admin/billing-plan). */
+export const MAX_TRIAL_PRICE_INR = 500000;
 
 /**
  * After the trial ends, Razorpay charges at start_at; the charged / pending
@@ -19,21 +23,45 @@ export const MAX_TRIAL_MONTHS = 12;
  */
 export const TRIAL_CHARGE_PROCESSING_MS = 48 * 60 * 60 * 1000;
 
+/**
+ * Custom yearly price for customers who take the free trial (charged after
+ * the trial and on every renewal of that subscription). Never changes the
+ * standard plan price, and never applies without a trial.
+ */
+export interface CustomTrialPrice {
+  enabled: boolean;
+  priceInr: number;
+}
+
 export interface TrialPolicy {
   offerEnabled: boolean;
   trialMonths: number;
   eligibleCycle: 'yearly';
+  customPrice: CustomTrialPrice;
   version: number;
 }
 
-const OFF: TrialPolicy = { offerEnabled: false, trialMonths: DEFAULT_TRIAL_MONTHS, eligibleCycle: 'yearly', version: 0 };
+const CUSTOM_PRICE_OFF: CustomTrialPrice = { enabled: false, priceInr: DEFAULT_CUSTOM_TRIAL_PRICE_INR };
+const OFF: TrialPolicy = { offerEnabled: false, trialMonths: DEFAULT_TRIAL_MONTHS, eligibleCycle: 'yearly', customPrice: CUSTOM_PRICE_OFF, version: 0 };
+
+function isTrialPriceInr(v: unknown): v is number {
+  return Number.isInteger(v) && (v as number) >= 1 && (v as number) <= MAX_TRIAL_PRICE_INR;
+}
+
+/** Stored custom price → custom price. Missing or malformed → OFF (the standard price applies). */
+function parseCustomTrialPrice(raw: any): CustomTrialPrice {
+  if (!raw || typeof raw !== 'object') return { ...CUSTOM_PRICE_OFF };
+  const priceInr = isTrialPriceInr(raw.priceInr) ? raw.priceInr : DEFAULT_CUSTOM_TRIAL_PRICE_INR;
+  return { enabled: raw.enabled === true && isTrialPriceInr(raw.priceInr), priceInr };
+}
 
 /** Stored BillingPolicy doc → policy. Missing, partial or malformed → offer OFF. */
 export function parseTrialPolicy(doc: unknown): TrialPolicy {
-  if (!doc || typeof doc !== 'object') return OFF;
+  if (!doc || typeof doc !== 'object') return { ...OFF, customPrice: { ...CUSTOM_PRICE_OFF } };
   const trial = (doc as any).trial;
   const version = Number.isInteger((doc as any).version) ? (doc as any).version : 0;
-  if (!trial || typeof trial !== 'object') return { ...OFF, version };
+  if (!trial || typeof trial !== 'object') return { ...OFF, customPrice: { ...CUSTOM_PRICE_OFF }, version };
+  const customPrice = parseCustomTrialPrice(trial.customPrice);
   const months = trial.trialMonths;
   const valid =
     trial.offerEnabled === true &&
@@ -41,8 +69,34 @@ export function parseTrialPolicy(doc: unknown): TrialPolicy {
     months >= 1 &&
     months <= MAX_TRIAL_MONTHS &&
     (trial.eligibleCycle === undefined || trial.eligibleCycle === 'yearly');
-  if (!valid) return { ...OFF, version, trialMonths: Number.isInteger(months) && months >= 1 && months <= MAX_TRIAL_MONTHS ? months : DEFAULT_TRIAL_MONTHS };
-  return { offerEnabled: true, trialMonths: months, eligibleCycle: 'yearly', version };
+  if (!valid) return { ...OFF, customPrice, version, trialMonths: Number.isInteger(months) && months >= 1 && months <= MAX_TRIAL_MONTHS ? months : DEFAULT_TRIAL_MONTHS };
+  return { offerEnabled: true, trialMonths: months, eligibleCycle: 'yearly', customPrice, version };
+}
+
+/** Validates an admin's custom-trial-price change. */
+export function validateCustomTrialPriceUpdate(
+  input: unknown
+): { ok: true; value: CustomTrialPrice } | { ok: false; error: string } {
+  if (!input || typeof input !== 'object') return { ok: false, error: 'Expected { enabled, priceInr }.' };
+  const { enabled, priceInr } = input as any;
+  if (typeof enabled !== 'boolean') return { ok: false, error: 'enabled must be true or false.' };
+  if (!isTrialPriceInr(priceInr)) {
+    return { ok: false, error: `priceInr must be a whole number of rupees from 1 to ${MAX_TRIAL_PRICE_INR}.` };
+  }
+  return { ok: true, value: { enabled, priceInr } };
+}
+
+/**
+ * The yearly price a customer TAKING the free trial agrees to — only ever
+ * called on the trial path (offer on, eligible, trial not skipped). Every
+ * other checkout pays the standard price. Server-side only.
+ */
+export function effectiveTrialPrice(
+  policy: TrialPolicy,
+  standardPriceInr: number
+): { priceInr: number; source: 'standard' | 'custom' } {
+  if (policy.offerEnabled && policy.customPrice.enabled) return { priceInr: policy.customPrice.priceInr, source: 'custom' };
+  return { priceInr: standardPriceInr, source: 'standard' };
 }
 
 /** Validates an admin's requested change. Returns the cleaned values or an error. */

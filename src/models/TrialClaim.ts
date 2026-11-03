@@ -39,6 +39,8 @@ export interface ITrialOfferSnapshot {
   decidedAt: Date;
   /** Razorpay mode (test/live keys) the attached subscription was created in. Missing = legacy. */
   razorpayMode?: 'test' | 'live';
+  /** Whether amountPaise came from the standard yearly price or the custom trial price. Missing = legacy (standard). */
+  priceSource?: 'standard' | 'custom';
 }
 
 export interface ITrialClaim extends Document {
@@ -105,6 +107,7 @@ const TrialClaimSchema = new Schema<ITrialClaim>(
           policyVersion: { type: Number, required: true },
           decidedAt: { type: Date, required: true },
           razorpayMode: { type: String, enum: ['test', 'live'] },
+          priceSource: { type: String, enum: ['standard', 'custom'] },
         },
         { _id: false }
       ),

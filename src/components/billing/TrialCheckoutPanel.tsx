@@ -9,7 +9,8 @@ export interface TrialOfferPreview {
   eligible: boolean;
   reason: string | null;
   needsPhoneVerification: boolean;
-  preview: { trialEndsAt: string; firstChargeAt: string; firstChargeInr: number } | null;
+  /** standardPriceInr: the yearly price when paying now without the trial. */
+  preview: { trialEndsAt: string; firstChargeAt: string; firstChargeInr: number; standardPriceInr?: number } | null;
 }
 
 function formatDate(iso: string) {

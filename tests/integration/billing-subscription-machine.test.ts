@@ -264,3 +264,67 @@ test('a failed or cancelled legacy workspace is not unlocked by the owner\'s sta
   assert.equal(isWorkspaceUnlocked({ subscriptionStatus: 'trialing', userSubscriptionPlan: 'Pro', businessCreatedAt: legacy, now: T0 }), true);
   assert.equal(isWorkspaceUnlocked({ subscriptionStatus: null, userSubscriptionPlan: 'Pro', businessCreatedAt: legacy, now: T0 }), true);
 });
+
+// ── Custom trial price: the snapshot is the agreement for every charge ──
+const CUSTOM_PLAN = 'plan_yearly_custom_35999';
+const CUSTOM_AMOUNT = 3_599_900;
+const customClaim = (over: Partial<ClaimFacts> = {}) =>
+  claim({ offer: { razorpayPlanId: CUSTOM_PLAN, amountPaise: CUSTOM_AMOUNT, currency: 'INR', trialEndsAt: TRIAL_END }, ...over });
+
+test('custom trial price: authorization on the custom plan starts the trial; the standard plan does not', () => {
+  const ok = decide('subscription.authenticated', { sub: trialSub({ planId: CUSTOM_PLAN }), claim: customClaim() });
+  assert.deepEqual(kinds(ok), ['consume_claim', 'start_trial']);
+  // A ₹35,999 agreement can never be fulfilled by the standard ₹9,999 plan.
+  const wrongPlan = decide('subscription.authenticated', { sub: trialSub({ planId: PLAN }), claim: customClaim() });
+  assert.deepEqual(kinds(wrongPlan), ['reject_trial']);
+});
+
+test('custom trial price: first charge and every renewal must equal the agreed ₹35,999', () => {
+  const sub = trialSub({ planId: CUSTOM_PLAN, status: 'active', paidCount: 1 });
+  const first = decide('subscription.charged', { sub, workspace: trialWs(), claim: customClaim({ status: 'consumed' }), payment: captured(CUSTOM_AMOUNT) });
+  assert.deepEqual(kinds(first), ['activate_paid']);
+  // A year later: still validated against the frozen agreement, not today's admin price.
+  const renewal = decide('subscription.charged', {
+    sub: trialSub({ planId: CUSTOM_PLAN, status: 'active', paidCount: 2 }),
+    workspace: trialWs({ subscriptionStatus: 'active' }),
+    claim: customClaim({ status: 'consumed' }),
+    payment: captured(CUSTOM_AMOUNT),
+    eventAt: new Date('2028-01-15T10:00:00Z'),
+  });
+  assert.deepEqual(kinds(renewal), ['activate_paid']);
+  assert.equal((renewal.actions[0] as any).renewal, true);
+  // A charge at any other amount (e.g. the standard ₹9,999) is never accepted silently.
+  const mismatch = decide('subscription.charged', { sub, workspace: trialWs(), claim: customClaim({ status: 'consumed' }), payment: captured(AMOUNT) });
+  assert.deepEqual(kinds(mismatch), ['flag_payment_review']);
+});
+
+test('standard-price trial keeps ₹9,999 on renewal even if a custom price is configured later', () => {
+  // The claim snapshot (₹9,999) is the only input — the admin policy is not.
+  const renewal = decide('subscription.charged', {
+    sub: trialSub({ status: 'active', paidCount: 2 }),
+    workspace: trialWs({ subscriptionStatus: 'active' }),
+    claim: claim({ status: 'consumed' }),
+    payment: captured(AMOUNT),
+    eventAt: new Date('2028-01-15T10:00:00Z'),
+  });
+  assert.deepEqual(kinds(renewal), ['activate_paid']);
+  assert.deepEqual(kinds(decide('subscription.charged', {
+    sub: trialSub({ status: 'active', paidCount: 2 }), workspace: trialWs({ subscriptionStatus: 'active' }), claim: claim({ status: 'consumed' }), payment: captured(CUSTOM_AMOUNT),
+  })), ['flag_payment_review']);
+});
+
+test('recovery replacement on the agreed custom plan is verified against the agreed amount', () => {
+  // Recovery subscriptions are non-trial; the expected amount comes from the agreed plan.
+  const base = { sub: paidSub({ planId: CUSTOM_PLAN, isTrial: false }), workspace: ws({ subscriptionStatus: 'past_due', billingSubscriptionId: 'sub_trial' }), claim: null, expectedPaidAmountPaise: CUSTOM_AMOUNT };
+  assert.deepEqual(kinds(decide('subscription.charged', { ...base, payment: captured(CUSTOM_AMOUNT) })), ['activate_paid']);
+  assert.deepEqual(kinds(decide('subscription.charged', { ...base, payment: captured(AMOUNT) })), ['flag_payment_review']);
+});
+
+test('duplicate custom-price authorization does not restart the trial', () => {
+  const d = decide('subscription.authenticated', {
+    sub: trialSub({ planId: CUSTOM_PLAN }),
+    workspace: trialWs(),
+    claim: customClaim({ status: 'consumed' }),
+  });
+  assert.ok(!kinds(d).includes('start_trial'), JSON.stringify(d));
+});

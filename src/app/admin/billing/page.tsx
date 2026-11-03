@@ -34,7 +34,7 @@ export default function AdminBillingPage() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const save = useCallback(async (section: 'trial' | 'failure' | 'reminders', value: unknown): Promise<string | null> => {
+  const save = useCallback(async (section: 'trial' | 'customPrice' | 'failure' | 'reminders', value: unknown): Promise<string | null> => {
     const res = await fetch('/api/admin/billing-policy', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [section]: value }) });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json.success) return json.error || 'Could not save.';

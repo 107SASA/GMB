@@ -70,12 +70,17 @@ async function resolveUserId(subEntity: any, paymentEntity: any, business: any, 
 }
 
 /** What a NON-trial charge on this plan must be, when we created that Razorpay plan (paise). */
-async function expectedPlanAmountPaise(planId: string | null): Promise<number | null> {
+export async function expectedPlanAmountPaise(planId: string | null): Promise<number | null> {
   if (!planId) return null;
   const doc = await BillingPlan.findOne({ key: 'default' }).lean<any>();
   const duration = (doc?.durations ?? []).find((d: any) => d.razorpayPlanId === planId && d.razorpayPlanPriceInr);
   if (duration) return duration.razorpayPlanPriceInr * 100;
   if (doc?.razorpayPlanId === planId && doc?.razorpayPlanPriceInr) return doc.razorpayPlanPriceInr * 100;
+  // A free trial's agreed plan (standard or custom price), reused by payment
+  // recovery: the amount frozen with the trial. A Razorpay plan's amount is
+  // fixed, so every claim on that plan agreed to the same amount.
+  const trialClaim = await TrialClaim.findOne({ 'offer.razorpayPlanId': planId }).select('offer.amountPaise').lean<any>();
+  if (trialClaim?.offer?.amountPaise) return trialClaim.offer.amountPaise;
   return null; // legacy / env plan — amount unknown, behave as before
 }
 

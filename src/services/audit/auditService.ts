@@ -119,7 +119,10 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // v11 (Sep 2026): verification-only findings (not issues), "near me" demand
 // phrase in free reports, competitor tier labels, nationwide-demand wording,
 // honest unknown review count in business intelligence.
-const CACHE_LOGIC_VERSION = 11;
+// v12 (Nov 2026): weak category + trade in the name ("Durva Fireworks" /
+// "Store") searched as "Fireworks Store"; only same-trade businesses count as
+// competitors; stored keywords used only after intake.
+const CACHE_LOGIC_VERSION = 12;
 
 /** How recently a review sync must have refreshed Google's totals for the
  *  analysis window to count as synced (the Inngest pre-sync runs minutes
@@ -226,6 +229,10 @@ async function processAuditJobInner(auditId: string) {
     const businessForRankings = {
       ...businessObj,
       name: businessObj.name || business.name,
+      // Owner keywords only once the owner has confirmed them (intake), like
+      // ownerTerms above — a stored list can be leftovers ("Store near me",
+      // bare area names) that searched for every kind of shop.
+      keywords: business.intakeCompleted && Array.isArray(businessObj.keywords) ? businessObj.keywords : [],
       category: websiteSearchPhrase || resolvedCategory,
       ...(websiteSearchPhrase
         ? {
@@ -361,7 +368,46 @@ async function processAuditJobInner(auditId: string) {
           : gridMeta?.gridResolution === 'reduced' ? 'reduced-grid' : 'full-grid';
     // ── Facts: competitors (real businesses observed above the target) ──
     let competitorFacts: CompetitorFact[] = competitorsFromObservations(marketObs);
-    const aheadFacts = competitorsAhead(marketObs);
+    let aheadFacts = competitorsAhead(marketObs);
+
+    // ── Same-trade check: only businesses in the target's trade are competitors ─
+    // Google shows every kind of business for a search; the rest are kept as
+    // "other businesses shown above you", never counted (competitorRelevance.ts).
+    let otherBusinessesAhead: Array<{ name: string; category: string | null; level: string; signals: string[] }> = [];
+    let tradeBasis: string[] = [];
+    if (competitorFacts.length) {
+      const { buildTradeProfile, classifyCompetitor } = require('./competitorRelevance');
+      let gbpCategories: string[] = [];
+      try {
+        const GbpLocationSnapshot = require('../../models/GbpLocationSnapshot').default;
+        const snap: any = await GbpLocationSnapshot.findOne({ businessId: business._id }).select('sections.location').lean();
+        const loc = snap?.sections?.location?.meta?.status === 'SUCCESS' ? snap.sections.location.data : null;
+        gbpCategories = [loc?.primaryCategory?.displayName, ...(loc?.additionalCategories || []).map((c: any) => c?.displayName)].filter(Boolean);
+      } catch { /* no connected profile — Google's public category is enough */ }
+      const profile = buildTradeProfile({ searchCategory, category: resolvedCategory, additionalCategories: gbpCategories });
+      if (profile) {
+        tradeBasis = profile.basis;
+        const classify = (c: CompetitorFact, websiteText?: string) =>
+          classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, websiteText, keywords: c.keywords }, profile);
+        competitorFacts.forEach((c) => { c.tradeMatch = classify(c); });
+        // Generic-category businesses not yet confirmed: what their own website
+        // says (≤5 sites, 2 pages, cached per domain — no paid API).
+        const toRead = competitorFacts.filter((c) => c.website && c.tradeMatch && c.tradeMatch.level !== 'confirmed' && c.tradeMatch.level !== 'unrelated').slice(0, 5);
+        const sites = await Promise.all(toRead.map((c) => getWebsiteIntelligence(c.website!, { maxPages: 2 }).catch(() => null)));
+        toRead.forEach((c, i) => {
+          const intel: any = sites[i];
+          if (!intel || intel.status === 'failed') return;
+          const text = [intel.title, intel.description?.value, ...(intel.services || []).map((s: any) => s.value)].filter(Boolean).join(' . ');
+          c.tradeMatch = classify(c, text);
+        });
+        otherBusinessesAhead = competitorFacts
+          .filter((c) => !c.tradeMatch!.counted)
+          .slice(0, 40)
+          .map((c) => ({ name: c.name, category: c.category, level: c.tradeMatch!.level, signals: c.tradeMatch!.signals }));
+        competitorFacts = competitorFacts.filter((c) => c.tradeMatch!.counted);
+        aheadFacts = { ...aheadFacts, count: competitorFacts.length, names: competitorFacts.map((c) => c.name) };
+      }
+    }
 
     // Places Text Search is a FALLBACK only (Sep 2026): it used to run on
     // every audit (~$0.096) and its result was discarded whenever the Maps
@@ -1239,7 +1285,14 @@ async function processAuditJobInner(auditId: string) {
     // Competitors as repaired by validation (ranking-observed ones), plus any
     // Places fallback rows; the "ahead" count is re-derived from them.
     competitorFacts = [...checked.competitors, ...competitorFacts.filter((c) => c.source === 'google_places')];
-    const aheadOut = { ...aheadFacts, count: checked.competitorsAheadCount, names: checked.competitors.map((c) => c.name) };
+    const aheadOut = {
+      ...aheadFacts,
+      count: checked.competitorsAheadCount,
+      names: checked.competitors.map((c) => c.name),
+      // Shown above the target but not in its trade — never counted as competitors.
+      otherCount: otherBusinessesAhead.length,
+      ...(tradeBasis.length ? { tradeBasis } : {}),
+    };
     const localPackCompetitors = competitorFacts.slice(0, 20).map((c) => ({
       name: c.name,
       avgRank: c.averageObservedRank ?? undefined,
@@ -1324,6 +1377,7 @@ async function processAuditJobInner(auditId: string) {
         ranking: rankingFacts,
         observations,
         competitorsAhead: aheadOut,
+        otherBusinessesAhead,
         reviews: reviewFacts,
         reviewComparison,
         profileFields: fieldStates,

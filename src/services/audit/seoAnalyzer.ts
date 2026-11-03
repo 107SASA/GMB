@@ -463,6 +463,25 @@ const CATEGORY_ANCHORS = [
 ];
 const CATEGORY_ANCHOR_SET = new Set(CATEGORY_ANCHORS);
 
+// Last words of a name that describe the firm or outlet, never the trade
+// ("Ganesh Traders", "Patil Brothers", "Om Mart").
+const NON_TRADE_NAME_WORDS = new Set([
+  'traders', 'trader', 'trading', 'store', 'stores', 'shop', 'shops', 'mart', 'agency', 'agencies',
+  'brothers', 'bros', 'sons', 'associates', 'corporation', 'house', 'world', 'centre', 'center',
+  'point', 'plaza', 'mall', 'complex', 'branch', 'outlet', 'emporium', 'bhandar', 'and',
+]);
+
+/** The trade a "{Brand} {Trade}" name ends in ("Durva Fireworks" → "Fireworks"); '' when it doesn't. */
+function nameTradeWord(cleanedWords: string[]): string {
+  const ws = cleanedWords.filter((w) => !SELF_PRAISE_WORDS.has(w.toLowerCase()));
+  if (ws.length < 2) return '';
+  const last = ws[ws.length - 1];
+  const l = last.toLowerCase();
+  if (l.length < 3 || /^\d+$/.test(l) || l === ws[0].toLowerCase()) return '';
+  if (NON_TRADE_NAME_WORDS.has(l) || WEAK_TRAILING_WORDS.has(l) || TRAILING_FILLER_WORDS.has(l)) return '';
+  return last;
+}
+
 /** Extract a category phrase from a business name using a category anchor
  *  word plus up to 2 meaningful words in front of it. Returns '' if no
  *  anchor is present. */
@@ -555,8 +574,14 @@ export function resolveSearchCategory(
   }
 
   // A weak-but-present stored category is still better than a bare
-  // brand-word + "company" guess.
-  if (catIsWeak) return cat;
+  // brand-word + "company" guess — and when the name ends in the trade
+  // itself, both together are the real search term (Nov 2026: "Durva
+  // Fireworks", category "Store", was searched as "store janori" and every
+  // pharmacy, kirana and clothing store came back as a "competitor").
+  if (catIsWeak) {
+    const trade = nameTradeWord(words);
+    return trade ? `${trade} ${cat}` : cat;
+  }
 
   // Sep 2026: with no real category and nothing but the brand name left,
   // there is no customer search term to measure — return '' ("category
@@ -709,6 +734,7 @@ function toObservation(
           bookingUrl: r.bookingUrl || null,
           isClaimed: r.isClaimed ?? null,
           totalPhotos: r.totalPhotos ?? null,
+          snippet: r.snippet || null,
         })),
     targetPosition: localResults === null ? null : findTargetPosition(localResults, business),
     isTarget: (item) => isOwnBusiness(item.name, business) ||

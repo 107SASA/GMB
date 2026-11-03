@@ -50,6 +50,8 @@ export interface SearchResultItem {
   bookingUrl?: string | null;
   isClaimed?: boolean | null;
   totalPhotos?: number | null;
+  /** Google's short listing description, when shown. */
+  snippet?: string | null;
 }
 
 export interface SearchObservation {
@@ -244,6 +246,10 @@ export interface CompetitorFact {
   source: 'dataforseo' | 'google_places';
   /** Not reliably measurable from the data we have — null, not a guess. */
   similarityScore: null;
+  /** Google's short listing description, when shown (trade evidence). */
+  snippet?: string | null;
+  /** Same-trade evidence (competitorRelevance.ts) — set when the target's trade is known. */
+  tradeMatch?: { level: 'confirmed' | 'probable' | 'unverified' | 'unrelated'; counted: boolean; signals: string[] };
 }
 
 /**
@@ -340,6 +346,7 @@ export function competitorsFromObservations(observations: SearchObservation[]): 
         hasHours: typeof e.item.hasHours === 'boolean' ? e.item.hasHours : null,
         bookingUrl: e.item.bookingUrl || null,
         isClaimed: typeof e.item.isClaimed === 'boolean' ? e.item.isClaimed : null,
+        snippet: e.item.snippet || null,
         appearances: new Set([...e.searches, ...(seenBelow.get(key) || [])]).size,
         relevance: competitorRelevance(e.searches.size, tested),
         source: 'dataforseo' as const,

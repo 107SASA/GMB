@@ -178,6 +178,8 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
     ? (rankingStatus === 'ok' ? facts.competitorsAhead?.count ?? 0 : 0)
     : localCompetitors.length;
   const searchesChecked: number = facts?.competitorsAhead?.searchesChecked ?? 0;
+  // Shown above the business but not in its trade (facts.otherBusinessesAhead) — context only.
+  const otherAhead: number = facts && rankingStatus === 'ok' ? facts.competitorsAhead?.otherCount ?? 0 : 0;
   const competitorFacts: any[] = Array.isArray(d.competitors) ? d.competitors : [];
 
   // ── Issues: verified findings (new) / stored checklist gaps (legacy) ──
@@ -263,6 +265,11 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
                     : `In the Google Maps searches we ran around ${city}, these businesses appeared before yours.`}{' '}
                   The priority actions below show what you can start on.
                 </p>
+                {otherAhead > 0 && (
+                  <p className="text-on-surface-variant text-xs -mt-4 mb-6">
+                    Google also showed {otherAhead} other business{otherAhead > 1 ? 'es' : ''} in these searches that {otherAhead > 1 ? "aren't" : "isn't"} in your line of business — not counted as competitors.
+                  </p>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                   <div className="bg-error-container rounded-xl p-4 text-center border border-error-container">
                     <div className="font-heading text-2xl font-bold text-error">{competitorsAhead}</div>

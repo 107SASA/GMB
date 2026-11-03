@@ -591,3 +591,24 @@ test('test-mode trial workspaces are not touched by live checkouts or policy cha
     { s: before.subscriptionStatus, b: before.billingSubscriptionId, e: String(before.trialEndsAt) }
   );
 });
+
+// ── Abuse guard ─────────────────────────────────────────────────────────────
+
+test('checkout is rate limited per account (429), without creating more subscriptions', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  process.env.BILLING_CHECKOUT_RATE_LIMIT = '3';
+  try {
+    await policy(false, null);
+    await workspace();
+    const results = [];
+    for (let i = 0; i < 4; i++) results.push(await checkout({ cycle: 'monthly' }));
+    assert.deepEqual(results.map((r) => r.status), [200, 200, 200, 429]);
+    assert.equal(results[3].json.code, 'RATE_LIMITED');
+    assert.equal(created().length, 3, 'the blocked call created nothing');
+    // Another account is not affected.
+    await workspace();
+    assert.equal((await checkout({ cycle: 'monthly' })).status, 200);
+  } finally {
+    delete process.env.BILLING_CHECKOUT_RATE_LIMIT;
+  }
+});

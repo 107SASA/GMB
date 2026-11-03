@@ -16,6 +16,7 @@ import { startRecoveryCheckout } from '@/services/billing/paymentRecoveryService
 import { decideTrialCheckoutReuse, previousUnpaidCheckout, recordedCheckoutMode, retirePreviousCheckout } from '@/lib/billing/checkoutGuard';
 import { reconcileWorkspaceSubscription } from '@/lib/billing/razorpayReconcile';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { checkRateLimit, getRateLimitConfig } from '@/lib/rateLimit';
 
 /**
  * Creates a Razorpay Subscription for THE plan (there is only one), scoped to
@@ -35,6 +36,17 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+
+    // Each call can cancel and create Razorpay subscriptions (and plans): a
+    // per-account burst guard so one account can't hammer Razorpay through us.
+    const { limit, windowMs } = getRateLimitConfig('BILLING_CHECKOUT', 10, 60_000);
+    const rl = checkRateLimit(`billing-checkout:${ctx.userId}`, limit, windowMs);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many checkout attempts. Please wait a minute and try again.', code: 'RATE_LIMITED' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
+      );
+    }
 
     // The customer picks a billing duration (monthly/quarterly/6-month/yearly);
     // default to monthly for older clients that send no body.

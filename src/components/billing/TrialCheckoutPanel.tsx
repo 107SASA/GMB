@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { UPI_AUTOPAY_LIMIT_INR } from '@/lib/billing/billingPolicy';
 
 export interface TrialOfferPreview {
   months: number;
@@ -33,6 +34,12 @@ export function TrialTerms({ offer }: { offer: TrialOfferPreview }) {
           {formatDate(offer.preview.firstChargeAt)} and every year after, until you cancel.
         </li>
         <li>You set up autopay now. Your bank may show a small verification charge, which is refunded automatically.</li>
+        {offer.preview.firstChargeInr > UPI_AUTOPAY_LIMIT_INR && (
+          <li>
+            Autopay above ₹{UPI_AUTOPAY_LIMIT_INR.toLocaleString('en-IN')} isn&apos;t available on UPI — set it up with{' '}
+            <strong className="text-on-surface">netbanking (e-mandate) or a card</strong>.
+          </li>
+        )}
         <li>Cancel any time before the trial ends from Billing and you won&apos;t be charged; you keep access until the trial end date.</li>
       </ul>
     </div>

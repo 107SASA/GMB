@@ -13,6 +13,7 @@ import {
   effectiveTrialPrice,
   validateCustomTrialPriceUpdate,
   DEFAULT_CUSTOM_TRIAL_PRICE_INR,
+  hiddenCheckoutMethods,
 } from '../../src/lib/billing/billingPolicy.ts';
 import { chooseRecoveryPlan } from '../../src/lib/billing/paymentRecovery.ts';
 import Subscription from '../../src/models/Subscription.ts';
@@ -170,4 +171,12 @@ test('recovery plan: test and live plans are never mixed — blocked, never a si
   // Legacy (no recorded mode) is test-only, like every other legacy plan id.
   assert.equal(chooseRecoveryPlan({ razorpayPlanId: 'plan_old', amountPaise: 999900 }, 'live').kind, 'blocked');
   assert.equal(chooseRecoveryPlan({ razorpayPlanId: 'plan_old', amountPaise: 999900 }, 'test').kind, 'agreed');
+});
+
+test('UPI is hidden only when each debit is above the ₹15,000 UPI AutoPay limit', () => {
+  assert.deepEqual(hiddenCheckoutMethods(35999), ['upi']);
+  assert.deepEqual(hiddenCheckoutMethods(15001), ['upi']);
+  assert.deepEqual(hiddenCheckoutMethods(15000), []);
+  assert.deepEqual(hiddenCheckoutMethods(9999), []);
+  assert.deepEqual(hiddenCheckoutMethods(4599), []);
 });

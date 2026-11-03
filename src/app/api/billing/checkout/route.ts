@@ -8,7 +8,7 @@ import { requireBusinessContext } from '@/lib/tenant';
 import { getRazorpay, getRazorpayKeyId, getRazorpayMode } from '@/lib/billing/razorpay';
 import { otherModeSupportMessage, savedModeUsable, type RazorpayMode } from '@/lib/billing/razorpayMode';
 import { ensureRazorpayPlanIdForCycle, ensureRazorpayPlanIdForTrialPrice, getActivePlan, isBillingCycle, CYCLES, type BillingCycle } from '@/lib/billing/planCatalog';
-import { decideCheckoutTrial, effectiveTrialPrice, offerAppliesToCycle } from '@/lib/billing/billingPolicy';
+import { decideCheckoutTrial, effectiveTrialPrice, hiddenCheckoutMethods, offerAppliesToCycle } from '@/lib/billing/billingPolicy';
 import { attachSubscriptionToClaim, releaseClaimForReplacedCheckout, settleTrialReservation } from '@/lib/billing/trialClaims';
 import { getTrialPolicy } from '@/services/billing/trialPolicyStore';
 import { reserveTrialForCheckout, razorpaySettleDeps } from '@/services/billing/trialEligibility';
@@ -112,7 +112,9 @@ export async function POST(req: Request) {
     }
 
     const user = await User.findById(ctx.userId).select('email phone').lean<{ email?: string; phone?: string }>();
-    const widgetParams = (subscriptionId: string, description: string) => ({
+    // amountInr: what each debit of this subscription charges — above the UPI
+    // AutoPay limit the widget hides UPI (eNACH / card only).
+    const widgetParams = (subscriptionId: string, description: string, amountInr: number) => ({
       key: getRazorpayKeyId(),
       subscriptionId,
       planType: activePlan.planType,
@@ -122,6 +124,7 @@ export async function POST(req: Request) {
         email: user?.email ?? undefined,
         contact: user?.phone ?? undefined,
       },
+      hideMethods: hiddenCheckoutMethods(amountInr),
     });
 
     // Before ANY new subscription is created below: the workspace's previous
@@ -184,7 +187,7 @@ export async function POST(req: Request) {
           return NextResponse.json({
             success: true,
             recovery: true,
-            checkout: widgetParams(recovery.subscriptionId, `${activePlan.displayName} — ₹${recoveryPriceInr} / ${CYCLES[recoveryCycle].label}`),
+            checkout: widgetParams(recovery.subscriptionId, `${activePlan.displayName} — ₹${recoveryPriceInr} / ${CYCLES[recoveryCycle].label}`, recoveryPriceInr),
             trial: null,
           });
         }
@@ -263,7 +266,7 @@ export async function POST(req: Request) {
             // The terms frozen when this checkout was created — never today's prices.
             return NextResponse.json({
               success: true,
-              checkout: widgetParams(claim.razorpaySubscriptionId, trialDescription(activePlan.displayName, claim.offer.amountPaise / 100, claim.offer.trialEndsAt)),
+              checkout: widgetParams(claim.razorpaySubscriptionId, trialDescription(activePlan.displayName, claim.offer.amountPaise / 100, claim.offer.trialEndsAt), claim.offer.amountPaise / 100),
               trial: trialTerms(claim.offer),
             });
           }
@@ -362,7 +365,7 @@ export async function POST(req: Request) {
           await linkCheckout(ctx.userId, ctx.businessId, rpSubscription.id, mode);
           return NextResponse.json({
             success: true,
-            checkout: widgetParams(rpSubscription.id, trialDescription(activePlan.displayName, agreed.priceInr, decision.trialEndsAt)),
+            checkout: widgetParams(rpSubscription.id, trialDescription(activePlan.displayName, agreed.priceInr, decision.trialEndsAt), agreed.priceInr),
             trial: trialTerms(offer),
           });
         }
@@ -392,7 +395,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      checkout: widgetParams(rpSubscription.id, `${activePlan.displayName} — ₹${duration.priceInr} / ${CYCLES[cycle].label}`),
+      checkout: widgetParams(rpSubscription.id, `${activePlan.displayName} — ₹${duration.priceInr} / ${CYCLES[cycle].label}`, duration.priceInr),
       trial: null,
     });
   } catch (error: any) {

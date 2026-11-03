@@ -85,8 +85,12 @@ export function trialEligibility(input: {
 export interface RazorpaySubscriptionFacts {
   status: string;
   paidCount?: number;
-  /** Razorpay fills payment_method / customer_id once a customer has authorized. */
+  /** Razorpay fills payment_method once a customer has authorized the mandate. */
   hasPaymentMethod?: boolean;
+  /**
+   * customer_id is attached as soon as the checkout window opens — also for a
+   * mandate that failed — so on its own it is NOT evidence of authorization.
+   */
   hasCustomer?: boolean;
 }
 
@@ -116,7 +120,8 @@ export function settleAction(
   if (AUTHORIZED_STATUSES.has(razorpay.status)) return 'consume';
   if (razorpay.status === 'expired') return 'release';
   if (razorpay.status === 'cancelled') {
-    const mayHaveAuthorized = (razorpay.paidCount ?? 0) > 0 || !!razorpay.hasPaymentMethod || !!razorpay.hasCustomer;
+    // A failed or abandoned mandate leaves a customer record but no payment method.
+    const mayHaveAuthorized = (razorpay.paidCount ?? 0) > 0 || !!razorpay.hasPaymentMethod;
     return mayHaveAuthorized ? 'needs_review' : 'release';
   }
   if (razorpay.status === 'created') return expired ? 'cancel_then_recheck' : 'not_expired';

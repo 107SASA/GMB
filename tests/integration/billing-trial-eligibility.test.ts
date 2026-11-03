@@ -136,5 +136,10 @@ test('doubt never releases: Razorpay unreachable, unknown status, or cancelled-a
   assert.equal(settleAction(reserved(), { status: 'something_new' }, NOW), 'keep');
   assert.equal(settleAction(reserved(), { status: 'cancelled', hasPaymentMethod: true }, NOW), 'needs_review');
   assert.equal(settleAction(reserved(), { status: 'cancelled', paidCount: 1 }, NOW), 'needs_review');
-  assert.equal(settleAction(reserved(), { status: 'cancelled', hasCustomer: true }, NOW), 'needs_review');
+  assert.equal(settleAction(reserved(), { status: 'cancelled', hasCustomer: true, hasPaymentMethod: true }, NOW), 'needs_review');
+});
+
+test('a failed or abandoned mandate (customer record only, nothing authorized) is released, not stuck in review', () => {
+  // Real case: customer_id set, payment_method null, paid_count 0, auth_attempts 0.
+  assert.equal(settleAction(reserved(), { status: 'cancelled', hasCustomer: true, paidCount: 0, hasPaymentMethod: false }, NOW), 'release');
 });

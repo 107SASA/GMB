@@ -22,7 +22,7 @@ const rz = {
   mode: 'live' as 'test' | 'live',
   calls: [] as string[],
   plans: new Map<string, { amount: number; mode: 'test' | 'live' }>(),
-  subs: new Map<string, { status: string; paid_count: number; plan_id: string; mode: 'test' | 'live'; notes?: any }>(),
+  subs: new Map<string, { status: string; paid_count: number; plan_id: string; mode: 'test' | 'live'; notes?: any; customer_id?: string; payment_method?: string }>(),
   onPlanCreate: null as null | ((params: any) => Promise<void>),
   seq: 0,
 };
@@ -50,7 +50,7 @@ const fakeClient = {
       rz.calls.push(`fetch:${id}`);
       const s = rz.subs.get(id);
       if (!s || s.mode !== rz.mode) throw notFound();
-      return { id, status: s.status, paid_count: s.paid_count, plan_id: s.plan_id };
+      return { id, status: s.status, paid_count: s.paid_count, plan_id: s.plan_id, customer_id: s.customer_id ?? null, payment_method: s.payment_method ?? null };
     },
     cancel: async (id: string) => {
       rz.calls.push(`cancel:${id}`);
@@ -655,4 +655,138 @@ test('an authorized trial is never released by a later checkout (the guard refus
   assert.equal(skip.status, 409);
   assert.equal(skip.json.code, 'PAYMENT_IN_PROGRESS');
   assert.equal(((await m.TrialClaim.findOne({ businessId }).lean()) as any).status === 'released', false);
+});
+
+// ── Switching back and forth between the trial and paying now ───────────────
+
+const openSubs = (businessId: string) =>
+  [...rz.subs.entries()].filter(([, s]) => s.notes?.businessId === businessId && s.status !== 'cancelled').map(([id]) => id);
+
+test('₹9,999 checkout first (not paid) → then the ₹35,999 trial: works, the ₹9,999 checkout is retired', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  await policy(true, { enabled: true, priceInr: 35999 });
+  const { businessId } = await workspace();
+  const pay = await checkout({ cycle: 'yearly', skipTrial: true });
+  assert.equal(pay.status, 200, JSON.stringify(pay.json));
+  const trial = await checkout({ cycle: 'yearly' });
+  assert.equal(trial.status, 200, JSON.stringify(trial.json));
+  assert.ok(trial.json.trial);
+  assert.equal(subAmount(trial.json.checkout.subscriptionId), 3_599_900);
+  assert.equal(rz.subs.get(pay.json.checkout.subscriptionId)!.status, 'cancelled');
+  assert.deepEqual(openSubs(businessId), [trial.json.checkout.subscriptionId], 'only the trial checkout can charge');
+});
+
+test('trial → pay now → trial → pay now → trial (mandates failing each time): every step works, one claim, one open checkout', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  await policy(true, { enabled: true, priceInr: 35999 });
+  const { businessId } = await workspace();
+  let last: any = null;
+  for (const step of ['trial', 'pay', 'trial', 'pay', 'trial'] as const) {
+    const r = await checkout(step === 'trial' ? { cycle: 'yearly' } : { cycle: 'yearly', skipTrial: true });
+    assert.equal(r.status, 200, `${step}: ${JSON.stringify(r.json)}`);
+    assert.equal(subAmount(r.json.checkout.subscriptionId), step === 'trial' ? 3_599_900 : 999_900, step);
+    assert.equal(!!r.json.trial, step === 'trial', step);
+    // The customer opens the Razorpay window and the mandate fails: a customer record, nothing authorized.
+    rz.subs.get(r.json.checkout.subscriptionId)!.customer_id = 'cust_failed_mandate';
+    last = r;
+  }
+  assert.deepEqual(openSubs(businessId), [last.json.checkout.subscriptionId], 'never two checkouts that can charge');
+  assert.equal(await m.TrialClaim.countDocuments({ businessId }), 1, 'still one claim for the phone');
+  const claim: any = await m.TrialClaim.findOne({ businessId }).lean();
+  assert.equal(claim.status, 'reserved');
+  assert.equal(claim.razorpaySubscriptionId, last.json.checkout.subscriptionId);
+});
+
+test('failed mandate, customer comes back after the 24-hour window → the trial works again (not stuck in review)', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  await policy(true, { enabled: true, priceInr: 35999 });
+  const { businessId } = await workspace();
+  const first = await checkout({ cycle: 'yearly' });
+  const oldSub = first.json.checkout.subscriptionId;
+  rz.subs.get(oldSub)!.customer_id = 'cust_failed_mandate'; // window opened, mandate failed
+  await m.TrialClaim.updateOne({ businessId }, { $set: { reservedUntil: new Date(Date.now() - 60_000) } }); // a day later
+
+  const again = await checkout({ cycle: 'yearly' });
+  assert.equal(again.status, 200, JSON.stringify(again.json));
+  assert.ok(again.json.trial, 'trial offered again');
+  assert.notEqual(again.json.checkout.subscriptionId, oldSub);
+  assert.equal(rz.subs.get(oldSub)!.status, 'cancelled', 'old checkout cancelled before release');
+  const claim: any = await m.TrialClaim.findOne({ businessId }).lean();
+  assert.equal(claim.status, 'reserved');
+  assert.equal(claim.needsReview, false);
+  assert.equal(claim.razorpaySubscriptionId, again.json.checkout.subscriptionId);
+});
+
+test('an authorized mandate is never released, even after the window (payment method present → review)', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  await policy(true, { enabled: true, priceInr: 35999 });
+  const { businessId } = await workspace();
+  const first = await checkout({ cycle: 'yearly' });
+  const s = rz.subs.get(first.json.checkout.subscriptionId)!;
+  s.customer_id = 'cust_x';
+  s.payment_method = 'card';
+  s.status = 'cancelled';
+  await m.TrialClaim.updateOne({ businessId }, { $set: { reservedUntil: new Date(Date.now() - 60_000) } });
+  const again = await checkout({ cycle: 'yearly' });
+  assert.equal(again.status, 200, JSON.stringify(again.json));
+  assert.equal(again.json.trial, null, 'no second trial while in doubt');
+  assert.equal(subAmount(again.json.checkout.subscriptionId), 999_900);
+  const claim: any = await m.TrialClaim.findOne({ businessId }).lean();
+  assert.equal(claim.status, 'reserved');
+  assert.equal(claim.needsReview, true, 'left for an admin to check');
+});
+
+test('paid ₹9,999 already → asking for the trial is refused (no trial for paying customers)', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  await policy(true, { enabled: true, priceInr: 35999 });
+  const { businessId } = await workspace();
+  await checkout({ cycle: 'yearly', skipTrial: true });
+  await m.Business.updateOne({ _id: businessId }, { $set: { subscriptionStatus: 'active', subscriptionCurrentPeriodEnd: new Date(Date.now() + 365 * 86400_000) } });
+  const r = await checkout({ cycle: 'yearly' });
+  assert.equal(r.status, 409);
+  assert.equal(r.json.code, 'ALREADY_SUBSCRIBED');
+});
+
+test('trial already running → asking to pay ₹9,999 now is refused (the plan starts when the trial ends)', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  await policy(true, { enabled: true, priceInr: 35999 });
+  const { businessId } = await workspace();
+  await checkout({ cycle: 'yearly' });
+  await m.Business.updateOne({ _id: businessId }, { $set: { subscriptionStatus: 'trial_active', trialEndsAt: new Date(Date.now() + 90 * 86400_000) } });
+  const r = await checkout({ cycle: 'yearly', skipTrial: true });
+  assert.equal(r.status, 409);
+  assert.equal(r.json.code, 'TRIAL_ACTIVE');
+});
+
+// ── UPI hidden above the UPI AutoPay limit ──────────────────────────────────
+
+test('₹35,999 trial checkout hides UPI; ₹9,999 trial, skip-trial and monthly keep it', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  await policy(true, { enabled: true, priceInr: 35999 });
+  await workspace();
+  const custom = await checkout({ cycle: 'yearly' });
+  assert.deepEqual(custom.json.checkout.hideMethods, ['upi']);
+  // Second tab (reuse) keeps it hidden — from the saved ₹35,999 terms.
+  const reuse = await checkout({ cycle: 'yearly' });
+  assert.deepEqual(reuse.json.checkout.hideMethods, ['upi']);
+
+  const skip = await checkout({ cycle: 'yearly', skipTrial: true });
+  assert.deepEqual(skip.json.checkout.hideMethods, [], '₹9,999 pay-now keeps UPI');
+  const monthly = await checkout({ cycle: 'monthly' });
+  assert.deepEqual(monthly.json.checkout.hideMethods, []);
+
+  await m.BillingPolicy.updateOne({ key: 'default' }, { $set: { 'trial.customPrice.enabled': false } });
+  await workspace();
+  const standardTrial = await checkout({ cycle: 'yearly' });
+  assert.ok(standardTrial.json.trial);
+  assert.deepEqual(standardTrial.json.checkout.hideMethods, [], '₹9,999 trial keeps UPI');
+});
+
+test('recovery of a ₹35,999 agreement also hides UPI', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  await policy(true, { enabled: false, priceInr: 35999 });
+  await pastDueTrialWorkspace(3_599_900, 'custom');
+  const r = await checkout({ cycle: 'yearly' });
+  assert.equal(r.json.recovery, true);
+  assert.deepEqual(r.json.checkout.hideMethods, ['upi']);
 });

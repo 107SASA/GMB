@@ -13,6 +13,17 @@ export const MAX_TRIAL_MONTHS = 12;
 export const DEFAULT_CUSTOM_TRIAL_PRICE_INR = 35999;
 /** Same ceiling as the plan API (/api/admin/billing-plan). */
 export const MAX_TRIAL_PRICE_INR = 500000;
+/**
+ * UPI AutoPay can't reliably carry a recurring debit above this (RBI e-mandate
+ * rules / NPCI limits): such checkouts hide UPI so customers use eNACH
+ * (Razorpay Emandate) or a card instead of a mandate that fails.
+ */
+export const UPI_AUTOPAY_LIMIT_INR = 15000;
+
+/** Razorpay Checkout methods to hide for a subscription that charges `priceInr` per debit. */
+export function hiddenCheckoutMethods(priceInr: number): string[] {
+  return priceInr > UPI_AUTOPAY_LIMIT_INR ? ['upi'] : [];
+}
 
 /**
  * After the trial ends, Razorpay charges at start_at; the charged / pending

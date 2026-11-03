@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { BellRing, Gift, ShieldAlert, Info } from 'lucide-react';
 import { MODULE_LABELS } from '@/components/billing/useRazorpayCheckout';
 import { ConfirmDialog } from './ConfirmDialog';
+import { UPI_AUTOPAY_LIMIT_INR } from '@/lib/billing/billingPolicy';
 
 export interface PolicyResponse {
   policy: {
@@ -188,7 +189,7 @@ export function TrialOfferCard({ data, yearlyPriceInr, save }: { data: PolicyRes
           Trial customers currently pay <strong>{on ? inr(effectivePrice) : '— (trial is OFF)'}</strong> / year after the trial
           {on ? (saved.enabled ? ' (custom price)' : ' (standard price)') : ''}.
         </p>
-        {customOn && customPrice > 15000 && (
+        {customOn && customPrice > UPI_AUTOPAY_LIMIT_INR && (
           <p className="mt-2 text-xs font-medium text-error">
             Above ₹15,000: under RBI e-mandate rules each automatic debit may need the customer&apos;s extra approval, and UPI AutoPay may not accept this amount. Confirm your Razorpay account limits before turning this on.
           </p>

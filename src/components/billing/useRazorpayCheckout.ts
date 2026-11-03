@@ -195,6 +195,15 @@ export function useRazorpayCheckout(opts?: {
         description: json.checkout.description,
         prefill: json.checkout.prefill,
         theme: { color: '#06b34c' },
+        // Server-decided: e.g. UPI hidden when each debit is above the UPI AutoPay limit.
+        ...(json.checkout.hideMethods?.length && {
+          config: {
+            display: {
+              hide: json.checkout.hideMethods.map((method: string) => ({ method })),
+              preferences: { show_default_blocks: true },
+            },
+          },
+        }),
         handler: () => {
           setCheckout({ phase: 'confirming' });
           confirmActivation();

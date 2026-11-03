@@ -448,7 +448,12 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
                       const cf = competitorFacts.find((x: any) => x.name === c.name);
                       return (
                         <tr key={i} className="border-t border-outline-variant">
-                          <td className="px-2 py-3 font-medium text-on-surface">{c.name}</td>
+                          <td className="px-2 py-3 font-medium text-on-surface">
+                            {c.name}
+                            {Array.isArray(cf?.foundIn) && cf.foundIn.length > 0 && (
+                              <div className="text-xs font-normal text-outline mt-0.5">Found: {cf.foundIn.join(', ')}</div>
+                            )}
+                          </td>
                           <td className="px-2 py-3 text-primary">{c.rating != null ? `★ ${Number(c.rating).toFixed(1)}` : 'Unknown'}</td>
                           <td className="px-2 py-3 text-secondary">{c.reviewCount ?? 'Unknown'}</td>
                           <td className="px-2 py-3 font-semibold text-on-surface">

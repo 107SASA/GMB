@@ -826,6 +826,26 @@ export async function fetchKeywordRankSnapshot(
   }));
 }
 
+/**
+ * Competitor-discovery searches at other locations (areaDiscovery.ts): one
+ * Maps search per location, each observation labelled with where it ran.
+ * Never throws — a failed batch yields 'unavailable' observations.
+ */
+export async function fetchAreaObservations(
+  business: any,
+  searches: Array<{ keyword: string; point: { lat: number; lng: number }; label: string }>,
+): Promise<SearchObservation[]> {
+  if (searches.length === 0) return [];
+  let batch: Array<any[] | null>;
+  try {
+    batch = await fetchMapsLocalResultsBatch(searches.map((s) => ({ keyword: s.keyword, point: s.point, business })));
+  } catch (err: any) {
+    console.warn(`[seoAnalyzer] area discovery batch failed: ${err?.message}`);
+    batch = searches.map(() => null);
+  }
+  return searches.map((s, i) => ({ ...toObservation(s.keyword, 'discovery', batch[i] ?? null, business, s.point), area: s.label }));
+}
+
 /** Center + immediate east/south neighbors from the full 3×3 grid, instead
  *  of all 9 points — real Maps data at 3 points instead of 9, used for
  *  fastMode's "reduced" rank check so it costs ~3 DataForSEO calls (with 1

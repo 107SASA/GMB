@@ -366,47 +366,98 @@ async function processAuditJobInner(auditId: string) {
         : rankingFacts.overall.status === 'unavailable'
           ? 'error'
           : gridMeta?.gridResolution === 'reduced' ? 'reduced-grid' : 'full-grid';
+    // ── Where competitors are looked for, and which of them are in the trade ─
+    // Two separate steps: areaDiscovery.ts decides WHERE to search (the ranking
+    // grid around the business, then the GBP service areas, then wider rings
+    // while too few relevant competitors are found); competitorRelevance.ts
+    // decides WHETHER a business found there is a competitor.
+    const { buildTradeProfile, classifyCompetitor } = require('./competitorRelevance');
+    let gbpCategories: string[] = [];
+    let gbpServiceAreas: Array<{ placeName: string | null; placeId: string | null }> = [];
+    try {
+      const GbpLocationSnapshot = require('../../models/GbpLocationSnapshot').default;
+      const snap: any = await GbpLocationSnapshot.findOne({ businessId: business._id }).select('sections.location').lean();
+      const loc = snap?.sections?.location?.meta?.status === 'SUCCESS' ? snap.sections.location.data : null;
+      gbpCategories = [loc?.primaryCategory?.displayName, ...(loc?.additionalCategories || []).map((c: any) => c?.displayName)].filter(Boolean);
+      gbpServiceAreas = Array.isArray(loc?.serviceArea?.places) ? loc.serviceArea.places : [];
+    } catch { /* no connected profile — Google's public listing is enough */ }
+    const tradeProfile = buildTradeProfile({ searchCategory, category: resolvedCategory, additionalCategories: gbpCategories });
+    const countedIn = (obs: SearchObservation[]) =>
+      tradeProfile
+        ? competitorsFromObservations(obs).filter((c) =>
+            classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, keywords: c.keywords }, tradeProfile).counted,
+          ).length
+        : Infinity; // trade unknown → no basis to judge "insufficient" → no expansion
+
+    let areaObs: SearchObservation[] = cachedRank ? (cachedRank.areaObservations || []) : [];
+    let areaDiscovery: any = cachedRank ? (cachedRank.areaDiscovery || null) : null;
+    const pin = businessForRankings.coordinates?.lat && businessForRankings.coordinates?.lng
+      ? { lat: Number(businessForRankings.coordinates.lat), lng: Number(businessForRankings.coordinates.lng) }
+      : null;
+    if (!cachedRank && pin && searchCategory && rankData && !rankData.fetchError) {
+      try {
+        const { discoverCompetitorAreas } = require('./areaDiscovery');
+        const { resolvePlacePoint } = require('./localities');
+        const { fetchAreaObservations } = require('./seoAnalyzer');
+        const res = await discoverCompetitorAreas(
+          { pin, searchTerm: searchCategory, serviceAreas: gbpServiceAreas },
+          {
+            resolve: (a: any) => resolvePlacePoint(a, business.state || resolvedCity),
+            search: (searches: any[]) => fetchAreaObservations(businessForRankings, searches),
+            relevantCount: (obs: SearchObservation[]) => countedIn([...marketObs, ...obs]),
+          },
+        );
+        areaObs = res.observations;
+        areaDiscovery = {
+          serviceAreasConfigured: gbpServiceAreas.length,
+          searched: res.searched.map((x: any) => ({ label: x.label, kind: x.kind, keyword: x.keyword, distanceKm: x.distanceKm })),
+          skipped: res.skipped,
+          expandedToKm: res.expandedToKm,
+        };
+      } catch (adErr: any) {
+        console.warn('[auditService] competitor area discovery failed:', adErr?.message);
+      }
+    }
+
     // ── Facts: competitors (real businesses observed above the target) ──
-    let competitorFacts: CompetitorFact[] = competitorsFromObservations(marketObs);
-    let aheadFacts = competitorsAhead(marketObs);
+    const competitorObs = [...marketObs, ...areaObs];
+    let competitorFacts: CompetitorFact[] = competitorsFromObservations(competitorObs);
+    let aheadFacts = competitorsAhead(competitorObs);
 
     // ── Same-trade check: only businesses in the target's trade are competitors ─
     // Google shows every kind of business for a search; the rest are kept as
     // "other businesses shown above you", never counted (competitorRelevance.ts).
-    let otherBusinessesAhead: Array<{ name: string; category: string | null; level: string; signals: string[] }> = [];
-    let tradeBasis: string[] = [];
-    if (competitorFacts.length) {
-      const { buildTradeProfile, classifyCompetitor } = require('./competitorRelevance');
-      let gbpCategories: string[] = [];
-      try {
-        const GbpLocationSnapshot = require('../../models/GbpLocationSnapshot').default;
-        const snap: any = await GbpLocationSnapshot.findOne({ businessId: business._id }).select('sections.location').lean();
-        const loc = snap?.sections?.location?.meta?.status === 'SUCCESS' ? snap.sections.location.data : null;
-        gbpCategories = [loc?.primaryCategory?.displayName, ...(loc?.additionalCategories || []).map((c: any) => c?.displayName)].filter(Boolean);
-      } catch { /* no connected profile — Google's public category is enough */ }
-      const profile = buildTradeProfile({ searchCategory, category: resolvedCategory, additionalCategories: gbpCategories });
-      if (profile) {
-        tradeBasis = profile.basis;
-        const classify = (c: CompetitorFact, websiteText?: string) =>
-          classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, websiteText, keywords: c.keywords }, profile);
-        competitorFacts.forEach((c) => { c.tradeMatch = classify(c); });
-        // Generic-category businesses not yet confirmed: what their own website
-        // says (≤5 sites, 2 pages, cached per domain — no paid API).
-        const toRead = competitorFacts.filter((c) => c.website && c.tradeMatch && c.tradeMatch.level !== 'confirmed' && c.tradeMatch.level !== 'unrelated').slice(0, 5);
-        const sites = await Promise.all(toRead.map((c) => getWebsiteIntelligence(c.website!, { maxPages: 2 }).catch(() => null)));
-        toRead.forEach((c, i) => {
-          const intel: any = sites[i];
-          if (!intel || intel.status === 'failed') return;
-          const text = [intel.title, intel.description?.value, ...(intel.services || []).map((s: any) => s.value)].filter(Boolean).join(' . ');
-          c.tradeMatch = classify(c, text);
-        });
-        otherBusinessesAhead = competitorFacts
-          .filter((c) => !c.tradeMatch!.counted)
-          .slice(0, 40)
-          .map((c) => ({ name: c.name, category: c.category, level: c.tradeMatch!.level, signals: c.tradeMatch!.signals }));
-        competitorFacts = competitorFacts.filter((c) => c.tradeMatch!.counted);
-        aheadFacts = { ...aheadFacts, count: competitorFacts.length, names: competitorFacts.map((c) => c.name) };
-      }
+    let otherBusinessesAhead: Array<{ name: string; category: string | null; level: string; signals: string[]; foundIn: string[] }> = [];
+    const tradeBasis: string[] = tradeProfile?.basis ?? [];
+    if (competitorFacts.length && tradeProfile) {
+      const classify = (c: CompetitorFact, websiteText?: string) =>
+        classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, websiteText, keywords: c.keywords }, tradeProfile);
+      competitorFacts.forEach((c) => { c.tradeMatch = classify(c); });
+      // Generic-category businesses not yet confirmed: what their own website
+      // says (≤5 sites, 2 pages, cached per domain — no paid API).
+      const toRead = competitorFacts.filter((c) => c.website && c.tradeMatch && c.tradeMatch.level !== 'confirmed' && c.tradeMatch.level !== 'unrelated').slice(0, 5);
+      const sites = await Promise.all(toRead.map((c) => getWebsiteIntelligence(c.website!, { maxPages: 2 }).catch(() => null)));
+      toRead.forEach((c, i) => {
+        const intel: any = sites[i];
+        if (!intel || intel.status === 'failed') return;
+        const text = [intel.title, intel.description?.value, ...(intel.services || []).map((s: any) => s.value)].filter(Boolean).join(' . ');
+        c.tradeMatch = classify(c, text);
+      });
+      otherBusinessesAhead = competitorFacts
+        .filter((c) => !c.tradeMatch!.counted)
+        .slice(0, 40)
+        .map((c) => ({ name: c.name, category: c.category, level: c.tradeMatch!.level, signals: c.tradeMatch!.signals, foundIn: c.foundIn || [] }));
+      // Same trade first, then the widest overlap with the business's markets.
+      const levelRank = (c: CompetitorFact) => (c.tradeMatch!.level === 'confirmed' ? 0 : 1);
+      competitorFacts = competitorFacts
+        .filter((c) => c.tradeMatch!.counted)
+        .sort((a, b) =>
+          levelRank(a) - levelRank(b) ||
+          (b.foundIn?.length || 0) - (a.foundIn?.length || 0) ||
+          b.searchesAhead - a.searchesAhead ||
+          (a.averageObservedRank ?? 99) - (b.averageObservedRank ?? 99),
+        );
+      aheadFacts = { ...aheadFacts, count: competitorFacts.length, names: competitorFacts.map((c) => c.name) };
     }
 
     // Places Text Search is a FALLBACK only (Sep 2026): it used to run on
@@ -495,6 +546,8 @@ async function processAuditJobInner(auditId: string) {
             placesFallback,
             keywordTable,
             areasChecked,
+            areaObservations: areaObs,
+            areaDiscovery,
             fetchedAt: new Date(),
             logicVersion: CACHE_LOGIC_VERSION,
           },
@@ -1378,6 +1431,7 @@ async function processAuditJobInner(auditId: string) {
         observations,
         competitorsAhead: aheadOut,
         otherBusinessesAhead,
+        ...(areaDiscovery ? { areaDiscovery, areaSearches: areaObs } : {}),
         reviews: reviewFacts,
         reviewComparison,
         profileFields: fieldStates,

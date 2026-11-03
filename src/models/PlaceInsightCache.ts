@@ -48,6 +48,9 @@ export interface IPlaceInsightCache extends Document {
     /** Google Places competitors — only present when ranking found none
      *  (Places Text Search is a fallback since v8). */
     placesFallback?: any[];
+    /** Competitor-discovery searches in GBP service areas / wider rings (areaDiscovery.ts). */
+    areaObservations?: any[];
+    areaDiscovery?: any;
     fetchedAt: Date;
     /** Which build of the keyword/competitor-resolution logic produced this
      *  entry — see CACHE_LOGIC_VERSION in auditService.ts. A mismatch means

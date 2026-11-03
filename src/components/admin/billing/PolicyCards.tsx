@@ -6,7 +6,13 @@ import { MODULE_LABELS } from '@/components/billing/useRazorpayCheckout';
 import { ConfirmDialog } from './ConfirmDialog';
 
 export interface PolicyResponse {
-  policy: { offerEnabled: boolean; trialMonths: number; eligibleCycle: string; version: number };
+  policy: {
+    offerEnabled: boolean;
+    trialMonths: number;
+    eligibleCycle: string;
+    customPrice: { enabled: boolean; priceInr: number };
+    version: number;
+  };
   failure: {
     firstCharge: { mode: 'immediate' | 'grace'; graceDays: number };
     renewal: { mode: 'immediate' | 'grace'; graceDays: number };
@@ -38,7 +44,7 @@ export interface PolicyResponse {
   };
 }
 
-type Save = (section: 'trial' | 'failure' | 'reminders', value: unknown) => Promise<string | null>;
+type Save = (section: 'trial' | 'customPrice' | 'failure' | 'reminders', value: unknown) => Promise<string | null>;
 
 const card = 'rounded-xl border border-outline-variant bg-surface-container-lowest p-5 card-shadow';
 const input = 'w-full rounded-lg border border-outline-variant bg-surface px-3 py-2 text-sm text-on-surface focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary';
@@ -89,6 +95,15 @@ export function TrialOfferCard({ data, yearlyPriceInr, save }: { data: PolicyRes
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const on = data.policy.offerEnabled;
+  const saved = data.policy.customPrice;
+  const [customOn, setCustomOn] = useState(saved.enabled);
+  const [customPrice, setCustomPrice] = useState(saved.priceInr);
+  const [confirmCustom, setConfirmCustom] = useState(false);
+  const customChanged = customOn !== saved.enabled || customPrice !== saved.priceInr;
+  const customPriceValid = Number.isInteger(customPrice) && customPrice >= 1 && customPrice <= 500000;
+  // What a customer taking the trial pays per year after it, right now.
+  const effectivePrice = on && saved.enabled ? saved.priceInr : yearlyPriceInr;
+  const inr = (n: number | null) => (n != null ? `₹${n.toLocaleString('en-IN')}` : '—');
 
   const apply = async (offerEnabled: boolean) => {
     setBusy(true);
@@ -96,13 +111,19 @@ export function TrialOfferCard({ data, yearlyPriceInr, save }: { data: PolicyRes
     setBusy(false);
     setConfirm(null);
   };
+  const applyCustom = async () => {
+    setBusy(true);
+    setError(await save('customPrice', { enabled: customOn, priceInr: customPrice }));
+    setBusy(false);
+    setConfirmCustom(false);
+  };
 
   return (
     <section className={card} aria-labelledby="trial-offer">
       <Header icon={Gift} title="Free trial offer" subtitle="Yearly plan only · one trial per verified phone, one workspace" badge={<OnOff on={on} />} />
       <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat name="Trial length" value={`${data.policy.trialMonths} mo`} />
-        <Stat name="Eligible plan" value={yearlyPriceInr != null ? `Yearly ₹${yearlyPriceInr.toLocaleString('en-IN')}` : 'Yearly'} />
+        <Stat name="Price after trial" value={on && effectivePrice != null ? `${inr(effectivePrice)} / yr` : 'Yearly'} />
         <Stat name="Active trials" value={data.stats.activeTrials} />
         <Stat name="Trials started" value={data.stats.trialsUsed} />
       </div>
@@ -125,7 +146,71 @@ export function TrialOfferCard({ data, yearlyPriceInr, save }: { data: PolicyRes
           </button>
         )}
       </div>
+
+      <fieldset className="mt-5 rounded-lg border border-outline-variant p-3">
+        <legend className="flex items-center gap-2 px-1 text-xs font-bold text-on-surface">
+          Custom trial pricing <OnOff on={saved.enabled} />
+        </legend>
+        <p className="mb-3 text-xs text-outline">
+          Yearly price for customers who take the free trial — charged when the trial ends and on every renewal. Customers who skip the trial or aren&apos;t eligible always pay the standard yearly price ({inr(yearlyPriceInr)}).
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={customOn} onChange={(e) => setCustomOn(e.target.checked)} /> Use a custom price
+          </label>
+          <div className="w-40">
+            <label className={label} htmlFor="trial-custom-price">Yearly price after trial (₹)</label>
+            <input
+              id="trial-custom-price"
+              type="number"
+              min={1}
+              max={500000}
+              step={1}
+              value={customPrice}
+              disabled={!customOn}
+              onChange={(e) => setCustomPrice(Number(e.target.value))}
+              className={`${input} disabled:opacity-50`}
+            />
+          </div>
+          {customChanged && (
+            <button
+              type="button"
+              onClick={() => setConfirmCustom(true)}
+              disabled={busy || !customPriceValid}
+              className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white hover:bg-primary-container disabled:opacity-50"
+            >
+              Save trial pricing
+            </button>
+          )}
+        </div>
+        {!customPriceValid && <p className="mt-2 text-xs text-error">Enter a whole rupee amount from 1 to 5,00,000.</p>}
+        <p className="mt-3 text-xs text-on-surface-variant">
+          Trial customers currently pay <strong>{on ? inr(effectivePrice) : '— (trial is OFF)'}</strong> / year after the trial
+          {on ? (saved.enabled ? ' (custom price)' : ' (standard price)') : ''}.
+        </p>
+        {customOn && customPrice > 15000 && (
+          <p className="mt-2 text-xs font-medium text-error">
+            Above ₹15,000: under RBI e-mandate rules each automatic debit may need the customer&apos;s extra approval, and UPI AutoPay may not accept this amount. Confirm your Razorpay account limits before turning this on.
+          </p>
+        )}
+      </fieldset>
+
       <ErrorLine error={error} />
+      <ConfirmDialog
+        open={confirmCustom}
+        title={customOn ? `Charge trial customers ${inr(customPrice)} / year?` : 'Turn custom trial pricing OFF?'}
+        confirmLabel="Save"
+        busy={busy}
+        onCancel={() => setConfirmCustom(false)}
+        onConfirm={applyCustom}
+      >
+        <p>
+          {customOn
+            ? `Eligible customers who start the free trial from now on will be charged ${inr(customPrice)} when the trial ends and on every yearly renewal.`
+            : `Eligible customers who start the free trial from now on will be charged the standard yearly price (${inr(yearlyPriceInr)}).`}
+        </p>
+        <p>These pricing changes apply only to new eligible trial checkouts. Existing subscriptions, active trials and already-created checkout sessions will retain their previously agreed pricing.</p>
+      </ConfirmDialog>
       <ConfirmDialog
         open={confirm !== null}
         title={confirm ? 'Turn the free trial ON?' : 'Turn the free trial OFF?'}
@@ -137,7 +222,7 @@ export function TrialOfferCard({ data, yearlyPriceInr, save }: { data: PolicyRes
       >
         {confirm ? (
           <>
-            <p>Eligible customers who start the yearly plan from now on get a {months}-month free trial, then pay automatically.</p>
+            <p>Eligible customers who start the yearly plan from now on get a {months}-month free trial, then pay {inr(saved.enabled ? saved.priceInr : yearlyPriceInr)} / year automatically.</p>
             <p className="font-semibold text-error">Only do this after the Razorpay test-mode checklist has passed.</p>
           </>
         ) : (

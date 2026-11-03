@@ -113,6 +113,37 @@ for (const kind of ['first_charge', 'renewal'] as const) {
   });
 }
 
+test('the replaced subscription\'s plan is passed on, so an agreed trial price can be kept', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const businessId = await pastDueWorkspace('first_charge');
+  const rp = fakeRazorpay({ sub_orig: { status: 'halted', paidCount: 0, planId: 'plan_agreed_35999' } });
+  const seen: Array<string | null> = [];
+  const create = rp.deps.createSubscription;
+  rp.deps.createSubscription = async (input) => {
+    seen.push(input.replacesPlanId);
+    const r = await create(input);
+    return { ...r, planId: input.replacesPlanId ?? undefined, amountPaise: 3_599_900, cycle: 'yearly' };
+  };
+  const first: any = await prepareRecoveryCheckout(rp.deps, { businessId, userId: String(oid()), cycle: 'monthly' });
+  assert.equal(first.kind, 'checkout');
+  assert.equal(first.amountPaise, 3_599_900);
+  assert.equal(first.cycle, 'yearly');
+  let ws: any = await Business.findById(businessId).lean();
+  assert.deepEqual([ws.recoveryCheckout.planId, ws.recoveryCheckout.amountPaise, ws.recoveryCheckout.cycle], ['plan_agreed_35999', 3_599_900, 'yearly']);
+
+  // A repeated click hands back the same checkout with its amount.
+  const reused: any = await prepareRecoveryCheckout(rp.deps, { businessId, userId: String(oid()), cycle: 'monthly' });
+  assert.deepEqual([reused.reused, reused.amountPaise], [true, 3_599_900]);
+
+  // That replacement expires unpaid → the next one stays on the same plan.
+  rp.states[first.subscriptionId] = { status: 'expired', paidCount: 0 };
+  const next: any = await prepareRecoveryCheckout(rp.deps, { businessId, userId: String(oid()), cycle: 'monthly' });
+  assert.equal(next.kind, 'checkout');
+  assert.deepEqual(seen, ['plan_agreed_35999', 'plan_agreed_35999']);
+  ws = await Business.findById(businessId).lean();
+  assert.equal(ws.recoveryCheckout.planId, 'plan_agreed_35999');
+});
+
 test('repeated clicks reuse the open replacement — no second subscription', async (t) => {
   if (skipReason) return t.skip(skipReason);
   const businessId = await pastDueWorkspace('renewal');

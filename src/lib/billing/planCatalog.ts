@@ -1,5 +1,6 @@
 import dbConnect from '@/lib/mongodb';
 import BillingPlan from '@/models/BillingPlan';
+import BillingPolicy from '@/models/BillingPolicy';
 import { getRazorpay, getRazorpayMode } from './razorpay';
 import { isPlanIdUsable, type RazorpayMode } from './razorpayMode';
 import type { ModuleKey } from '@/models/Subscription';
@@ -313,6 +314,70 @@ export async function ensureRazorpayPlanIdForCycle(cycle: BillingCycle, deps: En
   }
 
   return { ...dur, razorpayPlanId: rpPlan.id };
+}
+
+/**
+ * The yearly Razorpay plan for the CUSTOM trial price (BillingPolicy
+ * trial.customPrice), separate from the standard yearly plan — whose stored
+ * id is never read or written here. The cached id is reused only when it was
+ * created for exactly `priceInr` in the current Razorpay mode; otherwise a new
+ * plan is created and cached only while custom pricing is still ON at that
+ * same price. A concurrent admin change fails this request with
+ * BillingPlanChangedError (the unattached plan stays unused). Concurrent
+ * checkouts may each create a plan; every one is for the right amount, and
+ * each trial freezes the plan it used in its TrialClaim.offer.
+ * Returns razorpayPlanId: null when Razorpay isn't configured (caller answers 503).
+ */
+export async function ensureRazorpayPlanIdForTrialPrice(
+  priceInr: number,
+  deps: EnsurePlanDeps = {}
+): Promise<{ priceInr: number; razorpayPlanId: string | null }> {
+  if (!Number.isInteger(priceInr) || priceInr < 1) throw new Error(`Invalid trial price: ${priceInr}`);
+  await dbConnect();
+  const mode = getRazorpayMode();
+  const doc = await BillingPolicy.findOne({ key: 'default' }).select('trial').lean<any>();
+  const cached = doc?.trial?.customPricePlan;
+  if (
+    isPlanIdUsable(
+      { planId: cached?.razorpayPlanId, planPriceInr: cached?.razorpayPlanPriceInr, planMode: cached?.razorpayPlanMode },
+      { priceInr, mode }
+    )
+  ) {
+    return { priceInr, razorpayPlanId: cached.razorpayPlanId };
+  }
+
+  let createPlan = deps.createPlan;
+  if (!createPlan) {
+    const razorpay = getRazorpay();
+    if (razorpay) createPlan = (params) => razorpay.plans.create(params) as Promise<{ id: string }>;
+  }
+  if (!mode || !createPlan) return { priceInr, razorpayPlanId: null };
+
+  const plan = await getActivePlan();
+  const rpPlan = await createPlan({
+    period: CYCLES.yearly.razorpayPeriod,
+    interval: CYCLES.yearly.razorpayInterval,
+    item: {
+      name: `${plan.displayName} (Yearly, free-trial offer)`,
+      amount: priceInr * 100, // paise
+      currency: 'INR',
+      description: plan.description || undefined,
+    },
+  });
+
+  const attached = await BillingPolicy.updateOne(
+    { key: 'default', 'trial.customPrice.enabled': true, 'trial.customPrice.priceInr': priceInr },
+    {
+      $set: {
+        'trial.customPricePlan': { razorpayPlanId: rpPlan.id, razorpayPlanPriceInr: priceInr, razorpayPlanMode: mode },
+      },
+    }
+  );
+  if (attached.matchedCount === 0) {
+    console.warn(`[billing] custom trial price changed while Razorpay plan ${rpPlan.id} was being created — not attached`);
+    throw new BillingPlanChangedError();
+  }
+  return { priceInr, razorpayPlanId: rpPlan.id };
 }
 
 export interface AdminDurationInput {

@@ -37,7 +37,7 @@ export interface PublicPlan {
   durations: PlanDuration[];
   available: boolean;
   /** Free-trial promotion, when switched on (display only — checkout decides per customer). */
-  trialOffer?: { months: number; cycle: string } | null;
+  trialOffer?: { months: number; cycle: string; priceInr?: number } | null;
 }
 
 export const MODULE_LABELS: Record<string, string> = {

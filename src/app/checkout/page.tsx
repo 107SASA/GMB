@@ -318,6 +318,17 @@ function CheckoutForm() {
             </div>
 
             {trialForCycle && <TrialTerms offer={trialOffer!} />}
+            {trialForCycle && !showPhoneStep && trialOffer!.preview?.standardPriceInr != null &&
+              trialOffer!.preview.standardPriceInr !== trialOffer!.preview.firstChargeInr && (
+                <button
+                  type="button"
+                  onClick={() => handleSubscribe({ skipTrial: true })}
+                  disabled={!plan?.available || busy || profileLoading}
+                  className="mt-3 w-full text-center text-sm font-semibold text-primary hover:underline disabled:opacity-60"
+                >
+                  Or skip the trial and pay ₹{trialOffer!.preview.standardPriceInr.toLocaleString('en-IN')} / year now
+                </button>
+              )}
             {showPhoneStep && (
               <TrialPhoneVerification
                 disabled={busy}

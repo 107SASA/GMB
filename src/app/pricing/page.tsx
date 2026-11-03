@@ -20,18 +20,6 @@ const TRUST_POINTS = [
   'Setup in one call — no technical work on your end',
 ] as const;
 
-/**
- * GrowwMatics' regular list price per billing cycle (set Nov 2026). While the
- * live price from the billing plan is lower, the page shows this struck out
- * with a "Launch offer" label and "% OFF" badge. Keep these equal to the
- * real regular prices, and end or restate the offer rather than running it
- * indefinitely.
- */
-const LIST_PRICE_INR: Record<string, number> = {
-  monthly: 6999,
-  yearly: 35999,
-};
-
 export default function PricingPage() {
   const router = useRouter();
   const { plan, loading } = usePublicPlan();
@@ -40,10 +28,8 @@ export default function PricingPage() {
   const selected = pickDuration(plan?.durations, cycle);
   const price = selected?.priceInr ?? plan?.priceInr;
   const cycleLabel = selected?.label ?? plan?.billingCycle ?? 'month';
-  const listPrice = LIST_PRICE_INR[selected?.cycle ?? cycle];
-  const showOffer = !!price && !!listPrice && listPrice > price;
-  // Rounded down so the badge never overstates the discount.
-  const percentOff = showOffer ? Math.floor(((listPrice - price) / listPrice) * 100) : 0;
+  // Live from the billing policy: the free trial and the yearly price after it.
+  const trialOffer = plan?.trialOffer && plan.trialOffer.cycle === (selected?.cycle ?? cycle) ? plan.trialOffer : null;
   const features = plan?.features?.length ? plan.features : (plan?.modules ?? []).map((m) => MODULE_LABELS[m] ?? m);
 
   return (
@@ -113,26 +99,17 @@ export default function PricingPage() {
                     />
                   )}
                   <div className="mb-6">
-                    {showOffer && (
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className="text-xs font-bold uppercase tracking-wide text-[#b45309] bg-[#fff4e5] border border-[#fcd9a8] px-2 py-1 rounded-md">
-                          Launch offer
-                        </span>
-                        <span className="font-mkt-mono text-lg text-[#6b7280] line-through" aria-label={`Regular price ₹${listPrice.toLocaleString('en-IN')}`}>
-                          ₹{listPrice.toLocaleString('en-IN')}
-                        </span>
-                        <span className="text-xs font-bold text-white bg-[#f0943f] px-2 py-1 rounded-md">
-                          {percentOff}% OFF
-                        </span>
-                      </div>
-                    )}
                     <span className="font-mkt-mono text-4xl font-semibold text-[#101613]">
                       ₹{(price ?? plan.priceInr).toLocaleString('en-IN')}
                     </span>
                     <span className="text-[#3d4a3d] text-sm"> / {cycleLabel}</span>
-                    {showOffer && (
+                    {trialOffer && (
                       <p className="text-xs text-[#6b7280] mt-1">
-                        Regular price ₹{listPrice.toLocaleString('en-IN')} / {cycleLabel}. Launch offer for a limited period; prices include all features.
+                        Eligible new customers can start with a {trialOffer.months}-month free trial
+                        {trialOffer.priceInr != null && trialOffer.priceInr !== price
+                          ? `, then ₹${trialOffer.priceInr.toLocaleString('en-IN')} / ${cycleLabel}`
+                          : ''}
+                        . Prices include all features.
                       </p>
                     )}
                   </div>

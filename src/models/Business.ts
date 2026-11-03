@@ -191,7 +191,8 @@ export interface IBusiness extends Document {
   /** One recovery at a time (lib/billing/paymentRecovery.ts). */
   recoveryLock?: { token: string; until: Date };
   /** The open replacement checkout, reused on repeated clicks until paid or expired. */
-  recoveryCheckout?: { subscriptionId: string; replacesSubscriptionId?: string | null; cycle: string; createdAt: Date; expiresAt: Date; mode?: 'test' | 'live' };
+  /** planId / amountPaise: the plan and price the replacement bills on (kept for a free-trial customer's agreed price). */
+  recoveryCheckout?: { subscriptionId: string; replacesSubscriptionId?: string | null; cycle: string; createdAt: Date; expiresAt: Date; mode?: 'test' | 'live'; planId?: string; amountPaise?: number };
   /** When the post-audit WhatsApp sales nurture was sent (send-once guard). */
   auditNurtureSentAt?: Date;
   /** When the "your report is ready" WhatsApp ping was sent (send-once guard). */
@@ -462,6 +463,8 @@ const BusinessSchema: Schema = new Schema(
       createdAt: { type: Date },
       expiresAt: { type: Date },
       mode: { type: String, enum: ['test', 'live'] },
+      planId: { type: String },
+      amountPaise: { type: Number },
     },
     // ADDITIVE — when the post-audit WhatsApp sales nurture was sent (send-once).
     auditNurtureSentAt: { type: Date },

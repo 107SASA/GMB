@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import TrialClaim from '@/models/TrialClaim';
 import { requireBusinessContext } from '@/lib/tenant';
-import { addMonthsUtc } from '@/lib/billing/billingPolicy';
+import { addMonthsUtc, effectiveTrialPrice } from '@/lib/billing/billingPolicy';
 import { trialPhoneHash } from '@/lib/billing/trialClaims';
 import { getActivePlan } from '@/lib/billing/planCatalog';
 import { getTrialPolicy } from '@/services/billing/trialPolicyStore';
@@ -43,6 +43,11 @@ export async function GET() {
 
   const yearly = plan.durations.find((d) => d.cycle === policy.eligibleCycle && d.enabled);
   const trialEndsAt = addMonthsUtc(new Date(), policy.trialMonths);
+  // The price after the trial applies only to a customer who will actually get
+  // it (eligible, or eligible once their phone is verified). Anyone else — and
+  // anyone who skips the trial — pays the standard price now.
+  const willGetTrial = !!yearly && (eligible || reason === 'phone_unverified');
+  const agreed = yearly && willGetTrial ? effectiveTrialPrice(policy, yearly.priceInr) : null;
   return NextResponse.json({
     success: true,
     offer: {
@@ -52,7 +57,13 @@ export async function GET() {
       reason: yearly ? reason : 'plan_unavailable',
       needsPhoneVerification: reason === 'phone_unverified',
       preview: yearly
-        ? { trialEndsAt: trialEndsAt.toISOString(), firstChargeAt: trialEndsAt.toISOString(), firstChargeInr: yearly.priceInr }
+        ? {
+            trialEndsAt: trialEndsAt.toISOString(),
+            firstChargeAt: trialEndsAt.toISOString(),
+            firstChargeInr: agreed ? agreed.priceInr : yearly.priceInr,
+            // What paying now, without the trial, costs per year.
+            standardPriceInr: yearly.priceInr,
+          }
         : null,
     },
   });

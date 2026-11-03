@@ -34,6 +34,36 @@ const CAN_STILL_CHARGE = new Set(['created', 'authenticated', 'pending', 'halted
 export interface RazorpaySubState {
   status: string;
   paidCount: number;
+  /** Razorpay plan the subscription bills on, when known — recovery keeps the customer on it. */
+  planId?: string | null;
+}
+
+/** A free trial's frozen terms (TrialClaim.offer) — what the customer agreed to pay. */
+export interface AgreedTrialTerms {
+  razorpayPlanId: string;
+  amountPaise: number;
+  razorpayMode?: 'test' | 'live' | null;
+}
+
+export type RecoveryPlanChoice =
+  | { kind: 'agreed'; planId: string; amountPaise: number; cycle: 'yearly' }
+  | { kind: 'standard' }
+  | { kind: 'blocked'; reason: string };
+
+/**
+ * Which plan a recovery replacement bills on. A workspace whose failing
+ * subscription came from a free trial stays on the exact Razorpay plan (and
+ * so the exact price) it agreed to — never today's standard or custom price.
+ * A plan from the other Razorpay keys can't be used here, and silently
+ * switching price is never an option, so that case is blocked for review.
+ * Without agreed trial terms: the standard plan for the chosen cycle, as before.
+ */
+export function chooseRecoveryPlan(agreed: AgreedTrialTerms | null, currentMode: 'test' | 'live' | null): RecoveryPlanChoice {
+  if (!agreed) return { kind: 'standard' };
+  const recorded = agreed.razorpayMode;
+  const usable = recorded ? recorded === currentMode : currentMode === 'test';
+  if (!usable) return { kind: 'blocked', reason: `agreed trial plan ${agreed.razorpayPlanId} is from ${recorded ?? 'legacy (test)'} mode; ${currentMode} keys are configured` };
+  return { kind: 'agreed', planId: agreed.razorpayPlanId, amountPaise: agreed.amountPaise, cycle: 'yearly' };
 }
 
 export type OriginalDecision = 'already_paid' | 'cancel_then_verify' | 'cannot_charge' | 'unknown';
@@ -57,7 +87,12 @@ export interface RecoveryDeps {
   Business: Model<any>;
   fetchSubscription: (id: string) => Promise<RazorpaySubState>;
   cancelSubscription: (id: string) => Promise<void>;
-  createSubscription: (input: { businessId: string; userId: string; cycle: string; replaces: string | null; expireBy: Date }) => Promise<{ id: string }>;
+  /**
+   * `replacesPlanId`: the plan the replaced subscription billed on (null when
+   * unknown) — the wiring keeps a free-trial customer on the plan they agreed
+   * to. Returns the plan, amount and cycle actually used, when known.
+   */
+  createSubscription: (input: { businessId: string; userId: string; cycle: string; replaces: string | null; replacesPlanId: string | null; expireBy: Date }) => Promise<{ id: string; planId?: string; amountPaise?: number; cycle?: string }>;
   /** Apply Razorpay's current state for a subscription that turned out to be paid. */
   reconcilePaid: (businessId: string, subscriptionId: string) => Promise<void>;
   record: (entry: { businessId: string; type: string; note: string; subscriptionId?: string; needsReview?: boolean }) => Promise<void>;
@@ -67,7 +102,7 @@ export interface RecoveryDeps {
 }
 
 export type RecoveryResult =
-  | { kind: 'checkout'; subscriptionId: string; reused: boolean }
+  | { kind: 'checkout'; subscriptionId: string; reused: boolean; amountPaise?: number | null; cycle?: string | null }
   | { kind: 'already_paid' }
   | { kind: 'not_needed' }
   | { kind: 'busy' }
@@ -132,6 +167,8 @@ export async function prepareRecoveryCheckout(
 
     // 2. An open recovery checkout from an earlier click → hand back the same one.
     const open = locked.recoveryCheckout;
+    // The plan the subscription being replaced bills on (an earlier replacement's, or the original's below).
+    let replacesPlanId: string | null = open?.planId ?? null;
     if (open?.subscriptionId && new Date(open.expiresAt).getTime() > deps.now().getTime()) {
       const openOther = otherMode(open.subscriptionId);
       if (openOther) return supportRequired(openOther, `open recovery checkout ${open.subscriptionId}`, open.subscriptionId);
@@ -141,7 +178,9 @@ export async function prepareRecoveryCheckout(
       } catch (err: any) {
         return unavailable('razorpay_unreachable', `recovery checkout ${open.subscriptionId}: ${err?.message ?? err}`, open.subscriptionId);
       }
-      if (state.status === 'created') return { kind: 'checkout', subscriptionId: open.subscriptionId, reused: true };
+      if (state.status === 'created') {
+        return { kind: 'checkout', subscriptionId: open.subscriptionId, reused: true, amountPaise: open.amountPaise ?? null, cycle: open.cycle ?? null };
+      }
       if (state.status === 'active' || state.paidCount > 0) {
         await deps.reconcilePaid(businessId, open.subscriptionId);
         return { kind: 'already_paid' };
@@ -164,6 +203,7 @@ export async function prepareRecoveryCheckout(
       } catch (err: any) {
         return unavailable('razorpay_unreachable', `original ${original}: ${err?.message ?? err}`, original);
       }
+      if (before.planId) replacesPlanId = before.planId;
       const decision = decideOriginal(before);
       if (decision === 'already_paid') {
         // Razorpay's retry succeeded — never cancel a paid subscription.
@@ -206,28 +246,31 @@ export async function prepareRecoveryCheckout(
 
     // 4. Replacement — the normal paid plan, never a trial.
     const expireBy = new Date(deps.now().getTime() + RECOVERY_CHECKOUT_TTL_MS);
-    let created: { id: string };
+    let created: Awaited<ReturnType<RecoveryDeps['createSubscription']>>;
     try {
-      created = await deps.createSubscription({ businessId, userId: input.userId, cycle: input.cycle, replaces: original, expireBy });
+      created = await deps.createSubscription({ businessId, userId: input.userId, cycle: input.cycle, replaces: original, replacesPlanId, expireBy });
     } catch (err: any) {
       return unavailable('create_failed', String(err?.message ?? err), original ?? undefined);
     }
+    const createdCycle = created.cycle ?? input.cycle;
     await Business.updateOne(
       { _id: businessId },
       {
         $set: {
           razorpaySubscriptionId: created.id,
           recoveryCheckout: {
-            subscriptionId: created.id, replacesSubscriptionId: original, cycle: input.cycle, createdAt: deps.now(), expiresAt: expireBy,
+            subscriptionId: created.id, replacesSubscriptionId: original, cycle: createdCycle, createdAt: deps.now(), expiresAt: expireBy,
             ...(deps.razorpayMode && { mode: deps.razorpayMode }),
+            ...(created.planId && { planId: created.planId }),
+            ...(created.amountPaise && { amountPaise: created.amountPaise }),
           },
           ...(deps.razorpayMode && { razorpaySubscriptionEnv: { subscriptionId: created.id, mode: deps.razorpayMode } }),
         },
         ...(!deps.razorpayMode && { $unset: { razorpaySubscriptionEnv: '' } }),
       }
     );
-    await deps.record({ businessId, type: 'recovery.checkout_created', note: `replacement for ${original ?? 'none'} (${input.cycle})`, subscriptionId: created.id });
-    return { kind: 'checkout', subscriptionId: created.id, reused: false };
+    await deps.record({ businessId, type: 'recovery.checkout_created', note: `replacement for ${original ?? 'none'} (${createdCycle}${created.planId ? `, plan ${created.planId}` : ''})`, subscriptionId: created.id });
+    return { kind: 'checkout', subscriptionId: created.id, reused: false, amountPaise: created.amountPaise ?? null, cycle: createdCycle };
   } finally {
     await Business.updateOne({ _id: businessId, 'recoveryLock.token': token }, { $unset: { recoveryLock: '' } });
   }

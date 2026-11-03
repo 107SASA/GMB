@@ -10,6 +10,7 @@ import {
   parseTrialPolicy,
   parseFailurePolicy,
   validateTrialPolicyUpdate,
+  validateCustomTrialPriceUpdate,
   validateFailurePolicyUpdate,
   parseReminderPolicy,
   validateReminderPolicyUpdate,
@@ -61,8 +62,8 @@ export async function PUT(req: Request) {
   await dbConnect();
 
   const body = await req.json().catch(() => null);
-  if (!body || (body.trial === undefined && body.failure === undefined && body.reminders === undefined)) {
-    return NextResponse.json({ success: false, error: 'Send { trial }, { failure } and/or { reminders }.' }, { status: 400 });
+  if (!body || (body.trial === undefined && body.customPrice === undefined && body.failure === undefined && body.reminders === undefined)) {
+    return NextResponse.json({ success: false, error: 'Send { trial }, { customPrice }, { failure } and/or { reminders }.' }, { status: 400 });
   }
   const $set: Record<string, unknown> = {};
   if (body.trial !== undefined) {
@@ -72,6 +73,15 @@ export async function PUT(req: Request) {
       'trial.offerEnabled': check.value.offerEnabled,
       'trial.trialMonths': check.value.trialMonths,
       'trial.eligibleCycle': 'yearly',
+    });
+  }
+  // Custom trial price: its own fields only — the trial on/off and length are untouched.
+  if (body.customPrice !== undefined) {
+    const check = validateCustomTrialPriceUpdate(body.customPrice);
+    if (!check.ok) return NextResponse.json({ success: false, error: check.error }, { status: 400 });
+    Object.assign($set, {
+      'trial.customPrice.enabled': check.value.enabled,
+      'trial.customPrice.priceInr': check.value.priceInr,
     });
   }
   if (body.failure !== undefined) {
@@ -96,7 +106,7 @@ export async function PUT(req: Request) {
   const view = (d: any) => {
     const t = parseTrialPolicy(d);
     return {
-      trial: { offerEnabled: t.offerEnabled, trialMonths: t.trialMonths },
+      trial: { offerEnabled: t.offerEnabled, trialMonths: t.trialMonths, customPrice: t.customPrice },
       failure: parseFailurePolicy(d),
       reminders: parseReminderPolicy(d),
       version: Number.isInteger(d?.version) ? d.version : 0,

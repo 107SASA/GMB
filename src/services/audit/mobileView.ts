@@ -3,7 +3,7 @@ import {
   isLegacyAudit, rankLabel, rankingStatRows, reviewDisplay, suspensionDisplay, toRankValue, type RankValue,
 } from './reportDisplay';
 import { resolveSuspensionRisk } from './reportMath';
-import { contentActivityLines } from '@/services/lifecycle/monthly';
+import { contentActivityLines, keywordRankingSummary } from '@/services/lifecycle/monthly';
 
 /**
  * The report as the mobile app shows it — computed on the server from the
@@ -49,6 +49,10 @@ export interface MobileReportView {
     planCompleted: string[];
     planPending: string[];
     remainingIssues: string[];
+    /** Issue by issue against the previous report; null on reports built before it existed. */
+    issueProgress: null | { fixed: string[]; added: string[]; stillOpen: string[] };
+    /** Keyword rankings: a summary line, then one line per keyword × location; [] before tracking existed. */
+    keywordRankings: string[];
   };
 }
 
@@ -114,6 +118,17 @@ export function buildMobileReportView(audit: { auditData?: any; auditKind?: stri
     planCompleted: (m.planCompleted || []).map((a: any) => `${a.action} — ${a.status}`),
     planPending: (m.planPending || []).map((a: any) => `${a.action} — ${a.status}${a.statusReason ? ` (${a.statusReason})` : ''}`),
     remainingIssues: m.remainingIssues || [],
+    issueProgress: m.issueProgress ? {
+      fixed: (m.issueProgress.fixed || []).map((x: any) => `${x.title} — ${x.how}`),
+      added: (m.issueProgress.added || []).map((x: any) => String(x.title)),
+      stillOpen: (m.issueProgress.stillOpen || []).map((x: any) => `${x.title} — ${x.reason}`),
+    } : null,
+    keywordRankings: m.keywordRankings?.rows?.length
+      ? [
+          keywordRankingSummary(m.keywordRankings),
+          ...m.keywordRankings.rows.map((r: any) => `${r.keyword} (${r.area}): ${r.previous} → ${r.current}${r.movement ? ` (${r.movement})` : ''} — ${r.status}${r.history ? ` · ${r.history}` : ''}`),
+        ]
+      : [],
   } : null;
 
   return {

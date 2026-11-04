@@ -55,3 +55,19 @@ test('mobile view: plan finding ids only for connected reports; issues carry the
   assert.deepEqual(buildMobileReportView({ auditKind: 'free_report', fastMode: true, auditData: { findings } }).planFindingIds, [], 'free report: no tasks');
   assert.deepEqual(buildMobileReportView({ auditData: { findings } }).planFindingIds, [], 'unknown kind: no tasks');
 });
+
+test('mobile view: monthly issue progress as lines; null for older reports', () => {
+  const issueProgress = {
+    fixed: [{ findingId: 'a', title: 'Services missing', how: 'Applied through GrowwMatics' }],
+    added: [{ findingId: 'b', title: 'Hours missing' }],
+    stillOpen: [{ findingId: 'c', title: 'Attributes', reason: 'Waiting for your approval', waitingForOwner: true }],
+  };
+  const base = { period: { start: '2026-10-28', end: '2026-11-28' }, changes: [], growwmaticsOptimized: [], ownerOptimized: [], performance: { status: 'unavailable', rows: [] }, reviews: {}, profileHealth: {}, planCompleted: [], planPending: [], remainingIssues: [] };
+  const v = buildMobileReportView({ auditData: { monthly: { ...base, issueProgress } } });
+  assert.deepEqual(v.monthly?.issueProgress, {
+    fixed: ['Services missing — Applied through GrowwMatics'],
+    added: ['Hours missing'],
+    stillOpen: ['Attributes — Waiting for your approval'],
+  });
+  assert.equal(buildMobileReportView({ auditData: { monthly: base } }).monthly?.issueProgress, null);
+});

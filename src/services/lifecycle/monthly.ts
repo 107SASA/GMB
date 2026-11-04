@@ -12,6 +12,7 @@
  */
 
 import { compareAreaVisibility, type AreaComparison } from '../audit/areaVisibility.ts';
+import { taskActor } from '../tasks/planTasks.ts';
 
 export type Actor = 'GrowwMatics' | 'Owner' | 'Unknown';
 
@@ -25,8 +26,13 @@ export interface GbpSnapshot {
 }
 
 export interface ExecutionRecords {
-  /** ProfileActivity 'profile_updated' rows in the period. */
-  profileEdits: Array<{ at: string; fields: string[]; values?: Record<string, string>; liveWriteApplied: boolean | null; actor: 'owner' | 'growwmatics'; by?: string }>;
+  /**
+   * ProfileActivity 'profile_updated' rows in the period. `reverted` = the row
+   * records a rollback (store.ts noteRevertedEdit); `changeId` = the
+   * GbpProfileChange it belongs to — a rolled-back change's edit and its
+   * rollback share one.
+   */
+  profileEdits: Array<{ at: string; fields: string[]; values?: Record<string, string>; liveWriteApplied: boolean | null; actor: 'owner' | 'growwmatics'; by?: string; changeId?: string; reverted?: boolean }>;
   /** GbpMediaAsset rows published through GrowwMatics in the period. */
   photos: Array<{ at: string }>;
   /** Posts published through GrowwMatics in the period. */
@@ -240,6 +246,10 @@ export interface MonthlyReport {
   planCompleted: PlanActionView[];
   planPending: PlanActionView[];
   remainingIssues: string[];
+  /** Issue by issue against the previous report (absent on reports built before Nov 2026). */
+  issueProgress?: IssueProgress;
+  /** Every tracked keyword × location this month, with its movement (absent before tracking existed). */
+  keywordRankings?: KeywordRankingReport;
   /** Deterministic "improved / declined" lines — the only change statements the AI may build on. */
   improved: string[];
   declined: string[];
@@ -254,6 +264,131 @@ export interface MonthlyReport {
 }
 
 const SEVERITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+/**
+ * Profile edits that are still in effect: applied live, not a rollback, and
+ * not an edit that was later rolled back (same changeId).
+ */
+export function effectiveProfileEdits(edits: ExecutionRecords['profileEdits']): ExecutionRecords['profileEdits'] {
+  const rolledBack = new Set(edits.filter((e) => e.reverted && e.changeId).map((e) => e.changeId));
+  return edits.filter((e) => e.liveWriteApplied === true && !e.reverted && !(e.changeId && rolledBack.has(e.changeId)));
+}
+
+/**
+ * The previous report's issues against this one, by finding id: fixed (gone
+ * now), new (only now) and still open (in both), each still-open one with
+ * why — so a customer sees the work land and what is left, in plain words.
+ */
+export interface IssueProgress {
+  fixed: Array<{ findingId: string; title: string; how: string }>;
+  added: Array<{ findingId: string; title: string }>;
+  stillOpen: Array<{ findingId: string; title: string; reason: string; waitingForOwner: boolean }>;
+}
+
+/**
+ * Month-on-month keyword rankings for the report, from the stored
+ * facts.tracking.changes rows (measurements.ts buildKeywordMovement). Display
+ * strings only — every value is a stored measurement; a missing month shows
+ * as a gap, never a guess.
+ */
+export interface KeywordRankingRow {
+  keyword: string;
+  area: string;
+  /** "#3", "Not in top 20", "Unavailable" or "—" (not measured last time). */
+  previous: string;
+  current: string;
+  /** "▲ 2", "▼ 1", "Entered top 20", "Left top 20" or "" when there is no comparable number. */
+  movement: string;
+  change: 'improved' | 'declined' | 'stable' | 'new' | 'not_comparable';
+  /** "Unchanged", "New this month", or why it is not comparable. */
+  status: string;
+  /** "Nov #3 → Dec #2 → Jan #1" when 2+ comparable months exist, else null. */
+  history: string | null;
+}
+export interface KeywordRankingReport {
+  counts: { improved: number; declined: number; stable: number; new: number; not_comparable: number };
+  rows: KeywordRankingRow[];
+}
+
+const rankText = (rank: number | null | undefined, text: string | undefined): string => {
+  if (rank != null) return `#${rank}`;
+  if (/^not in top 20/i.test(text || '')) return 'Not in top 20';
+  if (text === 'unavailable') return 'Unavailable';
+  return '—';
+};
+const monthText = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { month: 'short', timeZone: 'Asia/Kolkata' });
+const CHANGE_ORDER = { improved: 0, declined: 1, stable: 2, new: 3, not_comparable: 4 } as const;
+
+export function buildKeywordRankingReport(tracking: any): KeywordRankingReport | undefined {
+  const changes: any[] = Array.isArray(tracking?.changes) ? tracking.changes : [];
+  if (!changes.length) return undefined;
+  const counts = { improved: 0, declined: 0, stable: 0, new: 0, not_comparable: 0 };
+  const rows: Array<KeywordRankingRow & { home: number }> = changes.map((c) => {
+    const change = (c.change in CHANGE_ORDER ? c.change : 'not_comparable') as KeywordRankingRow['change'];
+    counts[change]++;
+    const g = typeof c.positionsGained === 'number' ? Math.round(c.positionsGained * 10) / 10 : null;
+    const movement = g != null && g !== 0 ? `${g > 0 ? '▲' : '▼'} ${Math.abs(g)}`
+      : c.note === 'Now in the top 20' ? 'Entered top 20'
+      : c.note === 'No longer in the top 20' ? 'Left top 20'
+      : '';
+    const status = change === 'stable' ? 'Unchanged' : change === 'new' ? 'New this month' : change === 'not_comparable' ? `Not comparable — ${String(c.note || 'measured differently').replace(/^./, (x) => x.toLowerCase())}` : change === 'improved' ? 'Improved' : 'Declined';
+    const h: any[] = Array.isArray(c.history) ? c.history : [];
+    return {
+      keyword: String(c.keyword),
+      area: String(c.area || ''),
+      previous: change === 'new' ? '—' : rankText(c.beforeRank, c.before),
+      current: rankText(c.afterRank, c.after),
+      movement,
+      change,
+      status,
+      history: h.length >= 2 ? h.map((x) => `${monthText(x.at)} ${x.rank != null ? `#${x.rank}` : 'not in top 20'}`).join(' → ') : null,
+      home: c.areaId === 'area:address' ? 0 : 1,
+    };
+  });
+  rows.sort((a, b) => a.home - b.home || CHANGE_ORDER[a.change] - CHANGE_ORDER[b.change] || a.keyword.localeCompare(b.keyword));
+  return { counts, rows: rows.map(({ home, ...r }) => r) };
+}
+
+/** "4 up, 1 down, 3 unchanged" (+ new / not comparable when present). */
+export function keywordRankingSummary(r: KeywordRankingReport): string {
+  const c = r.counts;
+  return [`${c.improved} up`, `${c.declined} down`, `${c.stable} unchanged`, ...(c.new ? [`${c.new} new`] : []), ...(c.not_comparable ? [`${c.not_comparable} not comparable`] : [])].join(', ');
+}
+
+/** A customer issue that can be fixed — not data coverage, a check to make, or a watch-only fact. */
+const isFixableIssue = (f: any) =>
+  f && f.category !== 'data_quality' && !f.verificationOnly && f.actionability !== 'monitor_only' && f.actionability !== 'not_actionable';
+
+export function buildIssueProgress(prevFindings: any[] | null | undefined, curFindings: any[] | null | undefined, actions: PlanActionView[]): IssueProgress {
+  const ordered = (list: any[]) => list
+    .filter(isFixableIssue)
+    .map((f, i) => ({ f, rank: SEVERITY_RANK[f.severity] ?? 3, i }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map((x) => x.f);
+  const prev = ordered(prevFindings || []);
+  const cur = ordered(curFindings || []);
+  const prevIds = new Set(prev.map((f) => String(f.id)));
+  const curIds = new Set(cur.map((f) => String(f.id)));
+  const actionOf = new Map(actions.map((a) => [a.findingId, a]));
+
+  const fixed = prev.filter((f) => !curIds.has(String(f.id))).map((f) => {
+    const a = actionOf.get(String(f.id));
+    const how = a?.capability && a.executedAt ? 'Applied through GrowwMatics' : 'No longer found in this report';
+    return { findingId: String(f.id), title: String(f.title), how };
+  });
+  const added = cur.filter((f) => !prevIds.has(String(f.id))).map((f) => ({ findingId: String(f.id), title: String(f.title) }));
+  const stillOpen = cur.filter((f) => prevIds.has(String(f.id))).map((f) => {
+    const a = actionOf.get(String(f.id));
+    const actor = taskActor(a?.capability ?? f.growwmaticsCapability ?? null);
+    const reason = a?.status === 'EXECUTED' ? 'Applied — Google can take a while to show it'
+      : a?.status === 'BLOCKED' ? a.statusReason || 'Blocked'
+      : actor === 'approve' ? 'Waiting for your approval'
+      : actor === 'automatic' ? 'GrowwMatics is working on it'
+      : 'Needs you';
+    return { findingId: String(f.id), title: String(f.title), reason, waitingForOwner: reason === 'Waiting for your approval' || reason === 'Needs you' };
+  });
+  return { fixed, added, stillOpen };
+}
 
 export function buildMonthlyReport(input: {
   periodStart: string;
@@ -273,8 +408,10 @@ export function buildMonthlyReport(input: {
   const ownerPosts = ex.posts.length - autoPosts;
   const autoReplies = ex.replies.filter((r) => r.by === 'growwmatics_auto').length;
   const approvedReplies = ex.replies.filter((r) => r.by === 'growwmatics_owner_approved').length;
-  const ownerEdits = ex.profileEdits.filter((e) => e.actor === 'owner' && e.liveWriteApplied === true);
-  const gmEdits = ex.profileEdits.filter((e) => e.actor === 'growwmatics' && e.liveWriteApplied === true);
+  // A rollback, and the edit it undid, are not an optimization.
+  const kept = effectiveProfileEdits(ex.profileEdits);
+  const ownerEdits = kept.filter((e) => e.actor === 'owner');
+  const gmEdits = kept.filter((e) => e.actor === 'growwmatics');
 
   const growwmaticsOptimized = [
     { what: 'Google posts published automatically', count: autoPosts, evidence: 'Post records published by the content autopilot' },
@@ -352,6 +489,8 @@ export function buildMonthlyReport(input: {
     planCompleted: input.actions.filter((a) => a.status === 'VERIFIED' || a.status === 'EXECUTED'),
     planPending: input.actions.filter((a) => a.status === 'PLANNED' || a.status === 'READY' || a.status === 'BLOCKED'),
     // Most important first (high → medium → low; the audit's order within a severity).
+    issueProgress: buildIssueProgress(prevData?.findings, curData?.findings, input.actions),
+    keywordRankings: buildKeywordRankingReport(curData?.facts?.tracking),
     remainingIssues: (curData?.findings || [])
       .filter((f: any) => f.category !== 'data_quality' && !f.verificationOnly)
       .map((f: any, i: number) => ({ title: String(f.title), rank: SEVERITY_RANK[f.severity] ?? 3, i }))
@@ -401,7 +540,14 @@ export function composeMonthlyWhatsApp(m: MonthlyReport | null | undefined, busi
     month.push('Google performance data: unavailable for this period');
   }
   const verified = m.planCompleted.filter((a) => a.status === 'VERIFIED').length;
-  month.push(`Plan actions: ${m.planCompleted.length} completed${verified ? ` (${verified} verified)` : ''}, ${m.planPending.length} pending`);
+  if (m.keywordRankings) month.push(`Keyword rankings: ${keywordRankingSummary(m.keywordRankings)}`);
+  const ip = m.issueProgress;
+  if (ip) {
+    const waiting = ip.stillOpen.filter((x) => x.waitingForOwner).length;
+    month.push(`Issues: ${ip.fixed.length} fixed, ${ip.added.length} new, ${ip.stillOpen.length} still open${waiting ? ` (${waiting} waiting for you)` : ''}`);
+  } else {
+    month.push(`Plan actions: ${m.planCompleted.length} completed${verified ? ` (${verified} verified)` : ''}, ${m.planPending.length} pending`);
+  }
 
   const issueCount = m.remainingIssues.length;
   const build = (shownIssues: number, declinedShown: number, improvedShown: number) => {

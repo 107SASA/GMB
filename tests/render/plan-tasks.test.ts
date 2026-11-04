@@ -62,3 +62,39 @@ test('reopened task shows "Found again" and a Fix now link', async () => {
   assert.match(html, /Found again in the latest report/);
   assert.match(html, />Fix now/);
 });
+
+const progress = {
+  fixed: [{ findingId: 'website.services.missing_on_gbp', title: 'Your website lists 6 services; your Google profile lists none', how: 'Applied through GrowwMatics' }],
+  added: [{ findingId: 'profile.business_hours.missing', title: 'Opening hours are not set on the Google listing' }],
+  stillOpen: [{ findingId: 'gbp.attributes.none', title: 'No attributes are set on the Google profile', reason: 'Waiting for your approval', waitingForOwner: true }],
+};
+const monthly = (over: any = {}) => ({
+  period: { start: '2026-10-28T00:00:00Z', end: '2026-11-28T00:00:00Z' }, changes: [], growwmaticsOptimized: [], ownerOptimized: [],
+  performance: { status: 'unavailable', rows: [] }, ranking: [], reviews: { newReviews: 0, unanswered: 0 }, contentActivity: null,
+  profileHealth: { completionPercentage: 75, scope: null, missing: [], unknown: 0 }, planCompleted: [], planPending: [], remainingIssues: [],
+  improved: ['Website clicks: 4 → 9 (+125%)'], declined: [], ...over,
+});
+
+test('monthly report (web): fixed / new / still open, with measured changes', async () => {
+  const MonthlySections = (await import('../../src/components/audit/MonthlySections')).default;
+  const html = await render((React) => React.createElement(MonthlySections, { monthly: monthly({ issueProgress: progress }) }));
+  assert.match(html, /✅ Fixed since last report \(1\)/);
+  assert.match(html, /Applied through GrowwMatics/);
+  assert.match(html, /🆕 New this month \(1\)/);
+  assert.match(html, /⏳ Still open \(1\)/);
+  assert.match(html, /Waiting for your approval/);
+  assert.match(html, /Website clicks: 4 → 9/);
+  const old = await render((React) => React.createElement(MonthlySections, { monthly: monthly() }));
+  assert.ok(!/Fixed since last report/.test(old), 'older reports render as before');
+});
+
+test('monthly report (PDF): the same three sections, escaped', async () => {
+  const { buildReportHtml } = await import('../../src/lib/pdf/reportHtml');
+  const p = { ...progress, added: [{ findingId: 'x', title: '<script>x</script> Hours' }] };
+  const audit = { _id: 'a', businessName: 'Mulsetu', location: 'Ojhar', status: 'COMPLETED', fastMode: false, createdAt: '2026-11-28T00:00:00Z', auditData: { monthly: monthly({ issueProgress: p }) } };
+  const html = buildReportHtml({ audit } as any);
+  assert.match(html, /Fixed since last report \(1\)/);
+  assert.match(html, /Still open \(1\)/);
+  assert.match(html, /&lt;script&gt;x&lt;\/script&gt; Hours/);
+  assert.ok(!html.includes('<script>x</script>'));
+});

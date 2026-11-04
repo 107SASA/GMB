@@ -3,7 +3,7 @@ import type {
 } from '@/models/Audit';
 import { formatRank, rankBucket, resolveRankHeadline, resolveSuspensionRisk } from '@/services/audit/reportMath';
 import { getBrandLogoDataUri } from '@/lib/brandAsset';
-import { contentActivityLines } from '@/services/lifecycle/monthly';
+import { contentActivityLines, keywordRankingSummary } from '@/services/lifecycle/monthly';
 import { areaVisibilityView } from '@/services/audit/areaVisibility';
 import { intelligenceView } from '@/services/seo/intelligenceView';
 import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
@@ -1126,6 +1126,12 @@ function renderMonthly(m: any): string {
       p(`Current ${m.performance?.currentPeriod || ''}${m.performance?.previousPeriod ? ` · previous ${m.performance.previousPeriod}` : ' · no earlier measured period'} — engagement measurements, not revenue.`);
   return `<div style="margin:14px 0;">
     <div style="font-size:14px;font-weight:800;color:#0f172a;margin-bottom:8px;">Monthly optimization report</div>
+    ${m.issueProgress ? [
+      box(`Fixed since last report (${m.issueProgress.fixed.length})`, (m.issueProgress.fixed.length ? li(m.issueProgress.fixed.map((x: any) => `${x.title} — ${x.how}`)) : p('Nothing from last report is fixed yet.')) + (m.improved?.length ? p(`Measured: ${m.improved.join(' · ')}`) : '')),
+      box(`New this month (${m.issueProgress.added.length})`, m.issueProgress.added.length ? li(m.issueProgress.added.map((x: any) => x.title)) : p('No new issues found.')),
+      box(`Still open (${m.issueProgress.stillOpen.length})`, m.issueProgress.stillOpen.length ? li(m.issueProgress.stillOpen.map((x: any) => `${x.title} — ${x.reason}`)) : p('Nothing left over from last report.')),
+    ].join('') : ''}
+    ${m.keywordRankings?.rows?.length ? box('Keyword rankings', p(`${keywordRankingSummary(m.keywordRankings)} · same keyword, location and search grid as last month.`) + li(m.keywordRankings.rows.map((r: any) => `${r.keyword} (${r.area}): ${r.previous} → ${r.current}${r.movement ? ` (${r.movement})` : ''} — ${r.status}${r.history ? ` · ${r.history}` : ''}`))) : ''}
     ${box('What changed this month', m.changes?.length ? li(m.changes.map((c: any) => `${c.what}: ${c.previous} → ${c.current} (${c.actor === 'Unknown' ? 'not recorded' : c.actor === 'Owner' ? 'you' : 'GrowwMatics'})`)) : p('No verified profile changes were detected between the two audits.'))}
     ${box('What GrowwMatics optimized', m.growwmaticsOptimized?.length ? li(m.growwmaticsOptimized.map((x: any) => `${x.count} ${x.what}`)) : p('No GrowwMatics actions reached your Google profile this period.'))}
     ${box('What you optimized', m.ownerOptimized?.length ? li(m.ownerOptimized.map((x: any) => `${x.count} ${x.what}`)) : p('No owner actions were recorded through GrowwMatics this period.'))}

@@ -691,6 +691,14 @@ function VerifiedResultsBody({ audit, highlightKey }: { audit: Audit; highlightK
           <View>
             <SectionLabel>Monthly optimization report</SectionLabel>
             <Card>
+              {v.monthly.issueProgress && (
+                <>
+                  <LineList title={`✅ Fixed since last report (${v.monthly.issueProgress.fixed.length})`} items={v.monthly.issueProgress.fixed} empty="Nothing from last report is fixed yet." />
+                  <LineList title={`🆕 New this month (${v.monthly.issueProgress.added.length})`} items={v.monthly.issueProgress.added} empty="No new issues found." />
+                  <LineList title={`⏳ Still open (${v.monthly.issueProgress.stillOpen.length})`} items={v.monthly.issueProgress.stillOpen} empty="Nothing left over from last report." />
+                </>
+              )}
+              <LineList title="Keyword rankings" items={v.monthly.keywordRankings} />
               <LineList title="What changed" items={v.monthly.changes} empty="No verified profile changes between the two audits." />
               <LineList
                 title="What GrowwMatics did"
@@ -705,9 +713,14 @@ function VerifiedResultsBody({ audit, highlightKey }: { audit: Audit; highlightK
               )}
               <LineList title="Reviews" items={v.monthly.reviews} />
               <LineList title="Profile health" items={v.monthly.profileHealth ? [v.monthly.profileHealth] : []} />
-              <LineList title="Completed plan" items={v.monthly.planCompleted} />
-              <LineList title="Pending plan" items={v.monthly.planPending} />
-              <LineList title="Issues that remain" items={v.monthly.remainingIssues} />
+              {/* Reports from before issue-by-issue progress keep the plan lists. */}
+              {!v.monthly.issueProgress && (
+                <>
+                  <LineList title="Completed plan" items={v.monthly.planCompleted} />
+                  <LineList title="Pending plan" items={v.monthly.planPending} />
+                  <LineList title="Issues that remain" items={v.monthly.remainingIssues} />
+                </>
+              )}
             </Card>
           </View>
         )}

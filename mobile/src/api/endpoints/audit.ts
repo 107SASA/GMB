@@ -271,6 +271,8 @@ export const mobileReportViewSchema = z.object({
     period: z.object({ start: z.string(), end: z.string() }).nullable().catch(null),
     changes: lines, growwmatics: lines, owner: lines, performance: lines, performanceNote: z.string().catch(''),
     reviews: lines, contentActivity: lines, profileHealth: z.string().catch(''), planCompleted: lines, planPending: lines, remainingIssues: lines,
+    issueProgress: z.object({ fixed: lines, added: lines, stillOpen: lines }).nullable().catch(null),
+    keywordRankings: lines,
   }).nullable().catch(null),
 });
 export type MobileReportView = z.infer<typeof mobileReportViewSchema>;

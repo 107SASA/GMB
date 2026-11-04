@@ -102,3 +102,13 @@ test('audit screen fix list: this report only, live status, right buttons', asyn
   expect(screen.getByText('How to do this')).toBeTruthy();
   expect(screen.getByText(/^Done on /)).toBeTruthy();
 });
+
+test('monthly keyword rankings: lines parse; an older server without them still parses', () => {
+  const { mobileReportViewSchema } = require('@/api/endpoints/audit');
+  const monthly = { period: null, changes: [], growwmatics: [], owner: [], performance: [], performanceNote: '', reviews: [], contentActivity: [], profileHealth: '', planCompleted: [], planPending: [], remainingIssues: [], issueProgress: null };
+  const base = { version: 1, legacy: false, legacyNotice: null, aiUnavailable: false, headline: { issuesCount: 0, rating: null, reviewCount: null, averageRank: '#2.6', rankingStatus: 'ok', competitorsAhead: 0, searchesChecked: 45 }, rankingStats: [], keywords: [], competitors: [], reviews: null, completion: null, issues: [], suspension: null };
+  const withRankings = mobileReportViewSchema.parse({ ...base, monthly: { ...monthly, keywordRankings: ['1 up, 0 down, 1 unchanged', 'website development ojhar (Around your address): #3 → #1 (▲ 2) — Improved · Nov #3 → Dec #2 → Jan #1'] } });
+  expect(withRankings.monthly.keywordRankings).toHaveLength(2);
+  const older = mobileReportViewSchema.parse({ ...base, monthly });
+  expect(older.monthly.keywordRankings).toEqual([]);
+});

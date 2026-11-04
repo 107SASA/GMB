@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { useSectionFocus } from '@/hooks/useSectionFocus';
 import {
   ROLLBACK_CONFIRM,
   validationReview,
@@ -94,9 +95,9 @@ const btnOutline = 'px-3.5 py-1.5 rounded-lg border border-outline text-sm font-
 const input = 'border border-outline-variant rounded-lg px-3 py-2 text-sm bg-transparent';
 
 /** One collapsible section — keeps the page short; the hint says what's inside. */
-function Panel({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Panel({ title, hint, section, children }: { title: string; hint?: string; section?: string; children: React.ReactNode }) {
   return (
-    <details className="group rounded-xl border border-outline-variant bg-surface-container-lowest">
+    <details id={section ? `section-${section}` : undefined} className="group scroll-mt-24 rounded-xl border border-outline-variant bg-surface-container-lowest transition-shadow">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
         <span className="text-sm font-semibold text-on-surface">{title}</span>
         <span className="flex items-center gap-1.5 text-xs text-on-surface-variant">
@@ -114,6 +115,7 @@ export default function ProfileOptimizationPage() {
   const [recs, setRecs] = useState<any>(null);
   const [googleReviewPending, setGoogleReviewPending] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
+  const focus = useSectionFocus(!loading && !!recs);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ id: string; action: Action } | null>(null);
@@ -469,6 +471,11 @@ export default function ProfileOptimizationPage() {
       </div>
       <div role="status" aria-live="polite">
         {message && <p className="text-sm text-on-surface rounded-lg bg-surface-container px-3 py-2">{message}</p>}
+        {focus.missing && !message && (
+          <p className="text-sm text-on-surface rounded-lg bg-surface-container px-3 py-2">
+            Nothing to change here right now — it may already be fixed or waiting under “Ready to apply”.
+          </p>
+        )}
       </div>
 
       {recs && recs.connected === false && (
@@ -490,7 +497,7 @@ export default function ProfileOptimizationPage() {
           <h2 className="font-heading font-bold text-on-surface pt-2">Improve your profile</h2>
 
           {description?.text && (
-            <Panel title="Business description" hint="1 suggestion">
+            <Panel section="description" title="Business description" hint="1 suggestion">
               <p className="text-sm whitespace-pre-wrap break-words">{description.text}</p>
               {description.validation?.valid ? (
                 <button disabled={busy} className={btnPrimary} onClick={() => propose({ kind: 'description', proposed: description.text, source: 'recommendation', context: { tokens: description.tokens || [], competitorNames: description.competitorNames || [] } })}>Use this description</button>
@@ -501,7 +508,7 @@ export default function ProfileOptimizationPage() {
           )}
 
           {Boolean(categories?.primary || categories?.additional?.length) && (
-            <Panel title="Categories" hint={addable.length ? `${addable.length} to add` : 'Nothing to add'}>
+            <Panel section="categories" title="Categories" hint={addable.length ? `${addable.length} to add` : 'Nothing to add'}>
               {categories?.primary && (
                 <div className="space-y-1 text-sm">
                   <p>Main category: <strong>{categories.primary.displayName}</strong></p>
@@ -531,7 +538,7 @@ export default function ProfileOptimizationPage() {
             </Panel>
           )}
 
-          <Panel title="Attributes" hint={suggestions.length ? `${suggestions.length} not set` : 'All set'}>
+          <Panel section="attributes" title="Attributes" hint={suggestions.length ? `${suggestions.length} not set` : 'All set'}>
             {suggestions.length === 0 ? (
               <p className="text-sm text-on-surface-variant">{recs.attributes?.available === false ? 'Not available for your category right now.' : 'Nothing missing.'}</p>
             ) : (
@@ -571,7 +578,7 @@ export default function ProfileOptimizationPage() {
           </Panel>
 
           {linkKeys.length > 0 && (
-            <Panel title="Booking & order links" hint={linkKeys.some((key) => recs.links?.current?.[key]) ? 'Set' : `${linkKeys.length} available`}>
+            <Panel section="links" title="Booking & order links" hint={linkKeys.some((key) => recs.links?.current?.[key]) ? 'Set' : `${linkKeys.length} available`}>
               <p className="text-xs text-on-surface-variant">Customers tap these on your Google listing. We add tracking tags so you can see visits from Google.</p>
               {linkKeys.map((key) => {
                 const link = recs.links.attributes[key];
@@ -594,7 +601,7 @@ export default function ProfileOptimizationPage() {
           )}
 
           {((recs.services?.items || []).length > 0 || recs.services?.blocked) && (
-            <Panel title="Services" hint={recs.services?.items?.length ? `${recs.services.items.length} to add` : ''}>
+            <Panel section="services" title="Services" hint={recs.services?.items?.length ? `${recs.services.items.length} to add` : ''}>
               {(recs.services?.items || []).length > 0 && (
                 <>
                   <p className="text-sm">{recs.services.items.map((s: any) => s.name).join(', ')}</p>
@@ -605,7 +612,7 @@ export default function ProfileOptimizationPage() {
             </Panel>
           )}
 
-          <Panel title="Opening hours" hint={changedDays ? `${changedDays} changed` : reminders.length ? `${reminders.length} holiday${reminders.length === 1 ? '' : 's'} to set` : ''}>
+          <Panel section="hours" title="Opening hours" hint={changedDays ? `${changedDays} changed` : reminders.length ? `${reminders.length} holiday${reminders.length === 1 ? '' : 's'} to set` : ''}>
             <p className="text-xs text-on-surface-variant">Your hours on Google now. Change a day or tick Closed — days you don’t change stay as they are.</p>
             <div className="space-y-1.5">
               {DAYS.map((day) => {
@@ -680,7 +687,7 @@ export default function ProfileOptimizationPage() {
             )}
           </Panel>
 
-          <Panel title="Service area" hint={canSetArea ? businessTypeText(recs?.serviceArea?.businessType) : 'Storefront only'}>
+          <Panel section="service-area" title="Service area" hint={canSetArea ? businessTypeText(recs?.serviceArea?.businessType) : 'Storefront only'}>
             {canSetArea ? (
               <>
                 {currentAreas.length > 0 && (

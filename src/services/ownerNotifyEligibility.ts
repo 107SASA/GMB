@@ -27,7 +27,8 @@ export type OwnerBusinessEvent =
   | 'review_reply_sent'
   | 'content_batch_generated'
   | 'review_reply_drafted'
-  | 'review_attention';
+  | 'review_attention'
+  | 'plan_task_reminder';
 
 /**
  * WhatsApp policy per owner event (Oct 2026 — fewer, more meaningful messages).
@@ -63,6 +64,9 @@ export const OWNER_WHATSAPP_DELIVERY: Record<OwnerBusinessEvent, OwnerWhatsAppDe
   weekly_update: 'performance_update',
   performance_digest: 'performance_update',
   review_attention: 'weekly',
+  // Fixes from the latest report still waiting for the owner: day 3 and day 7
+  // only, limited by services/tasks/reminders.ts (claimed per report and step).
+  plan_task_reminder: 'immediate',
   festival_prompt: 'off',
   review_reminder: 'off',
   post_published: 'off',

@@ -132,7 +132,7 @@ export function buildCompetitorInsights(all: InsightCompetitor[], t: InsightTarg
       topic: 'categories',
       fact: `${withCats} of ${cats.length} businesses shown above you list additional Google categories; we could not see any on yours.`,
       meaning: 'Additional categories let a listing appear for more of the services it genuinely offers.',
-      recommendation: 'Check your Google Business Profile categories and add any that truly describe your services (you change categories in Google — GrowwMatics cannot).',
+      recommendation: 'Check your Google Business Profile categories and add any that truly describe your services (GrowwMatics can set them on your Google profile once you approve them in Profile optimization).',
       basis,
     });
   }

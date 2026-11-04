@@ -26,7 +26,7 @@ import {
 } from './facts';
 import { buildEvidenceAndFindings, isCustomerIssue, selectOpportunities, type KeywordRow } from './findings';
 import { areaStrategyLines, type AreaComparison, type AreaVisibilityFacts } from './areaVisibility';
-import { validateAudit, repairUnverifiedGbpClaims, type ValidatableAudit } from './validateAudit';
+import { validateAudit, repairUnverifiedGbpClaims, allReviewsReplied, type ValidatableAudit } from './validateAudit';
 import { getWebsiteIntelligence } from '../intel/websiteIntelligence';
 import { assembleFr4 } from './fr4/assemble';
 import { postsInLast30Days } from './fr4/benchmark';
@@ -449,8 +449,11 @@ async function processAuditJobInner(auditId: string) {
         const SeoPlan = require('../../models/SeoPlan').default;
         const GBPKeyword = require('../../models/GBPKeyword').default;
         const prevPlan: any = await SeoPlan.findOne({ businessId: business._id, status: 'active' }).sort({ version: -1 }).lean();
-        const prevAudit: any = await Audit.findOne({ businessId: business._id, status: 'COMPLETED', fastMode: { $ne: true }, _id: { $ne: audit._id }, 'auditData.facts.tracking': { $exists: true } })
-          .sort({ createdAt: -1 }).select('createdAt auditData.facts.tracking').lean();
+        // A monthly report measures its SEO-plan outcomes since last month's report.
+        const prevAudit: any = ((audit as any).auditKind || auditKindOf(audit)) === 'monthly'
+          ? await previousMonthlyReport(audit, '_id')
+          : await Audit.findOne({ businessId: business._id, status: 'COMPLETED', fastMode: { $ne: true }, _id: { $ne: audit._id }, 'auditData.facts.tracking': { $exists: true } })
+            .sort({ createdAt: -1 }).select('createdAt').lean();
         const latest: any = await GBPKeyword.findOne({ businessId: business._id }).sort({ year: -1, month: -1 }).select('year month').lean();
         const searchTerms = latest
           ? (await GBPKeyword.find({ businessId: business._id, year: latest.year, month: latest.month, impressions: { $gt: 0 } })
@@ -696,7 +699,7 @@ async function processAuditJobInner(auditId: string) {
     let tracking: any = null;
     if (seoIntel) {
       try {
-        const { measurementRows, compareMeasurements, addressArea } = require('../seo/measurements');
+        const { measurementRows, buildKeywordMovement, addressArea, monthlyHistoryAudits, RANK_HISTORY_FETCH, RANK_HISTORY_KINDS } = require('../seo/measurements');
         const { buildServiceVisibility } = require('../seo/serviceVisibility');
         const { areaId } = require('../seo/ids');
         const home = addressArea(AROUND_ADDRESS);
@@ -707,8 +710,22 @@ async function processAuditJobInner(auditId: string) {
           ...measurementRows(seoIntel.trackedObs, { scope: 'address_tracked', areaOf: () => home, serviceOf: seoIntel.serviceOf, volumes }),
           ...measurementRows(serviceAreaSearches, { scope: 'service_area', areaOf: (o: SearchObservation) => areaByLabel.get(o.area!)!, serviceOf: seoIntel.serviceOf, volumes }),
         ];
-        const prevTracking = seoIntel.prevAudit?.auditData?.facts?.tracking || null;
-        const changes = compareMeasurements(prevTracking?.measurements || null, measurements);
+        // Month-on-month movement + comparable history, from the measurements
+        // earlier connected audits already stored (database read only — no new
+        // searches): the latest connected audit of each earlier month, one per
+        // month; months[0] is the baseline this report compares with.
+        const measuredAt = new Date().toISOString();
+        const earlier: any[] = await Audit.find({
+          businessId: business._id, status: 'COMPLETED', fastMode: { $ne: true }, _id: { $ne: audit._id },
+          auditKind: { $in: [...RANK_HISTORY_KINDS] },
+          'auditData.facts.tracking.measurements': { $exists: true },
+        }).sort({ createdAt: -1 }).limit(RANK_HISTORY_FETCH)
+          .select('createdAt auditData.facts.tracking.measuredAt auditData.facts.tracking.measurements').lean();
+        const months = monthlyHistoryAudits(
+          earlier.map((a) => ({ id: String(a._id), at: a.auditData?.facts?.tracking?.measuredAt || new Date(a.createdAt).toISOString(), measurements: a.auditData?.facts?.tracking?.measurements || [] })),
+          measuredAt,
+        );
+        const changes = buildKeywordMovement({ at: measuredAt, measurements }, months);
         const websiteText = websiteIntel && websiteIntel.status !== 'failed'
           ? [websiteIntel.title, websiteIntel.metaDescription, websiteIntel.description?.value, ...(websiteIntel.headings || []).map((h: any) => h.value), ...(websiteIntel.services || []).map((x: any) => x.value)].filter(Boolean).join(' . ')
           : null;
@@ -726,9 +743,10 @@ async function processAuditJobInner(auditId: string) {
         });
         tracking = {
           version: 1,
-          measuredAt: new Date().toISOString(),
-          previousAuditId: seoIntel.prevAudit?._id ? String(seoIntel.prevAudit._id) : null,
-          previousMeasuredAt: prevTracking?.measuredAt ?? null,
+          measuredAt,
+          // The monthly baseline the keyword changes were compared with.
+          previousAuditId: months[0]?.id ?? null,
+          previousMeasuredAt: months[0]?.at ?? null,
           services: seoIntel.services,
           tracked: seoIntel.tracked,
           keywordChanges: seoIntel.keywordChanges,
@@ -1099,8 +1117,8 @@ async function processAuditJobInner(auditId: string) {
           confidence: 'medium',
           businessImpact: 'A booking link on the listing lets searchers book straight from Google Maps.',
           actionability: 'directly_fixable',
-          growwmaticsCapability: null,
-          recommendedAction: `Add ${websiteIntel.bookingLinks[0].value} as the appointment link in Google Business Profile.`,
+          growwmaticsCapability: 'update_booking_link',
+          recommendedAction: `Add ${websiteIntel.bookingLinks[0].value} as the appointment link on the Google profile.`,
         });
       }
       // The GBP service list is never read by any code path — so the website's
@@ -1123,8 +1141,8 @@ async function processAuditJobInner(auditId: string) {
           confidence: 'high',
           businessImpact: 'Google matches listings to searches partly by the services listed on them.',
           actionability: 'directly_fixable',
-          growwmaticsCapability: null,
-          recommendedAction: `Add the services you really offer to Google Business Profile — your website already names: ${websiteServices.slice(0, 5).join(', ')}.`,
+          growwmaticsCapability: 'update_services',
+          recommendedAction: `Add the services you really offer to the Google profile — your website already names: ${websiteServices.slice(0, 5).join(', ')}.`,
         });
       } else if (websiteServices.length && servicesStatus !== 'Complete') {
         findings.push({
@@ -1325,11 +1343,8 @@ async function processAuditJobInner(auditId: string) {
     let areaComparison: AreaComparison | null = null;
     if (lifecycleKind === 'monthly') {
       try {
-        const prevForAI: any = await Audit.findOne({ businessId: audit.businessId, status: 'COMPLETED', fastMode: { $ne: true }, _id: { $ne: audit._id }, 'auditData.facts.version': { $gte: 1 } })
-          .sort({ createdAt: -1 })
-          .select('createdAt fastMode metadata auditKind auditData.facts.ranking auditData.facts.reviews auditData.facts.areaVisibility auditData.profileCompletion auditData.performanceBaseline auditData.fr4.auditScore')
-          .lean();
-        if (prevForAI) {
+        const prevForAI: any = await previousMonthlyReport(audit, 'fastMode metadata auditKind auditData.facts.version auditData.facts.ranking auditData.facts.reviews auditData.facts.areaVisibility auditData.profileCompletion auditData.performanceBaseline auditData.fr4.auditScore');
+        if (prevForAI && prevForAI.auditData?.facts?.version >= 1) {
           const cmp = compareAudits(
             comparableSnapshot(prevForAI._id.toString(), auditKindOf(prevForAI), prevForAI.createdAt, prevForAI.auditData),
             comparableSnapshot(audit._id.toString(), 'monthly', new Date(), { facts: { ranking: rankingFacts, reviews: reviewFacts }, profileCompletion, performanceBaseline, fr4: fr4.bundle }),
@@ -1433,7 +1448,7 @@ async function processAuditJobInner(auditId: string) {
           })),
           searchesChecked: aheadFacts.searchesChecked,
           ranking: { overall: rankingFacts.overall, primary: rankingFacts.primary, notRunReason: rankingNotRunReason },
-          reviews: { totalCount: lifetimeCount, rating: reviewFacts.lifetime.rating, sampleSize: reviewFacts.lifetime.sampleSize },
+          reviews: { totalCount: lifetimeCount, rating: reviewFacts.lifetime.rating, sampleSize: reviewFacts.lifetime.sampleSize, allReplied: allReviewsReplied(reviewFacts.recent) },
           reviewComparison,
           profileCompletion,
           fieldStates,
@@ -1711,18 +1726,22 @@ async function processAuditJobInner(auditId: string) {
     auditData.optimizationPlan = buildOptimizationPlan(validFindings.filter(isCustomerIssue) as any);
     if (!audit.fastMode) {
       try {
-        const prev: any = await Audit.findOne({
-          businessId: audit.businessId,
-          status: 'COMPLETED',
-          _id: { $ne: audit._id },
-          'auditData.facts.version': { $gte: 1 },
-          // A monthly report is compared with the previous connected audit
-          // (baseline or last month), never with the public free report.
-          ...(auditKind === 'monthly' ? { fastMode: { $ne: true } } : {}),
-        })
-          .sort({ createdAt: -1 })
-          .select('fastMode metadata auditKind createdAt auditData.facts auditData.profileCompletion auditData.performanceBaseline auditData.findings auditData.fr4.auditScore')
-          .lean();
+        const prevSelect = 'fastMode metadata auditKind createdAt auditData.facts auditData.profileCompletion auditData.performanceBaseline auditData.findings auditData.fr4.auditScore';
+        // A monthly report is compared with last month's connected report
+        // (previousMonthlyReport) — never a support re-run, a same-month audit
+        // or the public free report. Other audits keep the latest earlier one.
+        const monthlyPrev: any = auditKind === 'monthly' ? await previousMonthlyReport(audit, prevSelect) : null;
+        const prev: any = auditKind === 'monthly'
+          ? (monthlyPrev?.auditData?.facts?.version >= 1 ? monthlyPrev : null)
+          : await Audit.findOne({
+            businessId: audit.businessId,
+            status: 'COMPLETED',
+            _id: { $ne: audit._id },
+            'auditData.facts.version': { $gte: 1 },
+          })
+            .sort({ createdAt: -1 })
+            .select(prevSelect)
+            .lean();
         if (prev) {
           auditData.comparison = compareAudits(
             comparableSnapshot(prev._id.toString(), prev.auditKind || auditKindOf(prev), prev.createdAt, prev.auditData),
@@ -2002,6 +2021,24 @@ function collectVerifiedServices(business: any, websiteSignals: any, gbpServices
 }
 
 /** The like-for-like numbers two audits can be compared on. */
+/**
+ * What a MONTHLY report is compared with: the latest connected report (first
+ * or monthly) of the most recent earlier calendar month (IST) — the same rule
+ * as the keyword-ranking history (seo/measurements.ts monthlyHistoryAudits).
+ * Support re-runs and audits from the current month are never the baseline.
+ * The month is chosen first; when its latest report lacks the data a caller
+ * needs, there is no baseline — an earlier same-month report is never used.
+ */
+export async function previousMonthlyReport(audit: any, select: string, now = new Date()): Promise<any | null> {
+  const { monthlyHistoryAudits, RANK_HISTORY_FETCH, RANK_HISTORY_KINDS } = require('../seo/measurements');
+  const rows: any[] = await Audit.find({
+    businessId: audit.businessId, status: 'COMPLETED', fastMode: { $ne: true }, _id: { $ne: audit._id },
+    auditKind: { $in: [...RANK_HISTORY_KINDS] },
+  }).sort({ createdAt: -1 }).limit(RANK_HISTORY_FETCH).select(`createdAt ${select}`).lean();
+  const [pick] = monthlyHistoryAudits(rows.map((row) => ({ at: new Date(row.createdAt).toISOString(), row })), now.toISOString(), 1);
+  return pick?.row ?? null;
+}
+
 function comparableSnapshot(auditId: string, kind: ComparableSnapshot['kind'], at: Date | string, data: any): ComparableSnapshot {
   const overall = data?.facts?.ranking?.overall || {};
   const byKeyword: any[] = data?.facts?.ranking?.byKeyword || [];

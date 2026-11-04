@@ -142,6 +142,23 @@ test('actions: owner-only actions are never claimed by GrowwMatics', () => {
   assert.match(posts.executionResult!, /3 Google post/);
 });
 
+test('actions: approved Profile optimization changes execute services, categories, hours, attributes and booking link', () => {
+  const at = '2026-09-03T00:00:00Z';
+  const edits = (fields: string[]) => ({ ...base, executions: { ...ex0, appliedEdits: [{ at, fields }] } });
+  const action = (capability: string) => ({ findingId: `x.${capability}`, capability, requiresGbpConnection: true, plannedAt: '2026-09-01T00:00:00Z' });
+  // Fields exactly as store.ts ACTIVITY_FIELDS / noteVerifiedEdit log them.
+  assert.equal(deriveActionStatus(action('update_services'), edits(['services'])).status, 'EXECUTED');
+  assert.equal(deriveActionStatus(action('update_categories'), edits(['additionalCategories'])).status, 'EXECUTED');
+  assert.equal(deriveActionStatus(action('update_categories'), edits(['primaryCategory', 'additionalCategories'])).status, 'EXECUTED', 'a primary-category change also counts');
+  assert.equal(deriveActionStatus(action('update_hours'), edits(['regularHours', 'specialHours'])).status, 'EXECUTED');
+  assert.equal(deriveActionStatus(action('update_attributes'), edits(['attribute:has_wheelchair_accessible_entrance'])).status, 'EXECUTED');
+  assert.equal(deriveActionStatus(action('update_booking_link'), edits(['attribute:url_appointment'])).status, 'EXECUTED');
+  assert.equal(deriveActionStatus(action('update_booking_link'), edits(['attribute:has_wifi'])).status, 'READY', 'another attribute is not the booking link');
+  assert.equal(deriveActionStatus(action('update_attributes'), edits(['attribute:url_appointment'])).status, 'READY', 'the booking link is not an attribute fix');
+  assert.equal(deriveActionStatus(action('update_services'), edits(['additionalCategories'])).status, 'READY', 'an edit to a different field is not this action');
+  assert.match(deriveActionStatus(action('update_services'), { ...base, liveWritesEnabled: false }).statusReason, /turned off/);
+});
+
 // ── Weekly monitoring ──────────────────────────────────────────────────────
 
 const week = (o: Partial<WeeklyInput> = {}): WeeklyInput => ({
@@ -170,7 +187,9 @@ test('weekly: new reviews notify; zero reviews is stated, not blamed', () => {
 test('weekly: unanswered reviews, action required, unavailable data', () => {
   const s = buildWeeklySummary(week({ reviews: { unanswered: 2 } as any, plan: { awaitingOwner: 1, blocked: 0, overdue: 0 } }));
   assert.ok(s.notifications.some((n) => n.body === '2 Google reviews are still waiting for a response.'));
-  assert.ok(s.notifications.some((n) => /needs your confirmation or action/.test(n.body)));
+  const action = s.notifications.find((n) => n.type === 'weekly_action_required');
+  assert.equal(action?.body, '1 fix from your report is waiting for your approval or action.');
+  assert.equal(action?.link, '/dashboard', 'opens the checklist, not the SEO plan');
   const notSynced = buildWeeklySummary(week({ reviews: { syncedThisWeek: false, unanswered: 5 } as any }));
   assert.ok(notSynced.lines[0].includes('not checked this week'));
   assert.equal(notSynced.notifications.length, 0, 'no review claims from a sync that did not run');

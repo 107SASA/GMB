@@ -24,6 +24,7 @@ import { OfflineBanner } from '@/components/offline-banner';
 import { ConnectGooglePromptHost } from '@/lib/connectGoogle';
 import { palettes, useTheme } from '@/lib/theme';
 import { useLastNotificationResponse } from '@/notifications/push';
+import { isTaskPath } from '@/lib/taskLinks';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -136,6 +137,9 @@ function RootNavigator() {
       router.push(`/reviews/${data.reviewId}`);
     } else if (typeof data?.postId === 'string') {
       router.push(`/posts/${data.postId}`);
+    } else if (isTaskPath(data?.taskPath)) {
+      // A plan task reminder: straight to the screen that fixes it.
+      router.push(data.taskPath as never);
     }
   }, [lastResponse, isHydrating, isAuthenticated, user, router]);
 

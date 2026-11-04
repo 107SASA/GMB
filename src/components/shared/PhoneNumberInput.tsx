@@ -43,7 +43,26 @@ export function PhoneNumberInput({
         autoComplete="tel-national"
         value={localNumber}
         onChange={(e) => {
-          const digitsOnly = e.target.value.replace(/[^\d]/g, '');
+          const raw = e.target.value.trim();
+          // A pasted "+44 7700…" / "0044 7700…" carries its own country code —
+          // switch the select to it instead of stacking it after the current one.
+          // Gated on a full-length number so typing "+", "4"… key by key
+          // doesn't flip the select on a partial code.
+          if (raw.startsWith('+') || raw.startsWith('00')) {
+            const digits = raw.replace(/[^\d]/g, '').replace(/^00/, '');
+            if (digits.length >= 10) {
+              onChange(`+${digits}`);
+              return;
+            }
+          }
+          let digitsOnly = raw.replace(/[^\d]/g, '');
+          // "919876543210" with +91 selected is the number typed WITH its
+          // country code — drop it, or it saves as "+91919876543210". Only when
+          // a full 10-digit number follows, since "91…" is also a valid start.
+          const dialDigits = dialCode.replace(/\D/g, '');
+          if (digitsOnly.length === dialDigits.length + 10 && digitsOnly.startsWith(dialDigits)) {
+            digitsOnly = digitsOnly.slice(dialDigits.length);
+          }
           onChange(digitsOnly ? `${dialCode}${digitsOnly}` : '');
         }}
         className="flex-1 min-w-0 px-3 sm:px-4 py-3.5 bg-transparent text-on-surface placeholder:text-outline outline-none text-base"

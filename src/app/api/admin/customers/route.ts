@@ -6,6 +6,7 @@ import { displayPersonName } from '@/lib/personName';
 import User from '@/models/User';
 import Business from '@/models/Business';
 import Subscription from '@/models/Subscription';
+import { realUserFilter, workspacePlanLabel, CUSTOMER_STATUSES } from '@/lib/admin/realAccounts';
 
 export async function GET(req: NextRequest) {
   const auth = await requireSuperAdmin();
@@ -24,10 +25,11 @@ export async function GET(req: NextRequest) {
 
     // Unclaimed shadow accounts (see src/lib/shadowAccount.ts — created
     // automatically by lead-gen flows like /free-report) are hidden from the
-    // customer list by default so they don't inflate real-signup counts.
+    // customer list by default so they don't inflate real-signup counts —
+    // unless they became customers (trial, paid or past due): see realAccounts.ts.
     const includeShadow = searchParams.get('includeShadow') === 'true';
-    const query: any = { role: { $ne: 'SUPER_ADMIN' } };
-    if (!includeShadow) query.isShadowAccount = { $ne: true };
+    const shadowFilter = includeShadow ? {} : await realUserFilter();
+    const query: any = { role: { $ne: 'SUPER_ADMIN' }, $and: [shadowFilter] };
 
     if (search.trim()) {
       query.$or = [
@@ -55,7 +57,7 @@ export async function GET(req: NextRequest) {
 
     const [businesses, subscriptions] = await Promise.all([
       Business.find({ userId: { $in: userIds } })
-        .select('userId name category address city')
+        .select('userId name category address city subscriptionStatus trialEndsAt')
         .lean(),
       Subscription.find({ userId: { $in: userIds } })
         .select('userId planType billingStatus trialStatus')
@@ -63,8 +65,12 @@ export async function GET(req: NextRequest) {
     ]);
 
     const businessMap: Record<string, any> = {};
+    // The owner's most significant workspace: paid, then trial, then past due, then any.
+    const rank = (s?: string) => { const i = (CUSTOMER_STATUSES as readonly string[]).indexOf(s || ''); return i === -1 ? 9 : i; };
     businesses.forEach((b: any) => {
-      if (b.userId) businessMap[b.userId.toString()] = b;
+      if (!b.userId) return;
+      const k = b.userId.toString();
+      if (!businessMap[k] || rank(b.subscriptionStatus) < rank(businessMap[k].subscriptionStatus)) businessMap[k] = b;
     });
 
     const subscriptionMap: Record<string, any> = {};
@@ -92,6 +98,10 @@ export async function GET(req: NextRequest) {
         business: biz
           ? { _id: biz._id, name: biz.name, category: biz.category, address: biz.address, city: biz.city }
           : null,
+        // The real plan state, from the workspace (the user-level plan reads "Free" during a trial).
+        workspaceStatus: biz?.subscriptionStatus ?? null,
+        workspacePlan: workspacePlanLabel(biz?.subscriptionStatus),
+        trialEndsAt: biz?.subscriptionStatus === 'trial_active' ? biz?.trialEndsAt ?? null : null,
         subscription: sub
           ? { planType: sub.planType, billingStatus: sub.billingStatus, trialActive: sub.trialStatus?.isActive }
           : null,
@@ -109,7 +119,6 @@ export async function GET(req: NextRequest) {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    const shadowFilter = includeShadow ? {} : { isShadowAccount: { $ne: true } };
     const [newThisWeek, proCount, enterpriseCount] = await Promise.all([
       User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, ...shadowFilter, createdAt: { $gte: sevenDaysAgo } }),
       User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, ...shadowFilter, subscriptionPlan: 'Pro' }),

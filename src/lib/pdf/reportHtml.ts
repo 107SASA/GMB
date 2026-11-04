@@ -3,7 +3,7 @@ import type {
 } from '@/models/Audit';
 import { formatRank, rankBucket, resolveRankHeadline, resolveSuspensionRisk } from '@/services/audit/reportMath';
 import { getBrandLogoDataUri } from '@/lib/brandAsset';
-import { contentActivityLines } from '@/services/lifecycle/monthly';
+import { contentActivityLines, keywordRankingSummary } from '@/services/lifecycle/monthly';
 import { areaVisibilityView } from '@/services/audit/areaVisibility';
 import { intelligenceView } from '@/services/seo/intelligenceView';
 import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
@@ -362,7 +362,7 @@ function renderConsultantSections(
     const descKw = chips(draft.descriptionKeywords || [], '#f1f5f9', '#475569');
     const platforms = (draft.platformGaps || []).map((p: any) => `<li style="font-size:11px;color:#64748b;"><b style="color:#0f172a;">${h(p.platform)}</b> — ${h(p.why || '')}</li>`).join('');
     parts.push(bar(sec(), 'GBP PROFILE GAP ANALYSIS') + card(
-      `<p style="font-size:11px;color:#64748b;margin:0 0 10px;">Drafts for ${h(businessName)} only — nothing is changed on your listing from this report. Once connected, GrowwMatics can apply the title and description drafts; categories, services, hours and attributes are changed by you in Google.</p>
+      `<p style="font-size:11px;color:#64748b;margin:0 0 10px;">Drafts for ${h(businessName)} only — nothing is changed on your listing from this report. Once connected, GrowwMatics can apply these to your Google profile — description, services, categories, hours, attributes and booking link — after you approve each one in Profile optimization.</p>
        ${gaps}
        ${descKw ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">The 750-char description must embed</div>${descKw}</div>` : ''}
        ${attrs ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};margin-bottom:4px;">GBP attributes to set</div>${attrs}</div>` : ''}
@@ -652,7 +652,7 @@ export function buildReportHtml(ctx: ReportContext): string {
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;break-inside:avoid;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
       ${googleSvg(18)}
-      <span style="font-size:13px;font-weight:700;color:#374151;">Google Profile Score</span>
+      <span style="font-size:13px;font-weight:700;color:#374151;">Profile completion</span>
     </div>
     <div style="display:flex;align-items:center;gap:18px;">
       ${svgRing(overallScore, profileColor, 120)}
@@ -769,7 +769,7 @@ export function buildReportHtml(ctx: ReportContext): string {
   // ── 5. PROFILE SCORE BREAKDOWN ───────────────────────────────────────────────
   const profileBreakdownHtml = `
 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:14px;">
-  <h2 style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:16px;">Your Profile Score (${overallScore}%)</h2>
+  <h2 style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:16px;">Profile completion (${overallScore}%)</h2>
 
   <!-- Row 1: SEO Score + Services/Categories -->
   <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px;">
@@ -1126,6 +1126,12 @@ function renderMonthly(m: any): string {
       p(`Current ${m.performance?.currentPeriod || ''}${m.performance?.previousPeriod ? ` · previous ${m.performance.previousPeriod}` : ' · no earlier measured period'} — engagement measurements, not revenue.`);
   return `<div style="margin:14px 0;">
     <div style="font-size:14px;font-weight:800;color:#0f172a;margin-bottom:8px;">Monthly optimization report</div>
+    ${m.issueProgress ? [
+      box(`Fixed since last report (${m.issueProgress.fixed.length})`, (m.issueProgress.fixed.length ? li(m.issueProgress.fixed.map((x: any) => `${x.title} — ${x.how}`)) : p('Nothing from last report is fixed yet.')) + (m.improved?.length ? p(`Measured: ${m.improved.join(' · ')}`) : '')),
+      box(`New this month (${m.issueProgress.added.length})`, m.issueProgress.added.length ? li(m.issueProgress.added.map((x: any) => x.title)) : p('No new issues found.')),
+      box(`Still open (${m.issueProgress.stillOpen.length})`, m.issueProgress.stillOpen.length ? li(m.issueProgress.stillOpen.map((x: any) => `${x.title} — ${x.reason}`)) : p('Nothing left over from last report.')),
+    ].join('') : ''}
+    ${m.keywordRankings?.rows?.length ? box('Keyword rankings', p(`${keywordRankingSummary(m.keywordRankings)} · same keyword, location and search grid as last month.`) + li(m.keywordRankings.rows.map((r: any) => `${r.keyword} (${r.area}): ${r.previous} → ${r.current}${r.movement ? ` (${r.movement})` : ''} — ${r.status}${r.history ? ` · ${r.history}` : ''}`))) : ''}
     ${box('What changed this month', m.changes?.length ? li(m.changes.map((c: any) => `${c.what}: ${c.previous} → ${c.current} (${c.actor === 'Unknown' ? 'not recorded' : c.actor === 'Owner' ? 'you' : 'GrowwMatics'})`)) : p('No verified profile changes were detected between the two audits.'))}
     ${box('What GrowwMatics optimized', m.growwmaticsOptimized?.length ? li(m.growwmaticsOptimized.map((x: any) => `${x.count} ${x.what}`)) : p('No GrowwMatics actions reached your Google profile this period.'))}
     ${box('What you optimized', m.ownerOptimized?.length ? li(m.ownerOptimized.map((x: any) => `${x.count} ${x.what}`)) : p('No owner actions were recorded through GrowwMatics this period.'))}

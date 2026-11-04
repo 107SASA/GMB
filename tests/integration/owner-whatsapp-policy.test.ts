@@ -47,7 +47,7 @@ test('performance summaries are capped, review attention is weekly, action/trans
   assert.equal(ownerWhatsAppDelivery('weekly_update'), 'performance_update');
   assert.equal(ownerWhatsAppDelivery('performance_digest'), 'performance_update');
   assert.equal(ownerWhatsAppDelivery('review_attention'), 'weekly');
-  for (const e of ['new_lead', 'critical_review', 'billing_activated', 'billing_past_due', 'billing_canceled', 'report_ready', 'demo_booking'] as const) {
+  for (const e of ['new_lead', 'critical_review', 'billing_activated', 'billing_past_due', 'billing_canceled', 'report_ready', 'demo_booking', 'plan_task_reminder'] as const) {
     assert.equal(ownerWhatsAppDelivery(e), 'immediate', e);
   }
   // The monthly summary is never held back by the limit, but counts toward it.

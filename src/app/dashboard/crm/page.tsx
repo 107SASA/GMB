@@ -18,7 +18,7 @@ type ViewMode = 'list' | 'kanban' | 'analytics' | 'stages';
 
 // ─── Add Lead Modal ───────────────────────────────────────────────────────────
 
-function AddLeadModal({ onClose, onCreated }: { onClose: () => void; onCreated: (lead: any) => void }) {
+function AddLeadModal({ onClose, onCreated }: { onClose: () => void; onCreated: (lead: any, existing: boolean) => void }) {
   // Trimmed to Name/Phone/Valuation/Notes (owner's explicit choice) — Email,
   // Source and Stage still exist on the Lead model and stay editable from
   // the lead drawer afterward; the API defaults source to 'Manual' and
@@ -45,7 +45,7 @@ function AddLeadModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Failed to create lead.'); return; }
-      onCreated(data.lead);
+      onCreated(data.lead, !!data.existing);
       onClose();
     } catch {
       setError('Network error. Please try again.');
@@ -67,8 +67,8 @@ function AddLeadModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && <p className="text-sm text-error bg-error-container border border-error-container rounded-lg px-4 py-2">{error}</p>}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+            <div className="sm:col-span-5">
               <label className="block text-xs font-semibold text-on-surface-variant mb-1">Name <span className="text-error">*</span></label>
               <input
                 ref={firstInputRef}
@@ -80,15 +80,15 @@ function AddLeadModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
                 required
               />
             </div>
-            <div>
+            <div className="sm:col-span-3">
               <label className="block text-xs font-semibold text-on-surface-variant mb-1">Phone <span className="text-error">*</span></label>
               <PhoneNumberInput
                 value={form.phone}
                 onChange={v => set('phone', v)}
-                className="rounded-xl [&_input]:py-2.5 [&_select]:py-2.5"
+                className="rounded-xl [&_input]:py-2.5 [&_input]:text-sm [&_select]:py-2.5"
               />
             </div>
-            <div>
+            <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-on-surface-variant mb-1">Valuation (₹)</label>
               <input
                 type="number"
@@ -100,7 +100,7 @@ function AddLeadModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
                 className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               />
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-5">
               <label className="block text-xs font-semibold text-on-surface-variant mb-1">Notes</label>
               <textarea
                 value={form.notes}
@@ -414,10 +414,12 @@ export default function CRMDashboard() {
     fetchLeadStages();
   }, [activeBusiness?._id]);
 
-  const handleLeadCreated = (newLead: any) => {
-    setLeads(prev => [newLead, ...prev]);
-    setStats(prev => ({ ...prev, total: prev.total + 1 }));
-    setToast(`Lead "${newLead.name}" created.`);
+  // POST /api/crm/leads dedupes by phone/email — a repeat add returns the
+  // EXISTING lead, so replace it in place instead of listing it twice.
+  const handleLeadCreated = (newLead: any, existing = false) => {
+    setLeads(prev => [newLead, ...prev.filter(l => l._id !== newLead._id)]);
+    if (!existing) setStats(prev => ({ ...prev, total: prev.total + 1 }));
+    setToast(existing ? `"${newLead.name}" is already in your leads.` : `Lead "${newLead.name}" created.`);
   };
 
   const handleImportDone = () => {

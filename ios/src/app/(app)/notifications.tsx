@@ -15,6 +15,7 @@ import { EmptyState, PrimaryButton, Screen, Skeleton, useInfoSheet } from '@/com
 import { timeAgo } from '@/lib/format';
 import { storeSafeNotificationBody } from '@/lib/storeCompliance';
 import { useTheme, withAlpha } from '@/lib/theme';
+import { appPathForTaskLink } from '@/lib/taskLinks';
 
 /**
  * Best-effort mapping from the web dashboard paths stored on notifications
@@ -51,6 +52,9 @@ const LINK_MAP: Record<string, { route: string; superAdminOnly?: boolean }> = {
 
 function mobileRouteFor(link: string | null | undefined, isSuperAdmin: boolean): string | null {
   if (!link) return null;
+  // Plan-task links ("Action required", reminders) open the screen that fixes it.
+  const taskPath = appPathForTaskLink(link);
+  if (taskPath) return taskPath;
   const [rawPath, query = ''] = link.replace(/^\/dashboard\/?/, '').split('?');
   const path = rawPath;
   const [segment, id] = path.split('/');
@@ -85,6 +89,8 @@ const TYPE_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   post_failed: 'alert-circle-outline',
   post_published: 'checkmark-circle-outline',
   monthly_report: 'bar-chart-outline',
+  plan_task_reminder: 'checkmark-done-circle-outline',
+  weekly_action_required: 'checkmark-done-circle-outline',
 };
 
 function NotificationRow({

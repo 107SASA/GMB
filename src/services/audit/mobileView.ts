@@ -3,7 +3,7 @@ import {
   isLegacyAudit, rankLabel, rankingStatRows, reviewDisplay, suspensionDisplay, toRankValue, type RankValue,
 } from './reportDisplay';
 import { resolveSuspensionRisk } from './reportMath';
-import { contentActivityLines } from '@/services/lifecycle/monthly';
+import { contentActivityLines, keywordRankingSummary } from '@/services/lifecycle/monthly';
 
 /**
  * The report as the mobile app shows it — computed on the server from the
@@ -31,7 +31,10 @@ export interface MobileReportView {
   competitors: Array<{ name: string; rating: string; reviews: string; aboveYou: string; tier: string }>;
   reviews: ReturnType<typeof reviewDisplay>;
   completion: { sentence: string; percent: number | null; missing: string[]; notChecked: string[] };
-  issues: Array<{ title: string; evidence: string; severity: string; actionability: string; recommendedAction: string; growwmaticsCan: boolean }>;
+  /** id = the finding id ('' for legacy audits), matched to plan tasks (GET /api/tasks). */
+  issues: Array<{ id: string; title: string; evidence: string; severity: string; actionability: string; recommendedAction: string; growwmaticsCan: boolean }>;
+  /** This report's finding ids when it is a connected report (its plan tasks show live status); [] otherwise. */
+  planFindingIds: string[];
   suspension: { level: string; note: string };
   monthly: null | {
     period: { start: string; end: string };
@@ -46,6 +49,10 @@ export interface MobileReportView {
     planCompleted: string[];
     planPending: string[];
     remainingIssues: string[];
+    /** Issue by issue against the previous report; null on reports built before it existed. */
+    issueProgress: null | { fixed: string[]; added: string[]; stillOpen: string[] };
+    /** Keyword rankings: a summary line, then one line per keyword × location; [] before tracking existed. */
+    keywordRankings: string[];
   };
 }
 
@@ -53,7 +60,7 @@ const kwValue = (k: any): RankValue =>
   k.status === 'unavailable' ? { state: 'unavailable', rank: null }
     : k.averageObservedRank != null ? { state: 'found', rank: k.averageObservedRank } : { state: 'not_found', rank: null };
 
-export function buildMobileReportView(audit: { auditData?: any }): MobileReportView {
+export function buildMobileReportView(audit: { auditData?: any; auditKind?: string; fastMode?: boolean }): MobileReportView {
   const d = audit.auditData || {};
   const facts = d.facts;
   const legacy = isLegacyAudit(d);
@@ -111,6 +118,17 @@ export function buildMobileReportView(audit: { auditData?: any }): MobileReportV
     planCompleted: (m.planCompleted || []).map((a: any) => `${a.action} — ${a.status}`),
     planPending: (m.planPending || []).map((a: any) => `${a.action} — ${a.status}${a.statusReason ? ` (${a.statusReason})` : ''}`),
     remainingIssues: m.remainingIssues || [],
+    issueProgress: m.issueProgress ? {
+      fixed: (m.issueProgress.fixed || []).map((x: any) => `${x.title} — ${x.how}`),
+      added: (m.issueProgress.added || []).map((x: any) => String(x.title)),
+      stillOpen: (m.issueProgress.stillOpen || []).map((x: any) => `${x.title} — ${x.reason}`),
+    } : null,
+    keywordRankings: m.keywordRankings?.rows?.length
+      ? [
+          keywordRankingSummary(m.keywordRankings),
+          ...m.keywordRankings.rows.map((r: any) => `${r.keyword} (${r.area}): ${r.previous} → ${r.current}${r.movement ? ` (${r.movement})` : ''} — ${r.status}${r.history ? ` · ${r.history}` : ''}`),
+        ]
+      : [],
   } : null;
 
   return {
@@ -148,6 +166,7 @@ export function buildMobileReportView(audit: { auditData?: any }): MobileReportV
     },
     issues: issues.length
       ? issues.map((f: any) => ({
+          id: String(f.id || ''),
           title: String(f.title),
           evidence: String(f.evidence || ''),
           severity: SEVERITY_LABEL[f.severity] ?? '',
@@ -155,7 +174,10 @@ export function buildMobileReportView(audit: { auditData?: any }): MobileReportV
           recommendedAction: String(f.recommendedAction || ''),
           growwmaticsCan: !!f.growwmaticsCapability,
         }))
-      : legacyIssues.map((t) => ({ title: t, evidence: '', severity: '', actionability: '', recommendedAction: '', growwmaticsCan: false })),
+      : legacyIssues.map((t) => ({ id: '', title: t, evidence: '', severity: '', actionability: '', recommendedAction: '', growwmaticsCan: false })),
+    planFindingIds: !audit.fastMode && (audit.auditKind === 'connected_baseline' || audit.auditKind === 'monthly') && Array.isArray(d.findings)
+      ? d.findings.map((f: any) => String(f.id)).filter(Boolean)
+      : [],
     suspension: suspension.basis === 'heuristic' ? suspensionDisplay(suspension) : suspensionDisplay(null),
     monthly,
   };

@@ -57,6 +57,7 @@ export async function GET(req: Request) {
       kpis: {
         totalLeads: report.leads,
         activeSalesLeads: s.activeSales,
+        freeTrialLeads: s.freeTrial,
         demoInterested: s.demoInterest,
         demoScheduledLeads: s.demoScheduled,
         demoCompletedLeads: s.demoCompleted,

@@ -216,7 +216,7 @@ export default function AdminRootPage() {
                             ? 'bg-primary-fixed text-primary'
                             : 'bg-surface-container text-on-surface-variant'
                         }`}>
-                          {user.subscriptionPlan ?? 'Free'}
+                          {(user as any).workspacePlan ?? user.subscriptionPlan ?? 'Free'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-outline">

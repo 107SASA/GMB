@@ -2007,7 +2007,7 @@ export const generateAuditJob = inngest.createFunction(
       const { notifyOwner } = await import('@/services/ownerNotify');
       const { auditKindOf } = await import('@/services/audit/optimizationPlan');
       const { claimReportOwnerNotice } = await import('@/services/lifecycle/notify');
-      const audit: any = await Audit.findById(auditId).select('status fastMode businessId businessName auditKind metadata.trigger').lean();
+      const audit: any = await Audit.findById(auditId).select('status fastMode businessId businessName overallScore auditKind metadata.trigger').lean();
       if (!audit || audit.status !== 'COMPLETED' || audit.fastMode) return { skip: true };
       const kind = audit.auditKind || auditKindOf(audit);
       if (kind === 'monthly') return { skip: 'monthly summary sent by the audit' };
@@ -2015,28 +2015,28 @@ export const generateAuditJob = inngest.createFunction(
       const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/$/, '');
       if (!/^https?:\/\//.test(base)) return { skip: 'no absolute app URL for the report link' };
       if (!(await claimReportOwnerNotice(auditId))) return { skip: 'already notified' };
-      // Share the plan itself — the top open actions from this report's
-      // optimization plan, with who does each (GrowwMatics or the owner).
+      // Goes out through the notification template, whose {{2}} cannot hold
+      // line breaks — so one short paragraph that reads well flattened (house
+      // style, composeOwnerMessage): the score and how the plan splits between
+      // GrowwMatics and the owner. The actions themselves are in the report.
       const { default: OptimizationAction } = await import('@/models/OptimizationAction');
-      const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
-      const actions: any[] = (await OptimizationAction.find({ businessId: audit.businessId, status: { $in: ['PLANNED', 'READY'] } })
-        .select('description priority growwmaticsAction').lean() as any[])
-        .sort((a, b) => (order[a.priority] ?? 1) - (order[b.priority] ?? 1))
-        .slice(0, 3);
-      const planLines = actions.map((a, i) => `${i + 1}. ${String(a.description).replace(/\s+/g, ' ').trim().slice(0, 140)}${a.growwmaticsAction ? ' (Growwmatics will do this)' : ' (needs you)'}`);
-      const name = audit.businessName || 'your business';
+      const { composeOwnerMessage } = await import('@/lib/whatsappOutbound');
+      const actions: any[] = await OptimizationAction.find({ businessId: audit.businessId, status: { $in: ['PLANNED', 'READY'] } })
+        .select('growwmaticsAction').lean();
+      const ours = actions.filter((a) => a.growwmaticsAction).length;
+      const yours = actions.length - ours;
+      const score = typeof audit.overallScore === 'number' ? ` Your profile scores ${Math.round(audit.overallScore)}/100.` : '';
+      const split = [ours && `${ours} we'll handle for you`, yours && `${yours} need${yours === 1 ? 's' : ''} you`].filter(Boolean).join(', ');
+      const plan = actions.length ? ` We've built a ${actions.length}-step plan to improve it: ${split}.` : '';
       const res = await notifyOwner(audit.businessId.toString(), {
         event: 'report_ready',
-        text: [
-          `Hi ${name},`,
-          '',
-          'Your first Growwmatics Google Business Profile report is ready.',
-          ...(planLines.length ? ['', 'Top actions from your plan:', ...planLines] : []),
-          '',
-          `View your report: ${base}/dashboard/audit/${auditId}`,
-          '',
-          '— Team Growwmatics',
-        ].join('\n'),
+        text: composeOwnerMessage({
+          name: audit.businessName || 'your business',
+          body: `Your first Google Business Profile report is ready.${score}${plan}`,
+          linkLabel: 'See your report and plan',
+          link: `${base}/dashboard/audit/${auditId}`,
+          noLinkText: '',
+        }),
       });
       return { whatsapp: res.status };
     });
@@ -2336,6 +2336,21 @@ export const monthlyReportNotice = inngest.createFunction(
       await notifyMonthlyReport(businessId, auditId);
     });
     return { success: true, deferredUntil: wakeAt };
+  }
+);
+
+// Plan-task reminders: after each connected report, the fixes still waiting
+// for the owner — in-app day 0, push day 1 and 5, WhatsApp day 3 and 7 — one
+// step per business per day, none once everything is done
+// (services/tasks/reminders.ts). 05:00 UTC ≈ 10:30 IST.
+export const planTaskReminders = inngest.createFunction(
+  { id: "plan-task-reminders", triggers: [{ cron: "0 5 * * *" }] },
+  async ({ step }) => {
+    const result = await step.run("send-due-reminders", async () => {
+      const { runTaskRemindersAll } = await import("@/services/tasks/reminderRunner");
+      return await runTaskRemindersAll();
+    });
+    return { success: true, ...result };
   }
 );
 
@@ -4858,6 +4873,18 @@ export const gbpSyncWorker = inngest.createFunction(
       } catch (err: any) {
         console.error(`[GBP Sync] Intelligence sync failed for ${businessId}:`, err.message);
         return { ok: false as const, error: String(err?.message || err).slice(0, 300), profileForBusiness: null };
+      }
+    });
+
+    // Plan tasks the owner fixed directly in Google show as done before the
+    // next audit (refreshTasksLive reads the snapshot written just above).
+    await step.run("refresh-plan-tasks", async () => {
+      const { refreshTasksLive } = await import("@/services/lifecycle/actionsSync");
+      try {
+        return await refreshTasksLive(businessId);
+      } catch (err: any) {
+        console.warn(`[GBP Sync] Plan task refresh failed for ${businessId}:`, err?.message);
+        return { updated: 0 };
       }
     });
 

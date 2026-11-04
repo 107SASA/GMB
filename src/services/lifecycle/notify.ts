@@ -225,7 +225,11 @@ export async function runWeeklyMonitoring(businessId: string, now = new Date()):
       WeeklyMonitor.findOne({ businessId, weekKey: { $ne: weekKey }, status: 'done' }).sort({ createdAt: -1 }).select('inputs').lean(),
       Audit.findOne({ businessId, status: 'COMPLETED', fastMode: { $ne: true }, createdAt: { $gte: weekAgo } }).sort({ createdAt: -1 }).select('auditData.comparison').lean(),
       OptimizationAction.countDocuments({ businessId, status: 'BLOCKED' }),
-      OptimizationAction.countDocuments({ businessId, status: 'PLANNED', capability: null }),
+      // The same fixes the dashboard checklist shows (services/tasks).
+      import('@/services/tasks/taskService').then(async ({ getTaskList }) => {
+        const { tasksNeedingOwner } = await import('@/services/tasks/reminders');
+        return tasksNeedingOwner((await getTaskList(businessId)).tasks).length;
+      }),
       OptimizationAction.countDocuments({ businessId, status: { $in: ['PLANNED', 'READY'] }, plannedAt: { $lt: monthAgo } }),
     ]);
     const ex = await collectExecutions(businessId, weekAgo, now);

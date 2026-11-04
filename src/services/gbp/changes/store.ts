@@ -94,13 +94,18 @@ const ACTIVITY_FIELDS: Record<string, string[]> = {
   service_area: ['serviceArea'],
 };
 
-async function noteVerifiedEdit(change: IGbpProfileChange, actorUserId: string): Promise<void> {
-  let fields = ACTIVITY_FIELDS[change.kind] || [];
+/** Profile fields a change touches, as logged on ProfileActivity (an attribute is "attribute:<id>"). */
+function activityFields(change: Pick<IGbpProfileChange, 'kind' | 'proposed'>): string[] {
   if (change.kind === 'attribute') {
     const name = String((change.proposed as { name?: string })?.name || '');
     const id = name.split('/').pop();
-    fields = id ? [`attribute:${id}`] : [];
+    return id ? [`attribute:${id}`] : [];
   }
+  return ACTIVITY_FIELDS[change.kind] || [];
+}
+
+async function noteVerifiedEdit(change: IGbpProfileChange, actorUserId: string): Promise<void> {
+  const fields = activityFields(change);
   if (!fields.length) return;
   const user = await User.findById(actorUserId).select('fullName email').lean<{ fullName?: string; email?: string }>();
   await logProfileActivity({
@@ -112,6 +117,9 @@ async function noteVerifiedEdit(change: IGbpProfileChange, actorUserId: string):
     updatedBy: user?.fullName || user?.email || actorUserId,
     metadata: { liveWriteApplied: true, fields, changeId: change._id.toString() },
   });
+  // The matching plan task shows as done right away, not at the next audit.
+  const { refreshTasksLive } = await import('@/services/lifecycle/actionsSync');
+  await refreshTasksLive(change.businessId.toString()).catch((err) => console.warn('[gbp-changes] task refresh failed:', err?.message));
 }
 
 export interface CreateChangeInput {
@@ -517,6 +525,30 @@ export async function executeChange(id: string, actor: { userId: string; busines
   }
 }
 
+/**
+ * A verified rollback. Logged as a live write — GrowwMatics did write Google,
+ * and change attribution (gbp/intelligence/runner.ts) relies on that — but
+ * marked `reverted`, so neither it nor the edit it undid (same changeId) ever
+ * counts as the fix (lifecycle/monthly.ts effectiveProfileEdits). The plan
+ * task the change had completed is reopened right away.
+ */
+export async function noteRevertedEdit(change: Pick<IGbpProfileChange, '_id' | 'businessId' | 'organizationId' | 'kind' | 'proposed'>, actorUserId: string): Promise<void> {
+  const fields = activityFields(change);
+  if (!fields.length) return;
+  const user = await User.findById(actorUserId).select('fullName email').lean<{ fullName?: string; email?: string }>();
+  await logProfileActivity({
+    businessId: change.businessId.toString(),
+    organizationId: change.organizationId || undefined,
+    type: 'profile_updated',
+    title: 'Google profile change rolled back',
+    detail: change.kind,
+    updatedBy: user?.fullName || user?.email || actorUserId,
+    metadata: { liveWriteApplied: true, reverted: true, fields, changeId: change._id.toString() },
+  });
+  const { reopenTasksAfterRollback } = await import('@/services/lifecycle/actionsSync');
+  await reopenTasksAfterRollback(change.businessId.toString(), fields).catch((err) => console.warn('[gbp-changes] task reopen failed:', err?.message));
+}
+
 async function restorePrevious(claimed: IGbpProfileChange, actor: { userId: string; businessId: string }) {
   const now = new Date().toISOString();
   try {
@@ -539,7 +571,7 @@ async function restorePrevious(claimed: IGbpProfileChange, actor: { userId: stri
       await saveRecord(claimed, reverted);
       const patch = mirrorSimple(claimed.kind, outcome.after);
       if (Object.keys(patch).length) await mirrorVerifiedProfile(actor.businessId, patch);
-      await noteVerifiedEdit(claimed, actor.userId);
+      await noteRevertedEdit(claimed, actor.userId);
       return { ok: true as const, change: claimed };
     }
     if (outcome.status === 'UNRESOLVED') {

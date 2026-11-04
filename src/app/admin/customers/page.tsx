@@ -54,6 +54,9 @@ interface Customer {
   business: CustomerBusiness | null;
   subscription: CustomerSubscription | null;
   isActive: boolean;
+  /** Real plan state from the owner's workspace: "Paid" / "Free trial" / "Payment failed" / null. */
+  workspacePlan?: string | null;
+  trialEndsAt?: string | null;
 }
 
 interface Stats {
@@ -1124,7 +1127,16 @@ function CustomersTab() {
                         <span className="text-xs text-outline font-medium">No business</span>
                       )}
                     </td>
-                    <td className="px-6 py-4"><PlanBadge plan={customer.subscriptionPlan} /></td>
+                    <td className="px-6 py-4">
+                      {customer.workspacePlan ? (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${customer.workspacePlan === 'Paid' ? 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed' : customer.workspacePlan === 'Free trial' ? 'bg-primary-fixed text-primary border-primary-fixed-dim' : 'bg-error-container text-on-error-container border-error-container'}`}>
+                          {customer.workspacePlan}
+                          {customer.trialEndsAt ? ` · until ${new Date(customer.trialEndsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                        </span>
+                      ) : (
+                        <PlanBadge plan={customer.subscriptionPlan} />
+                      )}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1.5 text-sm text-on-surface-variant">
                         <Calendar className="w-3.5 h-3.5" />

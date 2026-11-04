@@ -31,6 +31,8 @@ import MonthlySections from './MonthlySections';
 import AreaVisibilitySection from './AreaVisibilitySection';
 import SeoIntelligenceSection from './SeoIntelligenceSection';
 import ConsultantSections from '@/components/audit/ConsultantSections';
+import { ReportFixList, TaskFixAction, TaskStatusBadge } from '@/components/tasks/PlanTasks';
+import { usePlanTasks } from '@/hooks/usePlanTasks';
 
 /* ─── Google Logo ───────────────────────────────────────────────────────────── */
 function GoogleLogo({ size = 18 }: { size?: number }) {
@@ -238,8 +240,16 @@ export default function AuditReportGrexa({
     return () => { cancelled = true; };
   }, []);
 
+  // Connected reports carry a plan; its tasks show their live status here.
+  const connectedReport = !audit.fastMode && ['connected_baseline', 'monthly'].includes(String((audit as any).auditKind || ''));
+  const { data: taskData, markDone } = usePlanTasks(String((audit as any).businessId ?? ''), connectedReport);
+
   const data = audit.auditData as IAuditData;
   if (!data) return <div className="p-8 text-center text-on-surface-variant">No audit data available.</div>;
+
+  const reportFindingIds = new Set<string>(Array.isArray((data as any).findings) ? (data as any).findings.map((f: any) => String(f.id)) : []);
+  const reportTasks = (taskData?.tasks || []).filter((t) => reportFindingIds.has(t.findingId));
+  const taskByFinding = new Map(reportTasks.map((t) => [t.findingId, t]));
 
   const auditId = String((audit as any)._id ?? '');
 
@@ -487,6 +497,8 @@ export default function AuditReportGrexa({
         </div>
       </div>
 
+      <ReportFixList tasks={reportTasks} onMarkDone={markDone} />
+
       {/* ══ 2. HERO CARDS ══════════════════════════════════════════════ */}
       <div className="grid grid-cols-2 gap-5">
 
@@ -545,13 +557,13 @@ export default function AuditReportGrexa({
           )}
         </div>
 
-        {/* Google Profile Score */}
+        {/* Profile completion */}
         <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant shadow-sm p-6 flex flex-col overflow-hidden relative">
           <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-5"
             style={{ background: 'radial-gradient(circle, #06b34c, transparent)', transform: 'translate(30%,-30%)' }} />
           <div className="flex items-center gap-2 mb-5">
             <GoogleLogo size={18} />
-            <span className="text-sm font-bold text-on-surface">Google Profile Score</span>
+            <span className="text-sm font-bold text-on-surface">Profile completion</span>
           </div>
           <div className="flex items-center gap-5 flex-1">
             {profileMeasured
@@ -697,7 +709,7 @@ export default function AuditReportGrexa({
       {/* ══ 5. PROFILE SCORE DETAILS ════════════════════════════════════ */}
       <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant p-6">
         <h2 className="text-base font-bold text-on-surface mb-5">
-          Your Profile Score ({profileMeasured ? `${profilePct}%` : 'not measured'})
+          Profile completion ({profileMeasured ? `${profilePct}%` : 'not measured'})
         </h2>
 
         {/* Row 1: SEO Score + Services/Categories */}
@@ -719,18 +731,23 @@ export default function AuditReportGrexa({
                 </p>
                 <ul className="space-y-2">
                   {facts ? (
-                    profileFindings.length > 0 ? profileFindings.map((f: any) => (
+                    profileFindings.length > 0 ? profileFindings.map((f: any) => {
+                      const task = taskByFinding.get(f.id);
+                      return (
                       <li key={f.id} className="text-sm">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <div className="w-1.5 h-1.5 rounded-full bg-error flex-shrink-0" />
                           <span className="text-error font-medium">{f.title}</span>
+                          {task && <TaskStatusBadge status={task.status} />}
                         </div>
                         <div className="text-[11px] text-outline ml-3.5">
                           Evidence: {f.evidence} · {ACTIONABILITY_LABEL[f.actionability] || f.actionability} ·{' '}
                           {f.growwmaticsCapability ? `GrowwMatics: ${GROWWMATICS_CAPABILITIES[f.growwmaticsCapability as keyof typeof GROWWMATICS_CAPABILITIES]?.label}` : 'changed by you in Google'}
                         </div>
+                        {task && <div className="ml-3.5 mt-1.5"><TaskFixAction task={task} onMarkDone={markDone} compact /></div>}
                       </li>
-                    )) : (
+                      );
+                    }) : (
                       <li className="text-sm text-secondary font-medium">No gaps found in the fields we could check</li>
                     )
                   ) : missingFields.length > 0 ? missingFields.map((f) => (

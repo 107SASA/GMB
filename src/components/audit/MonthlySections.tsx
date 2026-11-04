@@ -7,7 +7,7 @@
  * estimated. Missing data is stated, never filled.
  */
 
-import { contentActivityLines } from '@/services/lifecycle/monthly';
+import { contentActivityLines, keywordRankingSummary } from '@/services/lifecycle/monthly';
 
 const Card = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant shadow-sm p-6">
@@ -23,6 +23,73 @@ const OUTCOME_LABEL: Record<string, string> = {
 };
 const STATUS_LABEL: Record<string, string> = { VERIFIED: 'Verified', EXECUTED: 'Done — awaiting re-measure', READY: 'Ready', PLANNED: 'Planned', BLOCKED: 'Blocked' };
 
+/** Fixed since last report / New this month / Still open — issue by issue (buildIssueProgress). */
+function IssueProgressSections({ progress, improved }: { progress: any; improved: string[] }) {
+  const fixed: any[] = progress.fixed || [];
+  const added: any[] = progress.added || [];
+  const open: any[] = progress.stillOpen || [];
+  return (
+    <div className="grid gap-4 md:grid-cols-3">
+      <Card title={`✅ Fixed since last report (${fixed.length})`}>
+        {fixed.length
+          ? <ul className="space-y-1.5 text-sm">{fixed.map((x) => <li key={x.findingId}>{x.title}<span className="block text-[10px] text-outline">{x.how}</span></li>)}</ul>
+          : <Empty text="Nothing from last report is fixed yet." />}
+        {improved.length > 0 && (
+          <div className="mt-3 border-t border-outline-variant pt-3">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-outline">Measured changes</p>
+            <ul className="mt-1 space-y-1 text-sm">{improved.map((l, i) => <li key={i}>{l}</li>)}</ul>
+          </div>
+        )}
+      </Card>
+      <Card title={`🆕 New this month (${added.length})`}>
+        {added.length
+          ? <ul className="space-y-1.5 text-sm">{added.map((x) => <li key={x.findingId}>{x.title}</li>)}</ul>
+          : <Empty text="No new issues found." />}
+      </Card>
+      <Card title={`⏳ Still open (${open.length})`}>
+        {open.length
+          ? <ul className="space-y-1.5 text-sm">{open.map((x) => <li key={x.findingId}>{x.title}<span className={`block text-[10px] ${x.waitingForOwner ? 'text-primary font-semibold' : 'text-outline'}`}>{x.reason}</span></li>)}</ul>
+          : <Empty text="Nothing left over from last report." />}
+      </Card>
+    </div>
+  );
+}
+
+const MOVE_CLASS: Record<string, string> = { improved: 'text-secondary', declined: 'text-error' };
+
+/** Every tracked keyword: last month, now, places moved, and its comparable history. */
+function KeywordRankingsCard({ rankings }: { rankings: any }) {
+  return (
+    <Card title="Keyword rankings">
+      <p className="mb-3 text-xs text-on-surface-variant">
+        {keywordRankingSummary(rankings)} · same keyword, same location and same search grid as last month — anything else is marked not comparable.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs uppercase text-outline">
+              <th className="py-1 pr-2">Keyword</th><th className="py-1 px-2">Last month</th><th className="py-1 px-2">Now</th><th className="py-1 px-2">Change</th><th className="py-1 pl-2">History</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rankings.rows.map((r: any, i: number) => (
+              <tr key={`${r.keyword}-${r.area}-${i}`} className="border-t border-outline-variant align-top">
+                <td className="py-2 pr-2 text-on-surface">{r.keyword}<span className="block text-[10px] text-outline">{r.area}</span></td>
+                <td className="py-2 px-2 text-on-surface-variant">{r.previous}</td>
+                <td className="py-2 px-2 font-semibold text-on-surface">{r.current}</td>
+                <td className={`py-2 px-2 ${MOVE_CLASS[r.change] || 'text-on-surface-variant'}`}>
+                  {r.movement || '—'}<span className="block text-[10px] text-outline">{r.status}</span>
+                </td>
+                <td className="py-2 pl-2 text-xs text-on-surface-variant">{r.history || 'First comparable month'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 export default function MonthlySections({ monthly }: { monthly: any }) {
   if (!monthly) return null;
   const m = monthly;
@@ -35,6 +102,10 @@ export default function MonthlySections({ monthly }: { monthly: any }) {
           {fmtDate(m.period?.start)} – {fmtDate(m.period?.end)} · compared with your previous connected audit
         </div>
       </div>
+
+      {m.issueProgress && <IssueProgressSections progress={m.issueProgress} improved={m.improved || []} />}
+
+      {m.keywordRankings?.rows?.length > 0 && <KeywordRankingsCard rankings={m.keywordRankings} />}
 
       <Card title="What changed this month">
         {m.changes?.length ? (

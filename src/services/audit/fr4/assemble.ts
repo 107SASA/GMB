@@ -57,7 +57,7 @@ export function assembleFr4(input: {
   });
   const lines: string[] = [];
   if (auditScore.overall != null) {
-    lines.push(`FR-4 audit score ${auditScore.overall}/100 from ${auditScore.measuredDimensions} measured dimensions. Profile completion is a separate metric and is not this score.`);
+    lines.push(`Audit score ${auditScore.overall}/100 from ${auditScore.measuredDimensions} measured dimensions. Profile completion is a separate metric and is not this score.`);
   }
   for (const d of auditScore.dimensions) {
     if (d.status === 'measured' && d.score != null && d.score < 100) lines.push(`${d.id}: ${d.score}/100. ${d.note}`);

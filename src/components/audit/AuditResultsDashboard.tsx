@@ -7,6 +7,7 @@ import AuditDebugPanel from './AuditDebugPanel';
 import AuditReportV6 from './AuditReportV6';
 import AuditReportGrexa from './AuditReportGrexa';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
+import AreaVisibilitySection from './AreaVisibilitySection';
 
 /* ─── Main dashboard ──────────────────────────────────────── */
 
@@ -384,6 +385,9 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
           ) : <DataUnavailable />}
         </div>
         
+        {/* Competitors and visibility by service area (stored facts) */}
+        <AreaVisibilitySection areaVisibility={data?.facts?.areaVisibility} businessName={audit.businessName} />
+
         {/* Keywords Analysis */}
         <div className="bg-surface-container-lowest rounded-2xl p-6 md:p-8 border border-outline-variant shadow-sm mb-8">
           <h2 className="text-xl font-bold text-on-surface mb-6 flex items-center gap-2">

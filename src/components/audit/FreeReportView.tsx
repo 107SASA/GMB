@@ -15,6 +15,7 @@
 import Link from 'next/link';
 import AuditPaywallSidebar from '@/components/audit/AuditPaywallSidebar';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import AreaVisibilitySection from './AreaVisibilitySection';
 import { FaqAccordion } from '@/components/shared/FaqAccordion';
 import { ALL_FAQS } from '@/lib/faqData';
 import ConsultantSections from '@/components/audit/ConsultantSections';
@@ -178,6 +179,8 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
     ? (rankingStatus === 'ok' ? facts.competitorsAhead?.count ?? 0 : 0)
     : localCompetitors.length;
   const searchesChecked: number = facts?.competitorsAhead?.searchesChecked ?? 0;
+  // Shown above the business but not in its trade (facts.otherBusinessesAhead) — context only.
+  const otherAhead: number = facts && rankingStatus === 'ok' ? facts.competitorsAhead?.otherCount ?? 0 : 0;
   const competitorFacts: any[] = Array.isArray(d.competitors) ? d.competitors : [];
 
   // ── Issues: verified findings (new) / stored checklist gaps (legacy) ──
@@ -263,6 +266,11 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
                     : `In the Google Maps searches we ran around ${city}, these businesses appeared before yours.`}{' '}
                   The priority actions below show what you can start on.
                 </p>
+                {otherAhead > 0 && (
+                  <p className="text-on-surface-variant text-xs -mt-4 mb-6">
+                    Google also showed {otherAhead} other business{otherAhead > 1 ? 'es' : ''} in these searches that {otherAhead > 1 ? "aren't" : "isn't"} in your line of business — not counted as competitors.
+                  </p>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                   <div className="bg-error-container rounded-xl p-4 text-center border border-error-container">
                     <div className="font-heading text-2xl font-bold text-error">{competitorsAhead}</div>
@@ -441,7 +449,12 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
                       const cf = competitorFacts.find((x: any) => x.name === c.name);
                       return (
                         <tr key={i} className="border-t border-outline-variant">
-                          <td className="px-2 py-3 font-medium text-on-surface">{c.name}</td>
+                          <td className="px-2 py-3 font-medium text-on-surface">
+                            {c.name}
+                            {Array.isArray(cf?.foundIn) && cf.foundIn.length > 0 && (
+                              <div className="text-xs font-normal text-outline mt-0.5">Found: {cf.foundIn.join(', ')}</div>
+                            )}
+                          </td>
                           <td className="px-2 py-3 text-primary">{c.rating != null ? `★ ${Number(c.rating).toFixed(1)}` : 'Unknown'}</td>
                           <td className="px-2 py-3 text-secondary">{c.reviewCount ?? 'Unknown'}</td>
                           <td className="px-2 py-3 font-semibold text-on-surface">
@@ -474,6 +487,9 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
               </Link>
             </div>
           )}
+
+          {/* ── Competitors and visibility by service area ───────────── */}
+          <AreaVisibilitySection areaVisibility={facts?.areaVisibility} businessName={audit.businessName} />
 
           {/* ── Verified issues ───────────────────────────────────────── */}
           {issues.length > 0 && (

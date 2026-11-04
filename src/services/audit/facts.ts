@@ -50,12 +50,16 @@ export interface SearchResultItem {
   bookingUrl?: string | null;
   isClaimed?: boolean | null;
   totalPhotos?: number | null;
+  /** Google's short listing description, when shown. */
+  snippet?: string | null;
 }
 
 export interface SearchObservation {
   keyword: string;
   kind: SearchKind;
   point?: { lat: number; lng: number } | null;
+  /** Where a competitor-discovery search ran ("Ojhar (service area)"); absent = around the business. */
+  area?: string | null;
   /** 'unavailable' = the provider call failed for this search (not "not found"). */
   status: 'ok' | 'unavailable';
   found: boolean;
@@ -244,6 +248,12 @@ export interface CompetitorFact {
   source: 'dataforseo' | 'google_places';
   /** Not reliably measurable from the data we have — null, not a guess. */
   similarityScore: null;
+  /** Google's short listing description, when shown (trade evidence). */
+  snippet?: string | null;
+  /** Where it was found above the target: "Around your address", "Ojhar (service area)", "~6 km north". */
+  foundIn?: string[];
+  /** Same-trade evidence (competitorRelevance.ts) — set when the target's trade is known. */
+  tradeMatch?: { level: 'confirmed' | 'probable' | 'unverified' | 'unrelated'; counted: boolean; signals: string[] };
 }
 
 /**
@@ -284,10 +294,13 @@ export function competitorKey(item: { placeId?: string | null; cid?: string | nu
  * visibility across ALL searches is not known — `aheadRate` is what we can
  * actually measure.
  */
+/** foundIn label for searches around the business's own address. */
+export const AROUND_ADDRESS = 'Around your address';
+
 export function competitorsFromObservations(observations: SearchObservation[]): CompetitorFact[] {
   const valid = observations.filter((o) => o.status === 'ok');
   const tested = valid.length;
-  const map = new Map<string, { item: SearchResultItem; positions: number[]; searches: Set<number>; keywords: Set<string> }>();
+  const map = new Map<string, { item: SearchResultItem; positions: number[]; searches: Set<number>; keywords: Set<string>; areas: Set<string> }>();
   const seenBelow = new Map<string, Set<number>>();
 
   valid.forEach((o, idx) => {
@@ -295,7 +308,7 @@ export function competitorsFromObservations(observations: SearchObservation[]): 
       const key = competitorKey(item);
       let entry = map.get(key);
       if (!entry) {
-        entry = { item, positions: [], searches: new Set(), keywords: new Set() };
+        entry = { item, positions: [], searches: new Set(), keywords: new Set(), areas: new Set() };
         map.set(key, entry);
       }
       // Later observations can fill fields an earlier one lacked.
@@ -306,6 +319,7 @@ export function competitorsFromObservations(observations: SearchObservation[]): 
       entry.positions.push(item.position);
       entry.searches.add(idx);
       entry.keywords.add(o.keyword);
+      entry.areas.add(o.area || AROUND_ADDRESS);
     }
     for (const other of o.others || []) {
       const key = competitorKey(other as any);
@@ -334,12 +348,14 @@ export function competitorsFromObservations(observations: SearchObservation[]): 
         top5Count: e.positions.filter((p) => p <= 5).length,
         top3Count: e.positions.filter((p) => p <= 3).length,
         keywords: Array.from(e.keywords),
+        foundIn: Array.from(e.areas),
         website: e.item.website || null,
         phone: e.item.phone || null,
         additionalCategories: Array.isArray(e.item.additionalCategories) ? e.item.additionalCategories : null,
         hasHours: typeof e.item.hasHours === 'boolean' ? e.item.hasHours : null,
         bookingUrl: e.item.bookingUrl || null,
         isClaimed: typeof e.item.isClaimed === 'boolean' ? e.item.isClaimed : null,
+        snippet: e.item.snippet || null,
         appearances: new Set([...e.searches, ...(seenBelow.get(key) || [])]).size,
         relevance: competitorRelevance(e.searches.size, tested),
         source: 'dataforseo' as const,

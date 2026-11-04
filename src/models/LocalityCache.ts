@@ -12,6 +12,9 @@ export interface ILocalityCache extends Document {
   key: string;
   neighbourhoods: string[];
   resolvedCity: string | null;
+  /** A resolved service-area place (key "place:<placeId>" / "name:<name>|<region>"). */
+  lat?: number | null;
+  lng?: number | null;
   fetchedAt: Date;
 }
 
@@ -19,6 +22,8 @@ const LocalityCacheSchema = new Schema<ILocalityCache>({
   key: { type: String, required: true, unique: true },
   neighbourhoods: { type: [String], default: [] },
   resolvedCity: { type: String, default: null },
+  lat: { type: Number, default: null },
+  lng: { type: Number, default: null },
   fetchedAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 * 180 },
 });
 

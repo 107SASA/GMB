@@ -146,3 +146,55 @@ export async function fetchNearbyLocalities(
 
   return { neighbourhoods: neighbourhoods.slice(0, limit), resolvedCity };
 }
+
+/**
+ * A Google Business Profile service area → coordinates, for competitor
+ * discovery there (areaDiscovery.ts). Geocoding by place id (else by name
+ * within the region); cached 180 days in LocalityCache — a service area
+ * does not move. Null when the key is missing or Google can't resolve it.
+ */
+export async function resolvePlacePoint(
+  area: { placeId: string | null; placeName: string | null },
+  region?: string | null,
+): Promise<{ lat: number; lng: number } | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || '';
+  const placeId = (area.placeId || '').replace(/^places\//, '').trim();
+  const name = (area.placeName || '').trim();
+  if (!apiKey || (!placeId && !name)) return null;
+  const key = placeId ? `place:${placeId}` : `name:${name.toLowerCase()}|${(region || '').toLowerCase()}`;
+
+  let LocalityCache: any = null;
+  try {
+    LocalityCache = (await import('@/models/LocalityCache')).default;
+    const hit: any = await LocalityCache.findOne({ key }).lean();
+    if (typeof hit?.lat === 'number' && typeof hit?.lng === 'number') {
+      meter('geocodeCacheHit', 1, 'service_area_point');
+      return { lat: hit.lat, lng: hit.lng };
+    }
+  } catch (err: any) {
+    console.warn('[localities] place cache read skipped:', err?.message);
+  }
+
+  try {
+    meter('googleGeocoding', 1, 'service_area_point');
+    const params: Record<string, string> = { key: apiKey };
+    if (placeId) params.place_id = placeId;
+    else {
+      params.address = [name, region].filter(Boolean).join(', ');
+      params.region = 'in';
+    }
+    const { data } = await axios.get(GEOCODE_URL, { params, timeout: 8000 });
+    const loc = data?.status === 'OK' ? data.results?.[0]?.geometry?.location : null;
+    if (typeof loc?.lat !== 'number' || typeof loc?.lng !== 'number') return null;
+    if (LocalityCache) {
+      await LocalityCache.updateOne(
+        { key },
+        { $set: { key, neighbourhoods: [], resolvedCity: name || null, lat: loc.lat, lng: loc.lng, fetchedAt: new Date() } },
+        { upsert: true },
+      ).catch((err: any) => console.warn('[localities] place cache write skipped:', err?.message));
+    }
+    return { lat: loc.lat, lng: loc.lng };
+  } catch {
+    return null;
+  }
+}

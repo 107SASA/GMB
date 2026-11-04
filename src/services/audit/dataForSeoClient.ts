@@ -79,6 +79,8 @@ export interface MapsLocalResult {
   bookingUrl?: string;
   isClaimed?: boolean;
   totalPhotos?: number;
+  /** Google's short listing description, when it shows one — trade evidence for competitor relevance. */
+  snippet?: string;
 }
 
 export interface MapsQuery {
@@ -125,6 +127,7 @@ function extractResults(taskResult: any): MapsLocalResult[] | null {
       bookingUrl: item.book_online_url || undefined,
       isClaimed: typeof item.is_claimed === 'boolean' ? item.is_claimed : undefined,
       totalPhotos: typeof item.total_photos === 'number' ? item.total_photos : undefined,
+      snippet: typeof item.snippet === 'string' && item.snippet ? item.snippet : typeof item.description === 'string' && item.description ? item.description : undefined,
     }));
 }
 

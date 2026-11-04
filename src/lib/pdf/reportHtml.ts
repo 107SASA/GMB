@@ -4,6 +4,7 @@ import type {
 import { formatRank, rankBucket, resolveRankHeadline, resolveSuspensionRisk } from '@/services/audit/reportMath';
 import { getBrandLogoDataUri } from '@/lib/brandAsset';
 import { contentActivityLines } from '@/services/lifecycle/monthly';
+import { areaVisibilityView } from '@/services/audit/areaVisibility';
 import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
 import { GROWWMATICS_CAPABILITIES } from '@/services/audit/findings';
 import {
@@ -335,7 +336,7 @@ function renderConsultantSections(
   if (draft.competitorLandscape?.length) {
     const rows = draft.competitorLandscape
       .map((c: any) => `<tr style="border-top:1px solid #f1f5f9;vertical-align:top;">
-        <td style="padding:7px 6px;font-size:11px;font-weight:600;color:#0f172a;">${h(c.name)}${c.tierLabel ? `<div style="font-size:8px;color:${c.relevance === 'strong' ? '#dc2626' : '#94a3b8'};">${h(c.tierLabel)}</div>` : ''}</td>
+        <td style="padding:7px 6px;font-size:11px;font-weight:600;color:#0f172a;">${h(c.name)}${c.tierLabel ? `<div style="font-size:8px;color:${c.relevance === 'strong' ? '#dc2626' : '#94a3b8'};">${h(c.tierLabel)}</div>` : ''}${c.foundIn?.length ? `<div style="font-size:8px;color:#94a3b8;">Found: ${h(c.foundIn.join(', '))}</div>` : ''}</td>
         <td style="padding:7px 6px;font-size:11px;font-weight:700;color:#06b34c;white-space:nowrap;">${c.mapsRank != null ? h(fmtR(c.mapsRank)) : '—'}</td>
         <td style="padding:7px 6px;font-size:11px;color:#64748b;white-space:nowrap;">${c.rating != null ? h(`${c.rating}★`) : '—'}${c.reviewCount != null ? h(` · ${c.reviewCount}`) : ''}</td>
         <td style="padding:7px 6px;font-size:11px;color:#64748b;">${h(c.keyEdge || '')}</td>
@@ -986,6 +987,7 @@ export function buildReportHtml(ctx: ReportContext): string {
     (audit as any).location?.split(',')[0]?.trim() || '',
   );
   const monthlyHtml = renderMonthly((data as any).monthly);
+  const areaHtml = renderAreaVisibility((data as any).facts?.areaVisibility, audit.businessName);
   const isFullAudit = (data.seoPlanDraft as any)?.depth === 'full';
   const confidentialFooter = isFullAudit
     ? `<div style="margin-top:14px;padding:14px 18px;background:#1e293b;color:#94a3b8;border-radius:12px;font-size:10px;line-height:1.6;">
@@ -1033,6 +1035,7 @@ ${headerHtml}
 ${heroHtml}
 ${rankAnalyticsHtml}
 ${geoGridHtml}
+${areaHtml}
 ${profileBreakdownHtml}
 ${checklistHtml}
 ${monthlyHtml}
@@ -1045,6 +1048,32 @@ ${confidentialFooter}
 }
 
 /** Monthly optimization report (same content as MonthlySections.tsx). Missing data is stated, never filled. */
+/** Mirrors AreaVisibilitySection.tsx — same areaVisibilityView() rows from the stored facts. */
+function renderAreaVisibility(av: any, businessName: string): string {
+  const view = areaVisibilityView(av);
+  if (!view) return '';
+  const card = (row: any, primary: boolean) => {
+    const phrases = row.phrases.length
+      ? `<table style="width:100%;border-collapse:collapse;margin-top:6px;"><thead><tr style="text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;"><th style="padding:3px 6px;">Search phrase</th><th style="padding:3px 6px;">Your position</th><th style="padding:3px 6px;">Monthly searches</th></tr></thead><tbody>${row.phrases
+          .map((x: any) => `<tr style="border-top:1px solid #f1f5f9;"><td style="padding:5px 6px;font-size:11px;color:#0f172a;">${h(x.keyword)}</td><td style="padding:5px 6px;font-size:11px;font-weight:700;color:#0f172a;white-space:nowrap;">${h(x.position)}</td><td style="padding:5px 6px;font-size:11px;color:#64748b;white-space:nowrap;">${h(x.demand)}</td></tr>`)
+          .join('')}</tbody></table>`
+      : '';
+    const comps = !primary && row.competitors.length
+      ? `<div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin:8px 0 3px;">Same-trade competitors here</div>${row.competitors
+          .map((c: any) => `<div style="font-size:11px;color:#0f172a;margin-bottom:3px;"><b>${h(c.name)}</b> <span style="color:#64748b;">· ${h(c.position)} here · ${h(c.relevance)}</span>${c.foundIn ? `<div style="font-size:9px;color:#94a3b8;">Found: ${h(c.foundIn)}</div>` : ''}</div>`)
+          .join('')}`
+      : !primary && row.status === '' ? `<div style="font-size:10px;color:#64748b;margin-top:6px;">No same-trade competitors found in this area's searches.</div>` : '';
+    return `<div style="border:1px solid ${primary ? '#06b34c' : '#e2e8f0'};border-radius:10px;padding:10px 12px;margin-bottom:8px;break-inside:avoid;">
+      <div style="display:flex;justify-content:space-between;gap:8px;"><div style="font-size:12px;font-weight:700;color:#0f172a;">${h(row.area)}${row.distance ? ` <span style="font-size:9px;font-weight:400;color:#94a3b8;">${h(row.distance)}</span>` : ''}</div><div style="font-size:11px;font-weight:700;color:${row.position.startsWith('Best') ? '#06b34c' : '#dc2626'};">${h(row.position)}</div></div>
+      ${row.status ? `<div style="font-size:10px;color:#64748b;margin-top:3px;">${h(row.status)}</div>` : ''}${phrases}${comps}</div>`;
+  };
+  return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:14px;">
+    <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:4px;">Competitors and visibility by service area</div>
+    <p style="font-size:10px;color:#64748b;margin:0 0 10px;line-height:1.5;">Real Google Maps searches run in each area ${h(businessName)} serves on Google. Monthly searches are Google Ads volume for the whole country (Google rarely reports a single town, so local phrases often show "Not enough data"). Only businesses in the same trade are listed.</p>
+    ${card(view.primary, true)}${view.areas.map((r) => card(r, false)).join('')}
+  </div>`;
+}
+
 function renderMonthly(m: any): string {
   if (!m) return '';
   const box = (title: string, body: string) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px;break-inside:avoid;"><div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:6px;">${h(title)}</div>${body}</div>`;
@@ -1067,6 +1096,14 @@ function renderMonthly(m: any): string {
     ${box('Profile health', p(`${m.profileHealth?.completionPercentage != null ? `${m.profileHealth.completionPercentage}% of checked fields complete` : 'Profile completion not measured'}${m.profileHealth?.missing?.length ? ` · missing: ${m.profileHealth.missing.join(', ')}` : ''}${m.profileHealth?.unknown ? ` · ${m.profileHealth.unknown} could not be checked` : ''}`))}
     ${box('Completed plan', m.planCompleted?.length ? li(m.planCompleted.map((a: any) => `${a.action} — ${a.status}`)) : p('No plan actions have been completed with evidence yet.'))}
     ${box('Pending plan', m.planPending?.length ? li(m.planPending.map((a: any) => `${a.action} — ${a.status}${a.statusReason ? ` (${a.statusReason})` : ''}`)) : p('No pending plan actions.'))}
+    ${m.areas ? box('Service areas since last month', (() => {
+      const groups: Array<[string, string[]]> = [
+        ['Improving visibility', m.areas.improving], ['Declining visibility', m.areas.declining], ['Not ranking yet', m.areas.notRanking],
+        ['New competitors', m.areas.newCompetitors], ['Competitors gaining', m.areas.competitorsGaining], ['Keyword opportunities', (m.areas.opportunities || []).slice(0, 6)],
+      ];
+      const body = groups.filter(([, l]) => l?.length).map(([t, l]) => `<div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin:6px 0 2px;">${h(t)}</div>${li(l)}`).join('');
+      return body || p('No service-area changes to report — areas are compared only when both audits searched them.');
+    })()) : ''}
     ${box('Issues that remain', m.remainingIssues?.length ? li(m.remainingIssues) : p('No verified issues remain in this audit.'))}
   </div>`;
 }

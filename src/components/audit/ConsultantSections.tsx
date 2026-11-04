@@ -367,6 +367,7 @@ export default function ConsultantSections({
                         {c.tierLabel && (
                           <span className={`block text-[10px] ${c.relevance === 'strong' ? 'font-semibold text-error' : 'text-on-surface-variant'}`}>{c.tierLabel}</span>
                         )}
+                        {c.foundIn?.length ? <span className="block text-[10px] text-outline">Found: {c.foundIn.join(', ')}</span> : null}
                       </td>
                       <td className="px-2 py-3 font-bold text-primary whitespace-nowrap">{c.mapsRank != null ? fmtRank(c.mapsRank) : '—'}</td>
                       <td className="px-2 py-3 text-secondary whitespace-nowrap">

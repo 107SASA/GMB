@@ -11,6 +11,8 @@
  *  • nothing missing is replaced by 0, 21, an estimate or a projection.
  */
 
+import { compareAreaVisibility, type AreaComparison } from '../audit/areaVisibility.ts';
+
 export type Actor = 'GrowwMatics' | 'Owner' | 'Unknown';
 
 export interface GbpSnapshot {
@@ -237,6 +239,8 @@ export interface MonthlyReport {
   /** Deterministic "improved / declined" lines — the only change statements the AI may build on. */
   improved: string[];
   declined: string[];
+  /** Per Google service area, like-for-like with the previous audit (absent when no areas were measured). */
+  areas?: AreaComparison;
 }
 
 const SEVERITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
@@ -305,6 +309,10 @@ export function buildMonthlyReport(input: {
   for (const r of cmpRows.filter((x) => x.change === 'better' || x.change === 'worse')) {
     (r.change === 'better' ? improved : declined).push(`${r.metric}: ${r.before} → ${r.after}`);
   }
+  const curAreas = curData?.facts?.areaVisibility;
+  const areas = curAreas ? compareAreaVisibility(prevData?.facts?.areaVisibility, curAreas) : undefined;
+  for (const l of areas?.improving || []) improved.push(`Google Maps in ${l}`);
+  for (const l of areas?.declining || []) declined.push(`Google Maps in ${l}`);
 
   return {
     period: { start: input.periodStart, end: input.periodEnd },
@@ -328,6 +336,7 @@ export function buildMonthlyReport(input: {
       .map((f: any) => f.title),
     improved,
     declined,
+    ...(areas ? { areas } : {}),
   };
 }
 

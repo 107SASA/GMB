@@ -2,6 +2,7 @@ import React from 'react';
 import { IAudit, IAuditData, IChecklistItem, IPriorityFix } from '@/models/Audit';
 import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
 import { Download, Search, CheckCircle2, AlertCircle, TrendingUp, Zap, Target, Star, FileText, XCircle, Clock } from 'lucide-react';
+import AreaVisibilitySection from './AreaVisibilitySection';
 
 const EvidenceBadge = ({ text }: { text?: string }) => {
   if (!text) return null;
@@ -152,6 +153,9 @@ export default function AuditReportV6({ audit, onDownload }: { audit: IAudit; on
           </table>
         </div>
       </div>
+
+      {/* Competitors and visibility by service area (stored facts) */}
+      <AreaVisibilitySection areaVisibility={(data as any)?.facts?.areaVisibility} businessName={audit.businessName} />
 
       {/* Keyword Gap & Profile SEO */}
       <div className="grid md:grid-cols-2 gap-6">

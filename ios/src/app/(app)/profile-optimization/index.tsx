@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -121,24 +121,41 @@ function Hint({ children, error = false }: { children: ReactNode; error?: boolea
   return <Text className={`font-sans text-xs leading-[18px] ${error ? 'text-accent-rose' : 'text-zinc-400'}`}>{children}</Text>;
 }
 
+/**
+ * `?section=services` (a plan task's "Fix now", src/services/tasks/planTasks.ts)
+ * opens that Panel, highlights it and scrolls the screen to it.
+ */
+const SectionFocus = createContext<{ section: string | null; onFocusLayout: (y: number) => void } | null>(null);
+
 /** One collapsible section with an icon; `count` highlights how many suggestions wait inside. */
 function Panel({
   title,
   icon,
   hint,
   count = 0,
+  section,
   children,
 }: {
   title: string;
   icon: keyof typeof Ionicons.glyphMap;
   hint?: string;
   count?: number;
+  section?: string;
   children: ReactNode;
 }) {
   const t = useTheme();
-  const [open, setOpen] = useState(false);
+  const focus = useContext(SectionFocus);
+  const focused = !!section && focus?.section === section;
+  const [open, setOpen] = useState(focused);
+  useEffect(() => {
+    if (focused) setOpen(true);
+  }, [focused]);
   return (
-    <View className="mb-2.5 overflow-hidden rounded-card border border-surface-border bg-surface-raised">
+    <View
+      className="mb-2.5 overflow-hidden rounded-card border border-surface-border bg-surface-raised"
+      style={focused ? { borderColor: t.brand, borderWidth: 2 } : undefined}
+      onLayout={focused ? (e) => focus?.onFocusLayout(e.nativeEvent.layout.y) : undefined}
+    >
       <Pressable
         onPress={() => {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -302,6 +319,28 @@ export default function ProfileOptimizationScreen() {
   const recs = query.data?.recs ?? null;
   const changes = query.data?.changes ?? [];
   const googleReviewPending = query.data?.googleReviewPending ?? null;
+
+  // Deep link from a plan task: scroll to the section once it has laid out.
+  const params = useLocalSearchParams<{ section?: string }>();
+  const focusSection = typeof params.section === 'string' ? params.section : null;
+  const scrollRef = useRef<ScrollView>(null);
+  const scrolledFor = useRef<string | null>(null);
+  const [sectionMissing, setSectionMissing] = useState(false);
+  const focusValue = {
+    section: focusSection,
+    onFocusLayout: (y: number) => {
+      if (scrolledFor.current === focusSection) return;
+      scrolledFor.current = focusSection;
+      setSectionMissing(false);
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+    },
+  };
+  // Nothing rendered for that section (already fixed, or nothing to change).
+  useEffect(() => {
+    if (!focusSection || !recs) return;
+    const timer = setTimeout(() => setSectionMissing(scrolledFor.current !== focusSection), 800);
+    return () => clearTimeout(timer);
+  }, [focusSection, recs]);
 
   // Re-seed the forms from Google after every load, as the web page does.
   useEffect(() => {
@@ -652,7 +691,9 @@ export default function ProfileOptimizationScreen() {
     <Screen>
       {header}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <SectionFocus.Provider value={focusValue}>
         <ScrollView
+          ref={scrollRef}
           contentContainerClassName="px-4 pb-16 pt-4"
           contentContainerStyle={{ width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center' }}
           keyboardShouldPersistTaps="handled"
@@ -667,6 +708,12 @@ export default function ProfileOptimizationScreen() {
               <Hint>Open a section, pick what you want, then apply it from “Ready to apply”. Google can take a few hours to show changes.</Hint>
             </View>
           </View>
+
+          {sectionMissing && (
+            <Card className="mt-4">
+              <Hint>Nothing to change here right now — it may already be fixed or waiting under “Ready to apply”.</Hint>
+            </Card>
+          )}
 
           {recs?.connected === false && (
             <Card className="mt-4 gap-3">
@@ -694,7 +741,7 @@ export default function ProfileOptimizationScreen() {
               <SectionLabel>Improve your profile</SectionLabel>
 
               {!!description?.text && (
-                <Panel title="Business description" icon="document-text" hint="A new description written for you" count={1}>
+                <Panel section="description" title="Business description" icon="document-text" hint="A new description written for you" count={1}>
                   <View className="rounded-xl px-3 py-2.5" style={{ backgroundColor: t.bg }}>
                     <Text className="font-sans text-sm leading-5 text-white">{description.text}</Text>
                   </View>
@@ -712,7 +759,7 @@ export default function ProfileOptimizationScreen() {
               )}
 
               {Boolean(categories?.primary || categories?.additional?.length) && (
-                <Panel title="Categories" icon="pricetags" hint={addable.length ? `${plural(addable.length, 'category', 'categories')} to add` : 'Nothing to add'} count={addable.length}>
+                <Panel section="categories" title="Categories" icon="pricetags" hint={addable.length ? `${plural(addable.length, 'category', 'categories')} to add` : 'Nothing to add'} count={addable.length}>
                   {!!categories?.primary && (
                     <View className="gap-2">
                       <Hint>Main category</Hint>
@@ -750,7 +797,7 @@ export default function ProfileOptimizationScreen() {
                 </Panel>
               )}
 
-              <Panel title="Attributes" icon="list" hint={suggestions.length ? `${suggestions.length} not set yet` : 'All set'} count={suggestions.length}>
+              <Panel section="attributes" title="Attributes" icon="list" hint={suggestions.length ? `${suggestions.length} not set yet` : 'All set'} count={suggestions.length}>
                 {suggestions.length === 0 ? (
                   <Hint>{recs.attributes?.available === false ? 'Not available for your category right now.' : 'Nothing missing.'}</Hint>
                 ) : (
@@ -794,7 +841,7 @@ export default function ProfileOptimizationScreen() {
               </Panel>
 
               {linkKeys.length > 0 && (
-                <Panel title="Booking & order links" icon="link" hint={linksSet ? `${linksSet} of ${linkKeys.length} set` : `${linkKeys.length} available`}>
+                <Panel section="links" title="Booking & order links" icon="link" hint={linksSet ? `${linksSet} of ${linkKeys.length} set` : `${linkKeys.length} available`}>
                   <Hint>Customers tap these on your Google listing. We add tracking tags so you can see visits from Google.</Hint>
                   {linkKeys.map((key) => {
                     const link = recs.links!.attributes![key]!;
@@ -830,7 +877,7 @@ export default function ProfileOptimizationScreen() {
               )}
 
               {(serviceItems.length > 0 || recs.services?.blocked) && (
-                <Panel title="Services" icon="construct" hint={serviceItems.length ? `${plural(serviceItems.length, 'service')} to add` : 'Can’t be changed'} count={serviceItems.length}>
+                <Panel section="services" title="Services" icon="construct" hint={serviceItems.length ? `${plural(serviceItems.length, 'service')} to add` : 'Can’t be changed'} count={serviceItems.length}>
                   {serviceItems.length > 0 && (
                     <>
                       <View className="gap-1.5">
@@ -854,6 +901,7 @@ export default function ProfileOptimizationScreen() {
               )}
 
               <Panel
+                section="hours"
                 title="Opening hours"
                 icon="time"
                 hint={changedDays ? `${plural(changedDays, 'day')} changed — not saved yet` : reminders.length ? `${plural(reminders.length, 'holiday')} to set` : 'Your hours on Google'}
@@ -985,7 +1033,7 @@ export default function ProfileOptimizationScreen() {
                 )}
               </Panel>
 
-              <Panel title="Service area" icon="map" hint={canSetArea ? (currentAreas.length ? `${plural(currentAreas.length, 'area')} on Google` : businessTypeText(recs.serviceArea?.businessType)) : 'Storefront only'}>
+              <Panel section="service-area" title="Service area" icon="map" hint={canSetArea ? (currentAreas.length ? `${plural(currentAreas.length, 'area')} on Google` : businessTypeText(recs.serviceArea?.businessType)) : 'Storefront only'}>
                 {canSetArea ? (
                   <>
                     {currentAreas.length > 0 && (
@@ -1075,6 +1123,7 @@ export default function ProfileOptimizationScreen() {
             </>
           )}
         </ScrollView>
+        </SectionFocus.Provider>
       </KeyboardAvoidingView>
       {picker.element}
       {confirmSheet.node}

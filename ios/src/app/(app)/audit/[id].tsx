@@ -25,6 +25,7 @@ import {
   type AuditRichItem,
 } from '@/api/endpoints/audit';
 import { useBusiness } from '@/business/BusinessContext';
+import { ReportFixList, TaskFixAction, TaskStatusBadge, usePlanTasks } from '@/components/plan-tasks';
 import { Badge, EmptyState, ProgressBar, Screen, ScreenTitle, SectionLabel, Skeleton } from '@/components/ui';
 import { useTheme } from '@/lib/theme';
 
@@ -492,6 +493,9 @@ function VerifiedResultsBody({ audit, highlightKey }: { audit: Audit; highlightK
   const t = useTheme();
   const v = audit.mobileView!;
   const data = audit.auditData;
+  // Connected reports: each issue's plan task, with today's status.
+  const tasks = usePlanTasks(v.planFindingIds.length > 0);
+  const taskByFinding = new Map((tasks.data?.tasks ?? []).map((x) => [x.findingId, x]));
   const h = v.headline;
   const geoKeywords = (data?.geoGridRank?.keywords ?? []).filter((k): k is AuditKeywordRank => k !== null);
   const rankNote =
@@ -515,6 +519,11 @@ function VerifiedResultsBody({ audit, highlightKey }: { audit: Audit; highlightK
               The written analysis was unavailable for this audit — the numbers below are from measured data only.
             </Text>
           </Card>
+        )}
+        {v.planFindingIds.length > 0 && (
+          <View className="mb-3">
+            <ReportFixList findingIds={v.planFindingIds} />
+          </View>
         )}
 
         <View className="items-center rounded-card border border-surface-border bg-surface-raised py-5">
@@ -656,6 +665,12 @@ function VerifiedResultsBody({ audit, highlightKey }: { audit: Audit; highlightK
                   {!!f.recommendedAction && (
                     <Text className="mt-2 font-sans text-sm text-zinc-300">{f.recommendedAction}</Text>
                   )}
+                  {taskByFinding.has(f.id) && (
+                    <View className="mt-3 gap-2">
+                      <TaskStatusBadge status={taskByFinding.get(f.id)!.status} />
+                      <TaskFixAction task={taskByFinding.get(f.id)!} />
+                    </View>
+                  )}
                 </Card>
               ))}
             </View>
@@ -676,6 +691,14 @@ function VerifiedResultsBody({ audit, highlightKey }: { audit: Audit; highlightK
           <View>
             <SectionLabel>Monthly optimization report</SectionLabel>
             <Card>
+              {v.monthly.issueProgress && (
+                <>
+                  <LineList title={`✅ Fixed since last report (${v.monthly.issueProgress.fixed.length})`} items={v.monthly.issueProgress.fixed} empty="Nothing from last report is fixed yet." />
+                  <LineList title={`🆕 New this month (${v.monthly.issueProgress.added.length})`} items={v.monthly.issueProgress.added} empty="No new issues found." />
+                  <LineList title={`⏳ Still open (${v.monthly.issueProgress.stillOpen.length})`} items={v.monthly.issueProgress.stillOpen} empty="Nothing left over from last report." />
+                </>
+              )}
+              <LineList title="Keyword rankings" items={v.monthly.keywordRankings} />
               <LineList title="What changed" items={v.monthly.changes} empty="No verified profile changes between the two audits." />
               <LineList
                 title="What GrowwMatics did"
@@ -690,9 +713,14 @@ function VerifiedResultsBody({ audit, highlightKey }: { audit: Audit; highlightK
               )}
               <LineList title="Reviews" items={v.monthly.reviews} />
               <LineList title="Profile health" items={v.monthly.profileHealth ? [v.monthly.profileHealth] : []} />
-              <LineList title="Completed plan" items={v.monthly.planCompleted} />
-              <LineList title="Pending plan" items={v.monthly.planPending} />
-              <LineList title="Issues that remain" items={v.monthly.remainingIssues} />
+              {/* Reports from before issue-by-issue progress keep the plan lists. */}
+              {!v.monthly.issueProgress && (
+                <>
+                  <LineList title="Completed plan" items={v.monthly.planCompleted} />
+                  <LineList title="Pending plan" items={v.monthly.planPending} />
+                  <LineList title="Issues that remain" items={v.monthly.remainingIssues} />
+                </>
+              )}
             </Card>
           </View>
         )}

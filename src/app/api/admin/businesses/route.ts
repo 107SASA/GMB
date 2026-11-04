@@ -6,6 +6,7 @@ import { displayPersonName } from '@/lib/personName';
 import Business from '@/models/Business';
 import User from '@/models/User';
 import ContentGenerationLog from '@/models/ContentGenerationLog';
+import { realBusinessFilter } from '@/lib/admin/realAccounts';
 
 export async function GET(req: NextRequest) {
   const auth = await requireSuperAdmin();
@@ -27,8 +28,9 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * limit;
 
     // Build query
+    // …unless the workspace is now on a plan, a trial or a failed payment (realAccounts.ts).
     const query: any = {};
-    if (!includeShadow) query.provisionedVia = { $exists: false };
+    if (!includeShadow) query.$and = [realBusinessFilter()];
 
     if (search.trim()) {
       query.$or = [

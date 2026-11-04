@@ -279,6 +279,8 @@ export async function startTrialAccess(
     { new: true }
   ).select('name').lean() as any;
   if (!business) return false;
+  // Admin sales pipeline: a started trial is a stage of its own (a paying "Customer" is never moved back).
+  await Business.updateOne({ _id: businessId, pipelineStage: { $ne: 'Customer' } }, { $set: { pipelineStage: 'Free trial' } }).catch(() => {});
 
   if (userId) {
     // User-level entitlement (requireModule / mobile): a trial with an end date.

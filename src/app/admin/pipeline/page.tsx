@@ -112,6 +112,7 @@ export default function ConversionOverviewPage() {
             <KpiCard label="Leads with a demo scheduled" value={(k.demoScheduledLeads ?? 0).toLocaleString()} sub={desc('demoScheduled')} href={link('demoScheduled')} />
             <KpiCard label="Leads that attended a demo" value={(k.demoCompletedLeads ?? 0).toLocaleString()} sub={desc('demoCompleted')} href={link('demoCompleted')} />
             <KpiCard label="Purchase intent" value={(k.purchaseIntent ?? 0).toLocaleString()} sub={desc('purchaseIntent')} href={link('purchaseIntent')} accent="primary" />
+            <KpiCard label="Free trials (now)" value={(k.freeTrialLeads ?? 0).toLocaleString()} sub={desc('freeTrial')} href={link('freeTrial')} accent="primary" />
             <KpiCard label="Customers" value={(k.convertedCustomers ?? 0).toLocaleString()} sub={`${k.conversionRate ?? 0}% of these leads`} href={link('customer')} accent="primary" />
             <KpiCard label="With a human (now)" value={(k.withHuman ?? 0).toLocaleString()} sub={desc('withHuman')} href={link('withHuman')} accent={(k.withHuman ?? 0) > 0 ? 'warning' : 'neutral'} />
             <KpiCard label="Opted out / lost (now)" value={(k.optedOutOrLost ?? 0).toLocaleString()} sub={desc('optedOutOrLost')} href={link('optedOutOrLost')} accent={(k.optedOutOrLost ?? 0) > 0 ? 'error' : 'neutral'} />

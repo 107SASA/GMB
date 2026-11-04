@@ -6,6 +6,16 @@ import Business from '@/models/Business';
 import ContentGenerationLog from '@/models/ContentGenerationLog';
 import Lead from '@/models/Lead';
 import { workspaceStatusCounts } from '@/services/admin/platformMetrics';
+import { realUserFilter, workspacePlanLabel, CUSTOMER_STATUSES } from '@/lib/admin/realAccounts';
+
+async function withWorkspacePlan(users: any[]): Promise<any[]> {
+  const biz: any[] = await Business.find({ userId: { $in: users.map((u) => u._id) }, subscriptionStatus: { $in: [...CUSTOMER_STATUSES] } }).select('userId subscriptionStatus').lean();
+  const rank = (s: string) => (CUSTOMER_STATUSES as readonly string[]).indexOf(s);
+  return users.map((u) => {
+    const best = biz.filter((b) => String(b.userId) === String(u._id)).sort((a, b) => rank(a.subscriptionStatus) - rank(b.subscriptionStatus))[0];
+    return { ...u, workspacePlan: workspacePlanLabel(best?.subscriptionStatus) };
+  });
+}
 
 export async function GET() {
   const auth = await requireSuperAdmin();
@@ -24,7 +34,8 @@ export async function GET() {
     // Unclaimed shadow accounts (see src/lib/shadowAccount.ts) are excluded
     // from these platform-wide counts by default so lead-gen traffic
     // (/free-report) doesn't inflate real-signup numbers.
-    const notShadow = { isShadowAccount: { $ne: true } };
+    // …unless they became customers (trial, paid or past due) — see realAccounts.ts.
+    const notShadow = await realUserFilter();
 
     // Real tenant CRM leads only — excludes leadType:'Platform Prospect'
     // (GrowwMatics' own acquisition funnel), same scoping as /admin/crm.
@@ -77,7 +88,8 @@ export async function GET() {
           totalLeads,
           newLeadsLast7Days,
         },
-        recentSignups,
+        // Each signup's real plan state from their workspace ("Free trial", "Paid"…).
+        recentSignups: await withWorkspacePlan(recentSignups as any[]),
       },
     });
   } catch (error: any) {

@@ -72,6 +72,8 @@ export type Milestone =
   | 'humanHandoff'
   | 'optedOut';
 
+/** On a running free trial that has not converted to a paid plan (a stage set to CUSTOMER by hand does not end it). */
+const isOnTrialFunnel = (l: LeadFacts) => isOnTrialNow(l) && (l.trial as any)?.status !== 'converted' && l.currentAgent !== 'IN_HOUSE';
 const isCustomerNow = (l: LeadFacts) => l.currentAgent === 'IN_HOUSE' || l.currentStage === 'CUSTOMER';
 
 /** Every milestone this lead has ever reached. */
@@ -121,9 +123,9 @@ export function reachedMilestones(lead: LeadFacts, events: MilestoneEvent[] = []
  * column and the Stage filter on Leads & Pipeline both use this.
  */
 export function currentFunnelStage(lead: LeadFacts): string {
+  if (isOnTrialFunnel(lead)) return 'Free trial';
   if (isCustomerNow(lead)) return 'Customer';
   if (lead.currentStage === 'PAYMENT_VERIFIED') return 'Payment verified';
-  if (isOnTrialNow(lead)) return 'Free trial';
   if (lead.nurtureStatus === 'OPTED_OUT') return 'Opted out';
   if (lead.currentStage === 'LOST' || lead.currentStage === 'DO_NOT_CONTACT') return 'Lost';
   if (lead.currentAgent === 'HUMAN' || lead.currentStage === 'HUMAN_HANDOFF') return 'Human handoff';
@@ -182,6 +184,10 @@ export const SEGMENTS: Record<string, SegmentDef> = {
   optedOutOrLost: {
     label: 'Opted out / lost', kind: 'current', description: 'opted out, or marked lost / do-not-contact',
     test: (x) => x.lead.nurtureStatus === 'OPTED_OUT' || ['LOST', 'DO_NOT_CONTACT'].includes(x.lead.currentStage || ''),
+  },
+  freeTrial: {
+    label: 'Free trial (now)', kind: 'current', description: 'autopay set up, trial running — first charge when it ends',
+    test: (x) => isOnTrialFunnel(x.lead),
   },
   pendingPayment: {
     label: 'Pending payments', kind: 'current', description: 'at conversion-pending, no verified payment yet',

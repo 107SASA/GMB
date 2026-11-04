@@ -51,12 +51,31 @@ export async function syncOptimizationActions(opts: {
       { upsert: true },
     );
   }
+  return refreshActionStatuses(opts);
+}
 
+/**
+ * Re-derives every open action's status from execution records and the
+ * current audit's findings, and returns all actions (open + verified) with
+ * their dates. Called BEFORE the new SEO plan is generated (so it knows what
+ * was done) and again by syncOptimizationActions after the final findings.
+ * Writes only when a status changes.
+ */
+export async function refreshActionStatuses(opts: {
+  businessId: string;
+  auditId: string;
+  auditAt: Date;
+  currentFindingIds: Set<string>;
+  gbpConnected: boolean;
+}): Promise<PlanActionView[]> {
+  await dbConnect();
+  const { default: OptimizationAction } = await import('@/models/OptimizationAction');
+  const at = opts.auditAt;
   const open: any[] = await OptimizationAction.find({ businessId: opts.businessId, status: { $ne: 'VERIFIED' } }).lean();
-  if (!open.length) return [];
+  const views: PlanActionView[] = [];
+  if (open.length) {
   const earliest = new Date(Math.min(...open.map((a) => new Date(a.plannedAt).getTime())));
   const ex = await collectExecutions(opts.businessId, earliest, new Date(at.getTime() + 1));
-  const views: PlanActionView[] = [];
 
   for (const a of open) {
     const plannedIso = new Date(a.plannedAt).toISOString();
@@ -82,13 +101,22 @@ export async function syncOptimizationActions(opts: {
       { _id: a._id },
       { $set: update, ...(changed ? { $push: { history: { at, status: res.status, reason: res.statusReason } } } : {}) },
     );
-    views.push({ findingId: a.findingId, action: a.description, status: res.status, executor: a.capability ? `growwmatics:${a.capability}` : 'owner', statusReason: res.statusReason });
+    const executedAt = res.executedAt ?? (a.executedAt ? new Date(a.executedAt).toISOString() : undefined);
+    views.push({
+      findingId: a.findingId, action: a.description, status: res.status, executor: a.capability ? `growwmatics:${a.capability}` : 'owner', statusReason: res.statusReason,
+      capability: a.capability ?? null, plannedAt: plannedIso, ...(executedAt ? { executedAt } : {}), ...(res.verifiedAt ? { verifiedAt: res.verifiedAt } : {}),
+    });
+  }
   }
   // Actions verified earlier stay in the report's "completed" list.
-  const done: any[] = await OptimizationAction.find({ businessId: opts.businessId, status: 'VERIFIED' }).select('findingId description capability verificationResult').lean();
+  const done: any[] = await OptimizationAction.find({ businessId: opts.businessId, status: 'VERIFIED' }).select('findingId description capability verificationResult plannedAt executedAt verifiedAt').lean();
   for (const d of done) {
     if (!views.some((v) => v.findingId === d.findingId)) {
-      views.push({ findingId: d.findingId, action: d.description, status: 'VERIFIED', executor: d.capability ? `growwmatics:${d.capability}` : 'owner', statusReason: d.verificationResult });
+      views.push({
+        findingId: d.findingId, action: d.description, status: 'VERIFIED', executor: d.capability ? `growwmatics:${d.capability}` : 'owner', statusReason: d.verificationResult,
+        capability: d.capability ?? null, plannedAt: d.plannedAt ? new Date(d.plannedAt).toISOString() : undefined,
+        ...(d.executedAt ? { executedAt: new Date(d.executedAt).toISOString() } : {}), ...(d.verifiedAt ? { verifiedAt: new Date(d.verifiedAt).toISOString() } : {}),
+      });
     }
   }
   return views;

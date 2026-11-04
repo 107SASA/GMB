@@ -58,6 +58,20 @@ export interface ISeoPlan extends Document {
   draft?: ISeoPlanDraft;
 
   baseline: ISeoPlanBaseline[];
+  /** Stable keyword set measured every month (services/seo/trackedKeywords.ts). */
+  trackedKeywords: any[];
+  /** Keywords added / removed / not added this version, with reasons. */
+  keywordChanges: any[];
+  /** Services and areas to push this month (services/seo/planMemory.ts planFocus). */
+  focus?: { services: any[]; areas: any[] };
+  /** Verified service areas measured in the source audit (allowed post locations). */
+  serviceAreas: string[];
+  /** Previous plan's results: action outcomes and keyword movements (strategyHistory.ts). */
+  history?: any;
+  /** What changed from the previous version (keywords added/removed, themes). */
+  changesFromPrevious?: any;
+  /** False when the source audit's ranking was unavailable — keywords were carried over, not replaced. */
+  dataQuality?: { rankingComplete: boolean; note?: string };
 
   /** Owner edits from the intake form / SEO Plan page — never overwritten by
    *  an audit refresh. */
@@ -105,6 +119,13 @@ const SeoPlanSchema = new Schema<ISeoPlan>(
 
     draft: { type: Schema.Types.Mixed },
     baseline: { type: Schema.Types.Mixed, default: [] },
+    trackedKeywords: { type: Schema.Types.Mixed, default: [] },
+    keywordChanges: { type: Schema.Types.Mixed, default: [] },
+    focus: { type: Schema.Types.Mixed },
+    serviceAreas: { type: [String], default: [] },
+    history: { type: Schema.Types.Mixed },
+    changesFromPrevious: { type: Schema.Types.Mixed },
+    dataQuality: { type: Schema.Types.Mixed },
     ownerEdited: { type: Boolean, default: false },
     appliedAt: { type: Date },
     appliedLive: { type: Boolean },

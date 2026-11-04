@@ -209,3 +209,9 @@ export function contentWeekStart(d: Date): Date {
   const mondayIst = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate() - (day - 1));
   return new Date(mondayIst - IST_OFFSET_MS);
 }
+
+/** Verified service areas the keyword names ("Fireworks Store Panchwad Nagar" → ["Panchwad Nagar"]). */
+export function areasIn(keyword: string | undefined, serviceAreas: string[] = []): string[] {
+  const k = ` ${String(keyword || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `;
+  return serviceAreas.filter((a) => a && k.includes(` ${a.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `));
+}

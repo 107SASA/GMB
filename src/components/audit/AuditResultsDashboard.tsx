@@ -8,6 +8,7 @@ import AuditReportV6 from './AuditReportV6';
 import AuditReportGrexa from './AuditReportGrexa';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 import AreaVisibilitySection from './AreaVisibilitySection';
+import SeoIntelligenceSection from './SeoIntelligenceSection';
 
 /* ─── Main dashboard ──────────────────────────────────────── */
 
@@ -387,6 +388,7 @@ export default function AuditResultsDashboard({ auditId }: { auditId: string }) 
         
         {/* Competitors and visibility by service area (stored facts) */}
         <AreaVisibilitySection areaVisibility={data?.facts?.areaVisibility} businessName={audit.businessName} />
+        <SeoIntelligenceSection tracking={data?.facts?.tracking} />
 
         {/* Keywords Analysis */}
         <div className="bg-surface-container-lowest rounded-2xl p-6 md:p-8 border border-outline-variant shadow-sm mb-8">

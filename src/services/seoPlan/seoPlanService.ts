@@ -35,6 +35,18 @@ interface UpsertInput {
   draft?: ISeoPlanDraft;
   keywordTable: IKeywordTableRow[];
   areasChecked: string[];
+  /** SEO intelligence from a full audit (absent on free reports). */
+  tracking?: {
+    trackedKeywords: any[];
+    keywordChanges: any[];
+    measurements: any[];
+    serviceVisibility: any[];
+    matrix: any[];
+    serviceAreas: string[];
+    history: any;
+  };
+  /** False when the audit's ranking data was unavailable: keywords are carried over, never replaced by an empty set. */
+  rankingComplete?: boolean;
   baseline: {
     overallScore?: number;
     avgRank?: number;
@@ -52,16 +64,30 @@ interface UpsertInput {
  */
 export async function upsertSeoPlanFromAudit(input: UpsertInput): Promise<ISeoPlan | null> {
   await dbConnect();
-  const { businessId, sourceAuditId, draft, keywordTable, areasChecked, baseline } = input;
+  const { businessId, sourceAuditId, draft, areasChecked, baseline, tracking } = input;
+  const { trackedKeywordRows, planFocus } = await import('@/services/seo/planMemory');
+  const { planChanges } = await import('@/services/seo/strategyHistory');
 
   const prev = await SeoPlan.findOne({ businessId }).sort({ version: -1 });
   const version = (prev?.version ?? 0) + 1;
 
-  const { primaryKeywords, secondaryKeywords, cityAreaTerms } = splitKeywords(
-    draft,
-    keywordTable,
-    areasChecked,
-  );
+  // An audit whose ranking failed must not overwrite a measured plan with an
+  // empty or unmeasured keyword set — carry the previous one forward.
+  const carryKeywords = input.rankingComplete === false && !!prev && (prev.keywordTable?.length ?? 0) > 0;
+  const keywordTable: IKeywordTableRow[] = carryKeywords
+    ? (prev!.keywordTable as IKeywordTableRow[])
+    : [...(input.keywordTable || []), ...(tracking ? trackedKeywordRows(tracking.measurements) : [])];
+  const split = splitKeywords(draft, input.keywordTable || [], areasChecked);
+  const primaryKeywords = carryKeywords ? prev!.primaryKeywords : split.primaryKeywords;
+  const secondaryKeywords = carryKeywords ? prev!.secondaryKeywords : split.secondaryKeywords;
+  const cityAreaTerms = split.cityAreaTerms;
+  const postThemes = draft?.weeklyPostThemes || [];
+  const changesFromPrevious = prev
+    ? planChanges(
+        { version: prev.version, createdAt: String(prev.createdAt), primaryKeywords: prev.primaryKeywords || [], secondaryKeywords: prev.secondaryKeywords || [], postThemes: prev.postThemes || [], priorities: [] },
+        { primaryKeywords, postThemes },
+      )
+    : null;
 
   const baselineEntry = { ...baseline, capturedAt: new Date() };
   const priorBaseline = Array.isArray(prev?.baseline) ? prev!.baseline : [];
@@ -95,7 +121,7 @@ export async function upsertSeoPlanFromAudit(input: UpsertInput): Promise<ISeoPl
     suggestedQas: draft?.suggestedQas || [],
     uspLine: draft?.uspLine,
     reviewReplyMustInclude: draft?.reviewReplyMustInclude || [],
-    postThemes: draft?.weeklyPostThemes || [],
+    postThemes,
     keyFinding: draft?.keyFinding,
     keywordInsights: draft?.keywordInsights || [],
     marketOpportunities: draft?.marketOpportunities || [],
@@ -103,6 +129,14 @@ export async function upsertSeoPlanFromAudit(input: UpsertInput): Promise<ISeoPl
     actionPhases: draft?.actionPhases || [],
     draft,
     baseline: [...priorBaseline, baselineEntry].slice(-12),
+    // A free report (no tracking) keeps the previous tracked set and focus.
+    trackedKeywords: tracking ? tracking.trackedKeywords : prev?.trackedKeywords || [],
+    keywordChanges: tracking ? tracking.keywordChanges : [],
+    focus: tracking ? planFocus(tracking.serviceVisibility, tracking.matrix) : prev?.focus,
+    serviceAreas: tracking ? tracking.serviceAreas : prev?.serviceAreas || [],
+    history: tracking?.history ?? undefined,
+    changesFromPrevious,
+    dataQuality: { rankingComplete: input.rankingComplete !== false, ...(carryKeywords ? { note: 'Ranking was unavailable in the source audit — the previous measured keywords were kept.' } : {}) },
     ownerEdited: prev?.ownerEdited || false,
     ...carry,
   });
@@ -190,6 +224,9 @@ export async function mergeIntakeIntoSeoPlan(businessId: string, intake: IntakeM
     actionPhases: prev?.actionPhases || [],
     draft: prev?.draft,
     baseline: Array.isArray(prev?.baseline) ? prev!.baseline : [],
+    trackedKeywords: prev?.trackedKeywords || [],
+    focus: prev?.focus,
+    serviceAreas: prev?.serviceAreas || [],
     ownerEdited: true,
   });
 

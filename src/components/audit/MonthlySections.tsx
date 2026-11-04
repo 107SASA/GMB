@@ -142,6 +142,29 @@ export default function MonthlySections({ monthly }: { monthly: any }) {
         </Card>
       </div>
 
+      {m.areas && (
+        <Card title="Service areas since last month">
+          {([
+            ['Improving visibility', m.areas.improving],
+            ['Declining visibility', m.areas.declining],
+            ['Not ranking yet', m.areas.notRanking],
+            ['New competitors', m.areas.newCompetitors],
+            ['Competitors gaining', m.areas.competitorsGaining],
+            ['Keyword opportunities', (m.areas.opportunities || []).slice(0, 6)],
+          ] as Array<[string, string[]]>)
+            .filter(([, list]) => list?.length)
+            .map(([label, list]) => (
+              <div key={label} className="mb-3 last:mb-0">
+                <div className="text-xs font-semibold uppercase tracking-wide text-outline mb-1">{label}</div>
+                <ul className="list-disc pl-5 space-y-0.5 text-sm">{list.map((t, i) => <li key={i}>{t}</li>)}</ul>
+              </div>
+            ))}
+          {!['improving', 'declining', 'notRanking', 'newCompetitors', 'competitorsGaining', 'opportunities'].some((k) => m.areas[k]?.length) && (
+            <Empty text="No service-area changes to report — areas are compared only when both audits searched them." />
+          )}
+        </Card>
+      )}
+
       <Card title="Issues that remain">
         {m.remainingIssues?.length
           ? <ul className="list-disc pl-5 space-y-1 text-sm">{m.remainingIssues.map((t: string, i: number) => <li key={i}>{t}</li>)}</ul>

@@ -85,8 +85,11 @@ test('Durva: searches Ojhar and Nashik (service areas); Janori is skipped (alrea
       relevantCount: relevantIn,
     },
   );
-  assert.deepEqual(log.map((s) => s.label), ['Ojhar (service area)', 'Nashik (service area)'], 'nearest first, each once');
-  assert.deepEqual(log.map((s) => s.keyword), ['Fireworks Store Ojhar', 'Fireworks Store Nashik']);
+  // Nearest first; each area once, with two searches at its own coordinates.
+  assert.deepEqual(log.map((s) => s.label), ['Ojhar (service area)', 'Ojhar (service area)', 'Nashik (service area)', 'Nashik (service area)']);
+  assert.deepEqual(log.map((s) => s.keyword), ['Fireworks Store Ojhar', 'Fireworks Store near me', 'Fireworks Store Nashik', 'Fireworks Store near me']);
+  assert.deepEqual(log.map((s) => s.areaName), ['Ojhar', 'Ojhar', 'Nashik', 'Nashik']);
+  assert.deepEqual(log.map((s) => s.point), [PLACES['pid-ojhar'], PLACES['pid-ojhar'], PLACES['pid-nashik'], PLACES['pid-nashik']]);
   assert.ok(res.skipped.some((s) => s.label.startsWith('Janori') && /around the business/.test(s.reason)));
   assert.deepEqual(res.expandedToKm, [], 'enough relevant competitors → no expansion');
 
@@ -156,7 +159,7 @@ test('trade unknown (relevantCount = Infinity) → service areas still searched,
     { pin: DURVA, searchTerm: 'Store', serviceAreas: [{ placeName: 'Ojhar', placeId: 'pid-ojhar' }] },
     { resolve, search: fakeSearch({}, log), relevantCount: () => Infinity },
   );
-  assert.deepEqual(log.map((s) => s.label), ['Ojhar (service area)']);
+  assert.deepEqual(log.map((s) => s.keyword), ['Store Ojhar', 'Store near me']);
   assert.deepEqual(res.expandedToKm, []);
 });
 
@@ -165,8 +168,8 @@ test('trade unknown (relevantCount = Infinity) → service areas still searched,
 test('many service areas: nearest 6 searched, the rest skipped with a reason; hard cap on total searches', async () => {
   const areas = Array.from({ length: 10 }, (_, i) => ({ name: `Area ${i}`, point: { lat: DURVA.lat + 0.05 * (i + 1), lng: DURVA.lng } }));
   const plan = planServiceAreaSearches(DURVA, 'Fireworks Store', areas);
-  assert.equal(plan.searches.length, AREA_DISCOVERY_LIMITS.maxServiceAreas);
-  assert.deepEqual(plan.searches.map((s) => s.label), areas.slice(0, 6).map((a) => `${a.name} (service area)`));
+  assert.equal(plan.searches.length, AREA_DISCOVERY_LIMITS.maxServiceAreas * 2, 'two searches per area');
+  assert.deepEqual(Array.from(new Set(plan.searches.map((s) => s.label))), areas.slice(0, 6).map((a) => `${a.name} (service area)`));
   assert.equal(plan.skipped.filter((s) => s.reason === 'service-area limit reached').length, 4);
 
   const log: AreaSearch[] = [];
@@ -183,7 +186,7 @@ test('two service areas a few hundred metres apart are searched once', () => {
     { name: 'Ojhar', point: PLACES['pid-ojhar'] },
     { name: 'Ojhar MIDC', point: { lat: 20.0985, lng: 73.932 } },
   ]);
-  assert.deepEqual(plan.searches.map((s) => s.label), ['Ojhar (service area)']);
+  assert.deepEqual(Array.from(new Set(plan.searches.map((s) => s.label))), ['Ojhar (service area)']);
   assert.match(plan.skipped[0].reason, /nearby service area/);
 });
 
@@ -213,7 +216,7 @@ test('plumber serving Pune suburbs: each suburb searched as "Plumber <suburb>", 
       relevantCount: () => 3,
     },
   );
-  assert.deepEqual(log.map((s) => s.keyword).sort(), ['Plumber Baner', 'Plumber Hadapsar', 'Plumber Wakad']);
+  assert.deepEqual(log.map((s) => s.keyword).sort(), ['Plumber Baner', 'Plumber Hadapsar', 'Plumber Wakad', 'Plumber near me', 'Plumber near me', 'Plumber near me']);
   const plumber = buildTradeProfile({ searchCategory: 'Plumber', category: 'Plumber' })!;
   const counted = competitorsFromObservations(res.observations)
     .filter((c) => classifyCompetitor({ name: c.name, category: c.category, keywords: c.keywords }, plumber).counted)

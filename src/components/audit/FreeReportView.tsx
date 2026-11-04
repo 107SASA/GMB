@@ -15,6 +15,7 @@
 import Link from 'next/link';
 import AuditPaywallSidebar from '@/components/audit/AuditPaywallSidebar';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import AreaVisibilitySection from './AreaVisibilitySection';
 import { FaqAccordion } from '@/components/shared/FaqAccordion';
 import { ALL_FAQS } from '@/lib/faqData';
 import ConsultantSections from '@/components/audit/ConsultantSections';
@@ -486,6 +487,9 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
               </Link>
             </div>
           )}
+
+          {/* ── Competitors and visibility by service area ───────────── */}
+          <AreaVisibilitySection areaVisibility={facts?.areaVisibility} businessName={audit.businessName} />
 
           {/* ── Verified issues ───────────────────────────────────────── */}
           {issues.length > 0 && (

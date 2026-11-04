@@ -10,8 +10,10 @@
  *  3. rings around the business, progressively wider, only while too few
  *     relevant competitors have been found.
  *
- * Cost: one Maps search per location (the trade phrase, e.g. "Fireworks
- * Store Ojhar"); locations within MIN_SEPARATION_KM of one already searched
+ * Cost: a service area gets two Maps searches at its own coordinates —
+ * "<trade> <area>" and "<trade> near me" (what a customer standing there
+ * sees; both also measure the business's own position there); an expansion
+ * point gets one. Locations within minSeparationKm of one already searched
  * are skipped (same results); a hard cap on searches per report.
  */
 
@@ -29,6 +31,9 @@ export interface AreaSearch {
   /** Where this search ran, as shown in the report ("Ojhar (service area)"). */
   label: string;
   kind: 'service_area' | 'expansion';
+  /** The service area's own name / place id (service-area searches only). */
+  areaName?: string;
+  placeId?: string | null;
   keyword: string;
   point: GeoPoint;
   /** Distance from the business, rounded to 0.1 km. */
@@ -36,7 +41,7 @@ export interface AreaSearch {
 }
 
 export const AREA_DISCOVERY_LIMITS = {
-  /** Service areas searched per report, nearest first. */
+  /** Service areas searched per report, nearest first (2 searches each). */
   maxServiceAreas: 6,
   /** The ranking grid already covers ±1.5 km; anything closer than this to a searched point repeats it. */
   minSeparationKm: 3,
@@ -46,8 +51,8 @@ export const AREA_DISCOVERY_LIMITS = {
   ringDirections: 4,
   /** Fewer relevant competitors than this → expand. */
   minRelevantCompetitors: 3,
-  /** Hard cap on searches this module may add to one report. */
-  maxSearches: 12,
+  /** Hard cap on searches this module may add to one report (6 areas × 2 + one expansion ring). */
+  maxSearches: 16,
 };
 
 export type AreaDiscoveryLimits = typeof AREA_DISCOVERY_LIMITS;
@@ -77,7 +82,7 @@ function keywordFor(term: string, place?: string | null): string {
 export function planServiceAreaSearches(
   pin: GeoPoint,
   searchTerm: string,
-  areas: Array<{ name: string; point: GeoPoint }>,
+  areas: Array<{ name: string; point: GeoPoint; placeId?: string | null }>,
   limits: AreaDiscoveryLimits = AREA_DISCOVERY_LIMITS,
 ): { searches: AreaSearch[]; skipped: Array<{ label: string; reason: string }> } {
   const searches: AreaSearch[] = [];
@@ -86,14 +91,17 @@ export function planServiceAreaSearches(
   const sorted = [...areas].sort((a, b) => haversineKm(pin, a.point) - haversineKm(pin, b.point));
   for (const a of sorted) {
     const label = `${a.name} (service area)`;
-    if (searches.length >= limits.maxServiceAreas) { skipped.push({ label, reason: 'service-area limit reached' }); continue; }
+    // taken = the business + every area chosen so far.
+    if (taken.length - 1 >= limits.maxServiceAreas) { skipped.push({ label, reason: 'service-area limit reached' }); continue; }
     const near = taken.find((p) => haversineKm(p, a.point) < limits.minSeparationKm);
     if (near) {
       skipped.push({ label, reason: near === pin ? 'already covered by the search around the business' : 'already covered by a nearby service area' });
       continue;
     }
     taken.push(a.point);
-    searches.push({ label, kind: 'service_area', keyword: keywordFor(searchTerm, a.name), point: a.point, distanceKm: round1(haversineKm(pin, a.point)) });
+    const base = { label, kind: 'service_area' as const, point: a.point, distanceKm: round1(haversineKm(pin, a.point)), areaName: a.name, placeId: a.placeId ?? null };
+    searches.push({ ...base, keyword: keywordFor(searchTerm, a.name) });
+    searches.push({ ...base, keyword: `${searchTerm.trim()} near me` });
   }
   return { searches, skipped };
 }
@@ -172,7 +180,7 @@ export async function discoverCompetitorAreas<O>(
   const plan = planServiceAreaSearches(
     input.pin,
     searchTerm,
-    resolved.filter((r) => r.point).map((r) => ({ name: r.a.placeName || 'Service area', point: r.point! })),
+    resolved.filter((r) => r.point).map((r) => ({ name: r.a.placeName || 'Service area', point: r.point!, placeId: r.a.placeId })),
     limits,
   );
   out.skipped.push(...plan.skipped);

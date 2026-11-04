@@ -49,6 +49,8 @@ export interface SeoPlanInput {
     hasBookingLink?: boolean;
     additionalCategories?: string[] | null;
     websiteServices?: string[];
+    /** Where it was found: "Around your address", "Ojhar (service area)", … */
+    foundIn?: string[];
   }>;
   /** Valid searches the competitor list was drawn from. */
   searchesChecked: number;
@@ -109,6 +111,12 @@ export interface SeoPlanInput {
    * and must not be turned into recommendations.
    */
   fr4Lines?: string[];
+  /**
+   * Measured visibility per Google service area (areaVisibility.ts
+   * areaStrategyLines): position, same-trade competitors there and, on a
+   * monthly audit, what changed since the previous one.
+   */
+  serviceAreaLines?: string[];
 }
 
 /** Prompt wording for a measured rank — "not found in the top 20" is a fact, never a number. */
@@ -166,6 +174,7 @@ function buildCompetitorLandscape(input: SeoPlanInput): ISeoPlanDraft['competito
       name: c.name, mapsRank: c.mapsRank ?? undefined, rating: c.rating ?? undefined, reviewCount: c.reviewCount ?? undefined, keyEdge,
       relevance: c.relevance, searchesAhead: c.searchesAhead, appearances: c.appearances ?? null,
       tierLabel: competitorTierLabel(c, input.searchesChecked),
+      ...(c.foundIn?.length ? { foundIn: c.foundIn } : {}),
     };
   });
 }
@@ -370,6 +379,10 @@ ${input.gbpIntelligenceLines.map((l) => `- ${l}`).join('\n')}`
     ? `FR-4 MEASURED GAPS (use these; do not recommend a fix for anything that was not measured):
 ${input.fr4Lines.map((l) => `- ${l}`).join('\n')}`
     : '';
+  const serviceAreas = input.serviceAreaLines?.length
+    ? `SERVICE AREAS (measured Google Maps searches run in each area — prioritise areas where the business is not visible):
+${input.serviceAreaLines.map((l) => `- ${l}`).join('\n')}`
+    : '';
   const gbpNote = input.gbpRead
     ? ''
     : 'GOOGLE PROFILE CONTENT (services, description, attributes, Q&A): NOT READ. Never say the profile has, lacks or is missing something — write "verify whether your Google Business Profile lists …" instead.';
@@ -407,6 +420,7 @@ ${siteClaims}
 ${listing}
 ${gbpIntel}
 ${fr4}
+${serviceAreas}
 ${gbpNote}
 
 KEYWORDS (measured Maps rank + demand band):
@@ -451,7 +465,7 @@ Return JSON:
 }`;
 
   const j = await jsonCall(prompt, 0.3);
-  const allowed = allowedNumbersFrom([input.monthlyContext, input.ranking, input.reviews, input.reviewComparison, input.keywordTable, input.competitors, input.searchesChecked, input.opportunities, input.profileCompletion?.completionPercentage, input.usps, input.offers, input.services, input.gbpIntelligenceLines, input.fr4Lines]);
+  const allowed = allowedNumbersFrom([input.monthlyContext, input.ranking, input.reviews, input.reviewComparison, input.keywordTable, input.competitors, input.searchesChecked, input.opportunities, input.profileCompletion?.completionPercentage, input.usps, input.offers, input.services, input.gbpIntelligenceLines, input.fr4Lines, input.serviceAreaLines]);
   const byKw = new Map(input.opportunities.map((o) => [o.keyword.toLowerCase(), o]));
   const rationales = new Map<string, string>(
     (Array.isArray(j.opportunityRationales) ? j.opportunityRationales : [])
@@ -565,7 +579,7 @@ Return JSON:
 }${full ? ' 2-4 platformGaps.' : ''}`;
 
   const j = await jsonCall(prompt, 0.3);
-  const allowed = allowedNumbersFrom([input.monthlyContext, input.ranking, input.reviews, input.keywordTable, input.usps, input.offers, input.services, input.verifiedServices, input.gbpIntelligenceLines, input.fr4Lines]);
+  const allowed = allowedNumbersFrom([input.monthlyContext, input.ranking, input.reviews, input.keywordTable, input.usps, input.offers, input.services, input.verifiedServices, input.gbpIntelligenceLines, input.fr4Lines, input.serviceAreaLines]);
   const aiGaps = new Map<string, any>((Array.isArray(j.gbpGaps) ? j.gbpGaps : []).map((g: any) => [String(g?.field), g]));
   // Attributes (accessibility, amenities, ownership…) are facts only the
   // owner can confirm — fixed wording, never AI examples that read as claims.
@@ -644,7 +658,7 @@ Q&As: questions a prospective CUSTOMER would ask about the business (services, l
 ${full ? '4-6' : '3-5'} items in EMERGENCY, 3-4 in SHORT-TERM, 3-4 in MEDIUM-TERM. Exactly 4 weeklyPostThemes (Mon/Wed/Fri/Sat)${areas.length ? ` mentioning these real nearby areas where natural: ${areas.join(', ')}` : ''}. ${full ? '8' : '5-6'} suggestedQas. Use postType OFFER only if OWNER-PROVIDED lists an offer.`;
 
   const j = await jsonCall(prompt, 0.35);
-  const allowed = allowedNumbersFrom([input.monthlyContext, input.ranking, input.reviews, input.keywordTable, input.usps, input.offers, input.services, input.verifiedServices, input.findings.map((f) => f.title), input.gbpIntelligenceLines, input.fr4Lines]);
+  const allowed = allowedNumbersFrom([input.monthlyContext, input.ranking, input.reviews, input.keywordTable, input.usps, input.offers, input.services, input.verifiedServices, input.findings.map((f) => f.title), input.gbpIntelligenceLines, input.fr4Lines, input.serviceAreaLines]);
   const hasOffers = !!input.offers;
 
   const phases = (Array.isArray(j.actionPhases) ? j.actionPhases : []).map((p: any) => ({

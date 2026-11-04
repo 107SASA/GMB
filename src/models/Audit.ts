@@ -332,6 +332,8 @@ export interface ISeoPlanDraft {
     relevance?: string; searchesAhead?: number; appearances?: number | null;
     /** reportDisplay.competitorTierLabel — shown under the name. */
     tierLabel?: string;
+    /** Where it was found ("Around your address", "Ojhar (service area)"). */
+    foundIn?: string[];
   }>;
   competitorCounterPosition?: string;
   gbpGaps?: ISeoPlanGapItem[];

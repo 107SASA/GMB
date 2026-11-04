@@ -9,6 +9,7 @@ import {
   buildReviewFacts,
   compareReviews,
   competitorsAhead,
+  AROUND_ADDRESS,
   competitorsFromObservations,
   compareCompetitors,
   brandPhrase,
@@ -24,6 +25,7 @@ import {
   type SearchObservation,
 } from './facts';
 import { buildEvidenceAndFindings, isCustomerIssue, selectOpportunities, type KeywordRow } from './findings';
+import { areaStrategyLines, type AreaComparison, type AreaVisibilityFacts } from './areaVisibility';
 import { validateAudit, repairUnverifiedGbpClaims, type ValidatableAudit } from './validateAudit';
 import { getWebsiteIntelligence } from '../intel/websiteIntelligence';
 import { assembleFr4 } from './fr4/assemble';
@@ -410,7 +412,7 @@ async function processAuditJobInner(auditId: string) {
         areaObs = res.observations;
         areaDiscovery = {
           serviceAreasConfigured: gbpServiceAreas.length,
-          searched: res.searched.map((x: any) => ({ label: x.label, kind: x.kind, keyword: x.keyword, distanceKm: x.distanceKm })),
+          searched: res.searched.map((x: any) => ({ label: x.label, kind: x.kind, keyword: x.keyword, distanceKm: x.distanceKm, areaName: x.areaName, placeId: x.placeId ?? null })),
           skipped: res.skipped,
           expandedToKm: res.expandedToKm,
         };
@@ -513,6 +515,30 @@ async function processAuditJobInner(auditId: string) {
         source: 'google_places' as const,
         similarityScore: null,
       }));
+    }
+
+    // ── Visibility per service area (stored; every report variant + PDF read it) ─
+    let areaVisibility: AreaVisibilityFacts | null = null;
+    if (gbpServiceAreas.length) {
+      try {
+        const { buildAreaVisibility } = require('./areaVisibility');
+        const { fetchSearchVolumes } = require('./keywordVolumeClient');
+        // ONE volume lookup for the area phrases and the keyword table's phrases —
+        // the keyword table below then reads them all from the 45-day cache.
+        const phrases = [...areaObs.map((o) => o.keyword), ...rankingFacts.byKeyword.filter((k) => k.kind !== 'brand').map((k) => k.keyword)];
+        const volumes: Map<string, number | null> = await fetchSearchVolumes(phrases, { countryHint: business.country || '' }).catch(() => new Map());
+        areaVisibility = buildAreaVisibility({
+          serviceAreas: gbpServiceAreas,
+          discovery: areaDiscovery,
+          areaObservations: areaObs,
+          primaryObservations: marketObs,
+          competitors: competitorFacts.filter((c) => c.source === 'dataforseo'),
+          volumes,
+          primaryLabel: AROUND_ADDRESS,
+        });
+      } catch (avErr: any) {
+        console.warn('[auditService] service-area visibility failed:', avErr?.message);
+      }
     }
 
     // ── Keyword table (demand band + measured rank per phrase) ──────────
@@ -1161,11 +1187,12 @@ async function processAuditJobInner(auditId: string) {
     // ── Monthly cycle: what the AI may say changed (measured lines only) ──
     const lifecycleKind: string = (audit as any).auditKind || auditKindOf(audit);
     let monthlyContext: string[] = [];
+    let areaComparison: AreaComparison | null = null;
     if (lifecycleKind === 'monthly') {
       try {
         const prevForAI: any = await Audit.findOne({ businessId: audit.businessId, status: 'COMPLETED', fastMode: { $ne: true }, _id: { $ne: audit._id }, 'auditData.facts.version': { $gte: 1 } })
           .sort({ createdAt: -1 })
-          .select('createdAt fastMode metadata auditKind auditData.facts.ranking auditData.facts.reviews auditData.profileCompletion auditData.performanceBaseline auditData.fr4.auditScore')
+          .select('createdAt fastMode metadata auditKind auditData.facts.ranking auditData.facts.reviews auditData.facts.areaVisibility auditData.profileCompletion auditData.performanceBaseline auditData.fr4.auditScore')
           .lean();
         if (prevForAI) {
           const cmp = compareAudits(
@@ -1176,6 +1203,13 @@ async function processAuditJobInner(auditId: string) {
           const ex = await collectExecutions(audit.businessId.toString(), new Date(prevForAI.createdAt), new Date());
           const gm = [ex.posts.length && `${ex.posts.length} Google posts published`, ex.replies.filter((r) => r.by !== 'external').length && `${ex.replies.filter((r) => r.by !== 'external').length} review replies posted`, ex.reviewRequests.sent && `${ex.reviewRequests.sent} review requests sent`].filter(Boolean);
           if (gm.length) monthlyContext.push(`Executed through GrowwMatics since the last audit: ${gm.join(', ')}`);
+          // Per service area, like-for-like with the previous audit (measured lines only).
+          if (areaVisibility) {
+            const { compareAreaVisibility } = require('./areaVisibility');
+            areaComparison = compareAreaVisibility(prevForAI.auditData?.facts?.areaVisibility, areaVisibility);
+            for (const l of areaComparison!.improving) monthlyContext.push(`Service-area visibility improved — ${l}`);
+            for (const l of areaComparison!.declining) monthlyContext.push(`Service-area visibility declined — ${l}`);
+          }
         }
       } catch (mcErr: any) {
         console.warn('[auditService] monthly context skipped:', mcErr?.message);
@@ -1195,7 +1229,12 @@ async function processAuditJobInner(auditId: string) {
           state: business.state || '',
           country: business.country || '',
           website: business.website || '',
-          neighbourhoods: areasChecked,
+          // Service areas where the business is not yet visible come first — the
+          // weekly post themes mention these areas.
+          neighbourhoods: Array.from(new Set([
+            ...(areaVisibility?.areas || []).filter((a) => a.status === 'measured' && a.bestRank == null).map((a) => a.area),
+            ...areasChecked,
+          ])),
           primaryKeyword: rankingFacts.primaryKeyword || keywordTable[0]?.keyword || '',
           keywordTable,
           competitors: competitorFacts.slice(0, 10).map((c) => ({
@@ -1212,6 +1251,7 @@ async function processAuditJobInner(auditId: string) {
             hasBookingLink: !!c.bookingUrl,
             additionalCategories: c.additionalCategories,
             websiteServices: (c as any).websiteServices,
+            foundIn: c.foundIn,
             source: c.source,
           })),
           searchesChecked: aheadFacts.searchesChecked,
@@ -1241,6 +1281,7 @@ async function processAuditJobInner(auditId: string) {
           suspensionRisk,
           gbpIntelligenceLines: intelApi ? intelApi.seoBrainGbpLines(gbpIntel, { changesSince: gbpChangesSince, now: new Date() }) : undefined,
           fr4Lines: fr4.bundle.lines,
+          serviceAreaLines: areaStrategyLines(areaVisibility, areaComparison),
         });
       } catch (planErr: any) {
         console.warn('[auditService] seoPlanDraft generation failed:', planErr?.message);
@@ -1432,6 +1473,7 @@ async function processAuditJobInner(auditId: string) {
         competitorsAhead: aheadOut,
         otherBusinessesAhead,
         ...(areaDiscovery ? { areaDiscovery, areaSearches: areaObs } : {}),
+        ...(areaVisibility ? { areaVisibility } : {}),
         reviews: reviewFacts,
         reviewComparison,
         profileFields: fieldStates,

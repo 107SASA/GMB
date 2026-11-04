@@ -5,6 +5,7 @@ import {
   extractPage,
   extractWebsiteFacts,
   normalizeOrigin,
+  pageSeoOf,
   planCrawl,
   planFromSitemap,
   robotsTxtDisallowAll,
@@ -25,7 +26,8 @@ import {
  * status 'failed' and carry on with other sources.
  */
 export const WEBSITE_INTEL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-export const WEBSITE_INTEL_LOGIC_VERSION = 6;
+// v7: per-page on-page SEO facts (pageSeo) for the website SEO checks.
+export const WEBSITE_INTEL_LOGIC_VERSION = 7;
 
 export interface WebsiteIntelOptions {
   maxPages?: number;
@@ -42,11 +44,11 @@ async function fetchPage(url: string, kind: PageKind): Promise<(ExtractedPage & 
 
 export async function crawlWebsite(rawUrl: string, maxPages = 6) {
   const origin = normalizeOrigin(rawUrl);
-  if (!origin) return { origin: null, status: 'failed' as const, failureReason: 'invalid URL', pages: [] as any[], facts: null, homepageHash: undefined, fr4Signals: null };
+  if (!origin) return { origin: null, status: 'failed' as const, failureReason: 'invalid URL', pages: [] as any[], facts: null, homepageHash: undefined, fr4Signals: null, pageSeo: [] as any[] };
   const requested = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
   const home = await fetchPage(requested, 'home');
   if (!home) {
-    return { origin, status: 'failed' as const, failureReason: 'homepage did not respond', pages: [], facts: null, homepageHash: undefined, fr4Signals: null };
+    return { origin, status: 'failed' as const, failureReason: 'homepage did not respond', pages: [], facts: null, homepageHash: undefined, fr4Signals: null, pageSeo: [] as any[] };
   }
   let plan = planCrawl(home, maxPages);
   let sitemapSeen: boolean | null = null;
@@ -96,7 +98,8 @@ export async function crawlWebsite(rawUrl: string, maxPages = 6) {
     sitemapSeen,
     pageNoindex: pages.some((p) => /noindex/i.test(p.robotsMeta || '') || /noindex/i.test(p.xRobotsTag || '')),
   };
-  return { origin, status, failureReason: undefined, pages: crawled, facts, homepageHash, fr4Signals };
+  const pageSeo = pages.map((p) => pageSeoOf(p as any, origin));
+  return { origin, status, failureReason: undefined, pages: crawled, facts, homepageHash, fr4Signals, pageSeo };
 }
 
 /**
@@ -154,6 +157,7 @@ export async function getWebsiteIntelligence(rawUrl: string | undefined | null, 
     schemaTypes: crawl.facts?.schemaTypes ?? [],
     keywordsFound: crawl.facts?.keywordsFound ?? [],
     fr4Signals: crawl.fr4Signals ?? null,
+    pageSeo: crawl.pageSeo ?? [],
     fetchedAt: new Date(),
     logicVersion: WEBSITE_INTEL_LOGIC_VERSION,
   };

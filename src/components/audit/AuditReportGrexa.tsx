@@ -29,6 +29,7 @@ import {
 import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
 import MonthlySections from './MonthlySections';
 import AreaVisibilitySection from './AreaVisibilitySection';
+import SeoIntelligenceSection from './SeoIntelligenceSection';
 import ConsultantSections from '@/components/audit/ConsultantSections';
 
 /* ─── Google Logo ───────────────────────────────────────────────────────────── */
@@ -691,6 +692,7 @@ export default function AuditReportGrexa({
 
       {/* ══ Competitors and visibility by service area (stored facts) ═══ */}
       <AreaVisibilitySection areaVisibility={(data as any).facts?.areaVisibility} businessName={audit.businessName} />
+      <SeoIntelligenceSection tracking={(data as any).facts?.tracking} />
 
       {/* ══ 5. PROFILE SCORE DETAILS ════════════════════════════════════ */}
       <div className="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant p-6">

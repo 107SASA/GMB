@@ -376,12 +376,18 @@ async function processAuditJobInner(auditId: string) {
     const { buildTradeProfile, classifyCompetitor } = require('./competitorRelevance');
     let gbpCategories: string[] = [];
     let gbpServiceAreas: Array<{ placeName: string | null; placeId: string | null }> = [];
+    // Services listed on the Google profile; null = the profile was not read.
+    let gbpListedServices: string[] | null = null;
     try {
       const GbpLocationSnapshot = require('../../models/GbpLocationSnapshot').default;
       const snap: any = await GbpLocationSnapshot.findOne({ businessId: business._id }).select('sections.location').lean();
       const loc = snap?.sections?.location?.meta?.status === 'SUCCESS' ? snap.sections.location.data : null;
       gbpCategories = [loc?.primaryCategory?.displayName, ...(loc?.additionalCategories || []).map((c: any) => c?.displayName)].filter(Boolean);
       gbpServiceAreas = Array.isArray(loc?.serviceArea?.places) ? loc.serviceArea.places : [];
+      if (loc) {
+        const { serviceLabel } = require('../gbp/intelligence/normalize');
+        gbpListedServices = (loc.services || []).map(serviceLabel).filter(Boolean);
+      }
     } catch { /* no connected profile — Google's public listing is enough */ }
     const tradeProfile = buildTradeProfile({ searchCategory, category: resolvedCategory, additionalCategories: gbpCategories });
     const countedIn = (obs: SearchObservation[]) =>
@@ -393,6 +399,8 @@ async function processAuditJobInner(auditId: string) {
 
     let areaObs: SearchObservation[] = cachedRank ? (cachedRank.areaObservations || []) : [];
     let areaDiscovery: any = cachedRank ? (cachedRank.areaDiscovery || null) : null;
+    // Service areas actually searched, with their coordinates (for service × area searches).
+    const searchedAreas: Array<{ label: string; name: string; placeId: string | null; point: { lat: number; lng: number }; distanceKm: number }> = [];
     const pin = businessForRankings.coordinates?.lat && businessForRankings.coordinates?.lng
       ? { lat: Number(businessForRankings.coordinates.lat), lng: Number(businessForRankings.coordinates.lng) }
       : null;
@@ -410,6 +418,11 @@ async function processAuditJobInner(auditId: string) {
           },
         );
         areaObs = res.observations;
+        for (const x of res.searched as any[]) {
+          if (x.kind === 'service_area' && !searchedAreas.some((a) => a.label === x.label)) {
+            searchedAreas.push({ label: x.label, name: x.areaName || x.label, placeId: x.placeId ?? null, point: x.point, distanceKm: x.distanceKm });
+          }
+        }
         areaDiscovery = {
           serviceAreasConfigured: gbpServiceAreas.length,
           searched: res.searched.map((x: any) => ({ label: x.label, kind: x.kind, keyword: x.keyword, distanceKm: x.distanceKm, areaName: x.areaName, placeId: x.placeId ?? null })),
@@ -421,8 +434,60 @@ async function processAuditJobInner(auditId: string) {
       }
     }
 
+    // ── SEO intelligence (full audits only): stable tracked keywords per
+    // service, and service × area searches. The free report is unchanged.
+    // Kept out of the business's headline ranking statistics; used for
+    // service / area visibility, competitors and the monthly comparison.
+    const seoIntel: {
+      services: any[]; tracked: any[]; keywordChanges: any[]; trackedObs: SearchObservation[]; serviceAreaObs: SearchObservation[];
+      searchTerms: Array<{ keyword: string; impressions: number; period?: string }>; prevPlan: any; prevAudit: any; serviceOf: (k: string) => { id: string; name: string } | null;
+    } | null = await (async () => {
+      if (audit.fastMode || !rankData || rankData.fetchError || !searchCategory) return null;
+      try {
+        const { verifiedServices, buildTrackedKeywords, serviceForKeyword } = require('../seo/trackedKeywords');
+        const { fetchTrackedObservations, fetchAreaObservations } = require('./seoAnalyzer');
+        const SeoPlan = require('../../models/SeoPlan').default;
+        const GBPKeyword = require('../../models/GBPKeyword').default;
+        const prevPlan: any = await SeoPlan.findOne({ businessId: business._id, status: 'active' }).sort({ version: -1 }).lean();
+        const prevAudit: any = await Audit.findOne({ businessId: business._id, status: 'COMPLETED', fastMode: { $ne: true }, _id: { $ne: audit._id }, 'auditData.facts.tracking': { $exists: true } })
+          .sort({ createdAt: -1 }).select('createdAt auditData.facts.tracking').lean();
+        const latest: any = await GBPKeyword.findOne({ businessId: business._id }).sort({ year: -1, month: -1 }).select('year month').lean();
+        const searchTerms = latest
+          ? (await GBPKeyword.find({ businessId: business._id, year: latest.year, month: latest.month, impressions: { $gt: 0 } })
+              .sort({ impressions: -1 }).limit(50).select('keyword impressions').lean() as any[])
+              .map((t) => ({ keyword: String(t.keyword), impressions: Number(t.impressions), period: `${latest.year}-${String(latest.month).padStart(2, '0')}` }))
+          : [];
+        const services = verifiedServices({
+          gbpServices: gbpListedServices || [],
+          ownerServices: String(business.services || '').split(/[,;\n]+/),
+          websiteServices,
+          category: searchCategory,
+        });
+        const serviceOf = (k: string) => { const s = serviceForKeyword(k, services); return s ? { id: s.id, name: s.name } : null; };
+        const plan = buildTrackedKeywords({
+          previous: prevPlan?.trackedKeywords || [],
+          services,
+          city: resolvedCity,
+          gridKeywords: Array.from(new Set(marketObs.filter((o) => o.kind === 'primary' || o.kind === 'discovery').map((o) => o.keyword))),
+          searchTerms,
+          proposed: (prevPlan?.draft?.proposedKeywords || []).map((p: any) => (typeof p === 'string' ? p : p?.keyword)).filter(Boolean),
+          businessName: business.name,
+          now: new Date(),
+        });
+        const trackedObs: SearchObservation[] = await fetchTrackedObservations(businessForRankings, plan.measureNow.map((k: any) => k.keyword));
+        // Service × area: the first 3 services in the 3 nearest searched service areas (≤ 9 searches).
+        const svcAreaSearches = searchedAreas.slice(0, 3).flatMap((a) =>
+          services.slice(0, 3).map((s: any) => ({ keyword: `${s.name} ${a.name}`, point: a.point, label: a.label })));
+        const serviceAreaObs: SearchObservation[] = await fetchAreaObservations(businessForRankings, svcAreaSearches);
+        return { services, tracked: plan.tracked, keywordChanges: plan.changes, trackedObs, serviceAreaObs, searchTerms, prevPlan, prevAudit, serviceOf };
+      } catch (siErr: any) {
+        console.warn('[auditService] SEO intelligence measurement failed:', siErr?.message);
+        return null;
+      }
+    })();
+
     // ── Facts: competitors (real businesses observed above the target) ──
-    const competitorObs = [...marketObs, ...areaObs];
+    const competitorObs = [...marketObs, ...areaObs, ...(seoIntel ? [...seoIntel.trackedObs, ...seoIntel.serviceAreaObs] : [])];
     let competitorFacts: CompetitorFact[] = competitorsFromObservations(competitorObs);
     let aheadFacts = competitorsAhead(competitorObs);
 
@@ -519,14 +584,22 @@ async function processAuditJobInner(auditId: string) {
 
     // ── Visibility per service area (stored; every report variant + PDF read it) ─
     let areaVisibility: AreaVisibilityFacts | null = null;
+    // ONE volume lookup for every phrase measured this audit (area, tracked,
+    // service × area and the keyword table's) — the keyword table below then
+    // reads them all from the 45-day cache.
+    let volumes = new Map<string, number | null>();
+    if (gbpServiceAreas.length || seoIntel) {
+      const { fetchSearchVolumes } = require('./keywordVolumeClient');
+      const phrases = [
+        ...areaObs.map((o) => o.keyword),
+        ...(seoIntel ? [...seoIntel.trackedObs, ...seoIntel.serviceAreaObs].map((o) => o.keyword) : []),
+        ...rankingFacts.byKeyword.filter((k) => k.kind !== 'brand').map((k) => k.keyword),
+      ];
+      volumes = await fetchSearchVolumes(phrases, { countryHint: business.country || '' }).catch(() => new Map());
+    }
     if (gbpServiceAreas.length) {
       try {
         const { buildAreaVisibility } = require('./areaVisibility');
-        const { fetchSearchVolumes } = require('./keywordVolumeClient');
-        // ONE volume lookup for the area phrases and the keyword table's phrases —
-        // the keyword table below then reads them all from the 45-day cache.
-        const phrases = [...areaObs.map((o) => o.keyword), ...rankingFacts.byKeyword.filter((k) => k.kind !== 'brand').map((k) => k.keyword)];
-        const volumes: Map<string, number | null> = await fetchSearchVolumes(phrases, { countryHint: business.country || '' }).catch(() => new Map());
         areaVisibility = buildAreaVisibility({
           serviceAreas: gbpServiceAreas,
           discovery: areaDiscovery,
@@ -617,6 +690,68 @@ async function processAuditJobInner(auditId: string) {
     // Only businesses actually observed above the target — Places-fallback
     // competitors were never seen ranking above it.
     const reviewComparison = compareReviews(reviewFacts, competitorFacts.filter((c) => c.source === 'dataforseo'));
+
+    // ── Tracking facts: measurements per (keyword, location), changes vs the
+    // previous full audit, and visibility per service / service × area ──
+    let tracking: any = null;
+    if (seoIntel) {
+      try {
+        const { measurementRows, compareMeasurements, addressArea } = require('../seo/measurements');
+        const { buildServiceVisibility } = require('../seo/serviceVisibility');
+        const { areaId } = require('../seo/ids');
+        const home = addressArea(AROUND_ADDRESS);
+        const areaByLabel = new Map(searchedAreas.map((a) => [a.label, { id: areaId({ placeId: a.placeId, name: a.name }), name: a.name }]));
+        const serviceAreaSearches = [...areaObs, ...seoIntel.serviceAreaObs].filter((o) => o.area && areaByLabel.has(o.area));
+        const measurements = [
+          ...measurementRows(marketObs, { scope: 'address_grid', areaOf: () => home, serviceOf: seoIntel.serviceOf, volumes }),
+          ...measurementRows(seoIntel.trackedObs, { scope: 'address_tracked', areaOf: () => home, serviceOf: seoIntel.serviceOf, volumes }),
+          ...measurementRows(serviceAreaSearches, { scope: 'service_area', areaOf: (o: SearchObservation) => areaByLabel.get(o.area!)!, serviceOf: seoIntel.serviceOf, volumes }),
+        ];
+        const prevTracking = seoIntel.prevAudit?.auditData?.facts?.tracking || null;
+        const changes = compareMeasurements(prevTracking?.measurements || null, measurements);
+        const websiteText = websiteIntel && websiteIntel.status !== 'failed'
+          ? [websiteIntel.title, websiteIntel.metaDescription, websiteIntel.description?.value, ...(websiteIntel.headings || []).map((h: any) => h.value), ...(websiteIntel.services || []).map((x: any) => x.value)].filter(Boolean).join(' . ')
+          : null;
+        const visibility = buildServiceVisibility({
+          services: seoIntel.services,
+          measurements,
+          changes,
+          observations: [...marketObs, ...seoIntel.trackedObs, ...serviceAreaSearches],
+          serviceOf: seoIntel.serviceOf,
+          competitors: competitorFacts.filter((c) => c.source === 'dataforseo'),
+          searchTerms: seoIntel.searchTerms,
+          gbpServiceNames: gbpListedServices,
+          websiteText,
+          reviewCount: lifetimeCount,
+        });
+        tracking = {
+          version: 1,
+          measuredAt: new Date().toISOString(),
+          previousAuditId: seoIntel.prevAudit?._id ? String(seoIntel.prevAudit._id) : null,
+          previousMeasuredAt: prevTracking?.measuredAt ?? null,
+          services: seoIntel.services,
+          tracked: seoIntel.tracked,
+          keywordChanges: seoIntel.keywordChanges,
+          measurements,
+          changes,
+          serviceVisibility: visibility.services,
+          matrix: visibility.matrix,
+          searchTerms: seoIntel.searchTerms.slice(0, 15),
+          searches: { tracked: seoIntel.trackedObs.length, serviceArea: seoIntel.serviceAreaObs.length },
+          websiteSeo: business.website
+            ? require('../seo/websiteSeo').analyzeWebsiteSeo({
+                pages: websiteIntel && websiteIntel.status !== 'failed' ? websiteIntel.pageSeo : null,
+                services: seoIntel.services,
+                serviceAreas: gbpServiceAreas.map((a) => a.placeName).filter(Boolean) as string[],
+                siteText: [websiteText || '', ...(websiteIntel?.serviceAreas || []).map((a: any) => a.value), String(websiteIntel?.fr4Signals?.textSample || '')].join(' . '),
+                gbpServiceNames: gbpListedServices,
+              })
+            : { status: 'not_measured', reason: 'No website on the profile.', pagesChecked: 0, items: [] },
+        };
+      } catch (trErr: any) {
+        console.warn('[auditService] tracking facts failed:', trErr?.message);
+      }
+    }
 
     // ── Competitor intelligence ─────────────────────────────────────────
     // Public listing fields come free with the ranking results. Website
@@ -1215,6 +1350,48 @@ async function processAuditJobInner(auditId: string) {
         console.warn('[auditService] monthly context skipped:', mcErr?.message);
       }
     }
+    // ── Feedback loop: what the previous plan did, BEFORE the new plan ───
+    // Action statuses are re-derived now (execution records + this audit's
+    // findings), the previous plan is read, and each completed action gets an
+    // outcome measured independently of its completion (strategyHistory.ts).
+    let strategyHistory: any = null;
+    let historyPromptLines: string[] = [];
+    if (tracking && seoIntel?.prevPlan) {
+      try {
+        const { refreshActionStatuses } = require('../lifecycle/actionsSync');
+        const { buildStrategyHistory, historyLines } = require('../seo/strategyHistory');
+        const actions = await refreshActionStatuses({
+          businessId: audit.businessId.toString(),
+          auditId: audit._id.toString(),
+          auditAt: new Date(),
+          currentFindingIds: new Set(findings.map((f: any) => f.id)),
+          gbpConnected: !!business.googleLocationId || !!gbpLive,
+        }).catch(() => []);
+        const since = seoIntel.prevAudit?.createdAt ? new Date(seoIntel.prevAudit.createdAt) : null;
+        const Post = require('../../models/Post').default;
+        const postKeywords: string[] = since
+          ? (await Post.find({ businessId: audit.businessId, 'contentMeta.keyword': { $exists: true }, createdAt: { $gte: since } }).select('contentMeta.keyword').lean() as any[])
+              .map((p) => p.contentMeta?.keyword).filter(Boolean)
+          : [];
+        const prev = seoIntel.prevPlan;
+        strategyHistory = buildStrategyHistory({
+          previousPlan: {
+            version: prev.version, createdAt: new Date(prev.createdAt).toISOString(),
+            primaryKeywords: prev.primaryKeywords || [], secondaryKeywords: prev.secondaryKeywords || [],
+            postThemes: prev.postThemes || [], priorities: (prev.actionPhases || []).flatMap((p: any) => (p.items || []).map((i: any) => String(i.action || i))).slice(0, 10),
+          },
+          previousAuditAt: since ? since.toISOString() : null,
+          actions: actions.map((a: any) => ({ findingId: a.findingId, description: a.action, status: a.status, capability: a.capability ?? null, executedAt: a.executedAt ?? null, verifiedAt: a.verifiedAt ?? null, statusReason: a.statusReason })),
+          changes: tracking.changes,
+          postKeywords,
+          now: new Date(),
+        });
+        historyPromptLines = historyLines(strategyHistory);
+        tracking.history = strategyHistory;
+      } catch (shErr: any) {
+        console.warn('[auditService] strategy history skipped:', shErr?.message);
+      }
+    }
     // Built even without ranking data (e.g. category unknown) — its sections
     // then state what is missing instead of disappearing.
     if (!seoPlanDraft) {
@@ -1282,6 +1459,10 @@ async function processAuditJobInner(auditId: string) {
           gbpIntelligenceLines: intelApi ? intelApi.seoBrainGbpLines(gbpIntel, { changesSince: gbpChangesSince, now: new Date() }) : undefined,
           fr4Lines: fr4.bundle.lines,
           serviceAreaLines: areaStrategyLines(areaVisibility, areaComparison),
+          historyLines: historyPromptLines,
+          serviceLines: tracking ? require('../seo/serviceVisibility').serviceStrategyLines(tracking.serviceVisibility, tracking.matrix) : [],
+          websiteSeoLines: tracking ? require('../seo/websiteSeo').websiteSeoLines(tracking.websiteSeo) : [],
+          searchTermLines: (seoIntel?.searchTerms || []).slice(0, 8).map((t) => `"${t.keyword}" — ${t.impressions} impressions (${t.period || 'latest month'}, Google Business Profile)`),
         });
       } catch (planErr: any) {
         console.warn('[auditService] seoPlanDraft generation failed:', planErr?.message);
@@ -1474,6 +1655,7 @@ async function processAuditJobInner(auditId: string) {
         otherBusinessesAhead,
         ...(areaDiscovery ? { areaDiscovery, areaSearches: areaObs } : {}),
         ...(areaVisibility ? { areaVisibility } : {}),
+        ...(tracking ? { tracking } : {}),
         reviews: reviewFacts,
         reviewComparison,
         profileFields: fieldStates,
@@ -1747,6 +1929,23 @@ async function processAuditJobInner(auditId: string) {
           draft: seoPlanDraft,
           keywordTable,
           areasChecked,
+          // SEO intelligence (full audits): stable tracked keywords, their measured
+          // rows for content, focus services/areas, history — and whether this
+          // audit's ranking data is complete enough to replace the plan's keywords.
+          tracking: tracking
+            ? {
+                trackedKeywords: tracking.tracked,
+                keywordChanges: tracking.keywordChanges,
+                measurements: tracking.measurements,
+                serviceVisibility: tracking.serviceVisibility,
+                matrix: tracking.matrix,
+                serviceAreas: [
+                  ...(areaVisibility?.areas || []).filter((a) => a.status === 'measured' || a.status === 'covered_by_address').map((a) => a.area),
+                ],
+                history: strategyHistory,
+              }
+            : undefined,
+          rankingComplete: rankingFacts.overall.status === 'ok' || rankingFacts.overall.status === 'partial',
           baseline: {
             overallScore: finalScore,
             // undefined = not measured / never found — never a stand-in 0.

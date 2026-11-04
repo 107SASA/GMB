@@ -218,6 +218,10 @@ export interface PlanActionView {
   status: string;
   executor: string;
   statusReason?: string;
+  capability?: string | null;
+  plannedAt?: string;
+  executedAt?: string;
+  verifiedAt?: string;
 }
 
 export interface MonthlyReport {
@@ -241,6 +245,12 @@ export interface MonthlyReport {
   declined: string[];
   /** Per Google service area, like-for-like with the previous audit (absent when no areas were measured). */
   areas?: AreaComparison;
+  /** Tracked keywords and SEO action outcomes since the previous plan (facts.tracking.history). */
+  seo?: {
+    actions: Array<{ action: string; outcome: string; basis: string }>;
+    open: string[];
+    weakServices: string[];
+  };
 }
 
 const SEVERITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
@@ -313,6 +323,19 @@ export function buildMonthlyReport(input: {
   const areas = curAreas ? compareAreaVisibility(prevData?.facts?.areaVisibility, curAreas) : undefined;
   for (const l of areas?.improving || []) improved.push(`Google Maps in ${l}`);
   for (const l of areas?.declining || []) declined.push(`Google Maps in ${l}`);
+  // Tracked keywords around the address, like-for-like (same keyword, same points).
+  const tracking = curData?.facts?.tracking;
+  for (const c of (tracking?.changes || []).filter((x: any) => x.areaId === 'area:address')) {
+    if (c.change === 'improved') improved.push(`"${c.keyword}": ${c.before} → ${c.after}`);
+    if (c.change === 'declined') declined.push(`"${c.keyword}": ${c.before} → ${c.after}`);
+  }
+  const seo = tracking?.history
+    ? {
+        actions: (tracking.history.actions || []).filter((a: any) => a.completion === 'completed').map((a: any) => ({ action: a.action, outcome: String(a.outcome), basis: a.basis })),
+        open: (tracking.history.actions || []).filter((a: any) => a.completion !== 'completed').map((a: any) => a.action),
+        weakServices: (tracking.serviceVisibility || []).filter((s: any) => s.status === 'not_visible' || s.status === 'weak').map((s: any) => s.service),
+      }
+    : undefined;
 
   return {
     period: { start: input.periodStart, end: input.periodEnd },
@@ -337,6 +360,7 @@ export function buildMonthlyReport(input: {
     improved,
     declined,
     ...(areas ? { areas } : {}),
+    ...(seo ? { seo } : {}),
   };
 }
 

@@ -5,6 +5,7 @@ import { formatRank, rankBucket, resolveRankHeadline, resolveSuspensionRisk } fr
 import { getBrandLogoDataUri } from '@/lib/brandAsset';
 import { contentActivityLines } from '@/services/lifecycle/monthly';
 import { areaVisibilityView } from '@/services/audit/areaVisibility';
+import { intelligenceView } from '@/services/seo/intelligenceView';
 import { formatProfileCompletionDisplay } from '@/lib/profileCompletion';
 import { GROWWMATICS_CAPABILITIES } from '@/services/audit/findings';
 import {
@@ -988,6 +989,7 @@ export function buildReportHtml(ctx: ReportContext): string {
   );
   const monthlyHtml = renderMonthly((data as any).monthly);
   const areaHtml = renderAreaVisibility((data as any).facts?.areaVisibility, audit.businessName);
+  const intelHtml = renderIntelligence((data as any).facts?.tracking);
   const isFullAudit = (data.seoPlanDraft as any)?.depth === 'full';
   const confidentialFooter = isFullAudit
     ? `<div style="margin-top:14px;padding:14px 18px;background:#1e293b;color:#94a3b8;border-radius:12px;font-size:10px;line-height:1.6;">
@@ -1036,6 +1038,7 @@ ${heroHtml}
 ${rankAnalyticsHtml}
 ${geoGridHtml}
 ${areaHtml}
+${intelHtml}
 ${profileBreakdownHtml}
 ${checklistHtml}
 ${monthlyHtml}
@@ -1074,6 +1077,43 @@ function renderAreaVisibility(av: any, businessName: string): string {
   </div>`;
 }
 
+/** Mirrors SeoIntelligenceSection.tsx — same intelligenceView() rows from the stored facts. */
+function renderIntelligence(tracking: any): string {
+  const v = intelligenceView(tracking);
+  if (!v) return '';
+  const card = (title: string, body: string) => `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;break-inside:avoid;"><div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:5px;">${h(title)}</div>${body}</div>`;
+  const small = (t: string) => `<div style="font-size:9px;color:#94a3b8;">${h(t)}</div>`;
+  const li = (items: string[]) => `<ul style="margin:0;padding-left:16px;font-size:11px;color:#374151;">${items.map((x) => `<li>${h(x)}</li>`).join('')}</ul>`;
+  const parts: string[] = [];
+  if (v.history) {
+    parts.push(card('What changed since the last plan', [
+      v.history.previousPlan ? `<p style="font-size:11px;color:#64748b;margin:0 0 4px;">Previous: ${h(v.history.previousPlan)}. Keywords: ${h(v.history.movement)}.</p>` : '',
+      v.history.priorities.length ? li(v.history.priorities.map((p) => `${p.keyword} — ${p.result}`)) : '',
+      v.history.actions.length ? `<div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin:6px 0 2px;">Completed actions and measured outcome</div>${v.history.actions.map((a) => `<div style="font-size:11px;color:#0f172a;margin-bottom:3px;">${h(a.action)} — <b>${h(a.outcome)}</b>${small(a.basis)}</div>`).join('')}` : '',
+      v.history.openActions.length ? `<div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin:6px 0 2px;">Still needs attention</div>${li(v.history.openActions)}` : '',
+      small('An outcome shows how tracked keywords moved after an action — a correlation, not proof the action caused it.'),
+    ].join('')));
+  }
+  parts.push(card('Visibility by service', v.services.map((s) => `<div style="border-top:1px solid #f1f5f9;padding-top:6px;margin-top:6px;">
+    <div style="display:flex;justify-content:space-between;gap:8px;"><div style="font-size:11px;font-weight:700;color:#0f172a;">${h(s.service)} <span style="font-weight:400;color:#94a3b8;font-size:9px;">· ${h(s.source)}</span></div><div style="font-size:10px;font-weight:700;color:${s.statusKey === 'strong' ? '#06b34c' : s.statusKey === 'weak' || s.statusKey === 'not_visible' ? '#dc2626' : '#64748b'};">${h(s.status)}</div></div>
+    ${small(`${s.coverage}${s.impressions ? ` · ${s.impressions}` : ''}`)}
+    ${s.keywords.length ? `<table style="width:100%;border-collapse:collapse;margin-top:3px;"><tbody>${s.keywords.map((k) => `<tr style="border-top:1px solid #f8fafc;"><td style="padding:3px 4px;font-size:10px;">${h(k.keyword)}</td><td style="padding:3px 4px;font-size:10px;font-weight:700;white-space:nowrap;">${h(k.position)}</td><td style="padding:3px 4px;font-size:10px;color:#64748b;white-space:nowrap;">${h(k.change)}</td><td style="padding:3px 4px;font-size:10px;color:#64748b;white-space:nowrap;">${h(k.demand)}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${s.presence.length ? small(s.presence.join(' · ')) : ''}${s.competitors.length ? small(`Above you: ${s.competitors.join('; ')}`) : ''}
+    ${s.recommendations.length ? li(s.recommendations) : ''}</div>`).join('')));
+  if (v.matrix) {
+    parts.push(card('Services × service areas', `<table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;"><th style="padding:3px 4px;">Service</th>${v.matrix.areas.map((a) => `<th style="padding:3px 4px;">${h(a)}</th>`).join('')}</tr></thead><tbody>${v.matrix.rows.map((r) => `<tr style="border-top:1px solid #f1f5f9;"><td style="padding:4px;font-size:10px;font-weight:600;">${h(r.service)}</td>${r.cells.map((c) => `<td style="padding:4px;font-size:10px;white-space:nowrap;">${h(c.text)}</td>`).join('')}</tr>`).join('')}</tbody></table>${small('Each cell is one Google Maps search for "service + area" run at that area\'s location.')}`));
+  }
+  if (v.keywordChanges.length) parts.push(card('Tracked keyword changes', v.keywordChanges.map((c) => `<div style="font-size:11px;margin-bottom:3px;"><b>${h(c.change)}:</b> ${h(c.keyword)}${small(c.reason)}</div>`).join('')));
+  if (v.website) {
+    parts.push(card('Website SEO recommendations', `${small(v.website.status)}${v.website.items.length ? v.website.items.map((w) => `<div style="font-size:11px;margin-top:4px;"><b style="font-size:8px;text-transform:uppercase;color:${w.priority === 'high' ? '#dc2626' : '#94a3b8'};">${h(w.priority)}</b> ${h(w.issue)}${w.page ? ` <span style="font-size:9px;color:#94a3b8;">· ${h(w.page)}</span>` : ''}${small(w.recommendation)}</div>`).join('') : '<p style="font-size:11px;color:#64748b;margin:4px 0 0;">No issues found on the crawled pages.</p>'}`));
+  }
+  return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:14px;">
+    <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:4px;">SEO intelligence</div>
+    <p style="font-size:10px;color:#64748b;margin:0 0 10px;line-height:1.5;">${h(v.period)}. ${h(v.coverage)}. Positions are real Google Maps results; monthly searches are Google Ads volume for the whole country.</p>
+    ${parts.join('')}
+  </div>`;
+}
+
 function renderMonthly(m: any): string {
   if (!m) return '';
   const box = (title: string, body: string) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px;break-inside:avoid;"><div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:6px;">${h(title)}</div>${body}</div>`;
@@ -1096,6 +1136,7 @@ function renderMonthly(m: any): string {
     ${box('Profile health', p(`${m.profileHealth?.completionPercentage != null ? `${m.profileHealth.completionPercentage}% of checked fields complete` : 'Profile completion not measured'}${m.profileHealth?.missing?.length ? ` · missing: ${m.profileHealth.missing.join(', ')}` : ''}${m.profileHealth?.unknown ? ` · ${m.profileHealth.unknown} could not be checked` : ''}`))}
     ${box('Completed plan', m.planCompleted?.length ? li(m.planCompleted.map((a: any) => `${a.action} — ${a.status}`)) : p('No plan actions have been completed with evidence yet.'))}
     ${box('Pending plan', m.planPending?.length ? li(m.planPending.map((a: any) => `${a.action} — ${a.status}${a.statusReason ? ` (${a.statusReason})` : ''}`)) : p('No pending plan actions.'))}
+    ${m.seo ? box('SEO actions and their results', (m.seo.actions?.length ? li(m.seo.actions.map((a: any) => `${a.action} — ${({ not_yet_measurable: 'done, too early to measure', positive: 'done, tracked keywords improved', negative: 'done, tracked keywords declined', no_change: 'done, no measurable change', insufficient_evidence: 'done, not enough comparable data' } as Record<string, string>)[a.outcome] || a.outcome} (${a.basis})`)) : p('No SEO action was completed since the last plan.')) + (m.seo.weakServices?.length ? p(`Services needing the most work: ${m.seo.weakServices.join(', ')}.`) : '')) : ''}
     ${m.areas ? box('Service areas since last month', (() => {
       const groups: Array<[string, string[]]> = [
         ['Improving visibility', m.areas.improving], ['Declining visibility', m.areas.declining], ['Not ranking yet', m.areas.notRanking],

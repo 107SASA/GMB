@@ -1,7 +1,7 @@
 import dbConnect from '@/lib/mongodb';
 import { festivalsBetween } from '@/lib/festivalCalendar';
 import { normalizeOrigin } from '@/services/intel/websiteExtract';
-import { planWeeklySlots, contentWeekKey, type ContentFacts, type ContentSeoPlan, type PlannedSlot, type WeekOffer } from './plan';
+import { areasIn, planWeeklySlots, contentWeekKey, type ContentFacts, type ContentSeoPlan, type PlannedSlot, type WeekOffer } from './plan';
 import { validatePost, type PostEvidence } from './validatePost';
 import { resolveBrand, templatePost } from './creative';
 import { fetchLogo, imageForSlot, logoColors } from './images';
@@ -55,6 +55,15 @@ export async function loadContentContext(business: any) {
     measuredKeywords: rows.filter((r) => (r.rankStatus ?? 'ok') === 'ok' && !(business.name && String(r.keyword).toLowerCase().includes(String(business.name).toLowerCase().split(' ')[0]))).map((r) => r.keyword),
     proposedKeywords: (seo?.draft?.proposedKeywords || []).map((p: any) => p.keyword),
   };
+  // Verified service areas the last audit measured (Google profile) — the only
+  // extra place names a post may use, and only where the slot's keyword names one.
+  const serviceAreas: string[] = Array.isArray(seo?.serviceAreas) ? seo.serviceAreas.filter((a: any) => typeof a === 'string' && a.trim()) : [];
+  const focus = seo?.focus
+    ? { services: (seo.focus.services || []).map((x: any) => ({ service: String(x.service), status: String(x.status) })), areas: (seo.focus.areas || []).map((x: any) => String(x.area)) }
+    : undefined;
+  const { default: PostModel } = await import('@/models/Post');
+  const recentTexts: string[] = (await PostModel.find({ businessId: business._id, createdAt: { $gte: new Date(Date.now() - 56 * 86_400_000) } })
+    .sort({ createdAt: -1 }).limit(24).select('content').lean() as any[]).map((p) => String(p.content || '')).filter(Boolean);
   if (!seo) notes.push('No SEO plan yet — posts follow verified services / category only.');
 
   const facts: ContentFacts = {
@@ -93,9 +102,9 @@ export async function loadContentContext(business: any) {
   });
   const websiteImages = websiteOk ? [wi.brand?.ogImage, ...(wi.brand?.images || [])].filter((u: any) => typeof u === 'string' && u.startsWith('https://')).map((u: string) => ({ url: u, sourceUrl: wi.brand?.sourceUrl })) : [];
   // ── Evidence-based keyword picks (stored data only — no provider call) ──
-  plan.priorities = await keywordPriorities(business, rows, facts, plan, notes);
+  plan.priorities = await keywordPriorities(business, rows, facts, plan, notes, serviceAreas, focus);
 
-  return { seo, wi: websiteOk ? wi : null, plan, facts, brand, customerLogo, customerPhotos, websiteImages, location, notes };
+  return { seo, wi: websiteOk ? wi : null, plan, facts, brand, customerLogo, customerPhotos, websiteImages, location, notes, serviceAreas, recentTexts };
 }
 
 /**
@@ -104,7 +113,7 @@ export async function loadContentContext(business: any) {
  * verified services/category and the area, minus keywords targeted in the
  * last 3 weeks (services/content/keywordPriority.ts).
  */
-async function keywordPriorities(business: any, rows: any[], facts: ContentFacts, plan: ContentSeoPlan, notes: string[]): Promise<ContentSeoPlan['priorities']> {
+async function keywordPriorities(business: any, rows: any[], facts: ContentFacts, plan: ContentSeoPlan, notes: string[], serviceAreas: string[] = [], focus?: { services: Array<{ service: string; status: string }>; areas: string[] }): Promise<ContentSeoPlan['priorities']> {
   try {
     const [{ prioritizeKeywords }, { default: GBPKeyword }, { default: Post }] = await Promise.all([
       import('./keywordPriority'), import('@/models/GBPKeyword'), import('@/models/Post'),
@@ -119,11 +128,12 @@ async function keywordPriorities(business: any, rows: any[], facts: ContentFacts
     const result = prioritizeKeywords({
       businessName: business.name || '',
       serviceTerms: [facts.category, ...facts.ownerServices, ...facts.websiteServices.map((x) => x.value)].filter(Boolean),
-      places: [facts.city, facts.area || ''].filter(Boolean),
+      places: [facts.city, facts.area || '', ...serviceAreas].filter(Boolean),
       measured: rows,
       searchTerms: searchTerms.map((t) => ({ keyword: t.keyword, impressions: t.impressions, year: t.year, month: t.month })),
       proposed: plan.proposedKeywords,
       recentlyTargeted: recent.map((p) => p.contentMeta?.keyword).filter(Boolean),
+      focus,
     });
     if (!result.seo && rows.length) notes.push('No measured keyword had usable rank or demand evidence this week — the plan theme keyword is used.');
     return { seo: result.seo, search: result.search, local: result.local };
@@ -190,8 +200,10 @@ export async function writeSlotCopy(ctx: ContentContext, slots: PlannedSlot[], b
     businessName: ctx.facts.businessName,
     evidenceText,
     serviceTerms: [ctx.facts.category, ...ctx.facts.ownerServices, ...ctx.facts.websiteServices.map((x) => x.value), ...ctx.plan.measuredKeywords, s.keyword || ''].filter(Boolean),
-    places: [ctx.facts.city, ctx.facts.area || ''].filter(Boolean),
+    // A service area is an allowed place only when this slot's keyword names it (no stuffing).
+    places: [ctx.facts.city, ctx.facts.area || '', ...areasIn(s.keyword, ctx.serviceAreas)].filter(Boolean),
     businessNames: [],
+    recentTexts: ctx.recentTexts,
     offerText: s.purpose === 'offer' ? s.offerText : null,
     festivalName: s.festival ? s.festival.name : null,
     phone: ctx.facts.phone,
@@ -336,6 +348,7 @@ export async function generateWeeklyBatch(opts: {
           slot: s.slot, purpose: s.purpose, seoPlanId: s.seoPlanId, seoThemeIndex: s.seoThemeIndex, seoTheme: s.seoTheme,
           service: s.service, keyword: s.keyword, keywordSource: s.keywordSource, keywordMeasured: s.keywordMeasured,
           keywordReason: s.keywordReason, keywordEvidence: s.keywordEvidence,
+          area: areasIn(s.keyword, ctx.serviceAreas)[0], focus: s.keywordEvidence?.focus,
           festivalKey: s.festival?.key, festivalName: s.festival?.name, offerId: offerDoc && s.purpose === 'offer' ? String(offerDoc._id) : undefined,
           evidence: s.evidence, websiteIntelligenceId: ctx.wi?._id ? String(ctx.wi._id) : undefined,
           imageSource: image.imageSource, imageOrigin: image.imageOrigin, imageGeneration: image.imageGeneration, brandUsed: image.brandUsed, imageAssetId: image.imageAssetId, imageNote: image.note, generatedVia,

@@ -859,6 +859,31 @@ function reducedGridPoints(fullGrid: GeoGridPoint[]): GeoGridPoint[] {
   return [center, east, south].filter(Boolean) as GeoGridPoint[];
 }
 
+/**
+ * Tracked keywords beyond the main grid (services, Google search terms, last
+ * month's proposals): each searched at the same 3 grid points as a reduced
+ * grid around the business, so month-to-month comparison is like-for-like.
+ * Without coordinates: once at city level. Never throws — a failed batch
+ * yields 'unavailable' observations (never "not found").
+ */
+export async function fetchTrackedObservations(business: any, keywords: string[]): Promise<SearchObservation[]> {
+  const uniq = Array.from(new Set(keywords.map((k) => String(k || '').trim()).filter(Boolean)));
+  if (!uniq.length) return [];
+  const hasCoords = !!(business.coordinates?.lat && business.coordinates?.lng);
+  const points: Array<GeoGridPoint | null> = hasCoords
+    ? reducedGridPoints(generateGeoGrid(business.coordinates.lat, business.coordinates.lng, GRID_SPACING_KM))
+    : [null];
+  const queries = uniq.flatMap((keyword) => points.map((point) => ({ keyword, point })));
+  let batch: Array<any[] | null>;
+  try {
+    batch = await fetchMapsLocalResultsBatch(queries.map((q) => ({ keyword: q.keyword, point: q.point ?? undefined, business })));
+  } catch (err: any) {
+    console.warn(`[seoAnalyzer] tracked keyword batch failed: ${err?.message}`);
+    batch = queries.map(() => null);
+  }
+  return queries.map((q, i) => toObservation(q.keyword, 'discovery', batch[i] ?? null, business, q.point));
+}
+
 export interface GeoGridRankingResult {
   /** One facts-layer observation per keyword × point searched (see facts.ts). */
   observations: SearchObservation[];

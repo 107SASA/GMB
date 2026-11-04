@@ -40,6 +40,8 @@ export interface IWebsiteIntelligence extends Document {
   keywordsFound: string[];
   /** Public crawl signals used by the FR-4 website audit. Absent on older crawls. */
   fr4Signals?: Record<string, unknown> | null;
+  /** Per-page on-page SEO facts (websiteExtract.pageSeoOf). Absent on crawls before v7. */
+  pageSeo?: any[];
   fetchedAt: Date;
   logicVersion: number;
 }
@@ -73,6 +75,7 @@ const WebsiteIntelligenceSchema = new Schema<IWebsiteIntelligence>({
   schemaTypes: [String],
   keywordsFound: [String],
   fr4Signals: { type: Schema.Types.Mixed },
+  pageSeo: { type: Schema.Types.Mixed },
   fetchedAt: { type: Date, default: Date.now },
   logicVersion: { type: Number, default: 1 },
 });

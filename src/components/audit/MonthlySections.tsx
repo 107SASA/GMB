@@ -17,6 +17,10 @@ const Card = ({ title, children }: { title: string; children: React.ReactNode })
 );
 const Empty = ({ text }: { text: string }) => <p className="text-sm text-on-surface-variant">{text}</p>;
 const fmtDate = (s?: string | null) => (s ? new Date(s).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+const OUTCOME_LABEL: Record<string, string> = {
+  not_yet_measurable: 'Done — too early to measure', positive: 'Done — tracked keywords improved', negative: 'Done — tracked keywords declined',
+  no_change: 'Done — no measurable change', insufficient_evidence: 'Done — not enough comparable data',
+};
 const STATUS_LABEL: Record<string, string> = { VERIFIED: 'Verified', EXECUTED: 'Done — awaiting re-measure', READY: 'Ready', PLANNED: 'Planned', BLOCKED: 'Blocked' };
 
 export default function MonthlySections({ monthly }: { monthly: any }) {
@@ -141,6 +145,16 @@ export default function MonthlySections({ monthly }: { monthly: any }) {
             : <Empty text="No pending plan actions." />}
         </Card>
       </div>
+
+      {m.seo && (
+        <Card title="SEO actions and their results">
+          {m.seo.actions?.length
+            ? <ul className="space-y-1 text-sm">{m.seo.actions.map((a: any, i: number) => <li key={i}>{a.action} — <span className="font-semibold">{OUTCOME_LABEL[a.outcome] || a.outcome}</span><span className="block text-[11px] text-outline">{a.basis}</span></li>)}</ul>
+            : <Empty text="No SEO action was completed since the last plan." />}
+          {m.seo.weakServices?.length > 0 && <p className="text-sm mt-2">Services needing the most work: {m.seo.weakServices.join(', ')}.</p>}
+          <p className="text-[11px] text-outline mt-2">Outcomes are correlations with tracked keyword movement, not proof of cause.</p>
+        </Card>
+      )}
 
       {m.areas && (
         <Card title="Service areas since last month">

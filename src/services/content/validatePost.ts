@@ -25,6 +25,28 @@ export interface PostEvidence {
   festivalName?: string | null;
   phone?: string | null;
   website?: string | null;
+  /** Bodies of this business's recent posts — a near-copy is rejected. */
+  recentTexts?: string[];
+}
+
+/** Word-trigram overlap (Jaccard) at or above this = the same post reworded. */
+export const DUPLICATE_THRESHOLD = 0.5;
+
+function shingles(text: string): Set<string> {
+  const w = String(text || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
+  const out = new Set<string>();
+  for (let i = 0; i + 2 < w.length; i++) out.add(`${w[i]} ${w[i + 1]} ${w[i + 2]}`);
+  return out;
+}
+
+/** 0–1 similarity of two post texts (word-trigram Jaccard). */
+export function textSimilarity(a: string, b: string): number {
+  const A = shingles(a);
+  const B = shingles(b);
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  return inter / (A.size + B.size - inter);
 }
 
 export interface PostValidation { ok: boolean; reasons: string[] }
@@ -57,6 +79,9 @@ export function validatePost(post: PostDraft, ev: PostEvidence): PostValidation 
       if (!has(evidence, m)) reasons.push(`${label}: "${m.trim()}" is not in the verified evidence${label === 'offer / discount' ? ' or the owner\'s offer' : ''}`);
     }
   }
+  // Near-duplicate of a recent post (same wording reused) — regenerated, never published as new.
+  const similar = (ev.recentTexts || []).find((t) => textSimilarity(t, text) >= DUPLICATE_THRESHOLD);
+  if (similar) reasons.push('too similar to a recent post');
   const sentences = text.match(/[^.!?\n]+[.!?]*/g) || [text];
   for (const sn of sentences) {
     if (claimsFabricatedOutcome(sn)) reasons.push(`predicted outcome: "${sn.trim().slice(0, 80)}"`);

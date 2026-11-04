@@ -44,6 +44,8 @@ export interface KeywordEvidence {
   /** Verified service / category the keyword matches. */
   matchedTerm?: string;
   local: boolean;
+  /** Why the SEO plan prioritises it this month (a weak service / service area from the last audit). */
+  focus?: string;
 }
 
 export interface KeywordPick {
@@ -65,6 +67,12 @@ export interface PriorityInput {
   proposed: string[];
   /** Keywords targeted by posts in the last few weeks (most recent first). */
   recentlyTargeted: string[];
+  /**
+   * The SEO plan's focus from the last audit (SeoPlan.focus): services that
+   * were weak / not visible and service areas where the business was not in
+   * the top 20. A matching keyword gets a priority boost (+0.15).
+   */
+  focus?: { services: Array<{ service: string; status: string }>; areas: string[] };
 }
 
 export interface PriorityResult {
@@ -145,7 +153,7 @@ export function reasonFor(e: KeywordEvidence): string {
   if (e.impressions != null) parts.push(`Google reported ${e.impressions} impressions for this search on the profile${e.period ? ` (${e.period})` : ''}`);
   if (!parts.length) return e.source === 'proposed' ? 'From the SEO plan’s proposed keywords — not measured.' : '';
   const s = `Selected because ${parts.join(' and ')}`;
-  return `${s}${e.matchedTerm ? `; it matches the verified service "${e.matchedTerm}"` : ''}.`;
+  return `${s}${e.matchedTerm ? `; it matches the verified service "${e.matchedTerm}"` : ''}${e.focus ? `; ${e.focus}` : ''}.`;
 }
 
 export function prioritizeKeywords(input: PriorityInput): PriorityResult {
@@ -164,9 +172,19 @@ export function prioritizeKeywords(input: PriorityInput): PriorityResult {
     return { ok: true, matched };
   };
 
+  const focusOf = (keyword: string): string | undefined => {
+    const k = ` ${norm(keyword)} `;
+    const area = input.focus?.areas.find((a) => a && k.includes(` ${norm(a)} `));
+    if (area) return `the last audit found the business outside the top 20 in ${area}`;
+    const svc = input.focus?.services.find((s) => matchService(keyword, [s.service], input.places));
+    if (svc) return `the last audit measured "${svc.service}" as ${svc.status.replace('_', ' ')}`;
+    return undefined;
+  };
   const ranked: KeywordPick[] = [];
   const push = (keyword: string, evidence: KeywordEvidence) => {
-    const base = 0.5 * opportunity(evidence) + 0.3 * demandScore(evidence.searchVolume) + 0.2 * impressionScore(evidence.impressions) + (evidence.local ? 0.1 : 0);
+    const focus = focusOf(keyword);
+    if (focus) evidence = { ...evidence, focus };
+    const base = 0.5 * opportunity(evidence) + 0.3 * demandScore(evidence.searchVolume) + 0.2 * impressionScore(evidence.impressions) + (evidence.local ? 0.1 : 0) + (focus && opportunity(evidence) > 0 ? 0.15 : 0);
     if (base <= 0) { rejected.push({ keyword, why: 'no measured rank, measured demand or Google search data' }); return; }
     const recency = recent.indexOf(norm(keyword));
     const score = Math.round(base * (recency === -1 ? 1 : 0.3) * 1000) / 1000;

@@ -2,6 +2,7 @@ import React from 'react';
 import { IAudit, IAuditData, IChecklistItem, IPriorityFix, IStrengthWeakness, IDataQuality, IBusinessIntelligence } from '@/models/Audit';
 import { Download, Search, CheckCircle2, AlertCircle, TrendingUp, Zap, Target, Star, FileText, XCircle, Clock, ShieldCheck, BarChart3, Info, RefreshCw, MessageSquare } from 'lucide-react';
 import AreaVisibilitySection from './AreaVisibilitySection';
+import SeoIntelligenceSection from './SeoIntelligenceSection';
 
 const EvidenceBadge = ({ text }: { text?: string }) => {
   if (!text) return null;
@@ -247,6 +248,7 @@ export default function AuditReportV7({
 
       {/* Competitors and visibility by service area (stored facts) */}
       <AreaVisibilitySection areaVisibility={(data as any)?.facts?.areaVisibility} businessName={audit.businessName} />
+      <SeoIntelligenceSection tracking={(data as any)?.facts?.tracking} />
 
       {/* Review Analytics Grid */}
       <div className="bg-primary rounded-2xl p-8 text-white card-shadow">

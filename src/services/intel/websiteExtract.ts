@@ -20,6 +20,8 @@ export interface ExtractedPage {
   metaDescription?: string;
   canonical?: string;
   headings: string[];
+  /** The page's H1 texts only (headings mixes H1–H3). */
+  h1?: string[];
   listItems: string[];
   links: PageLink[];
   jsonLd: any[];
@@ -166,6 +168,7 @@ export function extractPage(html: string, url: string): ExtractedPage {
     (src.match(new RegExp(`<meta[^>]+(?:name|property)=["'](?:og:)?${name}["'][^>]+content=["']([^"']*)["']`, 'i')) ||
       src.match(new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:name|property)=["'](?:og:)?${name}["']`, 'i')))?.[1];
   const headings = Array.from(noScript.matchAll(/<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi)).map((m) => clean(m[2])).filter((t) => t.length >= 3 && t.length <= 120);
+  const h1 = Array.from(noScript.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/gi)).map((m) => clean(m[1])).filter(Boolean).slice(0, 5);
   const listItems = Array.from(noScript.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)).map((m) => clean(m[1])).filter((t) => t.length >= 3 && t.length <= 80);
   const links: PageLink[] = Array.from(noScript.matchAll(/<a[^>]+href=["']([^"'#][^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi))
     .map((m) => ({ href: normalizePageUrl(decode(m[1]), url) || '', label: clean(m[2]) }))
@@ -209,6 +212,7 @@ export function extractPage(html: string, url: string): ExtractedPage {
     metaDescription: meta('description') ? decode(meta('description')!).trim() : undefined,
     canonical: canonical ? normalizePageUrl(canonical, url) || undefined : undefined,
     headings,
+    h1,
     listItems,
     links,
     jsonLd,
@@ -500,5 +504,47 @@ export function extractWebsiteFacts(pages: Array<ExtractedPage & { kind: PageKin
     schemaTypes: types,
     brand: home?.brand ? { ...home.brand, sourceUrl: home.url } : undefined,
     keywordsFound: Array.from(new Set([...(svc.map((s) => s.value.toLowerCase())), ...(home?.headings.slice(0, 3).map((h) => h.toLowerCase()) || [])])).slice(0, 30),
+  };
+}
+
+/** Per-page on-page SEO facts kept from a crawl (what the page itself contains). */
+export interface PageSeo {
+  url: string;
+  kind: string;
+  title: string | null;
+  metaDescription: string | null;
+  h1: string[];
+  canonical: string | null;
+  noindex: boolean;
+  /** Same-site links on the page, as paths (max 60). */
+  internalLinks: string[];
+  schemaTypes: string[];
+  wordCount: number;
+}
+
+export function pageSeoOf(page: ExtractedPage & { kind?: string; xRobotsTag?: string | null }, origin: string): PageSeo {
+  const internal = new Set<string>();
+  for (const l of page.links || []) {
+    try {
+      const u = new URL(l.href);
+      if (sameSite(u.origin, origin)) internal.add(u.pathname.replace(/\/+$/, '') || '/');
+    } catch { /* not a URL */ }
+  }
+  const types = new Set<string>();
+  for (const n of page.jsonLd || []) {
+    const t = n?.['@type'];
+    for (const x of Array.isArray(t) ? t : [t]) if (typeof x === 'string') types.add(x);
+  }
+  return {
+    url: page.url,
+    kind: page.kind || 'page',
+    title: page.title || null,
+    metaDescription: page.metaDescription || null,
+    h1: page.h1 || [],
+    canonical: page.canonical || null,
+    noindex: /noindex/i.test(page.robotsMeta || '') || /noindex/i.test(page.xRobotsTag || ''),
+    internalLinks: Array.from(internal).slice(0, 60),
+    schemaTypes: Array.from(types).slice(0, 20),
+    wordCount: (page.text || '').split(/\s+/).filter(Boolean).length,
   };
 }

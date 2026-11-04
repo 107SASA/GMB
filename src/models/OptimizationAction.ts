@@ -28,6 +28,12 @@ export interface IOptimizationAction extends Document {
   executionResult?: string;
   verifiedAt?: Date;
   verificationResult?: string;
+  /** Owner pressed "I've done this" (work outside GrowwMatics). The next audit confirms it. */
+  ownerMarkedDoneAt?: Date | null;
+  /** The live Google profile (6-hourly sync) shows it fixed. The next audit confirms it. */
+  seenFixedOnGoogleAt?: Date | null;
+  /** A later audit found the issue again after it was done or confirmed. Cleared once it is done again. */
+  reopenedAt?: Date | null;
   history: Array<{ at: Date; status: string; reason?: string }>;
   createdAt: Date;
   updatedAt: Date;
@@ -55,6 +61,9 @@ const OptimizationActionSchema = new Schema<IOptimizationAction>(
     executionResult: { type: String },
     verifiedAt: { type: Date },
     verificationResult: { type: String },
+    ownerMarkedDoneAt: { type: Date, default: null },
+    seenFixedOnGoogleAt: { type: Date, default: null },
+    reopenedAt: { type: Date, default: null },
     history: [{ at: Date, status: String, reason: String, _id: false }],
   },
   { timestamps: true },

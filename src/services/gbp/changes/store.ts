@@ -112,6 +112,9 @@ async function noteVerifiedEdit(change: IGbpProfileChange, actorUserId: string):
     updatedBy: user?.fullName || user?.email || actorUserId,
     metadata: { liveWriteApplied: true, fields, changeId: change._id.toString() },
   });
+  // The matching plan task shows as done right away, not at the next audit.
+  const { refreshTasksLive } = await import('@/services/lifecycle/actionsSync');
+  await refreshTasksLive(change.businessId.toString()).catch((err) => console.warn('[gbp-changes] task refresh failed:', err?.message));
 }
 
 export interface CreateChangeInput {

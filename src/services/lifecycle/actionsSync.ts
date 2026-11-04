@@ -1,12 +1,9 @@
 import dbConnect from '@/lib/mongodb';
-import { gbpWritesEnabled } from '@/lib/gbpSafety';
+import { fr5ProfileMutationAllowed } from '@/lib/gbpSafety';
 import { collectExecutions } from './collect';
-import { deriveActionStatus, type ExecutionsSince } from './actions';
+import { deriveActionStatus, FIELD_OF, type ExecutionsSince } from './actions';
 import type { ExecutionRecords, PlanActionView } from './monthly';
-
-const FIELD_OF: Record<string, string> = {
-  update_title: 'title', update_description: 'description', update_phone: 'primaryPhone', update_website: 'website',
-};
+import { seenFixedOnGoogle, type SnapshotForCheck } from '../tasks/planTasks';
 
 function executionsSince(ex: ExecutionRecords, since: string): ExecutionsSince {
   const after = (at: string | null) => !!at && at >= since;
@@ -35,6 +32,24 @@ export async function syncOptimizationActions(opts: {
   await dbConnect();
   const { default: OptimizationAction } = await import('@/models/OptimizationAction');
   const at = opts.auditAt;
+
+  // Reopen: this audit measured the issue again after it was confirmed,
+  // marked done by the owner, or seen fixed on Google. It starts over as a
+  // fresh plan item (executions before now no longer count for it).
+  const existing: any[] = await OptimizationAction.find({ businessId: opts.businessId, findingId: { $in: opts.plan.map((p) => p.findingId) } })
+    .select('findingId status ownerMarkedDoneAt seenFixedOnGoogleAt').lean();
+  for (const e of existing) {
+    if (e.status !== 'VERIFIED' && !e.ownerMarkedDoneAt && !e.seenFixedOnGoogleAt) continue;
+    const reason = e.status === 'VERIFIED' ? 'Reopened — a later audit found the issue again' : 'Reopened — the audit still found the issue';
+    await OptimizationAction.updateOne(
+      { _id: e._id },
+      {
+        $set: { status: 'PLANNED', statusReason: reason, reopenedAt: at, plannedAt: at, plannedInAuditId: opts.auditId, ownerMarkedDoneAt: null, seenFixedOnGoogleAt: null },
+        $unset: { verifiedAt: 1, verificationResult: 1, executedAt: 1, executionResult: 1 },
+        $push: { history: { at, status: 'PLANNED', reason } },
+      },
+    );
+  }
 
   for (const p of opts.plan) {
     const capability = p.executor.startsWith('growwmatics:') ? p.executor.slice('growwmatics:'.length) : null;
@@ -84,7 +99,8 @@ export async function refreshActionStatuses(opts: {
       { findingId: a.findingId, capability: a.capability, requiresGbpConnection: a.requiresGbpConnection, plannedAt: plannedIso, fields: a.capability ? [FIELD_OF[a.capability]].filter(Boolean) : [] },
       {
         gbpConnected: opts.gbpConnected,
-        liveWritesEnabled: gbpWritesEnabled(),
+        // Profile edits need the FR-5 switch as well as the global one (executeChange).
+        liveWritesEnabled: fr5ProfileMutationAllowed(),
         executions: executionsSince(ex, plannedIso),
         // This audit re-measures only actions planned BEFORE it.
         findingStillPresent: plannedThisAudit ? null : opts.currentFindingIds.has(a.findingId),
@@ -94,7 +110,7 @@ export async function refreshActionStatuses(opts: {
     const update: any = {
       status: res.status, statusReason: res.statusReason, lastMeasuredAuditId: opts.auditId,
       ...(res.executedAt || res.executionResult ? { executedAt: res.executedAt ? new Date(res.executedAt) : a.executedAt ?? at, executionResult: res.executionResult } : {}),
-      ...(res.status === 'VERIFIED' ? { verifiedAt: res.verifiedAt ? new Date(res.verifiedAt) : at, verificationResult: res.verificationResult } : {}),
+      ...(res.status === 'VERIFIED' ? { verifiedAt: res.verifiedAt ? new Date(res.verifiedAt) : at, verificationResult: res.verificationResult, reopenedAt: null } : {}),
     };
     const changed = res.status !== a.status;
     await OptimizationAction.updateOne(
@@ -120,4 +136,59 @@ export async function refreshActionStatuses(opts: {
     }
   }
   return views;
+}
+
+/**
+ * Between audits: moves tasks forward from what has happened since — a
+ * verified Profile optimization change, a published post, a sent review
+ * request (EXECUTED), or the live Google profile showing the issue fixed
+ * (seenFixedOnGoogleAt). Never marks anything VERIFIED: only an audit that
+ * re-measures the issue does. Called after a verified change and after each
+ * GBP sync. Best-effort for its callers; writes only what changed.
+ */
+export async function refreshTasksLive(businessId: string, opts: { snapshot?: SnapshotForCheck | null; now?: Date } = {}): Promise<{ updated: number }> {
+  await dbConnect();
+  const now = opts.now ?? new Date();
+  const [{ default: OptimizationAction }, { default: Business }] = await Promise.all([import('@/models/OptimizationAction'), import('@/models/Business')]);
+  const open: any[] = await OptimizationAction.find({ businessId, status: { $ne: 'VERIFIED' } }).lean();
+  if (!open.length) return { updated: 0 };
+
+  const business: any = await Business.findById(businessId).select('googleLocationId googleConnected').lean();
+  const gbpConnected = !!business?.googleLocationId || !!business?.googleConnected;
+  let snapshot = opts.snapshot;
+  if (snapshot === undefined) {
+    const { getGbpSnapshot } = await import('@/services/gbp/intelligence/runner');
+    snapshot = (await getGbpSnapshot(businessId).catch(() => null)) as SnapshotForCheck | null;
+  }
+  const earliest = new Date(Math.min(...open.map((a) => new Date(a.plannedAt).getTime())));
+  const ex = await collectExecutions(businessId, earliest, new Date(now.getTime() + 1));
+
+  let updated = 0;
+  for (const a of open) {
+    const plannedIso = new Date(a.plannedAt).toISOString();
+    const res = deriveActionStatus(
+      { findingId: a.findingId, capability: a.capability, requiresGbpConnection: a.requiresGbpConnection, plannedAt: plannedIso },
+      { gbpConnected, liveWritesEnabled: fr5ProfileMutationAllowed(), executions: executionsSince(ex, plannedIso), findingStillPresent: null, remeasuredAt: null },
+    );
+    const set: Record<string, unknown> = {};
+    const statusChanged = res.status !== a.status && res.status !== 'VERIFIED';
+    if (statusChanged) {
+      set.status = res.status;
+      set.statusReason = res.statusReason;
+      if (res.executedAt || res.executionResult) {
+        set.executedAt = res.executedAt ? new Date(res.executedAt) : now;
+        set.executionResult = res.executionResult;
+      }
+    }
+    const seen = seenFixedOnGoogle(a.findingId, a.capability, snapshot ?? null);
+    if (seen === true && !a.seenFixedOnGoogleAt) set.seenFixedOnGoogleAt = now;
+    if (seen === false && a.seenFixedOnGoogleAt) set.seenFixedOnGoogleAt = null;
+    if (!Object.keys(set).length) continue;
+    await OptimizationAction.updateOne(
+      { _id: a._id },
+      { $set: set, ...(statusChanged ? { $push: { history: { at: now, status: res.status, reason: res.statusReason } } } : {}) },
+    );
+    updated++;
+  }
+  return { updated };
 }

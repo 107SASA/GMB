@@ -4861,6 +4861,18 @@ export const gbpSyncWorker = inngest.createFunction(
       }
     });
 
+    // Plan tasks the owner fixed directly in Google show as done before the
+    // next audit (refreshTasksLive reads the snapshot written just above).
+    await step.run("refresh-plan-tasks", async () => {
+      const { refreshTasksLive } = await import("@/services/lifecycle/actionsSync");
+      try {
+        return await refreshTasksLive(businessId);
+      } catch (err: any) {
+        console.warn(`[GBP Sync] Plan task refresh failed for ${businessId}:`, err?.message);
+        return { updated: 0 };
+      }
+    });
+
     await step.run("sync-gbp-profile-and-backfill", async () => {
       const { default: BusinessModel } = await import("@/models/Business");
       const { fetchLocationProfile, GBPAuthError } = await import("@/lib/gbpClient");

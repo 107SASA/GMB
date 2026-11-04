@@ -268,6 +268,8 @@ export interface IBusiness extends Document {
   // feature — the cron treats both as due on its next pass). Manual audits
   // were removed; all customer audits now flow through this.
   auditAutopilotNextRunAt?: Date;
+  /** The report whose "fixes ready" popup was closed or finished (src/services/tasks) — shown once per report. */
+  taskPopupDismissedAuditId?: string | null;
   /** Last time the owner was nudged (in-app + WhatsApp) to add a real business
    *  category so their automatic audit can run — throttles that nudge to once
    *  every few days. */
@@ -511,6 +513,7 @@ const BusinessSchema: Schema = new Schema(
     crmGrowthReportNotifiedFor: { type: String, default: null },
     // ADDITIVE — automatic audit autopilot (see IBusiness above + src/lib/auditAutopilot.ts).
     auditAutopilotNextRunAt: { type: Date },
+    taskPopupDismissedAuditId: { type: String, default: null },
     auditAutopilotCategoryNudgedAt: { type: Date },
     auditAutopilotCategoryNudgeWhatsApps: { type: Number },
     monthlyReportNoticePending: {

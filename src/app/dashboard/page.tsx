@@ -6,6 +6,7 @@ import MetricsGrid from '@/components/dashboard/MetricsGrid';
 import ChartsSection from '@/components/dashboard/ChartsSection';
 import QuickPanels from '@/components/dashboard/QuickPanels';
 import GBPSection from '@/components/dashboard/GBPSection';
+import { TaskChecklistCard } from '@/components/tasks/PlanTasks';
 import { useBusiness } from '@/context/BusinessContext';
 
 function buildUrl(range: RangeValue): string {
@@ -141,6 +142,9 @@ export default function CommandCenter() {
           range={range}
           onRangeChange={handleRangeChange}
         />
+
+        {/* Open fixes from the latest report, plus the once-per-report popup. */}
+        <TaskChecklistCard />
 
         {/* GBP Section — self-contained, manages its own data fetch.
             Shown first: this is the headline metric set for the product. */}

@@ -7,6 +7,7 @@ import GbpMediaManager from '@/components/gbp/GbpMediaManager';
 import GbpIntelligencePanel from '@/components/gbp/GbpIntelligencePanel';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
+import { useSectionFocus } from '@/hooks/useSectionFocus';
 
 interface Profile {
   locationName: string;
@@ -31,6 +32,7 @@ export default function GbpProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  useSectionFocus(!loading && connected && !!profile);
 
   const load = async () => {
     setLoading(true);
@@ -162,7 +164,7 @@ export default function GbpProfilePage() {
             </div>
           )}
 
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 shadow-sm space-y-5">
+          <div id="section-details" className="scroll-mt-24 bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 shadow-sm space-y-5">
             <div className="space-y-2">
               <label className="text-sm font-semibold text-on-surface">Business name</label>
               <input className={inputCls} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
@@ -216,10 +218,14 @@ export default function GbpProfilePage() {
           </div>
 
           {/* Read-only Google listing health, sync status, imported details and external changes. */}
-          <GbpIntelligencePanel businessId={activeBusiness?._id} />
+          <div id="section-google-updates" className="scroll-mt-24 rounded-2xl">
+            <GbpIntelligencePanel businessId={activeBusiness?._id} />
+          </div>
 
           {/* Media management — display existing GBP photos + upload logo/cover/photos. */}
-          <GbpMediaManager businessId={activeBusiness?._id} />
+          <div id="section-photos" className="scroll-mt-24 rounded-2xl">
+            <GbpMediaManager businessId={activeBusiness?._id} />
+          </div>
         </div>
       )}
 

@@ -6,6 +6,7 @@ import { ProductTourProvider } from "@/context/ProductTourContext";
 import ProductTourOverlay from "@/components/tour/ProductTourOverlay";
 import SuccessStoryPrompt from "@/components/dashboard/SuccessStoryPrompt";
 import WeeklyOfferPrompt from "@/components/dashboard/WeeklyOfferPrompt";
+import { GuidedFixBar } from "@/components/tasks/PlanTasks";
 import WorkspaceLockGate from "@/components/layout/WorkspaceLockGate";
 import { requireClient } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -38,6 +39,7 @@ export default async function DashboardLayout({
             <ProductTourOverlay />
             <SuccessStoryPrompt />
             <WeeklyOfferPrompt />
+            <GuidedFixBar />
           </div>
         </ProductTourProvider>
       </BusinessProvider>

@@ -43,12 +43,26 @@ export interface ActionStatusResult {
   verificationResult?: string;
 }
 
-const FIELD_OF: Record<string, string> = {
+/**
+ * Profile field an update_* capability changes, as logged by a verified
+ * Profile optimization change (store.ts ACTIVITY_FIELDS). A value ending in
+ * ':' matches any field with that prefix (every attribute is "attribute:<id>").
+ */
+export const FIELD_OF: Record<string, string> = {
   update_title: 'title',
   update_description: 'description',
   update_phone: 'primaryPhone',
   update_website: 'website',
+  update_services: 'services',
+  update_categories: 'additionalCategories',
+  update_hours: 'regularHours',
+  update_attributes: 'attribute:',
+  update_booking_link: 'attribute:url_appointment',
 };
+
+export function editTouchesField(fields: string[], field: string): boolean {
+  return field.endsWith(':') ? fields.some((f) => f.startsWith(field)) : fields.includes(field);
+}
 
 export function deriveActionStatus(
   a: ActionInput,
@@ -82,10 +96,15 @@ export function deriveActionStatus(
     case 'update_title':
     case 'update_description':
     case 'update_phone':
-    case 'update_website': {
+    case 'update_website':
+    case 'update_services':
+    case 'update_categories':
+    case 'update_hours':
+    case 'update_attributes':
+    case 'update_booking_link': {
       if (!ctx.liveWritesEnabled) return { status: 'BLOCKED', statusReason: 'Live Google profile writes are turned off' };
       const field = FIELD_OF[a.capability];
-      const edit = [...e.appliedEdits].reverse().find((x) => x.fields.includes(field));
+      const edit = [...e.appliedEdits].reverse().find((x) => editTouchesField(x.fields, field));
       if (edit) executed = { at: edit.at, result: `${field} update sent to Google and accepted` };
       break;
     }

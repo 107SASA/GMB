@@ -172,6 +172,9 @@ test('FR-4.4: existing high findings stay high; critical is limited; nothing exe
   assert.equal(issues[0].action.fixability, 'FIXABLE_WITH_APPROVAL');
   assert.equal(issues[0].action.executesAutomatically, false);
   assert.equal(fixabilityFor('update_description'), 'FIXABLE_WITH_APPROVAL');
+  for (const cap of ['update_services', 'update_categories', 'update_hours', 'update_attributes', 'update_booking_link']) {
+    assert.equal(fixabilityFor(cap), 'FIXABLE_WITH_APPROVAL', cap);
+  }
   assert.equal(issues[3].action.fixability, 'NOT_SUPPORTED');
   assert.equal(issues[4].action.fixability, 'MANUAL_ACTION_REQUIRED');
   assert.equal(impactFor(finding({ id: 'profile.hours' }), {}).impactScore, null);
@@ -274,13 +277,22 @@ test('FR-4 score is not compared with profile completion', () => {
     completionPercentage: 75, completionScope: 'full', completionBasis: 'gbp_intelligence',
   };
   const mixed = compareAudits(base, { ...base, auditId: 'b', fr4Overall: 60, fr4ScoreVersion: 'fr4-v1' });
-  const row = mixed.rows.find((r) => r.metric === 'FR-4 audit score');
+  const row = mixed.rows.find((r) => r.metric === 'Audit score');
   assert.equal(row?.change, 'not_comparable');
   assert.match(row?.note || '', /profile completion/);
   const both = compareAudits(
     { ...base, fr4Overall: 40, fr4ScoreVersion: 'fr4-v1' },
     { ...base, auditId: 'c', fr4Overall: 60, fr4ScoreVersion: 'fr4-v1' },
   );
-  assert.equal(both.rows.find((r) => r.metric === 'FR-4 audit score')?.change, 'better');
+  assert.equal(both.rows.find((r) => r.metric === 'Audit score')?.change, 'better');
   assert.equal(both.rows.find((r) => r.metric === 'Profile completion')?.change, 'same');
+  // Mulsetu: free report 70 → connected baseline 64 showed "Declined (-8.6%)".
+  const freeVsConnected = compareAudits(
+    { ...base, kind: 'free_report', fr4Overall: 70, fr4ScoreVersion: 'fr4-v1' },
+    { ...base, auditId: 'd', kind: 'connected_baseline', fr4Overall: 64, fr4ScoreVersion: 'fr4-v1' },
+  );
+  const fvc = freeVsConnected.rows.find((r) => r.metric === 'Audit score');
+  assert.equal(fvc?.change, 'not_comparable');
+  assert.equal(fvc?.pctChange, null);
+  assert.match(fvc?.note || '', /public data only/);
 });

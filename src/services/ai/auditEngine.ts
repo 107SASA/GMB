@@ -3,7 +3,7 @@ import { GROQ_MODEL } from '@/lib/aiModel';
 import { withGroqRetry } from '@/lib/groqRetry';
 import { qualifyCompletionInProse } from '@/lib/profileCompletion';
 import { describeEvidence, GROWWMATICS_CAPABILITIES, type Evidence, type Finding } from '@/services/audit/findings';
-import { allowedNumbersFrom, assertsGbpContent, claimsCausation, claimsFabricatedOutcome, claimsUnsupportedCapability, groundItems, groundText, inventedClaimChecker, type ClaimContext } from '@/services/audit/validateAudit';
+import { allowedNumbersFrom, allReviewsReplied, hasGenericPlaceholder, isRedundantReplyTask, namesIdentityAttribute, assertsGbpContent, claimsCausation, claimsFabricatedOutcome, claimsUnsupportedCapability, groundItems, groundText, inventedClaimChecker, type ClaimContext } from '@/services/audit/validateAudit';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -286,9 +286,13 @@ export function postProcessAIAudit(
     repairs.push('removed review themes generated without review text');
   }
 
+  const repliedAll = allReviewsReplied((input.facts as any)?.reviews?.recent);
   /** Plan text shown to customers: no causal claims, predicted outcomes, invented businesses/services or unread-GBP claims. */
   const planTextOk = (t: string, what: string) => {
-    const reason = claimsCausation(t) ? 'claims a cause'
+    const reason = hasGenericPlaceholder(t) ? 'has an unfilled placeholder'
+      : namesIdentityAttribute(t) ? 'guesses an ownership attribute'
+      : isRedundantReplyTask(t, repliedAll) ? 'asks to reply to reviews that already have replies'
+      : claimsCausation(t) ? 'claims a cause'
       : claimsFabricatedOutcome(t) ? 'predicts an outcome'
       : invented && (t.match(/[^.!?]+[.!?]*/g) || [t]).some(invented) ? 'names a business or service not in the facts'
       : !input.gbpRead && assertsGbpContent(t) ? 'claims GBP content that was not read'

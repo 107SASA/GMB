@@ -142,6 +142,22 @@ test('actions: owner-only actions are never claimed by GrowwMatics', () => {
   assert.match(posts.executionResult!, /3 Google post/);
 });
 
+test('actions: approved Profile optimization changes execute services, categories, hours, attributes and booking link', () => {
+  const at = '2026-09-03T00:00:00Z';
+  const edits = (fields: string[]) => ({ ...base, executions: { ...ex0, appliedEdits: [{ at, fields }] } });
+  const action = (capability: string) => ({ findingId: `x.${capability}`, capability, requiresGbpConnection: true, plannedAt: '2026-09-01T00:00:00Z' });
+  // Fields exactly as store.ts ACTIVITY_FIELDS / noteVerifiedEdit log them.
+  assert.equal(deriveActionStatus(action('update_services'), edits(['services'])).status, 'EXECUTED');
+  assert.equal(deriveActionStatus(action('update_categories'), edits(['additionalCategories'])).status, 'EXECUTED');
+  assert.equal(deriveActionStatus(action('update_categories'), edits(['primaryCategory', 'additionalCategories'])).status, 'EXECUTED', 'a primary-category change also counts');
+  assert.equal(deriveActionStatus(action('update_hours'), edits(['regularHours', 'specialHours'])).status, 'EXECUTED');
+  assert.equal(deriveActionStatus(action('update_attributes'), edits(['attribute:has_wheelchair_accessible_entrance'])).status, 'EXECUTED');
+  assert.equal(deriveActionStatus(action('update_booking_link'), edits(['attribute:url_appointment'])).status, 'EXECUTED');
+  assert.equal(deriveActionStatus(action('update_booking_link'), edits(['attribute:has_wifi'])).status, 'READY', 'another attribute is not the booking link');
+  assert.equal(deriveActionStatus(action('update_services'), edits(['additionalCategories'])).status, 'READY', 'an edit to a different field is not this action');
+  assert.match(deriveActionStatus(action('update_services'), { ...base, liveWritesEnabled: false }).statusReason, /turned off/);
+});
+
 // ── Weekly monitoring ──────────────────────────────────────────────────────
 
 const week = (o: Partial<WeeklyInput> = {}): WeeklyInput => ({

@@ -405,7 +405,7 @@ export default function ConsultantSections({
           <SectionBar num={S()} title="GBP PROFILE GAP ANALYSIS" />
           <Card>
             <p className="text-sm text-on-surface-variant mb-5">
-              Drafts for {businessName} only — nothing is changed on your listing from this report. Once you subscribe and connect Google, GrowwMatics can apply the title and description drafts for you; categories, services, hours and attributes are changed by you in Google.
+              Drafts for {businessName} only — nothing is changed on your listing from this report. Once you subscribe and connect Google, GrowwMatics can apply these to your Google profile — description, services, categories, hours, attributes and booking link — after you approve each one in Profile optimization.
             </p>
             {failed.has('gbpDrafts') && <div className="mb-4"><SupportNote what="GBP drafts" /></div>}
             {failed.has('gbpDrafts') && !(draft.gbpGaps || []).length ? null : (

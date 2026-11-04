@@ -25,13 +25,21 @@ import type {
   SuspensionRisk,
 } from './facts.ts';
 
-// ── Capability map (verified against the codebase, Sep 2026) ──────────────
+// ── Capability map (verified against the codebase, Nov 2026) ──────────────
+// update_services … update_booking_link go through Profile optimization's
+// approved changes (services/gbp/changes/store.ts executeChange: pre-write
+// read, conflict check, write, read-back, rollback) — the owner approves each.
 
 export type Capability =
   | 'update_title'
   | 'update_description'
   | 'update_phone'
   | 'update_website'
+  | 'update_services'
+  | 'update_categories'
+  | 'update_hours'
+  | 'update_attributes'
+  | 'update_booking_link'
   | 'google_posts'
   | 'review_replies'
   | 'review_requests'
@@ -43,6 +51,11 @@ export const GROWWMATICS_CAPABILITIES: Record<Capability, { label: string; verif
   update_description: { label: 'Update the business description on Google', verifiedIn: 'lib/gbpClient.ts updateLocationProfile' },
   update_phone: { label: 'Update the phone number on Google', verifiedIn: 'lib/gbpClient.ts updateLocationProfile' },
   update_website: { label: 'Update the website link on Google', verifiedIn: 'lib/gbpClient.ts updateLocationProfile' },
+  update_services: { label: 'Add your services on Google', verifiedIn: 'services/gbp/changes/store.ts executeChange (services)' },
+  update_categories: { label: 'Set your categories on Google', verifiedIn: 'services/gbp/changes/store.ts executeChange (categories, primary_category)' },
+  update_hours: { label: 'Set your opening hours on Google', verifiedIn: 'services/gbp/changes/store.ts executeChange (hours)' },
+  update_attributes: { label: 'Set your attributes on Google', verifiedIn: 'services/gbp/changes/store.ts executeChange (attribute)' },
+  update_booking_link: { label: 'Add your booking link on Google', verifiedIn: 'services/gbp/changes/store.ts executeChange (attribute url_appointment)' },
   google_posts: { label: 'Write and publish Google posts', verifiedIn: 'lib/gbpClient.ts createLocalPost' },
   review_replies: { label: 'Reply to Google reviews', verifiedIn: 'lib/gbpClient.ts replyToReview' },
   review_requests: { label: 'Send WhatsApp review-request campaigns', verifiedIn: 'app/api/campaigns' },
@@ -147,6 +160,11 @@ const OWNER_ACTION: Record<Capability, string> = {
   update_description: 'Confirm every fact in the draft description before it is published.',
   update_phone: 'Provide the phone number customers should call.',
   update_website: 'Provide the website address to show on Google.',
+  update_services: 'Approve the services to add — only ones you really offer.',
+  update_categories: 'Approve the categories that truly describe your business.',
+  update_hours: 'Confirm your real opening hours.',
+  update_attributes: 'Choose only the attributes that are true for your business.',
+  update_booking_link: 'Confirm the booking link customers should use.',
   google_posts: 'Approve post topics built from your real services and updates.',
   review_replies: 'Approve the reply tone; flag any review that needs a personal answer.',
   review_requests: 'Provide or approve the list of recent customers and the request message.',
@@ -155,6 +173,7 @@ const OWNER_ACTION: Record<Capability, string> = {
 };
 const NEEDS_GBP: Record<Capability, boolean> = {
   update_title: true, update_description: true, update_phone: true, update_website: true,
+  update_services: true, update_categories: true, update_hours: true, update_attributes: true, update_booking_link: true,
   google_posts: true, review_replies: true, photo_uploads: true,
   review_requests: false, rank_tracking: false,
 };
@@ -281,8 +300,8 @@ export function buildEvidenceAndFindings(input: FindingsInput): { evidence: Evid
       severity: 'medium',
       businessImpact: 'Google may show the business without hours, and searchers cannot tell when it is open.',
       actionability: 'directly_fixable',
-      growwmaticsCapability: null,
-      recommendedAction: 'Set opening hours in Google Business Profile.',
+      growwmaticsCapability: 'update_hours',
+      recommendedAction: 'Set opening hours on the Google profile.',
     });
   }
   if (missing('Business Photos')) {
@@ -301,8 +320,8 @@ export function buildEvidenceAndFindings(input: FindingsInput): { evidence: Evid
       severity: 'high',
       businessImpact: 'The category is how Google decides which searches the listing is relevant for.',
       actionability: 'directly_fixable',
-      growwmaticsCapability: null,
-      recommendedAction: 'Choose the most specific primary category in Google Business Profile.',
+      growwmaticsCapability: 'update_categories',
+      recommendedAction: 'Choose the most specific primary category for the Google profile.',
     });
   }
   if (missing('Business Description')) {
@@ -322,8 +341,8 @@ export function buildEvidenceAndFindings(input: FindingsInput): { evidence: Evid
       severity: 'low',
       businessImpact: 'Listed services help Google match the listing to specific searches.',
       actionability: 'directly_fixable',
-      growwmaticsCapability: null,
-      recommendedAction: 'Add the services the business actually offers in Google Business Profile.',
+      growwmaticsCapability: 'update_services',
+      recommendedAction: 'Add the services the business actually offers to the Google profile.',
     });
   }
 

@@ -208,8 +208,8 @@ export function gbpIntelligenceFindings(s: GbpSnapshotCore, ctx: FindingContext)
       confidence: 'high',
       businessImpact: 'Attributes are facts customers filter on in Google Maps.',
       actionability: 'directly_fixable',
-      growwmaticsCapability: null,
-      recommendedAction: 'Review which attributes genuinely apply to your business and set only those in Google Business Profile.',
+      growwmaticsCapability: 'update_attributes',
+      recommendedAction: 'Review which attributes genuinely apply to your business and set only those on the Google profile.',
     });
   }
 

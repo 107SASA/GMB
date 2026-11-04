@@ -362,7 +362,7 @@ function renderConsultantSections(
     const descKw = chips(draft.descriptionKeywords || [], '#f1f5f9', '#475569');
     const platforms = (draft.platformGaps || []).map((p: any) => `<li style="font-size:11px;color:#64748b;"><b style="color:#0f172a;">${h(p.platform)}</b> — ${h(p.why || '')}</li>`).join('');
     parts.push(bar(sec(), 'GBP PROFILE GAP ANALYSIS') + card(
-      `<p style="font-size:11px;color:#64748b;margin:0 0 10px;">Drafts for ${h(businessName)} only — nothing is changed on your listing from this report. Once connected, GrowwMatics can apply the title and description drafts; categories, services, hours and attributes are changed by you in Google.</p>
+      `<p style="font-size:11px;color:#64748b;margin:0 0 10px;">Drafts for ${h(businessName)} only — nothing is changed on your listing from this report. Once connected, GrowwMatics can apply these to your Google profile — description, services, categories, hours, attributes and booking link — after you approve each one in Profile optimization.</p>
        ${gaps}
        ${descKw ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">The 750-char description must embed</div>${descKw}</div>` : ''}
        ${attrs ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};margin-bottom:4px;">GBP attributes to set</div>${attrs}</div>` : ''}
@@ -652,7 +652,7 @@ export function buildReportHtml(ctx: ReportContext): string {
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;break-inside:avoid;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
       ${googleSvg(18)}
-      <span style="font-size:13px;font-weight:700;color:#374151;">Google Profile Score</span>
+      <span style="font-size:13px;font-weight:700;color:#374151;">Profile completion</span>
     </div>
     <div style="display:flex;align-items:center;gap:18px;">
       ${svgRing(overallScore, profileColor, 120)}
@@ -769,7 +769,7 @@ export function buildReportHtml(ctx: ReportContext): string {
   // ── 5. PROFILE SCORE BREAKDOWN ───────────────────────────────────────────────
   const profileBreakdownHtml = `
 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:14px;">
-  <h2 style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:16px;">Your Profile Score (${overallScore}%)</h2>
+  <h2 style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:16px;">Profile completion (${overallScore}%)</h2>
 
   <!-- Row 1: SEO Score + Services/Categories -->
   <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px;">

@@ -26,7 +26,7 @@ import {
 } from './facts';
 import { buildEvidenceAndFindings, isCustomerIssue, selectOpportunities, type KeywordRow } from './findings';
 import { areaStrategyLines, type AreaComparison, type AreaVisibilityFacts } from './areaVisibility';
-import { validateAudit, repairUnverifiedGbpClaims, type ValidatableAudit } from './validateAudit';
+import { validateAudit, repairUnverifiedGbpClaims, allReviewsReplied, type ValidatableAudit } from './validateAudit';
 import { getWebsiteIntelligence } from '../intel/websiteIntelligence';
 import { assembleFr4 } from './fr4/assemble';
 import { postsInLast30Days } from './fr4/benchmark';
@@ -1099,8 +1099,8 @@ async function processAuditJobInner(auditId: string) {
           confidence: 'medium',
           businessImpact: 'A booking link on the listing lets searchers book straight from Google Maps.',
           actionability: 'directly_fixable',
-          growwmaticsCapability: null,
-          recommendedAction: `Add ${websiteIntel.bookingLinks[0].value} as the appointment link in Google Business Profile.`,
+          growwmaticsCapability: 'update_booking_link',
+          recommendedAction: `Add ${websiteIntel.bookingLinks[0].value} as the appointment link on the Google profile.`,
         });
       }
       // The GBP service list is never read by any code path — so the website's
@@ -1123,8 +1123,8 @@ async function processAuditJobInner(auditId: string) {
           confidence: 'high',
           businessImpact: 'Google matches listings to searches partly by the services listed on them.',
           actionability: 'directly_fixable',
-          growwmaticsCapability: null,
-          recommendedAction: `Add the services you really offer to Google Business Profile — your website already names: ${websiteServices.slice(0, 5).join(', ')}.`,
+          growwmaticsCapability: 'update_services',
+          recommendedAction: `Add the services you really offer to the Google profile — your website already names: ${websiteServices.slice(0, 5).join(', ')}.`,
         });
       } else if (websiteServices.length && servicesStatus !== 'Complete') {
         findings.push({
@@ -1433,7 +1433,7 @@ async function processAuditJobInner(auditId: string) {
           })),
           searchesChecked: aheadFacts.searchesChecked,
           ranking: { overall: rankingFacts.overall, primary: rankingFacts.primary, notRunReason: rankingNotRunReason },
-          reviews: { totalCount: lifetimeCount, rating: reviewFacts.lifetime.rating, sampleSize: reviewFacts.lifetime.sampleSize },
+          reviews: { totalCount: lifetimeCount, rating: reviewFacts.lifetime.rating, sampleSize: reviewFacts.lifetime.sampleSize, allReplied: allReviewsReplied(reviewFacts.recent) },
           reviewComparison,
           profileCompletion,
           fieldStates,

@@ -215,8 +215,11 @@ test('O: every finding has evidence and valid actionability; capability only if 
     assert.ok(['directly_fixable', 'indirectly_influenceable', 'monitor_only', 'not_actionable', 'unknown'].includes(f.actionability));
     if (f.growwmaticsCapability) assert.ok(f.growwmaticsCapability in GROWWMATICS_CAPABILITIES);
   }
-  const hours = buildEvidenceAndFindings(baseInput({ fields: { 'Business Hours': 'verified_missing' } })).findings.find((x) => x.id === 'profile.business_hours.missing')!;
-  assert.equal(hours.growwmaticsCapability, null, 'GrowwMatics cannot write hours — not sold as a GrowwMatics fix');
+  // Hours, services and categories are applied through Profile optimization after owner approval.
+  const missing = buildEvidenceAndFindings(baseInput({ fields: { 'Business Hours': 'verified_missing', 'Services Listed': 'verified_missing', 'Primary Category': 'verified_missing' } })).findings;
+  assert.equal(missing.find((x) => x.id === 'profile.business_hours.missing')!.growwmaticsCapability, 'update_hours');
+  assert.equal(missing.find((x) => x.id === 'profile.services_listed.missing')!.growwmaticsCapability, 'update_services');
+  assert.equal(missing.find((x) => x.id === 'profile.primary_category.missing')!.growwmaticsCapability, 'update_categories');
 });
 
 test('T: review gap is stated as a comparison, never as the cause of ranking', () => {

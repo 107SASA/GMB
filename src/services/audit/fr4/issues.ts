@@ -14,6 +14,7 @@ export type Fixability = 'FIXABLE_AUTOMATICALLY' | 'FIXABLE_WITH_APPROVAL' | 'MA
 
 const APPROVAL_CAPABILITIES = new Set([
   'update_title', 'update_description', 'update_phone', 'update_website',
+  'update_services', 'update_categories', 'update_hours', 'update_attributes', 'update_booking_link',
   'google_posts', 'review_replies', 'review_requests', 'photo_uploads',
 ]);
 

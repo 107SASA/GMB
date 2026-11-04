@@ -11,7 +11,7 @@ import type { WebsiteSignals } from '@/services/audit/websiteSignals';
 import type { FieldState, RankingSummary, ReviewComparison, SuspensionRisk } from '@/services/audit/facts';
 import type { Finding, OpportunityLabel } from '@/services/audit/findings';
 import { GROWWMATICS_CAPABILITIES } from '@/services/audit/findings';
-import { allowedNumbersFrom, claimsUnsupportedCapability, dropUnsupportedSentences, groundItems, groundText } from '@/services/audit/validateAudit';
+import { allowedNumbersFrom, isKnownPlatform, hasGenericPlaceholder, isRedundantReplyTask, namesIdentityAttribute, stripGenericPlaceholders, claimsUnsupportedCapability, dropUnsupportedSentences, groundItems, groundText } from '@/services/audit/validateAudit';
 import { competitorTierLabel, suspensionDisplay } from '@/services/audit/reportDisplay';
 import { claimsUnknownService, inventedClaimChecker, namesUnknownBusiness, repairUnverifiedGbpClaims, type ClaimContext } from '@/services/audit/validateAudit';
 import { brandPhrase } from '@/services/audit/facts';
@@ -56,7 +56,8 @@ export interface SeoPlanInput {
   searchesChecked: number;
   /** Ranking facts — `overall.averageObservedRank` is over FOUND searches only. */
   ranking: { overall: RankingSummary; primary: RankingSummary; notRunReason?: 'category_unknown' | null };
-  reviews: { totalCount: number | null; rating: number | null; sampleSize: string | null };
+  /** allReplied: every review in the synced window has an owner reply. */
+  reviews: { totalCount: number | null; rating: number | null; sampleSize: string | null; allReplied?: boolean };
   reviewComparison: ReviewComparison | null;
   profileCompletion: any;
   fieldStates: Record<string, FieldState>;
@@ -559,8 +560,8 @@ function groundedProposals(input: SeoPlanInput, raw: unknown): NonNullable<ISeoP
 const GAP_FIXED_TEXT: Record<string, { whyItMatters: string; ok: string; missing: string; unverified: string }> = {
   'GBP Title': { whyItMatters: 'The title must be your real-world business name.', ok: 'No change needed.', missing: 'Use the real business name without promotional words.', unverified: 'Connect Google to check the live title.' },
   'Business Description': { whyItMatters: 'The description tells searchers what you do and where.', ok: 'No change needed.', missing: 'Add a description built only from true facts about your business.', unverified: 'Connect Google to check the live description.' },
-  'Additional Categories': { whyItMatters: 'Categories decide which searches the listing can appear for.', ok: 'No change needed.', missing: 'Add categories that truly describe your services (changed by you in Google).', unverified: 'Connect Google to check your categories.' },
-  'Services Listed': { whyItMatters: 'Listed services help Google match the listing to searches.', ok: 'No change needed.', missing: 'List the services you actually offer (changed by you in Google).', unverified: 'Connect Google to check your service list.' },
+  'Additional Categories': { whyItMatters: 'Categories decide which searches the listing can appear for.', ok: 'No change needed.', missing: 'Add categories that truly describe your services — approve them in Profile optimization.', unverified: 'Connect Google to check your categories.' },
+  'Services Listed': { whyItMatters: 'Listed services help Google match the listing to searches.', ok: 'No change needed.', missing: 'List the services you actually offer — approve them in Profile optimization.', unverified: 'Connect Google to check your service list.' },
   'Social Links': { whyItMatters: 'Social links let searchers check your work.', ok: 'No change needed.', missing: 'Add the social profiles you actually use.', unverified: 'Connect Google to check your social links.' },
   Videos: { whyItMatters: 'Videos show your real premises and work.', ok: 'No change needed.', missing: 'Add short, real videos of your business.', unverified: 'Connect Google to check your videos.' },
   'Logo / Cover Image': { whyItMatters: 'A logo and cover image make the listing recognisable.', ok: 'No change needed.', missing: 'Upload your real logo and a cover photo.', unverified: 'Connect Google to check your logo and cover.' },
@@ -601,7 +602,7 @@ TITLE CHECK FINDINGS: ${titleIssues.join('; ') || 'none'}
 Return JSON:
 {
   "suggestedTitle": "${titleIssues.length ? 'The real business name with the flagged words removed — only words already in the current name. Never add a category, location or keyword (that breaks Google\'s naming guidelines).' : 'Return an empty string — the title passed the checks.'}",
-  "suggestedDescription": "150-750 chars built ONLY from VERIFIED SERVICES, OWNER-PROVIDED facts, category and location. Where a fact is unknown write [confirm: what is needed] instead of inventing it.",
+  "suggestedDescription": "150-750 chars built ONLY from VERIFIED SERVICES, OWNER-PROVIDED facts, category and location. Where a fact is unknown write [confirm: <name the missing fact>] instead of inventing it.",
   ${full ? '"platformGaps": [ { "platform": "a directory relevant to this category in this country", "why": "1 sentence on why a listing there can matter for this category — we did NOT check whether the business is listed there, so never say it is or is not listed" } ],' : ''}
   "gbpGaps": [ ${gapFields.map((f) => `{ "field": "${f}", "whyItMatters": "1 sentence", "recommendation": "1-2 sentences, no invented facts" }`).join(', ')} ]
 }${full ? ' 2-4 platformGaps.' : ''}`;
@@ -614,7 +615,7 @@ Return JSON:
   const FIXED_GAP_TEXT: Record<string, { whyItMatters: string; recommendation: string }> = {
     Attributes: {
       whyItMatters: 'Attributes are facts customers filter on in Google Maps; they must be true for the business.',
-      recommendation: 'Tell us which attributes genuinely apply — we never guess them — and set them in Google Business Profile.',
+      recommendation: 'Choose only the attributes that genuinely apply — we never guess them — and approve them in Profile optimization.',
     },
   };
   const gbpGaps: ISeoPlanGapItem[] = gapFields.map((field) => {
@@ -635,7 +636,7 @@ Return JSON:
 
   return {
     suggestedTitle: titleIssues.length ? safeSuggestedTitle(input.businessName, j.suggestedTitle) : undefined,
-    suggestedDescription: groundText(j.suggestedDescription, allowed),
+    suggestedDescription: stripGenericPlaceholders(groundText(j.suggestedDescription, allowed)),
     // Services are never generated: only ones seen on a verified source.
     suggestedServices: input.fieldStates['Services Listed'] === 'verified_present' ? [] : input.verifiedServices.slice(0, 16),
     // No AI-suggested categories: nothing can verify them (a live check
@@ -648,7 +649,7 @@ Return JSON:
     platformGaps: full && Array.isArray(j.platformGaps)
       ? j.platformGaps
           .map((p: any) => ({ platform: String(p?.platform || ''), why: dropUnsupportedSentences(String(p?.why || ''), (sn) => /\b(not listed|isn'?t listed|absence|absent|missing from|no (presence|listing))\b/i.test(sn)) || '' }))
-          .filter((p: any) => p.platform && p.why)
+          .filter((p: any) => p.platform && p.why && isKnownPlatform(p.platform))
           .slice(0, 4)
       : undefined,
     gbpGaps,
@@ -682,7 +683,7 @@ Return JSON:
   "suggestedQas": [ { "q": "<question>", "a": "<answer>" } ]
 }
 Post themes: each about a verified service or a real update of this business; no offers or discounts unless OWNER-PROVIDED lists them.
-Q&As: questions a prospective CUSTOMER would ask about the business (services, location, how to book, who it is for). Never about rankings, reviews, ratings, profile completion or this audit. Answer only from the facts; if the answer is not in the facts write [Owner to confirm: what is needed].
+Q&As: questions a prospective CUSTOMER would ask about the business (services, location, how to book, who it is for). Never about rankings, reviews, ratings, profile completion or this audit. Answer only from the facts; if the answer is not in the facts write [Owner to confirm: <name the missing fact>].
 ${full ? '4-6' : '3-5'} items in EMERGENCY, 3-4 in SHORT-TERM, 3-4 in MEDIUM-TERM. Exactly 4 weeklyPostThemes (Mon/Wed/Fri/Sat)${areas.length ? ` mentioning these real nearby areas where natural: ${areas.join(', ')}` : ''}. ${full ? '8' : '5-6'} suggestedQas. Use postType OFFER only if OWNER-PROVIDED lists an offer.`;
 
   const j = await jsonCall(prompt, 0.35);
@@ -692,10 +693,13 @@ ${full ? '4-6' : '3-5'} items in EMERGENCY, 3-4 in SHORT-TERM, 3-4 in MEDIUM-TER
   const phases = (Array.isArray(j.actionPhases) ? j.actionPhases : []).map((p: any) => ({
     label: String(p?.label || ''),
     window: String(p?.window || ''),
-    // Drop items promising GrowwMatics changes it cannot make (categories,
-    // services, hours, attributes, Q&A).
+    // Drop items promising GrowwMatics changes it cannot make (Q&A).
     items: groundItems(Array.isArray(p?.items) ? p.items : [], ['title', 'detail'], allowed).kept
       .filter((it: any) => !claimsUnsupportedCapability(`${it.title} ${it.detail}`))
+      .filter((it: any) => {
+        const t = `${it.title} ${it.detail}`;
+        return !hasGenericPlaceholder(t) && !namesIdentityAttribute(t) && !isRedundantReplyTask(t, !!input.reviews.allReplied);
+      })
       .filter((it: any) => !/PROFILE COMPLETION is|NOT confirmed present/.test(String(it.detail || '')))
       .map((it: any) => ({ ...it, detail: dropUnsupportedSentences(String(it.detail || '')) || '' })),
   }));
@@ -711,7 +715,7 @@ ${full ? '4-6' : '3-5'} items in EMERGENCY, 3-4 in SHORT-TERM, 3-4 in MEDIUM-TER
     .slice(0, 4);
   const auditInternal = /\b(rank|ranking|position|reviews?|rating|profile completion|profile (is )?complete|google business profile|audit|search results)\b/i;
   const qas = groundItems(Array.isArray(j.suggestedQas) ? j.suggestedQas : [], ['q', 'a'], allowed).kept
-    .filter((qa: any) => !auditInternal.test(`${qa.q} ${qa.a}`) && !echoed.test(`${qa.q} ${qa.a}`))
+    .filter((qa: any) => !auditInternal.test(`${qa.q} ${qa.a}`) && !echoed.test(`${qa.q} ${qa.a}`) && !hasGenericPlaceholder(qa.a))
     .slice(0, full ? 10 : 8);
 
   return { actionPhases: phases as any, weeklyPostThemes: posts as any, suggestedQas: qas as any };

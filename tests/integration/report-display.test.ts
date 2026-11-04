@@ -13,7 +13,7 @@ import {
   suspensionDisplay, POLICY_UNVERIFIED_NOTE, buildRankMapUrl, isLegacyAudit,
 } from '../../src/services/audit/reportDisplay.ts';
 import { buildObservation, summarizeRankings, buildReviewFacts, gridFromObservations, competitorsFromObservations, brandPhrase, isBrandedKeyword } from '../../src/services/audit/facts.ts';
-import { claimsUnsupportedCapability, validateAudit, claimsCausation, dropUnsupportedSentences } from '../../src/services/audit/validateAudit.ts';
+import { claimsUnsupportedCapability, validateAudit, claimsCausation, dropUnsupportedSentences, hasGenericPlaceholder, stripGenericPlaceholders, namesIdentityAttribute, isRedundantReplyTask, allReviewsReplied, isKnownPlatform } from '../../src/services/audit/validateAudit.ts';
 import { isBlockedAddress, checkUrlShape } from '../../src/lib/ssrfGuard.ts';
 
 const obs = (rank: number | null, status: 'ok' | 'unavailable' = 'ok', kind: 'primary' | 'nearby' = 'primary', point = { lat: 22.5, lng: 88.3 }) =>
@@ -129,11 +129,54 @@ test('legacy audits are recognised for the compatibility notice', () => {
 // ── AI capability claims ───────────────────────────────────────────────────
 
 test('AI text promising unsupported GrowwMatics actions is detected', () => {
-  assert.equal(claimsUnsupportedCapability('We will add 5 new categories to your profile'), true);
-  assert.equal(claimsUnsupportedCapability('GrowwMatics can update your opening hours'), true);
+  // Categories, services, hours and attributes are applied after owner approval (Profile optimization).
+  assert.equal(claimsUnsupportedCapability('We will add 5 new categories to your profile'), false);
+  assert.equal(claimsUnsupportedCapability('GrowwMatics can update your opening hours'), false);
   assert.equal(claimsUnsupportedCapability("We'll post Q&As every week"), true);
   assert.equal(claimsUnsupportedCapability('We will publish weekly Google posts'), false, 'posts are supported');
   assert.equal(claimsUnsupportedCapability('Add your services in Google Business Profile'), false, 'owner action, no GrowwMatics claim');
+});
+
+// ── Customer-facing plan hygiene (Mulsetu report, Nov 2026) ───────────────
+
+test('unfilled "what is needed" placeholders are detected and stripped; specific ones stay', () => {
+  assert.equal(hasGenericPlaceholder('Can I see examples of your work? [Owner to confirm: what is needed]'), true);
+  assert.equal(hasGenericPlaceholder('We serve clients across India. [confirm: what is needed]'), true);
+  assert.equal(hasGenericPlaceholder('Open since [confirm: year founded].'), false, 'a named missing fact is useful to the owner');
+  assert.equal(
+    stripGenericPlaceholders('Mulsetu offers Website Development in Ojhar. [confirm: what is needed]'),
+    'Mulsetu offers Website Development in Ojhar.',
+  );
+  assert.equal(stripGenericPlaceholders('Open since [confirm: year founded].'), 'Open since [confirm: year founded].');
+  assert.equal(stripGenericPlaceholders(undefined), undefined);
+});
+
+test('guessed ownership attributes are detected', () => {
+  assert.equal(namesIdentityAttribute('Select and apply 2–3 relevant Google attributes (e.g., “Women‑owned”, “Veteran‑led”) to the profile.'.replace(/‑/g, '-')), true);
+  assert.equal(namesIdentityAttribute('Add a black-owned attribute'), true);
+  assert.equal(namesIdentityAttribute('Add the “Online appointments” attribute if you take bookings online.'), false);
+});
+
+test('reply-to-existing-reviews tasks are dropped only when every review already has a reply', () => {
+  const t1 = 'Confirm that all four existing reviews are replied to, maintaining a 0 unreplied count.';
+  const t2 = 'Verify and respond to existing reviews';
+  const ongoing = 'Reply to every new review within 48 hours.';
+  assert.equal(isRedundantReplyTask(t1, true), true);
+  assert.equal(isRedundantReplyTask(t2, true), true);
+  assert.equal(isRedundantReplyTask(ongoing, true), false, 'ongoing advice stays');
+  assert.equal(isRedundantReplyTask(t2, false), false, 'kept when some reviews are unanswered');
+  assert.equal(allReviewsReplied({ responseRate: 1, replyUnknownCount: 0 }), true);
+  assert.equal(allReviewsReplied({ responseRate: 1, replyUnknownCount: 2 }), false, 'unknown reply state is not "all replied"');
+  assert.equal(allReviewsReplied({ responseRate: 0.75, replyUnknownCount: 0 }), false);
+  assert.equal(allReviewsReplied(null), false);
+});
+
+test('only known directories are suggested', () => {
+  assert.equal(isKnownPlatform('IndiaBizDirectory.com'), false);
+  assert.equal(isKnownPlatform('TechIndiaListings.in'), false);
+  assert.equal(isKnownPlatform('Justdial'), true);
+  assert.equal(isKnownPlatform('Clutch.co'), true);
+  assert.equal(isKnownPlatform('Bing Places for Business'), true);
 });
 
 // ── Validation repairs vs failures ─────────────────────────────────────────

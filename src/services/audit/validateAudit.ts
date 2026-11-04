@@ -235,13 +235,66 @@ export function groundText(text: string | undefined, allowed: Set<string>): stri
 
 /**
  * True when AI prose promises that GrowwMatics / "we" will change a Google
- * field the product cannot write (categories, services, hours, attributes,
- * Q&A). Such items are dropped rather than shown.
+ * field the product cannot write (Q&A). Such items are dropped rather than
+ * shown. Categories, services, hours and attributes ARE written — after the
+ * owner approves them in Profile optimization (audit/findings.ts).
  */
 export function claimsUnsupportedCapability(text: string): boolean {
   const t = String(text || '').toLowerCase();
   if (!/\b(we|we'll|growwmatics|our team|our platform)\b/.test(t)) return false;
-  return /\b(we|we'll|growwmatics|our team|our platform)\b[^.]{0,60}\b(will|can|'ll)?\s*(add|update|change|set|edit|post|publish|write)\b[^.]{0,60}\b(categor(y|ies)|services?\b|hours|opening hours|attributes?|q&as?|questions? and answers?)/.test(t);
+  return /\b(we|we'll|growwmatics|our team|our platform)\b[^.]{0,60}\b(will|can|'ll)?\s*(add|update|change|set|edit|post|publish|write)\b[^.]{0,60}\b(q&as?|questions? and answers?)/.test(t);
+}
+
+// ── Customer-facing plan hygiene ──────────────────────────────────────────
+// Each rule comes from a shipped report (Mulsetu, Nov 2026).
+
+/** The model's unfilled placeholder: "[confirm: what is needed]", "[Owner to confirm: what is needed]". */
+const GENERIC_PLACEHOLDER = /\s*\[(?:owner to )?confirm:\s*what is needed\]/i;
+
+export function hasGenericPlaceholder(text: string): boolean {
+  return GENERIC_PLACEHOLDER.test(String(text || ''));
+}
+
+/** Removes every generic placeholder (a specific one such as "[confirm: years in business]" stays). */
+export function stripGenericPlaceholders(text: string | undefined): string | undefined {
+  if (text == null) return text;
+  return String(text).replace(new RegExp(GENERIC_PLACEHOLDER.source, 'gi'), '').trim();
+}
+
+/**
+ * Who owns or leads the business is a fact only the owner can state — the
+ * model offered "Women-owned", "Veteran-led" as attribute examples.
+ */
+export function namesIdentityAttribute(text: string): boolean {
+  return /\b(wom[ae]n[- ]owned|wom[ae]n[- ]led|veteran[- ](owned|led)|black[- ](owned|led)|minority[- ]owned|lgbtq\+?[- ](owned|friendly)|asian[- ]owned|latin[ao]x?[- ]owned|disabled[- ]owned|family[- ]owned)\b/i.test(String(text || ''));
+}
+
+/**
+ * A task to reply to the business's EXISTING reviews when every one already
+ * has a reply. Ongoing advice ("reply to every new review") is kept.
+ */
+export function isRedundantReplyTask(text: string, allReviewsReplied: boolean): boolean {
+  if (!allReviewsReplied) return false;
+  const t = String(text || '').toLowerCase();
+  return /\b(existing|current|unanswered|unreplied|past|all \w+ (existing )?)\s*(google )?reviews?\b[^.]{0,60}\b(repl\w*|respon\w*)\b/.test(t)
+    || /\b(repl\w*|respon\w*)\b[^.]{0,40}\b(existing|current|unanswered|unreplied|past)\b[^.]{0,20}\breviews?\b/.test(t)
+    || /\b0 unreplied\b/.test(t);
+}
+
+/** Every review in the synced window has an owner reply (nothing unknown). */
+export function allReviewsReplied(recent: { responseRate?: number | null; replyUnknownCount?: number | null } | null | undefined): boolean {
+  return !!recent && recent.responseRate === 1 && !recent.replyUnknownCount;
+}
+
+/**
+ * Directories the model may suggest. Nothing checks the business's listing
+ * there, and an unknown name may not exist at all (the model produced
+ * "IndiaBizDirectory.com" and "TechIndiaListings.in").
+ */
+const KNOWN_PLATFORMS = /\b(justdial|sulekha|indiamart|tradeindia|exportersindia|bing places|bing|apple (business connect|maps)|facebook|instagram|linkedin|youtube|clutch|goodfirms|g2|capterra|yelp|yellow ?pages|practo|lybrate|zomato|swiggy|magicpin|eazydiner|dineout|urban ?company|nobroker|99acres|magicbricks|housing\.com|houzz|tripadvisor|booking\.com|makemytrip|goibibo|agoda|airbnb|shiksha|collegedunia|careers360|quikr|olx|zoominfo|crunchbase|trustpilot|glassdoor|naukri|indeed)\b/i;
+
+export function isKnownPlatform(name: string): boolean {
+  return KNOWN_PLATFORMS.test(String(name || ''));
 }
 
 // ── Causation / unsupported-claim sentence filter ─────────────────────────

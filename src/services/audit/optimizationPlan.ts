@@ -143,15 +143,20 @@ export function compareAudits(prev: ComparableSnapshot, cur: ComparableSnapshot)
     });
   }
   const fr4VersionSame = !!prev.fr4ScoreVersion && prev.fr4ScoreVersion === cur.fr4ScoreVersion;
-  const fr4Both = fr4VersionSame && prev.fr4Overall != null && cur.fr4Overall != null;
+  // A free report scores public data only; a connected audit also scores the
+  // Google profile — same version, different inputs, so never compared.
+  const fr4SameDepth = (prev.kind === 'free_report') === (cur.kind === 'free_report');
+  const fr4Both = fr4VersionSame && fr4SameDepth && prev.fr4Overall != null && cur.fr4Overall != null;
   if (prev.fr4Overall != null || cur.fr4Overall != null || prev.fr4ScoreVersion || cur.fr4ScoreVersion) {
     rows.push({
-      metric: 'FR-4 audit score',
+      metric: 'Audit score',
       before: prev.fr4Overall == null ? 'not measured' : `${prev.fr4Overall}`,
       after: cur.fr4Overall == null ? 'not measured' : `${cur.fr4Overall}`,
       change: fr4Both ? dir(prev.fr4Overall ?? null, cur.fr4Overall ?? null) : 'not_comparable',
       pctChange: fr4Both ? pct(prev.fr4Overall, cur.fr4Overall) : null,
-      note: fr4Both ? `Score version ${cur.fr4ScoreVersion}. This is not the profile completion percentage.` : 'The FR-4 audit score and profile completion are different metrics, so they are not compared unless both audits recorded the same FR-4 score version.',
+      note: fr4Both ? `Score version ${cur.fr4ScoreVersion}. This is not the profile completion percentage.`
+        : fr4VersionSame && !fr4SameDepth ? 'The free report scored public data only; this audit also scored your connected Google profile, so the scores are not compared.'
+        : 'The FR-4 audit score and profile completion are different metrics, so they are not compared unless both audits recorded the same FR-4 score version.',
     });
   }
   return { previousAuditId: prev.auditId, previousKind: prev.kind, previousAt: prev.at, rows };

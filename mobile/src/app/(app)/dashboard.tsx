@@ -11,6 +11,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { useBusiness } from '@/business/BusinessContext';
 import { AppHeader } from '@/components/app-header';
 import { AiActionsCard } from '@/components/gbp/ai-actions';
+import { TaskChecklistCard } from '@/components/plan-tasks';
 import { AddCustomerCard } from '@/components/home/add-customer-card';
 import { AiAgentCard } from '@/components/home/ai-agent-card';
 import { BrandingFooter } from '@/components/home/branding-footer';
@@ -209,6 +210,9 @@ export default function HomeScreen() {
         <BillingBanner />
 
         <WeeklyOfferCard />
+
+        {/* Open fixes from the latest report + the once-per-report "fixes ready" sheet. */}
+        <TaskChecklistCard />
         <WeeklyReviewsCard />
         <View className="mx-4 mt-4">
           <AddCustomerCard />

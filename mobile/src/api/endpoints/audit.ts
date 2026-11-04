@@ -260,10 +260,13 @@ export const mobileReportViewSchema = z.object({
   }).nullable().catch(null),
   completion: z.object({ sentence: z.string(), percent: z.number().nullable().catch(null), missing: lines, notChecked: lines }).nullable().catch(null),
   issues: z.array(z.object({
+    id: z.string().catch(''),
     title: z.string(), evidence: z.string().catch(''), severity: z.string().catch(''), actionability: z.string().catch(''),
     recommendedAction: z.string().catch(''), growwmaticsCan: z.boolean().catch(false),
   })).catch([]),
   suspension: z.object({ level: z.string(), note: z.string() }).nullable().catch(null),
+  /** Connected reports only: finding ids whose plan tasks (GET /api/tasks) show live status. */
+  planFindingIds: z.array(z.string()).catch([]),
   monthly: z.object({
     period: z.object({ start: z.string(), end: z.string() }).nullable().catch(null),
     changes: lines, growwmatics: lines, owner: lines, performance: lines, performanceNote: z.string().catch(''),

@@ -14,6 +14,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { EmptyState, PrimaryButton, Screen, Skeleton, useInfoSheet } from '@/components/ui';
 import { timeAgo } from '@/lib/format';
 import { useTheme, withAlpha } from '@/lib/theme';
+import { appPathForTaskLink } from '@/lib/taskLinks';
 
 /**
  * Best-effort mapping from the web dashboard paths stored on notifications
@@ -50,6 +51,9 @@ const LINK_MAP: Record<string, { route: string; superAdminOnly?: boolean }> = {
 
 function mobileRouteFor(link: string | null | undefined, isSuperAdmin: boolean): string | null {
   if (!link) return null;
+  // Plan-task links ("Action required", reminders) open the screen that fixes it.
+  const taskPath = appPathForTaskLink(link);
+  if (taskPath) return taskPath;
   const [rawPath, query = ''] = link.replace(/^\/dashboard\/?/, '').split('?');
   const path = rawPath;
   const [segment, id] = path.split('/');

@@ -31,7 +31,10 @@ export interface MobileReportView {
   competitors: Array<{ name: string; rating: string; reviews: string; aboveYou: string; tier: string }>;
   reviews: ReturnType<typeof reviewDisplay>;
   completion: { sentence: string; percent: number | null; missing: string[]; notChecked: string[] };
-  issues: Array<{ title: string; evidence: string; severity: string; actionability: string; recommendedAction: string; growwmaticsCan: boolean }>;
+  /** id = the finding id ('' for legacy audits), matched to plan tasks (GET /api/tasks). */
+  issues: Array<{ id: string; title: string; evidence: string; severity: string; actionability: string; recommendedAction: string; growwmaticsCan: boolean }>;
+  /** This report's finding ids when it is a connected report (its plan tasks show live status); [] otherwise. */
+  planFindingIds: string[];
   suspension: { level: string; note: string };
   monthly: null | {
     period: { start: string; end: string };
@@ -53,7 +56,7 @@ const kwValue = (k: any): RankValue =>
   k.status === 'unavailable' ? { state: 'unavailable', rank: null }
     : k.averageObservedRank != null ? { state: 'found', rank: k.averageObservedRank } : { state: 'not_found', rank: null };
 
-export function buildMobileReportView(audit: { auditData?: any }): MobileReportView {
+export function buildMobileReportView(audit: { auditData?: any; auditKind?: string; fastMode?: boolean }): MobileReportView {
   const d = audit.auditData || {};
   const facts = d.facts;
   const legacy = isLegacyAudit(d);
@@ -148,6 +151,7 @@ export function buildMobileReportView(audit: { auditData?: any }): MobileReportV
     },
     issues: issues.length
       ? issues.map((f: any) => ({
+          id: String(f.id || ''),
           title: String(f.title),
           evidence: String(f.evidence || ''),
           severity: SEVERITY_LABEL[f.severity] ?? '',
@@ -155,7 +159,10 @@ export function buildMobileReportView(audit: { auditData?: any }): MobileReportV
           recommendedAction: String(f.recommendedAction || ''),
           growwmaticsCan: !!f.growwmaticsCapability,
         }))
-      : legacyIssues.map((t) => ({ title: t, evidence: '', severity: '', actionability: '', recommendedAction: '', growwmaticsCan: false })),
+      : legacyIssues.map((t) => ({ id: '', title: t, evidence: '', severity: '', actionability: '', recommendedAction: '', growwmaticsCan: false })),
+    planFindingIds: !audit.fastMode && (audit.auditKind === 'connected_baseline' || audit.auditKind === 'monthly') && Array.isArray(d.findings)
+      ? d.findings.map((f: any) => String(f.id)).filter(Boolean)
+      : [],
     suspension: suspension.basis === 'heuristic' ? suspensionDisplay(suspension) : suspensionDisplay(null),
     monthly,
   };

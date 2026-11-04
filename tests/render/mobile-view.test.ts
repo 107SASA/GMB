@@ -43,3 +43,15 @@ test('there is at least one new-engine, one legacy and one monthly fixture', () 
   assert.ok(fixtures.some((f) => f.audit.auditData?.facts));
   assert.ok(fixtures.some((f) => f.audit.auditData?.monthly));
 });
+
+test('mobile view: plan finding ids only for connected reports; issues carry their finding id', () => {
+  const findings = [
+    { id: 'website.services.missing_on_gbp', category: 'profile', title: 'Services', severity: 'medium', actionability: 'directly_fixable', growwmaticsCapability: 'update_services' },
+    { id: 'data_quality.ranking_unavailable', category: 'data_quality', title: 'Coverage', severity: 'low', actionability: 'monitor_only', growwmaticsCapability: null },
+  ];
+  const connected = buildMobileReportView({ auditKind: 'monthly', fastMode: false, auditData: { findings } });
+  assert.deepEqual(connected.planFindingIds, ['website.services.missing_on_gbp', 'data_quality.ranking_unavailable']);
+  assert.equal(connected.issues[0].id, 'website.services.missing_on_gbp');
+  assert.deepEqual(buildMobileReportView({ auditKind: 'free_report', fastMode: true, auditData: { findings } }).planFindingIds, [], 'free report: no tasks');
+  assert.deepEqual(buildMobileReportView({ auditData: { findings } }).planFindingIds, [], 'unknown kind: no tasks');
+});

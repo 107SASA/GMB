@@ -2339,6 +2339,21 @@ export const monthlyReportNotice = inngest.createFunction(
   }
 );
 
+// Plan-task reminders: after each connected report, the fixes still waiting
+// for the owner — in-app day 0, push day 1 and 5, WhatsApp day 3 and 7 — one
+// step per business per day, none once everything is done
+// (services/tasks/reminders.ts). 05:00 UTC ≈ 10:30 IST.
+export const planTaskReminders = inngest.createFunction(
+  { id: "plan-task-reminders", triggers: [{ cron: "0 5 * * *" }] },
+  async ({ step }) => {
+    const result = await step.run("send-due-reminders", async () => {
+      const { runTaskRemindersAll } = await import("@/services/tasks/reminderRunner");
+      return await runTaskRemindersAll();
+    });
+    return { success: true, ...result };
+  }
+);
+
 export const seoPlanWeeklySummary = inngest.createFunction(
   // Id kept so the existing Inngest registration/cron is replaced, not orphaned.
   { id: "seo-plan-weekly-summary", triggers: [{ cron: "0 12 * * 1" }] }, // Mondays ~17:30 IST

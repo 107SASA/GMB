@@ -270,6 +270,9 @@ export interface IBusiness extends Document {
   auditAutopilotNextRunAt?: Date;
   /** The report whose "fixes ready" popup was closed or finished (src/services/tasks) — shown once per report. */
   taskPopupDismissedAuditId?: string | null;
+  /** Plan-task reminders (src/services/tasks/reminders.ts): the report they are for, and the steps already claimed. */
+  taskReminderAuditId?: string | null;
+  taskRemindersSent?: string[];
   /** Last time the owner was nudged (in-app + WhatsApp) to add a real business
    *  category so their automatic audit can run — throttles that nudge to once
    *  every few days. */
@@ -514,6 +517,8 @@ const BusinessSchema: Schema = new Schema(
     // ADDITIVE — automatic audit autopilot (see IBusiness above + src/lib/auditAutopilot.ts).
     auditAutopilotNextRunAt: { type: Date },
     taskPopupDismissedAuditId: { type: String, default: null },
+    taskReminderAuditId: { type: String, default: null },
+    taskRemindersSent: { type: [String], default: undefined },
     auditAutopilotCategoryNudgedAt: { type: Date },
     auditAutopilotCategoryNudgeWhatsApps: { type: Number },
     monthlyReportNoticePending: {

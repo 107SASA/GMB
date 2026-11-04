@@ -328,7 +328,10 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
       //   cancelled or unpaid workspace; the two jobs that filtered on a
       //   non-existent Business.isActive field are retired.
       'bufferMonitorWorker', 'reviewSyncWorker', 'publishScheduledPostsCron', 'processPublishPostJob',
-      'publishScheduledMediaCron', 'processScheduledMediaPublishJob', 'processAutoReplyBatchJob'],
+      'publishScheduledMediaCron', 'processScheduledMediaPublishJob', 'processAutoReplyBatchJob',
+      // + audit → fix → proof (Nov 2026, not CRM): the daily plan-task reminder
+      //   job (services/tasks/reminders.ts).
+      'planTaskReminders'],
     // Real WhatsApp inbound lines are tagged via: 'whatsapp' so a website form cannot open the 24h window.
     // + Segment 3.1 STOP reliability (Oct 2026, not CRM): both provider handlers
     //   apply an opt-out durably before claiming the message id, outside the

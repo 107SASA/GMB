@@ -75,6 +75,7 @@ const EVENT_PREF: Record<OwnerNotifyEvent, PrefKey> = {
   weekly_update: 'weeklyUpdateWhatsApp',
   performance_digest: 'performanceDigestWhatsApp',
   review_attention: 'reviewReplyWhatsApp',
+  plan_task_reminder: 'reportReadyWhatsApp',
   festival_prompt: 'weeklyUpdateWhatsApp',
   review_reminder: 'weeklyUpdateWhatsApp',
   post_published: 'postPublishedWhatsApp',

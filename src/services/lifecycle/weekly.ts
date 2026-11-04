@@ -112,8 +112,8 @@ export function buildWeeklySummary(i: WeeklyInput): WeeklySummary {
   // Plan
   if (i.plan.awaitingOwner > 0) {
     meaningful = true;
-    lines.push(`Action needed: ${pl(i.plan.awaitingOwner, 'optimization')} waiting for you`);
-    notifications.push({ type: 'weekly_action_required', title: 'Action required', body: `${pl(i.plan.awaitingOwner, 'optimization')} need${i.plan.awaitingOwner === 1 ? 's' : ''} your confirmation or action before ${i.plan.awaitingOwner === 1 ? 'it' : 'they'} can be completed.`, link: '/dashboard/seo-plan' });
+    lines.push(`Action needed: ${pl(i.plan.awaitingOwner, 'fix', 'fixes')} from your report waiting for you`);
+    notifications.push({ type: 'weekly_action_required', title: 'Action required', body: `${pl(i.plan.awaitingOwner, 'fix', 'fixes')} from your report ${i.plan.awaitingOwner === 1 ? 'is' : 'are'} waiting for your approval or action.`, link: '/dashboard' });
   }
   if (i.plan.blocked > 0) lines.push(`Blocked: ${pl(i.plan.blocked, 'action')} (see the plan for why)`);
   if (i.plan.overdue > 0) lines.push(`Overdue: ${pl(i.plan.overdue, 'planned action')} older than 30 days`);

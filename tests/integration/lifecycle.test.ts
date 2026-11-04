@@ -186,7 +186,9 @@ test('weekly: new reviews notify; zero reviews is stated, not blamed', () => {
 test('weekly: unanswered reviews, action required, unavailable data', () => {
   const s = buildWeeklySummary(week({ reviews: { unanswered: 2 } as any, plan: { awaitingOwner: 1, blocked: 0, overdue: 0 } }));
   assert.ok(s.notifications.some((n) => n.body === '2 Google reviews are still waiting for a response.'));
-  assert.ok(s.notifications.some((n) => /needs your confirmation or action/.test(n.body)));
+  const action = s.notifications.find((n) => n.type === 'weekly_action_required');
+  assert.equal(action?.body, '1 fix from your report is waiting for your approval or action.');
+  assert.equal(action?.link, '/dashboard', 'opens the checklist, not the SEO plan');
   const notSynced = buildWeeklySummary(week({ reviews: { syncedThisWeek: false, unanswered: 5 } as any }));
   assert.ok(notSynced.lines[0].includes('not checked this week'));
   assert.equal(notSynced.notifications.length, 0, 'no review claims from a sync that did not run');

@@ -88,6 +88,8 @@ const TYPE_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   post_failed: 'alert-circle-outline',
   post_published: 'checkmark-circle-outline',
   monthly_report: 'bar-chart-outline',
+  plan_task_reminder: 'checkmark-done-circle-outline',
+  weekly_action_required: 'checkmark-done-circle-outline',
 };
 
 function NotificationRow({

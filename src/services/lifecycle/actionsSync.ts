@@ -1,8 +1,8 @@
 import dbConnect from '@/lib/mongodb';
 import { fr5ProfileMutationAllowed } from '@/lib/gbpSafety';
 import { collectExecutions } from './collect';
-import { deriveActionStatus, FIELD_OF, type ExecutionsSince } from './actions';
-import type { ExecutionRecords, PlanActionView } from './monthly';
+import { deriveActionStatus, editTouchesField, FIELD_OF, type ExecutionsSince } from './actions';
+import { effectiveProfileEdits, type ExecutionRecords, type PlanActionView } from './monthly';
 import { seenFixedOnGoogle, type SnapshotForCheck } from '../tasks/planTasks';
 
 function executionsSince(ex: ExecutionRecords, since: string): ExecutionsSince {
@@ -12,7 +12,8 @@ function executionsSince(ex: ExecutionRecords, since: string): ExecutionsSince {
     repliesByGrowwMatics: ex.replies.filter((r) => r.by !== 'external' && after(r.at)).length,
     reviewRequestsSent: (ex.reviewRequests.sentAt || []).filter((t) => after(t)).length,
     photos: ex.photos.filter((p) => after(p.at)).length,
-    appliedEdits: ex.profileEdits.filter((e) => e.liveWriteApplied === true && after(e.at)).map((e) => ({ at: e.at, fields: e.fields })),
+    // A rolled-back change never counts as the fix (nor does its rollback).
+    appliedEdits: effectiveProfileEdits(ex.profileEdits).filter((e) => after(e.at)).map((e) => ({ at: e.at, fields: e.fields })),
   };
 }
 
@@ -191,4 +192,39 @@ export async function refreshTasksLive(businessId: string, opts: { snapshot?: Sn
     updated++;
   }
   return { updated };
+}
+
+/**
+ * A verified Google profile change was rolled back: every plan task that
+ * change could have completed — done, seen fixed on Google, or confirmed —
+ * is open again at once, with the reason in its history. Earlier edits no
+ * longer count for it (plannedAt moves to now; the rollback itself never
+ * counts — effectiveProfileEdits). The stored GBP snapshot is not re-read
+ * here: it still shows the pre-rollback value until the next sync.
+ */
+export async function reopenTasksAfterRollback(businessId: string, fields: string[], now = new Date()): Promise<{ reopened: number }> {
+  await dbConnect();
+  const { default: OptimizationAction } = await import('@/models/OptimizationAction');
+  const candidates: any[] = await OptimizationAction.find({
+    businessId,
+    capability: { $in: Object.keys(FIELD_OF) },
+    $or: [{ status: { $in: ['EXECUTED', 'VERIFIED'] } }, { seenFixedOnGoogleAt: { $ne: null } }],
+  }).select('_id capability status').lean();
+  const reason = 'Reopened — the change on Google was rolled back';
+  let reopened = 0;
+  for (const a of candidates) {
+    if (!editTouchesField(fields, FIELD_OF[a.capability])) continue;
+    await OptimizationAction.updateOne(
+      { _id: a._id },
+      {
+        $set: { status: 'PLANNED', statusReason: reason, reopenedAt: now, plannedAt: now, seenFixedOnGoogleAt: null, ownerMarkedDoneAt: null },
+        $unset: { executedAt: 1, executionResult: 1, verifiedAt: 1, verificationResult: 1 },
+        $push: { history: { at: now, status: 'PLANNED', reason } },
+      },
+    );
+    reopened++;
+  }
+  // READY / BLOCKED from the prerequisites, without the stale snapshot.
+  if (reopened) await refreshTasksLive(businessId, { snapshot: null, now });
+  return { reopened };
 }

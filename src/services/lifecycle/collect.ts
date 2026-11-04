@@ -40,6 +40,8 @@ export async function collectExecutions(businessId: string, from: Date, to: Date
       liveWriteApplied: typeof e.metadata?.liveWriteApplied === 'boolean' ? e.metadata.liveWriteApplied : null,
       actor: e.metadata?.actor === 'growwmatics' ? 'growwmatics' : 'owner',
       by: e.updatedBy,
+      ...(e.metadata?.changeId ? { changeId: String(e.metadata.changeId) } : {}),
+      ...(e.metadata?.reverted === true ? { reverted: true } : {}),
     })),
     photos: (photos as any[]).map((p) => ({ at: new Date(p.publishedAt).toISOString() })),
     reviewRequests: { sent: (reqSentRows as any[]).length, failed: reqFailed, sentAt: (reqSentRows as any[]).map((r) => new Date(r.sentAt).toISOString()) },

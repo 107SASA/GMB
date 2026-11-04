@@ -172,6 +172,12 @@ export async function purgeAccount(userId: string, opts: { mode: PurgeMode; now?
     for (const t of tokens) {
       try { if (t.refreshToken) await revoke(t.refreshToken); } catch (err: any) { result.errors.push(`google revoke: ${err?.message}`); }
     }
+    // A salesperson's Google Calendar connection holds a refresh token too (same encryption).
+    const Calendar = await model('SalespersonCalendarConnection');
+    const calendars: any[] = await Calendar.collection.find({ userId: { $in: both([uid]) } }).project({ refreshTokenEnc: 1 }).toArray();
+    for (const c of calendars) {
+      try { if (c.refreshTokenEnc) await revoke(c.refreshTokenEnc); } catch (err: any) { result.errors.push(`google calendar revoke: ${err?.message}`); }
+    }
     if (keys.size) {
       try { await storage.deleteKeys(Array.from(keys)); } catch (err: any) { result.errors.push(`storage delete: ${err?.message}`); }
     }

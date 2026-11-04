@@ -15,6 +15,7 @@ import { competitorKey, LOCAL_PACK_WINDOW, normalizeName } from './facts.ts';
 import type { CompetitorFact, SearchObservation, ReviewFacts, SuspensionRisk } from './facts.ts';
 import { GROWWMATICS_CAPABILITIES, opportunityLabel } from './findings.ts';
 import type { Evidence, Finding, KeywordRow } from './findings.ts';
+import { formatRank } from './reportMath.ts';
 
 const ACTIONABILITY = new Set(['directly_fixable', 'indirectly_influenceable', 'monitor_only', 'not_actionable', 'unknown']);
 
@@ -295,6 +296,38 @@ const KNOWN_PLATFORMS = /\b(justdial|sulekha|indiamart|tradeindia|exportersindia
 
 export function isKnownPlatform(name: string): boolean {
   return KNOWN_PLATFORMS.test(String(name || ''));
+}
+
+/**
+ * "six verified services" → "six services": the services come from the
+ * website, the owner or the Google profile — the report never verified them
+ * on Google, so the word overstates them (Mulsetu key finding, Nov 2026).
+ */
+export function dropVerifiedServiceClaim<T extends string | undefined>(text: T): T {
+  if (!text) return text;
+  return text.replace(/\b(?:verified|confirmed)\s+(services?)\b/gi, '$1') as T;
+}
+
+/**
+ * A keyword's rank written in prose ("website development ojhar – Maps rank #2")
+ * is set to the keyword table's own value (#1.6) — the model rounded it, so
+ * the same keyword read #1.6 in the table and #2 in the text.
+ */
+export function alignKeywordRanks(text: string, rows: ReadonlyArray<{ keyword: string; rank?: number | null }>): string {
+  if (!text || !rows.length) return text;
+  const valid = (r: number | null | undefined): r is number => r != null && r > 0 && r <= 20;
+  const rankOf = new Map(rows.filter((r) => r.keyword).map((r) => [r.keyword.toLowerCase(), r.rank]));
+  if (![...rankOf.values()].some(valid)) return text;
+  // One left-to-right pass, longest keyword first at each position, so a
+  // keyword inside a longer one ("website development ojhar" in "best
+  // website development ojhar") never re-matches. Keywords without a measured
+  // rank take part (so they are not mistaken for a shorter one) but are left as written.
+  const alt = [...rankOf.keys()].sort((a, b) => b.length - a.length).map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const re = new RegExp(`(^|[^\\w])(${alt})([^#.;\\n]{0,40}?#)(\\d+(?:\\.\\d+)?)`, 'gi');
+  return text.replace(re, (all, pre, k, mid) => {
+    const rank = rankOf.get(String(k).toLowerCase());
+    return valid(rank) ? `${pre}${k}${mid}${formatRank(rank)}` : all;
+  });
 }
 
 // ── Causation / unsupported-claim sentence filter ─────────────────────────

@@ -11,7 +11,7 @@ import type { WebsiteSignals } from '@/services/audit/websiteSignals';
 import type { FieldState, RankingSummary, ReviewComparison, SuspensionRisk } from '@/services/audit/facts';
 import type { Finding, OpportunityLabel } from '@/services/audit/findings';
 import { GROWWMATICS_CAPABILITIES } from '@/services/audit/findings';
-import { allowedNumbersFrom, isKnownPlatform, hasGenericPlaceholder, isRedundantReplyTask, namesIdentityAttribute, stripGenericPlaceholders, claimsUnsupportedCapability, dropUnsupportedSentences, groundItems, groundText } from '@/services/audit/validateAudit';
+import { allowedNumbersFrom, alignKeywordRanks, dropVerifiedServiceClaim, isKnownPlatform, hasGenericPlaceholder, isRedundantReplyTask, namesIdentityAttribute, stripGenericPlaceholders, claimsUnsupportedCapability, dropUnsupportedSentences, groundItems, groundText } from '@/services/audit/validateAudit';
 import { competitorTierLabel, suspensionDisplay } from '@/services/audit/reportDisplay';
 import { claimsUnknownService, inventedClaimChecker, namesUnknownBusiness, repairUnverifiedGbpClaims, type ClaimContext } from '@/services/audit/validateAudit';
 import { brandPhrase } from '@/services/audit/facts';
@@ -298,13 +298,16 @@ function buildCoreSnapshot(input: SeoPlanInput): ISeoPlanSnapshotTile[] {
   return tiles;
 }
 
-function buildDataRequired(input: SeoPlanInput, depth: ReportDepth): string[] {
+export function buildDataRequired(input: SeoPlanInput, depth: ReportDepth): string[] {
   const out: string[] = [];
   if (input.ranking.notRunReason === 'category_unknown') {
     out.push('Your main service (and a specific primary category on Google) — needed before Google Maps ranking can be measured.');
   }
   if (input.websiteSearchTerm) {
-    out.push(`Google's Places data gave only a generic category ("${input.category}"), so we measured ranking for "${input.websiteSearchTerm}" — a service your website names. Confirm it is your main service.`);
+    // The connected profile's own category when it was read (it can differ from
+    // the public Places one) — never call a real category "generic".
+    const shown = (input.gbpRead && input.gbpLive?.primaryCategory) || input.category;
+    out.push(`Your Google category ("${shown}") is too broad to measure Maps rankings for, so we measured "${input.websiteSearchTerm}" — a service your website names. Confirm it is your main service.`);
   }
   const siteServices = websiteServicesOf(input);
   if (siteServices.length && !input.gbpRead) {
@@ -438,7 +441,7 @@ LOCATION: ${[input.area, input.city, input.state].filter(Boolean).join(', ')}
 RANKING: ${o.testedCount ? `in the top 20 in ${o.foundCount} of ${o.testedCount} searches${o.averageObservedRank != null ? `; average position where found #${o.averageObservedRank}` : ''}` : 'unavailable'}
 REVIEWS (lifetime): ${r.totalCount != null ? `${r.totalCount} at ${r.rating ?? '?'}★ (sample size: ${r.sampleSize})` : 'unknown'}
 PROFILE COMPLETION: ${shortCompletionFact(input.profileCompletion)} (never call the profile "complete" or "100% complete")
-VERIFIED SERVICES: ${(input.ownerServices ?? input.verifiedServices).join(', ') || '(none verified)'}
+VERIFIED SERVICES (named by the owner, the Google profile or the website — when you write to the customer call them "services", never "verified services"): ${(input.ownerServices ?? input.verifiedServices).join(', ') || '(none verified)'}
 OWNER-PROVIDED: ${owner}
 ${site}
 ${siteClaims}
@@ -818,7 +821,12 @@ export async function generateSeoPlanDraft(input: SeoPlanInput): Promise<ISeoPla
   // Without a live GBP read, prose may not assert what the profile contains:
   // "Your GBP is missing X" → "Verify whether your Google Business Profile lists X".
   const gbpRead = !!input.gbpRead;
-  const fix = (t?: string) => repairUnverifiedGbpClaims(t, gbpRead);
+  // Also: a keyword's rank reads exactly as in the keyword table, and services
+  // are never called "verified" (they come from the website / owner / profile).
+  const fix = (t?: string) => {
+    const r = repairUnverifiedGbpClaims(t, gbpRead);
+    return r ? dropVerifiedServiceClaim(alignKeywordRanks(r, input.keywordTable)) : r;
+  };
   draft.keyFinding = fix(draft.keyFinding);
   draft.websiteAssessment = fix(draft.websiteAssessment);
   draft.competitorCounterPosition = fix(draft.competitorCounterPosition);

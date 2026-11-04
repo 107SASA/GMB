@@ -154,6 +154,7 @@ test('actions: approved Profile optimization changes execute services, categorie
   assert.equal(deriveActionStatus(action('update_attributes'), edits(['attribute:has_wheelchair_accessible_entrance'])).status, 'EXECUTED');
   assert.equal(deriveActionStatus(action('update_booking_link'), edits(['attribute:url_appointment'])).status, 'EXECUTED');
   assert.equal(deriveActionStatus(action('update_booking_link'), edits(['attribute:has_wifi'])).status, 'READY', 'another attribute is not the booking link');
+  assert.equal(deriveActionStatus(action('update_attributes'), edits(['attribute:url_appointment'])).status, 'READY', 'the booking link is not an attribute fix');
   assert.equal(deriveActionStatus(action('update_services'), edits(['additionalCategories'])).status, 'READY', 'an edit to a different field is not this action');
   assert.match(deriveActionStatus(action('update_services'), { ...base, liveWritesEnabled: false }).statusReason, /turned off/);
 });

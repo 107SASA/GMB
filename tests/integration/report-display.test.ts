@@ -13,7 +13,7 @@ import {
   suspensionDisplay, POLICY_UNVERIFIED_NOTE, buildRankMapUrl, isLegacyAudit,
 } from '../../src/services/audit/reportDisplay.ts';
 import { buildObservation, summarizeRankings, buildReviewFacts, gridFromObservations, competitorsFromObservations, brandPhrase, isBrandedKeyword } from '../../src/services/audit/facts.ts';
-import { claimsUnsupportedCapability, validateAudit, claimsCausation, dropUnsupportedSentences, hasGenericPlaceholder, stripGenericPlaceholders, namesIdentityAttribute, isRedundantReplyTask, allReviewsReplied, isKnownPlatform } from '../../src/services/audit/validateAudit.ts';
+import { claimsUnsupportedCapability, validateAudit, claimsCausation, dropUnsupportedSentences, hasGenericPlaceholder, stripGenericPlaceholders, namesIdentityAttribute, isRedundantReplyTask, allReviewsReplied, isKnownPlatform, alignKeywordRanks, dropVerifiedServiceClaim } from '../../src/services/audit/validateAudit.ts';
 import { isBlockedAddress, checkUrlShape } from '../../src/lib/ssrfGuard.ts';
 
 const obs = (rank: number | null, status: 'ok' | 'unavailable' = 'ok', kind: 'primary' | 'nearby' = 'primary', point = { lat: 22.5, lng: 88.3 }) =>
@@ -177,6 +177,28 @@ test('only known directories are suggested', () => {
   assert.equal(isKnownPlatform('Justdial'), true);
   assert.equal(isKnownPlatform('Clutch.co'), true);
   assert.equal(isKnownPlatform('Bing Places for Business'), true);
+});
+
+test('a keyword\'s rank in prose matches the keyword table (Mulsetu: #1.6 written as #2)', () => {
+  const rows = [
+    { keyword: 'website development ojhar', rank: 2 },
+    { keyword: 'best website development ojhar', rank: 1.6 },
+    { keyword: 'website development near me', rank: 4.1 },
+    { keyword: 'top website development ojhar', rank: null },
+  ];
+  assert.equal(alignKeywordRanks('best website development ojhar – Maps rank #2', rows), 'best website development ojhar – Maps rank #1.6');
+  assert.equal(alignKeywordRanks('website development ojhar – Maps rank #2', rows), 'website development ojhar – Maps rank #2', 'the shorter keyword keeps its own rank');
+  assert.equal(alignKeywordRanks('website development near me – HIGH demand, Maps rank #4', rows), 'website development near me – HIGH demand, Maps rank #4.1');
+  assert.equal(alignKeywordRanks('top website development ojhar is not ranked #1 yet', rows), 'top website development ojhar is not ranked #1 yet', 'an unranked keyword is left as written');
+  assert.equal(alignKeywordRanks('Average rank #2.6 across searches.', rows), 'Average rank #2.6 across searches.', 'numbers not tied to a keyword are untouched');
+  assert.equal(alignKeywordRanks('', rows), '');
+});
+
+test('services are never called "verified" in customer prose', () => {
+  assert.equal(dropVerifiedServiceClaim('The business lists six verified services—including AI & Automation.'), 'The business lists six services—including AI & Automation.');
+  assert.equal(dropVerifiedServiceClaim('Add the six Verified Services to Google.'), 'Add the six Services to Google.');
+  assert.equal(dropVerifiedServiceClaim('Your verified Google profile'), 'Your verified Google profile', 'other uses of the word stay');
+  assert.equal(dropVerifiedServiceClaim(undefined), undefined);
 });
 
 // ── Validation repairs vs failures ─────────────────────────────────────────

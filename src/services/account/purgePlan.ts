@@ -79,6 +79,8 @@ export const PURGE_TARGETS: PurgeTarget[] = [
   { model: 'GBPKeyword', by: { businessId: 'businessId' }, category: 'a', what: 'Google search keywords' },
   { model: 'GBPKeywordIntel', by: { businessId: 'businessId' }, category: 'a', what: 'keyword intelligence' },
   { model: 'ProfileActivity', by: { businessId: 'businessId' }, category: 'a', what: 'profile edit history' },
+  { model: 'GbpProfileChange', by: { businessId: 'businessId' }, category: 'a', what: 'Google profile change proposals (before / after listing values, who approved)' },
+  { model: 'SalespersonCalendarConnection', by: { userId: 'userId' }, category: 'a', what: 'Google Calendar connection (tokens revoked with Google first)' },
   // ── a: the user's own account artefacts ──
   { model: 'LoginLink', by: { userId: 'userId' }, category: 'a', what: 'login links' },
   { model: 'Notification', by: { businessId: 'businessId', userId: 'userId' }, category: 'a', what: 'in-app notifications' },
@@ -129,6 +131,8 @@ export const NOT_PURGED: Record<string, string> = {
   BookingAgentConfig: 'platform configuration',
   ReportAgentConfig: 'platform configuration',
   ContentTemplate: 'platform configuration',
+  NurtureConfigAudit: 'Super Admin edit log of the platform nurture schedule — versions and field diffs only, no customer data',
+  ReviewFollowUpPolicy: 'platform configuration (one global review follow-up policy)',
 };
 
 /** Storage prefixes that belong to one business (all uploads are written under these). */

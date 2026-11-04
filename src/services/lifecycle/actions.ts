@@ -46,7 +46,8 @@ export interface ActionStatusResult {
 /**
  * Profile field an update_* capability changes, as logged by a verified
  * Profile optimization change (store.ts ACTIVITY_FIELDS). A value ending in
- * ':' matches any field with that prefix (every attribute is "attribute:<id>").
+ * ':' matches any field with that prefix (every attribute is "attribute:<id>"),
+ * except the link attributes (attribute:url_…), which are the booking link's.
  */
 export const FIELD_OF: Record<string, string> = {
   update_title: 'title',
@@ -61,7 +62,8 @@ export const FIELD_OF: Record<string, string> = {
 };
 
 export function editTouchesField(fields: string[], field: string): boolean {
-  return field.endsWith(':') ? fields.some((f) => f.startsWith(field)) : fields.includes(field);
+  if (!field.endsWith(':')) return fields.includes(field);
+  return fields.some((f) => f.startsWith(field) && !(field === 'attribute:' && f.startsWith('attribute:url_')));
 }
 
 export function deriveActionStatus(

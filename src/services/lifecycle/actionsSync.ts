@@ -3,7 +3,7 @@ import { fr5ProfileMutationAllowed } from '@/lib/gbpSafety';
 import { collectExecutions } from './collect';
 import { deriveActionStatus, editTouchesField, FIELD_OF, type ExecutionsSince } from './actions';
 import { effectiveProfileEdits, type ExecutionRecords, type PlanActionView } from './monthly';
-import { seenFixedOnGoogle, type SnapshotForCheck } from '../tasks/planTasks';
+import { CAPABILITY_SINCE_NOV_2026, seenFixedOnGoogle, withCurrentCapability, type SnapshotForCheck } from '../tasks/planTasks';
 
 function executionsSince(ex: ExecutionRecords, since: string): ExecutionsSince {
   const after = (at: string | null) => !!at && at >= since;
@@ -87,7 +87,7 @@ export async function refreshActionStatuses(opts: {
   await dbConnect();
   const { default: OptimizationAction } = await import('@/models/OptimizationAction');
   const at = opts.auditAt;
-  const open: any[] = await OptimizationAction.find({ businessId: opts.businessId, status: { $ne: 'VERIFIED' } }).lean();
+  const open: any[] = (await OptimizationAction.find({ businessId: opts.businessId, status: { $ne: 'VERIFIED' } }).lean()).map(withCurrentCapability);
   const views: PlanActionView[] = [];
   if (open.length) {
   const earliest = new Date(Math.min(...open.map((a) => new Date(a.plannedAt).getTime())));
@@ -126,7 +126,7 @@ export async function refreshActionStatuses(opts: {
   }
   }
   // Actions verified earlier stay in the report's "completed" list.
-  const done: any[] = await OptimizationAction.find({ businessId: opts.businessId, status: 'VERIFIED' }).select('findingId description capability verificationResult plannedAt executedAt verifiedAt').lean();
+  const done: any[] = (await OptimizationAction.find({ businessId: opts.businessId, status: 'VERIFIED' }).select('findingId description capability verificationResult plannedAt executedAt verifiedAt').lean()).map(withCurrentCapability);
   for (const d of done) {
     if (!views.some((v) => v.findingId === d.findingId)) {
       views.push({
@@ -151,7 +151,7 @@ export async function refreshTasksLive(businessId: string, opts: { snapshot?: Sn
   await dbConnect();
   const now = opts.now ?? new Date();
   const [{ default: OptimizationAction }, { default: Business }] = await Promise.all([import('@/models/OptimizationAction'), import('@/models/Business')]);
-  const open: any[] = await OptimizationAction.find({ businessId, status: { $ne: 'VERIFIED' } }).lean();
+  const open: any[] = (await OptimizationAction.find({ businessId, status: { $ne: 'VERIFIED' } }).lean()).map(withCurrentCapability);
   if (!open.length) return { updated: 0 };
 
   const business: any = await Business.findById(businessId).select('googleLocationId googleConnected').lean();
@@ -205,11 +205,14 @@ export async function refreshTasksLive(businessId: string, opts: { snapshot?: Sn
 export async function reopenTasksAfterRollback(businessId: string, fields: string[], now = new Date()): Promise<{ reopened: number }> {
   await dbConnect();
   const { default: OptimizationAction } = await import('@/models/OptimizationAction');
-  const candidates: any[] = await OptimizationAction.find({
+  const candidates: any[] = (await OptimizationAction.find({
     businessId,
-    capability: { $in: Object.keys(FIELD_OF) },
-    $or: [{ status: { $in: ['EXECUTED', 'VERIFIED'] } }, { seenFixedOnGoogleAt: { $ne: null } }],
-  }).select('_id capability status').lean();
+    $and: [
+      // Includes tasks saved before Nov 2026 with capability null (withCurrentCapability).
+      { $or: [{ capability: { $in: Object.keys(FIELD_OF) } }, { capability: null, findingId: { $in: Object.keys(CAPABILITY_SINCE_NOV_2026) } }] },
+      { $or: [{ status: { $in: ['EXECUTED', 'VERIFIED'] } }, { seenFixedOnGoogleAt: { $ne: null } }] },
+    ],
+  }).select('_id findingId capability status').lean()).map(withCurrentCapability);
   const reason = 'Reopened — the change on Google was rolled back';
   let reopened = 0;
   for (const a of candidates) {

@@ -141,3 +141,44 @@ test('task view: plain-words reason, mark-done flag, done date', () => {
   assert.match(w.statusReason, /approve/);
   assert.equal(w.actor, 'approve');
 });
+
+// ── Tasks saved before Nov 2026 (capability null) ──────────────────────────
+
+import { CAPABILITY_SINCE_NOV_2026, withCurrentCapability } from '../../src/services/tasks/planTasks.ts';
+import { buildEvidenceAndFindings } from '../../src/services/audit/findings.ts';
+import fs from 'node:fs';
+
+test('an existing customer\'s old task reads with today\'s capability — Fix now, not "do it in Google"', () => {
+  const old = { findingId: 'website.services.missing_on_gbp', capability: null, requiresGbpConnection: false, status: 'PLANNED' as const };
+  const cur = withCurrentCapability(old);
+  assert.equal(cur.capability, 'update_services');
+  assert.equal(cur.requiresGbpConnection, true);
+  assert.equal(old.capability, null, 'the stored object is not changed');
+  const view = buildTaskView({ _id: 't', description: 'Add services', ...cur }, new Set());
+  assert.equal(view.actor, 'approve');
+  assert.equal(view.target.web, '/dashboard/profile-optimization?section=services');
+  assert.equal(view.canMarkDone, false);
+  // Unrelated owner-only tasks and tasks that already have a capability are left as they are.
+  assert.equal(withCurrentCapability({ findingId: 'website.gbp_services_not_on_site', capability: null }).capability, null);
+  assert.equal(withCurrentCapability({ findingId: 'gbp.attributes.none', capability: 'update_attributes' }).capability, 'update_attributes');
+});
+
+test('the mapping matches what today\'s audit produces for each finding', () => {
+  const fields = { 'Business Hours': 'verified_missing', 'Primary Category': 'verified_missing', 'Services Listed': 'verified_missing' } as const;
+  const { findings } = buildEvidenceAndFindings({
+    fields, title: { name: 'Mulsetu', wordCount: 1 }, primaryRanking: { status: 'not_run' } as any, nearbyRanking: { status: 'not_run' } as any,
+    nearbyByKeyword: [], competitors: [], competitorsAhead: { count: 0, names: [], searchesChecked: 0 } as any,
+    reviews: { lifetime: { status: 'unknown', totalCount: null, rating: null, source: null, sampleSize: null }, recent: { status: 'unknown', periodDays: 14, newReviewCount: null, reviewsPerWeek: null, responseRate: null, replyUnknownCount: 0, sentiment: null, textSampleCount: 0 } } as any,
+    reviewComparison: null, keywordRows: [], suspensionRisk: { level: 'low', reasons: [] } as any,
+  } as any);
+  for (const id of ['profile.business_hours.missing', 'profile.primary_category.missing', 'profile.services_listed.missing']) {
+    assert.equal(findings.find((f) => f.id === id)?.growwmaticsCapability, CAPABILITY_SINCE_NOV_2026[id], id);
+  }
+  // The other three are built in auditService / GBP intelligence.
+  const src = fs.readFileSync('src/services/audit/auditService.ts', 'utf8') + fs.readFileSync('src/services/gbp/intelligence/auditInput.ts', 'utf8');
+  for (const id of ['website.services.missing_on_gbp', 'gbp.attributes.none', 'website.booking.not_on_listing']) {
+    const at = src.indexOf(`id: '${id}'`);
+    assert.ok(at > 0, `${id} still exists`);
+    assert.match(src.slice(at, at + 900), new RegExp(`growwmaticsCapability: '${CAPABILITY_SINCE_NOV_2026[id]}'`), id);
+  }
+});

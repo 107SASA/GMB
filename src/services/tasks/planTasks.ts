@@ -84,6 +84,30 @@ export function taskActor(capability: string | null): TaskActor {
   return 'owner';
 }
 
+/**
+ * Findings whose fix moved from "owner, in Google" to a Profile optimization
+ * change in Nov 2026 (audit/findings.ts capability map). Tasks saved before
+ * that still carry capability null until their next report re-syncs them;
+ * read through withCurrentCapability they already open "Fix now" and tick
+ * Done when the approved change is verified. Read-time only — nothing stored
+ * is rewritten (the next report saves the new capability itself).
+ */
+export const CAPABILITY_SINCE_NOV_2026: Readonly<Record<string, string>> = {
+  'profile.business_hours.missing': 'update_hours',
+  'profile.primary_category.missing': 'update_categories',
+  'profile.services_listed.missing': 'update_services',
+  'website.services.missing_on_gbp': 'update_services',
+  'gbp.attributes.none': 'update_attributes',
+  'website.booking.not_on_listing': 'update_booking_link',
+};
+
+export function withCurrentCapability<T extends { findingId: string; capability: string | null; requiresGbpConnection?: boolean }>(a: T): T {
+  if (a.capability) return a;
+  const capability = CAPABILITY_SINCE_NOV_2026[a.findingId];
+  // Every Profile optimization change needs the connected Google profile.
+  return capability ? { ...a, capability, requiresGbpConnection: true } : a;
+}
+
 /** Measurement only (rank tracking) — never a task for the customer. */
 export function isCustomerTask(a: { capability: string | null; findingId: string }): boolean {
   return a.capability !== 'rank_tracking' && !a.findingId.startsWith('data_quality.');

@@ -8,6 +8,7 @@ import {
   buildTaskView,
   canMarkDone,
   isCustomerTask,
+  withCurrentCapability,
   PENDING_CHANGE_STATUSES,
   shouldShowTaskPopup,
   sortTasks,
@@ -36,7 +37,7 @@ export async function getTaskList(businessId: string): Promise<TaskList> {
     Business.findById(businessId).select('taskPopupDismissedAuditId').lean(),
   ]);
   const pendingKinds = new Set((pending as any[]).map((c) => String(c.kind)));
-  const tasks = sortTasks((actions as any[]).filter(isCustomerTask).map((a) => buildTaskView(a, pendingKinds)));
+  const tasks = sortTasks((actions as any[]).map(withCurrentCapability).filter(isCustomerTask).map((a) => buildTaskView(a, pendingKinds)));
   const summary = summarizeTasks(tasks);
   const latestId = latest ? String((latest as any)._id) : null;
   return {
@@ -55,7 +56,8 @@ export async function getTaskList(businessId: string): Promise<TaskList> {
 export async function markTaskDone(businessId: string, taskId: string, userId: string): Promise<{ ok: true; task: TaskView } | { ok: false; status: number; error: string }> {
   if (!mongoose.isValidObjectId(taskId)) return { ok: false, status: 404, error: 'Task not found.' };
   await dbConnect();
-  const action: any = await OptimizationAction.findOne({ _id: taskId, businessId }).lean();
+  const stored: any = await OptimizationAction.findOne({ _id: taskId, businessId }).lean();
+  const action: any = stored ? withCurrentCapability(stored) : null;
   if (!action || !isCustomerTask(action)) return { ok: false, status: 404, error: 'Task not found.' };
   if (!canMarkDone(action)) {
     return { ok: false, status: 409, error: 'This one updates on its own once the change is on Google.' };
@@ -71,7 +73,7 @@ export async function markTaskDone(businessId: string, taskId: string, userId: s
   ).lean();
   // Already done (or confirmed) — idempotent, return the current state.
   const doc = updated ?? (await OptimizationAction.findOne({ _id: taskId, businessId }).lean());
-  return { ok: true, task: buildTaskView(doc as any, new Set()) };
+  return { ok: true, task: buildTaskView(withCurrentCapability(doc as any), new Set()) };
 }
 
 /** Closing or finishing the popup hides it for that report only. */

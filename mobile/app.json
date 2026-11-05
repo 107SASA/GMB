@@ -11,6 +11,7 @@
       "bundleIdentifier": "com.growwmatics.app",
       "buildNumber": "1",
       "supportsTablet": false,
+      "associatedDomains": ["applinks:growwmatics.com", "applinks:www.growwmatics.com"],
       "config": {
         "usesNonExemptEncryption": false
       }

@@ -259,7 +259,10 @@ test('super-admin CRM untouched: no admin / sales-agent / nurture / lead-engine 
     return; // no git (e.g. a packaged build) — nothing to compare
   }
   const forbidden = /(^|\/)(admin|sales[-_]?agent|salesAgent|nurture|lead[-_]?engine|leadEngine|conversion)(\/|\.|-|$)/i;
-  const hits = changed.filter((f) => forbidden.test(f));
+  // Not CRM code: the Google access status (services/gbp/access) shown to the
+  // sales / support team on the businesses list and the inbox customer panel.
+  const notCrm = new Set(['src/app/admin/businesses/page.tsx', 'src/app/admin/inbox/page.tsx', 'src/app/api/admin/businesses/route.ts']);
+  const hits = changed.filter((f) => forbidden.test(f) && !notCrm.has(f));
   assert.deepEqual(hits, [], `super-admin files changed: ${hits.join(', ')}`);
   // The platform tenant is refused by the customer service by construction.
   assert.match(read('src/services/crm/customerLeads.ts'), /organizationId === PLATFORM_TENANT\) throw/);

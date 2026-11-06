@@ -314,6 +314,12 @@ export default function ProfileOptimizationScreen() {
   const [removedAreas, setRemovedAreas] = useState<string[]>([]);
   const [pickedHolidays, setPickedHolidays] = useState<string[]>([]);
   const [attrValues, setAttrValues] = useState<Record<string, string>>({});
+  // Owner edits: their own description, and which suggested categories /
+  // services to leave out (or add) — the AI draft is only a starting point.
+  const [descDraft, setDescDraft] = useState<string | null>(null);
+  const [skippedCategories, setSkippedCategories] = useState<string[]>([]);
+  const [skippedServices, setSkippedServices] = useState<string[]>([]);
+  const [ownServices, setOwnServices] = useState('');
   const [bulkBool, setBulkBool] = useState<Record<string, boolean | undefined>>({});
 
   const recs = query.data?.recs ?? null;
@@ -394,7 +400,15 @@ export default function ProfileOptimizationScreen() {
   };
 
   const propose = (key: string, body: object) => run(key, async () => {
-    showProposeResult(await proposeChange(body));
+    const json = await proposeChange(body);
+    showProposeResult(json);
+    // Saved for approval: close the owner's editor (a rejected one stays open to fix).
+    if (json.change?.status === 'PROPOSED') {
+      setDescDraft(null);
+      setOwnServices('');
+      setSkippedServices([]);
+      setSkippedCategories([]);
+    }
     await reload();
   });
 
@@ -740,23 +754,56 @@ export default function ProfileOptimizationScreen() {
             <>
               <SectionLabel>Improve your profile</SectionLabel>
 
-              {!!description?.text && (
-                <Panel section="description" title="Business description" icon="document-text" hint="A new description written for you" count={1}>
-                  <View className="rounded-xl px-3 py-2.5" style={{ backgroundColor: t.bg }}>
-                    <Text className="font-sans text-sm leading-5 text-white">{description.text}</Text>
-                  </View>
-                  {description.validation?.valid ? (
-                    <PrimaryButton
-                      title="Use this description"
-                      loading={busyKey === 'description'}
+              <Panel section="description" title="Business description" icon="document-text" hint={descDraft !== null ? 'Writing your own' : description?.text ? 'A new description written for you' : 'Write your own'} count={description?.text ? 1 : 0}>
+                {descDraft === null ? (
+                  <>
+                    {(description?.text || description?.current) ? (
+                      <>
+                        <Hint>{description?.text ? 'Suggested by GrowwMatics' : 'On Google now'}</Hint>
+                        <View className="rounded-xl px-3 py-2.5" style={{ backgroundColor: t.bg }}>
+                          <Text className="font-sans text-sm leading-5 text-white">{description?.text || description?.current}</Text>
+                        </View>
+                      </>
+                    ) : (
+                      <Hint>Your profile has no description yet.</Hint>
+                    )}
+                    {!!description?.text && description.validation?.valid && (
+                      <PrimaryButton
+                        title="Use this description"
+                        loading={busyKey === 'description'}
+                        disabled={busy}
+                        onPress={() => propose('description', { kind: 'description', proposed: description.text, source: 'recommendation', context: { tokens: description.tokens || [], competitorNames: description.competitorNames || [] } })}
+                      />
+                    )}
+                    {!!description?.text && !description.validation?.valid && <Hint error>This draft didn’t pass our checks — edit it or write your own.</Hint>}
+                    <SecondaryButton
+                      title={description?.text ? 'Edit it / write my own' : description?.current ? 'Edit description' : 'Write a description'}
                       disabled={busy}
-                      onPress={() => propose('description', { kind: 'description', proposed: description.text, source: 'recommendation', context: { tokens: description.tokens || [], competitorNames: description.competitorNames || [] } })}
+                      onPress={() => setDescDraft(description?.text || description?.current || '')}
                     />
-                  ) : (
-                    <Hint error>This draft didn’t pass our checks.</Hint>
-                  )}
-                </Panel>
-              )}
+                  </>
+                ) : (
+                  <>
+                    <Field
+                      value={descDraft}
+                      onChangeText={setDescDraft}
+                      multiline
+                      textAlignVertical="top"
+                      maxLength={750}
+                      placeholder="What you do, for whom, and where — in your own words."
+                      className="min-h-[120px]"
+                    />
+                    <Hint>{descDraft.length}/750 · No links, prices or words like “best” or “cheapest” — Google doesn’t allow them.</Hint>
+                    <PrimaryButton
+                      title="Save my description"
+                      loading={busyKey === 'description'}
+                      disabled={busy || !descDraft.trim() || descDraft.trim() === (description?.current || '').trim()}
+                      onPress={() => propose('description', { kind: 'description', proposed: descDraft.trim(), source: 'owner', context: { tokens: description?.tokens || [], competitorNames: description?.competitorNames || [] } })}
+                    />
+                    <SecondaryButton title="Cancel" disabled={busy} onPress={() => setDescDraft(null)} />
+                  </>
+                )}
+              </Panel>
 
               {Boolean(categories?.primary || categories?.additional?.length) && (
                 <Panel section="categories" title="Categories" icon="pricetags" hint={addable.length ? `${plural(addable.length, 'category', 'categories')} to add` : 'Nothing to add'} count={addable.length}>
@@ -776,21 +823,28 @@ export default function ProfileOptimizationScreen() {
                   )}
                   {addable.length > 0 && (
                     <>
-                      <Hint>Extra categories to add</Hint>
-                      <View className="flex-row flex-wrap gap-2">
+                      <Hint>Extra categories to add — untick any that don’t describe your business</Hint>
+                      <View className="gap-1">
                         {addable.map((c) => (
-                          <View key={c.displayName} className="rounded-2xl border border-surface-border px-3 py-1.5" style={{ maxWidth: '100%' }}>
-                            <Text className="font-sans text-sm text-white">{c.displayName}</Text>
-                            {!!c.competitors?.length && <Text className="font-sans text-[11px] text-zinc-400">used by competitors</Text>}
-                          </View>
+                          <CheckRow
+                            key={c.displayName}
+                            label={`${c.displayName}${c.competitors?.length ? ' · used by competitors' : ''}`}
+                            checked={!skippedCategories.includes(c.displayName)}
+                            onPress={() => setSkippedCategories(skippedCategories.includes(c.displayName) ? skippedCategories.filter((x) => x !== c.displayName) : [...skippedCategories, c.displayName])}
+                          />
                         ))}
                       </View>
-                      <PrimaryButton
-                        title={`Add ${plural(addable.length, 'category', 'categories')}`}
-                        loading={busyKey === 'categories'}
-                        disabled={busy}
-                        onPress={() => propose('categories', { kind: 'categories', source: 'recommendation', proposed: { additionalCategories: addable.map((c) => ({ name: c.categoryName })) } })}
-                      />
+                      {(() => {
+                        const chosen = addable.filter((c) => !skippedCategories.includes(c.displayName));
+                        return (
+                          <PrimaryButton
+                            title={`Add ${plural(chosen.length, 'category', 'categories')}`}
+                            loading={busyKey === 'categories'}
+                            disabled={busy || chosen.length === 0}
+                            onPress={() => propose('categories', { kind: 'categories', source: chosen.length === addable.length ? 'recommendation' : 'owner', proposed: { additionalCategories: chosen.map((c) => ({ name: c.categoryName })) } })}
+                          />
+                        );
+                      })()}
                     </>
                   )}
                   {notAddable > 0 && <Hint>{plural(notAddable, 'other category', 'other categories')} used by competitors can’t be added through Google right now.</Hint>}
@@ -876,29 +930,44 @@ export default function ProfileOptimizationScreen() {
                 </Panel>
               )}
 
-              {(serviceItems.length > 0 || recs.services?.blocked) && (
-                <Panel section="services" title="Services" icon="construct" hint={serviceItems.length ? `${plural(serviceItems.length, 'service')} to add` : 'Can’t be changed'} count={serviceItems.length}>
-                  {serviceItems.length > 0 && (
+              <Panel section="services" title="Services" icon="construct" hint={recs.services?.blocked ? 'Can’t be changed' : serviceItems.length ? `${plural(serviceItems.length, 'service')} to add` : 'Add your own'} count={serviceItems.length}>
+                {recs.services?.blocked ? (
+                  <Hint>{recs.services.reason}</Hint>
+                ) : (() => {
+                  const own = ownServices.split(/[,;\n]+/).map((x) => x.trim()).filter((x) => x.length >= 2);
+                  const chosen = [
+                    ...serviceItems.filter((x) => !skippedServices.includes(x.name)).map((x) => ({ name: x.name, description: x.description })),
+                    ...own.filter((n) => !serviceItems.some((x) => x.name.toLowerCase() === n.toLowerCase())).map((name) => ({ name })),
+                  ];
+                  return (
                     <>
-                      <View className="gap-1.5">
-                        {serviceItems.map((s) => (
-                          <View key={s.name} className="flex-row items-center gap-2">
-                            <Ionicons name="add-circle" size={16} color={t.brandBright} />
-                            <Text className="flex-1 font-sans text-sm text-white">{s.name}</Text>
+                      {serviceItems.length > 0 && (
+                        <>
+                          <Hint>From your website and your answers — untick any you don’t offer</Hint>
+                          <View className="gap-1">
+                            {serviceItems.map((x) => (
+                              <CheckRow
+                                key={x.name}
+                                label={x.name}
+                                checked={!skippedServices.includes(x.name)}
+                                onPress={() => setSkippedServices(skippedServices.includes(x.name) ? skippedServices.filter((n) => n !== x.name) : [...skippedServices, x.name])}
+                              />
+                            ))}
                           </View>
-                        ))}
-                      </View>
+                        </>
+                      )}
+                      <Hint>Add your own services (separate with commas)</Hint>
+                      <Field value={ownServices} onChangeText={setOwnServices} placeholder="e.g. CRM development, IT consulting" />
                       <PrimaryButton
-                        title="Add these services"
+                        title={`Add ${plural(chosen.length, 'service')}`}
                         loading={busyKey === 'services'}
-                        disabled={busy}
-                        onPress={() => propose('services', { kind: 'services', proposed: { additions: serviceItems.map((s) => ({ name: s.name, description: s.description })) }, source: 'recommendation' })}
+                        disabled={busy || chosen.length === 0}
+                        onPress={() => propose('services', { kind: 'services', proposed: { additions: chosen }, source: own.length || chosen.length !== serviceItems.length ? 'owner' : 'recommendation' })}
                       />
                     </>
-                  )}
-                  {recs.services?.blocked && <Hint>{recs.services.reason}</Hint>}
-                </Panel>
-              )}
+                  );
+                })()}
+              </Panel>
 
               <Panel
                 section="hours"

@@ -15,6 +15,31 @@ export async function getActiveSeoPlan(businessId: string): Promise<ISeoPlan | n
   return SeoPlan.findOne({ businessId, status: 'active' }).sort({ version: -1 }).lean<ISeoPlan>();
 }
 
+const kwKey = (k: unknown) => String(k ?? '').trim().toLowerCase();
+
+/**
+ * Removes keywords the owner deleted (SeoPlan.ownerRemovedKeywords) from a
+ * plan's keyword lists, table, tracked set and post themes. A theme whose
+ * keyword was removed moves to the plan's first primary keyword.
+ */
+function withoutOwnerRemoved<T extends { primaryKeywords: string[]; secondaryKeywords: string[]; cityAreaTerms: string[]; keywordTable: any[]; postThemes: any[]; trackedKeywords: any[] }>(plan: T, removed: string[]): T {
+  if (!removed.length) return plan;
+  const gone = new Set(removed.map(kwKey));
+  const keep = (k: unknown) => !gone.has(kwKey(k));
+  const primaryKeywords = plan.primaryKeywords.filter(keep);
+  return {
+    ...plan,
+    primaryKeywords,
+    secondaryKeywords: plan.secondaryKeywords.filter(keep),
+    cityAreaTerms: plan.cityAreaTerms.filter(keep),
+    keywordTable: (plan.keywordTable || []).filter((r: any) => keep(r?.keyword)),
+    trackedKeywords: (plan.trackedKeywords || []).filter((r: any) => keep(r?.keyword)),
+    postThemes: (plan.postThemes || [])
+      .map((t: any) => (t && !keep(t.keyword) ? (primaryKeywords[0] ? { ...t, keyword: primaryKeywords[0] } : null) : t))
+      .filter(Boolean),
+  };
+}
+
 function splitKeywords(draft: ISeoPlanDraft | undefined, keywordTable: IKeywordTableRow[], cityAreaTerms: string[]) {
   const ranked = (keywordTable || []).slice().sort((a, b) => {
     const band = { HIGH: 0, MED: 1, LOW: 2, NICHE: 3 } as Record<string, number>;
@@ -74,14 +99,24 @@ export async function upsertSeoPlanFromAudit(input: UpsertInput): Promise<ISeoPl
   // An audit whose ranking failed must not overwrite a measured plan with an
   // empty or unmeasured keyword set — carry the previous one forward.
   const carryKeywords = input.rankingComplete === false && !!prev && (prev.keywordTable?.length ?? 0) > 0;
-  const keywordTable: IKeywordTableRow[] = carryKeywords
+  // Keywords the owner removed in Settings never come back from an audit.
+  const ownerRemovedKeywords: string[] = prev?.ownerRemovedKeywords || [];
+  const gone = new Set(ownerRemovedKeywords.map(kwKey));
+  const auditTable = (input.keywordTable || []).filter((r) => !gone.has(kwKey(r?.keyword)));
+  const rawKeywordTable: IKeywordTableRow[] = carryKeywords
     ? (prev!.keywordTable as IKeywordTableRow[])
-    : [...(input.keywordTable || []), ...(tracking ? trackedKeywordRows(tracking.measurements) : [])];
-  const split = splitKeywords(draft, input.keywordTable || [], areasChecked);
-  const primaryKeywords = carryKeywords ? prev!.primaryKeywords : split.primaryKeywords;
-  const secondaryKeywords = carryKeywords ? prev!.secondaryKeywords : split.secondaryKeywords;
-  const cityAreaTerms = split.cityAreaTerms;
-  const postThemes = draft?.weeklyPostThemes || [];
+    : [...auditTable, ...(tracking ? trackedKeywordRows(tracking.measurements) : [])];
+  const split = splitKeywords(draft, auditTable, areasChecked);
+  const cleaned = withoutOwnerRemoved({
+    primaryKeywords: carryKeywords ? prev!.primaryKeywords : split.primaryKeywords,
+    secondaryKeywords: carryKeywords ? prev!.secondaryKeywords : split.secondaryKeywords,
+    cityAreaTerms: split.cityAreaTerms,
+    keywordTable: rawKeywordTable,
+    postThemes: draft?.weeklyPostThemes || [],
+    trackedKeywords: tracking ? tracking.trackedKeywords : prev?.trackedKeywords || [],
+  }, ownerRemovedKeywords);
+  const { primaryKeywords, secondaryKeywords, cityAreaTerms, postThemes } = cleaned;
+  const keywordTable = cleaned.keywordTable as IKeywordTableRow[];
   const changesFromPrevious = prev
     ? planChanges(
         { version: prev.version, createdAt: String(prev.createdAt), primaryKeywords: prev.primaryKeywords || [], secondaryKeywords: prev.secondaryKeywords || [], postThemes: prev.postThemes || [], priorities: [] },
@@ -130,7 +165,7 @@ export async function upsertSeoPlanFromAudit(input: UpsertInput): Promise<ISeoPl
     draft,
     baseline: [...priorBaseline, baselineEntry].slice(-12),
     // A free report (no tracking) keeps the previous tracked set and focus.
-    trackedKeywords: tracking ? tracking.trackedKeywords : prev?.trackedKeywords || [],
+    trackedKeywords: cleaned.trackedKeywords,
     keywordChanges: tracking ? tracking.keywordChanges : [],
     focus: tracking ? planFocus(tracking.serviceVisibility, tracking.matrix) : prev?.focus,
     serviceAreas: tracking ? tracking.serviceAreas : prev?.serviceAreas || [],
@@ -138,6 +173,7 @@ export async function upsertSeoPlanFromAudit(input: UpsertInput): Promise<ISeoPl
     changesFromPrevious,
     dataQuality: { rankingComplete: input.rankingComplete !== false, ...(carryKeywords ? { note: 'Ranking was unavailable in the source audit — the previous measured keywords were kept.' } : {}) },
     ownerEdited: prev?.ownerEdited || false,
+    ownerRemovedKeywords,
     ...carry,
   });
 
@@ -228,6 +264,8 @@ export async function mergeIntakeIntoSeoPlan(businessId: string, intake: IntakeM
     focus: prev?.focus,
     serviceAreas: prev?.serviceAreas || [],
     ownerEdited: true,
+    // A keyword the owner adds again is no longer "removed".
+    ownerRemovedKeywords: (prev?.ownerRemovedKeywords || []).filter((k) => !ownerKeywords.some((o) => kwKey(o) === kwKey(k))),
   });
 
   if (prev) {
@@ -236,6 +274,90 @@ export async function mergeIntakeIntoSeoPlan(businessId: string, intake: IntakeM
       { $set: { status: 'superseded', activeUntil: new Date() } },
     );
   }
+  return doc;
+}
+
+export interface OwnerProfileEdit {
+  /** The owner's full keyword list before and after the edit (Business.keywords). */
+  keywords?: { before: string[]; after: string[] };
+  description?: string;
+  /** Comma / line separated, as stored on Business.services. */
+  services?: { before: string; after: string };
+  uniqueSellingPoints?: string;
+}
+
+const splitServices = (v: string | undefined) => String(v || '').split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
+
+/**
+ * An owner edit made after onboarding (Settings → Business profile) becomes a
+ * new SEO-brain version, like the intake form:
+ *   - added keywords lead the primary list; removed ones leave every list,
+ *     the tracked set and the post themes, and are remembered
+ *     (ownerRemovedKeywords) so a monthly audit never adds them back
+ *   - new description / services / selling point replace the old ones
+ *   - marked ownerEdited, so audit refreshes keep them
+ * No plan yet → nothing to update (content falls back to Business fields).
+ * Returns null when nothing in the brain changes.
+ */
+export async function applyOwnerProfileEdit(businessId: string, edit: OwnerProfileEdit): Promise<ISeoPlan | null> {
+  await dbConnect();
+  const prev = await SeoPlan.findOne({ businessId, status: 'active' }).sort({ version: -1 });
+  if (!prev) return null;
+
+  const before = new Set((edit.keywords?.before || []).map(kwKey));
+  const after = new Set((edit.keywords?.after || []).map(kwKey));
+  const added = (edit.keywords?.after || []).map((k) => k.trim()).filter((k) => k && !before.has(kwKey(k)));
+  const removed = (edit.keywords?.before || []).map((k) => k.trim()).filter((k) => k && !after.has(kwKey(k)));
+  const removedAll = Array.from(new Set([...(prev.ownerRemovedKeywords || []), ...removed.map(kwKey)]))
+    .filter((k) => !added.some((a) => kwKey(a) === k));
+
+  const descChanged = edit.description !== undefined && edit.description.trim() !== String(prev.suggestedDescription || '').trim();
+  const uspChanged = edit.uniqueSellingPoints !== undefined && edit.uniqueSellingPoints.trim() !== String(prev.uspLine || '').trim();
+  const servicesChanged = !!edit.services && edit.services.before.trim() !== edit.services.after.trim();
+  if (!added.length && !removed.length && !descChanged && !uspChanged && !servicesChanged) return null;
+
+  const cleaned = withoutOwnerRemoved({
+    primaryKeywords: Array.from(new Map([...added, ...(prev.primaryKeywords || [])].map((k) => [kwKey(k), k])).values()).slice(0, 8),
+    secondaryKeywords: prev.secondaryKeywords || [],
+    cityAreaTerms: prev.cityAreaTerms || [],
+    keywordTable: prev.keywordTable || [],
+    postThemes: prev.postThemes || [],
+    trackedKeywords: prev.trackedKeywords || [],
+  }, removed);
+
+  let suggestedServices = prev.suggestedServices || [];
+  if (servicesChanged) {
+    const oldOwner = new Set(splitServices(edit.services!.before).map(kwKey));
+    const nowOwner = splitServices(edit.services!.after);
+    // The owner's current services lead; ones they deleted go; audit-suggested ones stay.
+    suggestedServices = Array.from(new Map(
+      [...nowOwner, ...suggestedServices.filter((x) => !oldOwner.has(kwKey(x)))].map((x) => [kwKey(x), x]),
+    ).values()).slice(0, 15);
+  }
+
+  const { planChanges } = await import('@/services/seo/strategyHistory');
+  const base: any = prev.toObject();
+  for (const k of ['_id', 'id', '__v', 'createdAt', 'updatedAt', 'activeUntil', 'appliedAt', 'appliedLive', 'proposedChangeId']) delete base[k];
+  const doc = await SeoPlan.create({
+    ...base,
+    version: prev.version + 1,
+    status: 'active',
+    activeFrom: new Date(),
+    ...cleaned,
+    suggestedServices,
+    suggestedDescription: descChanged ? edit.description!.trim() || prev.suggestedDescription : prev.suggestedDescription,
+    uspLine: uspChanged ? edit.uniqueSellingPoints!.trim() || undefined : prev.uspLine,
+    changesFromPrevious: {
+      ...planChanges(
+        { version: prev.version, createdAt: String(prev.createdAt), primaryKeywords: prev.primaryKeywords || [], secondaryKeywords: prev.secondaryKeywords || [], postThemes: prev.postThemes || [], priorities: [] },
+        { primaryKeywords: cleaned.primaryKeywords, postThemes: cleaned.postThemes },
+      ),
+      source: 'owner_settings',
+    },
+    ownerEdited: true,
+    ownerRemovedKeywords: removedAll,
+  });
+  await SeoPlan.updateOne({ _id: prev._id }, { $set: { status: 'superseded', activeUntil: new Date() } });
   return doc;
 }
 

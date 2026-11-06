@@ -19,6 +19,14 @@ export const businessDetailSchema = z.object({
   address: z.string().nullable().catch(null),
   googleMapsUrl: z.string().nullable().catch(null),
   keywords: z.array(z.string().catch('')).catch([]),
+  // What the business sells — from onboarding, editable in Settings.
+  services: z.string().nullable().optional().catch(null),
+  offers: z.string().nullable().optional().catch(null),
+  intake: z
+    .object({ uniqueSellingPoints: z.string().nullable().optional().catch(null) })
+    .nullable()
+    .optional()
+    .catch(null),
   googleConnected: z.boolean().catch(false),
   integrations: z
     .object({ whatsappNumber: z.string().nullable().catch(null) })
@@ -41,6 +49,9 @@ export interface BusinessPatch {
   website: string;
   address: string;
   keywords: string[];
+  services: string;
+  offers: string;
+  uniqueSellingPoints: string;
   'integrations.whatsappNumber': string;
 }
 

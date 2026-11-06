@@ -76,6 +76,9 @@ export interface ISeoPlan extends Document {
   /** Owner edits from the intake form / SEO Plan page — never overwritten by
    *  an audit refresh. */
   ownerEdited: boolean;
+  /** Keywords the owner removed (Settings) — never added back by a later
+   *  audit refresh, until the owner adds them again. Lower-cased. */
+  ownerRemovedKeywords: string[];
 
   /** Earlier apply path. New proposals are stored on GbpProfileChange. */
   appliedAt?: Date;
@@ -127,6 +130,7 @@ const SeoPlanSchema = new Schema<ISeoPlan>(
     changesFromPrevious: { type: Schema.Types.Mixed },
     dataQuality: { type: Schema.Types.Mixed },
     ownerEdited: { type: Boolean, default: false },
+    ownerRemovedKeywords: { type: [String], default: [] },
     appliedAt: { type: Date },
     appliedLive: { type: Boolean },
     proposedChangeId: { type: String },

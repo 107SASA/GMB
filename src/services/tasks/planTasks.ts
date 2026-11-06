@@ -250,8 +250,14 @@ const REASON: Record<TaskDisplayStatus, (a: TaskActionDoc) => string> = {
   blocked: (a) => a.statusReason || 'Blocked',
 };
 
-export function buildTaskView(a: TaskActionDoc, pendingChangeKinds: Set<string>): TaskView {
+/** Shown on an open profile task while Google holds an edit on the listing for review (metadata.hasPendingEdits). */
+export const GOOGLE_REVIEWING_REASON = 'If you already made this change on Google, Google is still reviewing it — this ticks on its own once Google publishes it';
+
+export function buildTaskView(a: TaskActionDoc, pendingChangeKinds: Set<string>, opts: { googleReviewingEdits?: boolean } = {}): TaskView {
   const status = taskDisplayStatus(a, pendingChangeKinds);
+  // Google reports edits waiting for its review — a fix the owner made in
+  // Google is not visible to us yet, so don't ask them to do it again.
+  const reviewing = opts.googleReviewingEdits === true && (status === 'open' || status === 'reopened') && taskActor(a.capability) === 'approve';
   return {
     id: String(a._id),
     findingId: a.findingId,
@@ -259,7 +265,7 @@ export function buildTaskView(a: TaskActionDoc, pendingChangeKinds: Set<string>)
     evidence: a.evidence || '',
     priority: a.priority || 'medium',
     status,
-    statusReason: REASON[status](a),
+    statusReason: reviewing ? GOOGLE_REVIEWING_REASON : REASON[status](a),
     actor: taskActor(a.capability),
     ownerAction: a.ownerAction || '',
     growwmaticsAction: a.growwmaticsAction ?? null,

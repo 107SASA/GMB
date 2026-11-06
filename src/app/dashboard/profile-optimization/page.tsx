@@ -720,7 +720,10 @@ export default function ProfileOptimizationPage() {
                     <span className="break-words">{p.placeName}{p.address ? ` — ${p.address}` : ''}</span>
                   </label>
                 ))}
-                {(pickedAreas.length > 0 || removedAreas.length > 0) && (
+                {/* Google refuses a service area with no places — never offer that save. */}
+                {pickedAreas.length === 0 && currentAreas.length > 0 && currentAreas.every((a) => removedAreas.includes(a.placeId)) ? (
+                  <p className="text-xs text-error">Google needs at least one service area. Add the new area first, then remove the old one.</p>
+                ) : (pickedAreas.length > 0 || removedAreas.length > 0) && (
                   <button
                     disabled={busy}
                     className={btnPrimary}

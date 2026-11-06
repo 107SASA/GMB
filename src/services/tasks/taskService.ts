@@ -4,6 +4,8 @@ import OptimizationAction from '@/models/OptimizationAction';
 import GbpProfileChange from '@/models/GbpProfileChange';
 import Audit from '@/models/Audit';
 import Business from '@/models/Business';
+import GBPToken from '@/models/GBPToken';
+import GbpLocationSnapshot from '@/models/GbpLocationSnapshot';
 import {
   buildTaskView,
   canMarkDone,
@@ -29,15 +31,20 @@ export interface TaskList {
 /** Every plan task for the workspace, in the order the customer should do them. */
 export async function getTaskList(businessId: string): Promise<TaskList> {
   await dbConnect();
-  const [actions, pending, latest, business] = await Promise.all([
+  const [actions, pending, latest, business, snap, token] = await Promise.all([
     OptimizationAction.find({ businessId }).lean(),
     GbpProfileChange.find({ businessId, status: { $in: [...PENDING_CHANGE_STATUSES] } }).select('kind').lean(),
     Audit.findOne({ businessId, status: 'COMPLETED', auditKind: { $in: ['connected_baseline', 'monthly'] } })
       .sort({ createdAt: -1 }).select('_id createdAt').lean(),
     Business.findById(businessId).select('taskPopupDismissedAuditId').lean(),
+    GbpLocationSnapshot.findOne({ businessId }).select('locationId sections.location.meta.status sections.location.data.metadata.hasPendingEdits').lean(),
+    GBPToken.findOne({ businessId }).select('locationId').lean(),
   ]);
   const pendingKinds = new Set((pending as any[]).map((c) => String(c.kind)));
-  const tasks = sortTasks((actions as any[]).map(withCurrentCapability).filter(isCustomerTask).map((a) => buildTaskView(a, pendingKinds)));
+  // Google is holding an edit on the listing for review (last sync's read of the current location).
+  const loc = (snap as any)?.locationId && (snap as any).locationId === (token as any)?.locationId ? (snap as any).sections?.location : null;
+  const googleReviewingEdits = loc?.meta?.status === 'SUCCESS' && loc?.data?.metadata?.hasPendingEdits === true;
+  const tasks = sortTasks((actions as any[]).map(withCurrentCapability).filter(isCustomerTask).map((a) => buildTaskView(a, pendingKinds, { googleReviewingEdits })));
   const summary = summarizeTasks(tasks);
   const latestId = latest ? String((latest as any)._id) : null;
   return {

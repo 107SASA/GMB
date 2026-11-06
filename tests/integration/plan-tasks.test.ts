@@ -182,3 +182,17 @@ test('the mapping matches what today\'s audit produces for each finding', () => 
     assert.match(src.slice(at, at + 900), new RegExp(`growwmaticsCapability: '${CAPABILITY_SINCE_NOV_2026[id]}'`), id);
   }
 });
+
+test('Google still reviewing an edit: an open profile task says so instead of asking for it again', () => {
+  const services = { _id: 's', findingId: 'website.services.missing_on_gbp', capability: 'update_services', status: 'READY', description: 'Add services' };
+  const reviewing = buildTaskView(services as any, new Set(), { googleReviewingEdits: true });
+  assert.equal(reviewing.status, 'open', 'still open — only the next sync can see the fix');
+  assert.match(reviewing.statusReason, /Google is still reviewing it/);
+  assert.equal(buildTaskView(services as any, new Set()).statusReason, 'Ready for your approval in GrowwMatics');
+  // Owner work and finished tasks keep their own wording.
+  const ownerTask = buildTaskView({ _id: 'w', findingId: 'website.gbp_services_not_on_site', capability: null, status: 'PLANNED', description: 'x' } as any, new Set(), { googleReviewingEdits: true });
+  assert.equal(ownerTask.statusReason, 'Waiting for you');
+  const done = buildTaskView({ ...services, status: 'EXECUTED', executedAt: '2026-11-06T10:00:00.000Z' } as any, new Set(), { googleReviewingEdits: true });
+  assert.equal(done.status, 'done');
+  assert.doesNotMatch(done.statusReason, /reviewing/);
+});

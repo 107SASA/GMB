@@ -331,7 +331,11 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
       'publishScheduledMediaCron', 'processScheduledMediaPublishJob', 'processAutoReplyBatchJob',
       // + audit → fix → proof (Nov 2026, not CRM): the daily plan-task reminder
       //   job (services/tasks/reminders.ts).
-      'planTaskReminders'],
+      'planTaskReminders',
+      // + verified Google access (Nov 2026, not CRM): the content reminder,
+      //   weekly AI posts and post generation wait until Google confirms
+      //   access to the profile (lib/googleAccess.ts).
+      'weeklyContentReminder', 'weeklyContentAutopilot', 'processContentJob'],
     // Real WhatsApp inbound lines are tagged via: 'whatsapp' so a website form cannot open the 24h window.
     // + Segment 3.1 STOP reliability (Oct 2026, not CRM): both provider handlers
     //   apply an opt-out durably before claiming the message id, outside the

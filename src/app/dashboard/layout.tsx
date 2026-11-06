@@ -8,6 +8,8 @@ import SuccessStoryPrompt from "@/components/dashboard/SuccessStoryPrompt";
 import WeeklyOfferPrompt from "@/components/dashboard/WeeklyOfferPrompt";
 import { GuidedFixBar } from "@/components/tasks/PlanTasks";
 import WorkspaceLockGate from "@/components/layout/WorkspaceLockGate";
+import GoogleAccessNotice from "@/components/layout/GoogleAccessNotice";
+import { GoogleAccessProvider } from "@/context/GoogleAccessContext";
 import { requireClient } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
@@ -26,12 +28,14 @@ export default async function DashboardLayout({
     <MobileNavProvider>
       <BusinessProvider>
         <ProductTourProvider>
+          <GoogleAccessProvider>
           <div className="min-h-screen bg-background flex overflow-hidden">
             <Sidebar />
             <div className="flex-1 flex flex-col min-h-screen overflow-hidden lg:ml-64">
               <DashboardHeader />
               <main className="flex-1 overflow-y-auto p-gutter pb-24 lg:pb-8 custom-scrollbar">
                 <div className="max-w-container-max mx-auto">
+                  <GoogleAccessNotice />
                   <WorkspaceLockGate>{children}</WorkspaceLockGate>
                 </div>
               </main>
@@ -41,6 +45,7 @@ export default async function DashboardLayout({
             <WeeklyOfferPrompt />
             <GuidedFixBar />
           </div>
+          </GoogleAccessProvider>
         </ProductTourProvider>
       </BusinessProvider>
     </MobileNavProvider>

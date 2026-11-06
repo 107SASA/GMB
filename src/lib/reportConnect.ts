@@ -164,6 +164,15 @@ export async function finalizeReportConnection(
     googleLocationId: location.locationId,
     ...businessFacts,
   });
+  const { markGoogleAccessChecking } = await import('@/services/gbp/access/record');
+  await markGoogleAccessChecking(String(business._id));
+  // One sync records whether Google really allows access (and fills the
+  // profile snapshot); the report itself does not wait for it.
+  try {
+    await inngest.send({ name: 'gbp/sync.requested', data: { businessId: String(business._id) } });
+  } catch (err) {
+    console.error('[reportConnect] could not start the Google access check:', err);
+  }
 
   const audit = await createPendingAuditAndDispatch(business, organization, user);
 

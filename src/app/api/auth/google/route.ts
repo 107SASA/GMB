@@ -48,7 +48,9 @@ export async function GET() {
     response_type: 'code',
     scope: SCOPES,
     access_type: 'offline',
-    prompt: 'consent',
+    // select_account: on Reconnect after Google refused access, the owner can
+    // pick the account that really is Owner / Manager of the profile.
+    prompt: 'consent select_account',
     state,
   });
 

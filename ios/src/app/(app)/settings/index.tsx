@@ -48,6 +48,9 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
     website: initial.website ?? '',
     address: initial.address ?? '',
     whatsappNumber: initial.integrations?.whatsappNumber ?? '',
+    services: initial.services ?? '',
+    offers: initial.offers ?? '',
+    uniqueSellingPoints: initial.intake?.uniqueSellingPoints ?? '',
   });
   const [keywords, setKeywords] = useState<string[]>(initial.keywords);
   const [keywordInput, setKeywordInput] = useState('');
@@ -63,6 +66,9 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
         website: form.website,
         address: form.address,
         keywords,
+        services: form.services,
+        offers: form.offers,
+        uniqueSellingPoints: form.uniqueSellingPoints,
         'integrations.whatsappNumber': form.whatsappNumber,
       }),
     onSuccess: () => {
@@ -100,6 +106,33 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
         textAlignVertical="top"
         className="min-h-[90px] mb-3"
       />
+      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Services you offer (comma separated)</Text>
+      <Field
+        value={form.services}
+        onChangeText={set('services')}
+        multiline
+        textAlignVertical="top"
+        maxLength={1500}
+        placeholder="e.g. Custom cakes, Wedding orders, Catering"
+        className="min-h-[70px] mb-3"
+      />
+      <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">What makes you different</Text>
+      <Field
+        value={form.uniqueSellingPoints}
+        onChangeText={set('uniqueSellingPoints')}
+        multiline
+        textAlignVertical="top"
+        maxLength={600}
+        placeholder="In your own words — AI posts use only what you write"
+        className="min-h-[70px] mb-3"
+      />
+      <LabeledField
+        label="Current offer (optional)"
+        value={form.offers}
+        onChangeText={set('offers')}
+        maxLength={600}
+        placeholder="e.g. 20% off your first order"
+      />
       <LabeledField label="Phone" value={form.phone} onChangeText={set('phone')} keyboardType="phone-pad" />
       <LabeledField
         label="Website"
@@ -118,6 +151,9 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
       />
 
       <Text className="mb-1.5 px-1 font-sans-semibold text-xs text-zinc-400">Keywords (max 20)</Text>
+      <Text className="mb-2 px-1 font-sans text-[11px] text-zinc-500">
+        Your SEO plan and AI posts follow these. A keyword you remove is dropped from your SEO plan and won't be added back by later reports.
+      </Text>
       <View className="mb-2 flex-row gap-2">
         <View className="flex-1">
           <Field

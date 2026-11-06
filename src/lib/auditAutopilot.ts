@@ -9,6 +9,7 @@ import { notifyBusinessUsers } from '@/services/notifications';
 import { notifyOwner } from '@/services/ownerNotify';
 import { appLink, composeOwnerMessage } from '@/lib/whatsappOutbound';
 import { workspaceHasPlanAccess, PLAN_ACCESS_FIELDS } from '@/lib/billing/entitlements';
+import { hasGoogleAccess } from '@/lib/googleAccess';
 
 /** Exact-one-month cadence, matching the old seoPlanMonthlyReaudit cutoff. */
 export const AUDIT_AUTOPILOT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -71,7 +72,7 @@ export async function maybeStartAuditAutopilot(businessId: string): Promise<void
     await dbConnect();
     const business = await Business.findById(businessId)
       .select(
-        `name ${PLAN_ACCESS_FIELDS} googleConnected category userDefinedCategory ` +
+        `name ${PLAN_ACCESS_FIELDS} googleConnected googleAccess category userDefinedCategory ` +
           'auditAutopilotNextRunAt auditAutopilotCategoryNudgedAt organizationId userId phone'
       )
       .lean<{
@@ -83,6 +84,7 @@ export async function maybeStartAuditAutopilot(businessId: string): Promise<void
         paymentGraceEndsAt?: Date;
         paymentAccessHold?: boolean;
         googleConnected?: boolean;
+        googleAccess?: { state?: string } | null;
         category?: string;
         userDefinedCategory?: string;
         auditAutopilotNextRunAt?: Date;
@@ -95,7 +97,8 @@ export async function maybeStartAuditAutopilot(businessId: string): Promise<void
     if (!business) return;
     if (business.auditAutopilotNextRunAt) return; // already anchored — never re-trigger
     // Paid, or an authorized free trial (same plan) — see lib/billing/entitlements.ts.
-    if (!workspaceHasPlanAccess(business) || !business.googleConnected) return; // not qualified yet
+    // Signed in is not enough: Google must have confirmed access (lib/googleAccess.ts).
+    if (!workspaceHasPlanAccess(business) || !hasGoogleAccess(business)) return; // not qualified yet
 
     if (!hasRealAuditCategory(business)) {
       await nudgeForCategory(business);

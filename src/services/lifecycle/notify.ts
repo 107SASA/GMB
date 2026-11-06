@@ -391,7 +391,7 @@ export async function runPerformanceDigestAll(now = new Date()): Promise<{ busin
   const due = new Date(now.getTime() - (15 * DAY - 12 * 3_600_000));
   const { planAccessWorkspaceFilter } = await import('@/lib/billing/entitlements');
   const list: any[] = await Business.find({
-    isDeleted: { $ne: true }, googleConnected: true,
+    isDeleted: { $ne: true }, ...(await import('@/lib/googleAccess')).googleAccessReadyFilter(),
     googleLocationId: { $exists: true, $nin: [null, ''] },
     // Paid, or an authorized free trial within its window.
     $and: [
@@ -416,7 +416,7 @@ export async function runWeeklyMonitoringAll(now = new Date()): Promise<{ busine
   const Business = (await import('@/models/Business')).default;
   const { planAccessWorkspaceFilter } = await import('@/lib/billing/entitlements');
   const list: any[] = await Business.find({
-    isDeleted: { $ne: true }, googleConnected: true,
+    isDeleted: { $ne: true }, ...(await import('@/lib/googleAccess')).googleAccessReadyFilter(),
     googleLocationId: { $exists: true, $nin: [null, ''] },
     ...planAccessWorkspaceFilter(now), // paid, or an authorized free trial
   }).select('_id').lean();

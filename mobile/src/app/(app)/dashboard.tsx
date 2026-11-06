@@ -19,6 +19,7 @@ import { ImpactCard } from '@/components/home/impact-card';
 import { WeeklyOfferCard } from '@/components/home/weekly-offer-card';
 import { HomeStatList } from '@/components/home/stat-list';
 import { BillingBanner, LockedScreen } from '@/components/locked';
+import { GoogleAccessBanner } from '@/components/google-access-banner';
 import { Screen, Skeleton } from '@/components/ui';
 import { useSurfaceLocked } from '@/entitlements/entitlements';
 import { computeReviewInsights, WEEKLY_REVIEW_GOAL } from '@/lib/review-insights';
@@ -208,6 +209,7 @@ export default function HomeScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <BillingBanner />
+        <GoogleAccessBanner />
 
         <WeeklyOfferCard />
 

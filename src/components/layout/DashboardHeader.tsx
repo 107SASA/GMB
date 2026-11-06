@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useBusiness } from "@/context/BusinessContext";
 import { useMobileNav } from "@/context/MobileNavContext";
+import { useGoogleAccess, isAccessProblem } from "@/context/GoogleAccessContext";
 import { BusinessSwitcher } from "./BusinessSwitcher";
 import { NotificationBell } from "./NotificationBell";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
@@ -35,6 +36,7 @@ function initialsOf(name?: string): string {
 export function DashboardHeader() {
   const { activeBusiness, loading } = useBusiness();
   const { toggle } = useMobileNav();
+  const { access } = useGoogleAccess();
   const [user, setUser] = useState<HeaderUser | null>(null);
   // The active workspace's plan, which is what the owner is looking at — the
   // user-level plan stays "Free" during a free trial.
@@ -116,11 +118,20 @@ export function DashboardHeader() {
                 </span>
               )}
               <div className="flex gap-2 ml-2">
-                {activeBusiness.googleConnected && (
+                {/* "Connected" only once Google confirmed access (GET /api/gbp/access). */}
+                {activeBusiness.googleConnected && isAccessProblem(access?.status) ? (
+                  <span className="px-2 py-0.5 bg-error-container text-on-error-container rounded-md border border-error flex items-center gap-1 text-[10px] font-semibold">
+                    <MaterialIcon name="warning" size={12} /> Google access problem
+                  </span>
+                ) : activeBusiness.googleConnected && access?.status === "checking" ? (
+                  <span className="px-2 py-0.5 bg-surface-container text-on-surface-variant rounded-md border border-outline-variant flex items-center gap-1 text-[10px] font-semibold">
+                    Checking Google access…
+                  </span>
+                ) : activeBusiness.googleConnected && access?.status === "verified" ? (
                   <span className="px-2 py-0.5 bg-primary-fixed text-primary rounded-md border border-primary-fixed-dim flex items-center gap-1 text-[10px] font-semibold">
                     Google Connected
                   </span>
-                )}
+                ) : null}
                 {activeBusiness.whatsappConfig?.isConnected && (
                   <span className="px-2 py-0.5 bg-secondary-container text-on-secondary-container rounded-md border border-secondary-fixed flex items-center gap-1 text-[10px] font-semibold">
                     <MaterialIcon name="chat" size={12} /> WhatsApp

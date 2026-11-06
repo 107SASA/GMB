@@ -551,3 +551,10 @@ test('description draft reads as a sentence, not "provides Software company"', (
   assert.match(withServices, /^Mulsetu is an accountant in Nashik\. We offer GST filing, Payroll and Audits\./);
   assert.equal(validateDescription(withServices, { tokens: ['accountant', 'nashik'] }).valid, true);
 });
+
+test('service area: removing the last area is refused with a message the owner can act on', () => {
+  const r = validateServiceArea({ businessType: 'CUSTOMER_AND_BUSINESS_LOCATION', places: [] });
+  assert.equal(r.valid, false);
+  assert.deepEqual(r.violations.map((v) => v.code), ['empty']);
+  assert.match(r.violations[0].message, /at least one service area.*Add the new area first/);
+});

@@ -20,9 +20,11 @@ export type PublishOutcome =
   | { outcome: 'published'; postName?: string }
   | { outcome: 'blocked'; reason: string }
   | { outcome: 'failed'; reason: string }
-  | { outcome: 'skipped'; reason: string };
+  | { outcome: 'skipped'; reason: string }
+  /** holdOnAccessRefused: Google refused access (401/403) — left 'scheduled', business marked blocked. */
+  | { outcome: 'held'; reason: string };
 
-export async function publishPost(postId: string, opts: { allowFrom?: string[]; businessId?: string; deps?: { writesEnabled?: () => boolean; createLocalPost?: (businessId: string, input: { summary: string; mediaUrl?: string }) => Promise<{ liveWriteApplied: boolean; postName?: string }> } } = {}): Promise<PublishOutcome> {
+export async function publishPost(postId: string, opts: { allowFrom?: string[]; businessId?: string; holdOnAccessRefused?: boolean; deps?: { writesEnabled?: () => boolean; createLocalPost?: (businessId: string, input: { summary: string; mediaUrl?: string }) => Promise<{ liveWriteApplied: boolean; postName?: string }> } } = {}): Promise<PublishOutcome> {
   await dbConnect();
   const { default: Post } = await import('@/models/Post');
   const allowFrom = opts.allowFrom ?? ['scheduled'];
@@ -46,6 +48,22 @@ export async function publishPost(postId: string, opts: { allowFrom?: string[]; 
     res = await create(String(claim.businessId), { summary, mediaUrl: claim.imageUrl || undefined });
   } catch (err: any) {
     const reason = String(err?.message || 'Failed to publish to Google Business Profile.').slice(0, 500);
+    // Scheduled publishing: a refusal of ACCESS (not of this post) means the
+    // connection can't post at all. Keep the post and pause the business
+    // until a sync confirms access again, instead of failing it for good —
+    // unless a sync confirmed access in the last day (then it's this post).
+    if (opts.holdOnAccessRefused && (err?.httpStatus === 401 || err?.httpStatus === 403)) {
+      const { default: Business } = await import('@/models/Business');
+      const biz: any = await Business.findById(claim.businessId).select('googleAccess').lean();
+      const recentlyVerified = biz?.googleAccess?.state === 'verified' && biz.googleAccess.checkedAt &&
+        Date.now() - new Date(biz.googleAccess.checkedAt).getTime() < 24 * 3_600_000;
+      if (!recentlyVerified) {
+        await Post.updateOne({ _id: claim._id, status: 'publishing' }, { $set: { status: 'scheduled' } });
+        const { noteGoogleAccessRefused } = await import('@/services/gbp/access/record');
+        await noteGoogleAccessRefused(String(claim.businessId), reason);
+        return { outcome: 'held', reason };
+      }
+    }
     await Post.updateOne({ _id: claim._id }, { $set: { status: 'failed', failureReason: reason, liveWriteApplied: false } });
     return { outcome: 'failed', reason };
   }

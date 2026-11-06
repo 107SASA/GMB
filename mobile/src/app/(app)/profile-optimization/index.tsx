@@ -1093,7 +1093,10 @@ export default function ProfileOptimizationScreen() {
                         />
                       );
                     })}
-                    {(pickedAreas.length > 0 || removedAreas.length > 0) && (
+                    {/* Google refuses a service area with no places — never offer that save. */}
+                    {pickedAreas.length === 0 && currentAreas.length > 0 && currentAreas.every((a) => removedAreas.includes(a.placeId)) ? (
+                      <Hint>Google needs at least one service area. Add the new area first, then remove the old one.</Hint>
+                    ) : (pickedAreas.length > 0 || removedAreas.length > 0) && (
                       <PrimaryButton
                         title={`Save areas (${[pickedAreas.length && `+${pickedAreas.length}`, removedAreas.length && `−${removedAreas.length}`].filter(Boolean).join(', ')})`}
                         loading={busyKey === 'areas'}

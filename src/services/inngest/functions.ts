@@ -550,7 +550,10 @@ export const weeklyContentReminder = inngest.createFunction(
 
       // NB: use isDeleted (a real field) — the sibling crons filter on a
       // non-existent `isActive`, which is why they never match anything.
-      const businesses = await Business.find({ isDeleted: { $ne: true } }).select('_id').lean();
+      // Only where Google confirmed access — no "plan your content" nag for a
+      // profile we can't post to (lib/googleAccess.ts).
+      const { googleAccessReadyFilter } = await import("@/lib/googleAccess");
+      const businesses = await Business.find({ isDeleted: { $ne: true }, ...googleAccessReadyFilter() }).select('_id').lean();
 
       let reminded = 0;
       for (const b of businesses as any[]) {
@@ -619,9 +622,11 @@ export const weeklyContentAutopilot = inngest.createFunction(
       // anything meaningful — a business missing them just keeps getting
       // picked up here every hour until the owner completes onboarding intake.
       const { planAccessWorkspaceFilter } = await import("@/lib/billing/entitlements");
+      const { googleAccessReadyFilter } = await import("@/lib/googleAccess");
       const candidates = await Business.find({
         isDeleted: { $ne: true },
-        googleConnected: true,
+        // Signed in AND Google confirmed access (not checking / limited / blocked).
+        ...googleAccessReadyFilter(),
         keywords: { $exists: true, $ne: [] },
         // Paid, or an authorized free trial within its window.
         $and: [
@@ -901,6 +906,11 @@ export const processContentJob = inngest.createFunction(
     await dbConnect();
     const business = await Business.findById(businessId);
     if (!business) return { skipped: true };
+    // No AI posts or images for a profile Google hasn't confirmed we can post to.
+    const { hasGoogleAccess } = await import("@/lib/googleAccess");
+    if (!hasGoogleAccess(business as any)) {
+      return { skipped: true, reason: `Google access not confirmed (${(business as any).googleAccess?.state ?? "not connected"})` };
+    }
 
     const MIN_SCHEDULED_POSTS = 7;
     const today = new Date();
@@ -1690,7 +1700,11 @@ export const publishScheduledPostsCron = inngest.createFunction(
       // published by this cron within the hour after it pays.
       const { businessesWithPlanAccess } = await import("@/services/billing/planAccess");
       const allowed = await businessesWithPlanAccess(due.map((p: any) => p.businessId));
-      const readyPosts = due.filter((p: any) => allowed.has(String(p.businessId)));
+      // Likewise held (not failed) while Google hasn't confirmed access; when
+      // it does, recordGoogleAccess spreads the overdue ones over the next days.
+      const { businessesWithGoogleAccess } = await import("@/lib/googleAccess");
+      const googleOk = await businessesWithGoogleAccess(due.map((p: any) => p.businessId));
+      const readyPosts = due.filter((p: any) => allowed.has(String(p.businessId)) && googleOk.has(String(p.businessId)));
 
       return readyPosts.map((p: any) => ({
         name: "scheduler/publish-post",
@@ -1721,12 +1735,21 @@ export const processPublishPostJob = inngest.createFunction(
         console.log(`[GBP] post ${postId} held — workspace has no active plan`);
         return;
       }
+      const { businessHasGoogleAccess } = await import("@/lib/googleAccess");
+      if (target && !(await businessHasGoogleAccess(String(target.businessId)))) {
+        console.log(`[GBP] post ${postId} held — Google access not confirmed`);
+        return;
+      }
       // scheduled → publishing → published (Google confirmed) | blocked (live
       // writes off — nothing reached Google) | failed (Google rejected). A
       // rejected post fails identically on every retry, so failures are
       // recorded rather than thrown (see services/content/publishPost.ts).
       const { publishPost } = await import("@/services/content/publishPost");
-      const result = await publishPost(postId);
+      const result = await publishPost(postId, { holdOnAccessRefused: true });
+      if (result.outcome === "held") {
+        console.log(`[GBP] post ${postId} held — Google refused access:`, result.reason);
+        return;
+      }
       if (result.outcome === "skipped") return;
       const post: any = await Post.findById(postId);
       if (!post) return;
@@ -1819,7 +1842,10 @@ export const publishScheduledMediaCron = inngest.createFunction(
       // Held while the workspace is cancelled / unpaid; published after it pays.
       const { businessesWithPlanAccess } = await import("@/services/billing/planAccess");
       const allowed = await businessesWithPlanAccess(due.map((a: any) => a.businessId));
-      const ready = due.filter((a: any) => allowed.has(String(a.businessId)));
+      // …and while Google hasn't confirmed access (lib/googleAccess.ts).
+      const { businessesWithGoogleAccess } = await import("@/lib/googleAccess");
+      const googleOk = await businessesWithGoogleAccess(due.map((a: any) => a.businessId));
+      const ready = due.filter((a: any) => allowed.has(String(a.businessId)) && googleOk.has(String(a.businessId)));
 
       return ready.map((a: any) => ({
         name: "gbp-media/publish-scheduled",
@@ -1844,6 +1870,11 @@ export const processScheduledMediaPublishJob = inngest.createFunction(
       const { businessHasPlanAccess } = await import("@/services/billing/planAccess");
       if (!(await businessHasPlanAccess(String(businessId)))) {
         console.log(`[gbp-media] asset ${assetId} held — workspace has no active plan`);
+        return;
+      }
+      const { businessHasGoogleAccess } = await import("@/lib/googleAccess");
+      if (!(await businessHasGoogleAccess(String(businessId)))) {
+        console.log(`[gbp-media] asset ${assetId} held — Google access not confirmed`);
         return;
       }
       const { publishAsset } = await import("@/lib/gbpMediaService");
@@ -2195,9 +2226,12 @@ export const auditAutopilotCron = inngest.createFunction(
       // Candidates: currently-qualified workspaces that are either not yet
       // anchored (first run) or due for their monthly re-audit.
       const { planAccessWorkspaceFilter } = await import("@/lib/billing/entitlements");
+      const { googleAccessReadyFilter } = await import("@/lib/googleAccess");
       const candidates = await Business.find({
         isDeleted: { $ne: true },
-        googleConnected: true,
+        // Signed in AND Google confirmed access — no report built from public
+        // data while Google refuses (lib/googleAccess.ts).
+        ...googleAccessReadyFilter(),
         // Paid, or an authorized free trial within its window.
         $and: [
           planAccessWorkspaceFilter(now),
@@ -4714,7 +4748,12 @@ export const gbpSyncWorker = inngest.createFunction(
     const reason: "connect" | "scheduled" | "manual" =
       event.data.reason === "scheduled" || event.data.reason === "manual" ? event.data.reason : "connect";
 
-    await step.run("sync-gbp-data", async () => {
+    // A Google refusal here (403 — the account isn't Owner/Manager, or the
+    // profile isn't verified) used to throw and abort the whole sync, so the
+    // snapshot and access check below never ran and the dashboard showed
+    // "Connected" with zeros. Errors are now returned, never thrown: every
+    // step still runs and check-google-access records what Google allowed.
+    const metrics = await step.run("sync-gbp-data", async () => {
       const { default: dbConnect } = await import("@/lib/mongodb");
       const { default: GBPTokenModel } = await import("@/models/GBPToken");
       const { default: GBPInsightsModel } = await import("@/models/GBPInsights");
@@ -4749,7 +4788,16 @@ export const gbpSyncWorker = inngest.createFunction(
           console.error(`[GBP Sync] Token revoked for ${businessId}`, err.message);
           return { skipped: true, reason: "Token revoked" };
         }
-        throw err;
+        // lastSyncAt stays unset, so the next run tries again.
+        const { classifyGoogleError, sanitizeErrorMessage } = await import("@/services/gbp/intelligence/errors");
+        const httpStatus = typeof err?.httpStatus === "number" ? err.httpStatus : null;
+        const metricsError = {
+          category: classifyGoogleError(httpStatus, String(err?.message || "")),
+          httpStatus,
+          message: sanitizeErrorMessage(String(err?.message || err)),
+        };
+        console.error(`[GBP Sync] Metrics read failed for ${businessId} (${httpStatus ?? "no status"}):`, metricsError.message);
+        return { failed: true, metricsError };
       }
 
       await Promise.all(
@@ -4888,7 +4936,9 @@ export const gbpSyncWorker = inngest.createFunction(
       }
     });
 
-    await step.run("sync-gbp-profile-and-backfill", async () => {
+    // Last step: profile gap-fill, history backfill, then the Google access
+    // check (one step, not three — Inngest bills per step).
+    const access = await step.run("sync-gbp-profile-and-backfill", async () => {
       const { default: BusinessModel } = await import("@/models/Business");
       const { fetchLocationProfile, GBPAuthError } = await import("@/lib/gbpClient");
       try {
@@ -4936,7 +4986,26 @@ export const gbpSyncWorker = inngest.createFunction(
         console.error(`[GBP Sync] History backfill failed for ${businessId}:`, err.message);
       }
     }
+
+    // What did Google actually allow? Business.googleAccess gates every
+    // background job (lib/googleAccess.ts). Becoming verified starts the
+    // first report and posts; a refusal pauses them and tells the owner once.
+    // Reads the snapshot written above — no extra Google calls.
+    {
+      const { checkGoogleAccessAfterSync } = await import("@/services/gbp/access/record");
+      try {
+        const r = await checkGoogleAccessAfterSync(businessId, {
+          metricsError: (metrics as any)?.metricsError ?? null,
+        });
+        return { state: r.state, reason: r.verdict?.reason ?? null, becameVerified: r.becameVerified, noticeSent: r.noticeSent };
+      } catch (err: any) {
+        console.error(`[GBP Sync] Access check failed for ${businessId}:`, err?.message);
+        return { state: null, error: String(err?.message || err).slice(0, 300) };
+      }
+    }
     });
+
+    return { metrics, access };
   }
 );
 

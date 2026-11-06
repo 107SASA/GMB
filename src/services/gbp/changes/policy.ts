@@ -356,7 +356,7 @@ export function validateServiceArea(input: {
     places.push(p);
   }
   if (places.length > SERVICE_AREA_MAX) violations.push({ code: 'limit', message: `A listing can have at most ${SERVICE_AREA_MAX} service areas.` });
-  if (places.length === 0) violations.push({ code: 'empty', message: 'No resolved service area was provided.' });
+  if (places.length === 0) violations.push({ code: 'empty', message: 'Google needs at least one service area. Add the new area first, then remove the old one.' });
   return { valid: violations.length === 0, violations, places: places.slice(0, SERVICE_AREA_MAX) };
 }
 

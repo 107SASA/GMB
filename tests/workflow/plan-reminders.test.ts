@@ -54,7 +54,7 @@ before(async () => {
     runner: await import('../../src/services/tasks/reminderRunner'),
   };
   const oid = () => new m.mongoose.Types.ObjectId();
-  const mkBiz = async (name: string, status: string) => String((await m.Business.create({ name, category: 'Software company', address: 'Ojhar', userId: oid(), organizationId: oid(), subscriptionStatus: status } as any))._id);
+  const mkBiz = async (name: string, status: string) => String((await m.Business.create({ name, category: 'Software company', address: 'Ojhar', userId: oid(), organizationId: oid(), subscriptionStatus: status, googleConnected: true } as any))._id);
   const mkReport = async (businessId: string, createdAt: Date) => {
     const id = oid();
     await m.Audit.collection.insertOne({ _id: id, businessId: new m.mongoose.Types.ObjectId(businessId), status: 'COMPLETED', auditKind: 'connected_baseline', createdAt });
@@ -125,7 +125,7 @@ test('no reminders without plan access or for a report older than the window', a
 
 test('stops once the owner\'s fixes are done; a new report starts over', async (t) => {
   if (skipReason) return t.skip(skipReason);
-  const done = await m.Business.create({ name: 'Done Business', category: 'x', address: 'y', userId: new m.mongoose.Types.ObjectId(), organizationId: new m.mongoose.Types.ObjectId(), subscriptionStatus: 'active' } as any);
+  const done = await m.Business.create({ name: 'Done Business', category: 'x', address: 'y', userId: new m.mongoose.Types.ObjectId(), organizationId: new m.mongoose.Types.ObjectId(), subscriptionStatus: 'active', googleConnected: true } as any);
   const id = String(done._id);
   const report = new m.mongoose.Types.ObjectId();
   await m.Audit.collection.insertOne({ _id: report, businessId: done._id, status: 'COMPLETED', auditKind: 'monthly', createdAt: reportAt });

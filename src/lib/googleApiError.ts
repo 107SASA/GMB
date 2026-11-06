@@ -12,7 +12,14 @@
  * The full raw response is still logged server-side for debugging — only
  * what reaches the user gets simplified.
  */
-export function describeGoogleApiError(action: string, status: number, rawBody: string): Error {
+export function describeGoogleApiError(action: string, status: number, rawBody: string): Error & { httpStatus: number } {
+  const err = describe(action, status, rawBody) as Error & { httpStatus: number };
+  // Callers decide on the status (e.g. 403 = Google refused access), not the owner-facing text.
+  err.httpStatus = status;
+  return err;
+}
+
+function describe(action: string, status: number, rawBody: string): Error {
   console.error(`[GBP] ${action} failed (${status}):`, rawBody);
 
   // The My Business v4 API wraps field-level validation failures in a nested

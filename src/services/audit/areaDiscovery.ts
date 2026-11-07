@@ -71,8 +71,11 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 /** "Fireworks Store" + "Ojhar" → "Fireworks Store Ojhar" (no repeat when the term already names it). */
 function keywordFor(term: string, place?: string | null): string {
   const t = term.trim();
-  if (!place) return t;
-  return t.toLowerCase().includes(place.toLowerCase()) ? t : `${t} ${place}`;
+  // A place can arrive as a full address ("Dhapa, Kolkata, West Bengal,
+  // India") — people search the locality, and Google Ads rejects the commas.
+  const p = String(place || '').split(',')[0].trim();
+  if (!p) return t;
+  return t.toLowerCase().includes(p.toLowerCase()) ? t : `${t} ${p}`;
 }
 
 /**

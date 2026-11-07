@@ -629,7 +629,7 @@ async function processAuditJobInner(auditId: string) {
             found: k.foundCount > 0,
             status: k.status === 'unavailable' ? 'unavailable' as const : 'ok' as const,
           })),
-          { city: resolvedCity, area: business.area || '', country: business.country || '' },
+          { city: resolvedCity, area: business.area || '', state: business.state || '', country: business.country || '' },
         );
       } catch (kwErr: any) {
         console.warn('[auditService] keyword table build failed:', kwErr?.message);

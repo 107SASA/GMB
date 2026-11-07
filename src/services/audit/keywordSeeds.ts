@@ -89,7 +89,8 @@ export function buildFreeReportKeywords(
 
   const JUNK_AREA = /^(p\.?\s*o\.?|p\.?\s*s\.?|g\.?p\.?o\.?|post\s*office|ward\s*\d+|zone\s*\d+|[a-z]\s*block)$/i;
   const areas = neighbourhoods
-    .map((a) => tidy(a).replace(/\s*[,(]?\s*(p\.?\s*o\.?|post\s*office)\s*[)]?$/i, ''))
+    // Locality only — a full address ("Dhapa, Kolkata, West Bengal, India") is not a search phrase.
+    .map((a) => tidy(String(a).split(',')[0]).replace(/\s*[,(]?\s*(p\.?\s*o\.?|post\s*office)\s*[)]?$/i, ''))
     .filter((a) => a && a.length >= 3 && a.toLowerCase() !== city.toLowerCase() && !JUNK_AREA.test(a))
     .slice(0, 7);
 

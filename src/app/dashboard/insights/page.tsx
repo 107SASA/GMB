@@ -136,6 +136,8 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   gbp_api_access:
     "Google denied access to your Business Profile data. Make sure the Google account you're connecting has Manager or Owner access to this business on Google Business Profile, then try again.",
   gbp_api_error: "Google's Business Profile service returned an error. Please try again shortly.",
+  no_gbp_location:
+    "That Google account has no business location on Google Business Profile, so there was nothing to connect. Sign in with the Google account that is Owner or Manager of this business's profile.",
   no_gbp_account:
     "That Google account doesn't manage any Business Profiles. Sign in with the Google account that manages this business's listing instead.",
 };

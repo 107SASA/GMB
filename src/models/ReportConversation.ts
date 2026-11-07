@@ -11,6 +11,8 @@ export interface IReportMessage {
  *  they confirm which one is theirs (see pendingGoogleAuth below). */
 export interface ICandidateLocation {
   locationId: string; // "accounts/{x}/locations/{y}"
+  /** The Business Profile account that manages it (a login can have several). */
+  accountId?: string;
   placeId?: string;
   title: string;
   address?: string;
@@ -59,6 +61,7 @@ export interface IReportConversation extends Document {
 const CandidateLocationSchema = new Schema<ICandidateLocation>(
   {
     locationId: { type: String, required: true },
+    accountId: { type: String },
     placeId: { type: String },
     title: { type: String, required: true },
     address: { type: String },

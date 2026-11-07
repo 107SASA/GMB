@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { listAllGbpLocations } from '@/lib/gbpLocations';
 import { jwtVerify } from 'jose';
 import dbConnect from '@/lib/mongodb';
 import ReportConversation from '@/models/ReportConversation';
@@ -99,35 +100,21 @@ export async function GET(request: NextRequest) {
   const googleAccountId: string = userInfo.sub;
   const googleEmail: string = userInfo.email;
 
-  const accountsRes = await fetch('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', {
-    headers: { Authorization: `Bearer ${access_token}` },
-  });
-  if (!accountsRes.ok) {
-    const errBody = await accountsRes.text();
-    console.error(`[report-connect/callback] accounts.list failed for ${googleEmail}: ${accountsRes.status} — ${errBody}`);
-    const reason = accountsRes.status === 403 ? 'gbp_api_access' : 'gbp_api_error';
-    return errorRedirect(reason, request);
+  // Every location across ALL the login's Business Profile accounts — not
+  // just accounts[0] (lib/gbpLocations.ts).
+  const listed = await listAllGbpLocations(access_token);
+  if (!listed.ok) {
+    if (listed.reason === 'no_accounts') return errorRedirect('no_gbp_account', request);
+    console.error(`[report-connect/callback] ${listed.reason} for ${googleEmail}: ${listed.status} — ${listed.body.slice(0, 500)}`);
+    return errorRedirect(listed.status === 403 ? 'gbp_api_access' : 'gbp_api_error', request);
   }
-  const accountsData = await accountsRes.json();
-  const accounts: any[] = accountsData.accounts ?? [];
-  if (accounts.length === 0) return errorRedirect('no_gbp_account', request);
+  if (listed.locations.length === 0) return errorRedirect('no_gbp_locations', request);
+  const accountId: string = listed.locations[0].accountId;
 
-  const account = accounts[0];
-  const accountId: string = account.name;
-
-  const locUrl =
-    `https://mybusinessbusinessinformation.googleapis.com/v1/${accountId}/locations` +
-    `?readMask=name,title,storefrontAddress,metadata`;
-  const locRes = await fetch(locUrl, { headers: { Authorization: `Bearer ${access_token}` } });
-  if (!locRes.ok) return errorRedirect('gbp_api_error', request);
-
-  const locData = await locRes.json();
-  const rawLocations: any[] = locData.locations ?? [];
-  if (rawLocations.length === 0) return errorRedirect('no_gbp_locations', request);
-
-  const candidateLocations: ICandidateLocation[] = rawLocations.map((l: any) => ({
-    locationId: l.name,
-    placeId: l.metadata?.placeId,
+  const candidateLocations: ICandidateLocation[] = listed.locations.map((l) => ({
+    locationId: l.locationId,
+    accountId: l.accountId,
+    placeId: l.placeId,
     title: l.title || 'Untitled listing',
     address: [l.storefrontAddress?.addressLines?.join(', '), l.storefrontAddress?.locality]
       .filter(Boolean)
@@ -145,7 +132,7 @@ export async function GET(request: NextRequest) {
   };
 
   if (candidateLocations.length === 1) {
-    await finalizeReportConnection(reportConversationId, candidateLocations[0], googleBundle);
+    await finalizeReportConnection(reportConversationId, candidateLocations[0], { ...googleBundle, accountId: candidateLocations[0].accountId || accountId });
     const response = appRedirect('/connect-google/connected', request);
     response.cookies.set('report_oauth_state', '', { maxAge: 0, path: '/' });
     return response;

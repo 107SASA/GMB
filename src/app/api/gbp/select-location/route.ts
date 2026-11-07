@@ -61,7 +61,8 @@ export async function POST(req: Request) {
     refreshToken: decrypt(pending.refreshToken),
     expiresAt: pending.expiresAt,
     locationId: chosen.locationId,
-    accountId: pending.accountId,
+    // The account that manages the chosen location (older staged rows: the one account read).
+    accountId: (chosen as any).accountId || pending.accountId,
     scopes: pending.scopes,
   });
 

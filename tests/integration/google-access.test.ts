@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateGoogleAccess, googleAccessAllows, googleAccessCopy } from '../../src/services/gbp/access/evaluate.ts';
+import { evaluateGoogleAccess, googleAccessAdminStatus, googleAccessAllows, googleAccessCopy, googleAccessCustomerMessage } from '../../src/services/gbp/access/evaluate.ts';
 
 const at = '2026-11-06T06:00:00.000Z';
 const meta = (status: string, error?: any) => ({ status, fetchedAt: at, lastSuccessfulFetchAt: status === 'SUCCESS' ? at : null, error: error ?? null }) as any;
@@ -79,4 +79,20 @@ test('owner copy: every problem has a title, steps, and Reconnect where reconnec
   assert.equal(googleAccessCopy('limited', 'verification_pending')!.reconnect, false);
   assert.equal(googleAccessCopy('verified', null), null);
   assert.ok(googleAccessCopy('checking', null)!.title);
+});
+
+test('super admin: the sales team sees the real Google status and the reason', () => {
+  assert.deepEqual(googleAccessAdminStatus({ googleConnected: false }), { tone: 'none', label: 'Google not connected', reason: null });
+  assert.equal(googleAccessAdminStatus({ googleConnected: true, googleAccess: { state: 'verified' } }).label, 'Google verified');
+  const refused = googleAccessAdminStatus({ googleConnected: true, googleAccess: { state: 'blocked', reason: 'no_permission' } });
+  assert.equal(refused.tone, 'problem');
+  assert.match(String(refused.reason), /not Owner\/Manager/);
+  // Connected before the check shipped: never synced = not confirmed (Michelle), synced = connected.
+  assert.equal(googleAccessAdminStatus({ googleConnected: true, lastSyncAt: null }).label, 'Google not confirmed');
+  assert.equal(googleAccessAdminStatus({ googleConnected: true, lastSyncAt: new Date() }).tone, 'ok');
+  const msg = googleAccessCustomerMessage('blocked', 'no_permission')!;
+  assert.match(msg, /Google refused access/);
+  assert.match(msg, /1\. Open business\.google\.com/);
+  assert.equal(googleAccessCustomerMessage('verified', null), null);
+  assert.equal(googleAccessCustomerMessage('checking', null), null);
 });

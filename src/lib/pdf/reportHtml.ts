@@ -310,10 +310,10 @@ function renderConsultantSections(
         const measured = !!k.volumeBand && k.demandStatus !== 'unavailable';
         const demand = measured
           ? `<span style="display:inline-block;width:56px;height:5px;border-radius:3px;background:#e2e8f0;vertical-align:middle;overflow:hidden;"><span style="display:block;height:100%;width:${BAND_W[k.volumeBand] || '18%'};background:${BAND_C[k.volumeBand] || '#a78bfa'};"></span></span> <span style="font-size:10px;font-weight:700;color:${BAND_C[k.volumeBand] || '#a78bfa'};">${h(k.volumeBand)}${k.demandStatus === undefined && k.estimated ? '*' : ''}</span>`
-          : `<span style="font-size:10px;color:#94a3b8;">Not available</span>`;
+          : `<span style="font-size:10px;color:#94a3b8;">${k.demandReason === 'too_few_searches' ? 'Too few to count' : k.demandReason === 'not_measured' ? 'Not measured' : 'Not available'}</span>${k.areaDemand && k.areaDemand.searchVolume != null ? `<div style="font-size:9px;color:#374151;">“${h(k.areaDemand.term)}” in ${h(k.areaDemand.area)}: ${h(k.areaDemand.searchVolume.toLocaleString('en-IN'))}/mo</div>` : ''}`;
         return `<tr style="border-top:1px solid #f1f5f9;">
         <td style="padding:7px 6px;font-size:11px;color:#374151;">${h(k.keyword)}${k.source === 'website_service' ? '<div style="font-size:8px;color:#94a3b8;">from your website</div>' : k.source === 'owner' ? '<div style="font-size:8px;color:#94a3b8;">your service</div>' : ''}</td>
-        ${(showMapsVol || showSearchVol) ? `<td style="padding:7px 6px;text-align:right;font-size:10px;color:#64748b;">${k.searchVolume != null ? h(k.searchVolume.toLocaleString('en-IN')) : 'Not available'}</td>` : ''}
+        ${(showMapsVol || showSearchVol) ? `<td style="padding:7px 6px;text-align:right;font-size:10px;color:#64748b;">${k.searchVolume != null ? h(k.searchVolume.toLocaleString('en-IN')) : '—'}</td>` : ''}
         <td style="padding:7px 6px;">${demand}</td>
         <td style="padding:7px 6px;text-align:right;font-weight:700;font-size:11px;color:${RANK_BAND_HEX[rankBand(v)]};">${h(rankLabel(v))}</td>
       </tr>`;
@@ -321,7 +321,7 @@ function renderConsultantSections(
       .join('');
     const insights = (draft.keywordInsights || []).map((l: string) => `<li style="font-size:11px;color:#64748b;">${h(l)}</li>`).join('');
     parts.push(bar(sec(), 'KEYWORD SEARCH VOLUME ANALYSIS — GOOGLE MAPS') + card(
-      `<p style="font-size:11px;color:#64748b;margin:0 0 8px;">Phrases people type around ${h(city || 'your area')}. Rank is live Google Maps data measured from your area; demand is Google Ads monthly search volume for the whole country (Google does not report volume for a single town, so local phrases usually show "Not available"). Neither is ever guessed. <span>Not available = Google Ads returned no volume${keywordTable.some((k) => k.demandStatus === undefined && k.estimated) ? ' · * = estimate (older report)' : ''}</span></p>
+      `<p style="font-size:11px;color:#64748b;margin:0 0 8px;">Phrases people type around ${h(city || 'your area')}. Rank is live Google Maps data measured from your area; demand is Google Ads monthly search volume. Google doesn't count an exact phrase that very few people type, so for those we show how many people search the service itself in your city or state. Nothing is ever guessed. <span>Too few to count = Google has no number for that exact phrase · Not measured = the check didn't run${keywordTable.some((k) => k.demandStatus === undefined && k.estimated) ? ' · * = estimate (older report)' : ''}</span></p>
        <table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;font-size:9px;color:#94a3b8;text-transform:uppercase;"><th style="padding:4px 6px;">Keyword</th>${volCols}<th style="padding:4px 6px;">Demand</th><th style="padding:4px 6px;text-align:right;">Maps Rank</th></tr></thead><tbody>${rows}</tbody></table>
        ${insights ? `<ul style="margin:10px 0 0;padding-left:16px;">${insights}</ul>` : ''}${proposed}`,
     ));

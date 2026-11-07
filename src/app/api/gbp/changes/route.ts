@@ -92,11 +92,20 @@ export async function POST(req: Request) {
   }
 
   if (kind === 'description') {
-    validation = validateDescription(String(proposed || ''), {
+    const ownText = (parsed.data.source || 'owner') === 'owner';
+    const text = String(proposed || '');
+    validation = validateDescription(text, {
       tokens: parsed.data.context?.tokens || [ctx.business.category, ctx.business.city].filter(Boolean),
-      allowedNumbers: parsed.data.context?.allowedNumbers,
+      // The owner's own words may state their own numbers ("15 years").
+      allowedNumbers: ownText ? (text.match(/\d+(?:\.\d+)?/g) || []) : parsed.data.context?.allowedNumbers,
       competitorNames: parsed.data.context?.competitorNames,
     });
+    if (ownText) {
+      // "Must name a verified service / city early" guards AI drafts only;
+      // Google's own rules (length, links, promotion, stuffing) still apply.
+      const violations = validation.violations.filter((v) => v.code !== 'first250');
+      validation = { valid: violations.length === 0, violations };
+    }
   } else if (kind === 'title') {
     validation = validateBusinessName(String(before || ''), String(proposed || ''), {
       city: parsed.data.context?.city || ctx.business.city,

@@ -221,3 +221,46 @@ export function googleAccessCopy(state: GoogleAccessState | null | undefined, re
       };
   }
 }
+
+const REASON_SHORT: Record<GoogleAccessReason, string> = {
+  token_revoked: 'Reconnect needed — access removed or expired',
+  no_permission: 'Google refused — account not Owner/Manager, or profile not verified',
+  location_gone: 'Location removed or not visible to this account',
+  suspended: 'Suspended by Google',
+  ownership_conflict: 'Ownership conflict on Google',
+  verification_pending: 'Waiting for Google verification',
+  not_verified: 'Profile not verified for this account',
+  cannot_post: 'Google does not allow posting',
+};
+
+export type GoogleAccessTone = 'ok' | 'checking' | 'problem' | 'none';
+
+/**
+ * One line for the super admin (businesses list, inbox customer panel) so the
+ * sales / support team sees the same status the customer sees.
+ * `lastSyncAt` covers workspaces connected before the access check existed.
+ */
+export function googleAccessAdminStatus(input: {
+  googleConnected?: boolean | null;
+  googleAccess?: { state?: string | null; reason?: string | null } | null;
+  lastSyncAt?: Date | string | null;
+}): { tone: GoogleAccessTone; label: string; reason: string | null } {
+  if (!input.googleConnected) return { tone: 'none', label: 'Google not connected', reason: null };
+  const state = input.googleAccess?.state;
+  if (state === 'verified') return { tone: 'ok', label: 'Google verified', reason: null };
+  if (state === 'limited' || state === 'blocked') {
+    const reason = input.googleAccess?.reason as GoogleAccessReason | null | undefined;
+    return { tone: 'problem', label: state === 'blocked' ? 'Google refused access' : 'Google access limited', reason: (reason && REASON_SHORT[reason]) || 'Google refused access' };
+  }
+  if (state === 'checking') return { tone: 'checking', label: 'Checking Google access', reason: 'Signed in — waiting for the first sync to confirm access' };
+  return input.lastSyncAt
+    ? { tone: 'ok', label: 'Google connected', reason: 'Not re-checked since the access check shipped — next sync confirms it' }
+    : { tone: 'checking', label: 'Google not confirmed', reason: 'Signed in, but no Google sync has ever succeeded' };
+}
+
+/** Text the team can send the customer: what is wrong and how to fix it. */
+export function googleAccessCustomerMessage(state: GoogleAccessState | null | undefined, reason?: string | null): string | null {
+  const copy = googleAccessCopy(state, reason);
+  if (!copy || state === 'checking') return null;
+  return [copy.title + '.', copy.body, ...copy.steps.map((s, i) => `${i + 1}. ${s}`)].join('\n');
+}

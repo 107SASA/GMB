@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireBusinessContext } from '@/lib/tenant';
 import GbpLocationSnapshot from '@/models/GbpLocationSnapshot';
 import Audit from '@/models/Audit';
+import WebsiteIntelligence from '@/models/WebsiteIntelligence';
+import { normalizeOrigin } from '@/services/intel/websiteExtract';
 import { listCategoryAttributes, readLocationAttributes, readLocationRaw, searchGbpCategories } from '@/lib/gbpClient';
 import { normalizeLocation } from '@/services/gbp/intelligence/normalize';
 import { PRODUCTS_SUPPORT, comparePin, draftDescription, haversineMeters, holidayReminders, validateDescription, type PinStatus } from '@/services/gbp/changes/policy';
@@ -83,9 +85,23 @@ export async function GET(req: Request) {
     attributeCatalog ? attributeCatalog.filter((a) => !LINK_ATTRIBUTES.has(a.name)) : null,
     (attrs || []).map((a: any) => a.name),
   );
+  // Services to suggest = what the owner says they offer (Settings / intake)
+  // + what their own website names (the stored crawl the report used — no new
+  // crawl here). Google's current list is "existing"; passing it as the
+  // suggestion list too always left nothing to add, so the "Add the services"
+  // task opened an empty page.
+  const ownerServices = String(ctx.business.services || '').split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
+  let websiteServices: string[] = [];
+  try {
+    const origin = normalizeOrigin(String(ctx.business.website || ''));
+    if (origin) {
+      const intel: any = await WebsiteIntelligence.findOne({ origin }).select('services').lean();
+      websiteServices = (intel?.services || []).map((c: any) => String(c?.value || '').trim()).filter(Boolean);
+    }
+  } catch { /* no stored website read — owner services only */ }
   const servicePlan = proposeServices({
     existing: services,
-    verified: services,
+    verified: [...new Map([...ownerServices, ...websiteServices].filter((x) => x.length >= 3 && x.length <= 120).map((x) => [x.toLowerCase(), x])).values()],
     category: loc?.primaryCategory?.displayName || ctx.business.category || '',
     city: loc?.address?.locality || ctx.business.city || '',
     canModify: loc?.metadata?.canModifyServiceList ?? null,
@@ -144,7 +160,15 @@ export async function GET(req: Request) {
     categories,
     attributes,
     services: servicePlan,
+    // Name, phone and website as Google has them — edited in Profile optimization.
+    details: {
+      title: loc?.title || '',
+      phone: loc?.primaryPhone || '',
+      website: loc?.websiteUri || '',
+    },
     description: {
+      // What Google shows now — the starting point when the owner writes their own.
+      current: loc?.description || null,
       text: description,
       validation: descriptionValidation,
       tokens,

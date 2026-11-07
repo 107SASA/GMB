@@ -70,23 +70,56 @@ export interface KeywordVolume {
 }
 
 /**
+ * A phrase as Google Ads accepts it: letters, digits, spaces, hyphens and
+ * apostrophes only, at most 80 characters and 10 words. Google rejects the
+ * WHOLE request when one keyword breaks this (Nov 2026: a phrase built from a
+ * full address, "… dhapa, kolkata, west bengal, india", blanked every
+ * keyword of that report on every run). null = can't be asked.
+ */
+export function adsKeyword(raw: string): string | null {
+  const v = String(raw || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9\s'-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!v || v.length > 80 || v.split(' ').length > 10) return null;
+  return v;
+}
+
+/**
  * Fetch search volume for a keyword list. Per-keyword results are cached for
  * ~45 days (KeywordVolumeCache) since monthly volumes barely move and the
  * DataForSEO call is a flat ~$0.09 — a live call only fires for the keywords
- * not already in the cache. Returns a Map keyed by the lowercased keyword;
- * never throws.
+ * not already in the cache. Returns a Map keyed by the lowercased keyword as
+ * given; never throws.
+ *   value number → Google's monthly volume
+ *   value null   → Google answered but has no data (too few searches)
+ *   no entry     → not measured (request failed, or the phrase can't be asked)
+ * `locationCode` asks for one Google Ads location (a city / region) instead
+ * of the whole country.
  */
 export async function fetchSearchVolumes(
   keywords: string[],
-  opts: { countryHint?: string; timeout?: number } = {},
+  opts: { countryHint?: string; locationCode?: number; timeout?: number } = {},
 ): Promise<Map<string, number | null>> {
   const out = new Map<string, number | null>();
-  const unique = Array.from(
-    new Set(keywords.map((k) => String(k || '').trim().toLowerCase()).filter(Boolean)),
-  );
+  // Original (lowercased) keyword → the phrase sent to Google.
+  const asked = new Map<string, string>();
+  for (const k of keywords) {
+    const key = String(k || '').trim().toLowerCase();
+    const clean = key ? adsKeyword(key) : null;
+    if (clean) asked.set(key, clean);
+  }
+  const unique = Array.from(new Set(asked.values()));
   if (unique.length === 0) return out;
+  const byClean = new Map<string, number | null>();
+  const finish = () => {
+    for (const [key, clean] of asked) if (byClean.has(clean)) out.set(key, byClean.get(clean) ?? null);
+    return out;
+  };
 
-  const { location_code } = resolveGoogleAdsLocation(opts.countryHint);
+  const location_code = opts.locationCode ?? resolveGoogleAdsLocation(opts.countryHint).location_code;
 
   // ── Cache lookup ─────────────────────────────────────────────────────────
   let KeywordVolumeCache: any = null;
@@ -96,43 +129,50 @@ export async function fetchSearchVolumes(
     KeywordVolumeCache = (await import('@/models/KeywordVolumeCache')).default;
     const keys = unique.map((kw) => `${kw}::${location_code}`);
     const cached = await KeywordVolumeCache.find({ key: { $in: keys } }).lean();
-    for (const row of cached as any[]) out.set(row.keyword, row.searchVolume ?? null);
+    for (const row of cached as any[]) byClean.set(row.keyword, row.searchVolume ?? null);
   } catch (err: any) {
     console.warn('[keywordVolume] cache read skipped:', err?.message);
   }
 
-  const missing = unique.filter((kw) => !out.has(kw));
+  let missing = unique.filter((kw) => !byClean.has(kw));
   if (missing.length === 0) {
     console.log(`[keywordVolume] all ${unique.length} keywords served from cache (location_code ${location_code})`);
-    return out;
+    return finish();
   }
 
   const c = creds();
   if (!c) {
     console.warn('[keywordVolume] DATAFORSEO_LOGIN/PASSWORD not set — skipping live volume');
-    return out;
+    return finish();
   }
 
-  const body = [{ keywords: missing.slice(0, 700), language_code: 'en', location_code }];
-
   try {
-    const res = await axios.post(SEARCH_VOLUME_URL, body, {
-      auth: { username: c.login, password: c.password },
-      timeout: opts.timeout ?? 30000,
-    });
-    meter('dataForSeoAdsVolumeLiveTask', 1, `keyword_demand (${missing.length} uncached keywords)`);
-
-    const envelope = res.data ?? {};
-    const task = envelope.tasks?.[0] ?? {};
-    console.log(
-      `[keywordVolume] HTTP ${res.status} · envelope ${envelope.status_code} · task ${task.status_code} ${task.status_message ?? ''} · location_code ${location_code} · ${missing.length} of ${unique.length} keywords (rest cached)`,
-    );
+    let task: any = {};
+    let envelope: any = {};
+    // A keyword Google still rejects is dropped and the rest asked again (twice at most).
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const body = [{ keywords: missing.slice(0, 700), language_code: 'en', location_code }];
+      const res = await axios.post(SEARCH_VOLUME_URL, body, {
+        auth: { username: c.login, password: c.password },
+        timeout: opts.timeout ?? 30000,
+      });
+      meter('dataForSeoAdsVolumeLiveTask', 1, `keyword_demand (${missing.length} uncached keywords)`);
+      envelope = res.data ?? {};
+      task = envelope.tasks?.[0] ?? {};
+      console.log(
+        `[keywordVolume] HTTP ${res.status} · envelope ${envelope.status_code} · task ${task.status_code} ${task.status_message ?? ''} · location_code ${location_code} · ${missing.length} of ${unique.length} keywords (rest cached)`,
+      );
+      const rejected = task.status_code === 40501 ? /symbols:\s*'([^']+)'/i.exec(String(task.status_message || ''))?.[1]?.toLowerCase() : null;
+      if (!rejected || !missing.includes(rejected)) break;
+      missing = missing.filter((kw) => kw !== rejected);
+      if (!missing.length) return finish();
+    }
 
     if (envelope.status_code !== 20000 || task.status_code !== 20000) {
       console.warn(
         `[keywordVolume] non-OK status — body: ${JSON.stringify(envelope).slice(0, 400)}`,
       );
-      return out;
+      return finish();
     }
 
     const results: any[] = task.result ?? [];
@@ -142,12 +182,12 @@ export async function fetchSearchVolumes(
       if (!kw) continue;
       const vol = item?.search_volume;
       const v = typeof vol === 'number' ? vol : null;
-      out.set(kw, v);
+      byClean.set(kw, v);
       fetched.set(kw, v);
     }
     // Cache misses that came back with no row at all → store as null so we
     // don't re-ask next audit.
-    for (const kw of missing) if (!fetched.has(kw)) fetched.set(kw, null);
+    for (const kw of missing) if (!fetched.has(kw)) { fetched.set(kw, null); byClean.set(kw, null); }
 
     if (KeywordVolumeCache && fetched.size) {
       try {
@@ -167,11 +207,11 @@ export async function fetchSearchVolumes(
     }
 
     if (results.length === 0) console.warn('[keywordVolume] task OK but result array empty');
-    return out;
+    return finish();
   } catch (err: any) {
     const status = err?.response?.status;
     const msg = err?.response?.data?.status_message || err?.message || 'request failed';
     console.warn(`[keywordVolume] request error (HTTP ${status ?? '?'}): ${msg}`);
-    return out;
+    return finish();
   }
 }

@@ -278,6 +278,10 @@ export interface IKeywordTableRow {
   volumeBand: 'HIGH' | 'MED' | 'LOW' | 'NICHE' | null;
   /** 'measured' = live Google Ads volume. Old audits used 'estimated' city-tier guesses. */
   demandStatus?: 'measured' | 'unavailable';
+  /** Nov 2026+: why demand is unavailable — Google has too few searches for the exact phrase, or it wasn't measured. */
+  demandReason?: 'too_few_searches' | 'not_measured' | null;
+  /** Nov 2026+: the broad term's Google Ads monthly searches in the customer's city / state. */
+  areaDemand?: { term: string; area: string; level: 'city' | 'state'; searchVolume: number | null } | null;
   estimated: boolean;
   /** Observed position; null = not found/unavailable (new audits). Old audits used 21. */
   mapsRank: number | null;

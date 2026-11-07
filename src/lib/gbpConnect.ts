@@ -34,6 +34,10 @@ export interface FinalizeGbpConnectionInput {
  * points differ only in how `locationId` was decided (auto vs. user choice).
  */
 export async function finalizeGbpConnection(input: FinalizeGbpConnectionInput): Promise<void> {
+  // A connection without a location looks "connected" but nothing can sync.
+  if (!String(input.locationId || '').startsWith('locations/')) {
+    throw new Error('finalizeGbpConnection: no Google location to connect');
+  }
   await dbConnect();
 
   await GBPToken.findOneAndUpdate(

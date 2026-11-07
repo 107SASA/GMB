@@ -92,7 +92,12 @@ export function buildMobileReportView(audit: { auditData?: any; auditKind?: stri
   const byKeyword: any[] = facts?.ranking?.byKeyword || [];
   const demand = new Map<string, string>((d.keywordTable || []).map((r: any) => [
     String(r.keyword).toLowerCase(),
-    r.demandStatus === 'measured' && r.searchVolume != null ? `${r.searchVolume}/month` : 'Demand unavailable',
+    r.demandStatus === 'measured' && r.searchVolume != null ? `${r.searchVolume}/month`
+      // Exact phrase too rare for Google to count → the service in their city / state.
+      : r.areaDemand && r.areaDemand.searchVolume != null ? `Too few to count · "${r.areaDemand.term}" in ${r.areaDemand.area}: ${r.areaDemand.searchVolume}/month`
+      : r.demandReason === 'too_few_searches' ? 'Too few searches to count'
+      : r.demandReason === 'not_measured' ? 'Not measured'
+      : 'Demand unavailable',
   ]));
   const keywords = facts
     ? byKeyword.map((k) => ({ keyword: k.keyword, kind: k.kind, rank: rankLabel(kwValue(k)), demand: demand.get(String(k.keyword).toLowerCase()) ?? '—' }))

@@ -6,6 +6,7 @@ import Business from '@/models/Business';
 import PendingGbpConnection from '@/models/PendingGbpConnection';
 import { encrypt } from '@/lib/crypto';
 import { finalizeGbpConnection, formatLocationAddress } from '@/lib/gbpConnect';
+import { listAllGbpLocations } from '@/lib/gbpLocations';
 
 function getSigningKey(): Uint8Array {
   const secret = process.env.SESSION_SECRET;
@@ -97,66 +98,36 @@ export async function GET(request: NextRequest) {
   const googleEmail: string = userInfo.email;
 
   // --- Fetch GBP accounts ---
-  const accountsRes = await fetch(
-    'https://mybusinessaccountmanagement.googleapis.com/v1/accounts',
-    { headers: { Authorization: `Bearer ${access_token}` } }
-  );
-
-  if (!accountsRes.ok) {
-    // NOTE: this is almost never "the user has no account". It's an API error
-    // — most commonly a 403 because the "My Business Account Management API"
-    // isn't enabled in the Cloud project, or Business Profile API access
-    // hasn't been granted yet. Log Google's real response so it's diagnosable
-    // from the server terminal instead of the misleading "no gbp account".
-    const errBody = await accountsRes.text();
-    console.error(
-      `[gbp/callback] accounts.list failed for ${googleEmail}: ` +
-        `${accountsRes.status} ${accountsRes.statusText} — ${errBody}`
-    );
-    const reason = accountsRes.status === 403 ? 'gbp_api_access' : 'gbp_api_error';
-    return appRedirect(`/dashboard/insights?error=${reason}&status=${accountsRes.status}`, request);
+  // Every location this Google login manages, across ALL its Business
+  // Profile accounts — only reading accounts[0] connected some customers
+  // with no location at all (lib/gbpLocations.ts).
+  const listed = await listAllGbpLocations(access_token);
+  if (!listed.ok) {
+    if (listed.reason === 'no_accounts') {
+      console.warn(`[gbp/callback] accounts.list returned an EMPTY list for ${googleEmail}.`);
+      return appRedirect('/dashboard/insights?error=no_gbp_account', request);
+    }
+    // NOTE: almost never "the user has no account" — an API error, most
+    // commonly a 403 (API not enabled / no Business Profile API access).
+    console.error(`[gbp/callback] ${listed.reason} for ${googleEmail}: ${listed.status} — ${listed.body.slice(0, 500)}`);
+    const reason = listed.status === 403 ? 'gbp_api_access' : 'gbp_api_error';
+    return appRedirect(`/dashboard/insights?error=${reason}&status=${listed.status}`, request);
+  }
+  // Never save a connection without a location: it shows "connected" while
+  // nothing can sync.
+  if (listed.locations.length === 0) {
+    console.warn(`[gbp/callback] ${googleEmail} manages ${listed.accountsChecked} Business Profile account(s) but no locations.`);
+    return appRedirect('/dashboard/insights?error=no_gbp_location', request);
   }
 
-  const accountsData = await accountsRes.json();
-  const accounts: any[] = accountsData.accounts ?? [];
-  if (accounts.length === 0) {
-    console.warn(
-      `[gbp/callback] accounts.list returned an EMPTY list for ${googleEmail} ` +
-        `(API is reachable but this Google account manages no Business Profile accounts).`
-    );
-    return appRedirect('/dashboard/insights?error=no_gbp_account', request);
-  }
-
-  const account = accounts[0];
-  const accountId: string = account.name; // "accounts/{id}"
-
-  // --- Fetch locations for this account ---
   await dbConnect();
   const business = await Business.findById(businessId).lean() as any;
   const organizationId: string = business?.organizationId?.toString?.() ?? business?.organizationId;
-
-  // `metadata` MUST be in the readMask — the matching logic below reads
-  // `l.metadata?.placeId`, and Google's Business Information API only
-  // returns fields you explicitly ask for. Without it, metadata is
-  // undefined on every location and the placeId match below can never
-  // succeed.
-  const locUrl =
-    `https://mybusinessbusinessinformation.googleapis.com/v1/${accountId}/locations` +
-    `?readMask=name,title,storefrontAddress,metadata`;
-
-  const locRes = await fetch(locUrl, {
-    headers: { Authorization: `Bearer ${access_token}` },
-  });
-
-  let locations: any[] = [];
-  if (locRes.ok) {
-    const locData = await locRes.json();
-    locations = locData.locations ?? [];
-  }
+  const locations = listed.locations;
 
   // Try to match by googlePlaceId when the workspace has one on file.
   const matched = business?.googlePlaceId
-    ? locations.find((l: any) => l.metadata?.placeId === business.googlePlaceId)
+    ? locations.find((l) => l.placeId === business.googlePlaceId)
     : null;
 
   const expiresAt = new Date(Date.now() + expires_in * 1000);
@@ -180,13 +151,14 @@ export async function GET(request: NextRequest) {
       accessToken: encrypt(access_token),
       refreshToken: encrypt(refresh_token),
       expiresAt,
-      accountId,
+      accountId: locations[0].accountId,
       scopes,
-      candidateLocations: locations.map((l: any) => ({
-        locationId: l.name,
+      candidateLocations: locations.map((l) => ({
+        locationId: l.locationId,
+        accountId: l.accountId,
         title: l.title ?? '',
         address: formatLocationAddress(l.storefrontAddress),
-        placeId: l.metadata?.placeId,
+        placeId: l.placeId,
       })),
     });
 
@@ -203,7 +175,9 @@ export async function GET(request: NextRequest) {
   }
 
   // Confident match, or unambiguous (0 or 1 total locations) — proceed as before.
-  const locationId: string = matched?.name ?? locations[0]?.name ?? '';
+  const picked = matched ?? locations[0];
+  const locationId: string = picked.locationId;
+  const accountId: string = picked.accountId;
 
   await finalizeGbpConnection({
     businessId,

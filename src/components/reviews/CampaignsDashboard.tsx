@@ -160,6 +160,39 @@ export default function CampaignsDashboard() {
     }
   }, [page, search, statusFilter, tagFilter]);
 
+  // Review-request queue (campaigns send at the daily WhatsApp limit, reminders first).
+  const [queue, setQueue] = useState<{ limit: number; sentToday: number; remindersReservedToday: number; waiting: number; startedToday: number; daysLeft: number | null; campaignPerDay?: number; manualReserve?: number; manualWaiting?: number } | null>(null);
+  const [sendingAll, setSendingAll] = useState(false);
+  const fetchQueue = useCallback(async () => {
+    try {
+      const res = await fetch('/api/campaigns/queue');
+      const json = await res.json();
+      if (json.success) setQueue(json);
+    } catch { /* banner is optional */ }
+  }, []);
+
+  const sendToEveryoneNotAsked = async () => {
+    if (!confirm(`Send a Google review request to all ${stats.pending} customers who haven't been asked yet? They go out automatically within your daily WhatsApp limit — a few each day, reminders first.`)) return;
+    setSendingAll(true);
+    try {
+      const res = await fetch('/api/campaigns/bulk-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'not_requested' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) throw new Error(json.message || 'Could not start sending');
+      toast.success(json.message);
+      fetchQueue();
+      fetchCustomers();
+      fetchRequestMetrics();
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not start sending');
+    } finally {
+      setSendingAll(false);
+    }
+  };
+
   const fetchRequestMetrics = useCallback(async () => {
     try {
       const res = await fetch('/api/review-requests');
@@ -188,8 +221,9 @@ export default function CampaignsDashboard() {
       fetchCustomers();
       fetchTags();
       fetchRequestMetrics();
+      fetchQueue();
     }
-  }, [fetchCustomers, fetchTags, fetchRequestMetrics, bizLoading, activeBusiness]);
+  }, [fetchCustomers, fetchTags, fetchRequestMetrics, fetchQueue, bizLoading, activeBusiness]);
 
   useEffect(() => { setPage(1); }, [search, statusFilter, tagFilter]);
 
@@ -202,7 +236,11 @@ export default function CampaignsDashboard() {
         body: JSON.stringify({ customerId })
       });
       const json = await res.json().catch(() => ({}));
-      if (res.ok) {
+      if (res.ok && json.queued) {
+        // Today's WhatsApp limit is used — it goes out tomorrow morning.
+        toast.info(json.message || 'Scheduled for tomorrow morning.');
+        fetchQueue();
+      } else if (res.ok) {
         const wasPending = customers.find(c => c._id === customerId)?.reviewStatus === 'Pending';
         setCustomers(prev => prev.map(c => c._id === customerId ? { ...c, reviewStatus: 'Requested' as const } : c));
         setStats(prev => ({
@@ -415,14 +453,39 @@ export default function CampaignsDashboard() {
             </button>
             <button
               onClick={() => setShowUpload(true)}
-              className="flex items-center gap-2 bg-primary hover:bg-primary-container text-white text-sm font-bold rounded-xl px-5 py-2.5 shadow-sm transition-all"
+              className="flex items-center gap-2 bg-surface-container-lowest hover:bg-surface text-on-surface text-sm font-bold rounded-xl px-4 py-2.5 shadow-sm transition-all border border-outline-variant"
             >
               <UploadCloud className="w-4 h-4" /> Import CSV
             </button>
+            {stats.pending > 0 && (
+              <button
+                onClick={sendToEveryoneNotAsked}
+                disabled={sendingAll}
+                className="flex items-center gap-2 bg-primary hover:bg-primary-container text-white text-sm font-bold rounded-xl px-5 py-2.5 shadow-sm transition-all disabled:opacity-60"
+              >
+                {sendingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                Ask all {stats.pending} not asked yet
+              </button>
+            )}
           </div>
       </div>
 
         <>
+          {queue && (queue.waiting > 0 || queue.startedToday > 0) && (
+            <div className="flex items-start gap-3 bg-surface-container-lowest border border-outline-variant rounded-xl px-4 py-3 text-sm">
+              <Send className="w-4 h-4 mt-0.5 text-primary shrink-0" />
+              <div>
+                <p className="font-semibold text-on-surface">
+                  {queue.waiting} customer{queue.waiting === 1 ? '' : 's'} waiting · {queue.startedToday} started today
+                  {queue.manualWaiting ? ` · ${queue.manualWaiting} of yours scheduled for tomorrow morning` : ''}
+                  {queue.daysLeft ? ` · about ${queue.daysLeft} more day${queue.daysLeft === 1 ? '' : 's'}` : ''}
+                </p>
+                <p className="text-xs text-on-surface-variant mt-0.5">
+                  Up to {queue.campaignPerDay ?? queue.limit} new requests go out automatically each day{queue.manualReserve ? ` — ${queue.manualReserve} of your ${queue.limit} daily WhatsApp messages are always kept free for requests you send yourself` : ''} ({queue.sentToday} sent today). Reminders due that day go first, so on those days fewer new customers are asked.
+                </p>
+              </div>
+            </div>
+          )}
           {importMsg && (
             <div className="flex items-center justify-between bg-primary-fixed border border-primary-fixed-dim text-primary text-sm font-medium rounded-xl px-4 py-3">
               <span>{importMsg}</span>
@@ -679,7 +742,7 @@ export default function CampaignsDashboard() {
       {showUpload && (
         <CustomerUploadModal
           onClose={() => setShowUpload(false)}
-          onSuccess={() => { setShowUpload(false); fetchCustomers(); fetchTags(); }}
+          onSuccess={() => { setShowUpload(false); fetchCustomers(); fetchTags(); fetchQueue(); fetchRequestMetrics(); }}
         />
       )}
 

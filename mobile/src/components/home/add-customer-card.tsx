@@ -37,7 +37,7 @@ export function AddCustomerCard() {
     onSuccess: (result) => {
       setPhone('');
       if (!result.reviewRequestSent) {
-        info.show('Customer saved', result.reason ?? 'No review request was sent.');
+        info.show(result.reviewRequestQueued ? 'Scheduled for tomorrow' : 'Customer saved', result.reason ?? 'No review request was sent.');
         return;
       }
       info.show(

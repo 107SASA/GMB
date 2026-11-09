@@ -46,6 +46,7 @@ export const PURGE_TARGETS: PurgeTarget[] = [
   { model: 'MessageQueue', by: { leadId: 'leadId' }, category: 'a', what: 'queued outbound messages' },
   { model: 'ScheduledAction', by: { leadId: 'leadId' }, category: 'a', what: 'scheduled lead actions' },
   { model: 'Campaign', by: { businessId: 'businessId' }, category: 'a', what: 'review-request campaigns' },
+  { model: 'CampaignQueueItem', by: { businessId: 'businessId' }, category: 'a', what: 'customers waiting in review-request campaigns' },
   { model: 'ReviewRequest', by: { businessId: 'businessId' }, category: 'a', what: 'review requests sent to customers' },
   { model: 'MessagingSuppression', by: { businessId: 'businessId' }, category: 'a', what: 'WhatsApp opt-outs (numbers that replied STOP to this business)' },
   // ── a: reviews, replies, content and media ──

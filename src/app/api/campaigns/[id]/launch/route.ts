@@ -2,11 +2,10 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Campaign from '@/models/Campaign';
 import Customer from '@/models/Customer';
-import { inngest } from '@/services/inngest/client';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { requirePlaceIdForReviews } from '@/lib/reviewCampaignGuard';
-import { evaluateReviewSendEligibility } from '@/lib/reviewSendEligibility';
+import { startQueuedCampaign } from '@/services/reviews/campaignQueue';
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireBusinessContext();
@@ -55,49 +54,21 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     if (campaign.targetTags?.length > 0) {
       customerQuery.tags = { $in: campaign.targetTags };
     }
-    const customers = await Customer.find(customerQuery).lean();
+    const customers = await Customer.find(customerQuery).select('_id').lean();
 
-    // Skip customers who already have an active request for this campaign
-    const events: Array<{ name: 'campaigns/review.request.start'; data: Record<string, string> }> = [];
-    let limitMessage = '';
-    for (const customer of customers) {
-      const eligibility = await evaluateReviewSendEligibility({
-        source: 'campaign',
-        businessId: ctx.businessId,
-        userId: ctx.userId,
-        customer,
-        campaignId: campaign._id.toString(),
-      });
-      if (!eligibility.allowed) {
-        if (eligibility.code === 'DAILY_LIMIT') limitMessage = eligibility.message;
-        continue;
-      }
-      events.push({
-        name: 'campaigns/review.request.start',
-        data: {
-          customerId: customer._id.toString(),
-          businessId: ctx.businessId,
-          tenantId: ctx.organizationId,
-          campaignId: campaign._id.toString()
-        }
-      });
-    }
-
-    if (events.length === 0 && limitMessage) {
-      return NextResponse.json({ success: false, message: limitMessage }, { status: 400 });
-    }
-
-    if (events.length > 0) {
-      await inngest.send(events);
-    }
-
+    // Queue everyone; the daily dispatcher starts only what today's WhatsApp
+    // limit allows, after reserving room for reminders due today
+    // (services/reviews/campaignQueue.ts). Launching used to message every
+    // customer at once, far past the plan's daily limit.
     campaign.status = 'ACTIVE';
-    // += so resuming a paused campaign keeps earlier requests in the total
-    campaign.totalRequests = (campaign.totalRequests || 0) + events.length;
     if (!campaign.startedAt) campaign.startedAt = new Date();
     await campaign.save();
-
-    return NextResponse.json({ success: true, launched: true, requestsQueued: events.length });
+    const launch = await startQueuedCampaign(String(campaign._id), ctx.businessId, customers.map((c: any) => String(c._id)));
+    if (!launch.startedToday && !launch.waiting && !launch.queued) {
+      return NextResponse.json({ success: false, message: launch.message }, { status: 400 });
+    }
+    // requestsQueued kept for older clients.
+    return NextResponse.json({ success: true, launched: true, ...launch, requestsQueued: launch.startedToday });
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }

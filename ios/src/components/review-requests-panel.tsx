@@ -213,12 +213,13 @@ export function ReviewRequestsPanel() {
   const send = useMutation({
     mutationFn: (customerId: string) => sendReviewRequest(customerId),
     onMutate: (customerId) => setSendingId(customerId),
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       setDuplicate(null);
       setName('');
       setPhone('');
       await refresh();
-      info.show('Review request sent', 'The WhatsApp review request is on its way.');
+      if (result.queued) info.show('Scheduled for tomorrow', result.message ?? "Today's WhatsApp limit is used — it goes out tomorrow morning.");
+      else info.show('Review request sent', 'The WhatsApp review request is on its way.');
     },
     onError: (error) => info.show('Could not send', getApiErrorMessage(error, 'Please try again.')),
     onSettled: () => setSendingId(null),

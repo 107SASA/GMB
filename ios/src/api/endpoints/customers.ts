@@ -22,6 +22,8 @@ const quickAddResponseSchema = z.object({
   existing: z.boolean(),
   customer: customerSchema,
   reviewRequestSent: z.boolean(),
+  /** Today's WhatsApp limit was used — scheduled for tomorrow morning. */
+  reviewRequestQueued: z.boolean().optional().catch(false),
   reason: z.string().optional(),
 });
 export type QuickAddCustomerResult = z.infer<typeof quickAddResponseSchema>;
@@ -102,6 +104,8 @@ export async function addCustomer(params: { name: string; phone: string }): Prom
 }
 
 /** POST /api/campaigns/send — existing one-customer review request. */
-export async function sendReviewRequest(customerId: string): Promise<void> {
-  await api.post('/api/campaigns/send', { customerId });
+export async function sendReviewRequest(customerId: string): Promise<{ queued: boolean; message: string | null }> {
+  const { data } = await api.post('/api/campaigns/send', { customerId });
+  // queued: today's WhatsApp limit was used — it goes out tomorrow morning.
+  return { queued: data?.queued === true, message: typeof data?.message === 'string' ? data.message : null };
 }

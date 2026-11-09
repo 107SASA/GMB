@@ -123,12 +123,28 @@ export function headTerm(keyword: string, placeNames: string[]): string | null {
 }
 
 /**
+ * The business's city as a Google Ads location code (null when Google Ads
+ * has no city entry for it). Free: the location list is stored for 30 days.
+ */
+export async function cityAdsLocationCode(
+  place: { city?: string | null; area?: string | null; state?: string | null; country?: string | null },
+): Promise<number | null> {
+  try {
+    const locs = pickAdsLocations(await adsLocations(countryIsoOf(place.country)), place);
+    return locs.find((l) => l.level === 'city')?.code ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * For each keyword, the broad term's monthly searches in the customer's city
  * (or state). Map keyed by the lowercased keyword. One volume call at most.
  */
 export async function areaDemandFor(
   keywords: string[],
   place: { city?: string | null; area?: string | null; state?: string | null; country?: string | null },
+  opts: { onTask?: () => void } = {},
 ): Promise<Map<string, AreaDemand>> {
   const out = new Map<string, AreaDemand>();
   try {
@@ -145,7 +161,7 @@ export async function areaDemandFor(
     const found = new Map<string, AreaDemand>();
     for (const loc of locs) {
       if (!pending.length) break;
-      const volumes = await fetchSearchVolumes(pending, { locationCode: loc.code });
+      const volumes = await fetchSearchVolumes(pending, { locationCode: loc.code, onTask: opts.onTask });
       for (const term of pending) {
         if (!volumes.has(term)) continue; // not measured here
         const v = volumes.get(term) ?? null;

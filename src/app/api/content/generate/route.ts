@@ -101,7 +101,8 @@ export async function POST(req: Request) {
       businessType: data.businessType || business.category,
       location: data.location || businessLocation,
       tone: data.tone,
-      keywords: data.keywords?.length ? data.keywords : (business.keywords || []),
+      // Typed keywords win; else the month's researched targets; else the owner's list.
+      keywords: data.keywords?.length ? data.keywords : (await planTargetKeywords(String(business._id))) ?? (business.keywords || []),
       contentTypes: data.contentTypes,
       topic: data.topic || undefined,
     };
@@ -225,5 +226,19 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error('Failed to generate content:', error);
     return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
+  }
+}
+
+/** The active plan's focus + monthly keywords (docs/KEYWORD_SYSTEM_PLAN.md §6); null when none are researched yet. */
+async function planTargetKeywords(businessId: string): Promise<string[] | null> {
+  try {
+    const [{ getActiveSeoPlan }, { targetKeywords }] = await Promise.all([
+      import('@/services/seoPlan/seoPlanService'),
+      import('@/services/seo/keywordSet'),
+    ]);
+    const targets = targetKeywords((await getActiveSeoPlan(businessId))?.keywordSet).map((k) => k.keyword);
+    return targets.length ? targets : null;
+  } catch {
+    return null;
   }
 }

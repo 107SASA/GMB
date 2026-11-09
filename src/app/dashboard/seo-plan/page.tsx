@@ -2,6 +2,13 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import KeywordsPanel from '@/components/seo/KeywordsPanel';
+
+type PlanTab = 'keywords' | 'plan';
+const PLAN_TABS: Array<{ id: PlanTab; label: string; icon: string }> = [
+  { id: 'keywords', label: 'Keywords', icon: 'manage_search' },
+  { id: 'plan', label: 'Plan', icon: 'target' },
+];
 
 interface SeoPlan {
   version: number;
@@ -22,6 +29,36 @@ interface SeoPlan {
   marketOpportunities: Array<{ keyword: string; potential: string; rationale: string }>;
   actionPhases: Array<{ label: string; window: string; items: Array<{ title: string; detail: string; priority: string }> }>;
   baseline: Array<{ avgRank?: number; reviewCount?: number; rating?: number; completionPct?: number; capturedAt: string }>;
+  /** The keyword system's list (docs/KEYWORD_SYSTEM_PLAN.md) — empty until the first full report researches it. */
+  keywordSet?: Array<{
+    keyword: string;
+    role: 'core' | 'rotating' | 'owner' | 'watch';
+    volume?: { country: number | null; city: number | null; status: string };
+    rank?: { avg: number | null; status: string };
+  }>;
+}
+
+/** "320/mo · #9" from measured numbers only. */
+function keywordStats(k: NonNullable<SeoPlan['keywordSet']>[number]): string {
+  const v = k.volume?.city ?? k.volume?.country ?? null;
+  const vol = v && v > 0 ? `${v.toLocaleString('en-IN')}/mo` : k.volume?.status === 'not_measured' ? null : 'few searches';
+  const rank = k.rank?.status !== 'measured' ? null : k.rank.avg == null ? 'not in top 20' : `#${Math.round(k.rank.avg)}`;
+  return [vol, rank].filter(Boolean).join(' · ');
+}
+
+function KeywordChips({ items }: { items: NonNullable<SeoPlan['keywordSet']> }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((k) => {
+        const stats = keywordStats(k);
+        return (
+          <span key={k.keyword} className="text-xs px-2 py-1 rounded bg-primary-fixed text-primary">
+            {k.keyword}{stats && <span className="text-on-surface-variant"> · {stats}</span>}
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
@@ -53,6 +90,17 @@ export default function SeoPlanPage() {
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [applyMsg, setApplyMsg] = useState<string | null>(null);
+  // Keywords is the default tab; ?tab=plan opens the plan (old links / notices).
+  const [tab, setTab] = useState<PlanTab>('keywords');
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('tab') === 'plan') setTab('plan');
+  }, []);
+  const openTab = (t: PlanTab) => {
+    setTab(t);
+    const url = new URL(window.location.href);
+    if (t === 'plan') url.searchParams.set('tab', 'plan'); else url.searchParams.delete('tab');
+    window.history.replaceState(null, '', url.toString());
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,33 +129,43 @@ export default function SeoPlanPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="p-8 flex items-center justify-center">
-        <MaterialIcon name="progress_activity" size={32} className="animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!plan) {
-    return (
-      <div className="p-8 max-w-2xl">
-        <h1 className="font-heading text-xl font-bold text-on-surface mb-2">SEO Plan</h1>
-        <p className="text-on-surface-variant text-sm">
-          Your SEO plan is created from your first audit. Run an audit from the Audit Engine, or complete onboarding intake, and it will appear here.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="p-6 md:p-8 max-w-4xl space-y-6">
+    <div className="p-4 md:p-8 max-w-6xl space-y-6">
       <div>
         <h1 className="font-heading text-xl font-bold text-on-surface">SEO Plan</h1>
         <p className="text-xs text-on-surface-variant mt-1">
-          Version {plan.version} · active since {new Date(plan.activeFrom).toLocaleDateString()} · this is the single plan your posts, review replies, and monthly re-audit all read from.
+          {plan
+            ? <>Version {plan.version} · active since {new Date(plan.activeFrom).toLocaleDateString()} · the single plan your posts, review replies and monthly report all follow.</>
+            : 'Your keywords and plan — updated automatically by your monthly report.'}
         </p>
       </div>
+
+      <div className="flex gap-1 border-b border-outline-variant" role="tablist">
+        {PLAN_TABS.map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => openTab(t.id)}
+            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px ${tab === t.id ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'}`}
+          >
+            <MaterialIcon name={t.icon} size={16} /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'keywords' && <KeywordsPanel />}
+
+      {tab === 'plan' && (loading ? (
+        <div className="py-12 flex items-center justify-center">
+          <MaterialIcon name="progress_activity" size={32} className="animate-spin text-primary" />
+        </div>
+      ) : !plan ? (
+        <p className="text-on-surface-variant text-sm max-w-2xl">
+          Your SEO plan is created from your first audit. Run an audit from the Audit Engine, or complete onboarding intake, and it will appear here.
+        </p>
+      ) : (
+      <div className="max-w-4xl space-y-6">
 
       {plan.keyFinding && (
         <Card title="Key Finding">
@@ -128,8 +186,27 @@ export default function SeoPlanPage() {
       )}
 
       <Card title="Target keywords">
-        <p className="text-xs text-on-surface-variant mb-1.5">Primary</p>
-        <Chips items={plan.primaryKeywords} />
+        <p className="text-xs text-on-surface-variant mb-3">
+          Search volume, your Google Maps rank and competitors for each keyword:{' '}
+          <button type="button" onClick={() => openTab('keywords')} className="text-primary font-semibold hover:underline">open the Keywords tab →</button>
+        </p>
+        {(plan.keywordSet || []).some((k) => k.role === 'core') ? (
+          <>
+            <p className="text-xs text-on-surface-variant mb-1.5">Focus keywords — kept at least 90 days so rankings can move</p>
+            <KeywordChips items={(plan.keywordSet || []).filter((k) => k.role === 'core')} />
+            {(plan.keywordSet || []).some((k) => k.role === 'rotating') && (
+              <>
+                <p className="text-xs text-on-surface-variant mb-1.5 mt-3">This month</p>
+                <KeywordChips items={(plan.keywordSet || []).filter((k) => k.role === 'rotating')} />
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-on-surface-variant mb-1.5">Keywords from your last report — your focus keywords are picked, with search volume and rank, in your next full report</p>
+            <Chips items={plan.primaryKeywords} />
+          </>
+        )}
         {plan.cityAreaTerms.length > 0 && (
           <>
             <p className="text-xs text-on-surface-variant mb-1.5 mt-3">Areas</p>
@@ -250,6 +327,8 @@ export default function SeoPlanPage() {
           </div>
         </Card>
       )}
+      </div>
+      ))}
     </div>
   );
 }

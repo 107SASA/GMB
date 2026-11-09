@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { meter } from '@/lib/providerMeter';
+import { waitForGoogleAdsSlot } from '@/lib/googleAdsRateGate';
 
 /**
  * Live monthly search volume from DataForSEO's Google Ads (Keyword Planner)
@@ -17,6 +18,9 @@ import { meter } from '@/lib/providerMeter';
  * in .env.local after the process started is still picked up, and the login
  * is logged masked exactly once.
  */
+
+/** Phrases one Google Ads search_volume task accepts. */
+export const ADS_TASK_MAX = 700;
 
 const SEARCH_VOLUME_URL =
   'https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live';
@@ -101,7 +105,7 @@ export function adsKeyword(raw: string): string | null {
  */
 export async function fetchSearchVolumes(
   keywords: string[],
-  opts: { countryHint?: string; locationCode?: number; timeout?: number } = {},
+  opts: { countryHint?: string; locationCode?: number; timeout?: number; onTask?: () => void } = {},
 ): Promise<Map<string, number | null>> {
   const out = new Map<string, number | null>();
   // Original (lowercased) keyword → the phrase sent to Google.
@@ -113,6 +117,16 @@ export async function fetchSearchVolumes(
   }
   const unique = Array.from(new Set(asked.values()));
   if (unique.length === 0) return out;
+  // One Google Ads task holds 700 phrases — split, never silently drop the rest.
+  if (unique.length > ADS_TASK_MAX) {
+    const merged = new Map<string, number | null>();
+    for (let i = 0; i < unique.length; i += ADS_TASK_MAX) {
+      const part = await fetchSearchVolumes(unique.slice(i, i + ADS_TASK_MAX), opts);
+      for (const [k, v] of part) merged.set(k, v);
+    }
+    for (const [key, clean] of asked) if (merged.has(clean)) out.set(key, merged.get(clean) ?? null);
+    return out;
+  }
   const byClean = new Map<string, number | null>();
   const finish = () => {
     for (const [key, clean] of asked) if (byClean.has(clean)) out.set(key, byClean.get(clean) ?? null);
@@ -151,12 +165,14 @@ export async function fetchSearchVolumes(
     let envelope: any = {};
     // A keyword Google still rejects is dropped and the rest asked again (twice at most).
     for (let attempt = 0; attempt < 3; attempt++) {
-      const body = [{ keywords: missing.slice(0, 700), language_code: 'en', location_code }];
+      const body = [{ keywords: missing.slice(0, ADS_TASK_MAX), language_code: 'en', location_code }];
+      await waitForGoogleAdsSlot('search_volume');
       const res = await axios.post(SEARCH_VOLUME_URL, body, {
         auth: { username: c.login, password: c.password },
         timeout: opts.timeout ?? 30000,
       });
       meter('dataForSeoAdsVolumeLiveTask', 1, `keyword_demand (${missing.length} uncached keywords)`);
+      opts.onTask?.();
       envelope = res.data ?? {};
       task = envelope.tasks?.[0] ?? {};
       console.log(
@@ -214,4 +230,31 @@ export async function fetchSearchVolumes(
     console.warn(`[keywordVolume] request error (HTTP ${status ?? '?'}): ${msg}`);
     return finish();
   }
+}
+
+/**
+ * Volumes already in the 45-day cache (country level) — read only, never a
+ * paid call. Map keyed by the lowercased keyword; absent = not cached.
+ */
+export async function cachedSearchVolumes(keywords: string[], opts: { countryHint?: string } = {}): Promise<Map<string, number | null>> {
+  const out = new Map<string, number | null>();
+  const asked = new Map<string, string>();
+  for (const k of keywords) {
+    const key = String(k || '').trim().toLowerCase();
+    const clean = key ? adsKeyword(key) : null;
+    if (clean) asked.set(key, clean);
+  }
+  if (!asked.size) return out;
+  try {
+    const { location_code } = resolveGoogleAdsLocation(opts.countryHint);
+    const dbConnect = (await import('@/lib/mongodb')).default;
+    await dbConnect();
+    const KeywordVolumeCache = (await import('@/models/KeywordVolumeCache')).default as any;
+    const rows: any[] = await KeywordVolumeCache.find({ key: { $in: Array.from(new Set(asked.values())).map((kw) => `${kw}::${location_code}`) } }).lean();
+    const byClean = new Map(rows.map((r) => [r.keyword, r.searchVolume ?? null]));
+    for (const [key, clean] of asked) if (byClean.has(clean)) out.set(key, byClean.get(clean) ?? null);
+  } catch (err: any) {
+    console.warn('[keywordVolume] cache read skipped:', err?.message);
+  }
+  return out;
 }

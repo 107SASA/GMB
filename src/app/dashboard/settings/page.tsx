@@ -127,6 +127,28 @@ export default function SettingsPage() {
   });
   const [bpKeywords, setBpKeywords] = useState<string[]>([]);
   const [bpKeywordInput, setBpKeywordInput] = useState('');
+  // Google monthly searches per keyword (lowercased) — cached and capped server-side.
+  const [kwVolumes, setKwVolumes] = useState<Record<string, number | null>>({});
+  const kwAskedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const missing = bpKeywords.filter((k) => !kwAskedRef.current.has(k.toLowerCase()));
+    if (!missing.length) return;
+    const t = setTimeout(async () => {
+      missing.forEach((k) => kwAskedRef.current.add(k.toLowerCase()));
+      try {
+        const res = await fetch('/api/onboarding/keyword-volume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keywords: missing }),
+        });
+        const json = await res.json();
+        if (json.success && json.volumes) {
+          setKwVolumes((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(json.volumes).map(([k, v]) => [k.toLowerCase(), v as number | null])) }));
+        }
+      } catch { /* volume is a hint only */ }
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [bpKeywords]);
   const [bpDescLen, setBpDescLen] = useState(0);
   const [bpSaveState, setBpSaveState] = useState<SaveState>('idle');
   const [bpError, setBpError] = useState('');
@@ -553,6 +575,11 @@ export default function SettingsPage() {
                   >
                     <Tag className="w-3 h-3" />
                     {kw}
+                    {kw.toLowerCase() in kwVolumes && (
+                      <span className="font-normal text-on-surface-variant">
+                        · {(kwVolumes[kw.toLowerCase()] ?? 0) > 0 ? `${kwVolumes[kw.toLowerCase()]!.toLocaleString('en-IN')}/mo` : 'few searches'}
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleKeywordRemove(kw)}
@@ -572,7 +599,7 @@ export default function SettingsPage() {
                   />
                 )}
               </div>
-              <p className="text-xs text-outline mt-1">These power keyword analysis in the audit engine.</p>
+              <p className="text-xs text-outline mt-1">Monthly Google searches are shown next to each keyword. Rank and competitors for every keyword: <a href="/dashboard/seo-plan" className="text-primary hover:underline">SEO Plan → Keywords</a>.</p>
             </div>
           </div>
 

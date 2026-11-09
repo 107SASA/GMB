@@ -50,7 +50,7 @@ export async function POST(req: Request) {
   const { category, description, city, area, selectedKeywords, excludeKeywords } = parsed.data;
   const skip = new Set([...selectedKeywords, ...excludeKeywords].map((k) => k.toLowerCase().trim()));
 
-  const details: Array<{ keyword: string; source: 'measured' | 'proposed' | 'ai'; rank?: number | null }> = [];
+  const details: Array<{ keyword: string; source: 'measured' | 'proposed' | 'ai'; rank?: number | null; volume?: number | null }> = [];
   try {
     const { seoBrainKeywords } = await import('@/services/seoPlan/seoBrainKeywords');
     for (const k of await seoBrainKeywords(ctx.business as any)) {
@@ -76,5 +76,10 @@ export async function POST(req: Request) {
   if (details.length === 0) {
     return NextResponse.json({ success: false, error: "Couldn't find keyword suggestions right now — add your own or try again." }, { status: 502 });
   }
-  return NextResponse.json({ success: true, keywords: details.map((d) => d.keyword), details });
+  // Real Google monthly searches for each suggestion (cached; capped per business per day).
+  const { ownerKeywordVolumes } = await import('@/services/seo/ownerKeywordVolume');
+  const { volumes } = await ownerKeywordVolumes(String(ctx.businessId), details.map((d) => d.keyword), (ctx.business as any)?.country)
+    .catch(() => ({ volumes: {} as Record<string, number | null> }));
+  const withVolume = details.map((d) => (d.keyword in volumes ? { ...d, volume: volumes[d.keyword] } : d));
+  return NextResponse.json({ success: true, keywords: withVolume.map((d) => d.keyword), details: withVolume });
 }

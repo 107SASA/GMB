@@ -79,6 +79,9 @@ export interface IBusiness extends Document {
     noticeReason?: string | null;
   };
   keywords: string[];
+  /** Owner keywords beyond the 20-keyword cap, moved here by
+   *  scripts/migrate-keyword-set.ts — still researched, never deleted. */
+  legacyKeywords?: string[];
   competitors: mongoose.Types.ObjectId[];
   organizationId: mongoose.Types.ObjectId;
   userId?: mongoose.Types.ObjectId;
@@ -403,6 +406,7 @@ const BusinessSchema: Schema = new Schema(
       default: undefined,
     },
     keywords: [{ type: String }],
+    legacyKeywords: [{ type: String }],
     competitors: [{ type: Schema.Types.ObjectId, ref: 'Business' }],
     organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User' },

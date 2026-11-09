@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import type { ISeoPlanDraft, IKeywordTableRow } from './Audit';
+import type { PlanKeyword, CompetitorGap, KeywordSetChange } from '@/services/seo/keywordTypes';
 
 /**
  * The SEO brain. One versioned document per business per audit cycle.
@@ -62,6 +63,17 @@ export interface ISeoPlan extends Document {
   trackedKeywords: any[];
   /** Keywords added / removed / not added this version, with reasons. */
   keywordChanges: any[];
+  /** THE keyword list (docs/KEYWORD_SYSTEM_PLAN.md): owner keywords, the
+   *  month's core + rotating targets and watched candidates, each with real
+   *  volume, rank, competitors above and a verdict. Empty until the first
+   *  audit that runs keyword research. */
+  keywordSet: PlanKeyword[];
+  /** Core / rotating selection changes this version, with reasons. */
+  keywordSetChanges: KeywordSetChange[];
+  /** Keywords competitors rank for and the business doesn't. */
+  competitorGaps: CompetitorGap[];
+  /** What the research covered, for transparency and debugging. */
+  keywordResearch?: { candidates: number; withVolume: number; rankChecked: number; ranAt: Date };
   /** Services and areas to push this month (services/seo/planMemory.ts planFocus). */
   focus?: { services: any[]; areas: any[] };
   /** Verified service areas measured in the source audit (allowed post locations). */
@@ -124,6 +136,10 @@ const SeoPlanSchema = new Schema<ISeoPlan>(
     baseline: { type: Schema.Types.Mixed, default: [] },
     trackedKeywords: { type: Schema.Types.Mixed, default: [] },
     keywordChanges: { type: Schema.Types.Mixed, default: [] },
+    keywordSet: { type: Schema.Types.Mixed, default: [] },
+    keywordSetChanges: { type: Schema.Types.Mixed, default: [] },
+    competitorGaps: { type: Schema.Types.Mixed, default: [] },
+    keywordResearch: { type: Schema.Types.Mixed },
     focus: { type: Schema.Types.Mixed },
     serviceAreas: { type: [String], default: [] },
     history: { type: Schema.Types.Mixed },

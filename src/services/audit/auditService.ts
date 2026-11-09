@@ -441,6 +441,8 @@ async function processAuditJobInner(auditId: string) {
     const seoIntel: {
       services: any[]; tracked: any[]; keywordChanges: any[]; trackedObs: SearchObservation[]; serviceAreaObs: SearchObservation[];
       searchTerms: Array<{ keyword: string; impressions: number; period?: string }>; prevPlan: any; prevAudit: any; serviceOf: (k: string) => { id: string; name: string } | null;
+      /** Keyword system research (docs/KEYWORD_SYSTEM_PLAN.md); null when it could not run. */
+      keywordResearch: import('../seo/keywordPipeline').KeywordPipelineResult | null;
     } | null = await (async () => {
       if (audit.fastMode || !rankData || rankData.fetchError || !searchCategory) return null;
       try {
@@ -482,7 +484,30 @@ async function processAuditJobInner(auditId: string) {
         const svcAreaSearches = searchedAreas.slice(0, 3).flatMap((a) =>
           services.slice(0, 3).map((s: any) => ({ keyword: `${s.name} ${a.name}`, point: a.point, label: a.label })));
         const serviceAreaObs: SearchObservation[] = await fetchAreaObservations(businessForRankings, svcAreaSearches);
-        return { services, tracked: plan.tracked, keywordChanges: plan.changes, trackedObs, serviceAreaObs, searchTerms, prevPlan, prevAudit, serviceOf };
+
+        // Keyword system: research, volume for every candidate, rank checks
+        // (reusing the searches above), selection of the month's targets.
+        const { runKeywordPipeline } = require('../seo/keywordPipeline');
+        const sameTrade = competitorsFromObservations(marketObs).filter((c) =>
+          !tradeProfile || classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, keywords: c.keywords }, tradeProfile).counted);
+        const keywordResearch = await runKeywordPipeline({
+          business,
+          businessForRankings,
+          services,
+          category: searchCategory,
+          city: resolvedCity,
+          place: { city: resolvedCity, area: business.area, state: business.state, country: business.country },
+          serviceAreas: Array.from(new Set([
+            ...searchedAreas.map((a) => a.name),
+            ...gbpServiceAreas.map((a) => a.placeName).filter(Boolean) as string[],
+          ])),
+          gbpSearchTerms: searchTerms,
+          existingObservations: [...marketObs, ...trackedObs, ...serviceAreaObs],
+          competitors: sameTrade.map((c) => ({ name: c.name, website: c.website })),
+          previous: prevPlan?.keywordSet || [],
+          ownerRemoved: prevPlan?.ownerRemovedKeywords || [],
+        });
+        return { services, tracked: plan.tracked, keywordChanges: plan.changes, trackedObs, serviceAreaObs, searchTerms, prevPlan, prevAudit, serviceOf, keywordResearch };
       } catch (siErr: any) {
         console.warn('[auditService] SEO intelligence measurement failed:', siErr?.message);
         return null;
@@ -595,7 +620,7 @@ async function processAuditJobInner(auditId: string) {
       const { fetchSearchVolumes } = require('./keywordVolumeClient');
       const phrases = [
         ...areaObs.map((o) => o.keyword),
-        ...(seoIntel ? [...seoIntel.trackedObs, ...seoIntel.serviceAreaObs].map((o) => o.keyword) : []),
+        ...(seoIntel ? [...seoIntel.trackedObs, ...seoIntel.serviceAreaObs, ...(seoIntel.keywordResearch?.observations || [])].map((o) => o.keyword) : []),
         ...rankingFacts.byKeyword.filter((k) => k.kind !== 'brand').map((k) => k.keyword),
       ];
       volumes = await fetchSearchVolumes(phrases, { countryHint: business.country || '' }).catch(() => new Map());
@@ -707,7 +732,8 @@ async function processAuditJobInner(auditId: string) {
         const serviceAreaSearches = [...areaObs, ...seoIntel.serviceAreaObs].filter((o) => o.area && areaByLabel.has(o.area));
         const measurements = [
           ...measurementRows(marketObs, { scope: 'address_grid', areaOf: () => home, serviceOf: seoIntel.serviceOf, volumes }),
-          ...measurementRows(seoIntel.trackedObs, { scope: 'address_tracked', areaOf: () => home, serviceOf: seoIntel.serviceOf, volumes }),
+          // A keyword the keyword stage re-searched at more points replaces its tracked rows (one grid per keyword).
+          ...measurementRows(addressTrackedObs(seoIntel.trackedObs, seoIntel.keywordResearch?.observations || []), { scope: 'address_tracked', areaOf: () => home, serviceOf: seoIntel.serviceOf, volumes }),
           ...measurementRows(serviceAreaSearches, { scope: 'service_area', areaOf: (o: SearchObservation) => areaByLabel.get(o.area!)!, serviceOf: seoIntel.serviceOf, volumes }),
         ];
         // Month-on-month movement + comparable history, from the measurements
@@ -1427,7 +1453,8 @@ async function processAuditJobInner(auditId: string) {
             ...(areaVisibility?.areas || []).filter((a) => a.status === 'measured' && a.bestRank == null).map((a) => a.area),
             ...areasChecked,
           ])),
-          primaryKeyword: rankingFacts.primaryKeyword || keywordTable[0]?.keyword || '',
+          // The month's first focus keyword leads the post themes / Q&A when researched.
+          primaryKeyword: seoIntel?.keywordResearch?.keywordSet.find((k) => k.role === 'core')?.keyword || rankingFacts.primaryKeyword || keywordTable[0]?.keyword || '',
           keywordTable,
           competitors: competitorFacts.slice(0, 10).map((c) => ({
             name: c.name,
@@ -1964,6 +1991,14 @@ async function processAuditJobInner(auditId: string) {
                 history: strategyHistory,
               }
             : undefined,
+          keywords: seoIntel?.keywordResearch
+            ? {
+                keywordSet: seoIntel.keywordResearch.keywordSet,
+                changes: seoIntel.keywordResearch.changes,
+                gaps: seoIntel.keywordResearch.gaps,
+                research: seoIntel.keywordResearch.research,
+              }
+            : undefined,
           rankingComplete: rankingFacts.overall.status === 'ok' || rankingFacts.overall.status === 'partial',
           baseline: {
             overallScore: finalScore,
@@ -2076,4 +2111,10 @@ function releasePeriod(audit: any) {
     audit.failedPeriod = audit.period;
     audit.period = undefined;
   }
+}
+
+/** Tracked searches plus the keyword stage's searches; a keyword searched by both keeps only the keyword stage's grid. */
+function addressTrackedObs(tracked: SearchObservation[], keywordStage: SearchObservation[]): SearchObservation[] {
+  const redone = new Set(keywordStage.map((o) => o.keyword.trim().toLowerCase()));
+  return [...tracked.filter((o) => !redone.has(o.keyword.trim().toLowerCase())), ...keywordStage];
 }

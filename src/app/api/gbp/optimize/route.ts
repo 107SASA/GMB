@@ -107,11 +107,18 @@ export async function GET(req: Request) {
     canModify: loc?.metadata?.canModifyServiceList ?? null,
   });
   const tokens = [loc?.primaryCategory?.displayName, loc?.address?.locality, ctx.business.category, ctx.business.city, ...services].filter(Boolean);
+  // Services behind this month's focus keywords lead the description (its
+  // first 250 characters matter most) — docs/KEYWORD_SYSTEM_PLAN.md §6.
+  const focusServices = await focusServiceNames(String(ctx.businessId));
+  const focusRank = (svc: string) => {
+    const i = focusServices.findIndex((f) => f.toLowerCase() === svc.toLowerCase());
+    return i === -1 ? focusServices.length : i;
+  };
   const description = draftDescription({
     name: loc?.title || ctx.business.name || '',
     category: loc?.primaryCategory?.displayName || ctx.business.category || '',
     city: loc?.address?.locality || ctx.business.city || '',
-    services,
+    services: [...services].sort((a, b) => focusRank(a) - focusRank(b)),
   });
   const descriptionValidation = validateDescription(description, { tokens });
   const regionCode = loc?.address?.regionCode || ctx.business.country || null;
@@ -210,4 +217,18 @@ export async function GET(req: Request) {
 
 export async function POST() {
   return NextResponse.json({ success: false, error: 'Recommendations are read-only. Create a change with POST /api/gbp/changes after review.' }, { status: 405 });
+}
+
+/** Services tied to the plan's focus then monthly keywords, in that order (none until researched). */
+async function focusServiceNames(businessId: string): Promise<string[]> {
+  try {
+    const [{ getActiveSeoPlan }, { targetKeywords }] = await Promise.all([
+      import('@/services/seoPlan/seoPlanService'),
+      import('@/services/seo/keywordSet'),
+    ]);
+    const names = targetKeywords((await getActiveSeoPlan(businessId))?.keywordSet).map((k) => k.service).filter((x): x is string => !!x);
+    return Array.from(new Set(names));
+  } catch {
+    return [];
+  }
 }

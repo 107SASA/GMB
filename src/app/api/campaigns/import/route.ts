@@ -6,8 +6,8 @@ import mongoose from 'mongoose';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { normalizePhoneE164 } from '@/lib/phone';
 
-const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
 
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
@@ -30,10 +30,16 @@ export async function POST(req: Request) {
     const index = await buildCustomerLeadIndex(ctx.businessId);
     let imported = 0;
     let leadsCreated = 0;
+    let withoutPhone = 0;
+    // Customers that can get a WhatsApp review request ("Send to all" next).
+    const reachableIds: string[] = [];
 
     for (const c of customers) {
-      // Silently null the phone field if it fails E.164 validation
-      const phone = c.phone && PHONE_REGEX.test(c.phone) ? c.phone : null;
+      // "+91 98765 43210", "98765-43210" and "9876543210" all become
+      // +919876543210 — these used to be dropped silently and the customer
+      // saved without a phone (never reachable).
+      const phone = c.phone ? normalizePhoneE164(String(c.phone)) : null;
+      if (!phone) withoutPhone++;
 
       // Skip if no valid contact method after phone nulling
       if (!phone && !c.email) continue;
@@ -59,6 +65,7 @@ export async function POST(req: Request) {
         { upsert: true, new: true }
       );
       imported++;
+      if (phone && !customer.optedOut) reachableIds.push(String(customer._id));
 
       // Canonical Customer CRM path (valid 'Campaign Import' source, schema
       // validated, deduped by normalized phone/email in this workspace). Past
@@ -78,7 +85,7 @@ export async function POST(req: Request) {
       if (r.created) leadsCreated++;
     }
 
-    return NextResponse.json({ success: true, imported, leadsCreated });
+    return NextResponse.json({ success: true, imported, leadsCreated, withoutPhone, customerIds: reachableIds });
   } catch (error: any) {
     console.error('Import Customers Error:', error);
     return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });

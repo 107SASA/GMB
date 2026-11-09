@@ -5,6 +5,7 @@ import Business from '@/models/Business';
 import { requireBusinessContext } from '@/lib/tenant';
 import { buildIntakePrefill, type PrefillSuggestion } from '@/services/intel/intakePrefill';
 import { normalizeOrigin } from '@/services/intel/websiteExtract';
+import { cleanOwnerKeywords } from '@/services/seo/keywordResearch';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,11 +15,9 @@ export const dynamic = 'force-dynamic';
  * marks intakeCompleted so the dashboard unlocks (gate lives in src/proxy.ts).
  */
 
-const cleanKeywords = (arr?: string[]) =>
-  (arr ?? [])
-    .map((s) => (typeof s === 'string' ? s.trim() : ''))
-    .filter((s) => /[a-zA-Z]/.test(s)) // drop symbol/number-only junk like "."
-    .slice(0, 30);
+// Cleaned, deduped and capped at KEYWORD_LIMITS.maxOwnerKeywords (20) —
+// the cap holds whatever the client sends (docs/KEYWORD_SYSTEM_PLAN.md §7a).
+const cleanKeywords = (arr?: string[]) => cleanOwnerKeywords(arr);
 
 const cleanList = (arr?: string[]) =>
   (arr ?? [])

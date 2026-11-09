@@ -40,6 +40,14 @@ function withoutOwnerRemoved<T extends { primaryKeywords: string[]; secondaryKey
   };
 }
 
+/** keywordSet rows whose keyword the owner removed are dropped (same rule as the lists above). */
+function keywordSetWithoutRemoved(set: any[] | undefined, removed: string[]): any[] {
+  const rows = Array.isArray(set) ? set : [];
+  if (!removed.length) return rows;
+  const gone = new Set(removed.map(kwKey));
+  return rows.filter((r) => !gone.has(kwKey(r?.keyword)));
+}
+
 function splitKeywords(draft: ISeoPlanDraft | undefined, keywordTable: IKeywordTableRow[], cityAreaTerms: string[]) {
   const ranked = (keywordTable || []).slice().sort((a, b) => {
     const band = { HIGH: 0, MED: 1, LOW: 2, NICHE: 3 } as Record<string, number>;
@@ -69,6 +77,13 @@ interface UpsertInput {
     matrix: any[];
     serviceAreas: string[];
     history: any;
+  };
+  /** Keyword research output (services/seo/keywordSet.ts). Absent → the previous keywordSet is carried forward. */
+  keywords?: {
+    keywordSet: any[];
+    changes: any[];
+    gaps: any[];
+    research: { candidates: number; withVolume: number; rankChecked: number };
   };
   /** False when the audit's ranking data was unavailable: keywords are carried over, never replaced by an empty set. */
   rankingComplete?: boolean;
@@ -115,8 +130,16 @@ export async function upsertSeoPlanFromAudit(input: UpsertInput): Promise<ISeoPl
     postThemes: draft?.weeklyPostThemes || [],
     trackedKeywords: tracking ? tracking.trackedKeywords : prev?.trackedKeywords || [],
   }, ownerRemovedKeywords);
-  const { primaryKeywords, secondaryKeywords, cityAreaTerms, postThemes } = cleaned;
+  const { cityAreaTerms, postThemes } = cleaned;
   const keywordTable = cleaned.keywordTable as IKeywordTableRow[];
+
+  // keywordSet: fresh research wins (unless ranking failed); else carry the previous one.
+  const freshKeywords = input.keywords && input.rankingComplete !== false ? input.keywords : null;
+  const keywordSet = keywordSetWithoutRemoved(freshKeywords ? freshKeywords.keywordSet : prev?.keywordSet, ownerRemovedKeywords);
+  const { legacyKeywordLists } = await import('@/services/seo/keywordSet');
+  const fromSet = freshKeywords ? legacyKeywordLists(keywordSet) : null;
+  const primaryKeywords = fromSet?.primaryKeywords.length ? fromSet.primaryKeywords : cleaned.primaryKeywords;
+  const secondaryKeywords = fromSet?.primaryKeywords.length ? fromSet.secondaryKeywords : cleaned.secondaryKeywords;
   const changesFromPrevious = prev
     ? planChanges(
         { version: prev.version, createdAt: String(prev.createdAt), primaryKeywords: prev.primaryKeywords || [], secondaryKeywords: prev.secondaryKeywords || [], postThemes: prev.postThemes || [], priorities: [] },
@@ -167,6 +190,10 @@ export async function upsertSeoPlanFromAudit(input: UpsertInput): Promise<ISeoPl
     // A free report (no tracking) keeps the previous tracked set and focus.
     trackedKeywords: cleaned.trackedKeywords,
     keywordChanges: tracking ? tracking.keywordChanges : [],
+    keywordSet,
+    keywordSetChanges: freshKeywords ? freshKeywords.changes : [],
+    competitorGaps: freshKeywords ? freshKeywords.gaps : prev?.competitorGaps || [],
+    keywordResearch: freshKeywords ? { ...freshKeywords.research, ranAt: new Date() } : prev?.keywordResearch,
     focus: tracking ? planFocus(tracking.serviceVisibility, tracking.matrix) : prev?.focus,
     serviceAreas: tracking ? tracking.serviceAreas : prev?.serviceAreas || [],
     history: tracking?.history ?? undefined,
@@ -261,6 +288,9 @@ export async function mergeIntakeIntoSeoPlan(businessId: string, intake: IntakeM
     draft: prev?.draft,
     baseline: Array.isArray(prev?.baseline) ? prev!.baseline : [],
     trackedKeywords: prev?.trackedKeywords || [],
+    keywordSet: keywordSetWithoutRemoved(prev?.keywordSet, (prev?.ownerRemovedKeywords || []).filter((k) => !ownerKeywords.some((o) => kwKey(o) === kwKey(k)))),
+    competitorGaps: prev?.competitorGaps || [],
+    keywordResearch: prev?.keywordResearch,
     focus: prev?.focus,
     serviceAreas: prev?.serviceAreas || [],
     ownerEdited: true,
@@ -344,6 +374,8 @@ export async function applyOwnerProfileEdit(businessId: string, edit: OwnerProfi
     status: 'active',
     activeFrom: new Date(),
     ...cleaned,
+    keywordSet: keywordSetWithoutRemoved(prev.keywordSet, removed),
+    keywordSetChanges: [],
     suggestedServices,
     suggestedDescription: descChanged ? edit.description!.trim() || prev.suggestedDescription : prev.suggestedDescription,
     uspLine: uspChanged ? edit.uniqueSellingPoints!.trim() || undefined : prev.uspLine,

@@ -27,6 +27,8 @@ const EMPTY: IntakeData = {
 };
 
 const isValidKeyword = (v: string) => /[a-zA-Z]/.test(v);
+/** Same cap the API enforces (KEYWORD_LIMITS.maxOwnerKeywords). */
+const MAX_KEYWORDS = 20;
 
 type SuggestField = 'category' | 'description' | 'services' | 'keywords' | 'uniqueSellingPoints' | 'offers';
 interface Suggestion {
@@ -65,16 +67,18 @@ const inputCls =
 
 /** Simple tag input — Enter to add, × to remove. */
 function TagInput({
-  label, hint, tags, onChange, placeholder, validate,
+  label, hint, tags, onChange, placeholder, validate, max,
 }: {
   label: string; hint?: string; tags: string[];
   onChange: (t: string[]) => void; placeholder: string;
   validate?: (v: string) => boolean;
+  max?: number;
 }) {
   const [input, setInput] = useState('');
+  const full = max != null && tags.length >= max;
   const add = () => {
     const v = input.trim();
-    if (!v || (validate && !validate(v)) || tags.includes(v)) { setInput(''); return; }
+    if (!v || full || (validate && !validate(v)) || tags.includes(v)) { setInput(''); return; }
     onChange([...tags, v]);
     setInput('');
   };
@@ -88,9 +92,11 @@ function TagInput({
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
         onBlur={add}
-        placeholder={placeholder}
+        placeholder={full ? `Limit of ${max} reached — remove one to add another` : placeholder}
+        disabled={full}
         className={inputCls}
       />
+      {max != null && <p className="text-xs text-outline">{tags.length} / {max}</p>}
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
           {tags.map((t) => (
@@ -203,7 +209,7 @@ export default function IntakePage() {
   }, [data.category, data.description]);
 
   const pickSuggestedKeyword = (kw: string) => {
-    if (!data.keywords.includes(kw)) {
+    if (!data.keywords.includes(kw) && data.keywords.length < MAX_KEYWORDS) {
       const nextKeywords = [...data.keywords, kw];
       set('keywords', nextKeywords);
       // "show more like that" — refine the next batch around what they just
@@ -231,13 +237,15 @@ export default function IntakePage() {
         }
         if (json.success) {
           const loaded = { ...EMPTY, ...json.data };
+          loaded.keywords = (loaded.keywords || []).slice(0, MAX_KEYWORDS);
           const kwSuggestion: Suggestion | undefined = json.suggestions?.keywords;
           // No keywords yet but the report / SEO plan already researched some →
           // pre-fill them as tags; the owner removes any that don't fit or adds their own.
           if (loaded.keywords.length === 0 && kwSuggestion) {
             const prefilled = (kwSuggestion.items?.map((i) => i.keyword) ?? kwSuggestion.value.split(','))
               .map((x) => x.trim())
-              .filter(isValidKeyword);
+              .filter(isValidKeyword)
+              .slice(0, MAX_KEYWORDS);
             if (prefilled.length) {
               loaded.keywords = prefilled;
               setAccepted((p) => ({ ...p, keywords: kwSuggestion }));
@@ -263,7 +271,7 @@ export default function IntakePage() {
   const applySuggestion = (field: SuggestField) => {
     const s = suggestions[field];
     if (!s) return;
-    if (field === 'keywords') set('keywords', s.value.split(',').map((x) => x.trim()).filter(isValidKeyword));
+    if (field === 'keywords') set('keywords', s.value.split(',').map((x) => x.trim()).filter(isValidKeyword).slice(0, MAX_KEYWORDS));
     else set(field, s.value as any);
     setAccepted((p) => ({ ...p, [field]: s }));
     setSuggestions((p) => { const n = { ...p }; delete n[field]; return n; });
@@ -360,10 +368,11 @@ export default function IntakePage() {
           </div>
           <TagInput
             label="Target keywords *"
-            hint="What people search on Google to find a business like yours. Press Enter to add."
+            hint="What people search on Google to find a business like yours. Press Enter to add. Up to 20 — we research hundreds more for you every month."
             tags={data.keywords}
-            onChange={(t) => set('keywords', t)}
+            onChange={(t) => set('keywords', t.slice(0, MAX_KEYWORDS))}
             validate={isValidKeyword}
+            max={MAX_KEYWORDS}
             placeholder="e.g. best bakery in Kolkata"
           />
           {data.keywords.length === 0 && <SuggestionNote s={suggestions.keywords} onUse={() => applySuggestion('keywords')} />}

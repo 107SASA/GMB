@@ -59,7 +59,14 @@ export async function gatherReplyContext(businessId: string): Promise<{ evidence
 
   const plan: any = await getActiveSeoPlan(businessId).catch(() => null);
   const brandWord = String(b?.name || '').toLowerCase().split(/\s+/)[0];
-  const measured: string[] = (plan?.keywordTable || []).filter((r: any) => (r.rankStatus ?? 'ok') === 'ok' && !(brandWord && String(r.keyword).toLowerCase().includes(brandWord))).map((r: any) => r.keyword);
+  // The month's focus + monthly keywords first (docs/KEYWORD_SYSTEM_PLAN.md §6) —
+  // the same ones posts target; the report's measured table until research ran.
+  const { targetKeywords } = await import('@/services/seo/keywordSet');
+  const targets: string[] = targetKeywords(plan?.keywordSet).map((k) => k.keyword);
+  const measured: string[] = (targets.length
+    ? targets
+    : (plan?.keywordTable || []).filter((r: any) => (r.rankStatus ?? 'ok') === 'ok').map((r: any) => r.keyword)
+  ).filter((k: string) => !(brandWord && String(k).toLowerCase().includes(brandWord)));
   const proposed: string[] = (plan?.draft?.proposedKeywords || []).map((p: any) => p.keyword).filter(Boolean);
   if (plan) sources.push(`seo_plan:${plan._id}`);
 

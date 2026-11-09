@@ -280,3 +280,27 @@ test('monthly budget: extras skipped when low, research kept when used up, spend
   const left = await keywordBudgetRemaining(String(b._id), new Date('2026-11-20T00:00:00.000Z'));
   assert.ok(Math.abs(left - (1.2 - full.spentUsd)) < 0.001);
 });
+
+test('review replies use the month\'s targets; the report table until research ran', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const { gatherReplyContext } = await import('../../src/services/reviews/replyPipeline');
+  const mk = async (name: string) => m.Business.create({ name, category: 'Dentist', city: 'Kolkata', address: 'Kolkata', userId: new m.mongoose.Types.ObjectId(), organizationId: new m.mongoose.Types.ObjectId() } as any);
+
+  const withTargets = await mk('Target Dental');
+  await m.SeoPlan.create({
+    businessId: withTargets._id, version: 1, status: 'active',
+    keywordTable: [{ keyword: 'old table keyword kolkata', rankStatus: 'ok' }],
+    keywordSet: [
+      { id: 'kw:braces-kolkata', keyword: 'braces kolkata', role: 'rotating' },
+      { id: 'kw:dental-implants-kolkata', keyword: 'dental implants kolkata', role: 'core' },
+      { id: 'kw:watch', keyword: 'watched keyword kolkata', role: 'watch' },
+    ],
+  } as any);
+  const a = await gatherReplyContext(String(withTargets._id));
+  assert.deepEqual(a.keywords, ['dental implants kolkata (measured)', 'braces kolkata (measured)'], 'focus first, then monthly; no watch / old table');
+
+  const noTargets = await mk('Old Dental');
+  await m.SeoPlan.create({ businessId: noTargets._id, version: 1, status: 'active', keywordTable: [{ keyword: 'root canal kolkata', rankStatus: 'ok' }] } as any);
+  const b = await gatherReplyContext(String(noTargets._id));
+  assert.deepEqual(b.keywords, ['root canal kolkata (measured)']);
+});

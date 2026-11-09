@@ -413,3 +413,27 @@ test('seeding from the last report: measured rank + volume carried, targets pick
   assert.ok(by.has('braces price kolkata'), 'legacy keyword kept as a researched candidate');
   assert.equal(by.get('dental clinic kolkata')?.volume.status ?? 'not_measured', 'not_measured');
 });
+
+// ── Generic categories and claim words (prod dry run, Nov 2026) ────────────
+
+test('a vague Google category ("Store") never beats a real service, but is used when nothing else exists', () => {
+  const withService = buildCandidates(research({ category: 'Store', services: [svc('Fireworks', 'owner')], businessName: 'Durva', city: 'Nashik', serviceAreas: [], competitorNames: [] }));
+  assert.equal(withService.find((c) => c.keyword === 'store nashik')?.relevance, 'generic');
+  assert.equal(withService.find((c) => c.keyword === 'fireworks nashik')?.relevance, 'owner');
+  const set = buildKeywordSet({
+    candidates: withService,
+    volumes: new Map(withService.map((c) => [c.id, vol(c.keyword.startsWith('store') ? 90_000 : 140)])),
+    ranks: new Map(withService.map((c) => [c.id, rank(9)])), competitors: new Map(), ourReviews: 50, previous: [], now: NOW,
+  }).keywordSet;
+  assert.equal(set.find((k) => k.role === 'core')?.keyword.startsWith('fireworks'), true, 'real service leads even against huge "store" volume');
+
+  const onlyGeneric = buildCandidates(research({ category: 'Local business', services: [], businessName: 'Yden', city: 'Kolkata', serviceAreas: [], competitorNames: [] }));
+  assert.ok(onlyGeneric.length > 0 && onlyGeneric.every((c) => c.relevance === 'generic'));
+});
+
+test('owner keywords with "best" / "top" are tracked, never targeted', () => {
+  const k = scored('best bakery kolkata', vol(900), rank(4), { owner: true, sources: ['owner'] });
+  assert.equal(k.verdict, 'claim_word');
+  const { keywords } = selectTargets({ scored: [k, ...pool(3)], previous: [], now: NOW });
+  assert.equal(keywords.find((x) => x.keyword === 'best bakery kolkata')?.role, 'owner');
+});

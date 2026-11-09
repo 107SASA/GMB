@@ -61,7 +61,7 @@ export function planRankChecks(input: {
     return true;
   };
   const ranked = [...input.preScored]
-    .filter((k) => k.verdict !== 'not_relevant' && k.verdict !== 'low_demand')
+    .filter((k) => k.verdict !== 'not_relevant' && k.verdict !== 'low_demand' && k.verdict !== 'claim_word')
     .sort((a, b) => b.score - a.score);
 
   const prevCore = input.previous.filter((p) => p.role === 'core' || p.pinned).map((p) => p.id).filter((id) => byId.has(id));

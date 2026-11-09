@@ -53,20 +53,35 @@ test('dry run changes nothing; --apply trims and seeds; a second run is a no-op'
   const oid = () => new m.mongoose.Types.ObjectId();
   const longList = Array.from({ length: 24 }, (_, i) => `dental service ${i} kolkata`);
   const big = await m.Business.create({ name: 'Smilewell Dental', category: 'Dentist', city: 'Kolkata', address: 'Kolkata', services: 'Dental implants, Braces', keywords: longList, intakeCompleted: true, userId: oid(), organizationId: oid() } as any);
-  const withPlan = await m.Business.create({ name: 'Bright Smile', category: 'Dentist', city: 'Kolkata', address: 'Kolkata', services: 'Dental implants', keywords: ['dental implants kolkata'], intakeCompleted: true, userId: oid(), organizationId: oid() } as any);
+  const withPlan = await m.Business.create({ name: 'Bright Smile', category: 'Dentist', city: 'Kolkata', address: 'Kolkata', services: 'Dental implants', keywords: ['dental implants kolkata'], intakeCompleted: true, subscriptionStatus: 'active', googleConnected: true, userId: oid(), organizationId: oid() } as any);
   await m.SeoPlan.create({
     businessId: withPlan._id, version: 1, status: 'active',
     keywordTable: [{ keyword: 'dental implants kolkata', rank: 6, found: true, rankStatus: 'ok', searchVolume: 590, demandStatus: 'measured' }],
+  } as any);
+  // Paid but Google not connected (e.g. a report made before the connect check): seeded, display only.
+  const unconnected = await m.Business.create({ name: 'Paid Unconnected Dental', category: 'Dentist', city: 'Kolkata', address: 'Kolkata', subscriptionStatus: 'active', userId: oid(), organizationId: oid() } as any);
+  await m.SeoPlan.create({
+    businessId: unconnected._id, version: 1, status: 'active',
+    keywordTable: [{ keyword: 'dentist kolkata', rank: 4, found: true, rankStatus: 'ok', searchVolume: 2400, demandStatus: 'measured' }],
+  } as any);
+  // A free-report lead (not paid, not connected): never seeded.
+  const lead = await m.Business.create({ name: 'Free Lead Dental', category: 'Dentist', city: 'Kolkata', address: 'Kolkata', userId: oid(), organizationId: oid() } as any);
+  await m.SeoPlan.create({
+    businessId: lead._id, version: 1, status: 'active',
+    keywordTable: [{ keyword: 'dentist kolkata', rank: 3, found: true, rankStatus: 'ok', searchVolume: 2400, demandStatus: 'measured' }],
   } as any);
 
   const dry = runScript();
   assert.match(dry, /DRY RUN — nothing written/);
   assert.match(dry, /Smilewell Dental .*keep 20, move 4/);
+  assert.match(dry, /Free Lead Dental: skipped \(not paid \/ no active trial\)/);
+  assert.match(dry, /Paid Unconnected Dental: \d+ keywords, focus: .*dentist kolkata.*Google not connected/);
   assert.equal((await m.Business.findById(big._id).lean()).keywords.length, 24, 'dry run wrote nothing');
   assert.equal((await m.SeoPlan.findOne({ businessId: withPlan._id }).lean()).keywordSet.length, 0);
 
   const applied = runScript('--apply');
-  assert.match(applied, /Applied: 1 keyword list\(s\) trimmed, 1 plan\(s\) seeded/);
+  assert.match(applied, /Applied: 1 keyword list\(s\) trimmed, 2 plan\(s\) seeded, 1 skipped/);
+  assert.equal((await m.SeoPlan.findOne({ businessId: lead._id }).lean()).keywordSet.length, 0, 'lead not seeded');
   const b = await m.Business.findById(big._id).lean();
   assert.equal(b.keywords.length, 20);
   assert.deepEqual(b.legacyKeywords, longList.slice(20));
@@ -77,5 +92,5 @@ test('dry run changes nothing; --apply trims and seeds; a second run is a no-op'
   assert.equal(row.role, 'core');
 
   const again = runScript('--apply');
-  assert.match(again, /Applied: 0 keyword list\(s\) trimmed, 0 plan\(s\) seeded/);
+  assert.match(again, /Applied: 0 keyword list\(s\) trimmed, 0 plan\(s\) seeded, 1 skipped/);
 });

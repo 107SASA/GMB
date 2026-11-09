@@ -22,12 +22,14 @@ import type {
   RelevanceSource,
   ScoredKeyword,
 } from './keywordTypes.ts';
+import { CLAIM } from './keywordResearch.ts';
 
 export const RELEVANCE_WEIGHT: Record<RelevanceSource, number> = {
   gbp: 1,
   category: 1,
   owner: 0.8,
   website: 0.6,
+  generic: 0.25, // only a vague Google category ("Store") — used when nothing better exists
   none: 0.5, // owner keyword with no service match — measured, rarely targeted
 };
 
@@ -96,6 +98,7 @@ export function scoreKeyword(input: ScoreInput): ScoredKeyword {
 
   let verdict: KeywordVerdict;
   if (c.relevance === 'none') verdict = 'not_relevant';
+  else if (CLAIM.test(c.keyword)) verdict = 'claim_word'; // only owner keywords get this far
   else if (!hasDemand && volume.status !== 'not_measured') verdict = 'low_demand';
   else if (!measured) verdict = 'new';
   else if (avg != null && avg <= 3) verdict = 'defend';
@@ -149,6 +152,7 @@ function reasonFor(x: {
     hard: 'Hard for now',
     low_demand: 'Few searches',
     not_relevant: 'Not tied to a listed service',
+    claim_word: 'Uses “best” / “top”, which posts can’t use — tracked, not targeted',
     new: 'New keyword',
   };
   return `${lead[x.verdict]}: ${parts.join('; ')}.`;

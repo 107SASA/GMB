@@ -17,7 +17,24 @@ import { serviceForKeyword, type VerifiedService } from './trackedKeywords.ts';
 import { KEYWORD_LIMITS, type KeywordCandidate, type KeywordSourceTag, type RelevanceSource } from './keywordTypes.ts';
 
 /** Self-praise Google and our post fact-check reject; never a target. */
-const CLAIM = /\b(best|top|cheapest|no\.? ?1|number one|leading|famous)\b/i;
+export const CLAIM = /\b(best|top|cheapest|no\.? ?1|number one|leading|famous)\b/i;
+
+/**
+ * Google categories too vague to be a focus keyword on their own ("Store",
+ * "Local business", "Consultant", "Association / Organization", "Farm"…) —
+ * old reports measured "store near me" for a fireworks shop. A keyword that
+ * only matches such a category gets low relevance: real services win, and
+ * it is used only when nothing better exists.
+ */
+const GENERIC_CATEGORY_WORDS = new Set([
+  'store', 'shop', 'local', 'business', 'establishment', 'point', 'interest', 'general', 'company', 'other',
+  'service', 'services', 'consultant', 'consultants', 'association', 'organization', 'organisation',
+  'farm', 'educational', 'institution', 'corporate', 'office', 'agency', 'center', 'centre', 'non', 'profit',
+]);
+export function isGenericCategory(name: string | null | undefined): boolean {
+  const w = words(name);
+  return w.length > 0 && w.every((x) => GENERIC_CATEGORY_WORDS.has(x));
+}
 
 /** Tidy a phrase; null when it can't be a search keyword. */
 export function cleanKeyword(raw: unknown): string | null {
@@ -155,7 +172,7 @@ export function buildCandidates(input: ResearchInput): KeywordCandidate[] {
       owner,
       serviceId: svc?.id ?? null,
       service: svc?.name ?? null,
-      relevance: svc ? RELEVANCE_OF[svc.source] : 'none',
+      relevance: !svc ? 'none' : svc.source === 'category' && isGenericCategory(svc.name) ? 'generic' : RELEVANCE_OF[svc.source],
       ideaVolume: extra.ideaVolume ?? null,
       gbpImpressions: extra.gbpImpressions ?? null,
       competitor: extra.competitor ?? null,

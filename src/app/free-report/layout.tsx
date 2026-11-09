@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: "/free-report" },
   openGraph: {
-    title: "Get Your Free Google Business Profile Report | GrowwMatics AI",
+    title: "Get Your Free Google Business Profile Report | Growwmatics AI",
     description:
       "See your review score, profile completion, and competitor comparison — free, in minutes.",
     url: "/free-report",

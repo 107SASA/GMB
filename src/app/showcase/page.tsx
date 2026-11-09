@@ -4,7 +4,7 @@ import { ShowcasePage } from "@/components/pages/ShowcasePage";
 export const metadata: Metadata = {
   title: "Showcase",
   description:
-    "Real photos, video, and reviews shared by businesses on GrowwMatics AI — reviewed and approved by our team before they're posted.",
+    "Real photos, video, and reviews shared by businesses on Growwmatics AI — reviewed and approved by our team before they're posted.",
   alternates: { canonical: "/showcase" },
 };
 

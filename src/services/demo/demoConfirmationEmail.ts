@@ -23,7 +23,7 @@ export function buildDemoConfirmationEmailHtml(input: {
                 <p style="margin: 8px 0 0;"><b>Time:</b> ${escapeHtml(input.timeSlot)}</p>
                 ${linkBlock}
               </div>
-              <p style="color: #64748b; font-size: 14px;">Team GrowwMatics AI</p>
+              <p style="color: #64748b; font-size: 14px;">Team Growwmatics AI</p>
             </div>
           `;
 }

@@ -217,7 +217,7 @@ async function nudgeForCategory(business: {
       body: 'We are ready to create your Google Business Profile report. Please add your business category so we can generate it.',
       linkLabel: 'Add your category',
       link: appLink('/dashboard/onboarding/intake'),
-      noLinkText: 'Add it from your profile in the Growwmatics dashboard.',
+      noLinkText: 'Add it from your profile in the Growwmatics AI dashboard.',
     }),
   }).catch(() => null);
   if (res?.status !== 'sent') {

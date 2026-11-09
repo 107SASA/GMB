@@ -56,9 +56,9 @@ test('15-day digest: greeting, insights link and sign-off in the house style', (
   const d = buildPerformanceDigest(series(DIGEST_DAYS, () => ({ views: 2 })), NOW);
   const text = composePerformanceDigest(d, 'Mulsetu', 'https://app.example/dashboard/insights')!;
   assert.match(text, /^Hi Mulsetu,\n/);
-  assert.match(text, /Here is your Growwmatics performance update for the last 15 days/);
+  assert.match(text, /Here is your Growwmatics AI performance update for the last 15 days/);
   assert.match(text, /View your insights: https:\/\/app\.example\/dashboard\/insights/);
-  assert.match(text, /— Team Growwmatics$/);
+  assert.match(text, /— Team Growwmatics AI$/);
 });
 
 test('weekly review-attention reminder: verified counts only, no message when nothing is pending', () => {

@@ -76,7 +76,7 @@ test('cancel an upcoming demo from the status menu: slot + reminders freed, chat
   assert.equal(res.body.customerNotified, true);
   const sent = await rows(d.phone);
   assert.equal(sent.length, 1);
-  assert.match(textOf(sent[0]), /your Growwmatics demo on Tue 27 Oct at 11:00 AM has been cancelled/);
+  assert.match(textOf(sent[0]), /your Growwmatics AI demo on Tue 27 Oct at 11:00 AM has been cancelled/);
   assert.equal((await m.BookingConversation.findById(d.convo._id).lean()).status, 'stopped', 'the chat no longer says "booked"');
   const lead: any = await m.Lead.findById(d.lead._id).lean();
   assert.equal(lead.currentAgent, 'SALES');
@@ -101,7 +101,7 @@ test('reschedule from the status menu: customer asked to reply RESCHEDULE; any o
   const d = await demo(3 * 24 * 60);
   const res = await patch({ bookingId: String(d.booking._id), status: 'Rescheduled' });
   assert.equal(res.body.customerNotified, true);
-  assert.match(textOf((await rows(d.phone))[0]), /we need to move your Growwmatics demo.*Reply RESCHEDULE/);
+  assert.match(textOf((await rows(d.phone))[0]), /we need to move your Growwmatics AI demo.*Reply RESCHEDULE/);
   assert.equal((await m.BookingConversation.findById(d.convo._id).lean()).status, 'booked', 'so RESCHEDULE runs the existing flow');
   assert.equal(await m.ScheduledAction.countDocuments({ leadId: d.lead._id, status: 'PENDING' }), 0);
 

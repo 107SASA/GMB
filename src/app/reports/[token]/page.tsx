@@ -142,7 +142,7 @@ export default function PublicReportPage() {
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
               <MaterialIcon name="bolt" size={16} className="text-on-primary" />
             </div>
-            <span className="font-heading font-bold text-on-surface whitespace-nowrap">GrowwMatics AI</span>
+            <span className="font-heading font-bold text-on-surface whitespace-nowrap">Growwmatics AI</span>
             <span className="hidden sm:inline text-outline mx-2">·</span>
             <span className="hidden sm:inline text-sm text-on-surface-variant truncate">Business Profile Audit Report</span>
           </div>
@@ -352,7 +352,7 @@ export default function PublicReportPage() {
         <div className="bg-primary rounded-xl p-6 sm:p-8 text-center text-on-primary">
           <h2 className="font-heading text-2xl font-bold mb-2">Ready to boost your Google ranking?</h2>
           <p className="text-primary-fixed-dim text-sm mb-6">
-            GrowwMatics AI automates review requests, replies, posts and supported profile updates — and re-measures your results every month.
+            Growwmatics AI automates review requests, replies, posts and supported profile updates — and re-measures your results every month.
           </p>
           <Link
             href="/"

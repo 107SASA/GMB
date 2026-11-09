@@ -108,7 +108,7 @@ export default function AdminTestimonialsPage() {
         </div>
         <div>
           <h1 className="font-heading text-2xl font-bold text-on-surface">Testimonial Approvals</h1>
-          <p className="text-sm text-on-surface-variant">Client reviews of GrowwMatics — approve to publish on growwmatics.com/showcase.</p>
+          <p className="text-sm text-on-surface-variant">Client reviews of Growwmatics AI — approve to publish on growwmatics.com/showcase.</p>
         </div>
       </div>
 
@@ -147,7 +147,7 @@ export default function AdminTestimonialsPage() {
               )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-semibold text-sm text-on-surface">{item.reviewerName || 'A GrowwMatics client'}</p>
+                  <p className="font-semibold text-sm text-on-surface">{item.reviewerName || 'A Growwmatics AI client'}</p>
                   <Stars rating={item.rating} />
                   <span className="text-[11px] text-outline">{item.businessId?.name ?? 'Unknown business'}</span>
                 </div>

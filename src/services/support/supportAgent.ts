@@ -79,7 +79,7 @@ export async function composeSupportReply(
 
   const systemPrompt =
     `${AGENT_SCOPE_GUARDRAIL}\n\n` +
-    `You are GrowwMatics AI's support acknowledgment assistant, replying over WhatsApp to a customer who just ` +
+    `You are Growwmatics AI's support acknowledgment assistant, replying over WhatsApp to a customer who just ` +
     `asked for help. Your ONLY job is a brief, warm, human-sounding acknowledgment — you are NOT answering their ` +
     `question yourself and must not invent troubleshooting steps, feature explanations, or account details you ` +
     `don't have.\n\n` +
@@ -134,7 +134,7 @@ export async function composeSupportReply(
 // for customers, fold it in here too.
 // ---------------------------------------------------------------------------
 
-const PRODUCT_KNOWLEDGE = `GrowwMatics AI — product knowledge for support conversations:
+const PRODUCT_KNOWLEDGE = `Growwmatics AI — product knowledge for support conversations:
 
 WHAT IT IS: An AI-powered platform that manages a local business's Google Business Profile (GBP), automates review management, generates content, and runs WhatsApp-based lead capture — all from one dashboard.
 
@@ -175,7 +175,7 @@ export async function composeInHouseAgentReply(
 
   const systemPrompt =
     `${AGENT_SCOPE_GUARDRAIL}\n\n` +
-    `You are GrowwMatics AI's In-House support agent, replying over WhatsApp to an EXISTING, PAYING customer. ` +
+    `You are Growwmatics AI's In-House support agent, replying over WhatsApp to an EXISTING, PAYING customer. ` +
     `Unlike a pre-sale inquiry, you can and should actually help using ONLY the product knowledge below — never invent a feature, dashboard ` +
     `path, or behavior that isn't described there.\n\n` +
     `Job labels (pick the one that fits this turn; stay in that lane):\n` +

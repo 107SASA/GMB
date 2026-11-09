@@ -71,7 +71,7 @@ export const PURGE_TARGETS: PurgeTarget[] = [
   { model: 'SupportConversation', by: { businessId: 'businessId', userId: 'userId' }, category: 'a', what: 'support chats' },
   { model: 'WhatsAppCampaignRecipient', by: { leadId: 'leadId' }, category: 'a', what: 'WhatsApp sends to these leads (name, phone, result)' },
   { model: 'WhatsAppThread', by: { businessId: 'businessId', userId: 'userId' }, category: 'a', what: 'their chat in the Super Admin WhatsApp Inbox' },
-  { model: 'WhatsAppMessage', by: { businessId: 'businessId', userId: 'userId' }, category: 'a', what: 'their WhatsApp messages with GrowwMatics (Inbox record)' },
+  { model: 'WhatsAppMessage', by: { businessId: 'businessId', userId: 'userId' }, category: 'a', what: 'their WhatsApp messages with Growwmatics AI (Inbox record)' },
   // ── a: Google connection data ──
   { model: 'GBPToken', by: { businessId: 'businessId' }, category: 'a', what: 'Google OAuth tokens (revoked with Google first)' },
   { model: 'PendingGbpConnection', by: { businessId: 'businessId' }, category: 'a', what: 'pending Google connections' },

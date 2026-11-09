@@ -11,7 +11,7 @@
 
 const WHATSAPP_NUMBER = (process.env.EXPO_PUBLIC_WHATSAPP_NUMBER || '').replace(/[^0-9]/g, '');
 
-export const SUPPORT_MESSAGE = 'Hi, I need help with my GrowwMatics account';
+export const SUPPORT_MESSAGE = 'Hi, I need help with my Growwmatics AI account';
 
 /**
  * The website's privacy policy (App Store guideline 5.1.1(i) wants it

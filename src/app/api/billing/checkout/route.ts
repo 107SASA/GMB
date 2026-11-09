@@ -118,7 +118,7 @@ export async function POST(req: Request) {
       key: getRazorpayKeyId(),
       subscriptionId,
       planType: activePlan.planType,
-      name: 'GrowwMatics AI',
+      name: 'Growwmatics AI',
       description,
       prefill: {
         email: user?.email ?? undefined,

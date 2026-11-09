@@ -79,16 +79,16 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View className="mb-10 items-center gap-4">
-            {/* GrowwMatics logo — the same mark the web app uses (public/brand/icon.png). */}
+            {/* Growwmatics AI logo — the same mark the web app uses (public/brand/icon.png). */}
             <Image
               source={require('../../../assets/images/splash-icon.png')}
               style={{ width: 88, height: 88 }}
               contentFit="contain"
-              accessibilityLabel="GrowwMatics AI logo"
+              accessibilityLabel="Growwmatics AI logo"
             />
             <View className="items-center gap-1">
               <Text className="font-display text-[32px] tracking-tight text-white">
-                GrowwMatics AI
+                Growwmatics AI
               </Text>
               <Text className="text-center font-sans text-base text-zinc-400">
                 Grow your business, from your pocket
@@ -153,7 +153,7 @@ export default function LoginScreen() {
           )}
 
           <Text className="mt-10 text-center font-sans text-xs text-zinc-500">
-            Accounts are managed on the GrowwMatics AI website.
+            Accounts are managed on the Growwmatics AI website.
           </Text>
           {getPrivacyPolicyUrl() && (
             <Text

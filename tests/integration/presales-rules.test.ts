@@ -99,11 +99,11 @@ test('nurturing is its own switch, but never sends while the Sales agent is off'
 
 test('post-demo copy: attended thanks + next step; missed asks to reschedule; declined / not ready sends nothing', () => {
   const attended = postDemoMessage({ kind: 'attended', name: 'Rahul Sharma', businessName: 'Mulsetu', outcome: 'PRICE_CONCERN', subscribeUrl: 'https://x.test/billing' })!;
-  assert.match(attended, /^Hi Rahul, thank you for joining the Growwmatics demo for Mulsetu\./);
+  assert.match(attended, /^Hi Rahul, thank you for joining the Growwmatics AI demo for Mulsetu\./);
   assert.match(attended, /plan and pricing/);
   assert.match(attended, /https:\/\/x\.test\/billing/);
   const missed = postDemoMessage({ kind: 'missed', name: 'Rahul', whenLabel: 'Mon 26 Oct at 4:00 PM' })!;
-  assert.match(missed, /sorry we missed you at your Growwmatics demo on Mon 26 Oct at 4:00 PM/);
+  assert.match(missed, /sorry we missed you at your Growwmatics AI demo on Mon 26 Oct at 4:00 PM/);
   assert.match(missed, /Reply RESCHEDULE/);
   assert.doesNotMatch(missed, /thank you for joining/i, 'never claims a missed demo happened');
   assert.equal(postDemoMessage({ kind: 'attended', outcome: 'NOT_INTERESTED' }), null);

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   // plain string here previously duplicated it into "...GrowwMatics AI |
   // GrowwMatics AI" in the rendered <title>. Just the page name here.
   title: "Contact Us",
-  description: "Get in touch with the GrowwMatics AI team — questions about the product, your subscription, or support.",
+  description: "Get in touch with the Growwmatics AI team — questions about the product, your subscription, or support.",
   alternates: { canonical: "/contact" },
 };
 

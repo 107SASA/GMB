@@ -23,9 +23,9 @@ export function adminDemoChangeMessage(input: { change: 'Cancelled' | 'Reschedul
   const hi = firstWord(input.name) ? `Hi ${firstWord(input.name)},` : 'Hi,';
   const when = input.whenLabel ? ` on ${input.whenLabel}` : '';
   if (input.change === 'Cancelled') {
-    return `${hi} your Growwmatics demo${when} has been cancelled. If you'd still like one, reply DEMO and we'll find a new time.`;
+    return `${hi} your Growwmatics AI demo${when} has been cancelled. If you'd still like one, reply DEMO and we'll find a new time.`;
   }
-  return `${hi} we need to move your Growwmatics demo${when} — sorry for the change. Reply RESCHEDULE and I'll share the open slots.`;
+  return `${hi} we need to move your Growwmatics AI demo${when} — sorry for the change. Reply RESCHEDULE and I'll share the open slots.`;
 }
 
 export async function applyAdminDemoChange(input: {

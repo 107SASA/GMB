@@ -172,7 +172,7 @@ function BookDemoForm() {
               Built for local businesses across India
             </p>
             <h1 className="font-mkt-display text-[1.75rem] sm:text-4xl md:text-5xl font-semibold text-[#101613] mb-6 sm:mb-10 leading-[1.15] tracking-tight">
-              What can <span className="text-[#006e2c]">Growwmatics</span> do for you?
+              What can <span className="text-[#006e2c]">Growwmatics AI</span> do for you?
             </h1>
             <div className="mkt-ink-panel rounded-xl border border-(--mkt-ink-border) overflow-hidden max-w-md">
               <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-(--mkt-ink-border)">

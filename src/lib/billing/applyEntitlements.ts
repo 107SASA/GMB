@@ -130,8 +130,8 @@ export async function activateBusinessPlan(
       type: isRenewal ? 'billing_renewed' : 'billing_activated',
       title: isRenewal ? 'Payment received' : 'Subscription activated',
       body: isRenewal
-        ? `Your GrowwMatics AI subscription for ${workspaceName} was renewed successfully.`
-        : `Your GrowwMatics AI subscription for ${workspaceName} is now active — every feature is unlocked.`,
+        ? `Your Growwmatics AI subscription for ${workspaceName} was renewed successfully.`
+        : `Your Growwmatics AI subscription for ${workspaceName} is now active — every feature is unlocked.`,
       link: '/dashboard/billing',
     });
   } catch (e: any) {
@@ -228,7 +228,7 @@ export async function markBusinessPastDue(
   if (!(await getReminderPolicy()).enabled) {
     await notifyOwner(businessId, {
       event: 'billing_past_due',
-      text: `Hi ${workspaceName},\n\nThere is an issue with your Growwmatics subscription payment — we couldn't process it. ${consequence}\n\nManage billing: ${billingLink()}\n\n— Team Growwmatics`,
+      text: `Hi ${workspaceName},\n\nThere is an issue with your Growwmatics AI subscription payment — we couldn't process it. ${consequence}\n\nManage billing: ${billingLink()}\n\n— Team Growwmatics AI`,
     });
   }
 
@@ -393,7 +393,7 @@ export async function cancelBusinessPlan(
   if (!opts.trialEnded) {
     await notifyOwner(businessId, {
       event: 'billing_canceled',
-      text: `Hi ${workspaceName},\n\nYour Growwmatics subscription has been cancelled. You can reactivate it any time.\n\nManage billing: ${billingLink()}\n\n— Team Growwmatics`,
+      text: `Hi ${workspaceName},\n\nYour Growwmatics AI subscription has been cancelled. You can reactivate it any time.\n\nManage billing: ${billingLink()}\n\n— Team Growwmatics AI`,
     });
   }
 

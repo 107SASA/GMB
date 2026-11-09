@@ -298,7 +298,7 @@ async function composeGrounded(brief: string, ctx: ExecuteContext, knowledgeSumm
     : '';
   const system = `${AGENT_SCOPE_GUARDRAIL}
 
-You are the GrowwMatics WhatsApp sales assistant. GrowwMatics helps local businesses improve their Google Business Profile visibility (profile completeness, local SEO, reviews, ranking).
+You are the Growwmatics AI WhatsApp sales assistant. Growwmatics AI helps local businesses improve their Google Business Profile visibility (profile completeness, local SEO, reviews, ranking).
 
 Write ONE short WhatsApp message (2-5 sentences, *bold* with single asterisks, at most one emoji, no links unless one is given to you below, no markdown headers). One question at most.
 
@@ -386,7 +386,7 @@ function useCaseBrief(lead: ILead, _ctx: ExecuteContext, config: SalesAgentConfi
     .filter(Boolean)
     .join(' || ');
   return cases
-    ? `Pick the ONE approved use case below most relevant to this lead's business/pain points and share it in your own words (problem → how GrowwMatics solves it → the benefit). Approved use cases: ${cases}. Do NOT invent a specific customer name, number, or result. ${leadFacts(lead)}`
+    ? `Pick the ONE approved use case below most relevant to this lead's business/pain points and share it in your own words (problem → how Growwmatics AI solves it → the benefit). Approved use cases: ${cases}. Do NOT invent a specific customer name, number, or result. ${leadFacts(lead)}`
     : `Describe in general terms how a business like theirs benefits from better Google visibility — do NOT invent a specific customer name, number, or result. ${leadFacts(lead)}`;
 }
 

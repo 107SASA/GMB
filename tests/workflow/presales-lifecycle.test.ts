@@ -293,7 +293,7 @@ test('a paying customer writing into an old sales thread goes to support, not th
   // Segment 4A: support intake sends its one fixed acknowledgement — never a sales reply.
   const sent = await rows(p.phone);
   assert.equal(sent.length, 1, 'only the support acknowledgement');
-  assert.match(textOf(sent[0]), /^Thank you for contacting Growwmatics\. We've received your message\./);
+  assert.match(textOf(sent[0]), /^Thank you for contacting Growwmatics AI\. We've received your message\./);
   assert.equal((await m.SalesConversation.findById(p.conversationId).lean()).status, 'completed');
   const support: any = await m.SupportConversation.findOne({ leadPhone: p.phone }).lean();
   assert.equal(support?.matchedBy, 'sales_handoff', 'handed to support');
@@ -330,7 +330,7 @@ test('existing booking reminders still send for a booked demo', async (t) => {
   await tick();
   const sent = await rows(phone);
   assert.equal(sent.length, 1);
-  assert.match(textOf(sent[0]), /Just a reminder that your GrowwMatics demo is tomorrow/);
+  assert.match(textOf(sent[0]), /Just a reminder that your Growwmatics AI demo is tomorrow/);
 });
 
 test('existing report-ready delivery still sends once for a completed free report', async (t) => {

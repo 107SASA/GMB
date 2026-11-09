@@ -96,7 +96,7 @@ export default function CreatePostForm({ onCreated, onClose }: { onCreated: () =
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json.error || json.message || 'Could not publish');
-        if (json.blocked) toast.message(json.message || 'Scheduled in GrowwMatics — Google publishing has not been executed.');
+        if (json.blocked) toast.message(json.message || 'Scheduled in Growwmatics AI — Google publishing has not been executed.');
         else toast.success('Published to your Google Business Profile.');
       } else {
         const res = await fetch('/api/scheduler/schedule', {

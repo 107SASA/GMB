@@ -151,7 +151,7 @@ function buildVars(scores: ISalesScores, leadName: string, config: SalesAgentCon
 
 /** Appended to every sales-AI system prompt in code, so even an older
  *  stored prompt can't produce claims the audit doesn't support. */
-const FACT_GUARD = `\n\nFACT RULES (always apply): use only the audit values and verified issues provided. A value "not measured" / "n/a" is unknown — never guess it or call it zero. Never claim what caused a ranking, never predict rankings, never say competitors use GrowwMatics, and never mention a problem that is not in the verified issues.`;
+const FACT_GUARD = `\n\nFACT RULES (always apply): use only the audit values and verified issues provided. A value "not measured" / "n/a" is unknown — never guess it or call it zero. Never claim what caused a ranking, never predict rankings, never say competitors use Growwmatics AI, and never mention a problem that is not in the verified issues.`;
 
 /** Unmodified pre-Sep-2026 defaults are upgraded to the fact-based ones. */
 function upgradeLegacy(text: string | undefined, legacy: string, current: string): string | undefined {
@@ -254,7 +254,7 @@ export function salesReplyRules(subscribeUrl?: string | null): string {
   return (
     `\nREPLY RULES (these override the persona above). Your goal is to get them to subscribe — smartly, not pushily:\n` +
     `- Every reply moves them one step closer: answer what they said, link it to a specific finding from their report or to what they told you, then give one clear next step.\n` +
-    `- Ask a question only when you will use the answer in your next reply to show how GrowwMatics solves it (their main problem, goal or doubt). At most one question per reply.\n` +
+    `- Ask a question only when you will use the answer in your next reply to show how Growwmatics AI solves it (their main problem, goal or doubt). At most one question per reply.\n` +
     `- When they answer, use it — e.g. "0 calls from Google" → explain how fixing their profile/reviews/ranking brings calls, then recommend the plan. Never just move on to another question.\n` +
     `- Never ask for anything already known from the report, the booking or this conversation (business, what it does, city, website).\n` +
     `- After two of your questions have been answered, stop asking: recommend the plan and ${start}.\n` +

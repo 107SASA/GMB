@@ -759,7 +759,7 @@ export default function ProfileOptimizationScreen() {
                   <>
                     {(description?.text || description?.current) ? (
                       <>
-                        <Hint>{description?.text ? 'Suggested by GrowwMatics' : 'On Google now'}</Hint>
+                        <Hint>{description?.text ? 'Suggested by Growwmatics AI' : 'On Google now'}</Hint>
                         <View className="rounded-xl px-3 py-2.5" style={{ backgroundColor: t.bg }}>
                           <Text className="font-sans text-sm leading-5 text-white">{description?.text || description?.current}</Text>
                         </View>

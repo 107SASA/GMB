@@ -20,7 +20,7 @@ export const SALES_WHATSAPP_NUMBER = (
 ).replace(/[^0-9]/g, "");
 
 const DEFAULT_DEMO_MESSAGE =
-  "Hi GrowwMatics! I'd like to book a demo and see how you can grow my Google Business Profile.";
+  "Hi Growwmatics AI! I'd like to book a demo and see how you can grow my Google Business Profile.";
 
 /**
  * Prefilled text for the "boost my profile" CTA (the WhatsApp-first free
@@ -61,7 +61,7 @@ export function boostProfileLink(message: string = BOOST_PROFILE_MESSAGE): strin
  * this string to tell a fresh "support" thread apart from "report"/"demo"
  * (see classifyIntent in api/whatsapp/webhook/route.ts).
  */
-export const SUPPORT_MESSAGE = "Hi, I need help with my GrowwMatics account";
+export const SUPPORT_MESSAGE = "Hi, I need help with my Growwmatics AI account";
 
 /**
  * Prefilled text for the mobile app's "workspace isn't active" screen
@@ -70,7 +70,7 @@ export const SUPPORT_MESSAGE = "Hi, I need help with my GrowwMatics account";
  * workspace, answers with the fixed reply in
  * services/whatsapp/appAccessHelp.ts.
  */
-export const APP_ACCESS_MESSAGE = "Hi, I'm not able to access my GrowwMatics dashboard in the app";
+export const APP_ACCESS_MESSAGE = "Hi, I'm not able to access my Growwmatics AI dashboard in the app";
 
 /**
  * Builds the "get help" link — same platform WhatsApp number, distinct

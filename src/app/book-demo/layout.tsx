@@ -7,11 +7,11 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Book a Free Demo",
   description:
-    "See how GrowwMatics AI can grow your Google Business Profile — book a free demo and we'll walk you through it on WhatsApp.",
+    "See how Growwmatics AI can grow your Google Business Profile — book a free demo and we'll walk you through it on WhatsApp.",
   alternates: { canonical: "/book-demo" },
   openGraph: {
-    title: "Book a Free Demo | GrowwMatics AI",
-    description: "See how GrowwMatics AI can grow your Google Business Profile.",
+    title: "Book a Free Demo | Growwmatics AI",
+    description: "See how Growwmatics AI can grow your Google Business Profile.",
     url: "/book-demo",
     type: "website",
   },

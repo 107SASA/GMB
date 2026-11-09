@@ -79,7 +79,7 @@ export function postStatusView(p: Pick<ContentPost, 'status' | 'scheduledDate' |
     case 'published':
       return { label: 'Published', tone: 'positive', note: null };
     case 'blocked':
-      return { label: 'Not on Google', tone: 'warning', note: p.failureReason || 'Scheduled in GrowwMatics — Google publishing has not been executed.' };
+      return { label: 'Not on Google', tone: 'warning', note: p.failureReason || 'Scheduled in Growwmatics AI — Google publishing has not been executed.' };
     case 'failed':
       return { label: 'Failed', tone: 'negative', note: p.failureReason || 'Google did not accept this post.' };
     case 'publishing':

@@ -45,7 +45,7 @@ const CYCLE: Record<string, string> = { monthly: 'monthly', quarterly: 'quarterl
 function describe(planType?: string | null, billingCycle?: string | null): string {
   const plan = planType === 'Enterprise' || !planType ? 'Pro' : planType;
   const cycle = billingCycle && CYCLE[billingCycle] ? ` — ${CYCLE[billingCycle]} subscription` : ' — subscription';
-  return `GrowwMatics AI ${plan} plan${cycle} (Google Business Profile management software)`;
+  return `Growwmatics AI ${plan} plan${cycle} (Google Business Profile management software)`;
 }
 
 /**
@@ -189,11 +189,11 @@ export async function emailInvoice(
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${COMPANY.domain}`;
   const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.5">
     <p>Hi ${inv.billedTo?.name ? String(inv.billedTo.name).split(' ')[0].replace(/[<>&]/g, '') : 'there'},</p>
-    <p>Thank you for your payment of <b>${formatInr(inv.amount)}</b> for GrowwMatics AI. Your invoice <b>${inv.invoiceNumber}</b> is attached.</p>
+    <p>Thank you for your payment of <b>${formatInr(inv.amount)}</b> for Growwmatics AI. Your invoice <b>${inv.invoiceNumber}</b> is attached.</p>
     <p>You can also download all your invoices any time from <a href="${appUrl}/dashboard/billing">Billing</a> in your dashboard.</p>
     <p style="color:#6b7280;font-size:12px">${COMPANY.name} is a product of ${COMPANY.legalName}. Questions about this invoice? Reply to ${COMPANY.supportEmail}.</p>
   </div>`;
-  const res: any = await send(to, `Your GrowwMatics AI invoice ${inv.invoiceNumber}`, html, [{ filename: invoiceFileName(inv), content: pdf }]);
+  const res: any = await send(to, `Your Growwmatics AI invoice ${inv.invoiceNumber}`, html, [{ filename: invoiceFileName(inv), content: pdf }]);
   // A mocked (no provider) or suppressed (sending switched off) email is NOT
   // marked sent, so the invoice still goes out once email works again.
   if (res?.success && !res.suppressed && !/^(mock|suppressed)/.test(String(res.messageId || ''))) {

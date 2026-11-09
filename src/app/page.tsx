@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 const softwareApplicationSchema = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "GrowwMatics AI",
+  name: "Growwmatics AI",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
   description:

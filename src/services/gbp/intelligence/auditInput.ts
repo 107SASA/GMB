@@ -239,7 +239,7 @@ export function gbpIntelligenceFindings(s: GbpSnapshotCore, ctx: FindingContext)
     out.push({
       id: `gbp.change.${c.field}`,
       category: 'profile',
-      title: `${changeFieldLabel(c.field)} changed on Google outside GrowwMatics`,
+      title: `${changeFieldLabel(c.field)} changed on Google outside Growwmatics AI`,
       evidence: `${changeFieldLabel(c.field)}: ${c.previousValue ?? '(empty)'} → ${c.newValue ?? '(empty)'} (detected ${c.detectedAt.slice(0, 10)}${c.source === 'GOOGLE_SUGGESTED_EDIT' ? ', Google-updated field' : ''})`,
       evidenceIds: ['gbp.changes'],
       source: 'gbp_api',
@@ -297,7 +297,7 @@ export function seoBrainGbpLines(s: GbpSnapshotCore, ctx: { changesSince: Date |
   if (issues.length) lines.push(`Profile health (from Google): ${issues.map((i) => i.code).join(', ')}`);
   if (sec.duplicates.data?.candidates.some((c) => c.confidence === 'high')) lines.push('Possible duplicate Google listing nearby (unconfirmed).');
   for (const c of recentMaterialChanges(s, ctx.changesSince)) {
-    lines.push(`Changed on Google outside GrowwMatics: ${changeFieldLabel(c.field)} (${c.detectedAt.slice(0, 10)})`);
+    lines.push(`Changed on Google outside Growwmatics AI: ${changeFieldLabel(c.field)} (${c.detectedAt.slice(0, 10)})`);
   }
   if (sec.products.meta.status === 'NOT_AVAILABLE') lines.push('Products: not readable through the Google API (do not mention products).');
   return lines;

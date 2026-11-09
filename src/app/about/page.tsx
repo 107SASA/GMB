@@ -8,7 +8,7 @@ import { InkCtaPanel } from "@/components/shared/InkCtaPanel";
 export const metadata: Metadata = {
   title: "About Us",
   description:
-    "GrowwMatics AI builds AI-powered tools that help local businesses win on Google — audits, content, reviews, and lead conversion in one platform.",
+    "Growwmatics AI builds AI-powered tools that help local businesses win on Google — audits, content, reviews, and lead conversion in one platform.",
   alternates: { canonical: "/about" },
 };
 
@@ -56,7 +56,7 @@ export default function AboutPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-6 items-start">
             <div className="lg:col-span-7">
               <p className="mkt-label inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-(--mkt-line) bg-white text-[#006e2c] mb-6">
-                About Growwmatics
+                About Growwmatics AI
               </p>
               <h1 className="font-mkt-display text-[2rem] sm:text-5xl md:text-6xl font-semibold text-[#101613] leading-[1.08] tracking-tight mb-6">
                 Helping local business grow{" "}
@@ -64,7 +64,7 @@ export default function AboutPage() {
               </h1>
               <p className="text-base sm:text-lg text-[#3d4a3d] max-w-xl leading-relaxed">
                 Most local customers find a business through Google search or Maps before they
-                ever visit a website. Growwmatics makes sure that first impression — your Google
+                ever visit a website. Growwmatics AI makes sure that first impression — your Google
                 Business Profile — works as hard as the rest of your business.
               </p>
             </div>
@@ -73,7 +73,7 @@ export default function AboutPage() {
               <div className="rounded-2xl overflow-hidden border border-(--mkt-line) shadow-card">
                 <img
                   src="/marketing/about/owners-collage.png"
-                  alt="Local business owners GrowwMatics AI serves"
+                  alt="Local business owners Growwmatics AI serves"
                   className="w-full h-auto object-cover max-h-[220px] sm:max-h-[260px] lg:max-h-[320px]"
                 />
               </div>
@@ -89,7 +89,7 @@ export default function AboutPage() {
             &ldquo;
           </span>
           <p className="font-mkt-display text-2xl sm:text-3xl md:text-4xl font-medium text-[#101613] leading-snug tracking-tight">
-            We built Growwmatics after seeing the same gaps hold local businesses back —
+            We built Growwmatics AI after seeing the same gaps hold local businesses back —
             again and again.
           </p>
         </div>

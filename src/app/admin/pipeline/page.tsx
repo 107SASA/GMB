@@ -76,7 +76,7 @@ export default function ConversionOverviewPage() {
           </div>
           <div>
             <h1 className="font-heading text-2xl font-bold text-on-surface">Conversion Overview</h1>
-            <p className="text-sm text-on-surface-variant">GrowwMatics acquisition funnel — leads → demo → payment → customer.</p>
+            <p className="text-sm text-on-surface-variant">Growwmatics AI acquisition funnel — leads → demo → payment → customer.</p>
           </div>
         </div>
         <RangePicker value={range} onChange={setRange} />

@@ -11,7 +11,7 @@
  */
 
 /** Brand the agent always represents. */
-export const BOOKING_BRAND_NAME = 'GrowwMatics AI';
+export const BOOKING_BRAND_NAME = 'Growwmatics AI';
 
 /** Variables available in the confirmation-message template. */
 export const BOOKING_TEMPLATE_VARS = [

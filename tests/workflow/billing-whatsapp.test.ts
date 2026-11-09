@@ -100,7 +100,7 @@ test('first payment: exactly one confirmation with the plan name — activated +
   await apply('subscription.charged', subEntity(w), pay, 'reconcile');
   const sent = await rows(w.phone);
   assert.equal(sent.length, 1);
-  assert.match(textOf(sent[0]), /your payment was successful and your GrowwMatics AI \(Yearly\) subscription is now active/);
+  assert.match(textOf(sent[0]), /your payment was successful and your Growwmatics AI \(Yearly\) subscription is now active/);
   assert.doesNotMatch(textOf(sent[0]), /renewed/);
   assert.equal((await m.Business.findById(w.businessId).lean()).subscriptionStatus, 'active');
 });
@@ -138,7 +138,7 @@ test('payment failure: the existing notice once; success afterwards clears the f
   await apply('subscription.pending', subEntity(w, { status: 'pending', paid_count: 1 }), null); // Razorpay retry
   const afterFailure = await rows(w.phone);
   assert.equal(afterFailure.length, 2, 'confirmation + one failure notice');
-  assert.match(textOf(afterFailure[1]), /issue with your Growwmatics subscription payment/);
+  assert.match(textOf(afterFailure[1]), /issue with your Growwmatics AI subscription payment/);
   let b: any = await m.Business.findById(w.businessId).lean();
   assert.equal(b.subscriptionStatus, 'past_due');
   assert.equal((await m.BillingRecoveryEpisode.findOne({ businessId: w.businessId }).lean()).status, 'open');
@@ -197,7 +197,7 @@ test('trial expiry (daily job, real Inngest engine): one "trial ended" message, 
   await runDurably(m.fns.subscriptionExpiryWorker, { data: {} });
   const sent = await rows(expired.phone);
   assert.equal(sent.length, 1);
-  assert.match(textOf(sent[0]), /free trial ended on .+ Subscribe to keep using Growwmatics/);
+  assert.match(textOf(sent[0]), /free trial ended on .+ Subscribe to keep using Growwmatics AI/);
   assert.doesNotMatch(textOf(sent[0]), /has been cancelled/);
   assert.equal((await m.Business.findById(expired.businessId).lean()).subscriptionStatus, 'canceled');
   assert.equal(await count(paidElsewhere.phone), 0, 'owner has a paid workspace');
@@ -222,7 +222,7 @@ test('app links: the Play Store listing in the first-payment message; the App St
   delete process.env.NEXT_PUBLIC_APP_URL;
   try {
     const text = m.notices.paymentConfirmedText({ kind: 'first', businessName: 'X', planName: 'P' });
-    assert.match(text, /Open Billing in your Growwmatics dashboard/);
+    assert.match(text, /Open Billing in your Growwmatics AI dashboard/);
     assert.doesNotMatch(text, /https?:\/\/(?!play\.google\.com)/, 'no invented link to our own site (the store listing is a real, fixed link)');
     assert.match(m.notices.trialStartedText({ businessName: 'X', trialEndsAt: new Date() }), /Log in at growwmatics\.com to open your dashboard/);
   } finally {

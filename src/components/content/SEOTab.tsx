@@ -116,7 +116,7 @@ export default function SEOTab({ description: initialDescription, score }: SEOTa
       </div>
 
       <p className="text-xs text-outline text-center">
-        Saves to your GrowwMatics AI business profile. To push directly to Google Business Profile, connect your Google account.
+        Saves to your Growwmatics AI business profile. To push directly to Google Business Profile, connect your Google account.
       </p>
     </div>
   );

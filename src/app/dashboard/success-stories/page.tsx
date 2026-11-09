@@ -3,7 +3,7 @@ import SuccessStoriesWorkspace from '@/components/dashboard/SuccessStoriesWorksp
 
 export const metadata = {
   title: 'Success Stories',
-  description: 'Share photos, video, or a review with GrowwMatics — approved submissions go live on growwmatics.com/showcase.',
+  description: 'Share photos, video, or a review with Growwmatics AI — approved submissions go live on growwmatics.com/showcase.',
 };
 
 export default function SuccessStoriesPage() {

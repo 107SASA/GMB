@@ -22,7 +22,7 @@ export interface ProspectFacts {
 
 export const NEW_LEAD_MENU =
   'Hi! 👋 What would you like to do?\n\n' +
-  '1️⃣ Book a Demo — Talk to our team and see how Growwmatics can help your business.\n\n' +
+  '1️⃣ Book a Demo — Talk to our team and see how Growwmatics AI can help your business.\n\n' +
   '2️⃣ Get Free Google Business Profile Report — Get your free visibility and optimization report.\n\n' +
   'Reply 1 or 2.';
 
@@ -255,8 +255,8 @@ export function bookedStatusReply(input: { whenLabel?: string | null; meetingLin
   const when = (input.whenLabel || '').trim();
   if (link.startsWith('https://')) {
     return when
-      ? `Your GrowwMatics demo is booked for ${when}. Join here: ${link}`
-      : `Your GrowwMatics demo is booked. Join here: ${link}`;
+      ? `Your Growwmatics AI demo is booked for ${when}. Join here: ${link}`
+      : `Your Growwmatics AI demo is booked. Join here: ${link}`;
   }
   return "I've got your message. Reply with a date and time and I'll book the demo.";
 }

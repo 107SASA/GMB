@@ -131,7 +131,7 @@ test('reviews: missing text → no themes source; missing reply data → unknown
 
 // ── Findings: execution metadata ───────────────────────────────────────────
 
-test('findings: owner action, GrowwMatics action, GBP connection, measurement', () => {
+test('findings: owner action, Growwmatics AI action, GBP connection, measurement', () => {
   const reviews = findingExecution({ source: 'google_places', category: 'reviews', growwmaticsCapability: 'review_requests', recommendedAction: 'Ask for reviews' });
   assert.equal(reviews.evidenceState, 'VERIFIED');
   assert.match(reviews.growwmaticsAction!, /review-request/);
@@ -140,7 +140,7 @@ test('findings: owner action, GrowwMatics action, GBP connection, measurement', 
   const phone = findingExecution({ source: 'google_places', category: 'profile', growwmaticsCapability: 'update_phone', recommendedAction: 'Add phone' });
   assert.equal(phone.requiresGbpConnection, true);
   const cats = findingExecution({ source: 'website', category: 'website', growwmaticsCapability: null, recommendedAction: 'Verify your Google services list' });
-  assert.equal(cats.growwmaticsAction, null, 'never implies GrowwMatics can do what it cannot');
+  assert.equal(cats.growwmaticsAction, null, 'never implies Growwmatics AI can do what it cannot');
   assert.equal(cats.ownerAction, 'Verify your Google services list');
   assert.equal(cats.evidenceState, 'SOURCE_CLAIM');
 });

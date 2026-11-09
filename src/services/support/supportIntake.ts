@@ -23,7 +23,7 @@ import { SUPPORT_MESSAGE } from '@/lib/whatsappCta';
  */
 
 export const SUPPORT_ACK_MESSAGE =
-  "Thank you for contacting Growwmatics. We've received your message. Our support team will review your concern and get back to you shortly.";
+  "Thank you for contacting Growwmatics AI. We've received your message. Our support team will review your concern and get back to you shortly.";
 export const SUPPORT_ISSUE_IDLE_DAYS = 7;
 
 export type SupportMatch = 'verified_user' | 'paying_customer' | 'support_request' | 'sales_handoff';

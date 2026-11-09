@@ -101,7 +101,7 @@ test('review attention copy alternates by week so identical copy is not repeated
   assert.notEqual(a, b);
   for (const t of [a, b]) {
     assert.match(t, /2 customer reviews from the last 30 days/);
-    assert.match(t, /— Team Growwmatics$/);
+    assert.match(t, /— Team Growwmatics AI$/);
   }
 });
 
@@ -109,7 +109,7 @@ test('monthly report copy (no stored summary): bold heading, short description, 
   const t = composeMonthlyWhatsApp(null, 'Mulsetu', 'https://app.example/dashboard/audit/a1');
   assert.match(t, /^Hi Mulsetu,\n\n\*📊 Your monthly Google report is ready\*\n\n/);
   assert.match(t, /View your full report: https:\/\/app\.example\/dashboard\/audit\/a1/);
-  assert.match(t, /— Team Growwmatics$/);
+  assert.match(t, /— Team Growwmatics AI$/);
   assert.equal(t.match(/https?:\/\//g)?.length, 1);
   assert.ok(t.length < 400);
 });
@@ -160,7 +160,7 @@ test('monthly summary stays within the notification template when flattened, eve
   assert.match(flat.text, /^\*📊 Your monthly Google report is ready\* — This month: • New Google reviews: 3/);
   assert.ok(flat.text.length <= NOTIFICATION_BODY_MAX, `flattened ${flat.text.length} chars`);
   assert.equal(flat.text.split(link).length, 2, 'the link is intact and appears once');
-  assert.doesNotMatch(flat.text, /Team Growwmatics/, 'sign-off dropped for the template');
+  assert.doesNotMatch(flat.text, /Team Growwmatics AI/, 'sign-off dropped for the template');
   const vars = buildNotificationVariables(flat.name, flat.text, true);
   assert.ok(vars.ok);
   assert.equal(unsafeTemplateVariableReason(vars.variables), null);
@@ -260,10 +260,10 @@ test('customer review request default copy: placeholders filled, one link, opt-o
 });
 
 test('weekly update copy carries the summary, a link and the sign-off', () => {
-  const t = composeWeeklyWhatsApp({ whatsappText: 'Here is your weekly Growwmatics update:\n\n• New reviews: 2' }, 'Mulsetu', 'https://app.example/dashboard');
+  const t = composeWeeklyWhatsApp({ whatsappText: 'Here is your weekly Growwmatics AI update:\n\n• New reviews: 2' }, 'Mulsetu', 'https://app.example/dashboard');
   assert.match(t, /^Hi Mulsetu,/);
   assert.match(t, /View your dashboard: https:\/\/app\.example\/dashboard/);
-  assert.match(composeWeeklyWhatsApp({ whatsappText: 'x' }, 'M', null), /Open your Growwmatics dashboard/);
+  assert.match(composeWeeklyWhatsApp({ whatsappText: 'x' }, 'M', null), /Open your Growwmatics AI dashboard/);
 });
 
 test('notification template fallback: no doubled greeting, name from the greeting, one line', () => {
@@ -274,9 +274,9 @@ test('notification template fallback: no doubled greeting, name from the greetin
   const inline = notificationBodyForTemplate('Hi Rahul 👋 Just checking in on your audit.\n\nReply anytime.');
   assert.equal(inline.name, 'Rahul');
   assert.equal(inline.text, 'Just checking in on your audit. Reply anytime.');
-  const plain = notificationBodyForTemplate('Your GrowwMatics demo is confirmed for Monday.\n\nJoin here: https://meet.test/x');
+  const plain = notificationBodyForTemplate('Your Growwmatics AI demo is confirmed for Monday.\n\nJoin here: https://meet.test/x');
   assert.equal(plain.name, '');
-  assert.equal(plain.text, 'Your GrowwMatics demo is confirmed for Monday. Join here: https://meet.test/x');
+  assert.equal(plain.text, 'Your Growwmatics AI demo is confirmed for Monday. Join here: https://meet.test/x');
   // Only a leading greeting is removed — the rest of a sentence stays.
   const sentence = notificationBodyForTemplate('Hi there, your report is ready.\nOpen it today.');
   assert.equal(sentence.text, 'your report is ready. Open it today.');

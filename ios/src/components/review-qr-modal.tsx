@@ -161,7 +161,7 @@ function ReviewPoster({ businessName, reviewUrl }: { businessName: string; revie
 
         <View style={{ alignItems: 'center', paddingBottom: 4 }}>
           <Text style={{ fontSize: 10, color: '#8d9199', marginBottom: 3 }}>Powered By</Text>
-          <Text style={{ fontSize: 15, fontWeight: '800', color: '#06b34c' }}>GrowwMatics</Text>
+          <Text style={{ fontSize: 15, fontWeight: '800', color: '#06b34c' }}>Growwmatics AI</Text>
         </View>
       </View>
     </View>

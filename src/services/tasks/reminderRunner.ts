@@ -76,7 +76,7 @@ export async function runTaskReminder(businessId: string, now = new Date()): Pro
         body: `${content.headline}.${content.detail ? ` ${content.detail}` : ''}`,
         linkLabel: 'Fix it now',
         link: appLink(webPath),
-        noLinkText: 'Open your checklist in the GrowwMatics dashboard.',
+        noLinkText: 'Open your checklist in the Growwmatics AI dashboard.',
       }),
     });
     // Claimed either way: an opted-out owner or a failed send is not retried daily.

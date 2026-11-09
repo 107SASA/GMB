@@ -265,7 +265,7 @@ test('8. unchanged data (and formatting-only differences) never create change re
   assert.equal(canonPhone('+91 98220 12345'), canonPhone('098220-12345'));
 });
 
-test('8b. a field GrowwMatics wrote itself is attributed to GrowwMatics, not to Google', () => {
+test('8b. a field Growwmatics AI wrote itself is attributed to Growwmatics AI, not to Google', () => {
   const prev = { location: { meta: { status: 'SUCCESS' as const, fetchedAt: 'x', lastSuccessfulFetchAt: 'x' }, data: normalizeLocation(RAW_LOCATION) } };
   const next = { location: { meta: { status: 'SUCCESS' as const, fetchedAt: 'y', lastSuccessfulFetchAt: 'y' }, data: normalizeLocation({ ...RAW_LOCATION, profile: { description: 'New description' } }) } };
   const ch = detectChanges({ prev, next, growmaticsEditedFields: new Set(['description']), now: T0 });

@@ -8,7 +8,7 @@
  * both import from here — mirrors src/lib/bookingAgentDefaults.ts.
  */
 
-export const REPORT_AGENT_BRAND_NAME = 'GrowwMatics AI';
+export const REPORT_AGENT_BRAND_NAME = 'Growwmatics AI';
 
 /** Variables available in the report-intro template (sent immediately). */
 export const REPORT_INTRO_TEMPLATE_VARS = ['{{link}}'] as const;

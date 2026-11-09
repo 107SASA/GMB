@@ -164,7 +164,7 @@ export default function AuditPaywallSidebar({
                   </li>
                 ))}
                 <li className="flex items-center justify-between border-t border-outline-variant pt-2.5 text-xs">
-                  <span className="font-bold text-primary">GrowwMatics AI</span>
+                  <span className="font-bold text-primary">Growwmatics AI</span>
                   <span className="font-bold text-primary">
                     {price != null ? `₹${price.toLocaleString('en-IN')} / ${cycleLabel}` : 'See price above'}
                   </span>

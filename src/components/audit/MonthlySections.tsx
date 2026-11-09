@@ -117,7 +117,7 @@ export default function MonthlySections({ monthly }: { monthly: any }) {
                   <td className="py-2 pr-2 text-on-surface">{c.what}<span className="block text-[10px] text-outline">{c.evidence}</span></td>
                   <td className="py-2 px-2 text-on-surface-variant">{c.previous}</td>
                   <td className="py-2 px-2 text-on-surface-variant">{c.current}</td>
-                  <td className="py-2 pl-2 text-on-surface-variant">{c.actor === 'Unknown' ? 'Not recorded' : c.actor === 'Owner' ? 'You' : 'GrowwMatics'}</td>
+                  <td className="py-2 pl-2 text-on-surface-variant">{c.actor === 'Unknown' ? 'Not recorded' : c.actor === 'Owner' ? 'You' : 'Growwmatics AI'}</td>
                 </tr>
               ))}
             </tbody>
@@ -126,15 +126,15 @@ export default function MonthlySections({ monthly }: { monthly: any }) {
       </Card>
 
       <div className="grid md:grid-cols-2 gap-4">
-        <Card title="What GrowwMatics optimized">
+        <Card title="What Growwmatics AI optimized">
           {m.growwmaticsOptimized?.length
             ? <ul className="space-y-1 text-sm">{m.growwmaticsOptimized.map((x: any, i: number) => <li key={i}><strong>{x.count}</strong> {x.what}<span className="block text-[10px] text-outline">{x.evidence}</span></li>)}</ul>
-            : <Empty text="No GrowwMatics actions reached your Google profile this period (only actions with a confirmed Google write are counted)." />}
+            : <Empty text="No Growwmatics AI actions reached your Google profile this period (only actions with a confirmed Google write are counted)." />}
         </Card>
         <Card title="What you optimized">
           {m.ownerOptimized?.length
             ? <ul className="space-y-1 text-sm">{m.ownerOptimized.map((x: any, i: number) => <li key={i}><strong>{x.count}</strong> {x.what}<span className="block text-[10px] text-outline">{x.evidence}</span></li>)}</ul>
-            : <Empty text="No owner actions were recorded through GrowwMatics this period." />}
+            : <Empty text="No owner actions were recorded through Growwmatics AI this period." />}
         </Card>
       </div>
 
@@ -179,7 +179,7 @@ export default function MonthlySections({ monthly }: { monthly: any }) {
           <li>New Google reviews: <strong>{r.newReviews}</strong>{r.newReviews === 0 ? ' — no new reviews detected' : ''}</li>
           <li>Rating: {r.ratingBefore ?? 'unknown'}★ → {r.ratingAfter ?? 'unknown'}★</li>
           <li>Lifetime reviews: {r.lifetimeBefore ?? 'unknown'} → {r.lifetimeAfter ?? 'unknown'}</li>
-          <li>Replied by GrowwMatics: {r.repliedByGrowwMatics}</li>
+          <li>Replied by Growwmatics AI: {r.repliedByGrowwMatics}</li>
           <li>Replies you approved: {r.repliedByOwnerViaGrowwMatics}</li>
           <li>Replied on Google directly: {r.repliedOnGoogleDirectly}</li>
           <li>New reviews without a reply: {r.unanswered}{r.replyUnknown ? ` (${r.replyUnknown} not yet checked)` : ''}</li>

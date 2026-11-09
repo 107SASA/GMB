@@ -103,7 +103,7 @@ test('daily runs: in-app → push → WhatsApp → push → WhatsApp, naming the
 
   const mine = sent.filter((s) => s.businessId === biz);
   const inapp = mine.find((s) => s.channel === 'inapp')!.payload;
-  assert.equal(inapp.title, 'Your report found 2 things to fix', 'posts GrowwMatics runs itself are not counted');
+  assert.equal(inapp.title, 'Your report found 2 things to fix', 'posts Growwmatics AI runs itself are not counted');
   assert.equal(inapp.link, '/dashboard');
   const push = mine.find((s) => s.channel === 'push')!.payload;
   assert.equal(push.data.taskPath, '/profile-optimization?section=services');

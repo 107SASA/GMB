@@ -305,14 +305,14 @@
      "topic": "reviews",
      "fact": "5 of the 6 businesses above you that show a review count have more Google reviews than your 3; their median is 6.",
      "meaning": "Searchers comparing listings side by side see more customer feedback on theirs.",
-     "recommendation": "Ask every recent customer for a Google review and reply to each one (GrowwMatics review requests and replies).",
+     "recommendation": "Ask every recent customer for a Google review and reply to each one (Growwmatics AI review requests and replies).",
      "basis": "the 8 businesses shown above Mulsetu most often in our Google Maps searches"
     },
     {
      "topic": "categories",
      "fact": "6 of 6 businesses shown above you list additional Google categories; we could not see any on yours.",
      "meaning": "Additional categories let a listing appear for more of the services it genuinely offers.",
-     "recommendation": "Check your Google Business Profile categories and add any that truly describe your services (you change categories in Google — GrowwMatics cannot).",
+     "recommendation": "Check your Google Business Profile categories and add any that truly describe your services (you change categories in Google — Growwmatics AI cannot).",
      "basis": "the 8 businesses shown above Mulsetu most often in our Google Maps searches"
     }
    ],
@@ -490,7 +490,7 @@
      "items": [
       {
        "title": "Update Google Business Description",
-       "detail": "Use GrowwMatics to expand Mulsetu's business description beyond the current 56 characters, reflecting the services listed on the website.",
+       "detail": "Use Growwmatics AI to expand Mulsetu's business description beyond the current 56 characters, reflecting the services listed on the website.",
        "priority": "CRITICAL"
       },
       {
@@ -510,7 +510,7 @@
       },
       {
        "title": "Schedule Monthly Ranking Re‑measurements",
-       "detail": "Set up GrowwMatics to re‑measure Mulsetu’s Maps rankings each month to track the eight businesses that appear above.",
+       "detail": "Set up Growwmatics AI to re‑measure Mulsetu’s Maps rankings each month to track the eight businesses that appear above.",
        "priority": "LOW"
       }
      ]
@@ -6524,7 +6524,7 @@
      "at": "2026-09-29T10:03:35.673Z",
      "source": "Google Business Profile (live read in both audits)",
      "actor": "Owner",
-     "evidence": "Profile edit record by Lifecycle Owner via GrowwMatics"
+     "evidence": "Profile edit record by Lifecycle Owner via Growwmatics AI"
     },
     {
      "what": "Phone",
@@ -6533,7 +6533,7 @@
      "at": "2026-09-29T10:05:17.235Z",
      "source": "Google Business Profile (live read in both audits)",
      "actor": "Unknown",
-     "evidence": "No GrowwMatics record — changed directly on Google"
+     "evidence": "No Growwmatics AI record — changed directly on Google"
     },
     {
      "what": "New Google reviews",
@@ -6564,7 +6564,7 @@
    ],
    "ownerOptimized": [
     {
-     "what": "Profile edits you made in GrowwMatics",
+     "what": "Profile edits you made in Growwmatics AI",
      "count": 1,
      "evidence": "Profile edit records (live write applied)"
     }

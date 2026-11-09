@@ -19,9 +19,9 @@ export function Footer({ hideBoosterPromo = false }: { hideBoosterPromo?: boolea
       <div className="max-w-container-max mx-auto grid grid-cols-2 sm:grid-cols-2 md:grid-cols-5 gap-8 sm:gap-10 md:gap-12">
         <div className="col-span-2 md:col-span-1">
           <Link href="/" className="flex items-center gap-2 mb-4 sm:mb-6">
-            <img src="/brand/icon.png" alt="GrowwMatics AI" className="w-8 h-8 object-contain" />
+            <img src="/brand/icon.png" alt="Growwmatics AI" className="w-8 h-8 object-contain" />
             <span className="font-mkt-display text-lg sm:text-xl font-semibold tracking-tight text-[#101613]">
-              Growwmatics
+              Growwmatics AI
             </span>
           </Link>
           <p className="text-on-surface-variant text-sm leading-relaxed mb-4 sm:mb-6 max-w-sm">
@@ -139,7 +139,7 @@ export function Footer({ hideBoosterPromo = false }: { hideBoosterPromo?: boolea
       </div>
 
       <div className="max-w-container-max mx-auto mt-8 sm:mt-10 md:mt-12 pt-6 sm:pt-8 pb-3 sm:pb-4 border-t border-(--mkt-line) text-center text-outline text-xs space-y-1.5 px-2">
-        <p>© {new Date().getFullYear()} GrowwMatics AI. All rights reserved. Built for the future of local SEO.</p>
+        <p>© {new Date().getFullYear()} Growwmatics AI. All rights reserved. Built for the future of local SEO.</p>
         <p>{BRAND_ATTRIBUTION}</p>
         <p>
           {COMPANY.legalName} · CIN {COMPANY.cin}

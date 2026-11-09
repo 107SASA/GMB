@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   // already; don't repeat it here or the rendered <title> doubles it up.
   title: "Refund & Cancellation Policy",
   description:
-    "How subscription cancellations and refunds work for GrowwMatics AI.",
+    "How subscription cancellations and refunds work for Growwmatics AI.",
   alternates: { canonical: "/refund" },
 };
 

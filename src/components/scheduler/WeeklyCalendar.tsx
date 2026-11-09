@@ -413,7 +413,7 @@ function PostDetailModal({
                     Not on Google
                   </p>
                   <p className="text-sm text-on-surface-variant">
-                    {post.failureReason || 'Scheduled in GrowwMatics — Google publishing has not been executed.'}
+                    {post.failureReason || 'Scheduled in Growwmatics AI — Google publishing has not been executed.'}
                   </p>
                 </div>
               )}

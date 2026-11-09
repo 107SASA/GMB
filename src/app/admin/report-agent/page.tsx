@@ -96,7 +96,7 @@ export default function ReportAgentAdminPage() {
       <div className="flex items-start gap-2 bg-surface border border-outline-variant rounded-xl px-4 py-3 text-xs text-on-surface-variant mb-6">
         <Info className="w-4 h-4 mt-0.5 shrink-0 text-outline" />
         <div>
-          Runs on the GrowwMatics WhatsApp number. The intro message is sent immediately with the Google-connect link; the persona only handles questions before they connect; the summary is sent after the report card image, filled in from the real audit numbers.
+          Runs on the Growwmatics AI WhatsApp number. The intro message is sent immediately with the Google-connect link; the persona only handles questions before they connect; the summary is sent after the report card image, filled in from the real audit numbers.
         </div>
       </div>
 

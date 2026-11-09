@@ -106,7 +106,7 @@ export default function BookingAgentAdminPage() {
       <div className="flex items-start gap-2 bg-surface border border-outline-variant rounded-xl px-4 py-3 text-xs text-on-surface-variant mb-6">
         <Info className="w-4 h-4 mt-0.5 shrink-0 text-outline" />
         <div>
-          Runs on the GrowwMatics WhatsApp number. The agent asks for name, business and a preferred day &amp; time, then books the demo automatically.
+          Runs on the Growwmatics AI WhatsApp number. The agent asks for name, business and a preferred day &amp; time, then books the demo automatically.
           Variables for the confirmation message: {vars.map((v) => <code key={v} className="mx-0.5 px-1 bg-surface-container-lowest border border-outline-variant rounded">{v}</code>)}
         </div>
       </div>

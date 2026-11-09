@@ -68,7 +68,7 @@ const auditData = (o: any = {}) => ({
   findings: o.findings ?? [{ id: 'profile.phone.missing', category: 'profile', title: 'No phone number on the Google listing' }, { id: 'website.x', category: 'website', title: 'Check X', verificationOnly: true }],
 });
 
-test('monthly report: GrowwMatics credit only with execution records; ranking only when comparable', () => {
+test('monthly report: Growwmatics AI credit only with execution records; ranking only when comparable', () => {
   const ex = noEx();
   ex.posts = [{ at: '2026-09-05T00:00:00Z', autopilot: true }, { at: '2026-09-06T00:00:00Z', autopilot: false }];
   ex.replies = [{ at: '2026-09-07T00:00:00Z', by: 'growwmatics_auto' }, { at: '2026-09-08T00:00:00Z', by: 'external' }];
@@ -130,12 +130,12 @@ test('actions: PLANNED → READY → EXECUTED → VERIFIED only with evidence', 
   assert.equal(wrongField.status, 'READY', 'an edit to a different field is not this action');
 });
 
-test('actions: owner-only actions are never claimed by GrowwMatics', () => {
+test('actions: owner-only actions are never claimed by Growwmatics AI', () => {
   const a = { findingId: 'profile.categories', capability: null, requiresGbpConnection: false, plannedAt: '2026-09-01T00:00:00Z' };
   assert.equal(deriveActionStatus(a, base).status, 'PLANNED');
   const done = deriveActionStatus(a, { ...base, findingStillPresent: false, remeasuredAt: '2026-10-01T00:00:00Z' });
   assert.equal(done.status, 'VERIFIED');
-  assert.match(done.verificationResult!, /outside GrowwMatics/);
+  assert.match(done.verificationResult!, /outside Growwmatics AI/);
   assert.equal(done.executedAt, undefined);
   const posts = deriveActionStatus({ ...a, capability: 'google_posts', requiresGbpConnection: true }, { ...base, executions: { ...ex0, posts: 3 } });
   assert.equal(posts.status, 'EXECUTED');
@@ -181,7 +181,7 @@ test('weekly: new reviews notify; zero reviews is stated, not blamed', () => {
   // Content spec §16/§17: the in-app notice states the stored fact, nothing more.
   assert.deepEqual(zero.notifications.map((n) => [n.type, n.body]), [['weekly_no_new_reviews', 'No new Google reviews were detected this week.']]);
   const noRequests = buildWeeklySummary(week({ reviews: { requestsSent: 0 } as any }));
-  assert.ok(noRequests.lines.some((l) => /No review requests were sent through GrowwMatics/.test(l)), 'only stated when the record shows 0');
+  assert.ok(noRequests.lines.some((l) => /No review requests were sent through Growwmatics AI/.test(l)), 'only stated when the record shows 0');
 });
 
 test('weekly: unanswered reviews, action required, unavailable data', () => {
@@ -200,7 +200,7 @@ test('weekly: performance and comparable ranking only', () => {
   const s = buildWeeklySummary(week({ performance: { calls: [12, 18], websiteClicks: [20, 31], directionRequests: [7, 7] }, ranking: { improved: 3, declined: 0, comparable: 5 } }));
   assert.ok(s.notifications.some((n) => n.body === 'Your Google Business Profile received 18 calls this week, up from 12.'));
   assert.ok(s.notifications.some((n) => n.body === 'Your visibility improved for 3 tracked searches.'));
-  assert.match(s.whatsappText, /^Here is your weekly Growwmatics update:/);
+  assert.match(s.whatsappText, /^Here is your weekly Growwmatics AI update:/);
   assert.equal(buildWeeklySummary(week({ ranking: { improved: 0, declined: 0, comparable: 0 } })).lines.some((l) => l.startsWith('Ranking')), false);
 });
 

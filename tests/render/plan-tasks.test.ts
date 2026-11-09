@@ -64,7 +64,7 @@ test('reopened task shows "Found again" and a Fix now link', async () => {
 });
 
 const progress = {
-  fixed: [{ findingId: 'website.services.missing_on_gbp', title: 'Your website lists 6 services; your Google profile lists none', how: 'Applied through GrowwMatics' }],
+  fixed: [{ findingId: 'website.services.missing_on_gbp', title: 'Your website lists 6 services; your Google profile lists none', how: 'Applied through Growwmatics AI' }],
   added: [{ findingId: 'profile.business_hours.missing', title: 'Opening hours are not set on the Google listing' }],
   stillOpen: [{ findingId: 'gbp.attributes.none', title: 'No attributes are set on the Google profile', reason: 'Waiting for your approval', waitingForOwner: true }],
 };
@@ -79,7 +79,7 @@ test('monthly report (web): fixed / new / still open, with measured changes', as
   const MonthlySections = (await import('../../src/components/audit/MonthlySections')).default;
   const html = await render((React) => React.createElement(MonthlySections, { monthly: monthly({ issueProgress: progress }) }));
   assert.match(html, /✅ Fixed since last report \(1\)/);
-  assert.match(html, /Applied through GrowwMatics/);
+  assert.match(html, /Applied through Growwmatics AI/);
   assert.match(html, /🆕 New this month \(1\)/);
   assert.match(html, /⏳ Still open \(1\)/);
   assert.match(html, /Waiting for your approval/);

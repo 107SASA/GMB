@@ -19,7 +19,7 @@ import {
 } from '../../src/services/tasks/planTasks.ts';
 import { GROWWMATICS_CAPABILITIES } from '../../src/services/audit/findings.ts';
 
-test('every GrowwMatics capability except measurement opens a screen on web and mobile', () => {
+test('every Growwmatics AI capability except measurement opens a screen on web and mobile', () => {
   for (const cap of Object.keys(GROWWMATICS_CAPABILITIES)) {
     if (cap === 'rank_tracking') continue;
     const t = fixTargetFor('x', cap);
@@ -73,7 +73,7 @@ test('display status: open → waiting approval → done → confirmed; reopened
   assert.equal(taskDisplayStatus({ findingId: 'w', capability: null, status: 'PLANNED', ownerMarkedDoneAt: new Date() }, new Set()), 'done');
 });
 
-test('"I\'ve done this" only for work outside GrowwMatics', () => {
+test('"I\'ve done this" only for work outside Growwmatics AI', () => {
   assert.equal(canMarkDone({ findingId: 'website.gbp_services_not_on_site', capability: null }), true);
   assert.equal(canMarkDone({ findingId: 'website.services.missing_on_gbp', capability: 'update_services' }), false);
   assert.equal(canMarkDone({ findingId: 'gbp.change.title', capability: null }), false, 'detected from Google');
@@ -104,7 +104,7 @@ test('seen fixed on Google: read from the live snapshot, unknown when unreadable
   assert.equal(seenFixedOnGoogle('x', 'update_services', null), null);
 });
 
-test('list order: quick approvals first, then owner work, then what GrowwMatics runs; done last', () => {
+test('list order: quick approvals first, then owner work, then what Growwmatics AI runs; done last', () => {
   const doc = (id: string, capability: string | null, status: any, priority: any = 'medium', extra: any = {}) =>
     buildTaskView({ _id: id, findingId: id, capability, status, priority, description: id, ...extra }, new Set());
   const sorted = sortTasks([
@@ -188,7 +188,7 @@ test('Google still reviewing an edit: an open profile task says so instead of as
   const reviewing = buildTaskView(services as any, new Set(), { googleReviewingEdits: true });
   assert.equal(reviewing.status, 'open', 'still open — only the next sync can see the fix');
   assert.match(reviewing.statusReason, /Google is still reviewing it/);
-  assert.equal(buildTaskView(services as any, new Set()).statusReason, 'Ready for your approval in GrowwMatics');
+  assert.equal(buildTaskView(services as any, new Set()).statusReason, 'Ready for your approval in Growwmatics AI');
   // Owner work and finished tasks keep their own wording.
   const ownerTask = buildTaskView({ _id: 'w', findingId: 'website.gbp_services_not_on_site', capability: null, status: 'PLANNED', description: 'x' } as any, new Set(), { googleReviewingEdits: true });
   assert.equal(ownerTask.statusReason, 'Waiting for you');

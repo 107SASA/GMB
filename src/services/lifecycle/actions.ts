@@ -85,7 +85,7 @@ export function deriveActionStatus(
   // Owner action — GrowwMatics never claims it.
   if (!a.capability) {
     return resolved
-      ? verified('The issue no longer appears in the latest audit (change made outside GrowwMatics)')
+      ? verified('The issue no longer appears in the latest audit (change made outside Growwmatics AI)')
       : { status: 'PLANNED', statusReason: 'Owner action — waiting for you' };
   }
   if (a.requiresGbpConnection && !ctx.gbpConnected) {

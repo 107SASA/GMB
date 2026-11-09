@@ -280,7 +280,7 @@ test('everyone else on the platform number is routed as before', async (t) => {
   await inbound('+919811100002', 'I need help');
   assert.equal(await m.SupportConversation.countDocuments({ leadPhone: '+919811100002' }), 1);
   const [ack]: any[] = await rows('+919811100002');
-  assert.match(ack?.payload.body || ack?.payload.variables?.['2'] || '', /^Thank you for contacting Growwmatics/);
+  assert.match(ack?.payload.body || ack?.payload.variables?.['2'] || '', /^Thank you for contacting Growwmatics AI/);
 });
 
 // ── Review fixes: stored phone formats, long-delay requests, previews, in-flight setting changes ──

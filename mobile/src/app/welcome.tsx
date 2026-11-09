@@ -39,7 +39,7 @@ const SLIDES: Slide[] = [
       { icon: 'call', text: 'More calls' },
     ],
     title: 'Grow your business on Google',
-    body: 'GrowwMatics AI looks after your Google Business Profile so more local customers find you and call you.',
+    body: 'Growwmatics AI looks after your Google Business Profile so more local customers find you and call you.',
   },
   {
     key: 'reviews',
@@ -122,7 +122,7 @@ export default function WelcomeScreen() {
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, height: 56 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Image source={require('../../assets/images/splash-icon.png')} style={{ width: 28, height: 28 }} contentFit="contain" />
-          <Text className="font-display-bold text-base text-white">GrowwMatics AI</Text>
+          <Text className="font-display-bold text-base text-white">Growwmatics AI</Text>
         </View>
         {!last && (
           <Pressable

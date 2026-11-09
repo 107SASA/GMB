@@ -17,7 +17,7 @@ function failurePage(status: number): NextResponse {
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Link expired</title></head>
 <body style="font-family:-apple-system,system-ui,sans-serif;margin:0;padding:48px 24px;text-align:center;color:#111">
 <h1 style="font-size:20px">This link has expired</h1>
-<p style="color:#555;line-height:1.5">Connect links work once and only for a couple of minutes.<br>Close this window and tap <strong>Connect</strong> in the GrowwMatics app again.</p>
+<p style="color:#555;line-height:1.5">Connect links work once and only for a couple of minutes.<br>Close this window and tap <strong>Connect</strong> in the Growwmatics AI app again.</p>
 </body></html>`;
   return new NextResponse(html, { status, headers: { ...NO_STORE, 'Content-Type': 'text/html; charset=utf-8' } });
 }

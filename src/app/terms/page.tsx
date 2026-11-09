@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   // already; don't repeat it here or the rendered <title> doubles it up.
   title: "Terms & Conditions",
   description:
-    "The terms governing your use of the GrowwMatics AI website and services.",
+    "The terms governing your use of the Growwmatics AI website and services.",
   alternates: { canonical: "/terms" },
 };
 

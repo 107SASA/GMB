@@ -54,7 +54,7 @@ export async function bookDemoSlotFromForm(input: {
       phone: input.phone,
       dateLabel,
       timeLabel,
-      title: `GrowwMatics Demo — ${input.businessName || input.name}`,
+      title: `Growwmatics AI Demo — ${input.businessName || input.name}`,
       description: `Lead: ${input.name}\nBusiness: ${input.businessName || ''}\nPhone: ${input.phone}\nBooked from the website demo form.`,
       start: startUtc,
       durationMinutes,

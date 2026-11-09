@@ -24,7 +24,7 @@ export function FeaturesPage() {
 
       <section className="relative pt-10 px-6 max-w-4xl mx-auto text-center">
         <h1 className="font-mkt-display text-3xl md:text-5xl font-bold text-[#101613] mb-6 leading-[1.15]">
-          Everything included in GrowwMatics AI
+          Everything included in Growwmatics AI
         </h1>
         <p className="text-lg text-[#3d4a3d] max-w-2xl mx-auto leading-relaxed">
           One dashboard covering your Google Business Profile audit, AI content, review automation, CRM and

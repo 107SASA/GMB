@@ -73,7 +73,7 @@ export function ShowcasePage() {
           Real businesses, real results
         </h1>
         <p className="text-lg text-[#3d4a3d] max-w-2xl mx-auto leading-relaxed">
-          Photos, clips, and reviews shared directly by businesses on GrowwMatics — every one reviewed by our team before it's posted here.
+          Photos, clips, and reviews shared directly by businesses on Growwmatics AI — every one reviewed by our team before it's posted here.
         </p>
       </section>
 
@@ -128,7 +128,7 @@ export function ShowcasePage() {
                     </div>
                   )}
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-[#101613] truncate">{r.reviewerName || 'A GrowwMatics client'}</p>
+                    <p className="text-sm font-semibold text-[#101613] truncate">{r.reviewerName || 'A Growwmatics AI client'}</p>
                     {r.businessName && <p className="text-xs text-[#3d4a3d] truncate">{r.businessName}</p>}
                   </div>
                 </div>

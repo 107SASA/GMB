@@ -393,7 +393,7 @@ export default function SettingsPage() {
           <div className="bg-error-container border border-error-container rounded-2xl px-5 py-4 flex gap-3 text-sm text-on-error-container">
             <Info className="w-5 h-5 shrink-0 mt-0.5 text-error" />
             <span>
-              Changes here update your <strong>GrowwMatics AI profile</strong>. To update your live Google Business Profile, use the{' '}
+              Changes here update your <strong>Growwmatics AI profile</strong>. To update your live Google Business Profile, use the{' '}
               <strong>Google Business Profile dashboard</strong> directly.
             </span>
           </div>

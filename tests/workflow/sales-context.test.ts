@@ -59,8 +59,8 @@ before(async () => {
   };
   await m.SalesAgentConfig.create({
     key: 'default', enabled: true, firstMessage: { mode: 'template', template: 'x', aiSystemPrompt: '' }, followUps: [],
-    agentSystemPrompt: 'You are the Growwmatics assistant.',
-    knowledge: { businessOverview: 'Growwmatics improves Google Business Profiles.' },
+    agentSystemPrompt: 'You are the Growwmatics AI assistant.',
+    knowledge: { businessOverview: 'Growwmatics AI improves Google Business Profiles.' },
   } as any);
   await m.BookingAgentConfig.updateOne({ key: 'default' }, { $set: { enabled: true } }, { upsert: true });
 });
@@ -102,7 +102,7 @@ test('a question after booking gets a real, grounded answer — never a new time
   assert.match(prompt, /Tue 27 Oct at 11:00 AM/, 'knows the booked time');
   assert.match(prompt, /meet\.example\/abc/);
   assert.match(prompt, /Asha Bakery/, 'knows their report');
-  assert.match(prompt, /Growwmatics improves Google Business Profiles/, 'approved knowledge');
+  assert.match(prompt, /Growwmatics AI improves Google Business Profiles/, 'approved knowledge');
   assert.match(prompt, /what does it cost\?/, 'sees the earlier sales conversation');
   assert.match(prompt, /Never offer, suggest or confirm another demo time or meeting link/);
   // Nurtures toward the subscription instead of interviewing them.
@@ -172,13 +172,13 @@ test("the Booking Agent's own instructions shape answers to booked leads; empty 
     await bookedReply(b.convo, 'Do I need to prepare anything?');
     const prompt = prompts.find((p) => /They already have this demo booked/.test(p))!;
     assert.match(prompt, /BOOKING PERSONA: warm and brief\./);
-    assert.doesNotMatch(prompt, /You are the Growwmatics assistant\./, 'not the Sales Agent instructions');
+    assert.doesNotMatch(prompt, /You are the Growwmatics AI assistant\./, 'not the Sales Agent instructions');
 
     await m.BookingAgentConfig.updateOne({ key: 'default' }, { $set: { agentSystemPrompt: '' } });
     const c = await bookedLead();
     prompts.length = 0;
     await bookedReply(c.convo, 'Do I need to prepare anything?');
-    assert.match(prompts.find((p) => /They already have this demo booked/.test(p))!, /You are the Growwmatics assistant\./);
+    assert.match(prompts.find((p) => /They already have this demo booked/.test(p))!, /You are the Growwmatics AI assistant\./);
   } finally {
     await m.BookingAgentConfig.updateOne({ key: 'default' }, { $set: { agentSystemPrompt: '' } });
   }

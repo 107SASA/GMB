@@ -370,7 +370,7 @@ function LeaveReviewTab({ done, existing, onSubmitted }: {
           <textarea
             value={form.reviewText}
             onChange={(e) => setForm((p) => ({ ...p, reviewText: e.target.value }))}
-            placeholder="How has GrowwMatics helped your business?"
+            placeholder="How has Growwmatics AI helped your business?"
             rows={3}
             className="w-full px-4 py-2.5 text-sm border border-outline-variant rounded-xl focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none"
           />

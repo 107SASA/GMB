@@ -239,11 +239,11 @@ export function postDemoMessage(input: {
   const hi = firstWord(input.name) ? `Hi ${firstWord(input.name)},` : 'Hi,';
   if (input.kind === 'apology') {
     const when = input.whenLabel ? ` on ${input.whenLabel}` : '';
-    return `${hi} we're very sorry — our team couldn't join your Growwmatics demo${when} as planned. That's on us. Would you like to pick another time? Reply RESCHEDULE and I'll share the open slots.`;
+    return `${hi} we're very sorry — our team couldn't join your Growwmatics AI demo${when} as planned. That's on us. Would you like to pick another time? Reply RESCHEDULE and I'll share the open slots.`;
   }
   if (input.kind === 'missed') {
     const when = input.whenLabel ? ` on ${input.whenLabel}` : '';
-    return `${hi} sorry we missed you at your Growwmatics demo${when}. Would you like to pick another time? Reply RESCHEDULE and I'll share the open slots.`;
+    return `${hi} sorry we missed you at your Growwmatics AI demo${when}. Would you like to pick another time? Reply RESCHEDULE and I'll share the open slots.`;
   }
   if (!attendedFollowUpAllowed(input.outcome)) return null;
   const forBiz = input.businessName ? ` for ${input.businessName}` : '';
@@ -253,5 +253,5 @@ export function postDemoMessage(input: {
         : input.outcome === 'NEEDS_MORE_INFORMATION' ? 'Reply with anything you would like to know more about and we will answer here.'
           : 'If you have any questions, just reply here.';
   const start = input.subscribeUrl ? ` When you are ready, you can get started here: ${input.subscribeUrl}` : '';
-  return `${hi} thank you for joining the Growwmatics demo${forBiz}. ${next}${start}`;
+  return `${hi} thank you for joining the Growwmatics AI demo${forBiz}. ${next}${start}`;
 }

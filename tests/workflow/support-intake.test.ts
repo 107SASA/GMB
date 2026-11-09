@@ -72,7 +72,7 @@ let seq = 0;
 const nextPhone = () => `+9198200${String(++seq).padStart(5, '0')}`;
 const rows = (phone: string) => m.MessageQueue.find({ 'payload.phone': phone }).sort({ createdAt: 1 }).lean();
 const text = (r: any) => r.payload.body || r.payload.variables?.['2'] || '';
-const ACK = /^Thank you for contacting Growwmatics\. We've received your message\. Our support team will review your concern and get back to you shortly\.$/;
+const ACK = /^Thank you for contacting Growwmatics AI\. We've received your message\. Our support team will review your concern and get back to you shortly\.$/;
 const SALES_COPY = /book a demo|free report|demo|subscribe|offer|pricing/i;
 
 let sidSeq = 0;
@@ -285,7 +285,7 @@ test('STOP closes the support issue; a later message is captured but never ackno
   assert.equal(await m.Support.countDocuments({ leadPhone: phone, status: 'active' }), 1, 'but the message is captured for the team');
 });
 
-test("a tenant's own number is unaffected: a customer's \"help\" goes to that business's agent, not Growwmatics support", async (t) => {
+test("a tenant's own number is unaffected: a customer's \"help\" goes to that business's agent, not Growwmatics AI support", async (t) => {
   if (skipReason) return t.skip(skipReason);
   const userId = new m.mongoose.Types.ObjectId();
   const b = await m.Business.create({ name: 'Tenant', category: 'Salon', address: 'Pune', userId, organizationId: new m.mongoose.Types.ObjectId(), integrations: { whatsappNumber: '+919122200001' } } as any);

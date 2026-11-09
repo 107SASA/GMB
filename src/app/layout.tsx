@@ -13,7 +13,8 @@ import { JsonLd } from "@/components/seo/JsonLd";
 const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
-  name: "GrowwMatics AI",
+  name: "Growwmatics AI",
+  alternateName: ["Growwmatics", "GrowwMatics"],
   url: "https://growwmatics.com",
   logo: "https://growwmatics.com/icon.png",
   description: "AI-powered Google Business Profile management and local SEO for local businesses in India.",
@@ -24,7 +25,8 @@ const organizationSchema = {
 const websiteSchema = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  name: "GrowwMatics AI",
+  name: "Growwmatics AI",
+  alternateName: ["Growwmatics", "GrowwMatics"],
   url: "https://growwmatics.com",
 };
 
@@ -61,11 +63,11 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://growwmatics.com"),
 
   title: {
-    default: "GrowwMatics AI — Google Business Profile Management & Local SEO",
-    template: "%s | GrowwMatics AI",
+    default: "Growwmatics AI — Google Business Profile Management & Local SEO",
+    template: "%s | Growwmatics AI",
   },
 
-  applicationName: "GrowwMatics AI",
+  applicationName: "Growwmatics AI",
 
   description:
     "AI that runs your Google Business Profile: Google posts, review replies, more 5-star reviews and WhatsApp lead follow-up for local businesses in India. Free GBP report.",
@@ -78,7 +80,8 @@ export const metadata: Metadata = {
     "Google reviews",
     "review management",
     "WhatsApp automation",
-    "GrowwMatics",
+    "Growwmatics AI",
+    "Growwmatics",
   ],
 
   // Search Console ownership tag — set GOOGLE_SITE_VERIFICATION in
@@ -88,17 +91,17 @@ export const metadata: Metadata = {
     : {}),
 
   openGraph: {
-    title: "GrowwMatics AI — Google Business Profile Management & Local SEO",
+    title: "Growwmatics AI — Google Business Profile Management & Local SEO",
     description:
       "AI that runs your Google Business Profile: Google posts, review replies, more 5-star reviews and WhatsApp lead follow-up for local businesses in India. Free GBP report.",
     url: "https://growwmatics.com",
-    siteName: "GrowwMatics AI",
+    siteName: "Growwmatics AI",
     type: "website",
   },
 
   twitter: {
     card: "summary_large_image",
-    title: "GrowwMatics AI — Google Business Profile Management & Local SEO",
+    title: "Growwmatics AI — Google Business Profile Management & Local SEO",
     description:
       "AI that runs your Google Business Profile: Google posts, review replies, more 5-star reviews and WhatsApp lead follow-up for local businesses in India. Free GBP report.",
   },

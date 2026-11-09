@@ -660,7 +660,7 @@ function VerifiedResultsBody({ audit, highlightKey }: { audit: Audit; highlightK
                       />
                     )}
                     {!!f.actionability && <Badge label={f.actionability} tone="info" />}
-                    {f.growwmaticsCan && <Badge label="GrowwMatics can help" tone="positive" />}
+                    {f.growwmaticsCan && <Badge label="Growwmatics AI can help" tone="positive" />}
                   </View>
                   {!!f.recommendedAction && (
                     <Text className="mt-2 font-sans text-sm text-zinc-300">{f.recommendedAction}</Text>
@@ -701,9 +701,9 @@ function VerifiedResultsBody({ audit, highlightKey }: { audit: Audit; highlightK
               <LineList title="Keyword rankings" items={v.monthly.keywordRankings} />
               <LineList title="What changed" items={v.monthly.changes} empty="No verified profile changes between the two audits." />
               <LineList
-                title="What GrowwMatics did"
+                title="What Growwmatics AI did"
                 items={v.monthly.growwmatics}
-                empty="No GrowwMatics actions reached your Google profile this period."
+                empty="No Growwmatics AI actions reached your Google profile this period."
               />
               <LineList title="What you did" items={v.monthly.owner} />
               <LineList title="Google posts this month" items={v.monthly.contentActivity} />

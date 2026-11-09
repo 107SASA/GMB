@@ -14,7 +14,7 @@
 import { compareAreaVisibility, type AreaComparison } from '../audit/areaVisibility.ts';
 import { taskActor } from '../tasks/planTasks.ts';
 
-export type Actor = 'GrowwMatics' | 'Owner' | 'Unknown';
+export type Actor = 'Growwmatics AI' | 'Owner' | 'Unknown';
 
 export interface GbpSnapshot {
   title?: string;
@@ -136,8 +136,8 @@ export function diffGbpSnapshots(prev: GbpSnapshot | null | undefined, cur: GbpS
       current: show(b),
       at: edit?.at ?? curReadAt,
       source: 'Google Business Profile (live read in both audits)',
-      actor: edit ? (edit.actor === 'growwmatics' ? 'GrowwMatics' : 'Owner') : 'Unknown',
-      evidence: edit ? `Profile edit record${edit.by ? ` by ${edit.by}` : ''} via GrowwMatics` : 'No GrowwMatics record — changed directly on Google',
+      actor: edit ? (edit.actor === 'growwmatics' ? 'Growwmatics AI' : 'Owner') : 'Unknown',
+      evidence: edit ? `Profile edit record${edit.by ? ` by ${edit.by}` : ''} via Growwmatics AI` : 'No Growwmatics AI record — changed directly on Google',
     });
   }
   return out;
@@ -373,7 +373,7 @@ export function buildIssueProgress(prevFindings: any[] | null | undefined, curFi
 
   const fixed = prev.filter((f) => !curIds.has(String(f.id))).map((f) => {
     const a = actionOf.get(String(f.id));
-    const how = a?.capability && a.executedAt ? 'Applied through GrowwMatics' : 'No longer found in this report';
+    const how = a?.capability && a.executedAt ? 'Applied through Growwmatics AI' : 'No longer found in this report';
     return { findingId: String(f.id), title: String(f.title), how };
   });
   const added = cur.filter((f) => !prevIds.has(String(f.id))).map((f) => ({ findingId: String(f.id), title: String(f.title) }));
@@ -383,7 +383,7 @@ export function buildIssueProgress(prevFindings: any[] | null | undefined, curFi
     const reason = a?.status === 'EXECUTED' ? 'Applied — Google can take a while to show it'
       : a?.status === 'BLOCKED' ? a.statusReason || 'Blocked'
       : actor === 'approve' ? 'Waiting for your approval'
-      : actor === 'automatic' ? 'GrowwMatics is working on it'
+      : actor === 'automatic' ? 'Growwmatics AI is working on it'
       : 'Needs you';
     return { findingId: String(f.id), title: String(f.title), reason, waitingForOwner: reason === 'Waiting for your approval' || reason === 'Needs you' };
   });
@@ -420,10 +420,10 @@ export function buildMonthlyReport(input: {
     { what: 'Profile fields updated automatically', count: gmEdits.length, evidence: 'Profile edit records (live write applied)' },
   ].filter((x) => x.count > 0);
   const ownerOptimized = [
-    { what: 'Google posts you scheduled through GrowwMatics', count: ownerPosts, evidence: 'Post records' },
-    { what: 'Review replies you approved (posted by GrowwMatics)', count: approvedReplies, evidence: 'Reply records' },
-    { what: 'Profile edits you made in GrowwMatics', count: ownerEdits.length, evidence: 'Profile edit records (live write applied)' },
-    { what: 'Photos you published through GrowwMatics', count: ex.photos.length, evidence: 'Media records' },
+    { what: 'Google posts you scheduled through Growwmatics AI', count: ownerPosts, evidence: 'Post records' },
+    { what: 'Review replies you approved (posted by Growwmatics AI)', count: approvedReplies, evidence: 'Reply records' },
+    { what: 'Profile edits you made in Growwmatics AI', count: ownerEdits.length, evidence: 'Profile edit records (live write applied)' },
+    { what: 'Photos you published through Growwmatics AI', count: ex.photos.length, evidence: 'Media records' },
   ].filter((x) => x.count > 0);
 
   const reviews = reviewActivity(prevData, curData, ex);
@@ -525,7 +525,7 @@ const bullet = (s: string) => `• ${s.length > MONTHLY_BULLET_MAX ? `${s.slice(
  */
 export function composeMonthlyWhatsApp(m: MonthlyReport | null | undefined, businessName: string, link: string): string {
   const head = [`Hi ${businessName},`, '', '*📊 Your monthly Google report is ready*', ''];
-  const tail = ['', `View your full report: ${link}`, '', '— Team Growwmatics'];
+  const tail = ['', `View your full report: ${link}`, '', '— Team Growwmatics AI'];
   if (!m) {
     return [...head, 'It covers your Google reviews, profile performance and the work completed this month, with next steps.', ...tail].join('\n');
   }

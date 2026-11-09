@@ -60,10 +60,11 @@ export type KeywordVerdict =
   | 'hard'         // strong competitors / far off
   | 'low_demand'   // Google reports too few searches and no customer impressions
   | 'not_relevant' // matches no verified service or category
+  | 'claim_word'   // owner keyword with "best" / "top" — posts can't use it
   | 'new';         // not rank-checked yet
 
 /** How relevant a keyword is, from the service it matches. */
-export type RelevanceSource = 'gbp' | 'category' | 'owner' | 'website' | 'none';
+export type RelevanceSource = 'gbp' | 'category' | 'owner' | 'website' | 'generic' | 'none';
 
 export interface KeywordVolume {
   /** Google Ads monthly searches for the exact phrase, country-wide. */

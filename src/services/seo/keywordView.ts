@@ -72,6 +72,7 @@ const VERDICT: Record<KeywordVerdict | 'pending', { label: string; tone: Tone }>
   hard: { label: 'Hard for now', tone: 'warn' },
   low_demand: { label: 'Few searches', tone: 'warn' },
   not_relevant: { label: 'Not a listed service', tone: 'bad' },
+  claim_word: { label: 'Uses “best” / “top”', tone: 'warn' },
   new: { label: 'New', tone: 'neutral' },
   pending: { label: 'Checked in the next report', tone: 'neutral' },
 };

@@ -56,7 +56,7 @@ export function rankNumber(k: Pick<ScoredKeyword, 'rank'>): number | null {
   return k.rank.avg ?? NOT_IN_TOP_20;
 }
 
-const eligible = (k: ScoredKeyword) => k.verdict !== 'not_relevant' && k.verdict !== 'low_demand';
+const eligible = (k: ScoredKeyword) => k.verdict !== 'not_relevant' && k.verdict !== 'low_demand' && k.verdict !== 'claim_word';
 const byScore = (a: ScoredKeyword, b: ScoredKeyword) =>
   b.score - a.score || Number(b.owner) - Number(a.owner) || a.keyword.localeCompare(b.keyword);
 const round1 = (n: number) => Math.round(n * 10) / 10;

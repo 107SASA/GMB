@@ -21,7 +21,9 @@ import { fetchKeywordSetObservations } from '@/services/audit/seoAnalyzer';
 import type { SearchObservation } from '@/services/audit/facts';
 import type { VerifiedService } from './trackedKeywords';
 import { buildCandidates } from './keywordResearch';
-import { buildKeywordSet, planRankChecks, scoreCandidates } from './keywordSet';
+import { buildKeywordSet, fitChecksToBudget, planRankChecks, scoreCandidates } from './keywordSet';
+import { UNIT_PRICES } from '@/services/audit/costModel';
+import { keywordBudgetRemaining, monthlyKeywordBudgetUsd, recordKeywordSpend } from '@/lib/keywordBudget';
 import { competitorsAboveFrom, groupByKeyword, obsKey, rankFromObservations, volumeOf } from './keywordMeasure';
 import { KEYWORD_LIMITS, type CompetitorAbove, type CompetitorGap, type KeywordRank, type KeywordSetChange, type KeywordVolume, type PlanKeyword } from './keywordTypes';
 
@@ -43,6 +45,8 @@ export interface KeywordPipelineInput {
   previous: PlanKeyword[];
   ownerRemoved: string[];
   now?: Date;
+  /** Override the remaining monthly budget (tests); defaults to the stored budget. */
+  budgetUsd?: number;
   /** Maps search runner (tests stub it); defaults to the DataForSEO batch. */
   fetchObservations?: (business: any, checks: Array<{ keyword: string; points: number }>) => Promise<SearchObservation[]>;
 }
@@ -54,15 +58,37 @@ export interface KeywordPipelineResult {
   research: { candidates: number; withVolume: number; rankChecked: number };
   /** Maps searches this stage ran (for measurement history). */
   observations: SearchObservation[];
+  /** Estimated list-price spend of this run, recorded against the monthly budget. */
+  spentUsd: number;
 }
 
 const COMPETITOR_SITES = 3;
 const AREA_DEMAND_FOR = 30;
+/** List prices (services/audit/costModel.ts UNIT_PRICES; confirmed via DataForSEO user_data, Nov 2026). */
+const ADS_TASK_USD = UNIT_PRICES.dataForSeoAdsVolumeLiveTask.usd;
+const MAPS_SEARCH_USD = UNIT_PRICES.dataForSeoMapsLiveTask.usd;
+/** Kept back for the essential work: country volume + core / owner rank checks (~5x9 + 20x3 searches). */
+const ESSENTIAL_RESERVE_USD = ADS_TASK_USD + 105 * MAPS_SEARCH_USD;
 
 export async function runKeywordPipeline(input: KeywordPipelineInput): Promise<KeywordPipelineResult | null> {
   const now = input.now ?? new Date();
   const measuredAt = now.toISOString();
+  const businessId = String(input.business?._id ?? '');
   try {
+    // ── Budget (docs/KEYWORD_SYSTEM_PLAN.md §7a) ─────────────────────────
+    // Essential work first (volume + rank for focus / owner keywords); extras
+    // (ideas, competitor sites, city volume, area demand, exploration) only
+    // while budget remains. Too little left this month → keep last research.
+    let left = input.budgetUsd ?? (businessId ? await keywordBudgetRemaining(businessId, now) : monthlyKeywordBudgetUsd());
+    let spent = 0;
+    const pay = (usd: number) => { spent += usd; left -= usd; };
+    const onTask = () => pay(ADS_TASK_USD);
+    const affords = (usd: number) => left - usd >= ESSENTIAL_RESERVE_USD;
+    if (left < ESSENTIAL_RESERVE_USD) {
+      console.warn(`[keywordPipeline] ${businessId}: monthly keyword budget used (USD ${left.toFixed(2)} left) — previous research kept`);
+      return null;
+    }
+
     const b = input.business;
     const ownerKeywords: string[] = b.intakeCompleted && Array.isArray(b.keywords) ? b.keywords.slice(0, KEYWORD_LIMITS.maxOwnerKeywords) : [];
     const ownerCompetitors: string[] = Array.isArray(b.intake?.competitorNames) ? b.intake.competitorNames : [];
@@ -75,9 +101,16 @@ export async function runKeywordPipeline(input: KeywordPipelineInput): Promise<K
       ...input.services.map((s) => s.name),
       ...(input.category ? [input.category] : []),
     ];
-    const sites = input.competitors.filter((c) => c.website).slice(0, COMPETITOR_SITES);
+    const runIdeas = affords(ADS_TASK_USD);
+    if (runIdeas) pay(ADS_TASK_USD);
+    const sites: Array<{ name: string; website?: string | null }> = [];
+    for (const c of input.competitors.filter((x) => x.website).slice(0, COMPETITOR_SITES)) {
+      if (!affords(ADS_TASK_USD)) break;
+      pay(ADS_TASK_USD);
+      sites.push(c);
+    }
     const [ideas, ...siteKeywords] = await Promise.all([
-      fetchKeywordIdeas(seeds, { locationCode: cityCode, countryHint: country }),
+      runIdeas ? fetchKeywordIdeas(seeds, { locationCode: cityCode, countryHint: country }) : Promise.resolve([]),
       ...sites.map((c) => fetchSiteKeywords(c.website!, { locationCode: cityCode, countryHint: country })),
     ]);
     const candidates = buildCandidates({
@@ -92,14 +125,18 @@ export async function runKeywordPipeline(input: KeywordPipelineInput): Promise<K
       competitorKeywords: siteKeywords.flatMap((list, i) => list.map((k) => ({ keyword: k.keyword, competitor: sites[i].name, volume: k.volume }))),
       competitorNames: [...input.competitors.map((c) => c.name), ...ownerCompetitors],
       ownerRemoved: input.ownerRemoved,
+      previousKeywords: Array.isArray(b.legacyKeywords) ? b.legacyKeywords : [],
     });
-    if (!candidates.length) return null;
+    if (!candidates.length) {
+      if (businessId) await recordKeywordSpend(businessId, spent, now);
+      return null;
+    }
 
-    // ── S2 volume ─────────────────────────────────────────────────────────
+    // ── S2 volume (country is essential; city + area are extras) ──────────
     const phrases = candidates.map((c) => c.keyword);
-    const countryVol = await fetchSearchVolumes(phrases, { countryHint: country }).catch(() => new Map<string, number | null>());
-    const cityVol = cityCode
-      ? await fetchSearchVolumes(phrases, { locationCode: cityCode }).catch(() => new Map<string, number | null>())
+    const countryVol = await fetchSearchVolumes(phrases, { countryHint: country, onTask }).catch(() => new Map<string, number | null>());
+    const cityVol = cityCode && affords(ADS_TASK_USD)
+      ? await fetchSearchVolumes(phrases, { locationCode: cityCode, onTask }).catch(() => new Map<string, number | null>())
       : new Map<string, number | null>();
     const fromIdeas = (c: (typeof candidates)[number]) =>
       c.sources.includes('google_ideas') || c.sources.includes('competitor') ? c.ideaVolume : undefined;
@@ -111,19 +148,22 @@ export async function runKeywordPipeline(input: KeywordPipelineInput): Promise<K
       .filter((k) => k.volume.status !== 'measured')
       .sort((a, z) => Number(z.owner) - Number(a.owner) || z.score - a.score)
       .slice(0, AREA_DEMAND_FOR);
-    if (empty.length) {
-      const area = await areaDemandFor(empty.map((k) => k.keyword), input.place).catch(() => new Map());
+    if (empty.length && affords(2 * ADS_TASK_USD)) {
+      const area = await areaDemandFor(empty.map((k) => k.keyword), input.place, { onTask }).catch(() => new Map());
       if (area.size) {
         volumes = new Map(candidates.map((c) => [c.id, volumeOf(c.keyword, { country: countryVol, city: cityVol, area, ideaVolume: fromIdeas(c) }, measuredAt)]));
       }
     }
 
-    // ── S4 rank checks (reuse what this audit already searched) ───────────
+    // ── S4 rank checks (reuse what this audit already searched; fit the budget) ─
     const preScored = scoreCandidates({ candidates, volumes, ranks: new Map(), competitors: new Map(), ourReviews: null });
-    const checks = planRankChecks({ candidates, preScored, previous: input.previous });
+    const planned = planRankChecks({ candidates, preScored, previous: input.previous });
     const existing = groupByKeyword(input.existingObservations);
-    const toFetch = checks.filter((c) => (existing.get(obsKey(c.keyword))?.length ?? 0) < c.points);
+    const covered = (c: { keyword: string; points: number }) => (existing.get(obsKey(c.keyword))?.length ?? 0) >= c.points;
+    const toFetch = fitChecksToBudget(planned.filter((c) => !covered(c)), Math.max(0, left), MAPS_SEARCH_USD);
+    const checks = planned.filter((c) => covered(c) || toFetch.includes(c));
     const fetched = await (input.fetchObservations ?? fetchKeywordSetObservations)(input.businessForRankings, toFetch.map((c) => ({ keyword: c.keyword, points: c.points })));
+    pay(toFetch.reduce((a, c) => a + c.points, 0) * MAPS_SEARCH_USD);
     const fetchedBy = groupByKeyword(fetched);
 
     const ranks = new Map<string, KeywordRank>();
@@ -140,6 +180,7 @@ export async function runKeywordPipeline(input: KeywordPipelineInput): Promise<K
 
     // ── S6 select ─────────────────────────────────────────────────────────
     const built = buildKeywordSet({ candidates, volumes, ranks, competitors, ourReviews, previous: input.previous, now });
+    if (businessId) await recordKeywordSpend(businessId, spent, now);
     return {
       keywordSet: built.keywordSet,
       changes: built.changes,
@@ -150,6 +191,7 @@ export async function runKeywordPipeline(input: KeywordPipelineInput): Promise<K
         rankChecked: checks.length,
       },
       observations: fetched,
+      spentUsd: Math.round(spent * 10_000) / 10_000,
     };
   } catch (err: any) {
     console.warn('[keywordPipeline] skipped:', err?.message);

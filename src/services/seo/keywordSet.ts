@@ -83,6 +83,22 @@ export function planRankChecks(input: {
   return out;
 }
 
+/**
+ * Cost guard for S4: the rank checks that fit `budgetUsd`, in priority order
+ * — core and owner keywords first, then rotating, then exploration. A check
+ * that still does not fit is left out (its keyword shows "not measured").
+ */
+export function fitChecksToBudget(checks: RankCheck[], budgetUsd: number, usdPerSearch: number): RankCheck[] {
+  const order: Record<RankCheck['set'], number> = { core: 0, owner: 1, rotating: 2, explore: 3 };
+  const kept: RankCheck[] = [];
+  let left = budgetUsd;
+  for (const c of [...checks].sort((a, b) => order[a.set] - order[b.set])) {
+    const cost = c.points * usdPerSearch;
+    if (cost <= left + 1e-9) { kept.push(c); left -= cost; }
+  }
+  return checks.filter((c) => kept.includes(c));
+}
+
 export interface BuildInput {
   candidates: KeywordCandidate[];
   volumes: Map<string, KeywordVolume>;
@@ -140,5 +156,31 @@ export function legacyKeywordLists(set: PlanKeyword[]): { primaryKeywords: strin
 
 /** The month's targets in priority order (core, then rotating). */
 export function targetKeywords(set: PlanKeyword[] | null | undefined): PlanKeyword[] {
-  return (set || []).filter((k) => k.role === 'core' || k.role === 'rotating');
+  const rows = Array.isArray(set) ? set : [];
+  return [...rows.filter((k) => k.role === 'core'), ...rows.filter((k) => k.role === 'rotating')];
+}
+
+/**
+ * The targets as measured-keyword rows for content prioritisation
+ * (content/keywordPriority.ts MeasuredKeywordRow): posts then target only the
+ * month's core + rotating keywords, ranked by their real rank and volume.
+ * Empty when the plan has no researched targets yet.
+ */
+export function contentRows(set: PlanKeyword[] | null | undefined): Array<{
+  keyword: string; rank: number | null; found: boolean | null; rankStatus: 'ok' | 'unavailable';
+  searchVolume: number | null; demandStatus: 'measured' | 'unavailable';
+}> {
+  return targetKeywords(set).map((k) => {
+    const volume = [k.volume?.city, k.volume?.country].find((v): v is number => typeof v === 'number' && v > 0) ?? null;
+    const measured = k.rank?.status === 'measured';
+    return {
+      keyword: k.keyword,
+      rank: measured ? k.rank.avg : null,
+      // Not rank-checked yet → unknown, never "not found".
+      found: measured ? k.rank.avg != null : null,
+      rankStatus: measured ? 'ok' : 'unavailable',
+      searchVolume: volume,
+      demandStatus: volume != null ? 'measured' : 'unavailable',
+    };
+  });
 }

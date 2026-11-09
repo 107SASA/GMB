@@ -1453,7 +1453,8 @@ async function processAuditJobInner(auditId: string) {
             ...(areaVisibility?.areas || []).filter((a) => a.status === 'measured' && a.bestRank == null).map((a) => a.area),
             ...areasChecked,
           ])),
-          primaryKeyword: rankingFacts.primaryKeyword || keywordTable[0]?.keyword || '',
+          // The month's first focus keyword leads the post themes / Q&A when researched.
+          primaryKeyword: seoIntel?.keywordResearch?.keywordSet.find((k) => k.role === 'core')?.keyword || rankingFacts.primaryKeyword || keywordTable[0]?.keyword || '',
           keywordTable,
           competitors: competitorFacts.slice(0, 10).map((c) => ({
             name: c.name,

@@ -277,6 +277,16 @@ export async function runWeeklyMonitoring(businessId: string, now = new Date()):
   });
 
   for (const n of summary.notifications) await notifyBusinessUsers(businessId, n);
+  // Keyword selection changed by this week's monthly report → tell the owner (in-app).
+  try {
+    const [{ getActiveSeoPlan }, { keywordChangeNotice }] = await Promise.all([
+      import('@/services/seoPlan/seoPlanService'), import('@/services/seo/keywordView'),
+    ]);
+    const notice = keywordChangeNotice((await getActiveSeoPlan(businessId)) as any, new Date(now.getTime() - 7 * DAY));
+    if (notice) await notifyBusinessUsers(businessId, { type: 'keyword_changes', title: notice.title, body: notice.body, link: '/dashboard/seo-plan' });
+  } catch (err: any) {
+    console.error('[weeklyMonitor] keyword notice failed:', err?.message);
+  }
   await contentPrompts(businessId, now, b?.name || 'your business').catch((err) => console.error('[weeklyMonitor] content prompts failed:', err?.message));
   // At most ONE WhatsApp from the weekly run. Reviews that verifiably need a
   // reply come first (the weekly reminder); otherwise a meaningful week sends

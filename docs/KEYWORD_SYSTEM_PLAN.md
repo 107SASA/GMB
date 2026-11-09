@@ -1,6 +1,18 @@
 # Keyword System — Implementation Plan
 
-Status: **proposal, awaiting approval** · Nov 2026
+Status: **built on `dev`, all 7 phases** · Nov 2026
+
+| Phase | As built |
+|---|---|
+| 1 Foundation | `seo/keywordTypes`, `keywordResearch`, `keywordScore`, `keywordSelect`, `keywordSet`; `SeoPlan.keywordSet`; 20-keyword cap |
+| 2 Audit pipeline | `seo/keywordPipeline` in the full audit; ideas + competitor-site clients; volume chunking; Google Ads rate gate (11/min) |
+| 3 Dashboard | `/dashboard/keywords` + `/api/keywords` (pin); Insights shows measured numbers only; SEO plan shows focus / monthly keywords |
+| 4 Consumers | Weekly + manual posts, content keywords, description service order and the AI plan's lead keyword use the targets |
+| 5 Onboarding | Real volume on suggestions and owner keywords (intake + Settings), 8 lookups / business / day |
+| 6 Loop | Monthly budget (`lib/keywordBudget`, $1.20 default), essential work first; Monday in-app notice when targets change |
+| 7 Migration | `scripts/migrate-keyword-set.ts` (dry run default): trims lists over 20 into `legacyKeywords`, seeds plans from the last report |
+
+Not done (by design or later): the report's main 5-keyword grid still runs as before (§5 S4 note); review-request WhatsApp templates are Meta-approved text and were not changed; `/api/gbp/keyword-intelligence` (AI volumes) is no longer used by any page and can be removed.
 
 ## 1. Goal
 

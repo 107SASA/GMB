@@ -330,3 +330,86 @@ test('no competitor gap when we already rank', () => {
   const k = scoreKeyword({ candidate: cand('x'), volume: vol(100), rank: rank(5), competitorsAbove: [{ name: 'A', rank: 1, reviews: 10, rating: 4 }], ourReviews: 10 });
   assert.deepEqual(competitorGaps([k]), []);
 });
+
+// ── Phase 4: targets drive content ─────────────────────────────────────────
+
+test('targets become content rows: core first, measured numbers only, unchecked rank is not "not found"', async () => {
+  const { contentRows, targetKeywords } = await import('../../src/services/seo/keywordSet.ts');
+  const set: PlanKeyword[] = [
+    { ...scored('rotating one', vol(90), rank(14)), role: 'rotating', rankTrend: null },
+    { ...scored('core one', vol(300, { city: 120 }), rank(7)), role: 'core', rankTrend: null },
+    { ...scored('fresh core', vol(null), NOT_MEASURED_RANK), role: 'core', rankTrend: null },
+    { ...scored('watched', vol(900), rank(4)), role: 'watch', rankTrend: null },
+  ];
+  assert.deepEqual(targetKeywords(set).map((k) => k.keyword), ['core one', 'fresh core', 'rotating one']);
+  const rows = contentRows(set);
+  assert.deepEqual(rows[0], { keyword: 'core one', rank: 7, found: true, rankStatus: 'ok', searchVolume: 120, demandStatus: 'measured' });
+  assert.deepEqual(rows[1], { keyword: 'fresh core', rank: null, found: null, rankStatus: 'unavailable', searchVolume: null, demandStatus: 'unavailable' });
+  assert.deepEqual(contentRows(undefined), []);
+});
+
+test('weekly post selection picks a target keyword when targets exist', async () => {
+  const { contentRows } = await import('../../src/services/seo/keywordSet.ts');
+  const { prioritizeKeywords } = await import('../../src/services/content/keywordPriority.ts');
+  const set: PlanKeyword[] = [
+    { ...scored('dental implants kolkata', vol(590), rank(6)), role: 'core', rankTrend: null },
+    { ...scored('braces kolkata', vol(260), rank(14)), role: 'rotating', rankTrend: null },
+  ];
+  const r = prioritizeKeywords({
+    businessName: 'Smilewell Dental', serviceTerms: ['Dentist', 'Dental implants', 'Braces'], places: ['Kolkata'],
+    measured: contentRows(set), searchTerms: [], proposed: [], recentlyTargeted: [],
+  });
+  assert.equal(r.seo?.keyword, 'dental implants kolkata');
+  assert.match(r.seo!.reason, /#6/);
+});
+
+test('rank checks fit the budget: core and owner first, then rotating, then exploration', async () => {
+  const { fitChecksToBudget } = await import('../../src/services/seo/keywordSet.ts');
+  const checks = [
+    { id: 'e', keyword: 'explore', points: 1, set: 'explore' as const },
+    { id: 'r', keyword: 'rotating', points: 3, set: 'rotating' as const },
+    { id: 'o', keyword: 'owner', points: 3, set: 'owner' as const },
+    { id: 'c', keyword: 'core', points: 9, set: 'core' as const },
+  ];
+  assert.deepEqual(fitChecksToBudget(checks, 1, 0.002).map((c) => c.id), ['e', 'r', 'o', 'c'], 'all fit');
+  assert.deepEqual(fitChecksToBudget(checks, 0.024, 0.002).map((c) => c.id), ['o', 'c'], 'only 12 searches: core + owner');
+  assert.deepEqual(fitChecksToBudget(checks, 0, 0.002), []);
+});
+
+// ── Phase 7: existing customers ────────────────────────────────────────────
+
+test('owner lists over 20: first 20 stay, the rest move to legacy (never deleted), junk dropped', async () => {
+  const { splitOwnerKeywords } = await import('../../src/services/seo/keywordMigrate.ts');
+  const list = [...Array.from({ length: 25 }, (_, i) => `service ${i} kolkata`), '.', 'service 3 kolkata'];
+  const r = splitOwnerKeywords(list, ['old keyword']);
+  assert.equal(r.keywords.length, 20);
+  assert.deepEqual(r.moved, ['service 20 kolkata', 'service 21 kolkata', 'service 22 kolkata', 'service 23 kolkata', 'service 24 kolkata']);
+  assert.deepEqual(r.legacyKeywords, ['old keyword', ...r.moved]);
+  assert.deepEqual(splitOwnerKeywords(r.keywords, r.legacyKeywords).moved, [], 'running twice changes nothing');
+});
+
+test('seeding from the last report: measured rank + volume carried, targets picked, nothing invented', async () => {
+  const { seedKeywordSet } = await import('../../src/services/seo/keywordMigrate.ts');
+  const { keywordSet } = seedKeywordSet({
+    businessName: 'Smilewell Dental', category: 'Dentist', city: 'Kolkata', services: SERVICES,
+    ownerKeywords: ['root canal treatment kolkata'],
+    legacyKeywords: ['braces price kolkata'],
+    keywordTable: [
+      { keyword: 'dental implants kolkata', rank: 7, found: true, rankStatus: 'ok', searchVolume: 590, demandStatus: 'measured' },
+      { keyword: 'root canal treatment kolkata', rank: null, found: false, rankStatus: 'ok', searchVolume: null, demandStatus: 'unavailable' },
+      { keyword: 'best dentist kolkata', rank: 3, found: true, rankStatus: 'ok', searchVolume: 900, demandStatus: 'measured' },
+    ],
+    ownerRemoved: [],
+    measuredAt: '2026-10-15T00:00:00.000Z',
+    now: NOW,
+  });
+  const by = new Map(keywordSet.map((k) => [k.keyword, k]));
+  assert.equal(by.get('dental implants kolkata')?.rank.avg, 7);
+  assert.equal(by.get('dental implants kolkata')?.volume.country, 590);
+  assert.equal(by.get('dental implants kolkata')?.role, 'core');
+  assert.equal(by.get('root canal treatment kolkata')?.owner, true);
+  assert.equal(by.get('root canal treatment kolkata')?.rankTrend, null);
+  assert.ok(!by.has('best dentist kolkata'), 'claim-word keyword is not carried');
+  assert.ok(by.has('braces price kolkata'), 'legacy keyword kept as a researched candidate');
+  assert.equal(by.get('dental clinic kolkata')?.volume.status ?? 'not_measured', 'not_measured');
+});

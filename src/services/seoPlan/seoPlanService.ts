@@ -404,6 +404,16 @@ export async function resolveContentKeywords(business: any): Promise<{
   postThemes: Array<{ weekday: string; theme: string; keyword: string; postType: string }>;
 }> {
   const plan = business?._id ? await getActiveSeoPlan(String(business._id)) : null;
+  // Researched targets first (focus, then this month's) — docs/KEYWORD_SYSTEM_PLAN.md §6.
+  const { targetKeywords } = await import('@/services/seo/keywordSet');
+  const targets = targetKeywords(plan?.keywordSet).map((k) => k.keyword);
+  if (plan && targets.length) {
+    return {
+      keywords: Array.from(new Set([...targets, ...(plan.cityAreaTerms || [])])).slice(0, 12),
+      uspLine: plan.uspLine,
+      postThemes: plan.postThemes || [],
+    };
+  }
   if (plan && plan.primaryKeywords?.length) {
     return {
       keywords: Array.from(new Set([...plan.primaryKeywords, ...(plan.cityAreaTerms || [])])).slice(0, 12),

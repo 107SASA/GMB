@@ -29,6 +29,8 @@ const EMPTY: IntakeData = {
 const isValidKeyword = (v: string) => /[a-zA-Z]/.test(v);
 /** Same cap the API enforces (KEYWORD_LIMITS.maxOwnerKeywords). */
 const MAX_KEYWORDS = 20;
+/** "320/mo" from Google's monthly searches; null = Google reports too few. */
+const volumeLabel = (v: number | null | undefined) => (v == null || v <= 0 ? 'few searches' : `${v.toLocaleString('en-IN')}/mo`);
 
 type SuggestField = 'category' | 'description' | 'services' | 'keywords' | 'uniqueSellingPoints' | 'offers';
 interface Suggestion {
@@ -67,12 +69,14 @@ const inputCls =
 
 /** Simple tag input — Enter to add, × to remove. */
 function TagInput({
-  label, hint, tags, onChange, placeholder, validate, max,
+  label, hint, tags, onChange, placeholder, validate, max, meta,
 }: {
   label: string; hint?: string; tags: string[];
   onChange: (t: string[]) => void; placeholder: string;
   validate?: (v: string) => boolean;
   max?: number;
+  /** Small note shown inside a tag (e.g. monthly searches). */
+  meta?: (tag: string) => string | null;
 }) {
   const [input, setInput] = useState('');
   const full = max != null && tags.length >= max;
@@ -102,6 +106,7 @@ function TagInput({
           {tags.map((t) => (
             <span key={t} className="inline-flex items-center px-3 py-1 rounded-lg text-sm font-medium bg-primary-fixed text-primary">
               {t}
+              {meta?.(t) && <span className="ml-1.5 text-[11px] font-normal text-on-surface-variant">· {meta(t)}</span>}
               <button type="button" onClick={() => onChange(tags.filter((x) => x !== t))} className="ml-2 text-primary-fixed-dim hover:text-primary">&times;</button>
             </span>
           ))}
@@ -154,6 +159,8 @@ export default function IntakePage() {
   // Keywords pre-filled from the report / SEO plan (owner can remove or add).
   const [prefilledFrom, setPrefilledFrom] = useState<string | null>(null);
   const [suggestLoading, setSuggestLoading] = useState(false);
+  // Google monthly searches per keyword (lowercased), from suggestions and owner-typed lookups.
+  const [volumes, setVolumes] = useState<Record<string, number | null>>({});
   const [suggestError, setSuggestError] = useState(false);
   // Every keyword ever shown (picked or not) across every batch, so "more
   // like this" never repeats a suggestion the user already saw and skipped.
@@ -182,6 +189,8 @@ export default function IntakePage() {
       setSuggestedKeywords(json.keywords);
       if (Array.isArray(json.details)) {
         setSuggestedSource((prev) => ({ ...prev, ...Object.fromEntries(json.details.map((d: any) => [d.keyword, d.source])) }));
+        const vols = json.details.filter((d: any) => d.volume !== undefined).map((d: any) => [String(d.keyword).toLowerCase(), d.volume]);
+        if (vols.length) setVolumes((prev) => ({ ...prev, ...Object.fromEntries(vols) }));
       }
     } catch {
       setSuggestError(true);
@@ -207,6 +216,26 @@ export default function IntakePage() {
     }, hasDescription ? 800 : 2500);
     return () => clearTimeout(t);
   }, [data.category, data.description]);
+
+  // Google monthly searches for keywords the owner typed (debounced; cached and capped server-side).
+  useEffect(() => {
+    const missing = data.keywords.filter((k) => !(k.toLowerCase() in volumes));
+    if (!missing.length) return;
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/onboarding/keyword-volume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keywords: missing }),
+        });
+        const json = await res.json();
+        if (json.success && json.volumes) {
+          setVolumes((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(json.volumes).map(([k, v]) => [k.toLowerCase(), v as number | null])) }));
+        }
+      } catch { /* volume is a hint — the form works without it */ }
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [data.keywords]);
 
   const pickSuggestedKeyword = (kw: string) => {
     if (!data.keywords.includes(kw) && data.keywords.length < MAX_KEYWORDS) {
@@ -373,6 +402,7 @@ export default function IntakePage() {
             onChange={(t) => set('keywords', t.slice(0, MAX_KEYWORDS))}
             validate={isValidKeyword}
             max={MAX_KEYWORDS}
+            meta={(t) => (t.toLowerCase() in volumes ? volumeLabel(volumes[t.toLowerCase()]) : null)}
             placeholder="e.g. best bakery in Kolkata"
           />
           {data.keywords.length === 0 && <SuggestionNote s={suggestions.keywords} onUse={() => applySuggestion('keywords')} />}
@@ -445,6 +475,9 @@ export default function IntakePage() {
                     >
                       <MaterialIcon name="add" size={14} />
                       {kw}
+                      {kw.toLowerCase() in volumes && (
+                        <span className="text-[10px] font-semibold text-on-surface-variant">· {volumeLabel(volumes[kw.toLowerCase()])}</span>
+                      )}
                       {suggestedSource[kw] && (
                         <span className="text-[10px] font-normal text-outline">· {KW_SOURCE_LABEL[suggestedSource[kw]] ?? ''}</span>
                       )}

@@ -47,7 +47,9 @@ export type KeywordSourceTag =
   | 'gbp_search_term'
   | 'google_ideas'
   | 'competitor'
-  | 'category';
+  | 'category'
+  /** A keyword the business had before (owner list beyond 20, earlier reports). */
+  | 'previous';
 
 export type KeywordRole = 'core' | 'rotating' | 'owner' | 'watch';
 

@@ -144,6 +144,7 @@ export async function cityAdsLocationCode(
 export async function areaDemandFor(
   keywords: string[],
   place: { city?: string | null; area?: string | null; state?: string | null; country?: string | null },
+  opts: { onTask?: () => void } = {},
 ): Promise<Map<string, AreaDemand>> {
   const out = new Map<string, AreaDemand>();
   try {
@@ -160,7 +161,7 @@ export async function areaDemandFor(
     const found = new Map<string, AreaDemand>();
     for (const loc of locs) {
       if (!pending.length) break;
-      const volumes = await fetchSearchVolumes(pending, { locationCode: loc.code });
+      const volumes = await fetchSearchVolumes(pending, { locationCode: loc.code, onTask: opts.onTask });
       for (const term of pending) {
         if (!volumes.has(term)) continue; // not measured here
         const v = volumes.get(term) ?? null;

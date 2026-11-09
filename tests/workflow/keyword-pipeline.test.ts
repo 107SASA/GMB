@@ -223,3 +223,60 @@ test('Google Ads calls wait for a slot once the per-minute limit is used', async
     process.env.DATAFORSEO_ADS_PER_MINUTE = prev;
   }
 });
+
+test('onboarding volume lookups: real numbers, at most 8 lookups per business per day', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const { ownerKeywordVolumes } = await import('../../src/services/seo/ownerKeywordVolume');
+  const businessId = String(new m.mongoose.Types.ObjectId());
+  const first = await ownerKeywordVolumes(businessId, ['Root canal treatment kolkata', 'teeth whitening kolkata', '!!'], 'India');
+  assert.deepEqual(first, { volumes: { 'Root canal treatment kolkata': 320, 'teeth whitening kolkata': null }, limited: false });
+  // Cached keywords are free and not counted.
+  const cachedAgain = await ownerKeywordVolumes(businessId, ['root canal treatment kolkata'], 'India');
+  assert.deepEqual(cachedAgain.volumes, { 'root canal treatment kolkata': 320 });
+  // 8 live lookups use the day's allowance (the keywords above came from the cache).
+  for (let i = 0; i < 8; i++) await ownerKeywordVolumes(businessId, [`new phrase ${i} kolkata`], 'India');
+  const before = posts.length;
+  const ninth = await ownerKeywordVolumes(businessId, ['another new phrase kolkata', 'root canal treatment kolkata'], 'India');
+  assert.deepEqual(ninth, { volumes: { 'root canal treatment kolkata': 320 }, limited: true }, 'over the limit: cached numbers still shown');
+  assert.equal(posts.length, before, 'no paid call once the daily limit is used');
+});
+
+test('one volume rule everywhere: the number stored by research wins over a fresh lookup', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const { ownerKeywordVolumes } = await import('../../src/services/seo/ownerKeywordVolume');
+  const b = await m.Business.create({ name: 'Rule Dental', category: 'Dentist', address: 'Kolkata', userId: new m.mongoose.Types.ObjectId(), organizationId: new m.mongoose.Types.ObjectId() } as any);
+  await m.SeoPlan.create({
+    businessId: b._id, version: 1, status: 'active',
+    keywordSet: [{ id: 'kw:dental-implants-kolkata', keyword: 'dental implants kolkata', role: 'core', volume: { country: 590, city: 210, area: null, status: 'measured', measuredAt: null } }],
+  } as any);
+  const before = posts.length;
+  const r = await ownerKeywordVolumes(String(b._id), ['Dental implants kolkata'], 'India');
+  assert.deepEqual(r.volumes, { 'Dental implants kolkata': 210 }, 'city number, as on the Keywords page');
+  assert.equal(posts.length, before, 'no paid call');
+});
+
+test('monthly budget: extras skipped when low, research kept when used up, spend recorded', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const { keywordBudgetRemaining } = await import('../../src/lib/keywordBudget');
+
+  // Used up → no paid call at all; the plan keeps last month's research.
+  posts.length = 0; searched.length = 0;
+  const none = await m.pipeline.runKeywordPipeline(input(owner, { budgetUsd: 0.05 }));
+  assert.equal(none, null);
+  assert.equal(posts.length + searched.length, 0);
+
+  // Just above the essential reserve → no ideas / competitor sites, owner keywords still measured.
+  posts.length = 0; searched.length = 0;
+  const low = await m.pipeline.runKeywordPipeline(input(owner, { budgetUsd: 0.35 }));
+  assert.ok(low);
+  assert.equal(posts.filter((p) => p.url.includes('keywords_for_keywords') || p.url.includes('keywords_for_site')).length, 0);
+  for (const kw of owner.keywords) assert.equal(low.keywordSet.find((k: any) => k.keyword === kw)?.rank.status, 'measured');
+  assert.ok(low.spentUsd <= 0.35);
+
+  // A real business id: spend is stored against this month's budget.
+  const b = { ...owner, _id: new m.mongoose.Types.ObjectId() };
+  const full = await m.pipeline.runKeywordPipeline(input(b));
+  assert.ok(full.spentUsd > 0 && full.spentUsd <= 1.2);
+  const left = await keywordBudgetRemaining(String(b._id), new Date('2026-11-20T00:00:00.000Z'));
+  assert.ok(Math.abs(left - (1.2 - full.spentUsd)) < 0.001);
+});

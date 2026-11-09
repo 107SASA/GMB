@@ -69,6 +69,8 @@ export interface ResearchInput {
   competitorNames: string[];
   /** Keywords the owner removed — never researched again. */
   ownerRemoved: string[];
+  /** Keywords the business had before (owner list beyond the cap, earlier reports). */
+  previousKeywords?: string[];
   limits?: { maxCandidates?: number; maxOwnerKeywords?: number };
 }
 
@@ -169,6 +171,9 @@ export function buildCandidates(input: ResearchInput): KeywordCandidate[] {
     add(k, 'owner', { owner: true });
     if (byId.size > before) ownerCount++;
   }
+
+  // 1b. Keywords the business had before — kept when they match a service.
+  for (const k of input.previousKeywords || []) add(k, 'previous');
 
   // 2. Services × city, then × the 3 nearest service areas.
   for (const s of services) add(withPlace(s.name, city), s.source === 'category' ? 'category' : 'service');

@@ -259,6 +259,7 @@ export default function ConsultantSections({
           <Card>
             <p className="text-sm text-on-surface-variant mb-3">
               Phrases people type around {city || 'your area'}. Rank is live Google Maps data measured from your area; demand is Google Ads monthly search volume. Google doesn&apos;t count an exact phrase that very few people type, so for those we show how many people search the service itself in your city or state. Nothing is ever guessed.
+              {full && <> This table covers the report&apos;s main searches; every keyword we track for you — your own, this month&apos;s focus keywords and the competitors above you — is in <a href="/dashboard/seo-plan" className="text-primary font-semibold hover:underline">SEO Plan → Keywords</a>.</>}
             </p>
             <div className="flex flex-wrap items-center gap-2 mb-4 text-[11px]">
               {['HIGH', 'MED', 'LOW', 'NICHE'].map((b) => (

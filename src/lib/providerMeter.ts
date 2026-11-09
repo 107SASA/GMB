@@ -20,6 +20,8 @@ export type MeterKey =
   | 'googleDetailsNewPro'
   | 'dataForSeoMapsLiveTask'
   | 'dataForSeoAdsVolumeLiveTask'
+  | 'dataForSeoAdsIdeasLiveTask'
+  | 'dataForSeoAdsSiteLiveTask'
   | 'serpApiSearch'
   | 'groqCall'
   | 'groqInputToken'
@@ -42,6 +44,8 @@ export const METER_ENDPOINTS: Record<MeterKey, { provider: string; endpoint: str
   googleDetailsNewPro: { provider: 'Google Maps Platform', endpoint: 'Place Details (New, Pro)' },
   dataForSeoMapsLiveTask: { provider: 'DataForSEO', endpoint: 'SERP Google Maps Live Advanced' },
   dataForSeoAdsVolumeLiveTask: { provider: 'DataForSEO', endpoint: 'Google Ads Search Volume Live' },
+  dataForSeoAdsIdeasLiveTask: { provider: 'DataForSEO', endpoint: 'Google Ads Keywords For Keywords Live' },
+  dataForSeoAdsSiteLiveTask: { provider: 'DataForSEO', endpoint: 'Google Ads Keywords For Site Live' },
   serpApiSearch: { provider: 'SerpApi', endpoint: 'google_maps / google_maps_reviews' },
   groqCall: { provider: 'Groq', endpoint: 'chat.completions (gpt-oss-120b)' },
   groqInputToken: { provider: 'Groq', endpoint: 'input tokens' },

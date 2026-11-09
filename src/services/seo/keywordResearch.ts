@@ -97,11 +97,14 @@ export function buildCandidates(input: ResearchInput): KeywordCandidate[] {
   const maxCandidates = input.limits?.maxCandidates ?? KEYWORD_LIMITS.maxCandidates;
   const maxOwner = input.limits?.maxOwnerKeywords ?? KEYWORD_LIMITS.maxOwnerKeywords;
   const city = String(input.city || '').trim();
-  const services = input.services.length
-    ? input.services
-    : input.category
-      ? [{ id: serviceId(input.category), name: input.category, source: 'category' as const, state: 'VERIFIED' as const }]
-      : [];
+  // The Google category always counts as something the business sells
+  // ("dentist near me" matches a Dentist even when services list "Dental implants").
+  const categorySvc = input.category
+    ? { id: serviceId(input.category), name: input.category, source: 'category' as const, state: 'VERIFIED' as const }
+    : null;
+  const services = categorySvc && !input.services.some((s) => s.id === categorySvc.id)
+    ? [...input.services, categorySvc]
+    : input.services;
 
   // Service / category / place words are generic: "Kolkata Dental Care" must
   // not make "dental" a brand word.

@@ -123,6 +123,21 @@ export function headTerm(keyword: string, placeNames: string[]): string | null {
 }
 
 /**
+ * The business's city as a Google Ads location code (null when Google Ads
+ * has no city entry for it). Free: the location list is stored for 30 days.
+ */
+export async function cityAdsLocationCode(
+  place: { city?: string | null; area?: string | null; state?: string | null; country?: string | null },
+): Promise<number | null> {
+  try {
+    const locs = pickAdsLocations(await adsLocations(countryIsoOf(place.country)), place);
+    return locs.find((l) => l.level === 'city')?.code ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * For each keyword, the broad term's monthly searches in the customer's city
  * (or state). Map keyed by the lowercased keyword. One volume call at most.
  */

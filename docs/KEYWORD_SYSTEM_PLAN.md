@@ -164,7 +164,9 @@ winnability = 1.0 rank 4–10   (quick win)
 Verdict rules: `quick_win` (rank 4–10 and has demand), `defend` (rank 1–3), `strong` (high score), `low_demand` (too few searches, no impressions), `hard` (winnability ≤ 0.3), `not_relevant` (owner keyword with no service match; still measured).
 
 ### S4: Rank-check the shortlist
-Replaces today's `buildKeywords` "X / best X / top X / X near me" grid:
+**As built (Phase 2):** the report's main 5-keyword grid is kept for now, so headline report numbers stay comparable month to month. The keyword stage runs alongside it and **reuses** any keyword the grid or tracked searches already covered at enough points (never paid twice). Replacing the grid with the core keywords is a later step (with Phase 3, when the dashboard reads `keywordSet`).
+
+Point counts per set:
 
 | Set | Points per keyword | Count |
 |---|---|---|

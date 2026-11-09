@@ -884,6 +884,43 @@ export async function fetchTrackedObservations(business: any, keywords: string[]
   return queries.map((q, i) => toObservation(q.keyword, 'discovery', batch[i] ?? null, business, q.point));
 }
 
+/**
+ * Keyword-system rank checks (docs/KEYWORD_SYSTEM_PLAN.md S4): each keyword
+ * at 9 points (full 3×3 grid), 3 (the same reduced grid as tracked
+ * keywords) or 1 (the business's own pin). Without coordinates: once at city
+ * level. Never throws — a failed batch yields 'unavailable' observations.
+ */
+export async function fetchKeywordSetObservations(
+  business: any,
+  checks: Array<{ keyword: string; points: number }>,
+): Promise<SearchObservation[]> {
+  const hasCoords = !!(business.coordinates?.lat && business.coordinates?.lng);
+  const full = hasCoords ? generateGeoGrid(business.coordinates.lat, business.coordinates.lng, GRID_SPACING_KM) : [];
+  const pointsFor = (n: number): Array<GeoGridPoint | null> => {
+    if (!hasCoords) return [null];
+    if (n >= 9) return full;
+    const reduced = reducedGridPoints(full);
+    return n >= 3 ? reduced : reduced.slice(0, 1); // reduced[0] is the centre
+  };
+  const seen = new Set<string>();
+  const queries: Array<{ keyword: string; point: GeoGridPoint | null }> = [];
+  for (const c of checks) {
+    const keyword = String(c.keyword || '').trim();
+    if (!keyword || seen.has(keyword.toLowerCase())) continue;
+    seen.add(keyword.toLowerCase());
+    for (const point of pointsFor(c.points)) queries.push({ keyword, point });
+  }
+  if (!queries.length) return [];
+  let batch: Array<any[] | null>;
+  try {
+    batch = await fetchMapsLocalResultsBatch(queries.map((q) => ({ keyword: q.keyword, point: q.point ?? undefined, business })));
+  } catch (err: any) {
+    console.warn(`[seoAnalyzer] keyword-set batch failed: ${err?.message}`);
+    batch = queries.map(() => null);
+  }
+  return queries.map((q, i) => toObservation(q.keyword, 'discovery', batch[i] ?? null, business, q.point));
+}
+
 export interface GeoGridRankingResult {
   /** One facts-layer observation per keyword × point searched (see facts.ts). */
   observations: SearchObservation[];

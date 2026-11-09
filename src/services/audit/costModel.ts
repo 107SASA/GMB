@@ -29,6 +29,9 @@ export const UNIT_PRICES = {
   googleStaticMap: { usd: 2 / 1000, freePerMonth: 10_000 },
   dataForSeoMapsLiveTask: { usd: 0.002 },
   dataForSeoAdsVolumeLiveTask: { usd: 0.09 },
+  // Same Google Ads task tier as search volume — verify on dataforseo.com/pricing.
+  dataForSeoAdsIdeasLiveTask: { usd: 0.09 },
+  dataForSeoAdsSiteLiveTask: { usd: 0.09 },
   serpApiSearch: { usd: 75 / 5000 },
   groqInputToken: { usd: 0.15 / 1_000_000 },
   groqOutputToken: { usd: 0.6 / 1_000_000 },

@@ -200,7 +200,13 @@ export const sendEmailOtp = async (
  * so a provider outage can't break the caller's own workflow — same
  * best-effort contract as notifyBusinessUsers() in services/notifications.ts.
  */
-export const sendTransactionalEmail = async (to: string, subject: string, html: string) => {
+export const sendTransactionalEmail = async (
+  to: string,
+  subject: string,
+  html: string,
+  /** Optional files (e.g. an invoice PDF). */
+  attachments?: Array<{ filename: string; content: Buffer }>,
+) => {
   const suppressed = suppressedEmail(to, subject);
   if (suppressed) return suppressed;
 
@@ -216,6 +222,7 @@ export const sendTransactionalEmail = async (to: string, subject: string, html: 
         to: [to],
         subject,
         html,
+        ...(attachments?.length ? { attachments } : {}),
       });
       if (!error) {
         console.log(`✅ Transactional email sent to ${to} via Resend ("${subject}"): ${data?.id}`);
@@ -234,6 +241,7 @@ export const sendTransactionalEmail = async (to: string, subject: string, html: 
         to,
         subject,
         html,
+        ...(attachments?.length ? { attachments } : {}),
       });
       console.log(`✅ Transactional email sent to ${to} via SendGrid: ${info.messageId}`);
       return { success: true, messageId: info.messageId };

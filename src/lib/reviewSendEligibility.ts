@@ -39,6 +39,19 @@ export async function evaluateReviewSendEligibility(opts: {
     if (!usage.allowed) {
       dailyLimitReached = true;
       dailyLimitMessage = usage.reason;
+    } else if (opts.source !== 'campaign' && typeof usage.limit === 'number' && usage.limit >= 0) {
+      // Campaign requests started today but not sent yet (waiting a few
+      // minutes / for business hours) are already promised today's slots —
+      // a manual send must not push the day past the limit
+      // (services/reviews/campaignQueue.ts).
+      const { default: CampaignQueueItem } = await import('@/models/CampaignQueueItem');
+      const now = new Date();
+      const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      const started = await CampaignQueueItem.countDocuments({ businessId: opts.businessId, status: 'dispatched', dispatchedAt: { $gte: dayStart } });
+      if ((usage.used ?? 0) + started + 1 > usage.limit) {
+        dailyLimitReached = true;
+        dailyLimitMessage = `Today's ${usage.limit} WhatsApp messages are already used or going out to your campaign. You can send this tomorrow.`;
+      }
     }
   }
 

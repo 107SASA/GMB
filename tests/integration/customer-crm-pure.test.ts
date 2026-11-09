@@ -338,7 +338,11 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
       // + verified Google access (Nov 2026, not CRM): the content reminder,
       //   weekly AI posts and post generation wait until Google confirms
       //   access to the profile (lib/googleAccess.ts).
-      'weeklyContentReminder', 'weeklyContentAutopilot', 'processContentJob'],
+      'weeklyContentReminder', 'weeklyContentAutopilot', 'processContentJob',
+      // + review campaigns at the daily WhatsApp limit (Nov 2026, not CRM):
+      //   the daily queue dispatcher and reminders that wait a day instead of
+      //   being dropped (services/reviews/campaignQueue.ts).
+      'reviewCampaignQueueCron'],
     // Real WhatsApp inbound lines are tagged via: 'whatsapp' so a website form cannot open the 24h window.
     // + Segment 3.1 STOP reliability (Oct 2026, not CRM): both provider handlers
     //   apply an opt-out durably before claiming the message id, outside the

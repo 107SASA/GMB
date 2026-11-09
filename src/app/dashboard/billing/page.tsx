@@ -315,6 +315,8 @@ function SubscriptionCard() {
 interface Invoice {
   id: string;
   invoiceNumber: string;
+  /** 'company' = our numbered invoice (PDF); 'razorpay' = older payment, Razorpay receipt only. */
+  source?: 'company' | 'razorpay';
   amount: number;
   currency: string;
   paidAt: string | null;
@@ -372,7 +374,7 @@ function InvoicesCard() {
                     : inv.invoiceNumber}
                 </p>
                 <p className="text-xs text-on-surface-variant mt-0.5">
-                  ₹{inv.amount.toLocaleString('en-IN')} · {inv.invoiceNumber}
+                  ₹{inv.amount.toLocaleString('en-IN')} · {inv.source === 'razorpay' ? `Payment receipt (Razorpay) · ${inv.invoiceNumber}` : `Invoice ${inv.invoiceNumber}`}
                 </p>
               </div>
               {inv.downloadUrl ? (

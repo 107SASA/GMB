@@ -62,6 +62,23 @@ type Events = {
   "reviews/critical-alert": {
     data: { businessId: string };
   };
+  // A captured Razorpay charge → company invoice (services/billing/companyInvoice.ts).
+  "billing/invoice.issue": {
+    data: {
+      razorpayPaymentId: string;
+      businessId: string;
+      userId?: string | null;
+      razorpaySubscriptionId?: string | null;
+      amountPaise: number;
+      currency?: string | null;
+      paymentMethod?: string | null;
+      paidAt: string;
+      planType?: string | null;
+      billingCycle?: string | null;
+      periodStart?: string | null;
+      periodEnd?: string | null;
+    };
+  };
   "gbp/sync.requested": {
     data: { businessId: string };
   };

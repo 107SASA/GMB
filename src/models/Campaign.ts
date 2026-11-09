@@ -10,6 +10,7 @@ export interface ICampaign extends Document {
 
   // Targeting: customers whose tags include ANY of these. Empty = all customers.
   targetTags: string[];
+  manualQueue?: boolean;
 
   // Messages. Placeholders: {{name}}, {{service}}, {{business}}, {{link}}
   // initialMessage empty = AI generates a message per customer at send time.
@@ -55,6 +56,10 @@ const CampaignSchema: Schema = new Schema(
     },
 
     targetTags: [{ type: String }],
+    /** The workspace's "send tomorrow" list: requests sent by hand on a day
+     *  whose WhatsApp limit was used. Goes before campaigns each morning
+     *  (services/reviews/campaignQueue.ts). */
+    manualQueue: { type: Boolean, default: false, index: true },
 
     initialMessage: { type: String, default: '' },
     reminder1Enabled: { type: Boolean, default: true },

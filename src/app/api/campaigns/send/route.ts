@@ -32,6 +32,12 @@ export async function POST(req: Request) {
       customer,
     });
     if (!eligibility.allowed) {
+      // A full day: scheduled for tomorrow morning instead of refused.
+      if (eligibility.code === 'DAILY_LIMIT') {
+        const { queueManualRequest } = await import('@/services/reviews/campaignQueue');
+        const q = await queueManualRequest(ctx.businessId, ctx.organizationId, String(customer._id));
+        return NextResponse.json({ success: true, queued: true, scheduledFor: 'tomorrow', message: q.message });
+      }
       return NextResponse.json({ error: eligibility.message }, { status: 400 });
     }
 

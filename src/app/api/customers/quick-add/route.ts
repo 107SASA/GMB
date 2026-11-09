@@ -57,6 +57,15 @@ export async function POST(req: Request) {
       userId: ctx.userId,
       customer,
     });
+    if (!eligibility.allowed && eligibility.code === 'DAILY_LIMIT') {
+      // A full day: scheduled for tomorrow morning instead of skipped.
+      const { queueManualRequest } = await import('@/services/reviews/campaignQueue');
+      const q = await queueManualRequest(ctx.businessId, ctx.organizationId, String(customer._id));
+      return NextResponse.json(
+        { success: true, existing, customer, reviewRequestSent: false, reviewRequestQueued: true, reason: q.message },
+        { status: existing ? 200 : 201 }
+      );
+    }
     if (!eligibility.allowed) {
       return NextResponse.json(
         {

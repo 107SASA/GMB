@@ -311,6 +311,35 @@ export async function applyRazorpayEvent(input: ApplyEventInput): Promise<{ deci
             periodEnd: action.periodEnd ?? null,
           });
         }
+        // Company invoice for this captured charge (first payment or renewal):
+        // issued and emailed by a background job, once per payment id
+        // (services/billing/companyInvoice.ts). A charge whose webhook never
+        // arrives is caught by the daily invoice sweep.
+        if (businessId && paymentEntity?.id && paymentEntity?.status === 'captured' && Number(paymentEntity.amount) > 0) {
+          try {
+            const { inngest } = await import('@/services/inngest/client');
+            await inngest.send({
+              name: 'billing/invoice.issue',
+              id: `invoice-${paymentEntity.id}`,
+              data: {
+                razorpayPaymentId: String(paymentEntity.id),
+                businessId,
+                userId,
+                razorpaySubscriptionId: sub?.id ?? null,
+                amountPaise: Number(paymentEntity.amount),
+                currency: paymentEntity.currency ?? 'INR',
+                paymentMethod: paymentEntity.method ?? null,
+                paidAt: new Date((Number(paymentEntity.created_at) || Date.now() / 1000) * 1000).toISOString(),
+                planType: subEntity?.notes?.planType ?? null,
+                billingCycle: subEntity?.notes?.billingCycle ?? null,
+                periodStart: subEntity?.current_start ? new Date(subEntity.current_start * 1000).toISOString() : null,
+                periodEnd: subEntity?.current_end ? new Date(subEntity.current_end * 1000).toISOString() : null,
+              },
+            });
+          } catch (err) {
+            console.error('[billing] invoice job not queued (the daily sweep will issue it)', err);
+          }
+        }
         // Idempotent post-payment sequence (each step guarded by its own flag).
         try {
           const { runCustomerActivationSequence } = await import('@/services/billing/customerActivation');

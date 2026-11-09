@@ -1225,6 +1225,20 @@ function nextBizHourDate(startHour: number, endHour: number): string | null {
   return nextIstBusinessHourStart(new Date(), startHour, endHour)?.toISOString() ?? null;
 }
 
+// Review campaigns at the daily WhatsApp pace: every day at 10:00 IST start
+// the new requests today's limit allows, after reserving room for reminders
+// due today (services/reviews/campaignQueue.ts). Launching starts day one.
+export const reviewCampaignQueueCron = inngest.createFunction(
+  { id: "review-campaign-queue-cron", triggers: [{ cron: "30 4 * * *" }] },
+  async ({ step }) => {
+    const result = await step.run("dispatch-due-campaign-requests", async () => {
+      const { dispatchAllCampaignQueues } = await import("@/services/reviews/campaignQueue");
+      return dispatchAllCampaignQueues();
+    });
+    return { success: true, ...result };
+  }
+);
+
 export const processReviewCampaign = inngest.createFunction(
   { id: "process-review-campaign", retries: 3, triggers: [{ event: "campaigns/review.request.start" }] },
   async ({ event, step }) => {
@@ -1255,8 +1269,12 @@ export const processReviewCampaign = inngest.createFunction(
     });
 
     const { customer, suppressed, businessName, placeId } = target as any;
-    if (!customer || customer.optedOut || suppressed) return { skipped: true, reason: 'Customer opted out or not found' };
-    if (!customer.phone) return { skipped: true, reason: 'Customer has no phone number (WhatsApp required)' };
+    const markQueue = (sent: boolean, reason?: string) => step.run(`mark-campaign-queue-${sent ? 'sent' : 'not-sent'}`, async () => {
+      const { markQueueItem } = await import("@/services/reviews/campaignQueue");
+      await markQueueItem(campaignId, customerId, { sent, reason });
+    });
+    if (!customer || customer.optedOut || suppressed) { await markQueue(false, 'Customer opted out or not found'); return { skipped: true, reason: 'Customer opted out or not found' }; }
+    if (!customer.phone) { await markQueue(false, 'No phone number'); return { skipped: true, reason: 'Customer has no phone number (WhatsApp required)' }; }
 
     // 3. Create the request log first so the tracking link exists
     const reviewRequest = await step.run("create-request-log", async () => {
@@ -1387,6 +1405,8 @@ export const processReviewCampaign = inngest.createFunction(
       return { sent: true, error: undefined as string | undefined };
     });
 
+    // Campaign queue: this customer's first message is done (or not).
+    await markQueue(initialSend.sent, initialSend.sent ? undefined : String(initialSend.error || 'WhatsApp send failed'));
     if (!initialSend.sent) {
       return { success: false, reason: `WhatsApp send failed: ${initialSend.error}` };
     }
@@ -1397,7 +1417,10 @@ export const processReviewCampaign = inngest.createFunction(
     // it is not consulted. The sleep duration stays the one captured in
     // load-config. This check only decides whether that already-scheduled
     // follow-up may still send.
+    // Why the last check said no — a full day (DAILY_LIMIT) is retried the next day.
+    let lastFollowUpCode = '';
     const followUpStillEligible = async (stage: 1 | 2) => {
+      lastFollowUpCode = '';
       const [policy, req, cust, business] = await Promise.all([
         loadReviewFollowUpPolicy(),
         ReviewRequest.findById(reviewRequest._id).select('status automationStatus followUpStage messageHistory businessId token clicked clickedAt').lean() as Promise<any>,
@@ -1453,7 +1476,30 @@ export const processReviewCampaign = inngest.createFunction(
       if (decision.code === 'CLICKED') {
         console.log(`[reviewCampaign] reminder ${stage} skipped for request ${reviewRequest._id}: review link already clicked`);
       }
+      lastFollowUpCode = decision.code;
       return decision.send;
+    };
+    // A reminder meeting a day whose WhatsApp limit is used up waits for the
+    // next day (up to REMINDER_DEFER_DAYS) instead of being dropped — the
+    // campaign queue reserves room for it (services/reviews/campaignQueue.ts).
+    const reminderWithDayRetry = async (stage: 1 | 2): Promise<boolean> => {
+      const { REMINDER_DEFER_DAYS } = await import("@/services/reviews/campaignQueue");
+      for (let attempt = 0; attempt <= REMINDER_DEFER_DAYS; attempt++) {
+        const check = await step.run(attempt === 0 ? `check-status-${stage}` : `check-status-${stage}-day-${attempt}`, async () => {
+          const send = await followUpStillEligible(stage);
+          return { send, code: lastFollowUpCode };
+        });
+        if (check.send) return true;
+        if (check.code !== 'DAILY_LIMIT' || attempt === REMINDER_DEFER_DAYS) return false;
+        const tomorrow = await step.run(`next-day-${stage}-${attempt}`, async () => {
+          const d = new Date();
+          // 04:30 UTC = 10:00 IST, after the daily counter resets.
+          return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 4, 30)).toISOString();
+        });
+        console.log(`[reviewCampaign] reminder ${stage} for request ${reviewRequest._id} waits for tomorrow — today's WhatsApp limit is used`);
+        await step.sleepUntil(`wait-limit-${stage}-${attempt}`, tomorrow);
+      }
+      return false;
     };
 
     const claimFollowUp = async (stageName: 'reminder1' | 'reminder2', targetStage: number) => {
@@ -1474,7 +1520,7 @@ export const processReviewCampaign = inngest.createFunction(
     //    validated to be at least the minimum interval before it is stored.
     if (config.reminder1Enabled) {
       await step.sleep("wait-reminder-1", `${config.reminder1AfterDays}d`);
-      const sendRem1 = await step.run("check-status-1", () => followUpStillEligible(1));
+      const sendRem1 = await reminderWithDayRetry(1);
       if (sendRem1) {
         if (config.sendOnlyBizHours) {
           const wakeAt = await step.run("compute-rem1-send-time", async () =>
@@ -1548,7 +1594,7 @@ export const processReviewCampaign = inngest.createFunction(
     // 8. Reminder 2 (final) — delay counts from reminder 1
     if (config.reminder2Enabled) {
       await step.sleep("wait-reminder-2", `${config.reminder2AfterDays}d`);
-      const sendRem2 = await step.run("check-status-2", () => followUpStillEligible(2));
+      const sendRem2 = await reminderWithDayRetry(2);
       if (sendRem2) {
         if (config.sendOnlyBizHours) {
           const wakeAt = await step.run("compute-rem2-send-time", async () =>

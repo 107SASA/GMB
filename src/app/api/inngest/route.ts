@@ -14,6 +14,7 @@ import {
   processContentJob,
   applyWeeklyOfferJob,
   processReviewCampaign,
+  reviewCampaignQueueCron,
   processReviewAutopollJob,
   scheduleSinglePostPublish,
   publishScheduledPostsCron,
@@ -55,6 +56,7 @@ import {
   dataRetentionCleanupCron,
   accountHardPurgeCron
 } from "@/services/inngest/functions";
+import { issueCompanyInvoice, companyInvoiceSweep } from "@/services/inngest/invoiceFunctions";
 import { whatsappCampaignSend } from "@/services/inngest/whatsappCampaign";
 
 export const { GET, POST, PUT } = serve({
@@ -73,6 +75,9 @@ export const { GET, POST, PUT } = serve({
     processContentJob,
     applyWeeklyOfferJob,
     processReviewCampaign,
+  reviewCampaignQueueCron,
+    issueCompanyInvoice,
+    companyInvoiceSweep,
       processReviewAutopollJob,
     scheduleSinglePostPublish,
     publishScheduledPostsCron,

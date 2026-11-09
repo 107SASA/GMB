@@ -115,6 +115,8 @@ export const NOT_PURGED: Record<string, string> = {
   LocalityCache: 'neighbourhood names keyed by coordinates — shared, not personal',
   JobQueue: 'short-lived job rows, pruned by dataRetentionCleanupCron',
   ProcessedWebhookEvent: 'webhook event ids for de-duplication (TTL)',
+  CompanyInvoice: 'category b: invoices issued by the company — accounting records the law requires to be kept (books of account, 8 years); they keep the billed-to name and contact exactly as issued',
+  InvoiceCounter: 'platform configuration (last invoice serial per financial year)',
   BillingEvent: 'billing audit trail (Razorpay ids, amounts, state decisions — no personal fields), kept with the billing record',
   BillingPolicy: 'platform configuration',
   TrialClaim: 'one-free-trial-per-phone record — phone stored only as a one-way hash; deleting it would let a recreated account take a second trial',

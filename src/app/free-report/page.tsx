@@ -143,7 +143,7 @@ export default function FreeReportPage() {
 
             <h1 className="font-mkt-display text-[1.5rem] leading-[1.25] sm:text-3xl md:text-4xl lg:text-[2.75rem] font-extrabold text-[#101613] tracking-tight mb-3 sm:mb-4">
               Grow your business from <GoogleWord /> with{' '}
-              <span className="text-[#006e2c]">GrowwMatics AI</span>
+              <span className="text-[#006e2c]">Growwmatics AI</span>
             </h1>
             <div className="lg:mb-5">
               <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-[#e8f8ee] text-[#006e2c] text-xs font-bold uppercase tracking-wide">

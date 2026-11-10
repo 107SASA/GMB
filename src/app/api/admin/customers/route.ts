@@ -6,7 +6,12 @@ import { displayPersonName } from '@/lib/personName';
 import User from '@/models/User';
 import Business from '@/models/Business';
 import Subscription from '@/models/Subscription';
-import { realUserFilter, workspacePlanLabel, CUSTOMER_STATUSES } from '@/lib/admin/realAccounts';
+import { realUserFilter, workspacePlanLabel, primaryBusinessByOwner } from '@/lib/admin/realAccounts';
+import { summarizeOwners, type ActivitySummary } from '@/lib/admin/customerActivity';
+
+const ACTIVITY_FILTERS = ['needs_call', 'active', 'slipping', 'inactive'] as const;
+/** Cap for the in-memory activity filter (status is computed, not stored). */
+const ACTIVITY_SCAN_CAP = 2000;
 
 export async function GET(req: NextRequest) {
   const auth = await requireSuperAdmin();
@@ -22,6 +27,8 @@ export async function GET(req: NextRequest) {
     const plan   = searchParams.get('plan')   || 'all';
     const status = searchParams.get('status') || 'all';
     const skip   = (page - 1) * limit;
+    const activityParam = searchParams.get('activity') || 'all';
+    const activity = (ACTIVITY_FILTERS as readonly string[]).includes(activityParam) ? activityParam : null;
 
     // Unclaimed shadow accounts (see src/lib/shadowAccount.ts — created
     // automatically by lead-gen flows like /free-report) are hidden from the
@@ -42,36 +49,42 @@ export async function GET(req: NextRequest) {
       query.subscriptionPlan = plan;
     }
 
-    const [users, total] = await Promise.all([
-      User.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .select('fullName email phone subscriptionPlan createdAt onboardingCompleted businessIds activeBusinessId')
-        .lean(),
-      User.countDocuments(query),
-    ]);
+    // Activity filters need every matching customer's computed status, so
+    // they scan (capped) and paginate in memory; the plain list stays a
+    // normal DB page.
+    const userSelect = 'fullName email phone subscriptionPlan createdAt onboardingCompleted businessIds activeBusinessId lastLoginAt lastSeenAt lastSeenClient';
+    const [users, total] = activity
+      ? [await User.find(query).sort({ createdAt: -1 }).limit(ACTIVITY_SCAN_CAP).select(userSelect).lean(), 0]
+      : await Promise.all([
+          User.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).select(userSelect).lean(),
+          User.countDocuments(query),
+        ]);
 
     const userIds     = users.map((u: any) => u._id);
-    const businessIds = users.map((u: any) => u.activeBusinessId).filter(Boolean);
 
     const [businesses, subscriptions] = await Promise.all([
       Business.find({ userId: { $in: userIds } })
-        .select('userId name category address city subscriptionStatus trialEndsAt')
+        .select('userId name category address city subscriptionStatus trialEndsAt googleConnected')
         .lean(),
       Subscription.find({ userId: { $in: userIds } })
         .select('userId planType billingStatus trialStatus')
         .lean(),
     ]);
 
-    const businessMap: Record<string, any> = {};
     // The owner's most significant workspace: paid, then trial, then past due, then any.
-    const rank = (s?: string) => { const i = (CUSTOMER_STATUSES as readonly string[]).indexOf(s || ''); return i === -1 ? 9 : i; };
-    businesses.forEach((b: any) => {
-      if (!b.userId) return;
-      const k = b.userId.toString();
-      if (!businessMap[k] || rank(b.subscriptionStatus) < rank(businessMap[k].subscriptionStatus)) businessMap[k] = b;
-    });
+    const businessMap: Record<string, any> = primaryBusinessByOwner(businesses as any[]);
+
+    const activityMap: Map<string, ActivitySummary> = await summarizeOwners(users.map((u: any) => {
+      const biz = businessMap[u._id.toString()];
+      return {
+        userId: u._id.toString(),
+        createdAt: u.createdAt,
+        lastSeenAt: u.lastSeenAt,
+        lastSeenClient: u.lastSeenClient,
+        lastLoginAt: u.lastLoginAt,
+        business: biz ? { _id: String(biz._id), googleConnected: biz.googleConnected } : null,
+      };
+    }));
 
     const subscriptionMap: Record<string, any> = {};
     subscriptions.forEach((s: any) => {
@@ -106,8 +119,30 @@ export async function GET(req: NextRequest) {
           ? { planType: sub.planType, billingStatus: sub.billingStatus, trialActive: sub.trialStatus?.isActive }
           : null,
         isActive,
+        activity: activityMap.get(uid) ?? null,
       };
     });
+
+    let totalOut = total;
+    if (activity) {
+      const order: Record<string, number> = { inactive: 0, slipping: 1, active: 2 };
+      enriched = enriched.filter((u) => {
+        const st = u.activity?.status;
+        return activity === 'needs_call' ? st === 'inactive' || st === 'slipping' : st === activity;
+      });
+      if (activity === 'needs_call') {
+        // Worst first, then longest quiet. Anyone with a follow-up date still
+        // in the future was already handled — push them to the bottom.
+        const now = Date.now();
+        const handled = (u: any) => (u.activity?.lastCall?.followUpAt && Date.parse(u.activity.lastCall.followUpAt) > now ? 1 : 0);
+        enriched.sort((a, b) =>
+          handled(a) - handled(b) ||
+          order[a.activity!.status] - order[b.activity!.status] ||
+          (b.activity!.daysQuiet ?? 9999) - (a.activity!.daysQuiet ?? 9999));
+      }
+      totalOut = enriched.length;
+      enriched = enriched.slice(skip, skip + limit);
+    }
 
     if (status === 'active') {
       enriched = enriched.filter(u => u.isActive);
@@ -129,11 +164,11 @@ export async function GET(req: NextRequest) {
       success: true,
       data: {
         users: enriched,
-        total,
+        total: totalOut,
         page,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(totalOut / limit),
         stats: {
-          totalUsers:      total,
+          totalUsers:      activity ? await User.countDocuments(query) : total,
           newThisWeek,
           proUsers:        proCount,
           enterpriseUsers: enterpriseCount,

@@ -192,7 +192,7 @@ export default function LeadsPipelinePage() {
           <div>
             <h1 className="font-heading text-2xl font-bold text-on-surface">Leads &amp; Pipeline</h1>
             <p className="text-sm text-on-surface-variant">
-              Every GrowwMatics prospect and its live Lead Engine state.{' '}
+              Every Growwmatics AI prospect and its live Lead Engine state.{' '}
               <Link href="/admin/pipeline" className="underline font-semibold hover:text-primary">Conversion overview</Link>
               {' · '}
               <Link href="/admin/crm" className="underline font-semibold hover:text-primary">Customers&apos; own leads</Link>

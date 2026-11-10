@@ -14,7 +14,7 @@ import { useTheme } from '@/lib/theme';
  * the webhook recognises it and replies with the fixed "complete your
  * payment and the dashboard unlocks" message (services/whatsapp/appAccessHelp.ts).
  */
-export const ACTIVATE_MESSAGE = "Hi, I'm not able to access my GrowwMatics dashboard in the app";
+export const ACTIVATE_MESSAGE = "Hi, I'm not able to access my Growwmatics AI dashboard in the app";
 
 /**
  * Shown instead of onboarding and the tabs when the active workspace has no

@@ -54,9 +54,9 @@ export function statusInfo(status: string): { label: string; group: StatusGroup;
 }
 
 export function sourceLabel(source: string): string {
-  if (source === 'recommendation') return 'Suggested by GrowwMatics';
+  if (source === 'recommendation') return 'Suggested by Growwmatics AI';
   if (source === 'owner') return 'Entered by you';
-  return 'Created in GrowwMatics';
+  return 'Created in Growwmatics AI';
 }
 
 /** "attributes/has_wheelchair_accessible_entrance" → "Wheelchair accessible entrance". */

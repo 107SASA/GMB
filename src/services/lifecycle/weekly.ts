@@ -65,7 +65,7 @@ export function buildWeeklySummary(i: WeeklyInput): WeeklySummary {
   } else {
     lines.push('New reviews: 0 — no new Google reviews were detected this week.');
     // Only claim the owner sent no requests when the record says so.
-    if (i.reviews.requestsSent === 0) lines.push('No review requests were sent through GrowwMatics this week — fresh reviews are an important local visibility signal.');
+    if (i.reviews.requestsSent === 0) lines.push('No review requests were sent through Growwmatics AI this week — fresh reviews are an important local visibility signal.');
     // In-app only (the week stays non-"meaningful", so no WhatsApp for it).
     notifications.push({ type: 'weekly_no_new_reviews', title: 'No new Google reviews this week', body: 'No new Google reviews were detected this week.', link: '/dashboard/review-requests' });
   }
@@ -118,7 +118,7 @@ export function buildWeeklySummary(i: WeeklyInput): WeeklySummary {
   if (i.plan.blocked > 0) lines.push(`Blocked: ${pl(i.plan.blocked, 'action')} (see the plan for why)`);
   if (i.plan.overdue > 0) lines.push(`Overdue: ${pl(i.plan.overdue, 'planned action')} older than 30 days`);
 
-  const whatsappText = ['Here is your weekly Growwmatics update:', '', ...lines.map((l) => `• ${l}`)].join('\n');
+  const whatsappText = ['Here is your weekly Growwmatics AI update:', '', ...lines.map((l) => `• ${l}`)].join('\n');
   return { lines, notifications, meaningful, whatsappText };
 }
 
@@ -129,9 +129,9 @@ export function composeWeeklyWhatsApp(summary: Pick<WeeklySummary, 'whatsappText
     '',
     summary.whatsappText,
     '',
-    dashboardLink ? `View your dashboard: ${dashboardLink}` : 'Open your Growwmatics dashboard for details and recommended next steps.',
+    dashboardLink ? `View your dashboard: ${dashboardLink}` : 'Open your Growwmatics AI dashboard for details and recommended next steps.',
     '',
-    '— Team Growwmatics',
+    '— Team Growwmatics AI',
   ].join('\n');
 }
 
@@ -205,9 +205,9 @@ export function reviewAttentionText(input: {
     draftLine ? `${status} ${draftLine}` : status,
     guidance,
     '',
-    reviewsLink ? `View reviews: ${reviewsLink}` : 'Open Reviews in your Growwmatics dashboard to reply.',
+    reviewsLink ? `View reviews: ${reviewsLink}` : 'Open Reviews in your Growwmatics AI dashboard to reply.',
     '',
-    '— Team Growwmatics',
+    '— Team Growwmatics AI',
   ].join('\n');
 }
 

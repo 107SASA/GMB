@@ -31,7 +31,7 @@ function h(s: unknown): string {
 function watermarkHtml(): string {
   const uri = getBrandLogoDataUri();
   return uri
-    ? `<img src="${uri}" alt="GrowwMatics" style="position:absolute;right:20px;bottom:16px;width:44px;height:44px;object-fit:contain;opacity:0.55;" />`
+    ? `<img src="${uri}" alt="Growwmatics AI" style="position:absolute;right:20px;bottom:16px;width:44px;height:44px;object-fit:contain;opacity:0.55;" />`
     : '';
 }
 
@@ -84,7 +84,7 @@ export function buildReportCardHtml(ctx: ReportCardContext): string {
 <body>
   ${watermarkHtml()}
   <div style="text-align:center;margin-bottom:8px;">
-    <span style="font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#0a8a3e;">GrowwMatics AI · Free Report</span>
+    <span style="font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#0a8a3e;">Growwmatics AI · Free Report</span>
   </div>
   <h1 style="text-align:center;font-size:24px;font-weight:900;color:#0f172a;margin:4px 0 8px;">${h(ctx.businessName)}</h1>
   ${

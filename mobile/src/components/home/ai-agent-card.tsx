@@ -45,7 +45,7 @@ export function AiAgentCard() {
               <Ionicons name="sparkles" size={20} color={t.brandBright} />
             </View>
             <Text className="font-display-bold text-base text-white" numberOfLines={1} style={{ flexShrink: 1 }}>
-              GrowwMatics AI Agent
+              Growwmatics AI Agent
             </Text>
           </View>
           <View

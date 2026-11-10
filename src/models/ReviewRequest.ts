@@ -112,6 +112,9 @@ const ReviewRequestSchema = new Schema(
   { timestamps: true }
 );
 
+// Per-workspace history (super-admin customer activity view, dashboards).
+ReviewRequestSchema.index({ businessId: 1, createdAt: -1 });
+
 // Sparse so existing requests without a token do not collide.
 ReviewRequestSchema.index({ token: 1 }, { unique: true, sparse: true });
 

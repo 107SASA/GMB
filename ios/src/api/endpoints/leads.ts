@@ -34,6 +34,22 @@ const leadSchema = z.object({
   interest: z.string().nullable().optional(),
   // Manually entered estimated deal value (INR) — see models/Lead.ts.
   valuation: z.number().nullable().optional(),
+  // Visiting-card details (source "Business Card"); absent on other leads.
+  businessCard: z
+    .object({
+      company: z.string().optional(),
+      designation: z.string().optional(),
+      website: z.string().optional(),
+      address: z.string().optional(),
+      otherPhones: z.array(z.string()).optional(),
+      otherEmails: z.array(z.string()).optional(),
+      metAt: z.string().optional(),
+      imageKeys: z.array(z.string()).optional(),
+    })
+    .nullable()
+    .optional()
+    .catch(null),
+  city: z.string().nullable().optional(),
   lastActivityAt: z.string().nullable().catch(null),
   createdAt: z.string().optional(),
 });
@@ -139,8 +155,72 @@ export async function bulkImportLeads(
  */
 export async function logLeadActivity(
   leadId: string,
-  entry: { type: 'call' | 'note'; content: string }
+  entry: { type: 'call' | 'note' | 'WhatsApp' | 'email'; content: string }
 ): Promise<void> {
   await api.post(`/api/crm/leads/${leadId}/activity`, entry);
 }
 
+
+// ── Visiting card scan ───────────────────────────────────────────────────
+
+const cardFieldsSchema = z.object({
+  isBusinessCard: z.boolean().catch(true),
+  name: z.string().catch(''),
+  designation: z.string().catch(''),
+  company: z.string().catch(''),
+  phones: z.array(z.object({ number: z.string(), label: z.string().catch('other') })).catch([]),
+  emails: z.array(z.string()).catch([]),
+  website: z.string().catch(''),
+  address: z.string().catch(''),
+  city: z.string().catch(''),
+  uncertain: z.array(z.string()).catch([]),
+});
+export type CardFields = z.infer<typeof cardFieldsSchema>;
+
+const scanResponseSchema = z.object({
+  success: z.literal(true),
+  fields: cardFieldsSchema,
+  imageKeys: z.array(z.string()).catch([]),
+});
+export type CardScanResult = z.infer<typeof scanResponseSchema>;
+
+export type CardPhoto = { uri: string; mimeType: string; fileName: string };
+
+/**
+ * POST /api/leads/business-card/scan — the server reads the card with AI and
+ * returns the form fields. Saves nothing; the owner reviews and submits.
+ */
+export async function scanBusinessCard(front: CardPhoto, back?: CardPhoto | null): Promise<CardScanResult> {
+  const form = new FormData();
+  // React Native's FormData accepts this {uri,name,type} shape in place of a Blob.
+  form.append('front', { uri: front.uri, name: front.fileName, type: front.mimeType } as unknown as Blob);
+  if (back) form.append('back', { uri: back.uri, name: back.fileName, type: back.mimeType } as unknown as Blob);
+  const { data } = await api.post('/api/leads/business-card/scan', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 90_000,
+  });
+  return scanResponseSchema.parse(data);
+}
+
+export type BusinessCardLeadInput = {
+  name?: string;
+  phone?: string;
+  email?: string;
+  company?: string;
+  designation?: string;
+  website?: string;
+  address?: string;
+  city?: string;
+  metAt?: string;
+  notes?: string;
+  valuation?: number;
+  otherPhones?: string[];
+  otherEmails?: string[];
+  imageKeys?: string[];
+};
+
+/** POST /api/leads/business-card — saves the reviewed card form (dedupes by phone/email). */
+export async function saveBusinessCardLead(input: BusinessCardLeadInput): Promise<QuickAddResult> {
+  const { data } = await api.post('/api/leads/business-card', input);
+  return quickAddResponseSchema.parse(data);
+}

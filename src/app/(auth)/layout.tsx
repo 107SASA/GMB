@@ -8,7 +8,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
-          <img src="/brand/icon.png" alt="GrowwMatics AI" className="inline-block w-12 h-12 object-contain mb-4" />
+          <img src="/brand/icon.png" alt="Growwmatics AI" className="inline-block w-12 h-12 object-contain mb-4" />
           <h1 className="text-headline-md font-heading text-on-surface tracking-tight">
             Groww<span className="text-primary">Matics</span> AI
           </h1>

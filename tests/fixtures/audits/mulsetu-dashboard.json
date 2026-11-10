@@ -273,14 +273,14 @@
      "topic": "reviews",
      "fact": "5 of the 6 businesses above you that show a review count have more Google reviews than your 3; their median is 6.",
      "meaning": "Searchers comparing listings side by side see more customer feedback on theirs.",
-     "recommendation": "Ask every recent customer for a Google review and reply to each one (GrowwMatics review requests and replies).",
+     "recommendation": "Ask every recent customer for a Google review and reply to each one (Growwmatics AI review requests and replies).",
      "basis": "the 8 businesses shown above Mulsetu most often in our Google Maps searches"
     },
     {
      "topic": "categories",
      "fact": "6 of 6 businesses shown above you list additional Google categories; we could not see any on yours.",
      "meaning": "Additional categories let a listing appear for more of the services it genuinely offers.",
-     "recommendation": "Check your Google Business Profile categories and add any that truly describe your services (you change categories in Google — GrowwMatics cannot).",
+     "recommendation": "Check your Google Business Profile categories and add any that truly describe your services (you change categories in Google — Growwmatics AI cannot).",
      "basis": "the 8 businesses shown above Mulsetu most often in our Google Maps searches"
     }
    ],

@@ -19,7 +19,7 @@ test('the app button text matches the webhook trigger exactly', () => {
 test('recognises the prefilled message, tolerating case, spacing and curly apostrophes', () => {
   assert.ok(isAppAccessMessage(APP_ACCESS_MESSAGE));
   assert.ok(isAppAccessMessage(`  ${APP_ACCESS_MESSAGE.toUpperCase().replace("'", '’')}  `));
-  assert.ok(!isAppAccessMessage('Hi, I need help with my GrowwMatics account'));
+  assert.ok(!isAppAccessMessage('Hi, I need help with my Growwmatics AI account'));
   assert.ok(!isAppAccessMessage(''));
   assert.ok(!isAppAccessMessage(null));
 });

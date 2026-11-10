@@ -121,7 +121,7 @@ beforeEach(async () => {
   if (!m.BillingPlan) return;
   await m.BillingPlan.deleteMany({});
   await m.BillingPlan.create({
-    key: 'default', displayName: 'GrowwMatics AI', description: '', priceInr: 1999, features: [],
+    key: 'default', displayName: 'Growwmatics AI', description: '', priceInr: 1999, features: [],
     durations: [
       { cycle: 'monthly', priceInr: 1999, enabled: true },
       { cycle: 'quarterly', priceInr: 5499, enabled: true },

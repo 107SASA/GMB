@@ -180,7 +180,7 @@ export async function extractLeadIntelligence(
 
     const userContent =
       (businessContext
-        ? `BUSINESS CONTEXT (what GrowwMatics is — use it to judge whether the message is about a known service, pain point, pricing, demo, subscription, or is off-topic; do NOT copy it into your output):\n${businessContext}\n\n`
+        ? `BUSINESS CONTEXT (what Growwmatics AI is — use it to judge whether the message is about a known service, pain point, pricing, demo, subscription, or is off-topic; do NOT copy it into your output):\n${businessContext}\n\n`
         : '') +
       `Conversation so far (most recent last):\n${history || '(no prior history)'}\n\nLatest inbound message to classify:\n"${messageText}"`;
 

@@ -103,7 +103,7 @@ export function buildCompetitorInsights(all: InsightCompetitor[], t: InsightTarg
         ? 'Searchers comparing listings side by side see more customer feedback on theirs.'
         : 'Your review total is not the gap — other factors separate you from them.',
       recommendation: t.reviewCount < med
-        ? 'Ask every recent customer for a Google review and reply to each one (GrowwMatics review requests and replies).'
+        ? 'Ask every recent customer for a Google review and reply to each one (Growwmatics AI review requests and replies).'
         : 'Keep reviews coming steadily and reply to every one.',
       basis,
     });
@@ -132,7 +132,7 @@ export function buildCompetitorInsights(all: InsightCompetitor[], t: InsightTarg
       topic: 'categories',
       fact: `${withCats} of ${cats.length} businesses shown above you list additional Google categories; we could not see any on yours.`,
       meaning: 'Additional categories let a listing appear for more of the services it genuinely offers.',
-      recommendation: 'Check your Google Business Profile categories and add any that truly describe your services (GrowwMatics can set them on your Google profile once you approve them in Profile optimization).',
+      recommendation: 'Check your Google Business Profile categories and add any that truly describe your services (Growwmatics AI can set them on your Google profile once you approve them in Profile optimization).',
       basis,
     });
   }
@@ -168,7 +168,7 @@ export function buildCompetitorInsights(all: InsightCompetitor[], t: InsightTarg
       topic: 'website',
       fact: `${withSite} of ${site.length} businesses shown above you have a website on their Google listing; yours did not show one.`,
       meaning: 'A website link gives searchers somewhere to check your services before calling.',
-      recommendation: 'Add your website to Google Business Profile (GrowwMatics can update it once Google is connected).',
+      recommendation: 'Add your website to Google Business Profile (Growwmatics AI can update it once Google is connected).',
       basis,
     });
   }

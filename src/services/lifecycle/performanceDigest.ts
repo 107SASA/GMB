@@ -75,7 +75,7 @@ export function composePerformanceDigest(d: PerformanceDigest, businessName: str
   const lines = [
     `Hi ${businessName},`,
     '',
-    `Here is your Growwmatics performance update for the last ${DIGEST_DAYS} days (${fmtDate(d.period.start)}–${fmtDate(d.period.end)}):`,
+    `Here is your Growwmatics AI performance update for the last ${DIGEST_DAYS} days (${fmtDate(d.period.start)}–${fmtDate(d.period.end)}):`,
     '',
   ];
   for (const r of d.rows) {
@@ -87,6 +87,6 @@ export function composePerformanceDigest(d: PerformanceDigest, businessName: str
     lines.push(`• ${r.label}: ${r.current}${change}`);
   }
   lines.push('', `Measured by Google for your Business Profile.${d.previousMeasured ? '' : ' First full period measured — the next update will compare with this one.'}`);
-  lines.push('', `View your insights: ${link}`, '', '— Team Growwmatics');
+  lines.push('', `View your insights: ${link}`, '', '— Team Growwmatics AI');
   return lines.join('\n');
 }

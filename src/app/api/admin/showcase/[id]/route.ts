@@ -54,7 +54,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       type: status === 'approved' ? 'showcase_approved' : 'showcase_rejected',
       title: status === 'approved' ? 'Showcase upload approved' : 'Showcase upload rejected',
       body: status === 'approved'
-        ? 'Your photo/video is now live on the GrowwMatics showcase.'
+        ? 'Your photo/video is now live on the Growwmatics AI showcase.'
         : `Your showcase upload wasn't approved.${rejectionReason ? ` Reason: ${rejectionReason}` : ''}`,
       link: '/dashboard/success-stories?tab=photos',
     });
@@ -93,7 +93,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     await notifyBusinessUsers(asset.businessId.toString(), {
       type: 'showcase_removed',
       title: 'Showcase upload removed',
-      body: 'A photo/video you uploaded was removed from the GrowwMatics showcase by our team.',
+      body: 'A photo/video you uploaded was removed from the Growwmatics AI showcase by our team.',
       link: '/dashboard/success-stories?tab=photos',
     });
 

@@ -742,7 +742,7 @@ export default function AuditReportGrexa({
                         </div>
                         <div className="text-[11px] text-outline ml-3.5">
                           Evidence: {f.evidence} · {ACTIONABILITY_LABEL[f.actionability] || f.actionability} ·{' '}
-                          {f.growwmaticsCapability ? `GrowwMatics: ${GROWWMATICS_CAPABILITIES[f.growwmaticsCapability as keyof typeof GROWWMATICS_CAPABILITIES]?.label}` : 'changed by you in Google'}
+                          {f.growwmaticsCapability ? `Growwmatics AI: ${GROWWMATICS_CAPABILITIES[f.growwmaticsCapability as keyof typeof GROWWMATICS_CAPABILITIES]?.label}` : 'changed by you in Google'}
                         </div>
                         {task && <div className="ml-3.5 mt-1.5"><TaskFixAction task={task} onMarkDone={markDone} compact /></div>}
                       </li>
@@ -1059,7 +1059,7 @@ export default function AuditReportGrexa({
           </button>
         </div>
         <div className="px-8 py-2.5 flex items-center justify-between bg-black/20">
-          <span className="text-xs text-on-primary-container/70">GrowwMatics AI · AI-Powered Google Business Growth Platform</span>
+          <span className="text-xs text-on-primary-container/70">Growwmatics AI · AI-Powered Google Business Growth Platform</span>
         </div>
       </div>
 

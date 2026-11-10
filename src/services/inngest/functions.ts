@@ -2935,7 +2935,7 @@ export const salesNurtureRequested = inngest.createFunction(
         let res;
         if (WA_TEMPLATES.salesIntro) {
           const business: any = await Business.findById(convo.businessId).select('name').lean();
-          sentText = `Hi ${convo.leadName || 'there'}, this is GrowwMatics AI 👋 We just completed your free Google Business Profile audit for ${business?.name || 'your business'}. Reply YES and I'll share the key findings right here on WhatsApp.`;
+          sentText = `Hi ${convo.leadName || 'there'}, this is Growwmatics AI 👋 We just completed your free Google Business Profile audit for ${business?.name || 'your business'}. Reply YES and I'll share the key findings right here on WhatsApp.`;
           res = await sendTemplateMessage(convo.leadPhone, WA_TEMPLATES.salesIntro, {
             '1': convo.leadName || 'there',
             '2': business?.name || 'your business',
@@ -3726,8 +3726,8 @@ async function bookConfirmedSlot(
       phone: convo.leadPhone,
       dateLabel: friendlyDateLabel(slot.date),
       timeLabel: friendlyTimeLabel(slot.time),
-      title: `GrowwMatics Demo — ${details.businessName || name}`,
-      description: `Lead: ${name}\nBusiness: ${details.businessName || ''}\nPhone: ${convo.leadPhone}\nBooked by the GrowwMatics demo agent.`,
+      title: `Growwmatics AI Demo — ${details.businessName || name}`,
+      description: `Lead: ${name}\nBusiness: ${details.businessName || ''}\nPhone: ${convo.leadPhone}\nBooked by the Growwmatics AI demo agent.`,
       start: slot.startUtc,
       durationMinutes,
       attendeeEmail: details.email || undefined,
@@ -3952,11 +3952,11 @@ async function handleBookedReply(convo: any, body: string, config: any): Promise
     // Never describe a demo that is no longer on as booked.
     if (booking?.status === 'Cancelled') {
       convo.status = 'stopped';
-      await deliverBookingReply(convo, `Your Growwmatics demo${when ? ` on ${when}` : ''} was cancelled. If you'd still like one, reply DEMO and we'll find a new time.`);
+      await deliverBookingReply(convo, `Your Growwmatics AI demo${when ? ` on ${when}` : ''} was cancelled. If you'd still like one, reply DEMO and we'll find a new time.`);
       return;
     }
     if (booking?.status === 'Rescheduled') {
-      await deliverBookingReply(convo, `Your Growwmatics demo${when ? ` on ${when}` : ''} needs a new time. Reply RESCHEDULE and I'll share the open slots.`);
+      await deliverBookingReply(convo, `Your Growwmatics AI demo${when ? ` on ${when}` : ''} needs a new time. Reply RESCHEDULE and I'll share the open slots.`);
       return;
     }
     // Answer what they actually asked (grounded, never moving the booking) —
@@ -4488,7 +4488,7 @@ export const criticalAlertWorker = inngest.createFunction(
           body: `${business.name || 'Your business'} just received a ${typeof rating === 'number' ? `${rating}★` : 'critical'} review on Google. A quick, polite reply can help protect your rating.`,
           linkLabel: 'View reviews',
           link: appLink('/dashboard/reviews'),
-          noLinkText: 'Open Reviews in your Growwmatics dashboard to reply.',
+          noLinkText: 'Open Reviews in your Growwmatics AI dashboard to reply.',
         }),
       });
     });
@@ -4588,7 +4588,7 @@ export const scheduleLeadFollowUpsJob = inngest.createFunction(
           body: `You have a new lead: ${lead.name || lead.phone || 'a new contact'} (via ${lead.source}). Following up soon gives you the best chance of winning them.`,
           linkLabel: 'View lead',
           link: appLink('/dashboard/crm'),
-          noLinkText: 'Open your Growwmatics CRM to follow up.',
+          noLinkText: 'Open your Growwmatics AI CRM to follow up.',
         }),
       });
     });
@@ -4712,7 +4712,7 @@ export const processDemoBooking = inngest.createFunction(
         const { buildDemoConfirmationEmailHtml } = await import('@/services/demo/demoConfirmationEmail');
         const result = await sendTransactionalEmail(
           booking.email,
-          'Demo Booking Confirmed - GrowwMatics AI',
+          'Demo Booking Confirmed - Growwmatics AI',
           buildDemoConfirmationEmailHtml({
             name: booking.name || 'there',
             date: booking.date || '',
@@ -5574,7 +5574,7 @@ async function buildMessageForAction(action: any): Promise<string> {
     const when = reminderType === '15m' ? 'in about 15 minutes' : reminderType === '1h' ? 'in about an hour' : 'tomorrow';
     const tz = displayTimezone(booking.timezone);
     const linkLine = booking.meetingLink ? `\n\nJoin here: ${booking.meetingLink}` : '';
-    return `Hi ${firstName(booking.name)}! Just a reminder that your GrowwMatics demo is ${when} (${booking.date} at ${booking.timeSlot} ${tz}).${linkLine}`;
+    return `Hi ${firstName(booking.name)}! Just a reminder that your Growwmatics AI demo is ${when} (${booking.date} at ${booking.timeSlot} ${tz}).${linkLine}`;
   }
 
   const conversationId = action.payload?.conversationId;

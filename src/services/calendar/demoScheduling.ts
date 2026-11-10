@@ -459,7 +459,7 @@ export function bookingIdempotencyKey(leadId: string, startUtc: Date): string {
 
 export function confirmationCopy(input: { whenLabel: string; meetingLink: string }): string | null {
   if (!input.meetingLink.startsWith('https://')) return null;
-  return `Your GrowwMatics demo is confirmed for ${input.whenLabel}.\n\nYou'll meet with our team via Google Meet.\n\nJoin here: ${input.meetingLink}\n\nWe'll remind you before the demo.`;
+  return `Your Growwmatics AI demo is confirmed for ${input.whenLabel}.\n\nYou'll meet with our team via Google Meet.\n\nJoin here: ${input.meetingLink}\n\nWe'll remind you before the demo.`;
 }
 
 export function reminderShouldSend(input: {

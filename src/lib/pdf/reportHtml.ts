@@ -362,7 +362,7 @@ function renderConsultantSections(
     const descKw = chips(draft.descriptionKeywords || [], '#f1f5f9', '#475569');
     const platforms = (draft.platformGaps || []).map((p: any) => `<li style="font-size:11px;color:#64748b;"><b style="color:#0f172a;">${h(p.platform)}</b> — ${h(p.why || '')}</li>`).join('');
     parts.push(bar(sec(), 'GBP PROFILE GAP ANALYSIS') + card(
-      `<p style="font-size:11px;color:#64748b;margin:0 0 10px;">Drafts for ${h(businessName)} only — nothing is changed on your listing from this report. Once connected, GrowwMatics can apply these to your Google profile — description, services, categories, hours, attributes and booking link — after you approve each one in Profile optimization.</p>
+      `<p style="font-size:11px;color:#64748b;margin:0 0 10px;">Drafts for ${h(businessName)} only — nothing is changed on your listing from this report. Once connected, Growwmatics AI can apply these to your Google profile — description, services, categories, hours, attributes and booking link — after you approve each one in Profile optimization.</p>
        ${gaps}
        ${descKw ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">The 750-char description must embed</div>${descKw}</div>` : ''}
        ${attrs ? `<div style="margin-top:8px;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${RANK_RED};margin-bottom:4px;">GBP attributes to set</div>${attrs}</div>` : ''}
@@ -410,7 +410,7 @@ function renderConsultantSections(
   if (grounded && draft.suggestedQas?.length) {
     const qas = draft.suggestedQas.map((qa: any) =>
       `<div style="padding:8px 0;border-top:1px solid #f1f5f9;"><div style="font-size:11px;font-weight:600;color:#0f172a;">${h(qa.q)}</div><div style="font-size:11px;color:#64748b;margin-top:2px;">${h(qa.a)}</div></div>`).join('');
-    parts.push(bar(sec(), 'SUGGESTED GOOGLE Q&AS') + card(`<p style="font-size:11px;color:#64748b;margin:0 0 6px;">For you to add yourself — GrowwMatics does not post Q&amp;As. Answers marked [Owner to confirm] need your facts before use.</p>${qas}`));
+    parts.push(bar(sec(), 'SUGGESTED GOOGLE Q&AS') + card(`<p style="font-size:11px;color:#64748b;margin:0 0 6px;">For you to add yourself — Growwmatics AI does not post Q&amp;As. Answers marked [Owner to confirm] need your facts before use.</p>${qas}`));
   }
 
   // Projected improvement timeline — grounded drafts only (measured today +
@@ -608,7 +608,7 @@ export function buildReportHtml(ctx: ReportContext): string {
       <span style="font-size:13px;font-weight:600;color:#374151;">Google Search Rank Report for Your Business Profile</span>
     </div>
     <div style="background:linear-gradient(135deg,#62bd32,#06b34c);border-radius:6px;padding:4px 10px;">
-      <span style="font-size:11px;font-weight:700;color:#fff;letter-spacing:0.5px;">GrowwMatics AI</span>
+      <span style="font-size:11px;font-weight:700;color:#fff;letter-spacing:0.5px;">Growwmatics AI</span>
     </div>
   </div>
   <div style="padding:16px 20px;">
@@ -789,7 +789,7 @@ export function buildReportHtml(ctx: ReportContext): string {
               ? (profileFindings.length > 0
                   ? profileFindings.map((f: any) => `<li style="margin-bottom:8px;">
                 <div style="display:flex;align-items:center;gap:8px;"><span style="width:6px;height:6px;border-radius:50%;background:${BRAND_BAD};flex-shrink:0;display:inline-block;"></span><span style="font-size:12px;color:${BRAND_BAD};font-weight:500;">${h(f.title)}</span></div>
-                <div style="font-size:10px;color:#94a3b8;margin-left:14px;">Evidence: ${h(f.evidence)} · ${h(ACTIONABILITY_LABEL[f.actionability] || f.actionability)} · ${h(f.growwmaticsCapability ? `GrowwMatics: ${(GROWWMATICS_CAPABILITIES as any)[f.growwmaticsCapability]?.label}` : 'changed by you in Google')}</div>
+                <div style="font-size:10px;color:#94a3b8;margin-left:14px;">Evidence: ${h(f.evidence)} · ${h(ACTIONABILITY_LABEL[f.actionability] || f.actionability)} · ${h(f.growwmaticsCapability ? `Growwmatics AI: ${(GROWWMATICS_CAPABILITIES as any)[f.growwmaticsCapability]?.label}` : 'changed by you in Google')}</div>
               </li>`).join('')
                   : `<li style="font-size:12px;color:${BRAND_GOOD};font-weight:500;">No gaps found in the fields we could check</li>`)
               : missingFields.length > 0
@@ -993,7 +993,7 @@ export function buildReportHtml(ctx: ReportContext): string {
   const isFullAudit = (data.seoPlanDraft as any)?.depth === 'full';
   const confidentialFooter = isFullAudit
     ? `<div style="margin-top:14px;padding:14px 18px;background:#1e293b;color:#94a3b8;border-radius:12px;font-size:10px;line-height:1.6;">
-        GrowwMatics AI<br/>
+        Growwmatics AI<br/>
         GBP Full Audit Report — ${h(audit.businessName)} · ${genDate}<br/>
         Confidential — prepared exclusively for the client named above.
       </div>`
@@ -1014,7 +1014,7 @@ export function buildReportHtml(ctx: ReportContext): string {
     </div>
   </div>
   <div style="padding:8px 30px;background:rgba(0,0,0,0.15);display:flex;align-items:center;justify-content:space-between;">
-    <span style="font-size:10px;color:rgba(255,255,255,0.6);">GrowwMatics AI · AI-Powered Google Business Growth Platform</span>
+    <span style="font-size:10px;color:rgba(255,255,255,0.6);">Growwmatics AI · AI-Powered Google Business Growth Platform</span>
     <span style="font-size:10px;color:rgba(255,255,255,0.4);">Report Generated ${genDate}</span>
   </div>
 </div>`;
@@ -1025,13 +1025,13 @@ export function buildReportHtml(ctx: ReportContext): string {
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>GrowwMatics AI Report – ${h(audit.businessName)}</title>
+<title>Growwmatics AI Report – ${h(audit.businessName)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"/>
 <style>${css}</style>
 </head>
 <body>
-${getBrandLogoDataUri() ? `<div class="gm-watermark"><img src="${getBrandLogoDataUri()}" alt="GrowwMatics"/></div>` : ''}
+${getBrandLogoDataUri() ? `<div class="gm-watermark"><img src="${getBrandLogoDataUri()}" alt="Growwmatics AI"/></div>` : ''}
 ${legacy ? `<div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:11px;color:#475569;">${h(LEGACY_REPORT_NOTICE)}</div>` : ''}
 ${headerHtml}
 ${heroHtml}
@@ -1132,12 +1132,12 @@ function renderMonthly(m: any): string {
       box(`Still open (${m.issueProgress.stillOpen.length})`, m.issueProgress.stillOpen.length ? li(m.issueProgress.stillOpen.map((x: any) => `${x.title} — ${x.reason}`)) : p('Nothing left over from last report.')),
     ].join('') : ''}
     ${m.keywordRankings?.rows?.length ? box('Keyword rankings', p(`${keywordRankingSummary(m.keywordRankings)} · same keyword, location and search grid as last month.`) + li(m.keywordRankings.rows.map((r: any) => `${r.keyword} (${r.area}): ${r.previous} → ${r.current}${r.movement ? ` (${r.movement})` : ''} — ${r.status}${r.history ? ` · ${r.history}` : ''}`))) : ''}
-    ${box('What changed this month', m.changes?.length ? li(m.changes.map((c: any) => `${c.what}: ${c.previous} → ${c.current} (${c.actor === 'Unknown' ? 'not recorded' : c.actor === 'Owner' ? 'you' : 'GrowwMatics'})`)) : p('No verified profile changes were detected between the two audits.'))}
-    ${box('What GrowwMatics optimized', m.growwmaticsOptimized?.length ? li(m.growwmaticsOptimized.map((x: any) => `${x.count} ${x.what}`)) : p('No GrowwMatics actions reached your Google profile this period.'))}
-    ${box('What you optimized', m.ownerOptimized?.length ? li(m.ownerOptimized.map((x: any) => `${x.count} ${x.what}`)) : p('No owner actions were recorded through GrowwMatics this period.'))}
+    ${box('What changed this month', m.changes?.length ? li(m.changes.map((c: any) => `${c.what}: ${c.previous} → ${c.current} (${c.actor === 'Unknown' ? 'not recorded' : c.actor === 'Owner' ? 'you' : 'Growwmatics AI'})`)) : p('No verified profile changes were detected between the two audits.'))}
+    ${box('What Growwmatics AI optimized', m.growwmaticsOptimized?.length ? li(m.growwmaticsOptimized.map((x: any) => `${x.count} ${x.what}`)) : p('No Growwmatics AI actions reached your Google profile this period.'))}
+    ${box('What you optimized', m.ownerOptimized?.length ? li(m.ownerOptimized.map((x: any) => `${x.count} ${x.what}`)) : p('No owner actions were recorded through Growwmatics AI this period.'))}
     ${box('Google performance', perf)}
     ${box('Ranking progress', m.ranking?.length ? li(m.ranking.map((x: any) => `${x.metric}: ${x.before} → ${x.after} (${x.change})`)) : p('Ranking data unavailable for comparison.'))}
-    ${box('Review activity', li([`New Google reviews: ${r.newReviews}`, `Rating: ${r.ratingBefore ?? 'unknown'}★ → ${r.ratingAfter ?? 'unknown'}★`, `Replied by GrowwMatics: ${r.repliedByGrowwMatics} · you approved: ${r.repliedByOwnerViaGrowwMatics} · on Google directly: ${r.repliedOnGoogleDirectly}`, `New reviews without a reply: ${r.unanswered}`, `Review requests sent: ${r.reviewRequestsSent}`]))}
+    ${box('Review activity', li([`New Google reviews: ${r.newReviews}`, `Rating: ${r.ratingBefore ?? 'unknown'}★ → ${r.ratingAfter ?? 'unknown'}★`, `Replied by Growwmatics AI: ${r.repliedByGrowwMatics} · you approved: ${r.repliedByOwnerViaGrowwMatics} · on Google directly: ${r.repliedOnGoogleDirectly}`, `New reviews without a reply: ${r.unanswered}`, `Review requests sent: ${r.reviewRequestsSent}`]))}
     ${m.contentActivity ? box('Google posts this month', li(contentActivityLines(m.contentActivity))) : ''}
     ${box('Profile health', p(`${m.profileHealth?.completionPercentage != null ? `${m.profileHealth.completionPercentage}% of checked fields complete` : 'Profile completion not measured'}${m.profileHealth?.missing?.length ? ` · missing: ${m.profileHealth.missing.join(', ')}` : ''}${m.profileHealth?.unknown ? ` · ${m.profileHealth.unknown} could not be checked` : ''}`))}
     ${box('Completed plan', m.planCompleted?.length ? li(m.planCompleted.map((a: any) => `${a.action} — ${a.status}`)) : p('No plan actions have been completed with evidence yet.'))}

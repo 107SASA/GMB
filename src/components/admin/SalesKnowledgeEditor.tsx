@@ -187,7 +187,7 @@ export function SalesKnowledgeEditor({
 
       <Section
         title="Business overview"
-        desc="2–4 sentences: what GrowwMatics is, who it's for, the problem it solves."
+        desc="2–4 sentences: what Growwmatics AI is, who it's for, the problem it solves."
         onReset={() => resetField('businessOverview')}
       >
         <textarea
@@ -219,7 +219,7 @@ export function SalesKnowledgeEditor({
 
       <Section
         title="Customer problems"
-        desc="Common problems GrowwMatics addresses — one short phrase each."
+        desc="Common problems Growwmatics AI addresses — one short phrase each."
         onReset={() => resetField('customerProblems')}
       >
         <StringList
@@ -307,7 +307,7 @@ export function SalesKnowledgeEditor({
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <textarea rows={2} className={area} value={u.problem ?? ''} placeholder="Problem" onChange={(e) => setUseCase(i, { problem: e.target.value })} />
-                <textarea rows={2} className={area} value={u.solution ?? ''} placeholder="Solution (how GrowwMatics solves it)" onChange={(e) => setUseCase(i, { solution: e.target.value })} />
+                <textarea rows={2} className={area} value={u.solution ?? ''} placeholder="Solution (how Growwmatics AI solves it)" onChange={(e) => setUseCase(i, { solution: e.target.value })} />
                 <textarea rows={2} className={area} value={u.benefit ?? ''} placeholder="Benefit" onChange={(e) => setUseCase(i, { benefit: e.target.value })} />
                 <input className={input} value={u.idealCustomer ?? ''} placeholder="Ideal customer" onChange={(e) => setUseCase(i, { idealCustomer: e.target.value })} />
               </div>
@@ -404,7 +404,7 @@ export function SalesKnowledgeEditor({
         <textarea rows={3} className={area} value={k.subscriptionExplanation ?? ''} onChange={(e) => set('subscriptionExplanation', e.target.value)} />
       </Section>
 
-      <Section title="Limitations" desc="Honest statements of what GrowwMatics does NOT do." onReset={() => resetField('limitations')}>
+      <Section title="Limitations" desc="Honest statements of what Growwmatics AI does NOT do." onReset={() => resetField('limitations')}>
         <StringList items={k.limitations ?? []} onChange={(v) => set('limitations', v)} placeholder="e.g. Does not run Google or Meta ads" />
       </Section>
 

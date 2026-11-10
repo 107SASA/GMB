@@ -31,3 +31,19 @@ export function realBusinessFilter(): Record<string, unknown> {
 export function workspacePlanLabel(status: string | null | undefined): string | null {
   return status === 'active' ? 'Paid' : status === 'trial_active' ? 'Free trial' : status === 'past_due' ? 'Payment failed' : null;
 }
+
+/**
+ * The owner's most significant workspace: paid, then trial, then past due,
+ * then any. Shared by the Customers list and the customer detail page so they
+ * always show the same business.
+ */
+export function primaryBusinessByOwner<T extends { userId?: unknown; subscriptionStatus?: string }>(businesses: T[]): Record<string, T> {
+  const rank = (s?: string) => { const i = (CUSTOMER_STATUSES as readonly string[]).indexOf(s || ''); return i === -1 ? 9 : i; };
+  const map: Record<string, T> = {};
+  for (const b of businesses) {
+    if (!b.userId) continue;
+    const k = String(b.userId);
+    if (!map[k] || rank(b.subscriptionStatus) < rank(map[k].subscriptionStatus)) map[k] = b;
+  }
+  return map;
+}

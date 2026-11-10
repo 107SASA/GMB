@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from '@aws-sdk/client-s3';
 import crypto from 'crypto';
 
 /**
@@ -107,6 +107,38 @@ export async function uploadPublicObject(
   );
 
   return publicUrl(key);
+}
+
+/**
+ * Uploads a PRIVATE object (no public URL) and returns its key. For personal
+ * data such as scanned visiting cards — read back only through an
+ * authenticated route with getPrivateObject().
+ */
+export async function uploadPrivateObject(
+  body: Buffer | Uint8Array,
+  contentType: string,
+  keyPrefix: string,
+): Promise<string> {
+  const client = getClient();
+  const ext = EXT_BY_TYPE[contentType.toLowerCase()] || 'bin';
+  const key = `${keyPrefix.replace(/^\/|\/$/g, '')}/${Date.now()}-${crypto.randomBytes(8).toString('hex')}.${ext}`;
+  await client.send(
+    new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType, ACL: 'private' }),
+  );
+  return key;
+}
+
+/** Reads an object by key (private or public). Null when it doesn't exist. */
+export async function getPrivateObject(key: string): Promise<{ body: Buffer; contentType: string } | null> {
+  const client = getClient();
+  try {
+    const r: any = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    const bytes = await r.Body.transformToByteArray();
+    return { body: Buffer.from(bytes), contentType: r.ContentType || 'application/octet-stream' };
+  } catch (e: any) {
+    if (e?.name === 'NoSuchKey' || e?.$metadata?.httpStatusCode === 404) return null;
+    throw e;
+  }
 }
 
 /** Fetches a remote image (e.g. a generated thumbnail URL/data-URL) and re-hosts it publicly. */

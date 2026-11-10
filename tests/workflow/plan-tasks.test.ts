@@ -135,7 +135,7 @@ test('popup: hidden for this report once closed; another workspace\'s report is 
   assert.equal((await getTasks()).showPopup, false);
 });
 
-test('"I\'ve done this": only for work outside GrowwMatics, only in its own workspace', async (t) => {
+test('"I\'ve done this": only for work outside Growwmatics AI, only in its own workspace', async (t) => {
   if (skipReason) return t.skip(skipReason);
   const params = (id: string) => ({ params: Promise.resolve({ id }) });
   const refused = await m.done.POST(post('/x'), params(ids.services));

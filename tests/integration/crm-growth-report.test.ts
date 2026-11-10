@@ -222,7 +222,7 @@ test('wording: data vs interpretation, never causal or invented money', () => {
     L({ createdAt: '2026-08-02T10:00:00Z' }),
   ], { tasks: [{ status: 'pending', scheduledFor: '2026-09-05T10:00:00Z', leadId: 'x' }] });
   const all = [...r.summary.data, ...r.summary.interpretation, ...r.highlights, r.footer].join(' ');
-  assert.doesNotMatch(all, /GrowwMatics (generated|earned|made|brought)|you lost|lost ₹|could have|potential revenue|estimated/i);
+  assert.doesNotMatch(all, /Growwmatics AI (generated|earned|made|brought)|you lost|lost ₹|could have|potential revenue|estimated/i);
   assert.ok(r.summary.interpretation.some((s) => /1 follow-up due in this period was not completed/.test(s)));
   assert.equal(r.footer, 'Based on recorded CRM activity for September 2026.');
 });

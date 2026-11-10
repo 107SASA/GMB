@@ -71,7 +71,7 @@ export function PricingCards() {
         <div className="mb-6 flex-grow-0">
           <h3 className="text-[10px] font-bold text-primary mb-2 uppercase tracking-widest">One Simple Plan</h3>
           <h4 className="font-heading text-xl font-bold text-on-surface mb-2">
-            {plan?.displayName ?? "GrowwMatics AI"}
+            {plan?.displayName ?? "Growwmatics AI"}
           </h4>
           {durations.length > 1 && (
             <div className="flex flex-wrap gap-1.5 mb-4">

@@ -105,7 +105,7 @@ export async function bookAppointment(
         body: `${input.customerName || 'A customer'} booked an appointment through your WhatsApp assistant for ${input.date} at ${input.time}${input.serviceRequested ? ` (${input.serviceRequested})` : ''}.`,
         linkLabel: 'View your dashboard',
         link: appLink('/dashboard'),
-        noLinkText: 'Open your Growwmatics dashboard for the details.',
+        noLinkText: 'Open your Growwmatics AI dashboard for the details.',
       }),
     });
   } catch (e: any) {

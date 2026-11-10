@@ -107,7 +107,7 @@ export function buildMobileReportView(audit: { auditData?: any; auditKind?: stri
   const m = d.monthly;
   const monthly: MobileReportView['monthly'] = m ? {
     period: m.period,
-    changes: (m.changes || []).map((c: any) => `${c.what}: ${c.previous} → ${c.current} (${c.actor === 'Unknown' ? 'not recorded' : c.actor === 'Owner' ? 'you' : 'GrowwMatics'})`),
+    changes: (m.changes || []).map((c: any) => `${c.what}: ${c.previous} → ${c.current} (${c.actor === 'Unknown' ? 'not recorded' : c.actor === 'Owner' ? 'you' : 'Growwmatics AI'})`),
     growwmatics: (m.growwmaticsOptimized || []).map((x: any) => `${x.count} ${x.what}`),
     owner: (m.ownerOptimized || []).map((x: any) => `${x.count} ${x.what}`),
     performance: m.performance?.status === 'unavailable' ? [] : (m.performance?.rows || []).map((x: any) => `${x.metric}: ${x.previous ?? 'not measured'} → ${x.current ?? 'not measured'}${x.pctChange != null ? ` (${x.pctChange > 0 ? '+' : ''}${x.pctChange}%)` : ''}`),

@@ -86,7 +86,7 @@ test('a paid charge → company invoice GM/<FY>/1001 → PDF emailed to the owne
   assert.equal(sent.sent, true);
   assert.equal(emails.length, 1);
   assert.equal(emails[0].to, 'asha@mulsetu.com');
-  assert.match(emails[0].subject, /Your GrowwMatics AI invoice GM\//);
+  assert.match(emails[0].subject, /Your Growwmatics AI invoice GM\//);
   const pdf: Buffer = emails[0].attachments[0].content;
   assert.equal(pdf.subarray(0, 5).toString(), '%PDF-', 'a real PDF is attached');
   assert.match(emails[0].attachments[0].filename, /^Invoice-GM-\d{4}-\d{2}-1001\.pdf$/);

@@ -164,7 +164,7 @@ export async function postReply(reviewId: string): Promise<PostReplyResult> {
       message:
         typeof data.message === 'string'
           ? data.message
-          : 'Approved in GrowwMatics — Google publishing has not been executed.',
+          : 'Approved in Growwmatics AI — Google publishing has not been executed.',
     };
   }
   if (data?.success === false) throw new Error(typeof data?.error === 'string' ? data.error : 'Could not post the reply.');

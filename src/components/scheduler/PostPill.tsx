@@ -134,7 +134,7 @@ export default function PostPill({ post, onPublish, onEditSave, onEditingChange 
       <div className="flex justify-between items-start">
         <span
           className="text-xs font-bold uppercase tracking-wider"
-          title={post.status === 'blocked' ? (post.failureReason || 'Scheduled in GrowwMatics — Google publishing has not been executed.') : undefined}
+          title={post.status === 'blocked' ? (post.failureReason || 'Scheduled in Growwmatics AI — Google publishing has not been executed.') : undefined}
         >
           {post.status === 'blocked' ? 'not on Google' : post.status}
         </span>

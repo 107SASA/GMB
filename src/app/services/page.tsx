@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: "/services" },
   openGraph: {
-    title: "Local SEO & Digital Marketing Services | GrowwMatics AI",
+    title: "Local SEO & Digital Marketing Services | Growwmatics AI",
     description:
       "SEO, Performance Marketing, Marketing Automation, Process Implementation and Business Consultation for local businesses.",
     url: "/services",

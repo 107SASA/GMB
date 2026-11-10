@@ -55,7 +55,7 @@ test('content names the top fix in plain words; how many more are waiting', () =
   const c = reminderContent(tasks, 'whatsapp_3')!;
   assert.equal(c.task.id, 'services');
   assert.equal(c.headline, 'Your services aren’t on your Google profile yet');
-  assert.equal(c.detail, 'It takes about a minute to approve. 1 more fix is waiting too.', 'GrowwMatics’ own posts are not counted');
+  assert.equal(c.detail, 'It takes about a minute to approve. 1 more fix is waiting too.', 'Growwmatics AI’ own posts are not counted');
   assert.equal(reminderContent(tasks, 'whatsapp_7')!.title, 'Last reminder');
 });
 
@@ -71,7 +71,7 @@ test('day 0 in-app: how many fixes and how many are one-tap approvals', () => {
   assert.match(c.detail, /^2 are ready/);
 });
 
-test('nothing to send when every owner fix is done (GrowwMatics work alone never triggers one)', () => {
+test('nothing to send when every owner fix is done (Growwmatics AI work alone never triggers one)', () => {
   const tasks = [task('s', 'update_services', 'EXECUTED'), task('h', 'update_hours', 'VERIFIED'), task('p', 'google_posts', 'READY')];
   assert.equal(tasksNeedingOwner(tasks).length, 0);
   assert.equal(reminderContent(tasks, 'whatsapp_3'), null);

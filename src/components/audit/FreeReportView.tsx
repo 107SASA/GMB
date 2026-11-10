@@ -130,7 +130,7 @@ function FixTags({ finding }: { finding: any }) {
         </span>
       )}
       <span className="text-[11px] px-1.5 py-0.5 rounded bg-primary-fixed text-primary">
-        {cap && GROWWMATICS_CAPABILITIES[cap] ? `GrowwMatics: ${GROWWMATICS_CAPABILITIES[cap].label}` : 'Changed by you in Google — not automated by GrowwMatics'}
+        {cap && GROWWMATICS_CAPABILITIES[cap] ? `Growwmatics AI: ${GROWWMATICS_CAPABILITIES[cap].label}` : 'Changed by you in Google — not automated by Growwmatics AI'}
       </span>
     </span>
   );
@@ -210,7 +210,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
               <MaterialIcon name="bolt" size={16} className="text-on-primary" />
             </div>
-            <span className="font-heading font-bold text-on-surface whitespace-nowrap">GrowwMatics AI</span>
+            <span className="font-heading font-bold text-on-surface whitespace-nowrap">Growwmatics AI</span>
             <span className="hidden sm:inline text-outline mx-2">·</span>
             <span className="hidden sm:inline text-sm text-on-surface-variant truncate">Your Free Business Report</span>
           </div>

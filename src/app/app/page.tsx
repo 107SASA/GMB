@@ -7,7 +7,7 @@ import { appStoreUrl, playStoreUrl } from "@/lib/appStoreLinks";
 export const metadata: Metadata = {
   title: "Get the App",
   description:
-    "Download the GrowwMatics AI mobile app to manage your Google Business Profile, reviews, content, and leads from your phone.",
+    "Download the Growwmatics AI mobile app to manage your Google Business Profile, reviews, content, and leads from your phone.",
   alternates: { canonical: "/app" },
 };
 
@@ -31,7 +31,7 @@ export default function GetTheAppPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-6 items-start">
             <div className="lg:col-span-7">
               <p className="mkt-label inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-(--mkt-line) bg-white text-[#006e2c] mb-6">
-                GrowwMatics AI — Mobile App
+                Growwmatics AI — Mobile App
               </p>
               <h1 className="font-mkt-display text-[2rem] sm:text-5xl md:text-6xl font-semibold text-[#101613] leading-[1.08] tracking-tight mb-6">
                 Run your growth from{" "}

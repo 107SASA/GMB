@@ -325,7 +325,7 @@ test('integrity: monthly report — every number traces to evidence, sections pr
   const fx = load('mulsetu-monthly');
   const s = await surfaces(fx);
   assertIntegrity('mulsetu-monthly', s, fx.auditData);
-  for (const t of ['What changed this month', 'What GrowwMatics optimized', 'What you optimized', 'Google performance', 'Ranking progress', 'Review activity', 'Profile health', 'Completed plan', 'Pending plan', 'Issues that remain']) {
+  for (const t of ['What changed this month', 'What Growwmatics AI optimized', 'What you optimized', 'Google performance', 'Ranking progress', 'Review activity', 'Profile health', 'Completed plan', 'Pending plan', 'Issues that remain']) {
     assert.ok(s.dashboard.includes(t), `dashboard: ${t}`);
     assert.ok(s.pdf.includes(t), `pdf: ${t}`);
   }

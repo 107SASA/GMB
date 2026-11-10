@@ -70,7 +70,7 @@ const TONE_CLS = {
 const SOURCE_LABEL: Record<string, string> = {
   GOOGLE_EXTERNAL_CHANGE: 'changed on Google',
   GOOGLE_SUGGESTED_EDIT: 'updated by Google',
-  GROWMATICS_EDIT: 'edited in GrowwMatics',
+  GROWMATICS_EDIT: 'edited in Growwmatics AI',
 };
 
 function SectionNote({ meta }: { meta?: SectionMeta }) {
@@ -188,7 +188,7 @@ export default function GbpIntelligencePanel({ businessId }: { businessId?: stri
               {c.distanceMeters != null ? ` · ${c.distanceMeters} m away` : ''} · {c.signals.join(', ')} ({c.confidence} confidence)
             </div>
           ))}
-          <p className="text-xs text-outline">Verify whether this Google listing represents the same business before taking action. GrowwMatics never merges or removes listings.</p>
+          <p className="text-xs text-outline">Verify whether this Google listing represents the same business before taking action. Growwmatics AI never merges or removes listings.</p>
         </div>
       )}
 

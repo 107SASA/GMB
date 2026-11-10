@@ -13,7 +13,7 @@ import dbConnect from '@/lib/mongodb';
  * may already have the post and a retry would duplicate it.
  */
 
-export const BLOCKED_REASON = 'Scheduled in GrowwMatics — Google publishing has not been executed. Live Google Business Profile writes are turned off, so this post is not on Google.';
+export const BLOCKED_REASON = 'Scheduled in Growwmatics AI — Google publishing has not been executed. Live Google Business Profile writes are turned off, so this post is not on Google.';
 export const STALE_PUBLISHING_MS = 30 * 60_000;
 
 export type PublishOutcome =

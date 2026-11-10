@@ -130,7 +130,7 @@ export async function generateAIAudit(input: AuditAIInput, options: AuditEngineO
   const findingLines = input.findings
     .filter((f) => f.category !== 'data_quality')
     .map((f) => {
-      const cap = f.growwmaticsCapability ? `GrowwMatics can help: ${GROWWMATICS_CAPABILITIES[f.growwmaticsCapability].label}` : 'GrowwMatics cannot do this directly';
+      const cap = f.growwmaticsCapability ? `Growwmatics AI can help: ${GROWWMATICS_CAPABILITIES[f.growwmaticsCapability].label}` : 'Growwmatics AI cannot do this directly';
       return `- {${f.id}} ${f.title} | evidence: ${f.evidence} | severity: ${f.severity} | ${f.actionability} | ${cap}`;
     })
     .join('\n');
@@ -147,7 +147,7 @@ HARD RULES
 4. A high rating from a very small number of reviews is an excellent current rating with a small sample — never an "established" or "strong" reputation.
 5. A fact that could not be checked is unknown, not missing. Never describe unknown profile fields as gaps.${input.gbpRead ? '' : ' The Google Business Profile content (services, description, categories, attributes) was NOT read: never say it lacks or is missing something unless the EVIDENCE says "missing". Website evidence is what the website SAYS.'}
 6. ${hasReviewText ? 'Review themes must come only from the REVIEW TEXT below.' : 'There is NO review text. Return "reviewThemes": "unknown".'}
-7. Only say GrowwMatics can help where the finding says so.
+7. Only say Growwmatics AI can help where the finding says so.
 
 BUSINESS: ${input.business.name} — ${input.business.category}, ${input.business.location}${input.business.tier ? ` (${input.business.tier})` : ''}
 PROFILE COMPLETION: ${input.profileCompletionFact}
@@ -305,7 +305,7 @@ export function postProcessAIAudit(
     tasks.dropped.forEach((d) => repairs.push(`dropped plan task ${d}`));
     const kept = tasks.kept.map((x: any) => x.t).filter((t: string) => {
       const bad = claimsUnsupportedCapability(t);
-      if (bad) repairs.push(`dropped plan task promising an unsupported GrowwMatics action: ${t.slice(0, 60)}`);
+      if (bad) repairs.push(`dropped plan task promising an unsupported Growwmatics AI action: ${t.slice(0, 60)}`);
       return !bad && planTextOk(t, 'plan task');
     });
     // "Expected outcome" is shown to customers — it may describe the action's

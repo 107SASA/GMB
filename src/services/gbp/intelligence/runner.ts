@@ -204,7 +204,7 @@ export async function syncCompleteGbpIntelligence(
       if (material.length) {
         await notifyBusinessUsers(businessId, {
           type: 'gbp_external_change',
-          title: 'Your Google listing changed outside GrowwMatics',
+          title: 'Your Google listing changed outside Growwmatics AI',
           body: `Changed: ${material.slice(0, 3).map((c) => changeFieldLabel(c.field)).join(', ')}${material.length > 3 ? ` and ${material.length - 3} more` : ''}. Check that these are correct.`,
           link: '/dashboard/gbp-profile',
         });

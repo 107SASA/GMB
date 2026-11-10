@@ -9,12 +9,12 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Pricing — Google Business Profile Management Plan",
   description:
-    "Simple, single-plan pricing for GrowwMatics AI — Google Business Profile automation, AI content, review management, and CRM, all included.",
-  keywords: ["GrowwMatics AI pricing", "Google Business Profile pricing", "local SEO software pricing"],
+    "Simple, single-plan pricing for Growwmatics AI — Google Business Profile automation, AI content, review management, and CRM, all included.",
+  keywords: ["Growwmatics AI pricing", "Google Business Profile pricing", "local SEO software pricing"],
   alternates: { canonical: "/pricing" },
   openGraph: {
-    title: "Pricing — Google Business Profile Management Plan | GrowwMatics AI",
-    description: "Simple, single-plan pricing for GrowwMatics AI.",
+    title: "Pricing — Google Business Profile Management Plan | Growwmatics AI",
+    description: "Simple, single-plan pricing for Growwmatics AI.",
     url: "/pricing",
     type: "website",
   },

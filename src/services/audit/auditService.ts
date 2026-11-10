@@ -1378,7 +1378,7 @@ async function processAuditJobInner(auditId: string) {
           monthlyContext = cmp.rows.filter((r) => r.change !== 'not_comparable').map((r) => `${r.metric}: ${r.before} → ${r.after} (${r.change})`);
           const ex = await collectExecutions(audit.businessId.toString(), new Date(prevForAI.createdAt), new Date());
           const gm = [ex.posts.length && `${ex.posts.length} Google posts published`, ex.replies.filter((r) => r.by !== 'external').length && `${ex.replies.filter((r) => r.by !== 'external').length} review replies posted`, ex.reviewRequests.sent && `${ex.reviewRequests.sent} review requests sent`].filter(Boolean);
-          if (gm.length) monthlyContext.push(`Executed through GrowwMatics since the last audit: ${gm.join(', ')}`);
+          if (gm.length) monthlyContext.push(`Executed through Growwmatics AI since the last audit: ${gm.join(', ')}`);
           // Per service area, like-for-like with the previous audit (measured lines only).
           if (areaVisibility) {
             const { compareAreaVisibility } = require('./areaVisibility');

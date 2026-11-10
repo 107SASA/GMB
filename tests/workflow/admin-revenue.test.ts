@@ -34,7 +34,7 @@ before(async () => {
     BillingEvent: (await import('../../src/models/BillingEvent')).default,
   };
   await m.BillingPlan.collection.insertOne({
-    key: 'default', displayName: 'Growwmatics Pro', priceInr: 1499,
+    key: 'default', displayName: 'Growwmatics AI Pro', priceInr: 1499,
     durations: [
       { cycle: 'monthly', priceInr: 1499, enabled: true },
       { cycle: 'quarterly', priceInr: 3999, enabled: false },

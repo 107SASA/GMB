@@ -100,7 +100,7 @@ export function notificationBodyForTemplate(body: string): { name: string; text:
     }
   }
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
-  if (lines.length && /^[—–-]\s*Team Growwmatics\.?$/i.test(lines[lines.length - 1].trim())) lines.pop();
+  if (lines.length && /^[—–-]\s*Team Growwmatics AI\.?$/i.test(lines[lines.length - 1].trim())) lines.pop();
   const kept = lines.map((l) => l.trim()).filter(Boolean);
   const text = sanitizeWhatsAppTemplateVariable(
     kept.map((l, i) => (i < kept.length - 1 && /^\*[^*]+\*$/.test(l) ? `${l} —` : l)).join(' ')
@@ -135,7 +135,7 @@ export function composeOwnerMessage(input: {
     '',
     input.link ? `${input.linkLabel}: ${input.link}` : input.noLinkText,
     '',
-    '— Team Growwmatics',
+    '— Team Growwmatics AI',
   ].join('\n');
 }
 
@@ -194,7 +194,7 @@ export function demoConfirmationText(input: {
   timezone?: string | null;
 }): string {
   const tz = displayTimezone(input.timezone);
-  return `Your GrowwMatics demo is confirmed for ${input.whenLabel} (${tz}).\n\nYou'll meet with our team via Google Meet.\n\nJoin here: ${input.meetingLink}\n\nWe'll remind you before the demo. Reply here anytime to reschedule or cancel.`;
+  return `Your Growwmatics AI demo is confirmed for ${input.whenLabel} (${tz}).\n\nYou'll meet with our team via Google Meet.\n\nJoin here: ${input.meetingLink}\n\nWe'll remind you before the demo. Reply here anytime to reschedule or cancel.`;
 }
 
 export function shouldDispatchConfirmation(input: {

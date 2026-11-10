@@ -103,7 +103,7 @@ test('a customer asking for help: support chat, acknowledgement recorded, needs 
   const thread: any = await threadOf(phone);
   assert.equal(String(thread.userId), String(userId), 'linked to the account (purge, customer view)');
   const msgs = await messagesOf(phone);
-  assert.match(msgs.at(-1).text, /Thank you for contacting Growwmatics/);
+  assert.match(msgs.at(-1).text, /Thank you for contacting Growwmatics AI/);
 
   const detail = await m.inbox.inboxDetail(row.id);
   assert.equal(detail.contact.kind, 'support');

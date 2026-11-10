@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import { requireClient } from '@/lib/auth';
+import { VIEW_AS_COOKIE, decodeViewAs } from '@/lib/adminViewAs';
 
 export async function GET(req: Request) {
   try {
@@ -22,7 +23,20 @@ export async function GET(req: Request) {
     // so the default owner-scoped behavior below is completely unchanged for
     // everyone else.
     const scope = new URL(req.url).searchParams.get('scope');
-    const businessFilter = scope === 'all' && (authResult.user as any).role === 'SUPER_ADMIN'
+    const isSuperAdmin = (authResult.user as any).role === 'SUPER_ADMIN';
+
+    // "Login as customer" — the admin's dashboard must show the CUSTOMER's
+    // workspace, not the admin's own list (which doesn't contain it, so the
+    // switcher used to fall back to the admin's first business while every
+    // API call still hit the customer's — two different businesses on one screen).
+    const viewAs = isSuperAdmin && scope !== 'all' ? decodeViewAs(cookieStore.get(VIEW_AS_COOKIE)?.value) : null;
+    if (viewAs) {
+      const viewed = await Business.find({ _id: viewAs.businessId, isDeleted: { $ne: true } }).lean();
+      if (viewed.length > 0) {
+        return NextResponse.json({ success: true, businesses: viewed, activeBusinessId: viewAs.businessId, viewingAs: true }, { status: 200 });
+      }
+    }
+    const businessFilter = scope === 'all' && isSuperAdmin
       ? { isDeleted: { $ne: true } }
       : { userId: authResult.userId, isDeleted: { $ne: true } };
 

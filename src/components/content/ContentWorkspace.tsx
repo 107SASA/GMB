@@ -221,7 +221,7 @@ export default function ContentWorkspace() {
         throw new Error(json.error ?? 'Publish failed');
       }
       const json = await res.json().catch(() => ({}));
-      if (json.blocked) toast.message(json.message ?? 'Scheduled in GrowwMatics — Google publishing has not been executed.');
+      if (json.blocked) toast.message(json.message ?? 'Scheduled in Growwmatics AI — Google publishing has not been executed.');
       else toast.success('Published to your Google Business Profile.');
       setHistoryRefreshKey((k) => k + 1);
     } catch (err: any) {

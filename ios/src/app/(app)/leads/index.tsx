@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter, type Href } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FlatList, Keyboard, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import {
@@ -20,8 +21,9 @@ import { useBusiness } from '@/business/BusinessContext';
 import { AppHeader } from '@/components/app-header';
 import { InvestmentSheet } from '@/components/investment-sheet';
 import { Badge, Chip, EmptyState, Field, Screen, Skeleton } from '@/components/ui';
+import { listQueuedCards } from '@/lib/cardQueue';
 import { timeAgo } from '@/lib/format';
-import { useTheme } from '@/lib/theme';
+import { BRAND_GRADIENT, useTheme } from '@/lib/theme';
 
 function stageLabel(stages: LeadStages | undefined, lead: Lead): string {
   return lead.subStage || groupLabel(stages, lead.lifeCycleStage || 'initial');
@@ -105,6 +107,23 @@ export default function LeadsScreen() {
   const t = useTheme();
   const router = useRouter();
   const [search, setSearch] = useState('');
+  // Visiting cards photographed offline (lib/cardQueue.ts), not yet read.
+  const [waitingCards, setWaitingCards] = useState(0);
+  // Hide the floating scan button while typing (Android lifts it above the keyboard, over the list).
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardOpen(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardOpen(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      void listQueuedCards().then((q) => setWaitingCards(q.length));
+    }, [])
+  );
   // 'all' | lifecycle group; subFilter narrows to one sub-stage of that group.
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [subFilter, setSubFilter] = useState<string | null>(null);
@@ -162,7 +181,7 @@ export default function LeadsScreen() {
         if (!match) return false;
       }
       if (!q) return true;
-      return [lead.name, lead.phone, lead.email, lead.interest]
+      return [lead.name, lead.phone, lead.email, lead.interest, lead.businessCard?.company, lead.businessCard?.metAt]
         .filter((v): v is string => !!v)
         .some((v) => v.toLowerCase().includes(q));
     });
@@ -187,6 +206,30 @@ export default function LeadsScreen() {
           <CaptureAction icon="time-outline" label="Calls" href="/leads/recent-calls" />
         </ScrollView>
       </View>
+
+      {waitingCards > 0 && (
+        <Pressable
+          onPress={() => router.push('/leads/scan-card')}
+          style={{
+            marginHorizontal: 20,
+            marginBottom: 12,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: t.border,
+            backgroundColor: t.card,
+            padding: 14,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <Ionicons name="card-outline" size={18} color={t.brandBright} />
+          <Text className="flex-1 font-sans-semibold text-sm text-zinc-200">
+            {waitingCards} visiting {waitingCards === 1 ? 'card' : 'cards'} waiting to be read
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color={t.textFaint} />
+        </Pressable>
+      )}
 
       {(pendingCalls.data?.pendingCount ?? 0) > 0 && (
         <Pressable
@@ -353,7 +396,8 @@ export default function LeadsScreen() {
           data={filtered}
           keyExtractor={(l) => l._id}
           renderItem={({ item }) => <LeadCard lead={item} stages={stages} />}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24, flexGrow: 1 }}
+          // Bottom room so the floating scan button never covers the last lead.
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 104, flexGrow: 1 }}
           refreshControl={
             <RefreshControl
               refreshing={leads.isRefetching}
@@ -377,6 +421,43 @@ export default function LeadsScreen() {
           }
           keyboardShouldPersistTaps="handled"
         />
+      )}
+
+      {/* Floating "Scan visiting card" button */}
+      {!keyboardOpen && (
+      <Pressable
+        onPress={() => router.push('/leads/scan-card')}
+        accessibilityRole="button"
+        accessibilityLabel="Scan visiting card"
+        hitSlop={6}
+        // No `className` — react-native-css-interop can swallow onPress on
+        // styled Pressables (see components/ui.tsx).
+        style={{
+          position: 'absolute',
+          right: 20,
+          bottom: 20,
+          borderRadius: 999,
+          overflow: 'hidden',
+          shadowColor: '#000',
+          shadowOpacity: 0.3,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 6,
+        }}
+      >
+        <LinearGradient
+          colors={[...BRAND_GRADIENT]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          // minHeight (not height) so large system text grows the pill instead of clipping it.
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 56, paddingHorizontal: 20, paddingVertical: 10 }}
+        >
+          <Ionicons name="camera" size={22} color="#ffffff" />
+          <Text maxFontSizeMultiplier={1.4} numberOfLines={1} className="font-sans-bold text-base text-on-brand">
+            Scan card
+          </Text>
+        </LinearGradient>
+      </Pressable>
       )}
     </Screen>
   );

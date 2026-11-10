@@ -55,7 +55,7 @@ export async function POST(req: Request) {
     );
     const sent = await sendOtpMessage(
       user.phone,
-      `Your GrowwMatics verification code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`,
+      `Your Growwmatics AI verification code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`,
       otp
     );
     if (!sent.success) {

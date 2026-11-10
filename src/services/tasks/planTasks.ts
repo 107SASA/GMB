@@ -240,7 +240,7 @@ export interface TaskActionDoc extends TaskActionInput {
 const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOString() : null);
 
 const REASON: Record<TaskDisplayStatus, (a: TaskActionDoc) => string> = {
-  open: (a) => (taskActor(a.capability) === 'approve' ? 'Ready for your approval in GrowwMatics' : taskActor(a.capability) === 'automatic' ? 'GrowwMatics is on it' : 'Waiting for you'),
+  open: (a) => (taskActor(a.capability) === 'approve' ? 'Ready for your approval in Growwmatics AI' : taskActor(a.capability) === 'automatic' ? 'Growwmatics AI is on it' : 'Waiting for you'),
   waiting_approval: () => 'Drafted — approve it to send it to Google',
   done: (a) => (a.ownerMarkedDoneAt ? 'Marked done by you — the next report confirms it'
     : a.seenFixedOnGoogleAt && a.status !== 'EXECUTED' ? 'Fixed on your Google profile — the next report confirms it'

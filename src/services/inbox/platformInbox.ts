@@ -506,7 +506,7 @@ export async function sendInboxMessage(conversationRef: string, input: { text?: 
   const result = await withWhatsAppSendContext({ sender: 'team', userId, clientKey: input.clientKey }, async () => {
     if (!open) {
       if (!WA_TEMPLATES.notification) return { refused: true as const, error: 'The notification template is not configured.', status: 409 };
-      text = text || 'A GrowwMatics teammate sent you an update.';
+      text = text || 'A Growwmatics AI teammate sent you an update.';
       const built = buildNotificationVariables(recipientFirstName(lead?.name || thread?.name || convo?.leadName), text);
       if (!built.ok) return { refused: true as const, error: built.error, status: 400 };
       return sendTemplateMessage(phone, WA_TEMPLATES.notification, built.variables);
@@ -681,7 +681,7 @@ export async function updateInboxSettings(input: { enabled?: boolean; assignOnTa
 
 export function inboxTemplates() {
   return [
-    { key: 'notification', name: 'GrowwMatics update', configured: Boolean(WA_TEMPLATES.notification), variables: ['name', 'message'] },
+    { key: 'notification', name: 'Growwmatics AI update', configured: Boolean(WA_TEMPLATES.notification), variables: ['name', 'message'] },
   ];
 }
 

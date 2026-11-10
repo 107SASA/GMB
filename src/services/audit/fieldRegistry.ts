@@ -198,7 +198,7 @@ export const FIELD_REGISTRY: FieldRule[] = [
     field: 'Findings / priority actions / plan items',
     surfaces: ['free', 'dashboard', 'connected', 'pdf', 'whatsapp', 'plan'],
     source: 'Deterministic rules over the facts above',
-    collection: 'each with evidence, owner action, GrowwMatics action (or none), GBP requirement, measurement',
+    collection: 'each with evidence, owner action, Growwmatics AI action (or none), GBP requirement, measurement',
     reads: 'findings[], priorityFixes[], optimizationPlan[]',
     evidenceState: 'RECOMMENDATION',
     display: 'Fact / What it means / Recommended',

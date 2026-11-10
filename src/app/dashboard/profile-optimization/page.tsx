@@ -566,7 +566,7 @@ export default function ProfileOptimizationPage() {
               <>
                 {description?.text ? (
                   <>
-                    <p className="text-xs text-on-surface-variant">Suggested by GrowwMatics</p>
+                    <p className="text-xs text-on-surface-variant">Suggested by Growwmatics AI</p>
                     <p className="text-sm whitespace-pre-wrap break-words">{description.text}</p>
                   </>
                 ) : (

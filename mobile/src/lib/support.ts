@@ -11,7 +11,7 @@
 
 const WHATSAPP_NUMBER = (process.env.EXPO_PUBLIC_WHATSAPP_NUMBER || '').replace(/[^0-9]/g, '');
 
-export const SUPPORT_MESSAGE = 'Hi, I need help with my GrowwMatics account';
+export const SUPPORT_MESSAGE = 'Hi, I need help with my Growwmatics AI account';
 
 /** wa.me link, or null if the number isn't configured (caller should disable/hide the button). */
 export function getSupportWhatsAppLink(message: string = SUPPORT_MESSAGE): string | null {

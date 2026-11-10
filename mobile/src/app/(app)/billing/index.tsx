@@ -23,7 +23,7 @@ import { formatDateTime } from '@/lib/format';
 import { getSupportWhatsAppLink } from '@/lib/support';
 import { useTheme, withAlpha } from '@/lib/theme';
 
-const PLAN_HELP_MESSAGE = 'Hi, I have a question about my GrowwMatics plan';
+const PLAN_HELP_MESSAGE = 'Hi, I have a question about my Growwmatics AI plan';
 
 function billingTone(status: string): 'positive' | 'info' | 'warning' | 'negative' | 'neutral' {
   if (status === 'Active') return 'positive';

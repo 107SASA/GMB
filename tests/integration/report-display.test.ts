@@ -128,13 +128,13 @@ test('legacy audits are recognised for the compatibility notice', () => {
 
 // ── AI capability claims ───────────────────────────────────────────────────
 
-test('AI text promising unsupported GrowwMatics actions is detected', () => {
+test('AI text promising unsupported Growwmatics AI actions is detected', () => {
   // Categories, services, hours and attributes are applied after owner approval (Profile optimization).
   assert.equal(claimsUnsupportedCapability('We will add 5 new categories to your profile'), false);
-  assert.equal(claimsUnsupportedCapability('GrowwMatics can update your opening hours'), false);
+  assert.equal(claimsUnsupportedCapability('Growwmatics AI can update your opening hours'), false);
   assert.equal(claimsUnsupportedCapability("We'll post Q&As every week"), true);
   assert.equal(claimsUnsupportedCapability('We will publish weekly Google posts'), false, 'posts are supported');
-  assert.equal(claimsUnsupportedCapability('Add your services in Google Business Profile'), false, 'owner action, no GrowwMatics claim');
+  assert.equal(claimsUnsupportedCapability('Add your services in Google Business Profile'), false, 'owner action, no Growwmatics AI claim');
 });
 
 // ── Customer-facing plan hygiene (Mulsetu report, Nov 2026) ───────────────

@@ -17,7 +17,7 @@ import { validateReply, type ReplyEvidence, type ReplyValidation } from './valid
  * the Post button.
  */
 
-export const REPLY_BLOCKED_REASON = 'Approved in GrowwMatics — Google publishing has not been executed. Live Google Business Profile writes are turned off, so this reply is not on Google.';
+export const REPLY_BLOCKED_REASON = 'Approved in Growwmatics AI — Google publishing has not been executed. Live Google Business Profile writes are turned off, so this reply is not on Google.';
 
 export interface ReplyDeps {
   generate?: (p: any) => Promise<{ reply: string; promptTokens?: number; completionTokens?: number }>;

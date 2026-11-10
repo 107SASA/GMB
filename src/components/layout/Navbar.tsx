@@ -86,9 +86,9 @@ export function Navbar() {
     >
       <nav className="max-w-[1280px] mx-auto w-full flex items-center justify-between gap-3">
         <Link href="/" className="flex items-center gap-2.5 shrink-0 min-w-0 min-h-11">
-          <img src="/brand/icon.png" alt="GrowwMatics AI" className="w-8 h-8 md:w-9 md:h-9 object-contain shrink-0" />
+          <img src="/brand/icon.png" alt="Growwmatics AI" className="w-8 h-8 md:w-9 md:h-9 object-contain shrink-0" />
           <span className="font-mkt-display text-base sm:text-lg md:text-xl font-semibold tracking-tight text-[#101613] truncate">
-            Growwmatics
+            Growwmatics AI
           </span>
         </Link>
 

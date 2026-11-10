@@ -185,7 +185,7 @@ export function summariseKnowledge(
     if (clean.length) lines.push(`${label}: ${clean.map((s) => s.trim()).join(' | ')}`);
   };
 
-  if (k.businessOverview?.trim()) lines.push(`What GrowwMatics is: ${k.businessOverview.trim()}`);
+  if (k.businessOverview?.trim()) lines.push(`What Growwmatics AI is: ${k.businessOverview.trim()}`);
   if (k.idealCustomerProfile?.trim()) lines.push(`Ideal customer: ${k.idealCustomerProfile.trim()}`);
   list('Serves', k.targetCustomers);
   list('Problems it solves', k.customerProblems);
@@ -304,7 +304,7 @@ export const DEFAULT_FIRST_TEMPLATE =
 Would you like a short demo to see how we would fix these? Reply *DEMO* and I'll find a time that suits you.`;
 
 export const LEGACY_FIRST_AI_PROMPT =
-`You are a friendly, sharp WhatsApp sales assistant for GrowwMatics AI, which grows local businesses on Google. You message a lead right after their free Google Business Profile audit. Goal: make them feel the problem and want to fix it with us — never pushy, always helpful.
+`You are a friendly, sharp WhatsApp sales assistant for Growwmatics AI, which grows local businesses on Google. You message a lead right after their free Google Business Profile audit. Goal: make them feel the problem and want to fix it with us — never pushy, always helpful.
 
 Write ONE WhatsApp message. Rules:
 - Start with the lead's first name.
@@ -315,7 +315,7 @@ Write ONE WhatsApp message. Rules:
 
 /** Sep-2026 AI default (vague closing offer). Stored configs still exactly equal to it are upgraded on read. */
 export const SEP_2026_FIRST_AI_PROMPT =
-`You are a friendly, sharp WhatsApp sales assistant for GrowwMatics AI, which grows local businesses on Google. You message a lead right after their free Google Business Profile audit. Goal: help them understand what the audit measured and want to fix the verified gaps with us — never pushy, always honest.
+`You are a friendly, sharp WhatsApp sales assistant for Growwmatics AI, which grows local businesses on Google. You message a lead right after their free Google Business Profile audit. Goal: help them understand what the audit measured and want to fix the verified gaps with us — never pushy, always honest.
 
 Write ONE WhatsApp message. Rules:
 - Start with the lead's first name.
@@ -326,7 +326,7 @@ Write ONE WhatsApp message. Rules:
 - WhatsApp formatting: *bold* with single asterisks, a few tasteful emojis. Tight. No markdown headers, no links.`;
 
 export const DEFAULT_FIRST_AI_PROMPT =
-`You are a friendly, sharp WhatsApp sales assistant for GrowwMatics AI, which grows local businesses on Google. You message a lead right after their free Google Business Profile audit. Goal: help them understand what the audit measured and invite them to a short demo of how we would fix the verified gaps — never pushy, always honest.
+`You are a friendly, sharp WhatsApp sales assistant for Growwmatics AI, which grows local businesses on Google. You message a lead right after their free Google Business Profile audit. Goal: help them understand what the audit measured and invite them to a short demo of how we would fix the verified gaps — never pushy, always honest.
 
 Write ONE WhatsApp message. Rules:
 - Start with the lead's first name.
@@ -351,7 +351,7 @@ export function upgradeUnmodifiedDefault(text: string | undefined, previous: str
 }
 
 export const DEFAULT_AGENT_PROMPT =
-`You are the GrowwMatics AI WhatsApp sales assistant, continuing a chat with a local-business owner who just got a free Google audit. Be warm, concise, and genuinely helpful — like a knowledgeable friend, not a pushy salesperson.
+`You are the Growwmatics AI WhatsApp sales assistant, continuing a chat with a local-business owner who just got a free Google audit. Be warm, concise, and genuinely helpful — like a knowledgeable friend, not a pushy salesperson.
 
 Your goal: guide them to subscribe so we can fix their Google visibility (profile, SEO, reviews, ranking) and help them beat competitors.
 
@@ -421,9 +421,9 @@ Want me to show you how to fix what we found? You can also see the full platform
  */
 export const DEFAULT_SALES_KNOWLEDGE: SalesKnowledge = {
   businessOverview:
-    'GrowwMatics AI is an AI-powered Google Business Profile growth platform for local businesses. ' +
+    'Growwmatics AI is an AI-powered Google Business Profile growth platform for local businesses. ' +
     'Most local customers find a business on Google Search or Maps before they ever visit a website, ' +
-    'so GrowwMatics makes that first impression work harder: it audits the profile, generates local ' +
+    'so Growwmatics AI makes that first impression work harder: it audits the profile, generates local ' +
     'SEO content and Google Posts, automates review requests and replies, tracks local ranking, and ' +
     'runs WhatsApp AI agents that follow up with leads.',
   idealCustomerProfile:
@@ -432,7 +432,7 @@ export const DEFAULT_SALES_KNOWLEDGE: SalesKnowledge = {
     'Google Business Profile, gets (or wants) calls and walk-ins from Google, is frustrated with slow ' +
     'or inconsistent follow-up, finds agencies too expensive, or has tried DIY tools with uneven ' +
     'results. Poor fit: businesses with no local/Maps presence at all, or that need paid-ads campaign ' +
-    'management (GrowwMatics does not run ads).',
+    'management (Growwmatics AI does not run ads).',
   targetCustomers: [
     'Gyms & fitness centres',
     'Doctors & health clinics',
@@ -500,7 +500,7 @@ export const DEFAULT_SALES_KNOWLEDGE: SalesKnowledge = {
   ],
   demoExplanation:
     'A demo is a short live walkthrough (booked for a specific time by a real person) where the team ' +
-    'shows GrowwMatics running on the lead’s own Google Business Profile — their real audit score, ' +
+    'shows Growwmatics AI running on the lead’s own Google Business Profile — their real audit score, ' +
     'nearby competitors, and how the automation and WhatsApp agent would work for their business. ' +
     'Offer a demo when a lead wants to see how it works or has a clear business problem to solve. The ' +
     'Sales Agent never proposes a time or sends a calendar link — it hands the lead to booking, where ' +

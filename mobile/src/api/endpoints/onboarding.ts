@@ -190,6 +190,8 @@ export interface SuggestedKeyword {
   keyword: string;
   /** measured = checked in your report · proposed = from your SEO plan · ai = AI idea */
   source: 'measured' | 'proposed' | 'ai';
+  /** Google monthly searches; null = too few; absent = not looked up. */
+  volume?: number | null;
 }
 
 /**
@@ -211,7 +213,7 @@ export async function suggestKeywords(input: {
       success: z.boolean().catch(false),
       keywords: z.array(z.string()).catch([]),
       details: z
-        .array(z.object({ keyword: z.string(), source: z.enum(['measured', 'proposed', 'ai']).catch('ai') }))
+        .array(z.object({ keyword: z.string(), source: z.enum(['measured', 'proposed', 'ai']).catch('ai'), volume: z.number().nullable().optional().catch(undefined) }))
         .optional()
         .catch(undefined),
     })

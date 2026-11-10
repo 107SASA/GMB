@@ -121,7 +121,7 @@ export async function POST(req: Request) {
 
       const otpResult = await sendOtpMessage(
         newUser.phone,
-        `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`,
+        `Your Growwmatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`,
         otp
       );
       if (!otpResult.success) {
@@ -150,7 +150,7 @@ export async function POST(req: Request) {
 
       const otpResult = await sendOtpMessage(
         newUser.phone,
-        `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`,
+        `Your Growwmatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`,
         otp
       );
       if (!otpResult.success) {

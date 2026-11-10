@@ -7,12 +7,12 @@ import { FaqPage } from "@/components/pages/FaqPage";
 export const metadata: Metadata = {
   title: "FAQ",
   description:
-    "Answers to common questions about GrowwMatics AI — Google Business Profile automation, free reports, WhatsApp automation, pricing, and multi-location support.",
-  keywords: ["GrowwMatics AI FAQ", "Google Business Profile questions", "GBP automation FAQ"],
+    "Answers to common questions about Growwmatics AI — Google Business Profile automation, free reports, WhatsApp automation, pricing, and multi-location support.",
+  keywords: ["Growwmatics AI FAQ", "Google Business Profile questions", "GBP automation FAQ"],
   alternates: { canonical: "/faq" },
   openGraph: {
-    title: "FAQ | GrowwMatics AI",
-    description: "Answers to common questions about GrowwMatics AI.",
+    title: "FAQ | Growwmatics AI",
+    description: "Answers to common questions about Growwmatics AI.",
     url: "/faq",
     type: "website",
   },

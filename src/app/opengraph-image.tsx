@@ -56,7 +56,7 @@ export default function Image() {
             {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text -- ImageResponse (Satori) requires a plain <img>, not next/image; this renders to a static raster image, not real DOM */}
             <img src={iconDataUri} alt="" width={44} height={44} style={{ objectFit: "contain" }} />
           </div>
-          <div style={{ fontSize: 56, fontWeight: 800, color: "#ffffff" }}>GrowwMatics AI</div>
+          <div style={{ fontSize: 56, fontWeight: 800, color: "#ffffff" }}>Growwmatics AI</div>
         </div>
         <div
           style={{

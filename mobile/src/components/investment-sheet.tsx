@@ -53,7 +53,7 @@ export function InvestmentSheet({
     <BottomSheet visible={visible} onClose={onCancel}>
       <Text className="font-display-bold text-lg" style={{ color: t.text }}>Monthly investment</Text>
       <Text className="mt-1 font-sans text-sm leading-5" style={{ color: t.textDim }}>
-        How much do you spend each month to get leads? Count whatever you want, for example your GrowwMatics plan, ads and staff.
+        How much do you spend each month to get leads? Count whatever you want, for example your Growwmatics AI plan, ads and staff.
       </Text>
       <View className="mt-4">
         <Field value={value} onChangeText={setValue} placeholder="Amount per month in ₹, e.g. 15000" keyboardType="decimal-pad" />

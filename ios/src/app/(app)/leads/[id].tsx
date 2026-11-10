@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -13,7 +14,7 @@ import {
   View,
 } from 'react-native';
 
-import { getApiErrorMessage } from '@/api/client';
+import { API_BASE_URL, getApiErrorMessage, getAuthToken } from '@/api/client';
 import { fetchLeadStages, formatMoney, groupLabel, LIFECYCLE_STAGES } from '@/api/endpoints/crm';
 import { fetchThreads } from '@/api/endpoints/inbox';
 import {
@@ -48,6 +49,52 @@ function SectionLabel({ children }: { children: string }) {
     <Text className="mb-2 mt-6 font-sans-bold text-xs uppercase tracking-wider text-zinc-500">
       {children}
     </Text>
+  );
+}
+
+function BusinessCardSection({ lead, businessId }: { lead: Lead; businessId: string | null }) {
+  const card = lead.businessCard!;
+  const token = getAuthToken();
+  const rows: [string, string | undefined | null][] = [
+    ['Company', card.company],
+    ['Job title', card.designation],
+    ['Website', card.website],
+    ['Address', card.address],
+    ['City', lead.city],
+    ['Other phones', card.otherPhones?.join(', ')],
+    ['Other emails', card.otherEmails?.join(', ')],
+    ['Met at', card.metAt],
+  ];
+  return (
+    <>
+      <SectionLabel>Visiting card</SectionLabel>
+      <View className="gap-2 rounded-card border border-surface-border bg-surface-raised px-4 py-3.5">
+        {(card.imageKeys ?? []).map((_, side) => (
+          <Image
+            key={side}
+            // Private photo — served only through the authenticated API route.
+            source={{
+              uri: `${API_BASE_URL}/api/crm/leads/${lead._id}/card-image?side=${side}`,
+              headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(businessId ? { 'x-business-id': businessId } : {}) },
+            }}
+            style={{ width: '100%', aspectRatio: 1.75, borderRadius: 12 }}
+            contentFit="contain"
+          />
+        ))}
+        {rows
+          .filter(([, v]) => !!v)
+          .map(([label, value]) => (
+            <Text
+              key={label}
+              className="font-sans text-sm text-zinc-300"
+              onPress={label === 'Website' ? () => void Linking.openURL(`https://${String(value).replace(/^https?:\/\//, '')}`) : undefined}
+            >
+              <Text className="font-sans-semibold text-zinc-400">{label}: </Text>
+              {value}
+            </Text>
+          ))}
+      </View>
+    </>
   );
 }
 
@@ -434,6 +481,9 @@ export default function LeadDetailScreen() {
         {/* Follow-up tasks (reminders for you — never sent to the lead) */}
         <SectionLabel>Follow-ups</SectionLabel>
         <FollowUpTasks leadId={lead._id} businessId={activeBusinessId} />
+
+        {/* Visiting card (source "Business Card") */}
+        {!!lead.businessCard && <BusinessCardSection lead={lead} businessId={activeBusinessId} />}
 
         {/* Details */}
         {!!lead.interest && (

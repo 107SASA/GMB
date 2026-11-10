@@ -60,7 +60,7 @@ async function recordTokenRefreshFailure(
       await notifyBusinessUsers(businessId, {
         type: 'gbp_reauth_required',
         title: 'Reconnect your Google Business Profile',
-        body: 'Google no longer accepts GrowwMatics access to your Business Profile, so syncing has stopped. Open Google Business Profile in GrowwMatics and click "Connect Google Account".',
+        body: 'Google no longer accepts Growwmatics AI access to your Business Profile, so syncing has stopped. Open Google Business Profile in Growwmatics AI and click "Connect Google Account".',
         link: '/dashboard/gbp-profile',
       });
       return;

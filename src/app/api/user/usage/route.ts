@@ -23,6 +23,7 @@ async function getPlanLimits(planName: string): Promise<PlanLimits> {
         maxWhatsAppMessagesPerDay: config.maxWhatsAppMessagesPerDay,
         reviewRequestCooldownDays: config.reviewRequestCooldownDays,
         maxAIGenerations:          config.maxAIGenerations,
+        maxCardScansPerMonth:      config.maxCardScansPerMonth ?? getPlanDefaults(planName).maxCardScansPerMonth,
       };
     }
   } catch { /* fall through */ }
@@ -55,6 +56,7 @@ export async function GET() {
       AIUsageLog.countDocuments({
         userId: ctx.userId,
         status: 'success',
+        promptType: { $nin: ['business_card_scan', 'business_card_scan_retry'] }, // own cap — see featureGating 'cardScans'
         createdAt: { $gte: startOfMonth, $lt: endOfMonth },
       }),
     ]);
@@ -72,6 +74,7 @@ export async function GET() {
       maxWhatsAppMessagesPerDay: override?.maxWhatsAppMessagesPerDay ?? planLimits.maxWhatsAppMessagesPerDay,
       reviewRequestCooldownDays: override?.reviewRequestCooldownDays ?? planLimits.reviewRequestCooldownDays,
       maxAIGenerations:          override?.maxAIGenerations          ?? planLimits.maxAIGenerations,
+      maxCardScansPerMonth:      override?.maxCardScansPerMonth      ?? planLimits.maxCardScansPerMonth,
     };
 
     // SubscriptionUsage only buckets postsUsed by month — for a weekly-cap

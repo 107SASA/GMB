@@ -33,7 +33,7 @@ const actions = [
 test('fixed, new and still open — watch-only facts and data coverage are left out', () => {
   const p = buildIssueProgress(october, november, actions);
   assert.deepEqual(p.fixed, [
-    { findingId: 'website.services.missing_on_gbp', title: 'Your website lists 6 services; your Google profile lists none', how: 'Applied through GrowwMatics' },
+    { findingId: 'website.services.missing_on_gbp', title: 'Your website lists 6 services; your Google profile lists none', how: 'Applied through Growwmatics AI' },
     { findingId: 'gbp.change.description', title: 'Google changed your description', how: 'No longer found in this report' },
   ]);
   assert.deepEqual(p.added.map((x) => x.findingId), ['profile.business_hours.missing']);
@@ -47,7 +47,7 @@ test('fixed, new and still open — watch-only facts and data coverage are left 
   assert.ok(!ids.some((x) => x.startsWith('data_quality.')));
 });
 
-test('still-open reasons: applied but not showing yet, blocked, GrowwMatics working on it', () => {
+test('still-open reasons: applied but not showing yet, blocked, Growwmatics AI working on it', () => {
   const cur = [f('a', 'A', { growwmaticsCapability: 'update_hours' }), f('b', 'B', { growwmaticsCapability: 'update_services' }), f('c', 'C', { growwmaticsCapability: 'google_posts' })];
   const p = buildIssueProgress(cur, cur, [
     { findingId: 'a', action: 'a', status: 'EXECUTED', executor: 'x', capability: 'update_hours', executedAt: '2026-11-02T00:00:00Z' },
@@ -56,7 +56,7 @@ test('still-open reasons: applied but not showing yet, blocked, GrowwMatics work
   assert.deepEqual(p.stillOpen.map((x) => x.reason), [
     'Applied — Google can take a while to show it',
     'Live Google profile writes are turned off',
-    'GrowwMatics is working on it',
+    'Growwmatics AI is working on it',
   ]);
   assert.ok(p.stillOpen.every((x) => !x.waitingForOwner));
 });

@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   // already; don't repeat it here or the rendered <title> doubles it up.
   title: "Privacy Policy",
   description:
-    "How GrowwMatics AI collects, uses, stores, and protects your data, including Google Business Profile data accessed through the Google APIs.",
+    "How Growwmatics AI collects, uses, stores, and protects your data, including Google Business Profile data accessed through the Google APIs.",
   alternates: { canonical: "/privacy" },
 };
 
@@ -83,7 +83,7 @@ export default function PrivacyPolicyPage() {
 
       <LegalSection heading="2. Google User Data & Google Business Profile">
         <p>
-          GrowwMatics AI's use and transfer of information received from Google APIs adheres to the{" "}
+          Growwmatics AI's use and transfer of information received from Google APIs adheres to the{" "}
           <a
             href="https://developers.google.com/terms/api-services-user-data-policy"
             target="_blank"

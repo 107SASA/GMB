@@ -149,7 +149,7 @@ test('I a website form lead line does not open the WhatsApp window', () => {
 });
 
 test('J a 63016 callback retry sanitizes variables and does not send a second copy', () => {
-  const raw = `Your GrowwMatics demo is confirmed for ${WHEN} (IST).\n\nJoin here: ${MEET}`;
+  const raw = `Your Growwmatics AI demo is confirmed for ${WHEN} (IST).\n\nJoin here: ${MEET}`;
   const built = buildNotificationVariables('Sarvesh', raw);
   assert.equal(built.ok, true);
   if (!built.ok) return;

@@ -140,7 +140,7 @@ test('a person confirms No Show on an auto-marked booking directly → one resch
   await fireDue(d.leadId);
   const sent = await rows(d.phone);
   assert.equal(sent.length, 1);
-  assert.match(textOf(sent[0]), /sorry we missed you at your Growwmatics demo on Mon 26 Oct at 4:00 PM/);
+  assert.match(textOf(sent[0]), /sorry we missed you at your Growwmatics AI demo on Mon 26 Oct at 4:00 PM/);
   assert.match(textOf(sent[0]), /Reply RESCHEDULE/);
   // The reply lands in the existing booking thread → booking agent (reschedule flow).
   dispatched.length = 0;
@@ -166,7 +166,7 @@ test('attended: refused before the recorded end time; after it, one follow-up �
   assert.equal(b.status, 'Completed');
   assert.equal(b.attendance.source, 'staff');
   await fireDue(d.leadId);
-  assert.match(textOf((await rows(d.phone))[0]), /thank you for joining the Growwmatics demo for Cafe/);
+  assert.match(textOf((await rows(d.phone))[0]), /thank you for joining the Growwmatics AI demo for Cafe/);
   // Re-confirming, and firing again, adds nothing.
   await confirm(d.bookingId, 'attended');
   await fireDue(d.leadId);
@@ -266,7 +266,7 @@ test('existing demo reminders still send through the real scheduler', async (t) 
   await runDurably(m.fns.nurtureSchedulerTick, { data: {} });
   const sent = await rows(d.phone);
   assert.equal(sent.length, 1);
-  assert.match(textOf(sent[0]), /Just a reminder that your GrowwMatics demo is tomorrow/);
+  assert.match(textOf(sent[0]), /Just a reminder that your Growwmatics AI demo is tomorrow/);
 });
 
 test('re-confirming the same outcome while its message is pending keeps exactly one message (regression)', async (t) => {
@@ -299,7 +299,7 @@ test('team missed: booking needs a new time (not a customer no-show), lead not "
   await fireDue(d.leadId); // a second pass never sends again
   const sent = await rows(d.phone);
   assert.equal(sent.length, 1);
-  assert.match(textOf(sent[0]), /we're very sorry — our team couldn't join your Growwmatics demo on Mon 26 Oct at 4:00 PM/);
+  assert.match(textOf(sent[0]), /we're very sorry — our team couldn't join your Growwmatics AI demo on Mon 26 Oct at 4:00 PM/);
   assert.match(textOf(sent[0]), /Reply RESCHEDULE/);
   assert.doesNotMatch(textOf(sent[0]), /we missed you/, 'never implies the customer missed it');
 

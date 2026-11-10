@@ -65,7 +65,7 @@ export function OnboardingWizard() {
       <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-secondary/8 rounded-full blur-[120px] pointer-events-none" />
 
       <div className="absolute top-8 left-8 flex items-center gap-2 z-10">
-        <img src="/brand/icon.png" alt="GrowwMatics AI" className="w-8 h-8 object-contain" />
+        <img src="/brand/icon.png" alt="Growwmatics AI" className="w-8 h-8 object-contain" />
         <span className="text-lg font-heading font-bold tracking-tight text-on-surface">
           Groww<span className="text-primary">Matics</span> AI
         </span>

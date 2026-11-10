@@ -5,14 +5,16 @@ import QRCode from 'qrcode';
 import { toast } from 'sonner';
 import { useBusiness } from '@/context/BusinessContext';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { renderReviewStandee } from '@/lib/reviewStandee';
 
 /**
  * Google review QR code for the active workspace — the web version of the
  * mobile app's ReviewQrModal. Scanning it opens Google's own "write a review"
  * page for this listing (no search needed):
  *   https://search.google.com/local/writereview?placeid=<PLACE_ID>
- * Generated in the browser (no API call). Owners can copy the link, download
- * the QR as a PNG, or print a counter poster.
+ * Generated in the browser (no API call). Owners can copy the link, or
+ * download / print the same Growwmatics AI-branded counter standee
+ * (lib/reviewStandee.ts).
  */
 export function reviewUrlFor(placeId: string): string {
   return `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}`;
@@ -48,30 +50,43 @@ export default function ReviewQrCard() {
     }
   };
 
-  const download = () => {
-    if (!qr) return;
+  // Download and Print share one branded standee design (lib/reviewStandee).
+  const standeePng = async (): Promise<string | null> => {
+    if (!reviewUrl) return null;
+    try {
+      const canvas = await renderReviewStandee({ businessName: name, reviewUrl });
+      return canvas.toDataURL('image/png');
+    } catch {
+      toast.error('Could not create the QR standee — please try again.');
+      return null;
+    }
+  };
+
+  const download = async () => {
+    const png = await standeePng();
+    if (!png) return;
     const a = document.createElement('a');
-    a.href = qr;
-    a.download = `${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'google'}-review-qr.png`;
+    a.href = png;
+    a.download = `${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'google'}-review-qr-standee.png`;
     a.click();
   };
 
-  const print = () => {
-    if (!qr) return;
-    const w = window.open('', '_blank', 'width=720,height=960');
+  const print = async () => {
+    // Open the window synchronously (inside the click) so pop-up blockers allow it.
+    const w = window.open('', '_blank', 'width=720,height=1000');
     if (!w) { toast.error('Allow pop-ups to print the poster.'); return; }
+    const png = await standeePng();
+    if (!png) { w.close(); return; }
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Review us on Google — ${esc(name)}</title>
       <style>
-        body{font-family:Arial,Helvetica,sans-serif;margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fff;color:#1f2937}
-        .p{text-align:center;padding:40px;border:2px solid #e5e7eb;border-radius:24px;max-width:520px}
-        h1{font-size:30px;margin:0 0 6px} h2{font-size:22px;margin:0 0 24px;font-weight:600;color:#4b5563}
-        img{width:340px;height:340px} p{font-size:16px;color:#4b5563;margin:20px 0 0}
-        .g{font-weight:700} .g span:nth-child(1),.g span:nth-child(4){color:#4285F4}.g span:nth-child(2),.g span:nth-child(6){color:#EA4335}.g span:nth-child(3){color:#FBBC05}.g span:nth-child(5){color:#34A853}
-      </style></head><body><div class="p">
-        <h1>Loved your visit?</h1><h2>Review ${esc(name)} on <span class="g"><span>G</span><span>o</span><span>o</span><span>g</span><span>l</span><span>e</span></span></h2>
-        <img src="${qr}" alt="Google review QR code"/>
-        <p>Scan with your phone camera — it opens our Google review page.</p>
-      </div><script>window.onload=()=>{window.print()}</script></body></html>`);
+        @page{size:A5 portrait;margin:8mm}
+        html,body{margin:0;background:#fff}
+        body{display:flex;align-items:center;justify-content:center;min-height:100vh}
+        img{display:block;max-width:100%;max-height:194mm;height:auto}
+        @media screen{img{max-height:96vh}}
+      </style></head><body>
+        <img src="${png}" alt="Google review QR standee for ${esc(name)}" onload="setTimeout(function(){window.print()},50)"/>
+      </body></html>`);
     w.document.close();
   };
 
@@ -99,7 +114,7 @@ export default function ReviewQrCard() {
                   <MaterialIcon name="content_copy" size={14} /> Copy link
                 </button>
                 <button type="button" onClick={download} disabled={!qr} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-outline-variant hover:bg-surface-container disabled:opacity-50">
-                  <MaterialIcon name="download" size={14} /> Download QR
+                  <MaterialIcon name="download" size={14} /> Download QR standee
                 </button>
                 <button type="button" onClick={print} disabled={!qr} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-primary hover:bg-primary-container disabled:opacity-50">
                   <MaterialIcon name="print" size={14} /> Print poster

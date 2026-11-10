@@ -3,7 +3,7 @@
  * the legal pages (privacy, terms, refund, contact) and the footer.
  */
 export const COMPANY = {
-  name: 'GrowwMatics AI',
+  name: 'Growwmatics AI',
   // The registered legal entity that owns/operates the GrowwMatics AI brand —
   // distinct from the product name above. Used on legal pages, billing, and
   // invoices wherever the underlying legal entity (not just the brand) needs

@@ -421,7 +421,7 @@ const NAME_STARTERS = new Set([
   'focus', 'add', 'ask', 'use', 'keep', 'reply', 'publish', 'post', 'update', 'verify', 'check', 'highlight', 'mention',
 ]);
 const COMPETITOR_CONTEXT = /\b(competitors?|rivals?|above you|ahead of|outrank\w*|shown above|appear\w* above|businesses (?:like|such as)|such as|including|compared (?:to|with)|than)\b/i;
-const OWN_WORDS = /^(Google|Business|Profile|Maps|Search|Ads|GrowwMatics|WhatsApp|Q&A|GBP|SEO|AI|IT|ERP|SaaS|MVP|USP|CTA|FAQ|Week|Day|Month|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/;
+const OWN_WORDS = /^(Google|Business|Profile|Maps|Search|Ads|Growwmatics AI|WhatsApp|Q&A|GBP|SEO|AI|IT|ERP|SaaS|MVP|USP|CTA|FAQ|Week|Day|Month|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/;
 
 function mentionsKnown(candidate: string, known: string[]): boolean {
   const c = normalizeName(candidate);

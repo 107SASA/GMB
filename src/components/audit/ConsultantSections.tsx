@@ -413,7 +413,7 @@ export default function ConsultantSections({
           <SectionBar num={S()} title="GBP PROFILE GAP ANALYSIS" />
           <Card>
             <p className="text-sm text-on-surface-variant mb-5">
-              Drafts for {businessName} only — nothing is changed on your listing from this report. Once you subscribe and connect Google, GrowwMatics can apply these to your Google profile — description, services, categories, hours, attributes and booking link — after you approve each one in Profile optimization.
+              Drafts for {businessName} only — nothing is changed on your listing from this report. Once you subscribe and connect Google, Growwmatics AI can apply these to your Google profile — description, services, categories, hours, attributes and booking link — after you approve each one in Profile optimization.
             </p>
             {failed.has('gbpDrafts') && <div className="mb-4"><SupportNote what="GBP drafts" /></div>}
             {failed.has('gbpDrafts') && !(draft.gbpGaps || []).length ? null : (
@@ -621,7 +621,7 @@ export default function ConsultantSections({
           <SectionBar num={S()} title="SUGGESTED GOOGLE Q&AS" />
           <Card>
             <p className="text-sm text-on-surface-variant mb-4">
-              For you to add yourself — GrowwMatics does not post Q&amp;As. Answers marked [Owner to confirm] need your facts before use.
+              For you to add yourself — Growwmatics AI does not post Q&amp;As. Answers marked [Owner to confirm] need your facts before use.
             </p>
             <div className="divide-y divide-outline-variant">
               {draft.suggestedQas!.map((qa, i) => (

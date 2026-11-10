@@ -141,7 +141,7 @@ export async function PUT(req: Request) {
 
     const result = await sendOtpMessage(
       user.phone,
-      `Your GrowwMatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`,
+      `Your Growwmatics AI signup code is ${otp}. It expires in 10 minutes. Never share this code with anyone.`,
       otp
     );
     if (!result.success) {

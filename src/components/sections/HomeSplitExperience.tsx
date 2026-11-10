@@ -195,7 +195,7 @@ const HOW_IT_WORKS_STEPS = [
   { step: "01", icon: "link", title: "Connect your profile", description: "Link your Google Business Profile and WhatsApp number in one short call." },
   { step: "02", icon: "search_check", title: "AI audits & plans", description: "The engine scores your profile and builds a posting, review, and reply plan." },
   { step: "03", icon: "bolt", title: "Agents run daily", description: "Posts go out, reviews get replies, and WhatsApp leads get qualified — automatically." },
-  { step: "04", icon: "monitoring", title: "You track it in one place", description: "Every action, lead, and score change lands in your Growwmatics dashboard." },
+  { step: "04", icon: "monitoring", title: "You track it in one place", description: "Every action, lead, and score change lands in your Growwmatics AI dashboard." },
 ] as const;
 
 // ── Panel row primitives (shared visual language across every body) ───────

@@ -10,10 +10,10 @@ import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 export const metadata: Metadata = {
   title: "Google Business Profile Optimization (GMB Booster)",
   description:
-    "Rank higher on Google with GrowwMatics AI — profile analysis, review automation, and local SEO tips that get you more leads and customers.",
+    "Rank higher on Google with Growwmatics AI — profile analysis, review automation, and local SEO tips that get you more leads and customers.",
   alternates: { canonical: "/gbp-booster" },
   openGraph: {
-    title: "Google Business Profile Optimization (GMB Booster) | GrowwMatics AI",
+    title: "Google Business Profile Optimization (GMB Booster) | Growwmatics AI",
     description:
       "AI-powered Google Business Profile growth — audits, reviews, and ranking tips for local businesses.",
     url: "/gbp-booster",
@@ -97,7 +97,7 @@ export default function GbpBoosterPage() {
               <div className="relative w-[200px] sm:w-[260px] md:w-[300px] lg:w-[340px] rounded-[2rem] sm:rounded-[2.5rem] border-8 sm:border-[10px] border-(--mkt-ink-border) bg-(--mkt-ink-elevated) shadow-2xl overflow-hidden">
                 <img
                   src="/marketing/gbp-booster/phone-hero.jpg"
-                  alt="GrowwMatics AI GBP Booster on WhatsApp"
+                  alt="Growwmatics AI GBP Booster on WhatsApp"
                   className="w-full h-auto block"
                 />
               </div>

@@ -97,8 +97,8 @@ test('summariseKnowledge returns "" for empty / undefined knowledge', () => {
 });
 
 test('summariseKnowledge: with NO approved price, it explicitly forbids stating one', () => {
-  const s = summariseKnowledge({ businessOverview: 'GrowwMatics does X.' });
-  assert.match(s, /What GrowwMatics is: GrowwMatics does X\./);
+  const s = summariseKnowledge({ businessOverview: 'Growwmatics AI does X.' });
+  assert.match(s, /What Growwmatics AI is: Growwmatics AI does X\./);
   assert.match(s, /NO approved price is configured — never state a price/);
 });
 
@@ -159,7 +159,7 @@ test('DEFAULT_SALES_KNOWLEDGE never claims paid-ads management', () => {
 
 test('defaultSalesAgentConfig() carries the grounded knowledge', () => {
   const cfg = defaultSalesAgentConfig('https://app/billing', 'https://app/pricing');
-  assert.ok((cfg.knowledge.businessOverview || '').includes('GrowwMatics'));
+  assert.ok((cfg.knowledge.businessOverview || '').includes('Growwmatics AI'));
   assert.equal(cfg.knowledge.pricingResponse, '');
 });
 

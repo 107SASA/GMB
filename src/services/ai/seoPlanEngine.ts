@@ -596,7 +596,7 @@ async function callGbpDrafts(input: SeoPlanInput): Promise<Partial<ISeoPlanDraft
   const gapFields = full ? GAP_FIELDS_FULL : GAP_FIELDS_FREE;
   const titleIssues = input.findings.filter((f) => f.id.startsWith('profile.title.')).map((f) => f.title);
 
-  const prompt = `You are a Google Business Profile expert. Draft listing content for ${input.businessName} ONLY. A draft is a proposal: GrowwMatics does not write it to Google until the owner previews and approves it. Never change the business name, address, or primary category automatically. ${FACT_RULES} Output strict JSON.
+  const prompt = `You are a Google Business Profile expert. Draft listing content for ${input.businessName} ONLY. A draft is a proposal: Growwmatics AI does not write it to Google until the owner previews and approves it. Never change the business name, address, or primary category automatically. ${FACT_RULES} Output strict JSON.
 
 ${factsBlock(input)}
 ${liveBlock}
@@ -664,7 +664,7 @@ async function callActionPlan(input: SeoPlanInput): Promise<Partial<ISeoPlanDraf
   const areas = input.neighbourhoods.slice(0, 4);
   const issues = input.findings
     .filter((f) => f.category !== 'data_quality')
-    .map((f) => `- ${f.title} (${f.severity}; ${f.growwmaticsCapability ? `GrowwMatics: ${GROWWMATICS_CAPABILITIES[f.growwmaticsCapability].label}` : 'owner action in Google'})`)
+    .map((f) => `- ${f.title} (${f.severity}; ${f.growwmaticsCapability ? `Growwmatics AI: ${GROWWMATICS_CAPABILITIES[f.growwmaticsCapability].label}` : 'owner action in Google'})`)
     .join('\n');
   const prompt = `You are a local-SEO delivery lead. Build a concrete 30/60/90-day plan for ${input.businessName} (${input.category}, ${input.city}). ${FACT_RULES} Output strict JSON.
 

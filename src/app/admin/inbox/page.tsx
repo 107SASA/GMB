@@ -428,7 +428,7 @@ export default function WhatsAppInboxPage() {
 
       {templateOpen && (
         <Modal title="Approved template" onClose={() => setTemplateOpen(false)}>
-          <p className="text-sm">GrowwMatics update</p>
+          <p className="text-sm">Growwmatics AI update</p>
           <p className="mt-2 rounded-lg bg-surface-container p-3 text-sm">Hi {detail?.lead?.name || detail?.contact.name || 'there'} — {draft || 'Your message'}</p>
           <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} placeholder="Message inside the approved template" className="mt-3 w-full rounded-lg border border-outline-variant bg-transparent px-3 py-2 text-sm" />
           <button type="button" disabled={sending || !draft.trim()} onClick={() => send('notification')} className="mt-3 rounded-lg bg-primary px-3 py-2 text-sm text-white disabled:opacity-50">Send template</button>

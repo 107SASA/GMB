@@ -22,7 +22,7 @@ export function containsPurchaseCta(text: string): boolean {
 
 /** Shown on sign-in when the number has no account (the server's copy points to the free report / a demo). */
 export const NO_ACCOUNT_MESSAGE =
-  'No account found for this number. Check the number, or use the one registered to your GrowwMatics account.';
+  'No account found for this number. Check the number, or use the one registered to your Growwmatics AI account.';
 
 /** Server notification types written by the billing system. */
 function isBillingNotification(type: string): boolean {

@@ -83,7 +83,7 @@ function fakePlans(prefix = 'plan_new') {
 }
 
 async function savePlan(durations: any[], extra: Record<string, unknown> = {}) {
-  await m.BillingPlan.create({ key: 'default', displayName: 'GrowwMatics AI', description: '', priceInr: 1999, features: [], durations, ...extra });
+  await m.BillingPlan.create({ key: 'default', displayName: 'Growwmatics AI', description: '', priceInr: 1999, features: [], durations, ...extra });
 }
 
 const DURATIONS = (over: Record<string, any> = {}) => [
@@ -248,7 +248,7 @@ test('race: repeated collisions end in "conflict" without writing', async (t) =>
   );
   assert.equal(result, 'conflict');
   const doc: any = await m.BillingPlan.findOne({ key: 'default' }).lean();
-  assert.equal(doc.displayName, 'GrowwMatics AI');
+  assert.equal(doc.displayName, 'Growwmatics AI');
 });
 
 test('first admin save (no plan document yet) still creates it with the defaults filled in', async (t) => {

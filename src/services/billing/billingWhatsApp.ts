@@ -60,7 +60,7 @@ export function trialReminderDue(trialEndsAt: Date | string | null | undefined, 
 
 const dateLabel = (d: Date | string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 const linkLine = (label: string, link: string | null, fallback: string) => (link ? `${label}: ${link}` : fallback);
-const BILLING_FALLBACK = 'Open Billing in your Growwmatics dashboard.';
+const BILLING_FALLBACK = 'Open Billing in your Growwmatics AI dashboard.';
 
 export function paymentConfirmedText(input: { kind: 'first' | 'renewal'; businessName: string; planName: string; periodEnd?: Date | null }): string {
   const lines = [`Hi ${input.businessName},`, ''];
@@ -72,41 +72,41 @@ export function paymentConfirmedText(input: { kind: 'first' | 'renewal'; busines
     lines.push(`We received your payment — your ${input.planName} subscription has been renewed${input.periodEnd ? ` until ${dateLabel(input.periodEnd)}` : ''}. No action is needed.`);
     lines.push('', linkLine('Manage billing', billingPageLink(), BILLING_FALLBACK));
   }
-  lines.push('', '— Team Growwmatics');
+  lines.push('', '— Team Growwmatics AI');
   return lines.join('\n');
 }
 
 export function trialStartedText(input: { businessName: string; trialEndsAt: Date | string }): string {
   return [
     `Hi ${input.businessName},`, '',
-    `Welcome to Growwmatics! 🎉 Your free trial is active until ${dateLabel(input.trialEndsAt)}.`, '',
+    `Welcome to Growwmatics AI! 🎉 Your free trial is active until ${dateLabel(input.trialEndsAt)}.`, '',
     linkLine('Open your dashboard', absolute('/dashboard'), 'Log in at growwmatics.com to open your dashboard.'),
     '', 'Manage everything from your phone:', ...appDownloadLines(),
-    '', '— Team Growwmatics',
+    '', '— Team Growwmatics AI',
   ].join('\n');
 }
 
 export function trialEndingText(input: { businessName: string; trialEndsAt: Date | string; cancelled: boolean; planName: string }): string {
   const body = input.cancelled
-    ? `Your Growwmatics free trial ends on ${dateLabel(input.trialEndsAt)}. Subscribe before then to keep your access.`
-    : `Your Growwmatics free trial ends on ${dateLabel(input.trialEndsAt)}. Your ${input.planName} subscription then starts automatically with the payment method you authorised.`;
-  return [`Hi ${input.businessName},`, '', body, '', linkLine(input.cancelled ? 'Subscribe' : 'Manage billing', billingPageLink(), BILLING_FALLBACK), '', '— Team Growwmatics'].join('\n');
+    ? `Your Growwmatics AI free trial ends on ${dateLabel(input.trialEndsAt)}. Subscribe before then to keep your access.`
+    : `Your Growwmatics AI free trial ends on ${dateLabel(input.trialEndsAt)}. Your ${input.planName} subscription then starts automatically with the payment method you authorised.`;
+  return [`Hi ${input.businessName},`, '', body, '', linkLine(input.cancelled ? 'Subscribe' : 'Manage billing', billingPageLink(), BILLING_FALLBACK), '', '— Team Growwmatics AI'].join('\n');
 }
 
 export function trialExpiredText(input: { businessName: string; trialEndsAt: Date | string }): string {
   const lines = [
     `Hi ${input.businessName},`, '',
-    `Your Growwmatics free trial ended on ${dateLabel(input.trialEndsAt)}. Subscribe to keep using Growwmatics — your data is safe.`,
+    `Your Growwmatics AI free trial ended on ${dateLabel(input.trialEndsAt)}. Subscribe to keep using Growwmatics AI — your data is safe.`,
     '', linkLine('Subscribe', billingPageLink(), BILLING_FALLBACK),
     '', ...appDownloadLines(),
   ];
-  lines.push('', '— Team Growwmatics');
+  lines.push('', '— Team Growwmatics AI');
   return lines.join('\n');
 }
 
 /** "GrowwMatics AI (Yearly)" — the configured plan name plus the subscription's billing cycle. */
 export async function planNameFor(subscriptionNotes: any): Promise<string> {
-  let name = 'Growwmatics';
+  let name = 'Growwmatics AI';
   try { name = (await getActivePlan()).displayName || name; } catch { /* keep the generic name */ }
   const cycle = subscriptionNotes?.billingCycle;
   return isBillingCycle(cycle) ? `${name} (${CYCLES[cycle].label})` : name;

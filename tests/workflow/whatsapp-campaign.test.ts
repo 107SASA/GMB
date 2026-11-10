@@ -19,7 +19,7 @@ process.env.WHATSAPP_PROVIDER = 'twilio';
 const APPROVED = 'HX' + 'a'.repeat(32);
 const PENDING = 'HX' + 'b'.repeat(32);
 const MISSING = 'HX' + 'c'.repeat(32);
-const BODY = 'Hi {{1}}, this is the GrowwMatics team.\n\n{{2}}\n\nReply to this message if you have any questions.';
+const BODY = 'Hi {{1}}, this is the Growwmatics AI team.\n\n{{2}}\n\nReply to this message if you have any questions.';
 
 // Fake Twilio Content API (the harness already blocks every other outside call).
 const harnessFetch = globalThis.fetch;
@@ -110,7 +110,7 @@ test('preview shows who gets it and who is left out; the send goes out once per 
   assert.equal(pv.total, 6);
   assert.equal(pv.eligible, 2);
   assert.deepEqual(pv.skipped.map((s: any) => s.reason).sort(), ['already-in-campaign', 'customer', 'do-not-contact', 'opted-out']);
-  assert.equal(pv.preview.text, 'Hi Rahul, this is the GrowwMatics team.\n\nIt was great meeting you at the Pune Business Meet. Would you like a free report?\n\nReply to this message if you have any questions.');
+  assert.equal(pv.preview.text, 'Hi Rahul, this is the Growwmatics AI team.\n\nIt was great meeting you at the Pune Business Meet. Would you like a free report?\n\nReply to this message if you have any questions.');
 
   const created = await post(m.campaigns, '/api/admin/crm/whatsapp/campaigns', { ids, templateId: approvedId, message, name: 'Pune meet' });
   assert.equal(created.status, 201);

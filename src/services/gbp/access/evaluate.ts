@@ -146,7 +146,7 @@ export interface GoogleAccessCopy {
 const PEOPLE_STEPS = [
   'Open business.google.com and sign in with the Google account that owns this business.',
   'Open your profile, then Menu → Business Profile settings → People and access.',
-  'Make sure the Google account you connect to GrowwMatics is listed as Owner or Manager (add it if not).',
+  'Make sure the Google account you connect to Growwmatics AI is listed as Owner or Manager (add it if not).',
   'Come back here and press Reconnect, then choose that same Google account.',
 ];
 
@@ -155,7 +155,7 @@ export function googleAccessCopy(state: GoogleAccessState | null | undefined, re
   if (state === 'checking') {
     return {
       title: 'Checking your Google access…',
-      body: 'We are confirming that Google lets GrowwMatics manage your Business Profile. Your report, posts and reminders start as soon as this is confirmed — usually within a few minutes.',
+      body: 'We are confirming that Google lets Growwmatics AI manage your Business Profile. Your report, posts and reminders start as soon as this is confirmed — usually within a few minutes.',
       steps: [],
       reconnect: false,
     };
@@ -165,7 +165,7 @@ export function googleAccessCopy(state: GoogleAccessState | null | undefined, re
     case 'token_revoked':
       return {
         title: 'Reconnect your Google Business Profile',
-        body: 'Google no longer accepts GrowwMatics access to your Business Profile (access was removed or expired). Nothing is being posted or changed until you reconnect.',
+        body: 'Google no longer accepts Growwmatics AI access to your Business Profile (access was removed or expired). Nothing is being posted or changed until you reconnect.',
         steps: ['Press Reconnect and sign in with the Google account that manages this business.'],
         reconnect: true,
       };
@@ -215,7 +215,7 @@ export function googleAccessCopy(state: GoogleAccessState | null | undefined, re
     default:
       return {
         title: 'Google refused access to your profile',
-        body: 'You signed in, but Google refused GrowwMatics access to this Business Profile. Usually the connected Google account isn’t an Owner or Manager of this profile, or the profile isn’t verified. Your report, posts and reminders are paused until this is fixed.',
+        body: 'You signed in, but Google refused Growwmatics AI access to this Business Profile. Usually the connected Google account isn’t an Owner or Manager of this profile, or the profile isn’t verified. Your report, posts and reminders are paused until this is fixed.',
         steps: PEOPLE_STEPS,
         reconnect: true,
       };

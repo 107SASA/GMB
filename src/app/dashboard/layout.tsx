@@ -12,6 +12,10 @@ import GoogleAccessNotice from "@/components/layout/GoogleAccessNotice";
 import { GoogleAccessProvider } from "@/context/GoogleAccessContext";
 import { requireClient } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import AdminViewAsBanner from "@/components/layout/AdminViewAsBanner";
+import { VIEW_AS_COOKIE, VIEW_AS_MAX_AGE_SEC, decodeViewAs } from "@/lib/adminViewAs";
+import User from "@/models/User";
 
 export default async function DashboardLayout({
   children,
@@ -24,6 +28,21 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  // "Login as customer" — only ever honoured for a confirmed SUPER_ADMIN.
+  let viewAsBanner: React.ReactNode = null;
+  if ((authResult.user as any).role === "SUPER_ADMIN") {
+    const viewAs = decodeViewAs((await cookies()).get(VIEW_AS_COOKIE)?.value);
+    if (viewAs) {
+      let ownerName: string | undefined;
+      if (viewAs.ownerUserId) {
+        const owner = await User.findById(viewAs.ownerUserId).select("fullName").lean<{ fullName?: string }>().catch(() => null);
+        ownerName = owner?.fullName || undefined;
+      }
+      const expiresAt = new Date(Date.parse(viewAs.startedAt) + VIEW_AS_MAX_AGE_SEC * 1000).toISOString();
+      viewAsBanner = <AdminViewAsBanner businessName={viewAs.businessName} ownerName={ownerName} expiresAt={expiresAt} />;
+    }
+  }
+
   return (
     <MobileNavProvider>
       <BusinessProvider>
@@ -32,6 +51,7 @@ export default async function DashboardLayout({
           <div className="min-h-screen bg-background flex overflow-hidden">
             <Sidebar />
             <div className="flex-1 flex flex-col min-h-screen overflow-hidden lg:ml-64">
+              {viewAsBanner}
               <DashboardHeader />
               <main className="flex-1 overflow-y-auto p-gutter pb-24 lg:pb-8 custom-scrollbar">
                 <div className="max-w-container-max mx-auto">

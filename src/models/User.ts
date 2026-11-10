@@ -76,6 +76,9 @@ export interface IUser extends Document {
   failedLoginAttempts: number;
   accountLockedUntil?: Date;
   lastLoginAt?: Date;
+  /** Last time the owner used the dashboard or app (throttled, see src/lib/auth.ts). Never touched by admin "login as". */
+  lastSeenAt?: Date;
+  lastSeenClient?: 'web' | 'mobile';
 
   // Server-side session invalidation ("session epoch"). Every issued session
   // JWT / mobile bearer token embeds the value this field held at sign-in
@@ -222,6 +225,8 @@ const UserSchema: Schema = new Schema(
     failedLoginAttempts: { type: Number, default: 0 },
     accountLockedUntil: { type: Date },
     lastLoginAt: { type: Date },
+    lastSeenAt: { type: Date },
+    lastSeenClient: { type: String, enum: ['web', 'mobile'] },
     // Session-invalidation epoch — see INotificationPreferences-adjacent note
     // in IUser above and src/lib/sessionInvalidation.ts. Default 0 = "never
     // invalidated"; every issued token carries the value at sign-in.

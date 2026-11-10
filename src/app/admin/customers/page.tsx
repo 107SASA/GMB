@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
 import {
   Users,
   Search,
@@ -21,10 +20,12 @@ import {
   Info,
   SlidersHorizontal,
   Settings2,
+  Phone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { PLAN_DEFAULTS, getPlanDefaults, type PlanLimits } from '@/lib/planDefaults';
+import { ActivityBadge, agoLabel, CALL_OUTCOME_LABELS, type ActivityStatus } from '@/components/admin/customers/ActivityBadge';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared types
@@ -57,6 +58,15 @@ interface Customer {
   /** Real plan state from the owner's workspace: "Paid" / "Free trial" / "Payment failed" / null. */
   workspacePlan?: string | null;
   trialEndsAt?: string | null;
+  activity?: {
+    status: ActivityStatus;
+    reasons: string[];
+    lastActivityAt: string | null;
+    daysQuiet: number | null;
+    reviewRequests30d: number;
+    postsPending: number;
+    lastCall: { at: string; outcome: string; adminName?: string; followUpAt?: string | null } | null;
+  } | null;
 }
 
 interface Stats {
@@ -170,15 +180,29 @@ function ExpandedRow({ customer, onImpersonate, impersonating }: {
               {customer.onboardingCompleted ? 'Completed' : 'Incomplete'}
             </span>
           </div>
+          {customer.activity && customer.activity.reasons.length > 0 && (
+            <div>
+              <p className="text-xs font-bold text-outline uppercase mb-1">Why {customer.activity.status}</p>
+              <ul className="text-xs text-on-surface-variant space-y-0.5">
+                {customer.activity.reasons.map(r => <li key={r}>• {r}</li>)}
+              </ul>
+            </div>
+          )}
           {customer.business?._id && (
-            <div className="ml-auto flex items-end">
+            <div className="ml-auto flex items-end gap-2">
+              <Link
+                href={`/admin/customers/${customer._id}`}
+                className="flex items-center gap-2 px-4 py-2 border border-outline-variant text-on-surface text-xs font-bold rounded-xl hover:bg-surface transition-all"
+              >
+                View activity
+              </Link>
               <button
                 onClick={() => onImpersonate(customer.business!._id)}
                 disabled={impersonating}
                 className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary text-xs font-bold rounded-xl hover:bg-primary-container transition-all disabled:opacity-60 shadow-sm"
               >
                 <UserCheck className="w-4 h-4" />
-                {impersonating ? 'Switching...' : 'Impersonate'}
+                {impersonating ? 'Opening...' : 'Login as customer'}
               </button>
             </div>
           )}
@@ -922,28 +946,29 @@ function UsageLimitsTab() {
 // Customers tab (original content)
 // ─────────────────────────────────────────────────────────────────────────────
 function CustomersTab() {
-  const router = useRouter();
   const [data, setData]               = useState<CustomersApiResponse | null>(null);
   const [loading, setLoading]         = useState(true);
   const [refreshing, setRefreshing]   = useState(false);
   const [error, setError]             = useState('');
   const [search, setSearch]           = useState('');
   const [plan, setPlan]               = useState('all');
+  const [activity, setActivity]       = useState('all');
   const [page, setPage]               = useState(1);
   const [expandedId, setExpandedId]   = useState<string | null>(null);
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchData = useCallback(async (opts: {
-    page?: number; search?: string; plan?: string; refresh?: boolean;
+    page?: number; search?: string; plan?: string; activity?: string; refresh?: boolean;
   } = {}) => {
     const p  = opts.page   ?? page;
     const s  = opts.search ?? search;
     const pl = opts.plan   ?? plan;
+    const ac = opts.activity ?? activity;
     if (opts.refresh) setRefreshing(true); else setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams({ page: String(p), limit: '20', search: s, plan: pl });
+      const params = new URLSearchParams({ page: String(p), limit: '20', search: s, plan: pl, activity: ac });
       const res  = await fetch(`/api/admin/customers?${params}`);
       const json = await res.json();
       if (json.success) {
@@ -957,7 +982,7 @@ function CustomersTab() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [page, search, plan]);
+  }, [page, search, plan, activity]);
 
   useEffect(() => { fetchData(); }, []); // eslint-disable-line
 
@@ -970,6 +995,11 @@ function CustomersTab() {
   const handlePlan = (val: string) => {
     setPlan(val); setPage(1);
     fetchData({ plan: val, page: 1 });
+  };
+
+  const handleActivity = (val: string) => {
+    setActivity(val); setPage(1);
+    fetchData({ activity: val, page: 1 });
   };
 
   const handlePage = (p: number) => {
@@ -987,7 +1017,9 @@ function CustomersTab() {
       });
       const json = await res.json();
       if (json.success) {
-        router.push('/dashboard');
+        // Full navigation (not router.push) so the dashboard's client caches
+        // start fresh on the customer's workspace.
+        window.location.href = '/dashboard';
       } else {
         toast.error(json.error || 'Impersonation failed');
       }
@@ -1069,6 +1101,31 @@ function CustomersTab() {
           </select>
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline pointer-events-none" />
         </div>
+        <div className="relative">
+          <select
+            value={activity}
+            onChange={e => handleActivity(e.target.value)}
+            className="pl-4 pr-9 py-2.5 text-sm bg-surface-container-lowest border border-outline-variant rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary shadow-sm appearance-none font-medium text-on-surface"
+          >
+            <option value="all">All activity</option>
+            <option value="active">🟢 Active</option>
+            <option value="slipping">🟡 Slipping</option>
+            <option value="inactive">🔴 Inactive</option>
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline pointer-events-none" />
+        </div>
+        <button
+          onClick={() => handleActivity(activity === 'needs_call' ? 'all' : 'needs_call')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm border',
+            activity === 'needs_call'
+              ? 'bg-error text-on-error border-error'
+              : 'bg-surface-container-lowest border-outline-variant text-on-surface-variant hover:bg-surface'
+          )}
+        >
+          <Phone className="w-4 h-4" />
+          Needs a call{activity === 'needs_call' ? ` (${total})` : ''}
+        </button>
         <button
           onClick={() => fetchData({ refresh: true })}
           disabled={refreshing}
@@ -1088,7 +1145,7 @@ function CustomersTab() {
               <th className="px-6 py-3 text-left text-label-sm text-on-surface-variant">Business</th>
               <th className="px-6 py-3 text-left text-label-sm text-on-surface-variant">Plan</th>
               <th className="px-6 py-3 text-left text-label-sm text-on-surface-variant">Joined</th>
-              <th className="px-6 py-3 text-left text-label-sm text-on-surface-variant">Status</th>
+              <th className="px-6 py-3 text-left text-label-sm text-on-surface-variant">Activity</th>
               <th className="px-6 py-3" />
             </tr>
           </thead>
@@ -1096,7 +1153,7 @@ function CustomersTab() {
             {users.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-6 py-12 text-center text-outline text-sm">
-                  No customers found
+                  {activity === 'needs_call' ? 'Nobody needs a call right now 🎉' : 'No customers found'}
                 </td>
               </tr>
             )}
@@ -1112,7 +1169,13 @@ function CustomersTab() {
                       <div className="flex items-center gap-3">
                         <Avatar name={customer.fullName} plan={customer.subscriptionPlan} />
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold text-on-surface truncate">{customer.fullName}</div>
+                          <Link
+                            href={`/admin/customers/${customer._id}`}
+                            onClick={e => e.stopPropagation()}
+                            className="block text-sm font-semibold text-on-surface truncate hover:text-primary hover:underline"
+                          >
+                            {customer.fullName}
+                          </Link>
                           <div className="text-xs text-outline truncate">{customer.email}</div>
                         </div>
                       </div>
@@ -1144,16 +1207,39 @@ function CustomersTab() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={cn('px-2 py-0.5 text-xs font-bold rounded-md border',
-                        customer.isActive ? 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed' : 'bg-surface text-on-surface-variant border-outline-variant'
-                      )}>
-                        {customer.isActive ? 'Active' : 'Inactive'}
-                      </span>
+                      {customer.activity ? (
+                        <div>
+                          <ActivityBadge status={customer.activity.status} />
+                          <div className="text-xs text-outline mt-1 whitespace-nowrap">
+                            Seen {agoLabel(customer.activity.lastActivityAt)} · {customer.activity.reviewRequests30d} req/30d
+                          </div>
+                          {customer.activity.lastCall && (
+                            <div className="text-xs text-on-surface-variant mt-0.5 whitespace-nowrap">
+                              📞 {CALL_OUTCOME_LABELS[customer.activity.lastCall.outcome] ?? customer.activity.lastCall.outcome} · {agoLabel(customer.activity.lastCall.at)}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-outline">—</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {isExpanded
-                        ? <ChevronDown className="w-4 h-4 text-outline ml-auto" />
-                        : <ChevronRight className="w-4 h-4 text-outline ml-auto" />}
+                      <div className="flex items-center justify-end gap-2">
+                        {customer.business?._id && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleImpersonate(customer._id, customer.business!._id); }}
+                            disabled={impersonatingId === customer._id}
+                            title={`Open ${customer.business.name}'s dashboard as admin`}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-on-primary text-xs font-bold rounded-lg hover:bg-primary-container transition-all disabled:opacity-60 whitespace-nowrap"
+                          >
+                            <UserCheck className="w-3.5 h-3.5" />
+                            {impersonatingId === customer._id ? 'Opening…' : 'Login as'}
+                          </button>
+                        )}
+                        {isExpanded
+                          ? <ChevronDown className="w-4 h-4 text-outline" />
+                          : <ChevronRight className="w-4 h-4 text-outline" />}
+                      </div>
                     </td>
                   </tr>
                   {isExpanded && (

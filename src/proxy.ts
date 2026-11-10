@@ -6,6 +6,8 @@ import Business from '@/models/Business';
 import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
 import { isSessionEpochValid } from '@/lib/sessionEpoch';
 import { publicUrl } from '@/lib/publicUrl';
+import { VIEW_AS_COOKIE, decodeViewAs } from '@/lib/adminViewAs';
+import AdminActionLog from '@/models/AdminActionLog';
 
 /**
  * Per-workspace subscription gate.
@@ -77,6 +79,43 @@ function applyDevCors(request: NextRequest, response: NextResponse): NextRespons
   return response;
 }
 
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * "Login as customer" accountability: every change a SUPER_ADMIN makes inside
+ * a customer's workspace (approve a post, send review requests, edit the
+ * profile, …) is recorded in AdminActionLog under the admin's name, so it is
+ * never mistaken for the customer's own activity. Runs only when the
+ * adminViewAs cookie is present, so normal traffic pays nothing.
+ * Best-effort — never blocks the request.
+ */
+async function logAdminViewAsAction(request: NextRequest): Promise<void> {
+  const { pathname } = request.nextUrl;
+  if (READ_METHODS.has(request.method)) return;
+  if (pathname.startsWith('/api/admin/') || pathname.startsWith('/api/auth/')) return;
+  const viewAs = decodeViewAs(request.cookies.get(VIEW_AS_COOKIE)?.value);
+  if (!viewAs) return;
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  if (!token) return;
+  try {
+    const session = await verifySessionToken(token);
+    if (!session) return;
+    await dbConnect();
+    const admin = await User.findById(session.userId).select('role email').lean<{ role?: string; email?: string }>();
+    if (admin?.role !== 'SUPER_ADMIN') return;
+    await AdminActionLog.create({
+      adminUserId: session.userId,
+      adminEmail: admin.email,
+      action: 'impersonate.action',
+      targetBusinessId: viewAs.businessId,
+      targetUserId: viewAs.ownerUserId,
+      metadata: { method: request.method, path: pathname, businessName: viewAs.businessName },
+    });
+  } catch (err: any) {
+    console.error('[proxy] admin view-as action log failed:', err?.message);
+  }
+}
+
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -84,6 +123,7 @@ export default async function proxy(request: NextRequest) {
     if (request.method === 'OPTIONS') {
       return applyDevCors(request, new NextResponse(null, { status: 204 }));
     }
+    if (request.cookies.has(VIEW_AS_COOKIE)) await logAdminViewAsAction(request);
     return applyDevCors(request, NextResponse.next());
   }
 

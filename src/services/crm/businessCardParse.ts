@@ -150,3 +150,39 @@ export function needsFallback(f: CardFields): boolean {
 export function isOwnCardImageKey(key: unknown, businessId: string): key is string {
   return typeof key === 'string' && key.startsWith(`business-cards/${businessId}/`) && !key.includes('..') && key.length < 300;
 }
+
+// ── Model choice ─────────────────────────────────────────────────────────
+// Google retires Gemini models for new keys without notice (2.5 Flash /
+// Flash-Lite answer 404 "no longer available to new users"), so the scanner
+// does not hardcode a model: it lists what THIS key can call and picks the
+// newest Flash-Lite (cheap reader) and newest Flash (stronger retry).
+
+export interface GeminiModelInfo {
+  name: string; // "models/gemini-3.8-flash"
+  supportedGenerationMethods?: string[];
+}
+
+const MODEL_RE = /^(?:models\/)?gemini-(\d+(?:\.\d+)?)-flash(-lite)?(?:-(preview(?:-[\w-]+)?|\d{3}))?$/;
+
+/** Newest stable Flash-Lite + Flash this key supports (preview only when no stable exists). */
+export function pickCardModels(models: GeminiModelInfo[]): { primary: string | null; fallback: string | null } {
+  const rows = models
+    .filter((m) => !m.supportedGenerationMethods || m.supportedGenerationMethods.includes('generateContent'))
+    .map((m) => {
+      const id = m.name.replace(/^models\//, '');
+      const r = MODEL_RE.exec(id);
+      if (!r) return null;
+      return { id, version: parseFloat(r[1]), lite: !!r[2], preview: (r[3] ?? '').startsWith('preview') };
+    })
+    .filter((r): r is { id: string; version: number; lite: boolean; preview: boolean } => !!r);
+
+  const best = (lite: boolean): string | null => {
+    const pool = rows.filter((r) => r.lite === lite);
+    const stable = pool.filter((r) => !r.preview);
+    const list = (stable.length ? stable : pool).sort((a, b) => b.version - a.version || a.id.length - b.id.length);
+    return list[0]?.id ?? null;
+  };
+  const lite = best(true);
+  const flash = best(false);
+  return { primary: lite ?? flash, fallback: lite ? flash : null };
+}

@@ -12,6 +12,7 @@ import {
   isEmptyExtraction,
   isOwnCardImageKey,
   needsFallback,
+  pickCardModels,
   sanitizeCardExtraction,
 } from '../../src/services/crm/businessCardParse.ts';
 import { canonicalSource, ORGANIC_SOURCES } from '../../src/services/crm/sources.ts';
@@ -112,4 +113,31 @@ test('quota: the stronger-model retry is logged separately, so it is not billed 
   const scan = read('src/services/crm/businessCardScan.ts');
   assert.match(scan, /'business_card_scan_retry'/);
   assert.match(read('src/lib/featureGating.ts'), /promptType: 'business_card_scan',/);
+});
+
+// ── Model choice (Google retires models for new keys) ────────────────────
+
+const gen = (name: string, methods = ['generateContent']) => ({ name: `models/${name}`, supportedGenerationMethods: methods });
+
+test('models: newest stable Flash-Lite reads, newest stable Flash retries; image/tts/embedding variants ignored', () => {
+  const picked = pickCardModels([
+    gen('gemini-2.5-flash'),
+    gen('gemini-2.5-flash-lite'),
+    gen('gemini-2.5-flash-image'),
+    gen('gemini-3.1-flash-lite'),
+    gen('gemini-3.8-flash'),
+    gen('gemini-3.8-flash-preview-tts'),
+    gen('gemini-4.0-flash-preview-11-2026'), // newer, but preview while a stable exists
+    gen('text-embedding-005', ['embedContent']),
+  ]);
+  assert.deepEqual(picked, { primary: 'gemini-3.1-flash-lite', fallback: 'gemini-3.8-flash' });
+});
+
+test('models: preview used only when no stable exists; Flash alone reads with no retry', () => {
+  assert.deepEqual(pickCardModels([gen('gemini-3.9-flash-lite-preview-10-2026'), gen('gemini-3.8-flash')]), {
+    primary: 'gemini-3.9-flash-lite-preview-10-2026',
+    fallback: 'gemini-3.8-flash',
+  });
+  assert.deepEqual(pickCardModels([gen('gemini-3.8-flash')]), { primary: 'gemini-3.8-flash', fallback: null });
+  assert.deepEqual(pickCardModels([]), { primary: null, fallback: null });
 });

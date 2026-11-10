@@ -99,7 +99,7 @@ test('autoPickLocation: unclear cases go to the picker', () => {
 });
 
 test('rankLocationsForPlace: own listing first, verified before copies, duplicates last, otherwise original order', () => {
-  const order = (ls: ReturnType<typeof loc>[], placeId?: string) => rankLocationsForPlace(ls, placeId).map((l) => l.title);
+  const order = (ls: ReturnType<typeof loc>[], placeId?: string | null) => rankLocationsForPlace(ls, placeId).map((l) => l.title);
   assert.deepEqual(order([loc('other', 'Q'), loc('dup', 'P', false, 'locations/x'), loc('copy', 'P'), loc('real', 'P', true)], 'P'),
     ['real', 'copy', 'dup', 'other']);
   assert.deepEqual(order([loc('a', 'Q'), loc('b', 'R')], null), ['a', 'b']);

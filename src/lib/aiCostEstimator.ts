@@ -19,6 +19,9 @@ const MODEL_PRICING: Record<string, TokenPricing> = {
   'gemini-2.5-flash-lite': { inputPer1k: 0.0001,  outputPer1k: 0.0004 },
   'gemini-2.5-flash':      { inputPer1k: 0.0003,  outputPer1k: 0.0025 },
   'gemini-3.1-flash-lite': { inputPer1k: 0.00025, outputPer1k: 0.0015 },
+  'gemini-3.5-flash-lite': { inputPer1k: 0.0003,  outputPer1k: 0.0025 },
+  'gemini-3.5-flash':      { inputPer1k: 0.0015,  outputPer1k: 0.009 },
+  'gemini-3.8-flash':      { inputPer1k: 0.00075, outputPer1k: 0.00375 },
   'other':            { inputPer1k: 0.001,   outputPer1k: 0.002 },
 };
 
@@ -29,7 +32,9 @@ export function estimateAICost(
   promptTokens: number,
   completionTokens: number
 ): number {
-  const pricing = MODEL_PRICING[model] ?? DEFAULT_PRICING;
+  // Exact name first, then the longest known prefix ("gemini-3.8-flash-preview-…" → "gemini-3.8-flash").
+  const prefix = Object.keys(MODEL_PRICING).filter((k) => model.startsWith(k)).sort((a, b) => b.length - a.length)[0];
+  const pricing = MODEL_PRICING[model] ?? (prefix ? MODEL_PRICING[prefix] : undefined) ?? DEFAULT_PRICING;
   const cost =
     (promptTokens / 1000) * pricing.inputPer1k +
     (completionTokens / 1000) * pricing.outputPer1k;

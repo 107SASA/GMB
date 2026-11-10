@@ -2,8 +2,10 @@
 import { useState, useEffect } from "react";
 import { Search, Filter, Clock, FileText, Trash2, X, ChevronLeft, ChevronRight, Copy, Check } from "lucide-react";
 import { useBusiness } from '@/context/BusinessContext';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 
 export default function HistoryPage() {
+  const { confirm } = useConfirm();
   const { activeBusiness } = useBusiness();
   const [items, setItems] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,7 +49,13 @@ export default function HistoryPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this content permanently?")) return;
+    const ok = await confirm({
+      title: 'Delete Content?',
+      message: 'Are you sure you want to delete this content permanently? This action cannot be undone.',
+      confirmText: 'Delete',
+      confirmVariant: 'danger',
+    });
+    if (!ok) return;
     try {
       await fetch(`/api/posts/${id}`, { method: "DELETE" });
       setItems(items.filter(i => i._id !== id));

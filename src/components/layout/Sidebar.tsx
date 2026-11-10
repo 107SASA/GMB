@@ -8,6 +8,7 @@ import { useBusiness } from "@/context/BusinessContext";
 import { useMobileNav } from "@/context/MobileNavContext";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { AddWorkspaceModal } from "./AddWorkspaceModal";
+import { DeleteWorkspaceModal } from "./DeleteWorkspaceModal";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { toast } from 'sonner';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
@@ -181,27 +182,32 @@ export function Sidebar() {
   const { businesses, activeBusiness, switchBusiness, refreshBusinesses, loading } = useBusiness();
   const { isOpen, close, toggle } = useMobileNav();
   const { isSuperAdmin } = useCurrentUserRole();
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [workspaceToDelete, setWorkspaceToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isDeletingWorkspace, setIsDeletingWorkspace] = useState(false);
 
-  const handleDeleteWorkspace = async (e: React.MouseEvent, businessId: string, name: string) => {
+  const handleDeleteWorkspaceClick = (e: React.MouseEvent, businessId: string, name: string) => {
     e.stopPropagation();
-    if (deletingId) return;
-    if (!confirm(`Delete workspace "${name}"? It will be removed from your list — you can re-add the business later.`)) return;
-    setDeletingId(businessId);
+    setWorkspaceToDelete({ id: businessId, name });
+  };
+
+  const handleConfirmDeleteWorkspace = async () => {
+    if (!workspaceToDelete || isDeletingWorkspace) return;
+    setIsDeletingWorkspace(true);
     try {
       const res = await fetch("/api/business/delete-workspace", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ businessId }),
+        body: JSON.stringify({ businessId: workspaceToDelete.id }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Failed to delete workspace");
+      setWorkspaceToDelete(null);
       await refreshBusinesses();
       router.refresh();
     } catch (err) {
       toast.error(friendlyClientMessage(err, "Failed to delete workspace"));
     } finally {
-      setDeletingId(null);
+      setIsDeletingWorkspace(false);
     }
   };
 
@@ -328,12 +334,12 @@ export function Sidebar() {
                             {isActive && <MaterialIcon name="check" size={14} className="text-primary shrink-0" />}
                           </button>
                           <button
-                            onClick={(e) => handleDeleteWorkspace(e, b._id, b.name)}
-                            disabled={deletingId === b._id}
+                            onClick={(e) => handleDeleteWorkspaceClick(e, b._id, b.name)}
+                            disabled={isDeletingWorkspace && workspaceToDelete?.id === b._id}
                             title="Delete workspace"
                             className="shrink-0 p-1.5 rounded-lg text-outline hover:text-error hover:bg-error-container opacity-0 group-hover/ws:opacity-100 focus:opacity-100 transition-all disabled:opacity-100"
                           >
-                            {deletingId === b._id ? (
+                            {isDeletingWorkspace && workspaceToDelete?.id === b._id ? (
                               <MaterialIcon name="progress_activity" size={14} className="animate-spin" />
                             ) : (
                               <MaterialIcon name="delete" size={14} />
@@ -513,6 +519,16 @@ export function Sidebar() {
       </nav>
 
       {showAddModal && <AddWorkspaceModal onClose={() => setShowAddModal(false)} />}
+      {workspaceToDelete && (
+        <DeleteWorkspaceModal
+          workspaceName={workspaceToDelete.name}
+          isDeleting={isDeletingWorkspace}
+          onConfirm={handleConfirmDeleteWorkspace}
+          onClose={() => {
+            if (!isDeletingWorkspace) setWorkspaceToDelete(null);
+          }}
+        />
+      )}
     </>
   );
 }

@@ -17,6 +17,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Pencil, Trash2, Plus, Check, X, Layers } from 'lucide-react';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import {
   LeadStagesConfig as StagesConfig,
   LeadSubStage,
@@ -178,6 +179,7 @@ function StagePanel({
   subStages: LeadSubStage[];
   onChange: (next: LeadSubStage[]) => void;
 }) {
+  const { confirm } = useConfirm();
   const [adding, setAdding] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const theme = PANEL_THEME[group];
@@ -200,9 +202,16 @@ function StagePanel({
     onChange(arrayMove(subStages, from, to));
   };
 
-  const handleDelete = (index: number) => {
+  const handleDelete = async (index: number) => {
     const sub = subStages[index];
-    if (!window.confirm(`Delete sub-stage "${sub.name}"? Leads tagged with it will keep working — they just lose this sub-tag.`)) return;
+    const ok = await confirm({
+      title: 'Delete Sub-Stage?',
+      message: `Are you sure you want to delete sub-stage "${sub.name}"?`,
+      detail: 'Leads tagged with it will keep working — they just lose this sub-tag.',
+      confirmText: 'Delete',
+      confirmVariant: 'danger',
+    });
+    if (!ok) return;
     onChange(subStages.filter((_, i) => i !== index));
     setEditingIndex(null);
   };

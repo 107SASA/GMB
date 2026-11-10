@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import {
   Loader2,
   ImagePlus,
@@ -112,6 +113,7 @@ function StatusBadge({ status, failureReason }: { status: MediaStatus; failureRe
 }
 
 export default function GbpMediaManager({ businessId }: { businessId?: string }) {
+  const { confirm } = useConfirm();
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -199,7 +201,15 @@ export default function GbpMediaManager({ businessId }: { businessId?: string })
   };
 
   const remove = async (asset: MediaAsset) => {
-    if (asset.status === 'published' && !confirm('This photo is live on Google. Remove it from your profile?')) return;
+    if (asset.status === 'published') {
+      const ok = await confirm({
+        title: 'Remove Photo from Google?',
+        message: 'This photo is live on Google. Are you sure you want to remove it from your profile?',
+        confirmText: 'Remove Photo',
+        confirmVariant: 'danger',
+      });
+      if (!ok) return;
+    }
     setBusyId(asset._id);
     setMsg(null);
     try {

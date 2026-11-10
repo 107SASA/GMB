@@ -9,6 +9,7 @@ import {
 import CustomerUploadModal from '@/components/campaigns/CustomerUploadModal';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { useBusiness } from '@/context/BusinessContext';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 
 interface Customer {
   _id: string;
@@ -99,6 +100,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export default function CampaignsDashboard() {
+  const { confirm } = useConfirm();
   const { activeBusiness, loading: bizLoading } = useBusiness();
 
   // --- Customer list ---
@@ -223,7 +225,14 @@ export default function CampaignsDashboard() {
   };
 
   const handleDeleteCustomer = async (customer: Customer) => {
-    if (!confirm(`Delete ${customer.name}? This removes them and their review-request history — you'll be able to add them again and send a fresh request (e.g. to re-test the same phone number).`)) return;
+    const ok = await confirm({
+      title: 'Delete Customer?',
+      message: `Are you sure you want to delete ${customer.name}?`,
+      detail: "This removes them and their review-request history — you'll be able to add them again and send a fresh request (e.g. to re-test the same phone number).",
+      confirmText: 'Delete Customer',
+      confirmVariant: 'danger',
+    });
+    if (!ok) return;
     setDeletingId(customer._id);
     try {
       const res = await fetch(`/api/customers/${customer._id}`, { method: 'DELETE' });

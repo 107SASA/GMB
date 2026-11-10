@@ -382,7 +382,7 @@ export function AddWorkspaceModal({ onClose }: Props) {
                 <PhoneNumberInput
                   value={form.phone}
                   onChange={(v) => update("phone", v)}
-                  className="rounded-xl [&_input]:py-2.5 [&_select]:py-2.5 [&_select]:w-16"
+                  className="rounded-xl [&_input]:py-2.5 [&_select]:py-2.5 [&_select]:w-20"
                 />
               </div>
               <div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import {
   UserPlus,
   Copy,
@@ -41,6 +42,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function InvitesPage() {
+  const { confirm } = useConfirm();
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +102,13 @@ export default function InvitesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this invite?')) return;
+    const ok = await confirm({
+      title: 'Delete Invite?',
+      message: 'Are you sure you want to delete this invite? The link will no longer be valid.',
+      confirmText: 'Delete',
+      confirmVariant: 'danger',
+    });
+    if (!ok) return;
     await fetch('/api/admin/invites', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },

@@ -8,6 +8,7 @@ import GbpIntelligencePanel from '@/components/gbp/GbpIntelligencePanel';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 import { useSectionFocus } from '@/hooks/useSectionFocus';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 
 interface Profile {
   locationName: string;
@@ -22,6 +23,7 @@ interface Profile {
 const inputCls = 'w-full px-4 py-3 rounded-xl border border-outline-variant focus:ring-2 focus:ring-primary focus:border-primary transition-colors';
 
 export default function GbpProfilePage() {
+  const { confirm } = useConfirm();
   const { activeBusiness } = useBusiness();
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
@@ -67,7 +69,13 @@ export default function GbpProfilePage() {
   useEffect(() => { load(); }, [activeBusiness?._id]);
 
   const disconnect = async () => {
-    if (!confirm('Disconnect this workspace from Google Business Profile? You can reconnect anytime.')) return;
+    const ok = await confirm({
+      title: 'Disconnect Google Business Profile?',
+      message: 'Are you sure you want to disconnect this workspace from Google Business Profile? You can reconnect anytime.',
+      confirmText: 'Disconnect',
+      confirmVariant: 'danger',
+    });
+    if (!ok) return;
     setDisconnecting(true);
     setError(null);
     setSaved(null);

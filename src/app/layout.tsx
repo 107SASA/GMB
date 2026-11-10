@@ -4,6 +4,7 @@ import { Inter, Public_Sans, Space_Grotesk, JetBrains_Mono } from "next/font/goo
 import "./globals.css";
 import { Toaster } from "sonner";
 import { JsonLd } from "@/components/seo/JsonLd";
+import { ConfirmModalProvider } from "@/components/ui/ConfirmModal";
 
 // Site-wide, not homepage-only: Google explicitly allows (and effectively
 // expects) Organization/WebSite markup to appear on every page rather than
@@ -149,7 +150,9 @@ export default function RootLayout({
         // children. See https://nextjs.org/docs/messages/react-hydration-error
         suppressHydrationWarning
       >
-        {children}
+        <ConfirmModalProvider>
+          {children}
+        </ConfirmModalProvider>
         <Toaster />
       </body>
     </html>

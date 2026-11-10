@@ -3,7 +3,18 @@ import { getSession } from '@/lib/session';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import LoginForm from './LoginForm';
+import os from "os";
 
+const interfaces = os.networkInterfaces();
+
+const ipAddress = Object.values(interfaces)
+  .flat()
+  .find(
+    (item) => item &&
+      item.family === "IPv4" &&
+      !item.internal
+  )?.address;
+  
 // Server component wrapper — the actual login UI (LoginForm) always used to
 // render regardless of whether the visitor already had a valid session
 // cookie, so a returning logged-in user re-doing the WhatsApp OTP flow every
@@ -13,7 +24,8 @@ import LoginForm from './LoginForm';
 // exists AND still points at a real account, skip the form entirely.
 export default async function LoginPage() {
   const session = await getSession();
-
+  console.log("Hii this si logIn page")
+console.log("Local IP Address:", ipAddress);
   let userExists = false;
   if (session) {
     try {

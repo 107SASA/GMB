@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Camera, CheckCircle, XCircle, Clock, Film, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 
 interface ShowcaseItem {
   _id: string;
@@ -23,6 +24,7 @@ const TABS: { key: string; label: string }[] = [
 ];
 
 export default function AdminShowcasePage() {
+  const { confirm } = useConfirm();
   const [items, setItems] = useState<ShowcaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('pending');
@@ -70,9 +72,15 @@ export default function AdminShowcasePage() {
   };
 
   const remove = async (id: string, isLive: boolean) => {
-    if (!window.confirm(isLive
-      ? 'Remove this from the live showcase? It will disappear from growwmatics.com/showcase immediately.'
-      : 'Delete this upload permanently?')) return;
+    const ok = await confirm({
+      title: isLive ? 'Remove from Showcase?' : 'Delete Showcase Entry?',
+      message: isLive
+        ? 'Remove this from the live showcase? It will disappear from growwmatics.com/showcase immediately.'
+        : 'Are you sure you want to delete this upload permanently?',
+      confirmText: isLive ? 'Remove' : 'Delete',
+      confirmVariant: 'danger',
+    });
+    if (!ok) return;
     setBusyId(id);
     try {
       const res = await fetch(`/api/admin/showcase/${id}`, { method: 'DELETE' });

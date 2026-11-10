@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, Send, X } from 'lucide-react';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 
 interface Template { id: string; label: string; category: string | null; body: string; placeholders: number[]; usable: boolean }
 interface Preview {
@@ -37,6 +38,7 @@ export function SendWhatsAppModal({ selectedIds, filters, filteredTotal, onClose
   filteredTotal: number;
   onClose: () => void;
 }) {
+  const { confirm } = useConfirm();
   const [templates, setTemplates] = useState<Template[] | null>(null);
   const [audience, setAudience] = useState<'selected' | 'filtered'>(selectedIds.length ? 'selected' : 'filtered');
   const [templateId, setTemplateId] = useState('');
@@ -90,7 +92,16 @@ export function SendWhatsAppModal({ selectedIds, filters, filteredTotal, onClose
   };
 
   const send = async () => {
-    if (!preview || !confirm(`Send this WhatsApp message to ${preview.eligible} lead${preview.eligible === 1 ? '' : 's'}? This cannot be undone.`)) return;
+    if (!preview) return;
+    const count = preview.eligible;
+    const ok = await confirm({
+      title: 'Send WhatsApp Campaign?',
+      message: `Send this WhatsApp message to ${count} lead${count === 1 ? '' : 's'}? This cannot be undone.`,
+      confirmText: 'Send Campaign',
+      confirmVariant: 'primary',
+      icon: 'send',
+    });
+    if (!ok) return;
     const json = await post('/api/admin/crm/whatsapp/campaigns', { ...body(), name });
     if (json) setCampaign({ id: json.campaignId, name: name || 'WhatsApp send', status: 'sending', counts: { total: json.queued + json.skipped, sent: 0, failed: 0, skipped: json.skipped }, recipients: [] });
   };

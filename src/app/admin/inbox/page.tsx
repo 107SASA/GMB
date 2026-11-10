@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Loader2, PanelRight, Search, Send, Settings, X } from 'lucide-react';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 
 type Filter =
   | 'all' | 'needs-reply' | 'unread' | 'support' | 'sales' | 'demo' | 'report' | 'customers' | 'review-replies' | 'new'
@@ -499,6 +500,7 @@ function Intelligence({ detail, teammate, note, setNote, tag, setTag, act, aiOpe
   aiEvents: TimelineEvent[];
   skipped?: TimelineEvent;
 }) {
+  const { confirm } = useConfirm();
   const lead = detail.lead;
   return (
     <div className="space-y-3 p-3">
@@ -570,7 +572,21 @@ function Intelligence({ detail, teammate, note, setNote, tag, setTag, act, aiOpe
               <a className="text-primary" href="/admin/demo-bookings">Open demo</a>
               {detail.demo.meetingLink?.startsWith('https://') && <button type="button" className="text-primary" onClick={() => navigator.clipboard.writeText(detail.demo!.meetingLink!)}>Copy Meet link</button>}
               <a className="text-primary" href="/admin/demo-bookings">Reschedule</a>
-              <button type="button" className="text-error" onClick={() => { if (confirm('Cancel this demo?')) act('cancel-demo'); }}>Cancel</button>
+              <button
+                type="button"
+                className="text-error"
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: 'Cancel Demo?',
+                    message: 'Are you sure you want to cancel this scheduled demo booking?',
+                    confirmText: 'Cancel Demo',
+                    confirmVariant: 'danger',
+                  });
+                  if (ok) act('cancel-demo');
+                }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         ) : <p className="mt-1 text-sm">Not available</p>}

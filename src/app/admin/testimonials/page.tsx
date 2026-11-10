@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Star, CheckCircle, XCircle, Clock, MessageSquareQuote, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 
 interface TestimonialItem {
   _id: string;
@@ -36,6 +37,7 @@ function Stars({ rating }: { rating: number }) {
 }
 
 export default function AdminTestimonialsPage() {
+  const { confirm } = useConfirm();
   const [items, setItems] = useState<TestimonialItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('pending');
@@ -83,9 +85,15 @@ export default function AdminTestimonialsPage() {
   };
 
   const remove = async (id: string, isLive: boolean) => {
-    if (!window.confirm(isLive
-      ? 'Remove this from the live showcase page? It will disappear from growwmatics.com/showcase immediately.'
-      : 'Delete this testimonial permanently?')) return;
+    const ok = await confirm({
+      title: isLive ? 'Remove Testimonial?' : 'Delete Testimonial?',
+      message: isLive
+        ? 'Remove this from the live showcase page? It will disappear from growwmatics.com/showcase immediately.'
+        : 'Are you sure you want to delete this testimonial permanently?',
+      confirmText: isLive ? 'Remove' : 'Delete',
+      confirmVariant: 'danger',
+    });
+    if (!ok) return;
     setBusyId(id);
     try {
       const res = await fetch(`/api/admin/testimonials/${id}`, { method: 'DELETE' });

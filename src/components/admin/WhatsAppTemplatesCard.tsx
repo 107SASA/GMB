@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 
 interface Template {
   id: string;
@@ -41,6 +42,7 @@ const STATUS_STYLE: Record<string, string> = {
  * name, text, category and WhatsApp approval are read from Twilio.
  */
 export function WhatsAppTemplatesCard() {
+  const { confirm } = useConfirm();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,7 +120,21 @@ export function WhatsAppTemplatesCard() {
                 <button onClick={() => call(`a-${t.id}`, `/api/admin/whatsapp-templates/${t.id}`, { method: 'PATCH', body: JSON.stringify({ active: !t.active }) }, t.active ? 'Switched off.' : 'Switched on.')} className="px-2 py-1 rounded-lg border border-outline-variant text-[11px] font-semibold">
                   {t.active ? 'Switch off' : 'Switch on'}
                 </button>
-                <button title="Remove" onClick={() => { if (confirm(`Remove "${t.label}" from the list? Past sends keep their record.`)) call(`d-${t.id}`, `/api/admin/whatsapp-templates/${t.id}`, { method: 'DELETE' }, 'Removed.'); }} className="p-1.5 rounded-lg hover:bg-error-container text-error">
+                <button
+                  title="Remove"
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: 'Remove Template?',
+                      message: `Remove "${t.label}" from the list? Past sends keep their record.`,
+                      confirmText: 'Remove',
+                      confirmVariant: 'danger',
+                    });
+                    if (ok) {
+                      call(`d-${t.id}`, `/api/admin/whatsapp-templates/${t.id}`, { method: 'DELETE' }, 'Removed.');
+                    }
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-error-container text-error"
+                >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>

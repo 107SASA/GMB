@@ -364,7 +364,7 @@ export async function inboxDetail(conversationRef: string) {
     : [];
   const businessId = lead?.businessId || thread?.businessId;
   const business = businessId
-    ? await Business.findById(businessId).select('name subscriptionStatus googleConnected city googleLocationId createdAt').lean() as any
+    ? await Business.findById(businessId).select('name subscriptionStatus googleConnected googleAccess city googleLocationId createdAt').lean() as any
     : null;
   const subscription = businessId
     ? await Subscription.findOne({ businessId }).select('planType billingStatus status startDate').lean() as any
@@ -457,6 +457,17 @@ export async function inboxDetail(conversationRef: string) {
       paymentStatus: subscription?.status || null,
       activationDate: subscription?.startDate || null,
       googleConnected: business.googleConnected === true,
+      // Real Google access, so the team sees "Google refused" instead of "Connected".
+      googleAccess: await (async () => {
+        const { googleAccessAdminStatus, googleAccessCustomerMessage } = await import('@/services/gbp/access/evaluate');
+        const GBPToken = (await import('@/models/GBPToken')).default;
+        const token: any = await GBPToken.findOne({ businessId: business._id }).select('googleEmail lastSyncAt').lean();
+        return {
+          ...googleAccessAdminStatus({ googleConnected: business.googleConnected, googleAccess: business.googleAccess, lastSyncAt: token?.lastSyncAt }),
+          googleEmail: token?.googleEmail || null,
+          customerMessage: googleAccessCustomerMessage(business.googleAccess?.state, business.googleAccess?.reason),
+        };
+      })(),
       googleLocationId: business.googleLocationId || null,
       city: business.city || null,
       since: business.createdAt,

@@ -17,6 +17,8 @@ import {
   CheckCircle2,
   XCircle,
   RefreshCw,
+  AlertTriangle,
+  Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { workspaceStatusLabel } from '@/lib/admin/revenueMetrics';
@@ -30,6 +32,16 @@ interface Business {
   phone?: string;
   website?: string;
   googleConnected: boolean;
+  /** What Google actually allows (services/gbp/access) — not just "signed in". */
+  googleAccessStatus?: {
+    tone: 'ok' | 'checking' | 'problem' | 'none';
+    label: string;
+    reason: string | null;
+    googleEmail: string | null;
+    checkedAt: string | null;
+    problemSince: string | null;
+    customerMessage: string | null;
+  };
   onboardingCompleted: boolean;
   contentGeneratedCount: number;
   createdAt: string;
@@ -56,9 +68,53 @@ interface Pagination {
 const FILTER_OPTIONS = [
   { value: 'all', label: 'All Businesses' },
   { value: 'google', label: 'Google Connected' },
+  { value: 'google_problem', label: 'Google access problem' },
   { value: 'whatsapp', label: 'WhatsApp Active' },
   { value: 'onboarded', label: 'Fully Onboarded' },
 ];
+
+/** Google access for the sales / support team: verified, checking, or the reason Google refuses. */
+function GoogleAccessBadge({ status, connected }: { status?: Business['googleAccessStatus']; connected: boolean }) {
+  const [copied, setCopied] = useState(false);
+  if (!status) return <StatusBadge connected={connected} label="Google" />;
+  const tone = {
+    ok: 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed',
+    checking: 'bg-surface-container text-on-surface-variant border-outline-variant',
+    problem: 'bg-error-container text-on-error-container border-error',
+    none: 'bg-surface text-outline border-outline-variant',
+  }[status.tone];
+  const Icon = status.tone === 'ok' ? CheckCircle2 : status.tone === 'problem' ? AlertTriangle : status.tone === 'checking' ? Loader2 : XCircle;
+  const details = [
+    status.reason,
+    status.googleEmail && `Google account: ${status.googleEmail}`,
+    status.problemSince && status.tone === 'problem' && `Since ${new Date(status.problemSince).toLocaleDateString()}`,
+    status.checkedAt && `Checked ${new Date(status.checkedAt).toLocaleString()}`,
+  ].filter(Boolean).join('\n');
+  const copy = async () => {
+    if (!status.customerMessage) return;
+    try {
+      await navigator.clipboard.writeText(status.customerMessage);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard blocked */ }
+  };
+  return (
+    <div className="flex flex-col gap-1 max-w-[220px]">
+      <span title={details || undefined} className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold border w-fit', tone)}>
+        <Icon className="w-3 h-3" />
+        {status.label}
+      </span>
+      {status.tone === 'problem' && status.reason && (
+        <span className="text-[11px] leading-tight text-error">{status.reason}</span>
+      )}
+      {status.customerMessage && (
+        <button type="button" onClick={copy} className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline w-fit">
+          <Copy className="w-3 h-3" /> {copied ? 'Copied' : 'Copy fix steps for customer'}
+        </button>
+      )}
+    </div>
+  );
+}
 
 function StatusBadge({ connected, label }: { connected: boolean; label: string }) {
   return (
@@ -374,7 +430,7 @@ export default function AdminBusinessesPage() {
                       {/* Integrations */}
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1.5">
-                          <StatusBadge connected={biz.googleConnected} label="Google" />
+                          <GoogleAccessBadge status={biz.googleAccessStatus} connected={biz.googleConnected} />
                           <StatusBadge
                             connected={biz.whatsappConfig?.isConnected ?? false}
                             label="WhatsApp"

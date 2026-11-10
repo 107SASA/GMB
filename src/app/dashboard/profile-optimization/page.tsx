@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { useSectionFocus } from '@/hooks/useSectionFocus';
 import {
@@ -132,6 +133,17 @@ export default function ProfileOptimizationPage() {
   const [removedAreas, setRemovedAreas] = useState<string[]>([]);
   const [pickedHolidays, setPickedHolidays] = useState<string[]>([]);
   const [attrValues, setAttrValues] = useState<Record<string, string>>({});
+  // Owner edits: their own description, and which suggested categories /
+  // services to leave out (or add) — the AI draft is only a starting point.
+  const [descDraft, setDescDraft] = useState<string | null>(null);
+  const [skippedCategories, setSkippedCategories] = useState<string[]>([]);
+  const [skippedServices, setSkippedServices] = useState<string[]>([]);
+  const [ownServices, setOwnServices] = useState('');
+  // Name, phone, website — moved here from the Google Profile tab (one place to edit).
+  const [details, setDetails] = useState({ title: '', phone: '', website: '' });
+  useEffect(() => {
+    if (recs?.details) setDetails({ title: recs.details.title || '', phone: recs.details.phone || '', website: recs.details.website || '' });
+  }, [recs?.details]);
   const [bulkBool, setBulkBool] = useState<Record<string, boolean | undefined>>({});
 
   const load = useCallback(async () => {
@@ -233,6 +245,36 @@ export default function ProfileOptimizationPage() {
       : json.change?.status === 'PROPOSED'
       ? 'Saved under “Ready to apply” below. Check what changes, then press “Apply to Google”. Nothing was sent yet.'
       : `This proposal did not pass our checks and was saved as “Not applied”.${json.change?.error ? ` ${json.change.error}` : ''}`));
+    // Saved for approval: close the owner's editor (a rejected one stays open to fix).
+    if (json.change?.status === 'PROPOSED') {
+      setDescDraft(null);
+      setOwnServices('');
+      setSkippedServices([]);
+      setSkippedCategories([]);
+    }
+    await load();
+  });
+
+  // One proposal per changed field; each waits under "Ready to apply".
+  const proposeDetails = () => run(async () => {
+    const current = recs?.details || {};
+    const pairs = ([['title', 'title'], ['phone', 'phone'], ['website', 'website']] as const)
+      .filter(([key]) => details[key].trim() !== String(current[key] || '').trim());
+    if (!pairs.length) { setMessage('Nothing changed. Nothing was saved.'); return; }
+    const lines: string[] = [];
+    for (const [key, kind] of pairs) {
+      const res = await fetch('/api/gbp/changes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind, proposed: details[key].trim(), source: 'owner' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      const label = key === 'title' ? 'Business name' : key === 'phone' ? 'Phone' : 'Website';
+      lines.push(json.error ? `${label}: ${json.error}`
+        : json.change?.status === 'PROPOSED' || (json.reused && json.change?.status !== 'BLOCKED') ? `${label}: saved under “Ready to apply”.`
+        : `${label}: didn’t pass our checks${json.change?.error ? ` — ${json.change.error}` : ''}.`);
+    }
+    setMessage(`${lines.join(' ')} Nothing was sent to Google yet.`);
     await load();
   });
 
@@ -496,16 +538,75 @@ export default function ProfileOptimizationPage() {
         <div className="space-y-2">
           <h2 className="font-heading font-bold text-on-surface pt-2">Improve your profile</h2>
 
-          {description?.text && (
-            <Panel section="description" title="Business description" hint="1 suggestion">
-              <p className="text-sm whitespace-pre-wrap break-words">{description.text}</p>
-              {description.validation?.valid ? (
-                <button disabled={busy} className={btnPrimary} onClick={() => propose({ kind: 'description', proposed: description.text, source: 'recommendation', context: { tokens: description.tokens || [], competitorNames: description.competitorNames || [] } })}>Use this description</button>
-              ) : (
-                <p className="text-xs text-error">This draft didn’t pass our checks.</p>
-              )}
-            </Panel>
-          )}
+          <Panel section="details" title="Name, phone & website" hint={recs.details?.phone && recs.details?.website ? 'Set' : 'Missing details'}>
+            <label className="block text-xs text-on-surface-variant">
+              Business name
+              <input className={`${input} mt-1 w-full`} value={details.title} onChange={(e) => setDetails({ ...details, title: e.target.value })} />
+            </label>
+            {details.title.trim() !== (recs.details?.title || '').trim() && (
+              <p className="text-xs text-on-surface-variant">Use your real business name only — Google can suspend profiles that add keywords or cities to the name.</p>
+            )}
+            <label className="block text-xs text-on-surface-variant">
+              Phone
+              <PhoneNumberInput className="mt-1 rounded-lg [&_input]:py-2 [&_select]:py-2" value={details.phone} onChange={(v) => setDetails({ ...details, phone: v })} />
+            </label>
+            <label className="block text-xs text-on-surface-variant">
+              Website
+              <input className={`${input} mt-1 w-full`} value={details.website} onChange={(e) => setDetails({ ...details, website: e.target.value })} placeholder="https://…" />
+            </label>
+            <button
+              disabled={busy || (['title', 'phone', 'website'] as const).every((k) => details[k].trim() === String(recs.details?.[k] || '').trim())}
+              className={btnPrimary}
+              onClick={proposeDetails}
+            >Save changes</button>
+          </Panel>
+
+          <Panel section="description" title="Business description" hint={descDraft !== null ? 'Writing your own' : description?.text ? '1 suggestion' : 'Write your own'}>
+            {descDraft === null ? (
+              <>
+                {description?.text ? (
+                  <>
+                    <p className="text-xs text-on-surface-variant">Suggested by GrowwMatics</p>
+                    <p className="text-sm whitespace-pre-wrap break-words">{description.text}</p>
+                  </>
+                ) : (
+                  <p className="text-sm text-on-surface-variant">{description?.current ? 'On Google now:' : 'Your profile has no description yet.'}</p>
+                )}
+                {!description?.text && description?.current && <p className="text-sm whitespace-pre-wrap break-words">{description.current}</p>}
+                <div className="flex flex-wrap gap-2">
+                  {description?.text && description.validation?.valid && (
+                    <button disabled={busy} className={btnPrimary} onClick={() => propose({ kind: 'description', proposed: description.text, source: 'recommendation', context: { tokens: description.tokens || [], competitorNames: description.competitorNames || [] } })}>Use this description</button>
+                  )}
+                  <button disabled={busy} className={btnOutline} onClick={() => setDescDraft(description?.text || description?.current || '')}>
+                    {description?.text ? 'Edit it / write my own' : description?.current ? 'Edit description' : 'Write a description'}
+                  </button>
+                </div>
+                {description?.text && !description.validation?.valid && <p className="text-xs text-error">This draft didn’t pass our checks — edit it or write your own.</p>}
+              </>
+            ) : (
+              <>
+                <textarea
+                  rows={5}
+                  maxLength={750}
+                  className={`${input} w-full`}
+                  value={descDraft}
+                  onChange={(e) => setDescDraft(e.target.value)}
+                  placeholder="What you do, for whom, and where — in your own words."
+                />
+                <p className={`text-xs ${descDraft.length > 750 ? 'text-error' : 'text-on-surface-variant'}`}>
+                  {descDraft.length}/750 · No links, prices or words like “best” or “cheapest” — Google doesn’t allow them.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    disabled={busy || !descDraft.trim() || descDraft.trim() === (description?.current || '').trim()}
+                    className={btnPrimary}
+                    onClick={() => propose({ kind: 'description', proposed: descDraft.trim(), source: 'owner', context: { tokens: description?.tokens || [], competitorNames: description?.competitorNames || [] } })}
+                  >Save my description</button>
+                  <button disabled={busy} className={btnOutline} onClick={() => setDescDraft(null)}>Cancel</button>
+                </div>
+              </>
+            )}
+          </Panel>
 
           {Boolean(categories?.primary || categories?.additional?.length) && (
             <Panel section="categories" title="Categories" hint={addable.length ? `${addable.length} to add` : 'Nothing to add'}>
@@ -520,18 +621,34 @@ export default function ProfileOptimizationPage() {
               )}
               {addable.length > 0 && (
                 <>
+                  <p className="text-xs text-on-surface-variant">Tap to leave out any that don’t describe your business.</p>
                   <ul className="flex flex-wrap gap-2">
-                    {addable.map((c) => (
-                      <li key={c.displayName} className="rounded-full border border-outline-variant px-3 py-1 text-xs">
-                        {c.displayName}{c.competitors?.length ? <span className="text-on-surface-variant"> · used by competitors</span> : null}
-                      </li>
-                    ))}
+                    {addable.map((c) => {
+                      const off = skippedCategories.includes(c.displayName);
+                      return (
+                        <li key={c.displayName}>
+                          <button
+                            type="button"
+                            aria-pressed={!off}
+                            onClick={() => setSkippedCategories(off ? skippedCategories.filter((x) => x !== c.displayName) : [...skippedCategories, c.displayName])}
+                            className={`rounded-full border px-3 py-1 text-xs ${off ? 'border-outline-variant text-on-surface-variant line-through' : 'border-primary text-on-surface'}`}
+                          >
+                            {off ? '' : '✓ '}{c.displayName}{c.competitors?.length ? <span className="text-on-surface-variant"> · used by competitors</span> : null}
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
-                  <button
-                    disabled={busy}
-                    className={btnOutline}
-                    onClick={() => propose({ kind: 'categories', source: 'recommendation', proposed: { additionalCategories: addable.map((c) => ({ name: c.categoryName })) } })}
-                  >Add {addable.length} categor{addable.length === 1 ? 'y' : 'ies'}</button>
+                  {(() => {
+                    const chosen = addable.filter((c) => !skippedCategories.includes(c.displayName));
+                    return (
+                      <button
+                        disabled={busy || chosen.length === 0}
+                        className={btnOutline}
+                        onClick={() => propose({ kind: 'categories', source: chosen.length === addable.length ? 'recommendation' : 'owner', proposed: { additionalCategories: chosen.map((c) => ({ name: c.categoryName })) } })}
+                      >Add {chosen.length} categor{chosen.length === 1 ? 'y' : 'ies'}</button>
+                    );
+                  })()}
                 </>
               )}
               {notAddable > 0 && <p className="text-xs text-on-surface-variant">{notAddable} other categor{notAddable === 1 ? 'y' : 'ies'} used by competitors can’t be added through Google right now.</p>}
@@ -600,17 +717,51 @@ export default function ProfileOptimizationPage() {
             </Panel>
           )}
 
-          {((recs.services?.items || []).length > 0 || recs.services?.blocked) && (
-            <Panel section="services" title="Services" hint={recs.services?.items?.length ? `${recs.services.items.length} to add` : ''}>
-              {(recs.services?.items || []).length > 0 && (
+          <Panel section="services" title="Services" hint={recs.services?.items?.length ? `${recs.services.items.length} to add` : 'Add your own'}>
+            {recs.services?.blocked ? (
+              <p className="text-sm">{recs.services.reason}</p>
+            ) : (() => {
+              const suggested: any[] = recs.services?.items || [];
+              const own = ownServices.split(/[,;\n]+/).map((x) => x.trim()).filter((x) => x.length >= 2);
+              const chosen = [
+                ...suggested.filter((x) => !skippedServices.includes(x.name)).map((x) => ({ name: x.name, description: x.description })),
+                ...own.filter((n) => !suggested.some((x) => x.name.toLowerCase() === n.toLowerCase())).map((name) => ({ name })),
+              ];
+              return (
                 <>
-                  <p className="text-sm">{recs.services.items.map((s: any) => s.name).join(', ')}</p>
-                  <button disabled={busy} className={btnOutline} onClick={() => propose({ kind: 'services', proposed: { additions: recs.services.items.map((s: any) => ({ name: s.name, description: s.description })) }, source: 'recommendation' })}>Add these services</button>
+                  {suggested.length > 0 && (
+                    <>
+                      <p className="text-xs text-on-surface-variant">From your website and your answers — tap to leave out any you don’t offer.</p>
+                      <ul className="flex flex-wrap gap-2">
+                        {suggested.map((x) => {
+                          const off = skippedServices.includes(x.name);
+                          return (
+                            <li key={x.name}>
+                              <button
+                                type="button"
+                                aria-pressed={!off}
+                                onClick={() => setSkippedServices(off ? skippedServices.filter((n) => n !== x.name) : [...skippedServices, x.name])}
+                                className={`rounded-full border px-3 py-1 text-xs ${off ? 'border-outline-variant text-on-surface-variant line-through' : 'border-primary text-on-surface'}`}
+                              >{off ? '' : '✓ '}{x.name}</button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </>
+                  )}
+                  <label className="block text-xs text-on-surface-variant">
+                    Add your own services (separate with commas)
+                    <input className={`${input} mt-1 w-full`} value={ownServices} onChange={(e) => setOwnServices(e.target.value)} placeholder="e.g. CRM development, IT consulting" />
+                  </label>
+                  <button
+                    disabled={busy || chosen.length === 0}
+                    className={btnOutline}
+                    onClick={() => propose({ kind: 'services', proposed: { additions: chosen }, source: own.length || chosen.length !== suggested.length ? 'owner' : 'recommendation' })}
+                  >Add {chosen.length} service{chosen.length === 1 ? '' : 's'}</button>
                 </>
-              )}
-              {recs.services?.blocked && <p className="text-sm">{recs.services.reason}</p>}
-            </Panel>
-          )}
+              );
+            })()}
+          </Panel>
 
           <Panel section="hours" title="Opening hours" hint={changedDays ? `${changedDays} changed` : reminders.length ? `${reminders.length} holiday${reminders.length === 1 ? '' : 's'} to set` : ''}>
             <p className="text-xs text-on-surface-variant">Your hours on Google now. Change a day or tick Closed — days you don’t change stay as they are.</p>
@@ -720,7 +871,10 @@ export default function ProfileOptimizationPage() {
                     <span className="break-words">{p.placeName}{p.address ? ` — ${p.address}` : ''}</span>
                   </label>
                 ))}
-                {(pickedAreas.length > 0 || removedAreas.length > 0) && (
+                {/* Google refuses a service area with no places — never offer that save. */}
+                {pickedAreas.length === 0 && currentAreas.length > 0 && currentAreas.every((a) => removedAreas.includes(a.placeId)) ? (
+                  <p className="text-xs text-error">Google needs at least one service area. Add the new area first, then remove the old one.</p>
+                ) : (pickedAreas.length > 0 || removedAreas.length > 0) && (
                   <button
                     disabled={busy}
                     className={btnPrimary}

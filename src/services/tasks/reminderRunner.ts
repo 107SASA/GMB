@@ -36,10 +36,14 @@ async function claimStep(businessId: string, auditId: string, step: ReminderStep
 export async function runTaskReminder(businessId: string, now = new Date()): Promise<ReminderOutcome> {
   await dbConnect();
   const business: any = await Business.findById(businessId)
-    .select(`name isDeleted taskReminderAuditId taskRemindersSent ${PLAN_ACCESS_FIELDS}`)
+    .select(`name isDeleted taskReminderAuditId taskRemindersSent ${PLAN_ACCESS_FIELDS} googleConnected googleAccess`)
     .lean();
   if (!business || business.isDeleted) return { status: 'skipped', reason: 'no_business' };
   if (!workspaceHasPlanAccess(business, now)) return { status: 'skipped', reason: 'no_plan_access' };
+  // No "fix these tasks" nudges while Google refuses access — the dashboard
+  // shows the access problem instead (lib/googleAccess.ts).
+  const { hasGoogleAccess } = await import('@/lib/googleAccess');
+  if (!hasGoogleAccess(business)) return { status: 'skipped', reason: 'no_google_access' };
 
   const report: any = await Audit.findOne({ businessId, status: 'COMPLETED', auditKind: { $in: ['connected_baseline', 'monthly'] } })
     .sort({ createdAt: -1 }).select('_id createdAt').lean();

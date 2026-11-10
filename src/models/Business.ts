@@ -58,7 +58,30 @@ export interface IBusiness extends Document {
   googleAccountId?: string;
   googleTypes?: string[];
   googleConnected: boolean;
+  /**
+   * What Google actually allows on the connected profile (set by the GBP
+   * sync — services/gbp/access). Background work runs only for `verified`;
+   * absent = connected before the check existed, until its next sync.
+   */
+  googleAccess?: {
+    state: 'checking' | 'verified' | 'limited' | 'blocked';
+    reason?: string | null;
+    detail?: string | null;
+    canRead?: boolean;
+    canPost?: boolean;
+    canEdit?: boolean;
+    checkedAt?: Date | null;
+    /** Last time the state became `verified`. */
+    verifiedAt?: Date | null;
+    /** When the current limited / blocked spell started. */
+    problemSince?: Date | null;
+    /** The problem reason the owner was last notified about (one notice per problem). */
+    noticeReason?: string | null;
+  };
   keywords: string[];
+  /** Owner keywords beyond the 20-keyword cap, moved here by
+   *  scripts/migrate-keyword-set.ts — still researched, never deleted. */
+  legacyKeywords?: string[];
   competitors: mongoose.Types.ObjectId[];
   organizationId: mongoose.Types.ObjectId;
   userId?: mongoose.Types.ObjectId;
@@ -364,7 +387,26 @@ const BusinessSchema: Schema = new Schema(
     googleAccountId: { type: String },
     googleTypes: [{ type: String }],
     googleConnected: { type: Boolean, default: false },
+    googleAccess: {
+      type: new Schema(
+        {
+          state: { type: String, enum: ['checking', 'verified', 'limited', 'blocked'], required: true },
+          reason: { type: String, default: null },
+          detail: { type: String, default: null },
+          canRead: { type: Boolean },
+          canPost: { type: Boolean },
+          canEdit: { type: Boolean },
+          checkedAt: { type: Date, default: null },
+          verifiedAt: { type: Date, default: null },
+          problemSince: { type: Date, default: null },
+          noticeReason: { type: String, default: null },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
     keywords: [{ type: String }],
+    legacyKeywords: [{ type: String }],
     competitors: [{ type: Schema.Types.ObjectId, ref: 'Business' }],
     organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User' },

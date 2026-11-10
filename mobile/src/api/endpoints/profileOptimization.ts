@@ -48,7 +48,7 @@ export interface Recommendations {
   categories?: { primary?: CategoryRec | null; additional?: CategoryRec[] };
   attributes?: { available?: boolean; suggestions?: Array<{ name: string; displayName?: string; valueType: string }> };
   services?: { items?: Array<{ name: string; description?: string }>; blocked?: boolean; reason?: string };
-  description?: { text?: string; validation?: { valid?: boolean }; tokens?: string[]; competitorNames?: string[] };
+  description?: { current?: string | null; text?: string; validation?: { valid?: boolean }; tokens?: string[]; competitorNames?: string[] };
   hours?: {
     status?: string;
     reminders?: Array<{ date: string; name: string; covered: boolean }>;

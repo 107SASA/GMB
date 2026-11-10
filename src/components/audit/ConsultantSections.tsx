@@ -258,14 +258,15 @@ export default function ConsultantSections({
           <SectionBar num={S()} title="KEYWORD SEARCH VOLUME ANALYSIS — GOOGLE MAPS" />
           <Card>
             <p className="text-sm text-on-surface-variant mb-3">
-              Phrases people type around {city || 'your area'}. Rank is live Google Maps data measured from your area; demand is Google Ads monthly search volume for the whole country (Google does not report volume for a single town, so local phrases usually show &quot;Not available&quot;). Neither is ever guessed.
+              Phrases people type around {city || 'your area'}. Rank is live Google Maps data measured from your area; demand is Google Ads monthly search volume. Google doesn&apos;t count an exact phrase that very few people type, so for those we show how many people search the service itself in your city or state. Nothing is ever guessed.
+              {full && <> This table covers the report&apos;s main searches; every keyword we track for you — your own, this month&apos;s focus keywords and the competitors above you — is in <a href="/dashboard/seo-plan" className="text-primary font-semibold hover:underline">SEO Plan → Keywords</a>.</>}
             </p>
             <div className="flex flex-wrap items-center gap-2 mb-4 text-[11px]">
               {['HIGH', 'MED', 'LOW', 'NICHE'].map((b) => (
                 <span key={b} style={{ color: BAND_COLOR[b] }} className="font-bold">{b}</span>
               ))}
               <span className="text-on-surface-variant ml-2">Red rank = not in the top 5 · — = ranking check unavailable</span>
-              <span className="text-on-surface-variant">Not available = Google Ads returned no search volume{table.some((k) => k.demandStatus === undefined && k.estimated) ? ' · * = estimate (older report)' : ''}</span>
+              <span className="text-on-surface-variant">Too few to count = Google has no number for that exact phrase · Not measured = the check didn&apos;t run{table.some((k) => k.demandStatus === undefined && k.estimated) ? ' · * = estimate (older report)' : ''}</span>
               {showMapsVol && <span className="text-on-surface-variant">~ Maps volume derived from Google search volume (older report)</span>}
             </div>
             <div className="overflow-x-auto -mx-2">
@@ -290,7 +291,7 @@ export default function ConsultantSections({
                       </td>
                       {(showMapsVol || showSearchVol) && (
                         <td className="px-2 py-3 text-right text-on-surface-variant whitespace-nowrap">
-                          {k.searchVolume != null ? k.searchVolume.toLocaleString('en-IN') : 'Not available'}
+                          {k.searchVolume != null ? k.searchVolume.toLocaleString('en-IN') : '—'}
                         </td>
                       )}
                       {showMapsVol && (
@@ -309,7 +310,14 @@ export default function ConsultantSections({
                             </span>
                           </div>
                         ) : (
-                          <span className="text-xs text-on-surface-variant">Not available</span>
+                          <div className="text-xs text-on-surface-variant">
+                            <span>{k.demandReason === 'too_few_searches' ? 'Too few to count' : k.demandReason === 'not_measured' ? 'Not measured' : 'Not available'}</span>
+                            {k.areaDemand && k.areaDemand.searchVolume != null && (
+                              <span className="block text-[11px] text-on-surface">
+                                “{k.areaDemand.term}” in {k.areaDemand.area}: {k.areaDemand.searchVolume.toLocaleString('en-IN')}/mo
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="px-2 py-3 text-right font-bold whitespace-nowrap" style={{ color: RANK_BAND_HEX[rankBand(kwRank(k))] }}>

@@ -32,6 +32,8 @@ export interface IPendingGbpConnection extends Document {
   scopes: string[];
   candidateLocations: Array<{
     locationId: string; // "locations/{y}"
+    /** The Business Profile account that manages this location (a login can have several). */
+    accountId?: string;
     title: string;
     address: string;
     placeId?: string;
@@ -55,6 +57,7 @@ const PendingGbpConnectionSchema = new Schema<IPendingGbpConnection>(
       {
         _id: false,
         locationId: { type: String, required: true },
+        accountId: { type: String },
         title: { type: String, default: '' },
         address: { type: String, default: '' },
         placeId: { type: String },

@@ -6,6 +6,7 @@ import { encrypt } from '@/lib/crypto';
 import { inngest } from '@/services/inngest/client';
 import { maybeStartContentAutopilot } from '@/lib/contentAutopilot';
 import { maybeStartAuditAutopilot } from '@/lib/auditAutopilot';
+import { markGoogleAccessChecking } from '@/services/gbp/access/record';
 
 export interface FinalizeGbpConnectionInput {
   businessId: string;
@@ -33,6 +34,10 @@ export interface FinalizeGbpConnectionInput {
  * points differ only in how `locationId` was decided (auto vs. user choice).
  */
 export async function finalizeGbpConnection(input: FinalizeGbpConnectionInput): Promise<void> {
+  // A connection without a location looks "connected" but nothing can sync.
+  if (!String(input.locationId || '').startsWith('locations/')) {
+    throw new Error('finalizeGbpConnection: no Google location to connect');
+  }
   await dbConnect();
 
   await GBPToken.findOneAndUpdate(
@@ -62,6 +67,9 @@ export async function finalizeGbpConnection(input: FinalizeGbpConnectionInput): 
     googleConnected: true,
     googleLocationId: input.locationId,
   });
+  // Signed in is not the same as Google allowing access: nothing Google-
+  // dependent runs until the sync below confirms it (services/gbp/access).
+  await markGoogleAccessChecking(input.businessId);
 
   // Reviews fetched before this connection (SerpApi's public-search scrape,
   // used for businesses that aren't connected yet — see syncReviews.ts) carry
@@ -80,11 +88,11 @@ export async function finalizeGbpConnection(input: FinalizeGbpConnectionInput): 
     console.error('Failed to trigger GBP auto-sync:', e);
   }
 
-  // If this workspace's subscription was already active before now,
-  // connecting Google is the second of the two conditions weekly content
-  // autopilot waits on — this fires its first batch immediately instead of
-  // waiting for the next hourly safety-net pass. No-op (fast) if the
-  // subscription isn't active yet, or autopilot already started.
+  // Both autopilots also wait for verified Google access, which the sync
+  // above records — so with the access gate on these are no-ops here and the
+  // first batch / report start from recordGoogleAccess once Google confirms.
+  // They still matter with GOOGLE_ACCESS_GATE_ENABLED=false. No-op (fast) if
+  // the subscription isn't active yet, or autopilot already started.
   await maybeStartContentAutopilot(input.businessId);
 
   // Likewise for the automatic audit — connecting Google may be the last of

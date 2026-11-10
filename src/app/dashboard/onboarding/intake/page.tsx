@@ -27,6 +27,10 @@ const EMPTY: IntakeData = {
 };
 
 const isValidKeyword = (v: string) => /[a-zA-Z]/.test(v);
+/** Same cap the API enforces (KEYWORD_LIMITS.maxOwnerKeywords). */
+const MAX_KEYWORDS = 20;
+/** "320/mo" from Google's monthly searches; null = Google reports too few. */
+const volumeLabel = (v: number | null | undefined) => (v == null || v <= 0 ? 'few searches' : `${v.toLocaleString('en-IN')}/mo`);
 
 type SuggestField = 'category' | 'description' | 'services' | 'keywords' | 'uniqueSellingPoints' | 'offers';
 interface Suggestion {
@@ -65,16 +69,20 @@ const inputCls =
 
 /** Simple tag input — Enter to add, × to remove. */
 function TagInput({
-  label, hint, tags, onChange, placeholder, validate,
+  label, hint, tags, onChange, placeholder, validate, max, meta,
 }: {
   label: string; hint?: string; tags: string[];
   onChange: (t: string[]) => void; placeholder: string;
   validate?: (v: string) => boolean;
+  max?: number;
+  /** Small note shown inside a tag (e.g. monthly searches). */
+  meta?: (tag: string) => string | null;
 }) {
   const [input, setInput] = useState('');
+  const full = max != null && tags.length >= max;
   const add = () => {
     const v = input.trim();
-    if (!v || (validate && !validate(v)) || tags.includes(v)) { setInput(''); return; }
+    if (!v || full || (validate && !validate(v)) || tags.includes(v)) { setInput(''); return; }
     onChange([...tags, v]);
     setInput('');
   };
@@ -88,14 +96,17 @@ function TagInput({
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
         onBlur={add}
-        placeholder={placeholder}
+        placeholder={full ? `Limit of ${max} reached — remove one to add another` : placeholder}
+        disabled={full}
         className={inputCls}
       />
+      {max != null && <p className="text-xs text-outline">{tags.length} / {max}</p>}
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
           {tags.map((t) => (
             <span key={t} className="inline-flex items-center px-3 py-1 rounded-lg text-sm font-medium bg-primary-fixed text-primary">
               {t}
+              {meta?.(t) && <span className="ml-1.5 text-[11px] font-normal text-on-surface-variant">· {meta(t)}</span>}
               <button type="button" onClick={() => onChange(tags.filter((x) => x !== t))} className="ml-2 text-primary-fixed-dim hover:text-primary">&times;</button>
             </span>
           ))}
@@ -148,6 +159,8 @@ export default function IntakePage() {
   // Keywords pre-filled from the report / SEO plan (owner can remove or add).
   const [prefilledFrom, setPrefilledFrom] = useState<string | null>(null);
   const [suggestLoading, setSuggestLoading] = useState(false);
+  // Google monthly searches per keyword (lowercased), from suggestions and owner-typed lookups.
+  const [volumes, setVolumes] = useState<Record<string, number | null>>({});
   const [suggestError, setSuggestError] = useState(false);
   // Every keyword ever shown (picked or not) across every batch, so "more
   // like this" never repeats a suggestion the user already saw and skipped.
@@ -176,6 +189,8 @@ export default function IntakePage() {
       setSuggestedKeywords(json.keywords);
       if (Array.isArray(json.details)) {
         setSuggestedSource((prev) => ({ ...prev, ...Object.fromEntries(json.details.map((d: any) => [d.keyword, d.source])) }));
+        const vols = json.details.filter((d: any) => d.volume !== undefined).map((d: any) => [String(d.keyword).toLowerCase(), d.volume]);
+        if (vols.length) setVolumes((prev) => ({ ...prev, ...Object.fromEntries(vols) }));
       }
     } catch {
       setSuggestError(true);
@@ -202,8 +217,28 @@ export default function IntakePage() {
     return () => clearTimeout(t);
   }, [data.category, data.description]);
 
+  // Google monthly searches for keywords the owner typed (debounced; cached and capped server-side).
+  useEffect(() => {
+    const missing = data.keywords.filter((k) => !(k.toLowerCase() in volumes));
+    if (!missing.length) return;
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/onboarding/keyword-volume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keywords: missing }),
+        });
+        const json = await res.json();
+        if (json.success && json.volumes) {
+          setVolumes((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(json.volumes).map(([k, v]) => [k.toLowerCase(), v as number | null])) }));
+        }
+      } catch { /* volume is a hint — the form works without it */ }
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [data.keywords]);
+
   const pickSuggestedKeyword = (kw: string) => {
-    if (!data.keywords.includes(kw)) {
+    if (!data.keywords.includes(kw) && data.keywords.length < MAX_KEYWORDS) {
       const nextKeywords = [...data.keywords, kw];
       set('keywords', nextKeywords);
       // "show more like that" — refine the next batch around what they just
@@ -231,13 +266,15 @@ export default function IntakePage() {
         }
         if (json.success) {
           const loaded = { ...EMPTY, ...json.data };
+          loaded.keywords = (loaded.keywords || []).slice(0, MAX_KEYWORDS);
           const kwSuggestion: Suggestion | undefined = json.suggestions?.keywords;
           // No keywords yet but the report / SEO plan already researched some →
           // pre-fill them as tags; the owner removes any that don't fit or adds their own.
           if (loaded.keywords.length === 0 && kwSuggestion) {
             const prefilled = (kwSuggestion.items?.map((i) => i.keyword) ?? kwSuggestion.value.split(','))
               .map((x) => x.trim())
-              .filter(isValidKeyword);
+              .filter(isValidKeyword)
+              .slice(0, MAX_KEYWORDS);
             if (prefilled.length) {
               loaded.keywords = prefilled;
               setAccepted((p) => ({ ...p, keywords: kwSuggestion }));
@@ -263,7 +300,7 @@ export default function IntakePage() {
   const applySuggestion = (field: SuggestField) => {
     const s = suggestions[field];
     if (!s) return;
-    if (field === 'keywords') set('keywords', s.value.split(',').map((x) => x.trim()).filter(isValidKeyword));
+    if (field === 'keywords') set('keywords', s.value.split(',').map((x) => x.trim()).filter(isValidKeyword).slice(0, MAX_KEYWORDS));
     else set(field, s.value as any);
     setAccepted((p) => ({ ...p, [field]: s }));
     setSuggestions((p) => { const n = { ...p }; delete n[field]; return n; });
@@ -360,10 +397,12 @@ export default function IntakePage() {
           </div>
           <TagInput
             label="Target keywords *"
-            hint="What people search on Google to find a business like yours. Press Enter to add."
+            hint="What people search on Google to find a business like yours. Press Enter to add. Up to 20 — we research hundreds more for you every month."
             tags={data.keywords}
-            onChange={(t) => set('keywords', t)}
+            onChange={(t) => set('keywords', t.slice(0, MAX_KEYWORDS))}
             validate={isValidKeyword}
+            max={MAX_KEYWORDS}
+            meta={(t) => (t.toLowerCase() in volumes ? volumeLabel(volumes[t.toLowerCase()]) : null)}
             placeholder="e.g. best bakery in Kolkata"
           />
           {data.keywords.length === 0 && <SuggestionNote s={suggestions.keywords} onUse={() => applySuggestion('keywords')} />}
@@ -436,6 +475,9 @@ export default function IntakePage() {
                     >
                       <MaterialIcon name="add" size={14} />
                       {kw}
+                      {kw.toLowerCase() in volumes && (
+                        <span className="text-[10px] font-semibold text-on-surface-variant">· {volumeLabel(volumes[kw.toLowerCase()])}</span>
+                      )}
                       {suggestedSource[kw] && (
                         <span className="text-[10px] font-normal text-outline">· {KW_SOURCE_LABEL[suggestedSource[kw]] ?? ''}</span>
                       )}

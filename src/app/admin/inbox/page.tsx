@@ -56,7 +56,7 @@ interface Detail {
   };
   nurture: null | { status: string; followUpsSent: number; version: number | null; lastAgentAt: string | null; nextAction: string | null; nextAt: string | null };
   demo: null | { id: string; status: string; date: string; timeSlot: string; timezone: string | null; salesperson: string | null; calendarEventId: string | null; meetingLink: string | null; reminders: { type?: string; status: string }[] };
-  customer: null | { id: string; name: string; subscriptionStatus: string | null; plan: string | null; paymentStatus: string | null; activationDate: string | null; googleConnected: boolean; googleLocationId: string | null; city: string | null; since: string };
+  customer: null | { id: string; name: string; subscriptionStatus: string | null; plan: string | null; paymentStatus: string | null; activationDate: string | null; googleConnected: boolean; googleAccess?: { tone: string; label: string; reason: string | null; googleEmail: string | null; customerMessage: string | null }; googleLocationId: string | null; city: string | null; since: string };
   messages: ChatMessage[];
   events: TimelineEvent[];
 }
@@ -600,7 +600,20 @@ function Intelligence({ detail, teammate, note, setNote, tag, setTag, act, aiOpe
             <Fact label="Payment" value={detail.customer.paymentStatus} />
             <Fact label="Activated" value={detail.customer.activationDate ? new Date(detail.customer.activationDate).toLocaleDateString() : null} />
             <Fact label="Customer since" value={new Date(detail.customer.since).toLocaleDateString()} />
-            <Fact label="Google Business Profile" value={detail.customer.googleConnected ? 'Connected' : 'Not connected'} />
+            <Fact label="Google Business Profile" value={detail.customer.googleAccess?.label ?? (detail.customer.googleConnected ? 'Connected' : 'Not connected')} />
+            {detail.customer.googleAccess?.tone === 'problem' && (
+              <div className="rounded-lg border border-error bg-error-container p-2 text-xs text-on-error-container space-y-1">
+                <p className="font-semibold">{detail.customer.googleAccess.reason}</p>
+                {detail.customer.googleAccess.googleEmail && <p>Connected Google account: {detail.customer.googleAccess.googleEmail}</p>}
+                {detail.customer.googleAccess.customerMessage && (
+                  <button
+                    type="button"
+                    className="text-primary underline"
+                    onClick={() => { navigator.clipboard?.writeText(detail.customer!.googleAccess!.customerMessage!).catch(() => {}); }}
+                  >Copy fix steps to send the customer</button>
+                )}
+              </div>
+            )}
             <Fact label="Google location" value={detail.customer.googleLocationId || detail.customer.city} />
             <div className="mt-2 flex flex-wrap gap-2 text-xs">
               <a className="text-primary" href="/admin/customers">View customer</a>

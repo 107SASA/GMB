@@ -61,7 +61,9 @@ const HEALTH_LABEL: Record<string, { label: string; tone: 'ok' | 'warn' | 'bad' 
 
 const TONE_CLS = {
   ok: 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed',
-  warn: 'bg-tertiary-container/40 text-on-tertiary-container border-outline-variant',
+  // Amber warning fill with the normal text colour — the old dark-green tint
+  // put green text on grey-green and was hard to read.
+  warn: 'bg-warning/15 text-on-surface border-warning',
   bad: 'bg-error-container text-on-error-container border-error-container',
 };
 

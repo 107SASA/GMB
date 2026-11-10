@@ -59,12 +59,11 @@ interface InsightsData {
   };
 }
 
-interface KeywordIntel {
-  generatedAt: string | null;
-  totalEstimatedVolume: number;
-  currentKeywords: { keyword: string; estMonthlyVolume: number; impressions: number }[];
-  growthKeywords: { keyword: string; estMonthlyVolume: number; rationale: string }[];
-  stale?: boolean;
+/** Measured keyword data from the monthly report (/api/keywords) — Google Ads
+ *  volume and competitor gaps. Replaces the earlier AI-estimated volumes. */
+interface KeywordData {
+  rows: Array<{ keyword: string; volumeText: string; volume: number | null }>;
+  gaps: Array<{ keyword: string; volumeText: string; competitor: string; competitorRank: number | null }>;
 }
 
 // ── Skeleton shimmer card ─────────────────────────────────────────────────────
@@ -136,6 +135,8 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   gbp_api_access:
     "Google denied access to your Business Profile data. Make sure the Google account you're connecting has Manager or Owner access to this business on Google Business Profile, then try again.",
   gbp_api_error: "Google's Business Profile service returned an error. Please try again shortly.",
+  no_gbp_location:
+    "That Google account has no business location on Google Business Profile, so there was nothing to connect. Sign in with the Google account that is Owner or Manager of this business's profile.",
   no_gbp_account:
     "That Google account doesn't manage any Business Profiles. Sign in with the Google account that manages this business's listing instead.",
 };
@@ -150,8 +151,7 @@ export default function InsightsPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [selectedRange, setSelectedRange] = useState<Range>(28);
-  const [kwIntel, setKwIntel] = useState<KeywordIntel | null>(null);
-  const [kwIntelLoading, setKwIntelLoading] = useState(false);
+  const [kwData, setKwData] = useState<KeywordData | null>(null);
 
   // Read URL params on mount for post-OAuth redirect feedback
   const [connectedJustNow, setConnectedJustNow] = useState(false);
@@ -182,26 +182,27 @@ export default function InsightsPage() {
     fetchInsights();
   }, [fetchInsights]);
 
-  // Keyword intelligence (AI-estimated volumes + growth keywords). Separate
-  // fetch — it can take a few seconds and shouldn't block the metrics view.
-  const fetchKwIntel = useCallback(async (refresh = false) => {
+  // Measured keyword data (search volume + competitor gaps) from the monthly
+  // report. Separate fetch so it never blocks the metrics view.
+  const fetchKeywordData = useCallback(async () => {
     if (!activeBusiness) return;
-    setKwIntelLoading(true);
     try {
-      const res = await fetch(`/api/gbp/keyword-intelligence${refresh ? '?refresh=1' : ''}`, {
-        method: refresh ? 'POST' : 'GET',
+      const res = await fetch('/api/keywords');
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json.success) return;
+      setKwData({
+        rows: [...(json.yours || []), ...(json.targets || [])].map((r: any) => ({ keyword: r.keyword, volumeText: r.volumeText, volume: r.volume })),
+        gaps: json.gaps || [],
       });
-      if (res.ok) setKwIntel(await res.json());
     } catch (e) {
-      console.error('Failed to fetch keyword intelligence', e);
-    } finally {
-      setKwIntelLoading(false);
+      console.error('Failed to fetch keyword data', e);
     }
   }, [activeBusiness]);
 
   useEffect(() => {
-    if (data?.connected) fetchKwIntel(false);
-  }, [data?.connected, fetchKwIntel]);
+    if (data?.connected) fetchKeywordData();
+  }, [data?.connected, fetchKeywordData]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -291,6 +292,9 @@ export default function InsightsPage() {
   }
 
   const { summary, changes, timeSeries = [], searchData, googleEmail, needsSync, lastSyncAt, monthComparison } = data;
+  // Sum of Google Ads monthly searches across your measured keywords (each keyword once).
+  const targetSearches = Array.from(new Map((kwData?.rows || []).map((r) => [r.keyword.toLowerCase(), r.volume ?? 0])).values())
+    .reduce((a, b) => a + b, 0);
 
   // ── STATE C: Connected, data loaded ───────────────────────────────────────
   return (
@@ -455,14 +459,10 @@ export default function InsightsPage() {
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-on-surface">
-                    {kwIntel && kwIntel.totalEstimatedVolume > 0
-                      ? `~${kwIntel.totalEstimatedVolume.toLocaleString()}`
-                      : kwIntelLoading
-                      ? '…'
-                      : '—'}
+                    {targetSearches > 0 ? targetSearches.toLocaleString('en-IN') : '—'}
                   </p>
-                  <p className="text-xs font-semibold text-on-surface-variant mt-0.5">Est. Monthly Searches</p>
-                  <p className="text-xs text-outline">AI estimate of demand for your keywords</p>
+                  <p className="text-xs font-semibold text-on-surface-variant mt-0.5">Monthly Searches</p>
+                  <p className="text-xs text-outline">Google searches for your keywords (measured)</p>
                 </div>
               </div>
               <div>
@@ -501,7 +501,7 @@ export default function InsightsPage() {
                     <th className="text-left text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4 w-10">#</th>
                     <th className="text-left text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4">Keyword</th>
                     <th className="text-right text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4 w-28">Impressions</th>
-                    <th className="text-right text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4 w-32">Est. Searches/mo</th>
+                    <th className="text-right text-xs font-semibold text-outline uppercase tracking-wider pb-3 pr-4 w-32">Searches/mo</th>
                     <th className="text-left text-xs font-semibold text-outline uppercase tracking-wider pb-3 w-40">Share</th>
                   </tr>
                 </thead>
@@ -509,9 +509,9 @@ export default function InsightsPage() {
                   {searchData.topKeywords.map((kw, i) => {
                     const maxImpressions = searchData.topKeywords[0]?.impressions ?? 1;
                     const pct = Math.round((kw.impressions / maxImpressions) * 100);
-                    const estVol = kwIntel?.currentKeywords.find(
+                    const measured = kwData?.rows.find(
                       (c) => c.keyword.toLowerCase() === kw.keyword.toLowerCase()
-                    )?.estMonthlyVolume;
+                    );
                     return (
                       <tr key={kw.keyword} className="hover:bg-surface/50 transition-colors">
                         <td className="py-3 pr-4 text-outline font-medium">{i + 1}</td>
@@ -520,7 +520,7 @@ export default function InsightsPage() {
                           {kw.impressions.toLocaleString()}
                         </td>
                         <td className="py-3 pr-4 text-right text-on-surface-variant">
-                          {estVol != null ? `~${estVol.toLocaleString()}` : kwIntelLoading ? '…' : '—'}
+                          {measured ? measured.volumeText : '—'}
                         </td>
                         <td className="py-3">
                           <div className="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
@@ -576,48 +576,38 @@ export default function InsightsPage() {
           </div>
         )}
 
-        {/* Keywords to grow your business (AI-suggested) */}
+        {/* Keywords competitors rank for and you don't (measured in the monthly report) */}
         <div className="mt-6 bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
           <div className="flex items-baseline justify-between flex-wrap gap-2 mb-1">
             <h3 className="font-bold text-on-surface">Keywords to Grow Your Business</h3>
-            <button
-              onClick={() => fetchKwIntel(true)}
-              disabled={kwIntelLoading}
-              className="text-xs font-semibold text-primary hover:text-primary-container disabled:opacity-50 flex items-center gap-1"
-            >
-              {kwIntelLoading ? 'Analysing…' : 'Refresh'}
-            </button>
+            <a href="/dashboard/seo-plan" className="text-xs font-semibold text-primary hover:text-primary-container">
+              All keywords →
+            </a>
           </div>
           <p className="text-xs text-outline mb-5">
-            AI-suggested search terms you're not showing for yet but realistically could — with a rough monthly demand estimate.
+            Searches where a competitor ranks and you don&apos;t yet — with Google&apos;s monthly search count.
           </p>
-
-          {kwIntelLoading && !kwIntel ? (
-            <div className="text-center py-10 text-outline text-sm">Analysing your category and current keywords…</div>
-          ) : !kwIntel?.growthKeywords?.length ? (
+          {!kwData?.gaps?.length ? (
             <div className="text-center py-10 text-outline">
-              <p className="text-sm font-medium mb-1">No suggestions yet.</p>
-              <p className="text-xs">Add a category and description in Settings, then hit Refresh.</p>
+              <p className="text-sm font-medium mb-1">No gaps found yet.</p>
+              <p className="text-xs">Your monthly report researches these automatically.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {kwIntel.growthKeywords.map((kw) => (
-                <div key={kw.keyword} className="rounded-xl border border-outline-variant p-4 hover:bg-surface/50 transition-colors">
+              {kwData.gaps.slice(0, 8).map((g) => (
+                <div key={g.keyword} className="rounded-xl border border-outline-variant p-4 hover:bg-surface/50 transition-colors">
                   <div className="flex items-start justify-between gap-3 mb-1">
-                    <p className="font-semibold text-on-surface text-sm">{kw.keyword}</p>
+                    <p className="font-semibold text-on-surface text-sm">{g.keyword}</p>
                     <span className="shrink-0 text-[11px] font-bold text-on-secondary-container bg-secondary-container/40 px-2 py-0.5 rounded-full">
-                      ~{kw.estMonthlyVolume.toLocaleString()}/mo
+                      {g.volumeText}
                     </span>
                   </div>
-                  {kw.rationale && <p className="text-xs text-on-surface-variant leading-relaxed">{kw.rationale}</p>}
+                  <p className="text-xs text-on-surface-variant leading-relaxed">
+                    {g.competitor}{g.competitorRank != null ? ` is #${g.competitorRank} on Google Maps` : '’s website ranks for this'}
+                  </p>
                 </div>
               ))}
             </div>
-          )}
-          {kwIntel?.generatedAt && (
-            <p className="text-[10px] text-outline mt-4">
-              Estimates generated {relativeTime(kwIntel.generatedAt)} · refreshed weekly
-            </p>
           )}
         </div>
 

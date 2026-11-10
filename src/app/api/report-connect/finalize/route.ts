@@ -45,7 +45,7 @@ export async function POST(req: Request) {
       scopes: pending.scopes,
       googleAccountId: pending.googleAccountId,
       googleEmail: pending.googleEmail,
-      accountId: pending.accountId,
+      accountId: location.accountId || pending.accountId,
     });
 
     return NextResponse.json({ success: true }, { status: 200 });

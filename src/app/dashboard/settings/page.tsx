@@ -121,9 +121,34 @@ export default function SettingsPage() {
     metaBusinessProfileUrl: '',
     facebookPageUrl: '',
     instagramUrl: '',
+    services: '',
+    offers: '',
+    uniqueSellingPoints: '',
   });
   const [bpKeywords, setBpKeywords] = useState<string[]>([]);
   const [bpKeywordInput, setBpKeywordInput] = useState('');
+  // Google monthly searches per keyword (lowercased) — cached and capped server-side.
+  const [kwVolumes, setKwVolumes] = useState<Record<string, number | null>>({});
+  const kwAskedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const missing = bpKeywords.filter((k) => !kwAskedRef.current.has(k.toLowerCase()));
+    if (!missing.length) return;
+    const t = setTimeout(async () => {
+      missing.forEach((k) => kwAskedRef.current.add(k.toLowerCase()));
+      try {
+        const res = await fetch('/api/onboarding/keyword-volume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keywords: missing }),
+        });
+        const json = await res.json();
+        if (json.success && json.volumes) {
+          setKwVolumes((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(json.volumes).map(([k, v]) => [k.toLowerCase(), v as number | null])) }));
+        }
+      } catch { /* volume is a hint only */ }
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [bpKeywords]);
   const [bpDescLen, setBpDescLen] = useState(0);
   const [bpSaveState, setBpSaveState] = useState<SaveState>('idle');
   const [bpError, setBpError] = useState('');
@@ -194,6 +219,9 @@ export default function SettingsPage() {
             metaBusinessProfileUrl: b.metaBusinessProfileUrl ?? '',
             facebookPageUrl: b.facebookPageUrl ?? '',
             instagramUrl: b.instagramUrl ?? '',
+            services: b.services ?? '',
+            offers: b.offers ?? '',
+            uniqueSellingPoints: b.intake?.uniqueSellingPoints ?? '',
           });
           setBpKeywords(b.keywords ?? []);
           setBpDescLen((b.description ?? '').length);
@@ -251,6 +279,9 @@ export default function SettingsPage() {
           metaBusinessProfileUrl: bpForm.metaBusinessProfileUrl,
           facebookPageUrl: bpForm.facebookPageUrl,
           instagramUrl: bpForm.instagramUrl,
+          services: bpForm.services,
+          offers: bpForm.offers,
+          uniqueSellingPoints: bpForm.uniqueSellingPoints,
         }),
       });
       const data = await res.json();
@@ -405,6 +436,44 @@ export default function SettingsPage() {
                   placeholder="Describe what your business does…"
                 />
               </div>
+              <div className="col-span-1 sm:col-span-2">
+                <LabelRow
+                  label="Services you offer"
+                  hint="Separate with commas. Used by your SEO plan, reports and AI posts — remove anything you don't really offer."
+                />
+                <textarea
+                  rows={2}
+                  maxLength={1500}
+                  className={inputCls('mt-1 resize-none')}
+                  value={bpForm.services}
+                  onChange={e => setBpForm(p => ({ ...p, services: e.target.value }))}
+                  placeholder="e.g. Custom cakes, Wedding orders, Daily bread, Catering"
+                />
+              </div>
+              <div className="col-span-1 sm:col-span-2">
+                <LabelRow
+                  label="What makes you different"
+                  hint="Your unique selling points, in your own words. AI posts use only what you write here."
+                />
+                <textarea
+                  rows={2}
+                  maxLength={600}
+                  className={inputCls('mt-1 resize-none')}
+                  value={bpForm.uniqueSellingPoints}
+                  onChange={e => setBpForm(p => ({ ...p, uniqueSellingPoints: e.target.value }))}
+                  placeholder="e.g. Only bakery in the area using organic flour, same-day delivery"
+                />
+              </div>
+              <div className="col-span-1 sm:col-span-2">
+                <LabelRow label="Current offer" hint="Optional. Leave empty if you have no offer running." />
+                <input
+                  maxLength={600}
+                  className={inputCls('mt-1')}
+                  value={bpForm.offers}
+                  onChange={e => setBpForm(p => ({ ...p, offers: e.target.value }))}
+                  placeholder="e.g. 20% off your first order this month"
+                />
+              </div>
               <div>
                 <LabelRow label="Phone Number" />
                 <PhoneNumberInput
@@ -492,7 +561,10 @@ export default function SettingsPage() {
             {/* Keywords tag input */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <LabelRow label="Keywords" />
+                <LabelRow
+                  label="Keywords"
+                  hint="Your SEO plan and AI posts follow these. A keyword you remove is also dropped from your SEO plan and won't be added back by later reports."
+                />
                 <span className="text-xs text-outline">{bpKeywords.length}/20</span>
               </div>
               <div className="border border-outline-variant rounded-xl p-3 min-h-[52px] flex flex-wrap gap-2 bg-surface-container-lowest focus-within:ring-2 focus-within:ring-primary focus-within:border-primary">
@@ -503,6 +575,11 @@ export default function SettingsPage() {
                   >
                     <Tag className="w-3 h-3" />
                     {kw}
+                    {kw.toLowerCase() in kwVolumes && (
+                      <span className="font-normal text-on-surface-variant">
+                        · {(kwVolumes[kw.toLowerCase()] ?? 0) > 0 ? `${kwVolumes[kw.toLowerCase()]!.toLocaleString('en-IN')}/mo` : 'few searches'}
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleKeywordRemove(kw)}
@@ -522,7 +599,7 @@ export default function SettingsPage() {
                   />
                 )}
               </div>
-              <p className="text-xs text-outline mt-1">These power keyword analysis in the audit engine.</p>
+              <p className="text-xs text-outline mt-1">Monthly Google searches are shown next to each keyword. Rank and competitors for every keyword: <a href="/dashboard/seo-plan" className="text-primary hover:underline">SEO Plan → Keywords</a>.</p>
             </div>
           </div>
 

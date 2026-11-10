@@ -47,7 +47,13 @@ export async function loadContentContext(business: any) {
   else if (wi.status === 'failed') notes.push('Website could not be read — website facts not used.');
 
   const websiteOk = wi && wi.status !== 'failed';
-  const rows: any[] = seo?.keywordTable || [];
+  // Keyword system (docs/KEYWORD_SYSTEM_PLAN.md §6): once the plan has
+  // researched targets, posts target only the month's 5 focus + 5 monthly
+  // keywords (with their measured rank / volume). Before that, the report's
+  // measured keyword table, as before.
+  const { contentRows } = await import('@/services/seo/keywordSet');
+  const targetRows = contentRows(seo?.keywordSet);
+  const rows: any[] = targetRows.length ? targetRows : seo?.keywordTable || [];
   const plan: ContentSeoPlan = {
     seoPlanId: seo?._id ? String(seo._id) : null,
     themes: seo?.postThemes || [],

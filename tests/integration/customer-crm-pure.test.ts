@@ -259,7 +259,10 @@ test('super-admin CRM untouched: no admin / sales-agent / nurture / lead-engine 
     return; // no git (e.g. a packaged build) — nothing to compare
   }
   const forbidden = /(^|\/)(admin|sales[-_]?agent|salesAgent|nurture|lead[-_]?engine|leadEngine|conversion)(\/|\.|-|$)/i;
-  const hits = changed.filter((f) => forbidden.test(f));
+  // Not CRM code: the Google access status (services/gbp/access) shown to the
+  // sales / support team on the businesses list and the inbox customer panel.
+  const notCrm = new Set(['src/app/admin/businesses/page.tsx', 'src/app/admin/inbox/page.tsx', 'src/app/api/admin/businesses/route.ts']);
+  const hits = changed.filter((f) => forbidden.test(f) && !notCrm.has(f));
   assert.deepEqual(hits, [], `super-admin files changed: ${hits.join(', ')}`);
   // The platform tenant is refused by the customer service by construction.
   assert.match(read('src/services/crm/customerLeads.ts'), /organizationId === PLATFORM_TENANT\) throw/);
@@ -331,7 +334,15 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
       'publishScheduledMediaCron', 'processScheduledMediaPublishJob', 'processAutoReplyBatchJob',
       // + audit → fix → proof (Nov 2026, not CRM): the daily plan-task reminder
       //   job (services/tasks/reminders.ts).
-      'planTaskReminders'],
+      'planTaskReminders',
+      // + verified Google access (Nov 2026, not CRM): the content reminder,
+      //   weekly AI posts and post generation wait until Google confirms
+      //   access to the profile (lib/googleAccess.ts).
+      'weeklyContentReminder', 'weeklyContentAutopilot', 'processContentJob',
+      // + review campaigns at the daily WhatsApp limit (Nov 2026, not CRM):
+      //   the daily queue dispatcher and reminders that wait a day instead of
+      //   being dropped (services/reviews/campaignQueue.ts).
+      'reviewCampaignQueueCron'],
     // Real WhatsApp inbound lines are tagged via: 'whatsapp' so a website form cannot open the 24h window.
     // + Segment 3.1 STOP reliability (Oct 2026, not CRM): both provider handlers
     //   apply an opt-out durably before claiming the message id, outside the

@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import GBPToken from '@/models/GBPToken';
+import { googleAccessAdminStatus, googleAccessCustomerMessage } from '@/services/gbp/access/evaluate';
 import { NextRequest } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
@@ -43,6 +45,10 @@ export async function GET(req: NextRequest) {
 
     if (filter === 'google') {
       query.googleConnected = true;
+    } else if (filter === 'google_problem') {
+      // Signed in, but Google refuses or limits access (services/gbp/access).
+      query.googleConnected = true;
+      query['googleAccess.state'] = { $in: ['limited', 'blocked'] };
     } else if (filter === 'whatsapp') {
       query['whatsappConfig.isConnected'] = true;
     } else if (filter === 'onboarded') {
@@ -71,8 +77,19 @@ export async function GET(req: NextRequest) {
       contentCountMap[c._id.toString()] = c.count;
     });
 
+    // Real Google access (not just "signed in") for the sales / support team.
+    const tokens: any[] = await GBPToken.find({ businessId: { $in: businessIds } }).select('businessId googleEmail lastSyncAt').lean();
+    const tokenOf = new Map(tokens.map((t) => [String(t.businessId), t]));
+
     const enriched = businesses.map((b: any) => ({
       ...b,
+      googleAccessStatus: {
+        ...googleAccessAdminStatus({ googleConnected: b.googleConnected, googleAccess: b.googleAccess, lastSyncAt: tokenOf.get(String(b._id))?.lastSyncAt }),
+        googleEmail: tokenOf.get(String(b._id))?.googleEmail || null,
+        checkedAt: b.googleAccess?.checkedAt || null,
+        problemSince: b.googleAccess?.problemSince || null,
+        customerMessage: googleAccessCustomerMessage(b.googleAccess?.state, b.googleAccess?.reason),
+      },
       userId: b.userId ? { ...b.userId, fullName: displayPersonName(b.userId.fullName, b.name, b.userId.phone) } : b.userId,
       contentGeneratedCount: contentCountMap[b._id.toString()] || 0,
     }));

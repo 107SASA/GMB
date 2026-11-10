@@ -37,6 +37,9 @@ export async function PATCH(_: Request, { params }: { params: Promise<{ id: stri
     campaign.status = 'CANCELLED';
     campaign.cancelledAt = new Date();
     await campaign.save();
+    // Customers still waiting in the queue are not sent.
+    const { cancelQueuedCustomers } = await import('@/services/reviews/campaignQueue');
+    await cancelQueuedCustomers(String(campaign._id));
 
     return NextResponse.json({ success: true, message: 'Campaign cancelled' });
   } catch (error: any) {

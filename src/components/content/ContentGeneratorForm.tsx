@@ -51,8 +51,20 @@ export default function ContentGeneratorForm({
     // typed/kept any keywords yet), so custom keywords survive re-renders and
     // aren't clobbered when this effect re-runs. Filter out junk keywords
     // (symbol/number-only, e.g. ".") that bad onboarding data can leave behind.
-    const seed = (activeBusiness.keywords || []).filter((k: string) => /[a-zA-Z]/.test(k));
-    setKeywords(prev => (prev.length === 0 && seed.length ? seed : prev));
+    // The month's focus + monthly keywords (Keywords page) come first — the
+    // same ones weekly posts target; the owner's own list is the fallback.
+    const ownerSeed = (activeBusiness.keywords || []).filter((k: string) => /[a-zA-Z]/.test(k));
+    let cancelled = false;
+    fetch('/api/keywords')
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((json) => {
+        if (cancelled) return;
+        const targets: string[] = (json?.targets || []).map((t: any) => String(t.keyword)).filter(Boolean);
+        const seed = targets.length ? targets : ownerSeed;
+        setKeywords(prev => (prev.length === 0 && seed.length ? seed : prev));
+      });
+    return () => { cancelled = true; };
   }, [activeBusiness, setKeywords]);
 
   // A valid keyword must contain at least one letter (rejects inputs made up

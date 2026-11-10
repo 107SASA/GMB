@@ -15,6 +15,10 @@ const MODEL_PRICING: Record<string, TokenPricing> = {
   'gpt-3.5-turbo':    { inputPer1k: 0.0005,  outputPer1k: 0.0015 },
   'claude-3-5-sonnet':{ inputPer1k: 0.003,   outputPer1k: 0.015 },
   'gemini-pro':       { inputPer1k: 0.000125, outputPer1k: 0.000375 },
+  // Visiting-card scan (services/crm/businessCardScan.ts). Image input is billed as input tokens.
+  'gemini-2.5-flash-lite': { inputPer1k: 0.0001,  outputPer1k: 0.0004 },
+  'gemini-2.5-flash':      { inputPer1k: 0.0003,  outputPer1k: 0.0025 },
+  'gemini-3.1-flash-lite': { inputPer1k: 0.00025, outputPer1k: 0.0015 },
   'other':            { inputPer1k: 0.001,   outputPer1k: 0.002 },
 };
 

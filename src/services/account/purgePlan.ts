@@ -140,7 +140,7 @@ export const NOT_PURGED: Record<string, string> = {
 
 /** Storage prefixes that belong to one business (all uploads are written under these). */
 export const businessStoragePrefixes = (businessId: string) =>
-  ['gbp-media', 'post-thumbnails', 'showcase', 'report-cards'].map((p) => `${p}/${businessId}/`);
+  ['gbp-media', 'post-thumbnails', 'showcase', 'report-cards', 'business-cards'].map((p) => `${p}/${businessId}/`);
 
 /** Document fields holding URLs of files in our bucket (deleted with the records). */
 export const STORAGE_URL_FIELDS: Array<{ model: string; field: string }> = [

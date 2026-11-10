@@ -65,6 +65,7 @@ export async function GET(req: NextRequest) {
         maxWhatsAppMessagesPerDay: config.maxWhatsAppMessagesPerDay,
         reviewRequestCooldownDays: config.reviewRequestCooldownDays,
         maxAIGenerations:          config.maxAIGenerations,
+        maxCardScansPerMonth:      config.maxCardScansPerMonth ?? getPlanDefaults(name).maxCardScansPerMonth,
       };
     };
 
@@ -89,6 +90,7 @@ export async function GET(req: NextRequest) {
         maxWhatsAppMessagesPerDay: override.maxWhatsAppMessagesPerDay,
         reviewRequestCooldownDays: override.reviewRequestCooldownDays,
         maxAIGenerations:          override.maxAIGenerations,
+        maxCardScansPerMonth:      override.maxCardScansPerMonth,
       }, planLimits);
 
       return {
@@ -107,6 +109,7 @@ export async function GET(req: NextRequest) {
           maxWhatsAppMessagesPerDay: override.maxWhatsAppMessagesPerDay ?? null,
           reviewRequestCooldownDays: override.reviewRequestCooldownDays ?? null,
           maxAIGenerations:          override.maxAIGenerations          ?? null,
+          maxCardScansPerMonth:      override.maxCardScansPerMonth      ?? null,
           adminNotes:                override.adminNotes                ?? '',
         },
         hasOverride: effective.overriddenFields.length > 0,

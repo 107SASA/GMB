@@ -22,6 +22,8 @@ export interface PlanLimits {
   maxWhatsAppMessagesPerDay: number;
   reviewRequestCooldownDays: number;
   maxAIGenerations:          number;
+  /** Visiting-card scans per calendar month (AI reads each card). */
+  maxCardScansPerMonth:      number;
 }
 
 /**
@@ -45,6 +47,7 @@ export const PLAN_DEFAULTS: Record<string, PlanLimits> = {
     maxWhatsAppMessagesPerDay: 10,
     reviewRequestCooldownDays: 30,
     maxAIGenerations:          20,
+    maxCardScansPerMonth:      25,
   },
   Pro: {
     maxAuditsPerBusiness:      1,
@@ -57,10 +60,17 @@ export const PLAN_DEFAULTS: Record<string, PlanLimits> = {
     maxWhatsAppMessagesPerDay: 10,
     reviewRequestCooldownDays: 14,
     maxAIGenerations:          100,
+    // ~₹0.02–0.10 per scan (Gemini Flash-Lite) — generous on purpose.
+    maxCardScansPerMonth:      500,
   },
 };
 
 export const FALLBACK_LIMITS: PlanLimits = PLAN_DEFAULTS.Free;
+
+/** Code default for the card-scan cap (PlanConfig rows saved before this field existed have none). */
+export function defaultCardScans(plan: string): number {
+  return getPlanDefaults(plan).maxCardScansPerMonth;
+}
 
 export function getPlanDefaults(plan: string): PlanLimits {
   if (plan === 'Enterprise') plan = 'Pro'; // legacy paid tier

@@ -19,6 +19,8 @@ const PlanConfigSchema = new Schema<IPlanConfig>(
     maxWhatsAppMessagesPerDay: { type: Number, required: true },
     reviewRequestCooldownDays: { type: Number, required: true },
     maxAIGenerations:          { type: Number, required: true },
+    // Optional — configs saved before this field fall back to the plan default.
+    maxCardScansPerMonth:      { type: Number },
     updatedBy:                 { type: String, default: '' },
   },
   { timestamps: true }

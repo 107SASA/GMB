@@ -7,14 +7,15 @@ import LeadListView from '@/components/crm/LeadListView';
 import CRMFilterBar from '@/components/crm/CRMFilterBar';
 import CRMAnalytics from '@/components/crm/CRMAnalytics';
 import LeadDrawer from '@/components/crm/LeadDrawer';
+import EventsReport from '@/components/crm/EventsReport';
 import LeadStagesConfig from '@/components/crm/LeadStagesConfig';
 import PendingCallsBanner from '@/components/crm/PendingCallsBanner';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import type { LeadStagesConfig as LeadStagesConfigType } from '@/lib/leadStages';
-import { LayoutList, Columns, Layers, Upload, X, FileUp, CheckCircle, AlertCircle, Download } from 'lucide-react';
+import { LayoutList, Columns, Layers, Upload, X, FileUp, CheckCircle, AlertCircle, Download, CreditCard } from 'lucide-react';
 import { useBusiness } from '@/context/BusinessContext';
 
-type ViewMode = 'list' | 'kanban' | 'analytics' | 'stages';
+type ViewMode = 'list' | 'kanban' | 'analytics' | 'stages' | 'events';
 
 // ─── Add Lead Modal ───────────────────────────────────────────────────────────
 
@@ -351,21 +352,27 @@ export default function CRMDashboard() {
   const [sourceFilter, setSourceFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [stageFilter, setStageFilter] = useState('all');
+  // Visiting-card event ("Where you met") picked from the Events view.
+  const [eventFilter, setEventFilter] = useState<string | null>(null);
 
   const filteredLeads = React.useMemo(() => {
     return leads.filter(lead => {
+      const q = searchQuery.toLowerCase();
       const matchesSearch = !searchQuery ||
-        lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        lead.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        lead.phone?.includes(searchQuery);
+        lead.name.toLowerCase().includes(q) ||
+        lead.email?.toLowerCase().includes(q) ||
+        lead.phone?.includes(searchQuery) ||
+        lead.businessCard?.company?.toLowerCase().includes(q) ||
+        lead.businessCard?.metAt?.toLowerCase().includes(q);
+      const matchesEvent = !eventFilter || lead.businessCard?.metAt === eventFilter;
 
       const matchesSource = sourceFilter === 'all' || lead.source === sourceFilter;
       const matchesStatus = statusFilter === 'all' || lead.status === statusFilter;
       const matchesStage = stageFilter === 'all' || (lead.lifeCycleStage || 'initial') === stageFilter;
 
-      return matchesSearch && matchesSource && matchesStatus && matchesStage;
+      return matchesSearch && matchesEvent && matchesSource && matchesStatus && matchesStage;
     });
-  }, [leads, searchQuery, sourceFilter, statusFilter, stageFilter]);
+  }, [leads, searchQuery, eventFilter, sourceFilter, statusFilter, stageFilter]);
 
   const fetchLeads = async () => {
     try {
@@ -481,6 +488,15 @@ export default function CRMDashboard() {
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                 Analytics
               </button>
+              <button
+                onClick={() => setViewMode('events')}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                  viewMode === 'events' ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                Events
+              </button>
             </div>
 
             {/* Import Leads */}
@@ -512,7 +528,7 @@ export default function CRMDashboard() {
         <PendingCallsBanner key={activeBusiness?._id} leads={leads} onChanged={fetchLeads} />
 
         {/* Filters (Hidden in Analytics & Stage-config Views) */}
-        {viewMode !== 'analytics' && viewMode !== 'stages' && (
+        {viewMode !== 'analytics' && viewMode !== 'stages' && viewMode !== 'events' && (
           <CRMFilterBar
             searchQuery={searchQuery} setSearchQuery={setSearchQuery}
             sourceFilter={sourceFilter} setSourceFilter={setSourceFilter}
@@ -522,7 +538,19 @@ export default function CRMDashboard() {
         )}
 
         {/* View */}
-        {viewMode === 'stages' ? (
+        {eventFilter && viewMode !== 'events' && (
+          <div className="mb-4 flex items-center gap-2 text-sm">
+            <span className="text-on-surface-variant">Showing leads met at</span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-fixed px-3 py-1 font-semibold text-primary">
+              {eventFilter}
+              <button onClick={() => setEventFilter(null)} aria-label="Clear event filter"><X className="w-3.5 h-3.5" /></button>
+            </span>
+          </div>
+        )}
+
+        {viewMode === 'events' ? (
+          <EventsReport leads={leads} onViewLeads={(metAt) => { setEventFilter(metAt); setViewMode('list'); }} />
+        ) : viewMode === 'stages' ? (
           <LeadStagesConfig />
         ) : viewMode === 'analytics' ? (
           <CRMAnalytics leads={leads} />

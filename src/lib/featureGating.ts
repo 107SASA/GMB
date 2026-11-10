@@ -7,7 +7,7 @@ import AIUsageLog from '@/models/AIUsageLog';
 import PlanConfig from '@/models/PlanConfig';
 import Post from '@/models/Post';
 import Subscription from '@/models/Subscription';
-import { getPlanDefaults, type PlanLimits } from '@/lib/planDefaults';
+import { defaultCardScans, getPlanDefaults, type PlanLimits } from '@/lib/planDefaults';
 import { limitsPlanFor } from '@/lib/billing/entitlements';
 
 async function getPlanLimitsFromDB(planName: string): Promise<PlanLimits> {
@@ -22,6 +22,7 @@ async function getPlanLimitsFromDB(planName: string): Promise<PlanLimits> {
         maxWhatsAppMessagesPerDay: config.maxWhatsAppMessagesPerDay,
         reviewRequestCooldownDays: config.reviewRequestCooldownDays,
         maxAIGenerations:          config.maxAIGenerations,
+        maxCardScansPerMonth:      config.maxCardScansPerMonth ?? defaultCardScans(planName),
       };
     }
   } catch { /* fall through to hardcoded */ }
@@ -56,6 +57,7 @@ async function resolveUserLimits(
     maxWhatsAppMessagesPerDay: override.maxWhatsAppMessagesPerDay ?? planLimits.maxWhatsAppMessagesPerDay,
     reviewRequestCooldownDays: override.reviewRequestCooldownDays ?? planLimits.reviewRequestCooldownDays,
     maxAIGenerations:          override.maxAIGenerations          ?? planLimits.maxAIGenerations,
+    maxCardScansPerMonth:      override.maxCardScansPerMonth      ?? planLimits.maxCardScansPerMonth,
   };
 }
 
@@ -65,11 +67,12 @@ function metricLabel(metric: string): string {
     case 'audits':          return 'audit reports';
     case 'aiGenerations':   return 'AI generations';
     case 'whatsappMessages':return 'WhatsApp messages';
+    case 'cardScans':       return 'visiting card scans';
     default:                return 'actions';
   }
 }
 
-export type UsageMetric = 'posts' | 'audits' | 'aiGenerations' | 'whatsappMessages';
+export type UsageMetric = 'posts' | 'audits' | 'aiGenerations' | 'whatsappMessages' | 'cardScans';
 
 export async function checkUsageLimit(
   userId: string | mongoose.Types.ObjectId,
@@ -122,7 +125,23 @@ export async function checkUsageLimit(
       currentUsage = await AIUsageLog.countDocuments({
         userId: userId.toString(),
         status: 'success',
+        // Card scans have their own cap (cardScans) — they must not use up
+        // the content-generation quota.
+        promptType: { $nin: ['business_card_scan', 'business_card_scan_retry'] },
         createdAt: { $gte: startOfMonth, $lt: endOfMonth },
+      });
+      break;
+    }
+    case 'cardScans': {
+      // One scan = one card read for the owner. The stronger-model retry is
+      // logged as 'business_card_scan_retry' — our cost, not the customer's.
+      limit = limits.maxCardScansPerMonth;
+      const startOfMonth = new Date(`${month}-01T00:00:00.000Z`);
+      currentUsage = await AIUsageLog.countDocuments({
+        businessId,
+        promptType: 'business_card_scan',
+        status: { $in: ['success', 'partial'] },
+        createdAt: { $gte: startOfMonth },
       });
       break;
     }

@@ -38,6 +38,18 @@ export interface CustomerLeadInput {
   interest?: string | null;
   valuation?: number | null;
   tags?: string[];
+  city?: string | null;
+  /** Visiting-card details (source 'Business Card'). Fills gaps on an existing lead. */
+  businessCard?: {
+    company?: string;
+    designation?: string;
+    website?: string;
+    address?: string;
+    otherPhones?: string[];
+    otherEmails?: string[];
+    metAt?: string;
+    imageKeys?: string[];
+  } | null;
   /** Initial stage; anything other than 'initial' must be a lifecycle group. */
   lifeCycleStage?: 'initial' | 'active' | 'converted' | 'closed';
   createdBy?: string | null;
@@ -138,6 +150,21 @@ export async function findCustomerLeadMatch(
   return null;
 }
 
+/** Bounded, empty-free copy of visiting-card details. */
+function cleanBusinessCard(c: NonNullable<CustomerLeadInput['businessCard']>): Record<string, string | string[]> {
+  const out: Record<string, string | string[]> = {};
+  const str = (k: 'company' | 'designation' | 'website' | 'address' | 'metAt', max: number) => {
+    const v = typeof c[k] === 'string' ? c[k]!.trim().slice(0, max) : '';
+    if (v) out[k] = v;
+  };
+  str('company', 200); str('designation', 200); str('website', 300); str('address', 500); str('metAt', 200);
+  for (const k of ['otherPhones', 'otherEmails', 'imageKeys'] as const) {
+    const arr = (Array.isArray(c[k]) ? c[k]! : []).map((x) => String(x).trim()).filter(Boolean).slice(0, 10);
+    if (arr.length) out[k] = arr;
+  }
+  return out;
+}
+
 export async function createOrUpdateCustomerLead(
   input: CustomerLeadInput,
   opts: { index?: CustomerLeadIndex | null } = {},
@@ -160,6 +187,18 @@ export async function createOrUpdateCustomerLead(
     if (!existing.email && email) existing.email = email;
     if (!existing.phone && phone) existing.phone = phone;
     if (!existing.interest && input.interest) existing.interest = input.interest;
+    if (!existing.city && input.city) existing.city = String(input.city).slice(0, 100);
+    if (input.businessCard) {
+      // Merge card details without overwriting anything already on the lead.
+      const prev = existing.businessCard ? (existing.businessCard.toObject?.() ?? existing.businessCard) : {};
+      const merged: Record<string, unknown> = { ...prev };
+      for (const [k, v] of Object.entries(cleanBusinessCard(input.businessCard))) {
+        if (Array.isArray(v)) merged[k] = Array.from(new Set([...((prev as any)[k] ?? []), ...v])).slice(0, 10);
+        else if (v && !(prev as any)[k]) merged[k] = v;
+      }
+      merged.scannedAt = new Date();
+      existing.businessCard = merged;
+    }
     existing.lastActivityAt = new Date();
     await existing.save();
     if (input.activity) await logLeadActivity(existing, input.activity);
@@ -179,6 +218,8 @@ export async function createOrUpdateCustomerLead(
     ...(input.interest ? { interest: String(input.interest).slice(0, 500) } : {}),
     ...(typeof input.valuation === 'number' && input.valuation >= 0 ? { valuation: input.valuation } : {}),
     ...(input.tags?.length ? { tags: input.tags.slice(0, 20) } : {}),
+    ...(input.city ? { city: String(input.city).slice(0, 100) } : {}),
+    ...(input.businessCard ? { businessCard: { ...cleanBusinessCard(input.businessCard), scannedAt: new Date() } } : {}),
     lifeCycleStage: input.lifeCycleStage && ['initial', 'active', 'closed'].includes(input.lifeCycleStage) ? input.lifeCycleStage : 'initial',
     subStage: null,
     subStageId: null,

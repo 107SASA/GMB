@@ -17,6 +17,7 @@ export const CUSTOMER_LEAD_SOURCES = [
   'CSV Import',
   'Campaign Import',
   'Appointment',
+  'Business Card',
 ] as const;
 export type CustomerLeadSource = (typeof CUSTOMER_LEAD_SOURCES)[number];
 
@@ -50,6 +51,9 @@ const ALIASES: Record<string, CustomerLeadSource> = {
   'campaign import': 'Campaign Import',
   campaign: 'Campaign Import',
   appointment: 'Appointment',
+  'business card': 'Business Card',
+  'visiting card': 'Business Card',
+  card: 'Business Card',
 };
 
 export function canonicalSource(input: unknown, fallback: CustomerLeadSource = 'Manual'): CustomerLeadSource {

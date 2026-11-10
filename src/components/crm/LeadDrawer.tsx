@@ -281,6 +281,41 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
               </div>
             </div>
 
+            {lead.businessCard && (
+              <div className="mb-8">
+                <h3 className="text-sm font-bold text-on-surface mb-4">Visiting Card</h3>
+                <div className="bg-surface rounded-2xl p-4 border border-outline-variant space-y-3 text-sm">
+                  {(lead.businessCard.imageKeys ?? []).map((_: string, side: number) => (
+                    // Private photo served by an authenticated route (session cookie).
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={side}
+                      src={`/api/crm/leads/${lead._id}/card-image?side=${side}`}
+                      alt={side === 0 ? 'Front of visiting card' : 'Back of visiting card'}
+                      className="w-full rounded-xl border border-outline-variant object-contain"
+                    />
+                  ))}
+                  {([
+                    ['Company', lead.businessCard.company],
+                    ['Job title', lead.businessCard.designation],
+                    ['Website', lead.businessCard.website],
+                    ['Address', lead.businessCard.address],
+                    ['City', lead.city],
+                    ['Other phones', lead.businessCard.otherPhones?.join(', ')],
+                    ['Other emails', lead.businessCard.otherEmails?.join(', ')],
+                    ['Met at', lead.businessCard.metAt],
+                  ] as [string, string | undefined][])
+                    .filter(([, v]) => !!v)
+                    .map(([label, value]) => (
+                      <div key={label} className="flex justify-between gap-4">
+                        <span className="text-on-surface-variant shrink-0">{label}</span>
+                        <span className="font-medium text-on-surface text-right break-words">{value}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <h3 className="text-sm font-bold text-on-surface mb-4">Activity Timeline</h3>
               <ActivityTimeline leadId={lead._id} />

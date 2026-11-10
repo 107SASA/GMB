@@ -62,6 +62,8 @@ export default function CRMFilterBar({
           <option value="Instagram">Instagram</option>
           <option value="Facebook">Facebook</option>
           <option value="Referral">Referral</option>
+          <option value="Phone Call">Phone Call</option>
+          <option value="Business Card">Visiting Card</option>
         </select>
 
         <select

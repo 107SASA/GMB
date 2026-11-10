@@ -30,6 +30,7 @@ export async function GET(
       maxWhatsAppMessagesPerDay: override?.maxWhatsAppMessagesPerDay,
       reviewRequestCooldownDays: override?.reviewRequestCooldownDays,
       maxAIGenerations:          override?.maxAIGenerations,
+      maxCardScansPerMonth:      override?.maxCardScansPerMonth,
     });
 
     return NextResponse.json({
@@ -46,6 +47,7 @@ export async function GET(
           maxWhatsAppMessagesPerDay: override?.maxWhatsAppMessagesPerDay ?? null,
           reviewRequestCooldownDays: override?.reviewRequestCooldownDays ?? null,
           maxAIGenerations:          override?.maxAIGenerations          ?? null,
+          maxCardScansPerMonth:      override?.maxCardScansPerMonth      ?? null,
           adminNotes:                override?.adminNotes                ?? '',
         },
         effective,
@@ -82,6 +84,7 @@ export async function PATCH(
       'maxWhatsAppMessagesPerDay',
       'reviewRequestCooldownDays',
       'maxAIGenerations',
+      'maxCardScansPerMonth',
       'adminNotes',
     ] as const;
 
@@ -119,6 +122,7 @@ export async function PATCH(
       maxWhatsAppMessagesPerDay: override.maxWhatsAppMessagesPerDay,
       reviewRequestCooldownDays: override.reviewRequestCooldownDays,
       maxAIGenerations:          override.maxAIGenerations,
+      maxCardScansPerMonth:      override.maxCardScansPerMonth,
     });
 
     return NextResponse.json({ success: true, effective });

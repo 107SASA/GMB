@@ -14,6 +14,7 @@ const LIMIT_KEYS: (keyof PlanLimits)[] = [
   'maxWhatsAppMessagesPerDay',
   'reviewRequestCooldownDays',
   'maxAIGenerations',
+  'maxCardScansPerMonth',
 ];
 
 // GET — returns all plan configs, falling back to hardcoded defaults for any not in DB
@@ -39,6 +40,7 @@ export async function GET(_req: NextRequest) {
         maxWhatsAppMessagesPerDay: db?.maxWhatsAppMessagesPerDay ?? hc.maxWhatsAppMessagesPerDay,
         reviewRequestCooldownDays: db?.reviewRequestCooldownDays ?? hc.reviewRequestCooldownDays,
         maxAIGenerations:          db?.maxAIGenerations          ?? hc.maxAIGenerations,
+        maxCardScansPerMonth:      db?.maxCardScansPerMonth      ?? hc.maxCardScansPerMonth,
         isCustom: !!db,
         updatedAt: db?.updatedAt ?? null,
       };

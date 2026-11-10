@@ -43,7 +43,7 @@ export interface ILead extends Document {
   name: string;
   email?: string;
   phone?: string;
-  source: 'WhatsApp' | 'Website' | 'Manual' | 'Instagram' | 'Facebook' | 'Referral' | 'Demo Booking' | 'Google Business Profile' | 'Phone Call' | 'Contacts Import' | 'CSV Import' | 'Campaign Import' | 'Appointment';
+  source: 'WhatsApp' | 'Website' | 'Manual' | 'Instagram' | 'Facebook' | 'Referral' | 'Demo Booking' | 'Google Business Profile' | 'Phone Call' | 'Contacts Import' | 'CSV Import' | 'Campaign Import' | 'Appointment' | 'Business Card';
   leadType: 'Client Prospect' | 'Platform Prospect';
   status: 'active' | 'inactive';
   lifeCycleStage: 'initial' | 'active' | 'closed' | 'converted';
@@ -78,6 +78,20 @@ export interface ILead extends Document {
   businessType?: string;
   /** Super admin CRM: city / area, and why a lead was marked lost. */
   city?: string;
+  /** Customer CRM: details read from a scanned visiting card (source 'Business Card'). */
+  businessCard?: {
+    company?: string;
+    designation?: string;
+    website?: string;
+    address?: string;
+    otherPhones?: string[];
+    otherEmails?: string[];
+    /** Where the owner met this person, e.g. "Delhi Expo 2026". */
+    metAt?: string;
+    /** PRIVATE storage keys (front, back) — served only via /api/crm/leads/[id]/card-image. */
+    imageKeys?: string[];
+    scannedAt?: Date;
+  } | null;
   lostReason?: string;
   captureSources?: string[];
   budget?: string;
@@ -247,7 +261,7 @@ const LeadSchema: Schema = new Schema(
     phone: { type: String },
     source: { 
       type: String, 
-      enum: ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking', 'Google Business Profile', 'Phone Call', 'Contacts Import', 'CSV Import', 'Campaign Import', 'Appointment',
+      enum: ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking', 'Google Business Profile', 'Phone Call', 'Contacts Import', 'CSV Import', 'Campaign Import', 'Appointment', 'Business Card',
         // Platform (super admin CRM) capture channels.
         'Website Free Report', 'Website Demo Booking', 'WhatsApp Free Report'],
       default: 'Manual'
@@ -295,6 +309,22 @@ const LeadSchema: Schema = new Schema(
     qualificationStatus: { type: String },
     businessType: { type: String },
     city: { type: String },
+    // Customer CRM: visiting-card scan (see ILead.businessCard). Absent on every
+    // other lead, so existing documents are unaffected.
+    businessCard: {
+      type: new Schema({
+        company: { type: String, maxlength: 200 },
+        designation: { type: String, maxlength: 200 },
+        website: { type: String, maxlength: 300 },
+        address: { type: String, maxlength: 500 },
+        otherPhones: { type: [String], default: undefined },
+        otherEmails: { type: [String], default: undefined },
+        metAt: { type: String, maxlength: 200 },
+        imageKeys: { type: [String], default: undefined },
+        scannedAt: { type: Date },
+      }, { _id: false }),
+      default: undefined,
+    },
     // Every channel this lead came in through (first one is `source`), e.g. a
     // website free report and later a website demo booking.
     captureSources: { type: [String], default: undefined },

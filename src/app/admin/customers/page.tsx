@@ -221,6 +221,7 @@ const LIMIT_FIELDS = [
   { key: 'maxWhatsAppMessagesPerDay', label: 'WhatsApp Messages / Day',     unit: 'msgs' },
   { key: 'reviewRequestCooldownDays', label: 'Review Request Cooldown',     unit: 'days' },
   { key: 'maxAIGenerations',          label: 'Max AI Generations / Month',  unit: 'gens' },
+  { key: 'maxCardScansPerMonth',      label: 'Visiting Card Scans / Month', unit: 'scans' },
 ] as const;
 
 type LimitKey = typeof LIMIT_FIELDS[number]['key'];
@@ -231,6 +232,7 @@ interface LimitOverride {
   maxWhatsAppMessagesPerDay: number | null;
   reviewRequestCooldownDays: number | null;
   maxAIGenerations:          number | null;
+  maxCardScansPerMonth:      number | null;
   adminNotes:                string;
 }
 
@@ -268,6 +270,7 @@ function EditLimitsModal({
     maxWhatsAppMessagesPerDay: row.override.maxWhatsAppMessagesPerDay,
     reviewRequestCooldownDays: row.override.reviewRequestCooldownDays,
     maxAIGenerations:          row.override.maxAIGenerations,
+    maxCardScansPerMonth:      row.override.maxCardScansPerMonth,
   }));
   const [notes, setNotes]     = useState(row.override.adminNotes);
   const [saving, setSaving]   = useState(false);
@@ -294,6 +297,7 @@ function EditLimitsModal({
       maxWhatsAppMessagesPerDay: null,
       reviewRequestCooldownDays: null,
       maxAIGenerations:          null,
+      maxCardScansPerMonth:      null,
     });
     setNotes('');
   };
@@ -444,6 +448,7 @@ interface PlanConfigRow {
   maxWhatsAppMessagesPerDay: number;
   reviewRequestCooldownDays: number;
   maxAIGenerations:          number;
+  maxCardScansPerMonth:      number;
   isCustom: boolean;
 }
 
@@ -465,6 +470,7 @@ function EditPlanModal({
     maxWhatsAppMessagesPerDay: config.maxWhatsAppMessagesPerDay,
     reviewRequestCooldownDays: config.reviewRequestCooldownDays,
     maxAIGenerations:          config.maxAIGenerations,
+    maxCardScansPerMonth:      config.maxCardScansPerMonth,
   });
   const [saving, setSaving]       = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -649,6 +655,7 @@ function UsageLimitsTab() {
       maxWhatsAppMessagesPerDay: hc.maxWhatsAppMessagesPerDay,
       reviewRequestCooldownDays: hc.reviewRequestCooldownDays,
       maxAIGenerations:          hc.maxAIGenerations,
+      maxCardScansPerMonth:      hc.maxCardScansPerMonth,
       isCustom: false,
     } as PlanConfigRow;
   });

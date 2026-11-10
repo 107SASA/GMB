@@ -261,7 +261,13 @@ test('super-admin CRM untouched: no admin / sales-agent / nurture / lead-engine 
   const forbidden = /(^|\/)(admin|sales[-_]?agent|salesAgent|nurture|lead[-_]?engine|leadEngine|conversion)(\/|\.|-|$)/i;
   // Not CRM code: the Google access status (services/gbp/access) shown to the
   // sales / support team on the businesses list and the inbox customer panel.
-  const notCrm = new Set(['src/app/admin/businesses/page.tsx', 'src/app/admin/inbox/page.tsx', 'src/app/api/admin/businesses/route.ts']);
+  // Also not CRM code: the plan usage-limit editors (plan config + per-customer
+  // overrides), which gained the visiting-card scan cap (maxCardScansPerMonth).
+  const notCrm = new Set([
+    'src/app/admin/businesses/page.tsx', 'src/app/admin/inbox/page.tsx', 'src/app/api/admin/businesses/route.ts',
+    'src/app/admin/customers/page.tsx', 'src/app/api/admin/plan-config/route.ts',
+    'src/app/api/admin/usage-limits/route.ts', 'src/app/api/admin/customers/[userId]/usage-limits/route.ts',
+  ]);
   const hits = changed.filter((f) => forbidden.test(f) && !notCrm.has(f));
   assert.deepEqual(hits, [], `super-admin files changed: ${hits.join(', ')}`);
   // The platform tenant is refused by the customer service by construction.

@@ -8,14 +8,22 @@ interface CandidateLocation {
   locationId: string;
   title: string;
   address: string;
+  /** Same Google place as this workspace's business. */
+  matchesBusiness?: boolean;
+  /** Google confirms this login controls the profile. */
+  verified?: boolean;
+  /** Google marks this profile as a copy of another one: posts and edits won't work. */
+  duplicate?: boolean;
 }
 
 /**
- * Shown when a connected Google account manages more than one GBP location
- * and none confidently matched this workspace's own listing (see
- * src/app/api/auth/google/callback/route.ts). Rather than silently guessing
- * — the root cause of every workspace inheriting whichever location
- * connected first — the user picks explicitly here.
+ * Shown whenever the connected Google login holds more than one Business
+ * Profile, or only one that Google flags as a duplicate (see
+ * src/app/api/auth/google/callback/route.ts). Never guessing: silently
+ * taking the first match connected an unverified duplicate for "Michelle's
+ * Foods" (Nov 2026). Profiles are listed with this workspace's own listing
+ * first and duplicates labelled, so the owner can tell identical-looking
+ * copies apart.
  */
 export default function SelectGbpLocationPage() {
   const router = useRouter();
@@ -82,10 +90,20 @@ export default function SelectGbpLocationPage() {
         </h1>
         <p className="text-on-surface-variant mt-1">
           {googleEmail
-            ? `${googleEmail} manages more than one location. Pick the one for this workspace.`
-            : 'This Google account manages more than one location. Pick the one for this workspace.'}
+            ? `Profiles managed by ${googleEmail}. Pick the one for this workspace.`
+            : 'Profiles managed by this Google account. Pick the one for this workspace.'}
         </p>
       </div>
+
+      {!error && locations.length > 0 && locations.every((l) => l.duplicate) && (
+        <div className="mb-4 flex items-start gap-2 bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container">
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>
+            Google marks every profile in this account as a duplicate copy. The original listing is managed by a
+            different Google account. Sign in with that account instead, or ask its owner to add you as an Owner.
+          </span>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 flex items-start gap-2 bg-error-container border border-error-container rounded-xl px-4 py-3 text-sm text-on-error-container">
@@ -110,6 +128,22 @@ export default function SelectGbpLocationPage() {
               <div className="flex-1 min-w-0">
                 <div className="font-bold text-on-surface">{loc.title || 'Untitled location'}</div>
                 {loc.address && <div className="text-sm text-on-surface-variant mt-0.5">{loc.address}</div>}
+                {(loc.matchesBusiness || loc.verified) && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {loc.matchesBusiness && (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary-container text-on-primary-container">Your business</span>
+                    )}
+                    {loc.verified && (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-surface-container text-on-surface">Verified</span>
+                    )}
+                  </div>
+                )}
+                {loc.duplicate && (
+                  <div className="flex items-start gap-1.5 mt-2 text-xs text-error">
+                    <AlertCircle className="w-3.5 h-3.5 mt-px shrink-0" />
+                    <span>Google marks this as a duplicate copy. Posts and edits won&apos;t work on it.</span>
+                  </div>
+                )}
               </div>
               {selecting === loc.locationId ? (
                 <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />

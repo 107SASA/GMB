@@ -37,6 +37,12 @@ export interface IPendingGbpConnection extends Document {
     title: string;
     address: string;
     placeId?: string;
+    /** Same placeId as the workspace's own listing. */
+    matchesBusiness?: boolean;
+    /** Google confirms this login controls the profile (hasVoiceOfMerchant). */
+    verified?: boolean;
+    /** Google marks this profile as a copy of that location. */
+    duplicateOf?: string;
   }>;
   createdAt: Date;
 }
@@ -46,8 +52,8 @@ const PendingGbpConnectionSchema = new Schema<IPendingGbpConnection>(
     tokenHash: { type: String, required: true, unique: true, index: true },
     businessId: { type: Schema.Types.ObjectId, ref: 'Business', required: true },
     organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
-    googleAccountId: { type: String, required: true },
-    googleEmail: { type: String, required: true },
+    googleAccountId: { type: String, default: '' },
+    googleEmail: { type: String, default: '' },
     accessToken: { type: String, required: true },
     refreshToken: { type: String, required: true },
     expiresAt: { type: Date, required: true },
@@ -61,6 +67,9 @@ const PendingGbpConnectionSchema = new Schema<IPendingGbpConnection>(
         title: { type: String, default: '' },
         address: { type: String, default: '' },
         placeId: { type: String },
+        matchesBusiness: { type: Boolean, default: false },
+        verified: { type: Boolean, default: false },
+        duplicateOf: { type: String },
       },
     ],
     createdAt: { type: Date, default: Date.now, expires: 15 * 60 }, // TTL: 15 minutes

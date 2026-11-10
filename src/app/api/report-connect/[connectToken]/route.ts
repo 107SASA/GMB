@@ -4,7 +4,9 @@ import crypto from 'crypto';
 import { SignJWT } from 'jose';
 import { verifyReportConnectToken } from '@/lib/reportConnect';
 
-const SCOPES = 'https://www.googleapis.com/auth/business.manage';
+// openid + email: the callback's userinfo call needs them to return the
+// Google account's email / id, which are saved on the connection.
+const SCOPES = 'openid email https://www.googleapis.com/auth/business.manage';
 
 function getSigningKey(): Uint8Array {
   const secret = process.env.SESSION_SECRET;

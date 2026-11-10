@@ -50,6 +50,9 @@ export async function GET(req: Request) {
       locationId: l.locationId,
       title: l.title,
       address: l.address,
+      matchesBusiness: !!l.matchesBusiness,
+      verified: !!l.verified,
+      duplicate: !!l.duplicateOf,
     })),
   });
 }

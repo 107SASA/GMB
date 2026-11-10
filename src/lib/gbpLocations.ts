@@ -20,6 +20,14 @@ export interface GbpLocationCandidate {
   title: string;
   storefrontAddress: any;
   placeId?: string;
+  /**
+   * Google's `metadata.hasVoiceOfMerchant`: true when this login really
+   * controls the listing. A second, unverified claim of an already-verified
+   * listing (shares its placeId, ownership conflict) is false / missing.
+   */
+  hasVoiceOfMerchant?: boolean;
+  /** Google's `metadata.duplicateLocation`: set when Google marks this profile as a copy of another one. */
+  duplicateOf?: string;
 }
 
 export type ListLocationsResult =
@@ -74,7 +82,7 @@ export async function listAllGbpLocations(accessToken: string, fetchFn: typeof f
         // A location shared through two accounts is listed once.
         if (!l?.name || seen.has(l.name)) continue;
         seen.add(l.name);
-        locations.push({ locationId: l.name, accountId, title: l.title ?? '', storefrontAddress: l.storefrontAddress, placeId: l.metadata?.placeId });
+        locations.push({ locationId: l.name, accountId, title: l.title ?? '', storefrontAddress: l.storefrontAddress, placeId: l.metadata?.placeId, hasVoiceOfMerchant: l.metadata?.hasVoiceOfMerchant === true, duplicateOf: l.metadata?.duplicateLocation || undefined });
       }
       locToken = data.nextPageToken || '';
       if (!locToken) break;
@@ -82,4 +90,39 @@ export async function listAllGbpLocations(accessToken: string, fetchFn: typeof f
   }
   if (!anyAccountRead && lastError) return { ok: false, reason: 'locations_failed', ...lastError };
   return { ok: true, locations, accountsChecked: Math.min(accounts.length, MAX_ACCOUNTS) };
+}
+
+/**
+ * The profile to connect automatically, or null when the owner has to pick
+ * it on the location picker. Automatic only when the choice is clear:
+ *   - the login holds exactly one profile and Google doesn't flag it as a
+ *     duplicate, or
+ *   - exactly one profile shares the workspace's placeId and isn't a
+ *     duplicate (several such: only the single one Google confirms this login
+ *     controls).
+ *
+ * Nov 2026 ("Michelle's Foods"): the login held two copies of the listing,
+ * both sharing the workspace's placeId, and the first was connected
+ * silently. Google then allowed reading but no posts or edits, and nobody
+ * saw why. That case now goes to the picker, with the copies labelled.
+ */
+export function autoPickLocation(locations: GbpLocationCandidate[], placeId: string | null | undefined): GbpLocationCandidate | null {
+  if (locations.length === 1) return locations[0].duplicateOf ? null : locations[0];
+  if (!placeId) return null;
+  const matches = locations.filter((l) => l.placeId === placeId);
+  const clean = matches.filter((l) => !l.duplicateOf);
+  if (matches.length === 1) return clean[0] ?? null;
+  const verified = clean.filter((l) => l.hasVoiceOfMerchant === true);
+  return verified.length === 1 ? verified[0] : null;
+}
+
+/**
+ * Picker order: this workspace's own listing (placeId on file) first, the
+ * one Google confirms this login controls first among those, and profiles
+ * Google flags as duplicates last.
+ */
+export function rankLocationsForPlace(locations: GbpLocationCandidate[], placeId: string | null | undefined): GbpLocationCandidate[] {
+  const score = (l: GbpLocationCandidate) =>
+    (placeId && l.placeId === placeId ? 4 : 0) + (l.hasVoiceOfMerchant ? 2 : 0) + (l.duplicateOf ? 0 : 1);
+  return locations.map((l, i) => ({ l, i })).sort((a, b) => score(b.l) - score(a.l) || a.i - b.i).map(({ l }) => l);
 }

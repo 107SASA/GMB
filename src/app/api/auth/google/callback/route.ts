@@ -6,7 +6,7 @@ import Business from '@/models/Business';
 import PendingGbpConnection from '@/models/PendingGbpConnection';
 import { encrypt } from '@/lib/crypto';
 import { finalizeGbpConnection, formatLocationAddress } from '@/lib/gbpConnect';
-import { listAllGbpLocations } from '@/lib/gbpLocations';
+import { listAllGbpLocations, autoPickLocation, rankLocationsForPlace } from '@/lib/gbpLocations';
 
 function getSigningKey(): Uint8Array {
   const secret = process.env.SESSION_SECRET;
@@ -125,20 +125,20 @@ export async function GET(request: NextRequest) {
   const organizationId: string = business?.organizationId?.toString?.() ?? business?.organizationId;
   const locations = listed.locations;
 
-  // Try to match by googlePlaceId when the workspace has one on file.
-  const matched = business?.googlePlaceId
-    ? locations.find((l) => l.placeId === business.googlePlaceId)
-    : null;
+  // Connect automatically when the right profile is clear; otherwise the
+  // owner picks, with the workspace's own listing (placeId on file) first.
+  const autoPicked = autoPickLocation(locations, business?.googlePlaceId);
+  const ranked = rankLocationsForPlace(locations, business?.googlePlaceId);
 
   const expiresAt = new Date(Date.now() + expires_in * 1000);
   const scopes: string[] = scope ? scope.split(' ') : [];
 
-  if (!matched && locations.length > 1) {
-    // Multiple candidate locations and no confident match — do NOT guess.
-    // Silently picking locations[0] here is exactly what caused every
-    // workspace connecting this Google account to inherit the same first
-    // listing. Stage the exchanged tokens + candidates and let the user
-    // choose (src/app/dashboard/gbp-profile/select-location/page.tsx).
+  if (!autoPicked) {
+    // No clear choice — never guess; the owner picks on
+    // src/app/dashboard/gbp-profile/select-location/page.tsx. Silently
+    // taking the first placeId match connected an unverified duplicate for
+    // "Michelle's Foods" (Nov 2026); silently taking locations[0] before that
+    // gave every workspace on one Google login the same listing.
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
 
@@ -151,14 +151,17 @@ export async function GET(request: NextRequest) {
       accessToken: encrypt(access_token),
       refreshToken: encrypt(refresh_token),
       expiresAt,
-      accountId: locations[0].accountId,
+      accountId: ranked[0].accountId,
       scopes,
-      candidateLocations: locations.map((l) => ({
+      candidateLocations: ranked.map((l) => ({
         locationId: l.locationId,
         accountId: l.accountId,
         title: l.title ?? '',
         address: formatLocationAddress(l.storefrontAddress),
         placeId: l.placeId,
+        matchesBusiness: !!business?.googlePlaceId && l.placeId === business.googlePlaceId,
+        verified: l.hasVoiceOfMerchant === true,
+        duplicateOf: l.duplicateOf,
       })),
     });
 
@@ -174,8 +177,7 @@ export async function GET(request: NextRequest) {
     return response;
   }
 
-  // Confident match, or unambiguous (0 or 1 total locations) — proceed as before.
-  const picked = matched ?? locations[0];
+  const picked = autoPicked;
   const locationId: string = picked.locationId;
   const accountId: string = picked.accountId;
 
@@ -193,6 +195,8 @@ export async function GET(request: NextRequest) {
   });
 
   // --- Clear state cookie and redirect to Dashboard (GBP section is now inline) ---
+  console.log(`[gbp/callback] business ${businessId} connected as ${googleEmail || 'unknown email'} → ${locationId}${picked.hasVoiceOfMerchant ? '' : ' (Google has not confirmed this login controls the listing)'}`);
+
   const response = appRedirect('/dashboard?connected=true', request);
   response.cookies.set('gbp_oauth_state', '', { maxAge: 0, path: '/' });
   return response;

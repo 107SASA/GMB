@@ -6,6 +6,9 @@ import { Pressable, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { fetchDashboardStats, fetchGbpInsights, syncGbpInsights } from '@/api/endpoints/dashboard';
+import { fetchKeywords } from '@/api/endpoints/keywords';
+import { KeywordCard } from '@/components/keywords/keyword-card';
+import { useSurfaceLocked } from '@/entitlements/entitlements';
 import type { AuditCompetitor, AuditKeywordRank } from '@/api/endpoints/audit';
 import { useBusiness } from '@/business/BusinessContext';
 import { LineChart } from '@/components/charts';
@@ -257,6 +260,15 @@ export function PerformanceTab() {
   const queryClient = useQueryClient();
   const { audit, isLoading: auditLoading, isError: auditError } = useLatestAudit();
   const { previousRankByKeyword } = useKeywordChanges();
+  // The month's focus keywords (same data as the Keywords screen / website).
+  // Locked or not researched yet → the audit's keyword ranks below, as before.
+  const keywordsLocked = useSurfaceLocked('content');
+  const keywordData = useQuery({
+    queryKey: ['keywords', activeBusinessId],
+    queryFn: fetchKeywords,
+    enabled: !!activeBusinessId && !keywordsLocked,
+  });
+  const focusKeywords = (keywordData.data?.targets ?? []).filter((k) => k.role === 'core').slice(0, 5);
   const [trendMetric, setTrendMetric] = useState<TrendMetric>('views');
   const [infoVisible, setInfoVisible] = useState(false);
 
@@ -497,9 +509,23 @@ export function PerformanceTab() {
         </View>
       )}
 
-      {/* Rank for targeted keywords */}
-      <SectionTitle hint>Rank for Targeted Keywords</SectionTitle>
-      {auditLoading ? (
+      {/* Target keywords — the month's focus keywords, with a link to the full Keywords screen */}
+      <SectionTitle hint>{focusKeywords.length > 0 ? 'Target Keywords' : 'Rank for Targeted Keywords'}</SectionTitle>
+      {focusKeywords.length > 0 ? (
+        <View className="gap-3">
+          {focusKeywords.map((row) => (
+            <KeywordCard key={row.id} row={row} showRole={false} />
+          ))}
+          <Pressable
+            onPress={() => router.push('/keywords')}
+            accessibilityRole="button"
+            className="flex-row items-center justify-center gap-1.5 rounded-card border border-surface-border bg-surface-raised py-3"
+          >
+            <Text className="font-sans-semibold text-sm" style={{ color: t.brandBright }}>See all keywords</Text>
+            <Ionicons name="chevron-forward" size={16} color={t.brandBright} />
+          </Pressable>
+        </View>
+      ) : auditLoading || (keywordData.isLoading && !keywordsLocked) ? (
         <Skeleton className="h-48" />
       ) : mv && mv.keywords.length > 0 ? (
         <VerifiedRows rows={mv.keywords.map((k) => ({ title: k.keyword, sub: k.demand, right: k.rank }))} />

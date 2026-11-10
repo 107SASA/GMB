@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
+import { fetchKeywordVolumes, volumeLabel } from '@/api/endpoints/keywords';
 import {
   EMPTY_INTAKE,
   fetchIntake,
@@ -42,6 +43,8 @@ const TONES: { id: string; label: string }[] = [
 ];
 
 const isValidKeyword = (v: string) => /[a-zA-Z]/.test(v);
+/** Same cap the server enforces (KEYWORD_LIMITS.maxOwnerKeywords). */
+const MAX_KEYWORDS = 20;
 
 /**
  * The "Tell us about your business" intake — the mobile counterpart of
@@ -162,6 +165,21 @@ function IntakeForm({
     setForm((f) => ({ ...f, [k]: v }));
 
   const shownKeywords = useRef(new Set<string>()).current;
+  // Google monthly searches per keyword (lowercased) — from suggestions and owner-typed lookups.
+  const [volumes, setVolumes] = useState<Record<string, number | null>>({});
+  const askedVolumes = useRef(new Set<string>()).current;
+  useEffect(() => {
+    const missing = form.keywords.filter((k) => !askedVolumes.has(k.toLowerCase()) && !(k.toLowerCase() in volumes));
+    if (!missing.length) return;
+    const timer = setTimeout(() => {
+      missing.forEach((k) => askedVolumes.add(k.toLowerCase()));
+      fetchKeywordVolumes(missing)
+        .then((v) => setVolumes((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(v).map(([k, n]) => [k.toLowerCase(), n])) })))
+        .catch(() => { /* volume is a hint — the form works without it */ });
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [form.keywords, volumes, askedVolumes]);
+  const volumeOf = (k: string) => (k.toLowerCase() in volumes ? ` · ${volumeLabel(volumes[k.toLowerCase()])}` : '');
 
   const suggest = useMutation({
     mutationFn: () =>
@@ -175,6 +193,8 @@ function IntakeForm({
       }),
     onSuccess: (items) => {
       items.forEach((k) => shownKeywords.add(k.keyword));
+      const vols = items.filter((k) => k.volume !== undefined).map((k) => [k.keyword.toLowerCase(), k.volume ?? null] as const);
+      if (vols.length) setVolumes((prev) => ({ ...prev, ...Object.fromEntries(vols) }));
       setSuggested(items.filter((k) => !form.keywords.includes(k.keyword)));
     },
   });
@@ -206,7 +226,7 @@ function IntakeForm({
 
   function addKeyword() {
     const v = keywordInput.trim();
-    if (!v || !isValidKeyword(v) || form.keywords.includes(v)) {
+    if (!v || !isValidKeyword(v) || form.keywords.includes(v) || form.keywords.length >= MAX_KEYWORDS) {
       setKeywordInput('');
       return;
     }
@@ -302,13 +322,16 @@ function IntakeForm({
           {form.keywords.map((k) => (
             <Chip
               key={k}
-              label={`${k} ×`}
+              label={`${k}${volumeOf(k)} ×`}
               selected
               onPress={() => set('keywords', form.keywords.filter((x) => x !== k))}
             />
           ))}
         </View>
       )}
+      <Text className="mb-2 px-1 font-sans text-[11px] text-zinc-500">
+        {form.keywords.length} / {MAX_KEYWORDS} · monthly Google searches shown next to each keyword. We research hundreds more for you every month.
+      </Text>
       {form.keywords.length === 0 && <SuggestionNote s={suggestions.keywords} onUse={() => applySuggestion('keywords')} />}
       <Pressable
         onPress={() => form.category.trim() && suggest.mutate()}
@@ -337,9 +360,10 @@ function IntakeForm({
           {suggested.map((k) => (
             <Chip
               key={k.keyword}
-              label={`+ ${k.keyword} · ${KW_SOURCE_LABEL[k.source] ?? ''}`}
+              label={`+ ${k.keyword}${volumeOf(k.keyword)} · ${KW_SOURCE_LABEL[k.source] ?? ''}`}
               selected={false}
               onPress={() => {
+                if (form.keywords.length >= MAX_KEYWORDS) return;
                 set('keywords', [...form.keywords, k.keyword]);
                 setSuggested((s) => s.filter((x) => x.keyword !== k.keyword));
               }}

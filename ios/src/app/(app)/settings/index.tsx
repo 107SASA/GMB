@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
+import { fetchKeywordVolumes, volumeLabel } from '@/api/endpoints/keywords';
 import {
   fetchBusinessDetail,
   fetchNotificationPrefs,
@@ -54,6 +55,20 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
   });
   const [keywords, setKeywords] = useState<string[]>(initial.keywords);
   const [keywordInput, setKeywordInput] = useState('');
+  // Google monthly searches per keyword (lowercased) — same numbers as the Keywords screen.
+  const [volumes, setVolumes] = useState<Record<string, number | null>>({});
+  const askedVolumes = useRef(new Set<string>()).current;
+  useEffect(() => {
+    const missing = keywords.filter((k) => !askedVolumes.has(k.toLowerCase()));
+    if (!missing.length) return;
+    const timer = setTimeout(() => {
+      missing.forEach((k) => askedVolumes.add(k.toLowerCase()));
+      fetchKeywordVolumes(missing)
+        .then((v) => setVolumes((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(v).map(([k, n]) => [k.toLowerCase(), n])) })))
+        .catch(() => { /* volume is a hint only */ });
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [keywords, askedVolumes]);
   const info = useInfoSheet();
 
   const save = useMutation({
@@ -186,7 +201,7 @@ function BusinessForm({ initial }: { initial: BusinessDetail }) {
           {keywords.map((k) => (
             <Chip
               key={k}
-              label={`${k} ×`}
+              label={`${k}${k.toLowerCase() in volumes ? ` · ${volumeLabel(volumes[k.toLowerCase()])}` : ''} ×`}
               selected
               onPress={() => setKeywords(keywords.filter((x) => x !== k))}
             />

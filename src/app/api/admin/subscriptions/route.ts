@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
           { fullName: { $regex: search.trim(), $options: 'i' } },
           { email:    { $regex: search.trim(), $options: 'i' } },
         ],
-        role: { $ne: 'SUPER_ADMIN' },
+        role: { $nin: ['SUPER_ADMIN', 'GROWTH_PARTNER'] },
       })
         .select('_id')
         .lean();

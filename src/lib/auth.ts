@@ -61,6 +61,18 @@ export async function requireClient(): Promise<
       };
     }
 
+    // A Growth Partner login is not a customer: it has its own /partner area
+    // and must never reach a customer API (create a workspace, checkout, …).
+    if ((user as any).role === 'GROWTH_PARTNER') {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { success: false, error: 'This is a Growth Partner account. Please use the partner dashboard.', code: 'PARTNER_ACCOUNT' },
+          { status: 403 }
+        ),
+      };
+    }
+
     // A deleted account can never authenticate again (the delete route also
     // bumps sessionEpoch; this is the belt to that brace).
     if ((user as any).isDeleted) {

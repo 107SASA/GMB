@@ -28,6 +28,11 @@ export async function queryPipeline(p: URLSearchParams) {
   eq('currentStage', 'crmStage'); // the editable CRM stage, exactly
   // A source matches the first channel OR any later one (captureSources).
   if (p.get('source')) and.push({ $or: [{ source: p.get('source') }, { captureSources: p.get('source') }] });
+  // Growth Partner leads: partner=yes (any partner) / no (ours) / <partnerId>.
+  const partner = p.get('partner');
+  if (partner === 'yes') and.push({ partnerId: { $type: 'objectId' } });
+  else if (partner === 'no') and.push({ partnerId: null });
+  else if (partner && /^[a-f0-9]{24}$/i.test(partner)) and.push({ partnerId: partner });
   if (p.get('assigned') === 'none') and.push({ assignedUserId: null });
   else eq('assignedUserId', 'assigned');
 
@@ -57,6 +62,7 @@ export async function queryPipeline(p: URLSearchParams) {
   const filter = and.length > 1 ? { $and: and.filter((f) => Object.keys(f).length) } : and[0];
   let rows = await loadLeadRows(filter);
   const workspaces = await linkedWorkspaces(rows);
+  await attachPartners(rows);
 
   const segment = p.get('segment');
   if (segment && isSegment(segment)) {
@@ -97,6 +103,16 @@ export async function queryPipeline(p: URLSearchParams) {
     rows,
     workspaces,
   };
+}
+
+/** Labels each Growth Partner lead with its partner (code + company) for the table. */
+async function attachPartners(rows: LeadRow[]): Promise<void> {
+  const ids = [...new Set(rows.map((r) => r.lead.partnerId).filter(Boolean).map(String))];
+  if (!ids.length) return;
+  const { default: GrowthPartner } = await import('@/models/GrowthPartner');
+  const partners: any[] = await GrowthPartner.find({ _id: { $in: ids } }).select('partnerCode companyName').lean();
+  const byId = new Map(partners.map((x) => [String(x._id), { id: String(x._id), code: x.partnerCode, name: x.companyName }]));
+  for (const r of rows) if (r.lead.partnerId) r.lead.partnerInfo = byId.get(String(r.lead.partnerId)) ?? null;
 }
 
 const time = (d: unknown) => (d ? new Date(d as any).getTime() : 0);
@@ -179,5 +195,6 @@ export function toRow(r: LeadRow, ws?: Workspace) {
     demoStatus: r.bookings[0]?.status ?? null,
     paymentStatus: paymentStatus(r, ws),
     trialEndsAt: isOnTrialNow(l) && l.trial?.endsAt ? l.trial.endsAt : null,
+    partner: l.partnerId ? (l.partnerInfo ?? { id: String(l.partnerId), code: null, name: 'Growth Partner' }) : null,
   };
 }

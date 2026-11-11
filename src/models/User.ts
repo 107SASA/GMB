@@ -35,7 +35,8 @@ export interface IUser extends Document {
   email: string;
   phone: string;
   passwordHash?: string;
-  role: 'SUPER_ADMIN' | 'CLIENT';
+  /** GROWTH_PARTNER: a Growth Partner login (see models/GrowthPartner.ts) — never a customer workspace. */
+  role: 'SUPER_ADMIN' | 'CLIENT' | 'GROWTH_PARTNER';
   companyName?: string;
 
   // Verification states
@@ -189,7 +190,7 @@ const UserSchema: Schema = new Schema(
 
     role: {
       type: String,
-      enum: ['SUPER_ADMIN', 'CLIENT'],
+      enum: ['SUPER_ADMIN', 'CLIENT', 'GROWTH_PARTNER'],
       default: 'CLIENT',
     },
     companyName: { type: String },

@@ -153,6 +153,12 @@ export async function POST(req: Request) {
       await recordCaptureSource(lead, 'Website Demo Booking', { created: createdNow, detail: { businessName: businessName || undefined } });
     }
 
+    // Growth Partner referral link: credit the lead if it is new since the click.
+    {
+      const { attributeLeadFromReferral } = await import('@/services/partners/referralAttribution');
+      await attributeLeadFromReferral(lead._id);
+    }
+
     const outcome = await fileDemoRequest(lead, {
       name,
       phone: normalizedPhone,

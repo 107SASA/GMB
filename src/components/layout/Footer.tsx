@@ -99,6 +99,11 @@ export function Footer({ hideBoosterPromo = false }: { hideBoosterPromo?: boolea
               <BookDemoButton origin="footer" showIcon={false} className={FOOTER_LINK} />
             </li>
             <li>
+              <Link href="/growth-partner" className={FOOTER_LINK}>
+                Become a Growth Partner
+              </Link>
+            </li>
+            <li>
               <Link href="/contact" className={FOOTER_LINK}>
                 Contact Us
               </Link>

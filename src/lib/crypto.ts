@@ -35,3 +35,27 @@ export function decrypt(ciphertext: string): string {
   decipher.setAuthTag(tag);
   return decipher.update(data).toString('utf8') + decipher.final('utf8');
 }
+
+/**
+ * Binary variant (same key, AES-256-GCM) for files that must stay unreadable
+ * even if the storage bucket leaks — e.g. Growth Partner KYC documents.
+ * Layout: iv(12) | tag(16) | ciphertext.
+ */
+export function encryptBuffer(plain: Buffer | Uint8Array): Buffer {
+  const key = getKey();
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+  const encrypted = Buffer.concat([cipher.update(plain), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), encrypted]);
+}
+
+export function decryptBuffer(blob: Buffer | Uint8Array): Buffer {
+  const key = getKey();
+  const buf = Buffer.from(blob);
+  if (buf.length < IV_LENGTH + TAG_LENGTH) throw new Error('Invalid encrypted file');
+  const iv = buf.subarray(0, IV_LENGTH);
+  const tag = buf.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(buf.subarray(IV_LENGTH + TAG_LENGTH)), decipher.final()]);
+}

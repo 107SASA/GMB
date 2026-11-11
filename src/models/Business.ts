@@ -85,6 +85,11 @@ export interface IBusiness extends Document {
   competitors: mongoose.Types.ObjectId[];
   organizationId: mongoose.Types.ObjectId;
   userId?: mongoose.Types.ObjectId;
+  /** Growth Partner credited for this workspace: their referral link at sign-up, or a super admin's manual link. */
+  partnerId?: mongoose.Types.ObjectId | null;
+  partnerAttributedAt?: Date | null;
+  /** Set when a super admin linked this workspace to the partner by hand — that link wins over any automatic match. */
+  partnerAssignedBy?: mongoose.Types.ObjectId | null;
   integrations: {
     whatsappNumber?: string;
   };
@@ -410,6 +415,9 @@ const BusinessSchema: Schema = new Schema(
     competitors: [{ type: Schema.Types.ObjectId, ref: 'Business' }],
     organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User' },
+    partnerId: { type: Schema.Types.ObjectId, ref: 'GrowthPartner', default: null },
+    partnerAttributedAt: { type: Date, default: null },
+    partnerAssignedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     integrations: {
       whatsappNumber: { type: String }
     },
@@ -594,6 +602,8 @@ const BusinessSchema: Schema = new Schema(
 // and by the user's business-list routes; `organizationId` (required) scopes
 // almost every tenant query. Without these, those become collection scans.
 BusinessSchema.index({ userId: 1 });
+// A Growth Partner's referred workspaces (sparse: most have none).
+BusinessSchema.index({ partnerId: 1, createdAt: -1 }, { partialFilterExpression: { partnerId: { $type: 'objectId' } } });
 BusinessSchema.index({ organizationId: 1 });
 
 /**

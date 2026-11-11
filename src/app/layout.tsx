@@ -4,6 +4,8 @@ import { Inter, Public_Sans, Space_Grotesk, JetBrains_Mono } from "next/font/goo
 import "./globals.css";
 import { Toaster } from "sonner";
 import { JsonLd } from "@/components/seo/JsonLd";
+import { Suspense } from "react";
+import { ReferralCapture } from "@/components/partner/ReferralCapture";
 
 // Site-wide, not homepage-only: Google explicitly allows (and effectively
 // expects) Organization/WebSite markup to appear on every page rather than
@@ -154,6 +156,10 @@ export default function RootLayout({
       >
         {children}
         <Toaster />
+        {/* Growth Partner ?ref= links (Suspense: reads search params without opting pages out of static rendering). */}
+        <Suspense fallback={null}>
+          <ReferralCapture />
+        </Suspense>
       </body>
     </html>
   );

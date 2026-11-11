@@ -21,6 +21,7 @@ interface Row {
   stageLabel: string;
   dealValue: number | null;
   createdAt: string;
+  viaReferral: boolean;
 }
 
 export default function PartnerLeadsPage() {
@@ -136,11 +137,12 @@ export default function PartnerLeadsPage() {
                   <td className="p-3">
                     <Link href={`/partner/leads/${r._id}`} className="font-semibold text-on-surface hover:text-primary">{r.name}</Link>
                     {r.business && r.business !== r.name && <p className="text-xs text-on-surface-variant">{r.business}</p>}
+                    {r.viaReferral && <span className="inline-block mt-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary-fixed text-primary">Via your link</span>}
                   </td>
                   <td className="p-3 whitespace-nowrap">{r.phone}</td>
                   <td className="p-3">{r.city ?? '—'}</td>
                   <td className="p-3">
-                    <PartnerStageSelect value={r.currentStage} disabled={busyId === r._id} onChange={(s) => changeStage(r._id, s)} />
+                    <PartnerStageSelect value={r.currentStage} disabled={busyId === r._id || r.viaReferral} onChange={(s) => changeStage(r._id, s)} />
                   </td>
                   <td className="p-3 whitespace-nowrap text-xs text-on-surface-variant">{new Date(r.createdAt).toLocaleDateString('en-IN')}</td>
                 </tr>

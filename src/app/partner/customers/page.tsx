@@ -14,9 +14,19 @@ interface Row {
   lastActivityAt: string | null;
 }
 
-/** Leads that paid and became Growwmatics AI customers. Commission details arrive with the commissions page. */
+interface Referred {
+  _id: string;
+  name: string;
+  city: string | null;
+  status: string;
+  paying: boolean;
+  createdAt: string;
+}
+
+/** Leads that paid and became Growwmatics AI customers, plus workspaces that signed up through the partner's link. */
 export default function PartnerCustomersPage() {
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [referred, setReferred] = useState<Referred[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -24,6 +34,10 @@ export default function PartnerCustomersPage() {
       .then((r) => r.json())
       .then((json) => (json.success ? setRows(json.data) : setError(json.error)))
       .catch(() => setError('Could not load your customers'));
+    fetch('/api/partner/referrals')
+      .then((r) => r.json())
+      .then((json) => { if (json.success) setReferred(json.data); })
+      .catch(() => {});
   }, []);
 
   return (
@@ -56,6 +70,37 @@ export default function PartnerCustomersPage() {
             </Link>
           ))}
         </div>
+      )}
+
+      {referred.length > 0 && (
+        <section className="mt-8">
+          <h2 className="font-semibold text-on-surface mb-1">Signed up through your link</h2>
+          <p className="text-sm text-on-surface-variant mb-3">Workspaces created after someone opened your referral link.</p>
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-outline-variant bg-surface-container-low text-left text-on-surface-variant">
+                  <th className="p-3">Business</th>
+                  <th className="p-3">City</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Signed up</th>
+                </tr>
+              </thead>
+              <tbody>
+                {referred.map((b) => (
+                  <tr key={b._id} className="border-b border-outline-variant last:border-0">
+                    <td className="p-3 font-medium text-on-surface">{b.name}</td>
+                    <td className="p-3">{b.city ?? '—'}</td>
+                    <td className="p-3">
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${b.paying ? 'bg-secondary-container/50 text-secondary' : 'bg-surface-container text-on-surface-variant'}`}>{b.status}</span>
+                    </td>
+                    <td className="p-3 text-xs text-on-surface-variant whitespace-nowrap">{new Date(b.createdAt).toLocaleDateString('en-IN')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
     </div>
   );

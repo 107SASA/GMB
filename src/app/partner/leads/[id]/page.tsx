@@ -22,6 +22,7 @@ interface Detail {
     dealValue: number | null;
     lostReason: string | null;
     createdAt: string;
+    viaReferral: boolean;
   };
   timeline: Array<{ id: string; type: string; text: string; by: 'you' | 'system'; at: string }>;
   followUps: Array<{ _id: string; type: string; note: string | null; dueAt: string; status: string; overdue: boolean }>;
@@ -98,11 +99,21 @@ export default function PartnerLeadDetailPage() {
         <div className="flex items-center gap-2">
           {isCustomer ? (
             <span className="text-xs font-bold px-3 py-1.5 rounded-lg bg-secondary-container/50 text-secondary">Customer</span>
+          ) : lead.viaReferral ? (
+            <span className="text-xs font-bold px-3 py-1.5 rounded-lg bg-surface-container text-on-surface">{lead.stageLabel}</span>
           ) : (
             <PartnerStageSelect value={lead.currentStage} disabled={busy === 'stage'} onChange={(s) => call('stage', `/api/partner/leads/${lead._id}`, 'PATCH', { stage: s })} className="py-2 text-sm" />
           )}
         </div>
       </div>
+
+      {lead.viaReferral && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-outline-variant bg-primary-fixed/40 p-3 text-sm text-on-surface">
+          <MaterialIcon name="link" size={18} className="text-primary shrink-0 mt-0.5" />
+          This lead came in through your referral link, so it’s credited to you. Our team is handling the conversation —
+          you can still add notes and follow-ups.
+        </div>
+      )}
 
       {actionError && (
         <p role="alert" className="mb-4 text-sm text-error flex items-start gap-1.5">
@@ -115,7 +126,7 @@ export default function PartnerLeadDetailPage() {
           <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold text-on-surface">Details</h2>
-              {!edit && (
+              {!edit && !lead.viaReferral && (
                 <button
                   onClick={() => setEdit({
                     name: lead.contactName ?? lead.name,

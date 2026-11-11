@@ -35,6 +35,8 @@ export interface IGrowthPartner extends Document {
   recurringMonths?: number | null;
   /** TDS handling is not decided yet — kept optional and unused until it is. */
   tdsPercent?: number | null;
+  /** Visits through the partner's referral link. */
+  referralClicks?: number;
   kycStatus: 'not_submitted' | 'submitted' | 'verified' | 'rejected';
   /**
    * KYC details (Phase 3). PAN and bank account number are encrypted
@@ -118,6 +120,7 @@ const GrowthPartnerSchema = new Schema<IGrowthPartner>(
     holdDays: { type: Number, required: true, min: 0, max: 365 },
     recurringMonths: { type: Number, default: null },
     tdsPercent: { type: Number, default: null },
+    referralClicks: { type: Number, default: 0 },
     kycStatus: {
       type: String,
       enum: ['not_submitted', 'submitted', 'verified', 'rejected'],

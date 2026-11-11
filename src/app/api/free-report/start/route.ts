@@ -121,6 +121,15 @@ export async function POST(req: Request) {
       return null;
     });
 
+    // Growth Partner referral link: credit a lead / workspace that is new since the click.
+    {
+      const { attributeLeadFromReferral, attributeBusinessFromReferral } = await import('@/services/partners/referralAttribution');
+      await Promise.all([
+        leadResult?.leadId ? attributeLeadFromReferral(leadResult.leadId) : Promise.resolve(false),
+        attributeBusinessFromReferral(business._id),
+      ]);
+    }
+
     const attachAudit = async (auditId: unknown) => {
       if (!leadResult?.leadId || !auditId) return;
       await linkPlatformLeadAudit(leadResult.leadId, String(auditId)).catch((err) =>

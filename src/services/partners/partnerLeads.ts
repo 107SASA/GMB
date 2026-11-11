@@ -67,6 +67,7 @@ const PARTNER_LEAD_DEFAULTS = {
   captureSources: ['Referral'],
   currentAgent: 'HUMAN',
   nurtureStatus: 'STOPPED',
+  partnerSource: 'added',
 } as const;
 
 export const TAKEN_MESSAGE =
@@ -87,10 +88,12 @@ export function partnerLeadRow(l: any) {
     tags: l.tags ?? [],
     createdAt: l.createdAt,
     lastActivityAt: l.lastActivityAt ?? l.updatedAt ?? null,
+    /** Came in through the partner's referral link — our team runs it; the partner can add notes and follow-ups. */
+    viaReferral: l.partnerSource === 'referral',
   };
 }
 
-const ROW_FIELDS = 'name businessType phone email city currentStage valuation deal tags createdAt updatedAt lastActivityAt';
+const ROW_FIELDS = 'name businessType phone email city currentStage valuation deal tags createdAt updatedAt lastActivityAt partnerSource';
 
 export async function listPartnerLeads(partnerId: string, opts: { q?: string; stage?: string; customers?: boolean } = {}) {
   await dbConnect();
@@ -164,6 +167,9 @@ export async function updatePartnerLead(partnerId: string, userId: string, leadI
   await dbConnect();
   const lead = await ownLead(partnerId, leadId);
   if (!lead) return fail(404, 'Lead not found.');
+  if (lead.partnerSource === 'referral') {
+    return fail(409, 'This lead came in through your referral link, so our team is handling it. You can add notes and follow-ups.');
+  }
 
   const set: Record<string, unknown> = {};
   const changed: string[] = [];
@@ -371,4 +377,33 @@ export async function partnerLeadStats(partnerId: string) {
   }
   const customers = byStage.CUSTOMER ?? 0;
   return { total, customers, byGroup, conversionRate: total ? Math.round((customers / total) * 1000) / 10 : 0 };
+}
+
+// ── Referred workspaces (signed up through the partner's link) ───────────
+
+const WORKSPACE_STATUS: Record<string, string> = {
+  active: 'Paying',
+  trial_active: 'On trial',
+  past_due: 'Payment due',
+  cancelled: 'Cancelled',
+  canceled: 'Cancelled',
+};
+
+/** Workspaces created through the partner's referral link — name, city, status only. */
+export async function listReferredBusinesses(partnerId: string) {
+  await dbConnect();
+  const { default: Business } = await import('@/models/Business');
+  const rows: any[] = await Business.find({ partnerId: new mongoose.Types.ObjectId(partnerId) })
+    .select('name city subscriptionStatus createdAt')
+    .sort({ createdAt: -1 })
+    .limit(500)
+    .lean();
+  return rows.map((b) => ({
+    _id: String(b._id),
+    name: b.name || 'Business',
+    city: b.city && b.city !== 'Unknown' ? b.city : null,
+    status: WORKSPACE_STATUS[b.subscriptionStatus] ?? 'Signed up',
+    paying: b.subscriptionStatus === 'active',
+    createdAt: b.createdAt,
+  }));
 }

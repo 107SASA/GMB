@@ -4,6 +4,7 @@ import Lead, { type ILead } from '@/models/Lead';
 import { logLeadEvent } from '@/services/leadEvents';
 import { phoneDedupeKey } from '@/lib/phone';
 import { cancelScheduledActions } from '@/services/scheduler/cancelScheduledActions';
+import { isPartnerManagedLead } from '@/lib/partners/referral';
 
 export type LeadAgent = 'NONE' | 'SALES' | 'DEMO' | 'IN_HOUSE' | 'HUMAN';
 export type LeadStage =
@@ -88,12 +89,14 @@ export async function setLeadOwnership(
     return null;
   }
 
-  // A Growth Partner's lead belongs to the partner: no AI agent (Sales,
-  // Demo, or the default NONE routing) ever takes it over — whatever the
-  // caller asked for (stage moves, payment, "return to AI", inbox release).
-  // It stays HUMAN-owned, which every agent already stands down for. Only
-  // IN_HOUSE (a paying customer's support/product messages) is allowed.
-  if ((lead as any).partnerId && newAgent !== 'HUMAN' && newAgent !== 'IN_HOUSE') {
+  // A lead a Growth Partner added themselves belongs to the partner: no AI
+  // agent (Sales, Demo, or the default NONE routing) ever takes it over —
+  // whatever the caller asked for (stage moves, payment, "return to AI",
+  // inbox release). It stays HUMAN-owned, which every agent already stands
+  // down for. Only IN_HOUSE (a paying customer's support/product messages) is
+  // allowed. Leads that came through a partner's referral link are credited
+  // to the partner but keep our normal funnel, so they are not affected.
+  if (isPartnerManagedLead(lead as any) && newAgent !== 'HUMAN' && newAgent !== 'IN_HOUSE') {
     newAgent = 'HUMAN';
   }
 

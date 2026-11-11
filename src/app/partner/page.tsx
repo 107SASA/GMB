@@ -3,6 +3,9 @@ import { redirect } from 'next/navigation';
 import { resolveGrowthPartner } from '@/lib/partners/partnerAuth';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { listPartnerOpenFollowUps, partnerLeadStats } from '@/services/partners/partnerLeads';
+import { ReferralLinkCard } from '@/components/partner/ReferralLinkCard';
+import { referralLinkPath } from '@/lib/partners/referral';
+import { configuredAppBase } from '@/lib/admin/inviteLink';
 
 const KYC_LABEL: Record<string, { text: string; tone: string }> = {
   not_submitted: { text: 'Not submitted', tone: 'bg-surface-container text-on-surface-variant' },
@@ -16,6 +19,7 @@ export default async function PartnerOverviewPage() {
   if (!auth.ok) redirect('/partner-login');
   const p = auth.partner;
   const kyc = KYC_LABEL[p.kycStatus] ?? KYC_LABEL.not_submitted;
+  const appBase = configuredAppBase(process.env) ?? 'https://growwmatics.ai';
   const [stats, followUps] = await Promise.all([
     partnerLeadStats(String(p._id)).catch(() => null),
     listPartnerOpenFollowUps(String(p._id)).catch(() => []),
@@ -110,11 +114,7 @@ export default async function PartnerOverviewPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
-          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-2">Your partner code</p>
-          <p className="font-mono text-2xl font-bold text-primary">{p.partnerCode}</p>
-          <p className="text-xs text-on-surface-variant mt-2">Share this code with businesses you bring to us.</p>
-        </div>
+        <ReferralLinkCard link={`${appBase}${referralLinkPath(p.partnerCode)}`} code={p.partnerCode} clicks={p.referralClicks ?? 0} />
         <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Your details</p>

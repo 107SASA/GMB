@@ -254,6 +254,12 @@ export async function POST(req: Request) {
         },
         $addToSet: { businessIds: newBusiness._id },
       });
+
+      // Growth Partner referral link: credit this new workspace to the referring partner.
+      {
+        const { attributeBusinessFromReferral } = await import('@/services/partners/referralAttribution');
+        await attributeBusinessFromReferral(newBusiness._id);
+      }
     }
 
     // 5. Every account reaching this point is unverified — a brand-new signup

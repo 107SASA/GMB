@@ -76,18 +76,19 @@ test('partner leads are always created HUMAN-owned with nurture stopped', () => 
   const defaults = src.slice(src.indexOf('const PARTNER_LEAD_DEFAULTS'), src.indexOf('} as const;'));
   assert.match(defaults, /currentAgent: 'HUMAN'/);
   assert.match(defaults, /nurtureStatus: 'STOPPED'/);
+  assert.match(defaults, /partnerSource: 'added'/);
   // Both creation paths spread the defaults.
   assert.equal((src.match(/\.\.\.PARTNER_LEAD_DEFAULTS/g) || []).length, 2);
 });
 
 test('setLeadOwnership never hands a partner lead to an AI agent', () => {
   const src = read('src/services/leadOwnership/setLeadOwnership.ts');
-  assert.match(src, /partnerId && newAgent !== 'HUMAN' && newAgent !== 'IN_HOUSE'[\s\S]{0,80}newAgent = 'HUMAN'/);
+  assert.match(src, /isPartnerManagedLead\(lead as any\) && newAgent !== 'HUMAN' && newAgent !== 'IN_HOUSE'[\s\S]{0,80}newAgent = 'HUMAN'/);
 });
 
 test('the team can’t switch nurture back on, or return a partner lead to the AI', () => {
-  assert.match(read('src/services/admin/platformCrm.ts'), /'nurtureStatus' in patch\) \{\s*if \(lead\.partnerId\) return/);
-  assert.match(read('src/app/api/admin/leads/return-to-ai/route.ts'), /if \(lead\.partnerId\)[\s\S]{0,200}status: 409/);
+  assert.match(read('src/services/admin/platformCrm.ts'), /'nurtureStatus' in patch\) \{\s*if \(isPartnerManagedLead\(lead\)\) return/);
+  assert.match(read('src/app/api/admin/leads/return-to-ai/route.ts'), /if \(isPartnerManagedLead\(lead\)\)[\s\S]{0,200}status: 409/);
 });
 
 test('every partner lead query is scoped to the session partner', () => {

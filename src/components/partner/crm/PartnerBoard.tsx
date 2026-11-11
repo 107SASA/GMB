@@ -25,6 +25,8 @@ export interface PartnerBoardRow {
   phone: string | null;
   currentStage: string;
   dealValue: number | null;
+  /** Came in through the partner's link — our team moves it, not the partner. */
+  viaReferral?: boolean;
 }
 
 const GROUP_TONE: Record<string, string> = {
@@ -108,7 +110,7 @@ function Column({ stage, label, droppable, rows, onStage, busyId }: { stage: str
 }
 
 function DraggableCard({ row, onStage, busy }: { row: PartnerBoardRow; onStage: (id: string, stage: string) => void; busy: boolean }) {
-  const locked = row.currentStage === 'CUSTOMER' || row.currentStage === 'PAYMENT_VERIFIED' || busy;
+  const locked = row.currentStage === 'CUSTOMER' || row.currentStage === 'PAYMENT_VERIFIED' || !!row.viaReferral || busy;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: row._id, disabled: locked });
   return (
     <div ref={setNodeRef} {...listeners} {...attributes} className={`${isDragging ? 'opacity-40' : ''} ${locked ? '' : 'cursor-grab active:cursor-grabbing'}`}>
@@ -125,7 +127,8 @@ function Card({ row, onStage, busy, overlay }: { row: PartnerBoardRow; onStage?:
       </Link>
       <p className="text-xs text-outline truncate">{[row.business && row.business !== row.name ? row.business : null, row.phone].filter(Boolean).join(' · ')}</p>
       {row.dealValue ? <p className="text-[11px] text-on-surface-variant">₹{row.dealValue.toLocaleString('en-IN')}</p> : null}
-      {onStage && !overlay && (
+      {row.viaReferral && <span className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary-fixed text-primary">Via your link</span>}
+      {onStage && !overlay && !row.viaReferral && (
         <div onPointerDown={(e) => e.stopPropagation()}>
           <PartnerStageSelect value={row.currentStage || 'NEW'} disabled={busy} onChange={(s) => onStage(row._id, s)} className="w-full" />
         </div>

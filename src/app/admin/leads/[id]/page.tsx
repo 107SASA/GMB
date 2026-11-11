@@ -19,6 +19,7 @@ import { Loader2, ArrowLeft, Bot, User, CheckCircle2, AlertTriangle } from 'luci
 import { OwnershipBadge, ScoreBar, RelTime } from '@/components/admin/conversion/primitives';
 import { LeadCrmPanel } from '@/components/admin/crm/LeadCrmPanel';
 import { LeadActivityPanel } from '@/components/admin/crm/LeadActivityPanel';
+import { LeadPartnerCard } from '@/components/admin/partners/LeadPartnerCard';
 
 interface Detail {
   lead: any;
@@ -204,6 +205,7 @@ export default function LeadDetailPage() {
         onSaved={load}
         notes={[...d.timeline].reverse().filter((e) => e.type === 'NOTE_ADDED').map((e) => ({ text: e.payload?.text || '', at: e.at, by: e.actorName ?? null }))}
       />
+      <LeadPartnerCard leadId={l._id} onChanged={load} />
       <LeadActivityPanel
         leadId={l._id}
         team={team}

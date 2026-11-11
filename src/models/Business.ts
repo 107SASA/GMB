@@ -85,9 +85,11 @@ export interface IBusiness extends Document {
   competitors: mongoose.Types.ObjectId[];
   organizationId: mongoose.Types.ObjectId;
   userId?: mongoose.Types.ObjectId;
-  /** Growth Partner whose referral link brought this workspace (models/GrowthPartner.ts). Set once, at creation. */
+  /** Growth Partner credited for this workspace: their referral link at sign-up, or a super admin's manual link. */
   partnerId?: mongoose.Types.ObjectId | null;
   partnerAttributedAt?: Date | null;
+  /** Set when a super admin linked this workspace to the partner by hand — that link wins over any automatic match. */
+  partnerAssignedBy?: mongoose.Types.ObjectId | null;
   integrations: {
     whatsappNumber?: string;
   };
@@ -415,6 +417,7 @@ const BusinessSchema: Schema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: 'User' },
     partnerId: { type: Schema.Types.ObjectId, ref: 'GrowthPartner', default: null },
     partnerAttributedAt: { type: Date, default: null },
+    partnerAssignedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     integrations: {
       whatsappNumber: { type: String }
     },

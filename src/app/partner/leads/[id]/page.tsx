@@ -23,6 +23,7 @@ interface Detail {
     lostReason: string | null;
     createdAt: string;
     viaReferral: boolean;
+    creditLabel: string | null;
   };
   timeline: Array<{ id: string; type: string; text: string; by: 'you' | 'system'; at: string }>;
   followUps: Array<{ _id: string; type: string; note: string | null; dueAt: string; status: string; overdue: boolean }>;
@@ -110,8 +111,10 @@ export default function PartnerLeadDetailPage() {
       {lead.viaReferral && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-outline-variant bg-primary-fixed/40 p-3 text-sm text-on-surface">
           <MaterialIcon name="link" size={18} className="text-primary shrink-0 mt-0.5" />
-          This lead came in through your referral link, so it’s credited to you. Our team is handling the conversation —
-          you can still add notes and follow-ups.
+          {lead.creditLabel === 'Linked by our team'
+            ? 'Our team linked this lead to you, so it’s credited to you.'
+            : 'This lead came in through your referral link, so it’s credited to you.'}{' '}
+          Our team is handling the conversation — you can still add notes and follow-ups.
         </div>
       )}
 

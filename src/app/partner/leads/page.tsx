@@ -22,6 +22,7 @@ interface Row {
   dealValue: number | null;
   createdAt: string;
   viaReferral: boolean;
+  creditLabel?: string | null;
 }
 
 export default function PartnerLeadsPage() {
@@ -137,7 +138,7 @@ export default function PartnerLeadsPage() {
                   <td className="p-3">
                     <Link href={`/partner/leads/${r._id}`} className="font-semibold text-on-surface hover:text-primary">{r.name}</Link>
                     {r.business && r.business !== r.name && <p className="text-xs text-on-surface-variant">{r.business}</p>}
-                    {r.viaReferral && <span className="inline-block mt-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary-fixed text-primary">Via your link</span>}
+                    {r.viaReferral && <span className="inline-block mt-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary-fixed text-primary">{r.creditLabel ?? 'Credited to you'}</span>}
                   </td>
                   <td className="p-3 whitespace-nowrap">{r.phone}</td>
                   <td className="p-3">{r.city ?? '—'}</td>

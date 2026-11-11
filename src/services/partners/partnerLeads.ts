@@ -19,6 +19,7 @@ import {
   partnerStageCheck,
 } from '@/lib/partners/partnerCrmRules';
 import { phoneVariants } from '@/services/billing/customerActivation';
+import { CREDIT_ONLY_SOURCES } from '@/lib/partners/referral';
 
 /**
  * Growth Partner CRM — the partner's own leads in the platform pipeline.
@@ -88,8 +89,9 @@ export function partnerLeadRow(l: any) {
     tags: l.tags ?? [],
     createdAt: l.createdAt,
     lastActivityAt: l.lastActivityAt ?? l.updatedAt ?? null,
-    /** Came in through the partner's referral link — our team runs it; the partner can add notes and follow-ups. */
-    viaReferral: l.partnerSource === 'referral',
+    /** Credited to the partner but our team runs it (came through their link, or our team linked it); the partner can add notes and follow-ups. */
+    viaReferral: (CREDIT_ONLY_SOURCES as readonly string[]).includes(l.partnerSource ?? ''),
+    creditLabel: l.partnerSource === 'credit' ? 'Linked by our team' : l.partnerSource === 'referral' ? 'Via your link' : null,
   };
 }
 
@@ -167,8 +169,8 @@ export async function updatePartnerLead(partnerId: string, userId: string, leadI
   await dbConnect();
   const lead = await ownLead(partnerId, leadId);
   if (!lead) return fail(404, 'Lead not found.');
-  if (lead.partnerSource === 'referral') {
-    return fail(409, 'This lead came in through your referral link, so our team is handling it. You can add notes and follow-ups.');
+  if ((CREDIT_ONLY_SOURCES as readonly string[]).includes(lead.partnerSource ?? '')) {
+    return fail(409, 'This lead is credited to you, and our team is handling it. You can add notes and follow-ups.');
   }
 
   const set: Record<string, unknown> = {};

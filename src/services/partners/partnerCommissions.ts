@@ -23,9 +23,10 @@ import {
  * right after the invoice job issues one, and by a daily sweep as a safety
  * net. Both are idempotent — PartnerCommission.paymentKey is unique.
  *
- * Who earns it: the partner on the paying workspace's platform lead (they
- * added it, or it came through their link), else the partner whose link the
- * workspace signed up through (Business.partnerId). Nobody else, ever.
+ * Who earns it: the partner a super admin linked the workspace to (manual
+ * link wins), else the partner on the paying workspace's platform lead (they
+ * added it, it came through their link, or our team linked the lead), else
+ * the partner whose link the workspace signed up through. Nobody else, ever.
  */
 
 type Fail = { ok: false; status: number; error: string };
@@ -43,8 +44,13 @@ async function logAction(adminId: string, action: string, metadata: Record<strin
 /** The partner a workspace's payments are credited to, if any. */
 export async function resolvePartnerForBusiness(businessId: string, userId: string | null) {
   const { default: Business } = await import('@/models/Business');
-  const business: any = await Business.findById(businessId).select('partnerId userId name').lean();
+  const business: any = await Business.findById(businessId).select('partnerId partnerAssignedBy userId name').lean();
   if (!business) return null;
+  // A super admin's manual link wins — it exists exactly for the cases the
+  // automatic match gets wrong (e.g. the customer paid from another number).
+  if (business.partnerId && business.partnerAssignedBy) {
+    return { partnerId: String(business.partnerId), leadId: null, attribution: 'admin' as const, customerName: business.name || '' };
+  }
   const ownerId = userId || (business.userId ? String(business.userId) : null);
   let lead: any = null;
   if (ownerId) {
@@ -61,7 +67,7 @@ export async function resolvePartnerForBusiness(businessId: string, userId: stri
 }
 
 /** Creates the commission for one company invoice. Safe to call any number of times. */
-export async function createCommissionForInvoice(invoiceId: string): Promise<{ created: boolean; reason?: string }> {
+export async function createCommissionForInvoice(invoiceId: string): Promise<{ created: boolean; reason?: string; amount?: number }> {
   await dbConnect();
   const { default: CompanyInvoice } = await import('@/models/CompanyInvoice');
   const inv: any = await CompanyInvoice.findById(invoiceId).lean();
@@ -120,7 +126,7 @@ export async function createCommissionForInvoice(invoiceId: string): Promise<{ c
     const p: any = await GrowthPartner.findById(who.partnerId).select('email fullName').lean();
     if (p?.email) await sendCommissionEarnedEmail(p.email, p.fullName, { amount, customerName: who.customerName, kind });
   } catch { /* best-effort */ }
-  return { created: true };
+  return { created: true, amount };
 }
 
 /** Daily safety net: invoices of the last `days` days without a commission. */

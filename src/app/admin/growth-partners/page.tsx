@@ -19,6 +19,7 @@ import {
 import { APPLICANT_TYPE_LABELS, type ApplicantType } from '@/lib/partners/partnerRules';
 import { PartnerKycModal } from '@/components/admin/partners/PartnerKycModal';
 import { CommissionsPanel } from '@/components/admin/partners/CommissionsPanel';
+import { LinkWorkspaceModal } from '@/components/admin/partners/LinkWorkspaceModal';
 
 type AppStatus = 'pending' | 'approved' | 'rejected';
 
@@ -149,6 +150,7 @@ export default function GrowthPartnersAdminPage() {
   const [rejecting, setRejecting] = useState<Application | null>(null);
   const [editing, setEditing] = useState<Partner | null>(null);
   const [kycPartnerId, setKycPartnerId] = useState<string | null>(null);
+  const [linkFor, setLinkFor] = useState<Partner | null>(null);
   const [terms, setTerms] = useState<TermsForm>(EMPTY_TERMS);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -468,6 +470,13 @@ export default function GrowthPartnersAdminPage() {
                         Leads
                       </Link>
                       <button
+                        onClick={() => setLinkFor(p)}
+                        className="px-3 py-1.5 bg-surface-container rounded-lg text-xs font-medium"
+                        title="Credit a customer to this partner (e.g. they paid from a different number)"
+                      >
+                        Link customer
+                      </button>
+                      <button
                         onClick={() => {
                           setEditing(p);
                           setTerms({
@@ -539,6 +548,8 @@ export default function GrowthPartnersAdminPage() {
           </div>
         </Modal>
       )}
+
+      {linkFor && <LinkWorkspaceModal partner={linkFor} onClose={() => setLinkFor(null)} />}
 
       {kycPartnerId && (
         <PartnerKycModal partnerId={kycPartnerId} onClose={() => setKycPartnerId(null)} onReviewed={load} />

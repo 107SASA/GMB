@@ -74,8 +74,8 @@ export default function PartnerCustomersPage() {
 
       {referred.length > 0 && (
         <section className="mt-8">
-          <h2 className="font-semibold text-on-surface mb-1">Signed up through your link</h2>
-          <p className="text-sm text-on-surface-variant mb-3">Workspaces created after someone opened your referral link.</p>
+          <h2 className="font-semibold text-on-surface mb-1">Workspaces credited to you</h2>
+          <p className="text-sm text-on-surface-variant mb-3">Signed up through your referral link, or linked to you by our team.</p>
           <div className="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

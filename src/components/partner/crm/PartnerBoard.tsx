@@ -27,6 +27,7 @@ export interface PartnerBoardRow {
   dealValue: number | null;
   /** Came in through the partner's link — our team moves it, not the partner. */
   viaReferral?: boolean;
+  creditLabel?: string | null;
 }
 
 const GROUP_TONE: Record<string, string> = {
@@ -127,7 +128,7 @@ function Card({ row, onStage, busy, overlay }: { row: PartnerBoardRow; onStage?:
       </Link>
       <p className="text-xs text-outline truncate">{[row.business && row.business !== row.name ? row.business : null, row.phone].filter(Boolean).join(' · ')}</p>
       {row.dealValue ? <p className="text-[11px] text-on-surface-variant">₹{row.dealValue.toLocaleString('en-IN')}</p> : null}
-      {row.viaReferral && <span className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary-fixed text-primary">Via your link</span>}
+      {row.viaReferral && <span className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary-fixed text-primary">{row.creditLabel ?? 'Credited to you'}</span>}
       {onStage && !overlay && !row.viaReferral && (
         <div onPointerDown={(e) => e.stopPropagation()}>
           <PartnerStageSelect value={row.currentStage || 'NEW'} disabled={busy} onChange={(s) => onStage(row._id, s)} className="w-full" />

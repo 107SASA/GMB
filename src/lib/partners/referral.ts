@@ -68,11 +68,18 @@ export function referralLinkPath(code: string): string {
 }
 
 /**
+ * Partner sources where the partner only gets the CREDIT and our funnel keeps
+ * running the lead: 'referral' (came through their link) and 'credit' (our
+ * team linked it to them).
+ */
+export const CREDIT_ONLY_SOURCES = ['referral', 'credit'] as const;
+
+/**
  * A partner lead is "partner-managed" (AI stays off, partner runs the stage)
- * when the partner added it themselves. Referral leads are credited to the
- * partner but our funnel keeps running them. Unknown source = managed, the
+ * when the partner added it themselves, or our team handed it to them
+ * ('added'). Credit-only leads keep our funnel. Unknown source = managed, the
  * safe default.
  */
 export function isPartnerManagedLead(lead: { partnerId?: unknown; partnerSource?: string | null } | null | undefined): boolean {
-  return !!lead?.partnerId && lead.partnerSource !== 'referral';
+  return !!lead?.partnerId && !(CREDIT_ONLY_SOURCES as readonly string[]).includes(lead.partnerSource ?? '');
 }

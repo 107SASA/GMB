@@ -73,6 +73,29 @@ Leads & Pipeline shows a **Partner · company** badge and a **Partner** filter
 (yes / no). *Leads* on a partner's row opens just their leads. *Return to AI*
 and the nurture switch are refused for leads a partner added.
 
+## When a partner's customer isn't credited — assign by hand
+
+The automatic match uses the lead's phone number (or the free report). It
+misses when **we** entered the lead ourselves, or the customer **signed up or
+paid with a different number** than the partner's lead. Two fixes:
+
+- **On a lead** (Leads & Pipeline → open the lead → *Growth Partner* card →
+  *Assign to partner*):
+  - *Credit only* — we keep handling the lead, AI as normal; the partner gets
+    the commission.
+  - *Partner handles it* — our AI stops; it shows in their CRM as theirs (not
+    for a lead that is already a customer).
+- **On a customer workspace** (Growth Partners → Partners → *Link customer*):
+  search by business, owner, phone or email and link it. Every future payment
+  of that workspace is credited to the partner — this link **wins over any
+  automatic match**.
+
+Both have *Also credit payments already made*: payments with no commission
+yet get one now (oldest = first payment, then renewals, at the rate in force
+on each payment date). Commissions already created are never moved to another
+partner — reverse one first if it went to the wrong partner. Every assignment
+is in the admin log.
+
 ## Suspending a partner
 
 Partners tab → *Suspend*: signs them out everywhere and blocks login and

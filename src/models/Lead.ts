@@ -43,11 +43,13 @@ export interface ILead extends Document {
    */
   partnerId?: mongoose.Types.ObjectId | null;
   /**
-   * How the partner got credit: 'added' = they added it in their CRM (AI stays
-   * off, partner runs the stage); 'referral' = it came in through their link
-   * (our normal funnel keeps running it). Missing = treated as 'added'.
+   * How the partner got credit: 'added' = they added it in their CRM, or our
+   * team handed it to them (AI stays off, partner runs the stage);
+   * 'referral' = it came in through their link; 'credit' = our team linked it
+   * to them for commission only (both: our normal funnel keeps running it).
+   * Missing = treated as 'added'.
    */
-  partnerSource?: 'added' | 'referral' | null;
+  partnerSource?: 'added' | 'referral' | 'credit' | null;
   organizationId?: string;
   businessId?: mongoose.Types.ObjectId;
   assignedUserId?: mongoose.Types.ObjectId;
@@ -265,7 +267,7 @@ const LeadSchema: Schema = new Schema(
   {
     tenantId: { type: String, required: true, index: true },
     partnerId: { type: Schema.Types.ObjectId, ref: 'GrowthPartner', default: null },
-    partnerSource: { type: String, enum: ['added', 'referral', null], default: null },
+    partnerSource: { type: String, enum: ['added', 'referral', 'credit', null], default: null },
     organizationId: { type: String, index: true },
     businessId: { type: Schema.Types.ObjectId, ref: 'Business', index: true },
     assignedUserId: { type: Schema.Types.ObjectId, ref: 'User', index: true },

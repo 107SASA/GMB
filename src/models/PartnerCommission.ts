@@ -20,7 +20,7 @@ export interface IPartnerCommission extends Document {
   leadId?: mongoose.Types.ObjectId | null;
   invoiceId?: mongoose.Types.ObjectId;
   invoiceNumber?: string;
-  attribution?: 'lead' | 'referral';
+  attribution?: 'lead' | 'referral' | 'admin';
   customerName?: string;
   paidAt: Date;
   paymentAmount: number;
@@ -51,7 +51,7 @@ const PartnerCommissionSchema = new Schema<IPartnerCommission>(
     leadId: { type: Schema.Types.ObjectId, ref: 'Lead', default: null },
     invoiceId: { type: Schema.Types.ObjectId, ref: 'CompanyInvoice' },
     invoiceNumber: { type: String },
-    attribution: { type: String, enum: ['lead', 'referral'] },
+    attribution: { type: String, enum: ['lead', 'referral', 'admin'] },
     customerName: { type: String, default: '' },
     paidAt: { type: Date, required: true },
     paymentAmount: { type: Number, default: 0 },

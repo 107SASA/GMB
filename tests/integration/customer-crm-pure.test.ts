@@ -276,6 +276,8 @@ test('super-admin CRM untouched: no admin / sales-agent / nurture / lead-engine 
     // return a partner's lead to the AI (tests/integration/growth-partner-crm.test.ts).
     'src/services/admin/platformCrm.ts', 'src/services/admin/pipelineQuery.ts', 'src/services/admin/conversionReport.ts',
     'src/app/admin/leads/page.tsx', 'src/app/api/admin/leads/return-to-ai/route.ts',
+    // "Assign to partner" card on a platform lead (tests/integration/growth-partner-assign.test.ts).
+    'src/app/admin/leads/[id]/page.tsx', 'src/app/api/admin/crm/leads/[id]/partner/route.ts',
   ]);
   const isGrowthPartnerAdmin = (f: string) =>
     f.startsWith('src/app/admin/growth-partners/') ||

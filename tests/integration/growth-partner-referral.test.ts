@@ -89,5 +89,5 @@ test('attribution is wired into the free report, demo booking and sign-up', () =
 test('partners can’t edit or move referral leads (our team runs them)', () => {
   const src = read('src/services/partners/partnerLeads.ts');
   const update = src.slice(src.indexOf('export async function updatePartnerLead'), src.indexOf('export async function addPartnerNote'));
-  assert.match(update, /partnerSource === 'referral'[\s\S]{0,200}fail\(409/);
+  assert.match(update, /CREDIT_ONLY_SOURCES[\s\S]{0,200}fail\(409/);
 });

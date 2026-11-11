@@ -264,7 +264,13 @@ export default function LeadsPipelinePage() {
         <Filter label="NBA" value={val('nba')} options={NBAS} onChange={(v) => setParam('nba', v)} />
         <Filter label="Nurture" value={val('nurture')} options={NURTURE} onChange={(v) => setParam('nurture', v)} />
         <Filter label="Ownership" value={val('ownership')} options={['ai', 'human', 'customer']} onChange={(v) => setParam('ownership', v)} />
-        <Filter label="Partner" value={val('partner')} options={['yes', 'no']} onChange={(v) => setParam('partner', v)} />
+        {/^[a-f0-9]{24}$/i.test(val('partner')) ? (
+          <button onClick={() => setParam('partner', '')} className={selectCls} title="Showing one Growth Partner’s leads — click to show all">
+            Partner: this one ✕
+          </button>
+        ) : (
+          <Filter label="Partner" value={val('partner')} options={['yes', 'no']} onChange={(v) => setParam('partner', v)} />
+        )}
         <Filter label="Demo" value={val('demo')} options={['any', 'scheduled', 'completed', 'none']} onChange={(v) => setParam('demo', v)} />
         <Filter label="Payment" value={val('payment')} options={['verified', 'trial', 'pending', 'none']} onChange={(v) => setParam('payment', v)} />
         <select className={selectCls} value={val('minScore')} onChange={(e) => setParam('minScore', e.target.value)}>

@@ -100,6 +100,30 @@ const adminGroups = [
   },
 ];
 
+/** Growth Partner items waiting for the team (applications, KYC, commissions to approve), refreshed every 2 minutes. */
+function usePartnerAttention(): { total: number; label: string } {
+  const [state, setState] = useState({ total: 0, label: '' });
+  useEffect(() => {
+    let alive = true;
+    const load = () => fetch('/api/admin/growth-partners/attention')
+      .then((res) => res.json())
+      .then((d) => {
+        if (!alive || !d?.success) return;
+        const parts = [
+          d.applications ? `${d.applications} new applications` : '',
+          d.kyc ? `${d.kyc} KYC to review` : '',
+          d.commissions ? `${d.commissions} commissions to approve` : '',
+        ].filter(Boolean);
+        setState({ total: d.total || 0, label: parts.join(', ') });
+      })
+      .catch(() => {});
+    load();
+    const timer = setInterval(load, 120_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, []);
+  return state;
+}
+
 /** Unopened WhatsApp chats, refreshed every 30 seconds. */
 function useInboxUnread(): number {
   const [unread, setUnread] = useState(0);
@@ -120,6 +144,7 @@ export function AdminSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const inboxUnread = useInboxUnread();
+  const partnerAttention = usePartnerAttention();
 
   const handleLogout = async () => {
     await fetch('/api/admin/auth', { method: 'DELETE' });
@@ -170,6 +195,11 @@ export function AdminSidebar() {
                     >
                       <MaterialIcon name={link.icon} size={20} filled={isActive} />
                       <span className="font-medium text-sm">{link.name}</span>
+                      {link.href === '/admin/growth-partners' && partnerAttention.total > 0 && (
+                        <span className="ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-[11px] font-semibold text-on-primary" aria-label={partnerAttention.label} title={partnerAttention.label}>
+                          {partnerAttention.total > 99 ? '99+' : partnerAttention.total}
+                        </span>
+                      )}
                       {link.href === '/admin/inbox' && inboxUnread > 0 && (
                         <span className="ml-auto min-w-5 rounded-full bg-error px-1.5 text-center text-[11px] font-semibold text-white" aria-label={`${inboxUnread} unread chats`}>
                           {inboxUnread > 99 ? '99+' : inboxUnread}

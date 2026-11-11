@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 import {
   Handshake,
@@ -459,6 +460,13 @@ export default function GrowthPartnersAdminPage() {
                   </td>
                   <td className="p-3">
                     <div className="flex gap-2 justify-end">
+                      <Link
+                        href={`/admin/leads?partner=${p._id}`}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-surface-container rounded-lg text-xs font-medium"
+                        title="This partner’s leads in Leads & Pipeline"
+                      >
+                        Leads
+                      </Link>
                       <button
                         onClick={() => {
                           setEditing(p);

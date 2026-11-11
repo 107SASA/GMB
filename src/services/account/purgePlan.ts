@@ -32,6 +32,7 @@ export const PURGE_TARGETS: PurgeTarget[] = [
   // ── a: the business's customers, leads and their conversations ──
   { model: 'Lead', by: { businessId: 'businessId' }, category: 'a', what: 'leads (names, phone numbers, notes)' },
   { model: 'Customer', by: { businessId: 'businessId' }, category: 'a', what: 'customer list' },
+  { model: 'CustomerCallLog', by: { userId: 'userId', businessId: 'businessId' }, category: 'a', what: 'our team’s call notes about this customer (outcome, note, follow-up date)' },
   { model: 'Conversation', by: { businessId: 'businessId', leadId: 'leadId' }, category: 'a', what: 'WhatsApp conversation messages' },
   { model: 'ConversationThread', by: { businessId: 'businessId', leadId: 'leadId' }, category: 'a', what: 'conversation threads' },
   { model: 'WhatsAppConversationSummary', by: { businessId: 'businessId', leadId: 'leadId' }, category: 'a', what: 'AI summaries of conversations' },

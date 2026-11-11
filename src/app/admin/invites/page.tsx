@@ -11,6 +11,7 @@ import {
   Clock,
   XCircle,
   RefreshCw,
+  Send,
 } from 'lucide-react';
 
 interface Invite {
@@ -49,6 +50,10 @@ export default function InvitesPage() {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [emailSent, setEmailSent] = useState<boolean | null>(null);
+  const [linkFor, setLinkFor] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
 
   const fetchInvites = useCallback(async () => {
     try {
@@ -83,6 +88,8 @@ export default function InvitesPage() {
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setInviteLink(json.data.inviteLink);
+      setEmailSent(Boolean(json.data.emailSent));
+      setLinkFor(email);
       setEmail('');
       fetchInvites();
     } catch (err: any) {
@@ -99,14 +106,49 @@ export default function InvitesPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this invite?')) return;
-    await fetch('/api/admin/invites', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    });
-    fetchInvites();
+  const handleDelete = async (invite: Invite) => {
+    if (!confirm(`Delete the invite for ${invite.email}? The link will stop working.`)) return;
+    setBusyId(invite._id);
+    setRowError(null);
+    try {
+      const res = await fetch('/api/admin/invites', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: invite._id }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      if (linkFor === invite.email) setInviteLink(null);
+      fetchInvites();
+    } catch (err: any) {
+      setRowError(friendlyClientMessage(err, 'Could not delete the invite'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleResend = async (invite: Invite) => {
+    setBusyId(invite._id);
+    setRowError(null);
+    try {
+      const res = await fetch('/api/admin/invites', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: invite._id }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      setInviteLink(json.data.inviteLink);
+      setEmailSent(Boolean(json.data.emailSent));
+      setLinkFor(invite.email);
+      setCopied(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      fetchInvites();
+    } catch (err: any) {
+      setRowError(friendlyClientMessage(err, 'Could not resend the invite'));
+    } finally {
+      setBusyId(null);
+    }
   };
 
   return (
@@ -160,7 +202,9 @@ export default function InvitesPage() {
         {inviteLink && (
           <div className="mt-4 p-4 bg-secondary-container/40 border border-secondary-fixed rounded-xl">
             <p className="text-sm font-semibold text-on-secondary-container mb-2">
-              ✅ Invite created! Share this link with the person:
+              {emailSent
+                ? `✅ Invite emailed to ${linkFor}. You can also send them this link:`
+                : `⚠ Invite created, but the email to ${linkFor} could not be sent. Send them this link yourself:`}
             </p>
             <div className="flex items-center gap-2">
               <code className="flex-1 text-xs bg-surface-container-lowest border border-secondary-fixed rounded-lg px-3 py-2 text-on-surface break-all">
@@ -174,7 +218,7 @@ export default function InvitesPage() {
                 {copied ? 'Copied!' : 'Copy'}
               </button>
             </div>
-            <p className="text-xs text-secondary mt-2">⚠ This link expires in 48 hours.</p>
+            <p className="text-xs text-secondary mt-2">The link works once and expires in 48 hours. Any older link for this person no longer works.</p>
           </div>
         )}
       </div>
@@ -183,6 +227,7 @@ export default function InvitesPage() {
       <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow">
         <div className="p-6 border-b border-outline-variant">
           <h2 className="font-semibold text-on-surface">All Invites</h2>
+          {rowError && <p role="alert" className="mt-2 text-sm text-error">{rowError}</p>}
         </div>
         {loading ? (
           <div className="flex items-center justify-center h-32">
@@ -212,13 +257,29 @@ export default function InvitesPage() {
                     <td className="p-4 text-on-surface-variant">{invite.invitedBy?.fullName || '—'}</td>
                     <td className="p-4 text-outline">{new Date(invite.expiresAt).toLocaleString()}</td>
                     <td className="p-4">
-                      {invite.status === 'pending' && (
-                        <button
-                          onClick={() => handleDelete(invite._id)}
-                          className="text-error hover:text-error transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      {invite.status !== 'accepted' ? (
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => handleResend(invite)}
+                            disabled={busyId === invite._id}
+                            className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline disabled:opacity-50"
+                            title="Email a fresh link valid for 48 hours"
+                          >
+                            {busyId === invite._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                            Resend
+                          </button>
+                          <button
+                            onClick={() => handleDelete(invite)}
+                            disabled={busyId === invite._id}
+                            aria-label={`Delete invite for ${invite.email}`}
+                            title="Delete invite"
+                            className="text-error hover:opacity-80 transition-opacity disabled:opacity-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-outline">—</span>
                       )}
                     </td>
                   </tr>

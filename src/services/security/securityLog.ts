@@ -11,7 +11,11 @@ import { normalizePhoneE164 } from '@/lib/phone';
  */
 
 export const SECURITY_EVENT_LABELS: Record<string, string> = {
-  'admin.login': 'Super admin sign-in',
+  'admin.login': 'Super admin sign-in (password step)',
+  'admin.login_code': 'Super admin sign-in code entered',
+  'admin.login_code_resend': 'Super admin sign-in code emailed',
+  'admin.recovery_code_used': 'Super admin used a recovery code',
+  'admin.two_step_change': 'Super admin two-step settings changed',
   'auth.login': 'Password sign-in',
   'auth.phone_otp_request': 'Login code requested',
   'auth.phone_otp_verify': 'Login code entered',
@@ -22,6 +26,7 @@ export const SECURITY_EVENT_LABELS: Record<string, string> = {
   'auth.logout': 'Signed out',
   'admin.invite_create': 'Admin invite sent',
   'admin.invite_accept': 'Admin invite accepted',
+  'admin.invite_delete': 'Admin invite deleted',
   'admin.impersonate': 'Signed in as a customer',
   'admin.crm_export': 'Leads exported (CSV)',
   'admin.crm_import': 'Leads imported (CSV)',
@@ -69,8 +74,9 @@ export async function logSecurityEvent(req: Request | null, input: SecurityEvent
       detail: input.detail ? String(input.detail).slice(0, 500) : undefined,
       metadata: input.metadata,
     });
-    if (input.outcome !== 'success' && (input.type === 'admin.login' || input.type === 'webhook.signature_invalid')) {
-      await maybeRaiseAlert(input.type, ip);
+    if (input.outcome !== 'success' && (input.type === 'admin.login' || input.type === 'admin.login_code' || input.type === 'webhook.signature_invalid')) {
+      // Wrong sign-in codes count toward the same super admin alert as wrong passwords.
+      await maybeRaiseAlert(input.type === 'admin.login_code' ? 'admin.login' : input.type, ip);
     }
   } catch (err: any) {
     console.warn('[securityLog] could not record the event:', err?.message);
@@ -87,7 +93,8 @@ const ALERT_COOLDOWN_MS = 60 * 60_000;
  */
 async function maybeRaiseAlert(type: string, ip?: string): Promise<void> {
   const since = new Date(Date.now() - ALERT_WINDOW_MS);
-  const failed: Record<string, unknown> = { type, outcome: { $in: ['failure', 'blocked'] }, createdAt: { $gte: since } };
+  const types = type === 'admin.login' ? ['admin.login', 'admin.login_code'] : [type];
+  const failed: Record<string, unknown> = { type: { $in: types }, outcome: { $in: ['failure', 'blocked'] }, createdAt: { $gte: since } };
   const [total, fromIp] = await Promise.all([
     SecurityEvent.countDocuments(failed as any),
     ip ? SecurityEvent.countDocuments({ ...failed, ip } as any) : Promise.resolve(0),

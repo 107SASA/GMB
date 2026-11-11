@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { countServiceUse } from '@/lib/serviceUsage';
 import { Resend } from 'resend';
 import { outboundSuppressed } from '@/lib/outboundSuppression';
 
@@ -97,14 +98,20 @@ export const sendEmail = async (to: string, customerName: string, service: strin
   }
 };
 
-function buildOtpEmailHtml(otp: string, purpose: 'verify' | 'reset', expiryMinutes: number) {
-  const subject = purpose === 'reset' ? 'Reset Your Password' : 'Verify Your Email';
+type OtpPurpose = 'verify' | 'reset' | 'admin_login';
+
+function buildOtpEmailHtml(otp: string, purpose: OtpPurpose, expiryMinutes: number) {
+  const subject = purpose === 'reset' ? 'Reset Your Password' : purpose === 'admin_login' ? `Super admin sign-in code: ${otp}` : 'Verify Your Email';
   const intro = purpose === 'reset'
     ? 'We received a request to reset the password for your account. Use the code below to continue:'
-    : 'Your one-time password is:';
+    : purpose === 'admin_login'
+      ? 'Someone entered the correct password for your Growwmatics AI super admin account. Enter this code to finish signing in:'
+      : 'Your one-time password is:';
   const disclaimer = purpose === 'reset'
     ? 'If you did not request a password reset, no action is needed — your password will remain unchanged and it is safe to ignore this email.'
-    : 'If you did not request this, please ignore this email.';
+    : purpose === 'admin_login'
+      ? 'If this was not you, your admin password is known to someone else. Do not share this code — change your password right away.'
+      : 'If you did not request this, please ignore this email.';
 
   return {
     subject,
@@ -126,7 +133,7 @@ function buildOtpEmailHtml(otp: string, purpose: 'verify' | 'reset', expiryMinut
 export const sendEmailOtp = async (
   to: string,
   otp: string,
-  purpose: 'verify' | 'reset' = 'verify',
+  purpose: OtpPurpose = 'verify',
   expiryMinutes: number = 15
 ) => {
   // Logged before any send attempt so the code is recoverable in the server
@@ -137,7 +144,10 @@ export const sendEmailOtp = async (
     console.log(`================================\n`);
   }
 
-  const suppressed = suppressedEmail(to, `OTP (${purpose})`);
+  // Super admin sign-in codes go only to our own team and are what keeps the
+  // admin panel reachable, so the QA "suppress all email" switch never blocks
+  // them (it would lock every admin out of a server that has it set).
+  const suppressed = purpose === 'admin_login' ? null : suppressedEmail(to, `OTP (${purpose})`);
   if (suppressed) return suppressed;
 
   if (!resend && !transporter) {
@@ -158,6 +168,7 @@ export const sendEmailOtp = async (
       });
 
       if (!error) {
+        countServiceUse('resend');
         return { success: true, messageId: data?.id };
       }
 
@@ -206,8 +217,10 @@ export const sendTransactionalEmail = async (
   html: string,
   /** Optional files (e.g. an invoice PDF). */
   attachments?: Array<{ filename: string; content: Buffer }>,
+  /** Internal team email (admin invites): ignore the QA suppress-all switch. */
+  opts?: { ignoreQaSuppression?: boolean },
 ) => {
-  const suppressed = suppressedEmail(to, subject);
+  const suppressed = opts?.ignoreQaSuppression ? null : suppressedEmail(to, subject);
   if (suppressed) return suppressed;
 
   if (!resend && !transporter) {
@@ -225,6 +238,7 @@ export const sendTransactionalEmail = async (
         ...(attachments?.length ? { attachments } : {}),
       });
       if (!error) {
+        countServiceUse('resend');
         console.log(`✅ Transactional email sent to ${to} via Resend ("${subject}"): ${data?.id}`);
         return { success: true, messageId: data?.id };
       }

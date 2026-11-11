@@ -58,6 +58,7 @@ import {
 } from "@/services/inngest/functions";
 import { issueCompanyInvoice, companyInvoiceSweep } from "@/services/inngest/invoiceFunctions";
 import { whatsappCampaignSend } from "@/services/inngest/whatsappCampaign";
+import { serviceMonitorCron } from "@/services/inngest/serviceMonitorFunctions";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -121,5 +122,6 @@ export const { GET, POST, PUT } = serve({
     dataRetentionCleanupCron,
     accountHardPurgeCron,
     whatsappCampaignSend,
+    serviceMonitorCron,
   ],
 });

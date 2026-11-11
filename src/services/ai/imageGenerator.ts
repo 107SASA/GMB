@@ -1,4 +1,5 @@
 import { watermarkToDataUri } from '@/lib/imageWatermark';
+import { countServiceUse } from '@/lib/serviceUsage';
 import { meter } from '@/lib/providerMeter';
 
 const NANOBANANA_BASE = 'https://www.nananobanana.com/api/v1';
@@ -70,6 +71,7 @@ async function generateWithNanoBanana(prompt: string, apiKey: string): Promise<s
     const data = await res.json();
     const url = (data.outputImageUrls as string[])?.[0] ?? null;
     if (!url) return null;
+    countServiceUse('nanobanana');
 
     // Fetch the hosted image and store it as a downscaled data-URL (same shape
     // the Gemini path returns). No GrowwMatics mark — the customer's own logo

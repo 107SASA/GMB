@@ -67,6 +67,7 @@ const adminGroups = [
       { name: 'System Health', icon: 'monitor_heart', href: '/admin/system' },
       { name: 'Automations', icon: 'bolt', href: '/admin/automations' },
       { name: 'AI & API Usage', icon: 'psychology', href: '/admin/ai-usage' },
+      { name: 'Services & Costs', icon: 'dns', href: '/admin/services' },
     ],
   },
   {
@@ -96,6 +97,7 @@ const adminGroups = [
       { name: 'Settings', icon: 'tune', href: '/admin/settings' },
       { name: 'Team Invites', icon: 'person_add', href: '/admin/invites' },
       { name: 'Security Log', icon: 'shield', href: '/admin/security' },
+      { name: 'Two-step sign-in', icon: 'phonelink_lock', href: '/admin/two-step' },
     ],
   },
 ];
@@ -124,6 +126,22 @@ function usePartnerAttention(): { total: number; label: string } {
   return state;
 }
 
+/** Services whose last check (every 6h, or a manual check) was warning or worse. */
+function useServiceAttention(): { total: number; critical: number } {
+  const [state, setState] = useState({ total: 0, critical: 0 });
+  useEffect(() => {
+    let alive = true;
+    const load = () => fetch('/api/admin/services/attention')
+      .then((res) => res.json())
+      .then((d) => { if (alive && d?.success) setState({ total: d.total || 0, critical: d.critical || 0 }); })
+      .catch(() => {});
+    load();
+    const timer = setInterval(load, 300_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, []);
+  return state;
+}
+
 /** Unopened WhatsApp chats, refreshed every 30 seconds. */
 function useInboxUnread(): number {
   const [unread, setUnread] = useState(0);
@@ -145,6 +163,7 @@ export function AdminSidebar() {
   const router = useRouter();
   const inboxUnread = useInboxUnread();
   const partnerAttention = usePartnerAttention();
+  const serviceAttention = useServiceAttention();
 
   const handleLogout = async () => {
     await fetch('/api/admin/auth', { method: 'DELETE' });
@@ -198,6 +217,11 @@ export function AdminSidebar() {
                       {link.href === '/admin/growth-partners' && partnerAttention.total > 0 && (
                         <span className="ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-[11px] font-semibold text-on-primary" aria-label={partnerAttention.label} title={partnerAttention.label}>
                           {partnerAttention.total > 99 ? '99+' : partnerAttention.total}
+                        </span>
+                      )}
+                      {link.href === '/admin/services' && serviceAttention.total > 0 && (
+                        <span className={cn('ml-auto min-w-5 rounded-full px-1.5 text-center text-[11px] font-semibold', serviceAttention.critical > 0 ? 'bg-error text-white' : 'bg-primary text-on-primary')} aria-label={`${serviceAttention.total} services need attention`} title={`${serviceAttention.total} services need attention`}>
+                          {serviceAttention.total}
                         </span>
                       )}
                       {link.href === '/admin/inbox' && inboxUnread > 0 && (

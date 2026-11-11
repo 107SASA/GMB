@@ -47,3 +47,19 @@ export async function checkDurableRateLimit(
     return { allowed: true, remaining: limit };
   }
 }
+
+/**
+ * Current count in this window WITHOUT adding to it — pair with
+ * checkDurableRateLimit() on failure only, so only failed attempts count
+ * (e.g. wrong passwords) and a good user is never throttled.
+ */
+export async function peekDurableRateLimit(key: string, windowMs: number): Promise<number> {
+  try {
+    await dbConnect();
+    const bucket = Math.floor(Date.now() / windowMs);
+    const doc = await RateLimitWindow.findOne({ key: `${key}:${bucket}` }).select('count').lean();
+    return doc?.count ?? 0;
+  } catch {
+    return 0;
+  }
+}

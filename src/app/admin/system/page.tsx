@@ -227,6 +227,7 @@ export default function SystemHealthPage() {
             <div className="mb-8">
               <div className="flex items-center gap-2 mb-3">
                 <h2 className="font-semibold text-on-surface">API Tokens & Quotas</h2>
+                <a href="/admin/services" className="text-xs font-semibold text-primary hover:underline">All services, costs & renewals →</a>
                 {data.providers.some((p) => p.status === 'critical' || p.status === 'error') && (
                   <span className="flex items-center gap-1 text-xs font-bold text-error bg-error-container px-2 py-1 rounded-lg">
                     <AlertTriangle className="w-3 h-3" /> Action needed

@@ -44,7 +44,7 @@ export async function requireModule(
   if (user?.role === 'SUPER_ADMIN') return { ok: true };
   if (userCanUseModule(subscription, module)) {
     if (!businessId || module === ALWAYS_FREE_MODULE) return { ok: true };
-    return requireWorkspacePlan(userId, businessId);
+    return requireWorkspacePlan(userId, businessId, module);
   }
 
   return {

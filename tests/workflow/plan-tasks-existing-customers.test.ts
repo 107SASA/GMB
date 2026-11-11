@@ -49,7 +49,7 @@ before(async () => {
     sync: await import('../../src/services/lifecycle/actionsSync'),
     store: await import('../../src/services/gbp/changes/store'),
   };
-  ctx.businessId = String((await m.Business.create({ name: 'Mulsetu', category: 'Software company', address: 'Ojhar', userId: new m.mongoose.Types.ObjectId(), organizationId: new m.mongoose.Types.ObjectId(), googleLocationId: 'locations/1', subscriptionStatus: 'trial_active' } as any))._id);
+  ctx.businessId = String((await m.Business.create({ name: 'Mulsetu', category: 'Software company', address: 'Ojhar', userId: new m.mongoose.Types.ObjectId(), organizationId: new m.mongoose.Types.ObjectId(), googleLocationId: 'locations/1', subscriptionStatus: 'trial_active', trialEndsAt: new Date(Date.now() + 30 * 86_400_000) } as any))._id);
   // Exactly as an October report saved them: owner tasks, capability null.
   const legacy = async (key: string, findingId: string) => {
     const doc = await m.OptimizationAction.collection.insertOne({

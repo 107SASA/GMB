@@ -46,6 +46,8 @@ before(async () => {
   ctx.businessId = String(id);
   ctx.business = { _id: id, name: 'Mulsetu', category: 'Software company', city: 'Ozar' };
   await m.GBPToken.collection.insertOne({ businessId: id, locationId: 'locations/1', accountId: 'accounts/1' });
+  // A paying workspace: paid actions now check the workspace's own plan (lib/planGate.ts).
+  await m.mongoose.connection.collection('businesses').insertOne({ _id: id, ...ctx.business, address: 'Ozar', subscriptionStatus: 'active', createdAt: new Date() });
 });
 
 after(async () => {

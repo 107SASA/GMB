@@ -14,6 +14,10 @@ Module._load = function (request: string, ...rest: any[]) {
   if (/lib[\\/]tenant(\.ts)?$/.test(request)) {
     return { requireBusinessContext: async () => ({ ok: true, businessId: 'b1', userId: 'u1', organizationId: 'o1' }) };
   }
+  // No database in this test: treat the workspace as paying (the plan check has its own tests).
+  if (/lib[\\/]planGate(\.ts)?$/.test(request)) {
+    return { requireWorkspacePlan: async () => ({ ok: true }) };
+  }
   return origLoad.call(this, request, ...rest);
 };
 

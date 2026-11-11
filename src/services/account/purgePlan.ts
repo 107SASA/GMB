@@ -112,6 +112,8 @@ export const NOT_PURGED: Record<string, string> = {
   GrowthPartner: 'a Growth Partner’s own profile, KYC and commission terms — a separate party, not a customer account; a customer’s purge never touches it (its userId is the partner’s login, never a customer’s)',
   PartnerApplication: 'Growth Partner applications — the applicant’s own submission, not customer account data',
   PartnerInvite: 'Growth Partner account-creation links — hashed token + the partner’s email only, TTL-deleted 30 days after expiry',
+  PartnerCommission: 'category b: the partner’s earnings ledger (amounts, invoice number, the paying business’s name) — a financial record of what we owe / paid the partner, kept with the billing records',
+  PartnerPayout: 'category b: settlements paid to a Growth Partner (amounts, UTR, masked bank) — accounting record; holds no customer data',
   WebsiteIntelligence: 'public website facts keyed by domain — shared cache, not personal data',
   PlaceInsightCache: 'public Google Maps data keyed by place id — shared cache',
   KeywordVolumeCache: 'search-volume cache keyed by keyword — shared, not personal',

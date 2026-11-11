@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { APPLICANT_TYPE_LABELS, type ApplicantType } from '@/lib/partners/partnerRules';
 import { PartnerKycModal } from '@/components/admin/partners/PartnerKycModal';
+import { CommissionsPanel } from '@/components/admin/partners/CommissionsPanel';
 
 type AppStatus = 'pending' | 'approved' | 'rejected';
 
@@ -135,7 +136,7 @@ function LinkBox({ link, note }: { link: string; note: string }) {
 }
 
 export default function GrowthPartnersAdminPage() {
-  const [tab, setTab] = useState<'applications' | 'partners'>('applications');
+  const [tab, setTab] = useState<'applications' | 'partners' | 'commissions'>('applications');
   const [appStatus, setAppStatus] = useState<AppStatus>('pending');
   const [applications, setApplications] = useState<Application[]>([]);
   const [counts, setCounts] = useState<Record<AppStatus, number>>({ pending: 0, approved: 0, rejected: 0 });
@@ -163,7 +164,7 @@ export default function GrowthPartnersAdminPage() {
         if (!json.success) throw new Error(json.error);
         setApplications(json.data);
         setCounts(json.counts);
-      } else {
+      } else if (tab === 'partners') {
         const res = await fetch('/api/admin/growth-partners');
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
@@ -293,7 +294,7 @@ export default function GrowthPartnersAdminPage() {
       </div>
 
       <div className="flex gap-2 mb-4 border-b border-outline-variant">
-        {(['applications', 'partners'] as const).map((t) => (
+        {(['applications', 'partners', 'commissions'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -303,7 +304,9 @@ export default function GrowthPartnersAdminPage() {
           >
             {t === 'applications'
               ? `Applications${counts.pending ? ` (${counts.pending})` : ''}`
-              : `Partners${kycWaiting ? ` · ${kycWaiting} KYC to review` : ''}`}
+              : t === 'partners'
+                ? `Partners${kycWaiting ? ` · ${kycWaiting} KYC to review` : ''}`
+                : 'Commissions & payouts'}
           </button>
         ))}
       </div>
@@ -333,7 +336,9 @@ export default function GrowthPartnersAdminPage() {
 
       {error && <p className="mb-4 text-sm text-error">{error}</p>}
 
-      {loading ? (
+      {tab === 'commissions' ? (
+        <CommissionsPanel />
+      ) : loading ? (
         <div className="flex items-center justify-center h-40">
           <Loader2 className="w-6 h-6 animate-spin text-primary" />
         </div>

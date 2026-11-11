@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { resolveGrowthPartner } from '@/lib/partners/partnerAuth';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { listPartnerOpenFollowUps, partnerLeadStats } from '@/services/partners/partnerLeads';
+import { partnerCommissionsFor } from '@/services/partners/partnerCommissions';
 import { ReferralLinkCard } from '@/components/partner/ReferralLinkCard';
 import { referralLinkPath } from '@/lib/partners/referral';
 import { configuredAppBase } from '@/lib/admin/inviteLink';
@@ -20,10 +21,12 @@ export default async function PartnerOverviewPage() {
   const p = auth.partner;
   const kyc = KYC_LABEL[p.kycStatus] ?? KYC_LABEL.not_submitted;
   const appBase = configuredAppBase(process.env) ?? 'https://growwmatics.ai';
-  const [stats, followUps] = await Promise.all([
+  const [stats, followUps, earnings] = await Promise.all([
     partnerLeadStats(String(p._id)).catch(() => null),
     listPartnerOpenFollowUps(String(p._id)).catch(() => []),
+    partnerCommissionsFor(String(p._id)).then((r) => r.summary).catch(() => null),
   ]);
+  const inr = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
   const numbers = stats
     ? [
         { label: 'Leads', value: stats.total, href: '/partner/leads' },
@@ -83,6 +86,21 @@ export default async function PartnerOverviewPage() {
             </Link>
           ))}
         </div>
+      )}
+
+      {earnings && (
+        <Link href="/partner/commissions" className="mb-6 grid gap-4 grid-cols-3 rounded-xl border border-outline-variant bg-surface-container-lowest p-5 hover:border-primary transition-colors">
+          {[
+            { label: 'On hold', value: earnings.onHold },
+            { label: 'Awaiting payout', value: earnings.ready + earnings.approved },
+            { label: 'Paid to you', value: earnings.paid },
+          ].map((e) => (
+            <div key={e.label}>
+              <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide">{e.label}</p>
+              <p className="font-heading text-xl sm:text-2xl font-bold text-on-surface mt-1">{inr(e.value)}</p>
+            </div>
+          ))}
+        </Link>
       )}
 
       {followUps.length > 0 && (

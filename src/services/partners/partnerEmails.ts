@@ -108,3 +108,34 @@ export async function sendKycRejectedEmail(to: string, name: string, reason: str
   `);
   return sendTransactionalEmail(to, 'Action needed: update your Growth Partner KYC', html);
 }
+
+const inr = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+export async function sendCommissionEarnedEmail(
+  to: string,
+  name: string,
+  c: { amount: number; customerName: string; kind: 'first' | 'recurring' }
+) {
+  const what = c.kind === 'first' ? 'their first payment' : 'a renewal';
+  const html = wrap('You earned a commission', `
+    <p style="${P}">Hi ${escapeHtml(name)},</p>
+    <p style="${P}"><strong>${escapeHtml(c.customerName || 'A customer you brought')}</strong> just made ${what}. You earned <strong>${inr(c.amount)}</strong>.</p>
+    <p style="${P}">It becomes payable after the hold period and our approval.</p>
+    ${button(`${APP_URL}/partner/commissions`, 'View my commissions')}
+  `);
+  return sendTransactionalEmail(to, `You earned ${inr(c.amount)} commission`, html);
+}
+
+export async function sendPayoutSentEmail(
+  to: string,
+  name: string,
+  p: { net: number; reference: string; paidAt: Date; accountLast4: string | null }
+) {
+  const html = wrap('Your payout is on its way', `
+    <p style="${P}">Hi ${escapeHtml(name)},</p>
+    <p style="${P}">We paid <strong>${inr(p.net)}</strong> to your bank account${p.accountLast4 ? ` ending ${escapeHtml(p.accountLast4)}` : ''} on ${p.paidAt.toLocaleDateString('en-IN')}.</p>
+    <p style="${P}">Reference (UTR): <strong>${escapeHtml(p.reference)}</strong></p>
+    ${button(`${APP_URL}/partner/payouts`, 'View payouts')}
+  `);
+  return sendTransactionalEmail(to, `Payout sent: ${inr(p.net)}`, html);
+}

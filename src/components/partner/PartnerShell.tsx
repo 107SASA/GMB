@@ -16,6 +16,8 @@ const NAV = [
   { name: 'Leads', icon: 'contacts', href: '/partner/leads' },
   { name: 'Pipeline', icon: 'view_kanban', href: '/partner/pipeline' },
   { name: 'Customers', icon: 'verified', href: '/partner/customers' },
+  { name: 'Commissions', icon: 'payments', href: '/partner/commissions' },
+  { name: 'Payouts', icon: 'account_balance', href: '/partner/payouts' },
   { name: 'KYC & Bank', icon: 'badge', href: '/partner/kyc' },
 ];
 

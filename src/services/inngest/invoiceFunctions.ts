@@ -27,7 +27,13 @@ export const issueCompanyInvoice = inngest.createFunction(
       const { emailInvoice } = await import('@/services/billing/companyInvoice');
       return emailInvoice(issued.id);
     });
-    return { invoice: issued.number, email };
+    // Growth Partner commission for this payment (once per payment id; the
+    // daily sweep below catches anything missed). Never affects the invoice.
+    const commission = await step.run('partner-commission', async () => {
+      const { createCommissionForInvoice } = await import('@/services/partners/partnerCommissions');
+      return createCommissionForInvoice(issued.id).catch((err: any) => ({ created: false, reason: `error: ${err?.message}` }));
+    });
+    return { invoice: issued.number, email, commission };
   },
 );
 
@@ -39,6 +45,10 @@ export const companyInvoiceSweep = inngest.createFunction(
       const { issueMissingInvoices } = await import('@/services/billing/companyInvoice');
       return issueMissingInvoices(3);
     });
-    return { success: true, ...r };
+    const commissions = await step.run('partner-commissions-sweep', async () => {
+      const { sweepMissingCommissions } = await import('@/services/partners/partnerCommissions');
+      return sweepMissingCommissions(7);
+    });
+    return { success: true, ...r, commissions };
   },
 );

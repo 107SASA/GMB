@@ -91,6 +91,14 @@ export interface IUser extends Document {
   // bootstrap value — tokens issued before this feature carry no epoch and
   // are treated as 0, so they stay valid until the FIRST invalidation.
   sessionEpoch?: number;
+  /** Super admin authenticator app (TOTP) — secrets AES-GCM encrypted (lib/crypto.ts). */
+  adminTotpSecretEnc?: string;
+  adminTotpPendingSecretEnc?: string;
+  adminTotpEnabledAt?: Date;
+  /** Last accepted 30-second step, so a code can't be replayed. */
+  adminTotpLastStep?: number;
+  /** SHA-256 hashes of unused one-time recovery codes. */
+  adminRecoveryCodeHashes?: string[];
 
   businessIds: mongoose.Types.ObjectId[];
 
@@ -232,6 +240,11 @@ const UserSchema: Schema = new Schema(
     // in IUser above and src/lib/sessionInvalidation.ts. Default 0 = "never
     // invalidated"; every issued token carries the value at sign-in.
     sessionEpoch: { type: Number, default: 0 },
+    adminTotpSecretEnc: { type: String, select: false },
+    adminTotpPendingSecretEnc: { type: String, select: false },
+    adminTotpEnabledAt: { type: Date },
+    adminTotpLastStep: { type: Number },
+    adminRecoveryCodeHashes: { type: [String], select: false, default: undefined },
 
     businessIds: [{ type: Schema.Types.ObjectId, ref: 'Business' }],
 

@@ -6,6 +6,7 @@ import { requireBusinessContext } from '@/lib/tenant';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { evaluateReviewSendEligibility } from '@/lib/reviewSendEligibility';
 import { existingCustomerSendOffer } from '@/lib/reviewRequestFlow';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,6 +85,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
 
   let normalizedPhone: string | null = null;
   try {

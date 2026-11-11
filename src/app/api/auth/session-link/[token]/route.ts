@@ -39,6 +39,10 @@ export async function GET(
   if (!user) {
     return NextResponse.redirect(publicUrl('/login', req));
   }
+  // A one-click link must never open a super admin session (no password, no code).
+  if (user.role === 'SUPER_ADMIN') {
+    return NextResponse.redirect(publicUrl('/admin-login', req));
+  }
 
   await createSession(user._id.toString(), user.role, user.sessionEpoch ?? 0);
 

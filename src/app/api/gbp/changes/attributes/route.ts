@@ -5,6 +5,7 @@ import GbpLocationSnapshot from '@/models/GbpLocationSnapshot';
 import { listCategoryAttributes, readLocationAttributes } from '@/lib/gbpClient';
 import { planAttributeBatch } from '@/services/gbp/changes/policy';
 import { locationIdFor, proposeAttributeBatch } from '@/services/gbp/changes/store';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,9 @@ const bodySchema = z.object({
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ success: false, error: parsed.error.issues[0]?.message || 'Invalid attribute selection.', liveWriteApplied: false }, { status: 400 });

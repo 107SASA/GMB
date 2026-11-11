@@ -202,3 +202,24 @@ export async function deleteKeys(keys: string[]): Promise<number> {
   }
   return deleted;
 }
+
+/**
+ * Total bytes and object count in the Space, for the Services & Costs monitor.
+ * Stops after `maxPages` listings (1,000 objects each) and reports `partial`.
+ */
+export async function getBucketUsage(maxPages = 50): Promise<{ bytes: number; objects: number; partial: boolean }> {
+  const client = getClient();
+  let token: string | undefined;
+  let bytes = 0;
+  let objects = 0;
+  for (let page = 0; page < maxPages; page++) {
+    const r: any = await client.send(new ListObjectsV2Command({ Bucket: bucket, ContinuationToken: token }));
+    for (const o of r.Contents || []) {
+      bytes += Number(o.Size || 0);
+      objects += 1;
+    }
+    if (!r.IsTruncated) return { bytes, objects, partial: false };
+    token = r.NextContinuationToken;
+  }
+  return { bytes, objects, partial: true };
+}

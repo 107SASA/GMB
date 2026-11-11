@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireBusinessContext } from '@/lib/tenant';
 import { applyActivePlanToProfile } from '@/services/seoPlan/applyPlan';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,9 @@ export const dynamic = 'force-dynamic';
 export async function POST() {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
 
   try {
     const result = await applyActivePlanToProfile(String(ctx.businessId));

@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     // server-side (same gap as marketing_automation, fixed in
     // /api/campaigns/*); the mobile/web UI already hid it for a locked
     // plan, but nothing stopped a direct request. See lib/moduleGating.ts.
-    const gate = await requireModule(ctx.userId, 'content_studio');
+    const gate = await requireModule(ctx.userId, 'content_studio', ctx.businessId);
     if (!gate.ok) return gate.response;
 
     const rl = checkRateLimit(`content-generate:${ctx.userId}`, RATE_LIMIT, RATE_WINDOW_MS);

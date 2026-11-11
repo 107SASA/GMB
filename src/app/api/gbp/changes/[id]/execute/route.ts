@@ -5,12 +5,16 @@ import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import { hasGoogleAccess } from '@/lib/googleAccess';
 import { googleAccessCopy } from '@/services/gbp/access/evaluate';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireBusinessContext();
   if (!auth.ok) return auth.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(auth.userId, auth.businessId);
+  if (!planGate.ok) return planGate.response;
   const { id } = await ctx.params;
   // Nothing is sent to Google until Google has confirmed we may edit this profile.
   await dbConnect();

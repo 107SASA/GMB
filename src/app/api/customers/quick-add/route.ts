@@ -6,6 +6,7 @@ import { normalizePhoneE164 } from '@/lib/phone';
 import { inngest } from '@/services/inngest/client';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import { evaluateReviewSendEligibility } from '@/lib/reviewSendEligibility';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 /**
  * Mobile "Add Customer" quick-add: create (or reuse) a Customer from just a
@@ -28,6 +29,9 @@ import { evaluateReviewSendEligibility } from '@/lib/reviewSendEligibility';
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
 
   try {
     await dbConnect();

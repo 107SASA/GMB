@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireBusinessContext } from '@/lib/tenant';
 import { scheduleAsset } from '@/lib/gbpMediaService';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,9 @@ const schema = z.object({
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
   const { id } = await params;
 
   const body = await req.json().catch(() => ({}));

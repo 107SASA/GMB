@@ -65,7 +65,7 @@ before(async () => {
     sync: await import('../../src/services/lifecycle/actionsSync'),
   };
   const oid = () => new m.mongoose.Types.ObjectId();
-  const mkBiz = async (name: string) => String((await m.Business.create({ name, category: 'Software company', address: 'Ojhar', userId: oid(), organizationId: oid(), googleLocationId: 'locations/1' } as any))._id);
+  const mkBiz = async (name: string) => String((await m.Business.create({ name, category: 'Software company', address: 'Ojhar', userId: oid(), organizationId: oid(), googleLocationId: 'locations/1', subscriptionStatus: 'active' } as any))._id); // paying workspace (lib/planGate.ts)
   biz = await mkBiz('Mulsetu');
   otherBiz = await mkBiz('Other Workspace');
   ctx.businessId = biz;

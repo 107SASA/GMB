@@ -16,7 +16,7 @@ function pctChange(current: number, previous: number): number | null {
 export async function GET(request: NextRequest) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
-  const gate = await requireModule(ctx.userId, 'google_ranking_agent');
+  const gate = await requireModule(ctx.userId, 'google_ranking_agent', ctx.businessId);
   if (!gate.ok) return gate.response;
 
   await dbConnect();

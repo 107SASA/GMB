@@ -27,6 +27,15 @@ export async function finalizeLogin(
     );
   }
 
+  // Super admins sign in only at /admin-login (password + emailed code).
+  // Letting them in here skipped that page's rate limits and the code step.
+  if (user.role === 'SUPER_ADMIN') {
+    return NextResponse.json(
+      { success: false, error: 'This is a super admin account. Please sign in at the admin login page.', code: 'ADMIN_ACCOUNT' },
+      { status: 403 }
+    );
+  }
+
   const userId = String(user._id);
   // Embed the user's current session epoch so this token survives until the
   // next invalidateUserSessions() call for them (see src/lib/sessionInvalidation.ts).

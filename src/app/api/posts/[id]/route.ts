@@ -5,6 +5,7 @@ import dbConnect from "@/lib/mongodb";
 import Post from "@/models/Post";
 import { requireBusinessContext } from "@/lib/tenant";
 import { inngest } from "@/services/inngest/client";
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 /**
  * Fields a client is allowed to change on a post.
@@ -39,6 +40,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     // Authenticates the caller AND resolves which business they are acting on.
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+    const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+    if (!planGate.ok) return planGate.response;
 
     const { id } = await params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -105,6 +109,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+    const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+    if (!planGate.ok) return planGate.response;
 
     const { id } = await params;
     if (!mongoose.Types.ObjectId.isValid(id)) {

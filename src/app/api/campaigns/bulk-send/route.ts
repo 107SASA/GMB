@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
-  const gate = await requireModule(ctx.userId, 'marketing_automation');
+  const gate = await requireModule(ctx.userId, 'marketing_automation', ctx.businessId);
   if (!gate.ok) return gate.response;
 
   try {

@@ -4,6 +4,7 @@ import Customer from '@/models/Customer';
 import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
 import { normalizePhoneE164 } from '@/lib/phone';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 /**
  * Copies CRM leads into the review-campaign customer list so review requests
@@ -22,6 +23,9 @@ import { normalizePhoneE164 } from '@/lib/phone';
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
 
   try {
     await dbConnect();

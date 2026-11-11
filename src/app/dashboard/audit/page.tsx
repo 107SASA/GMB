@@ -14,6 +14,8 @@ export default function AuditDashboardPage() {
   // Freemium signups get their one report generated FOR them — see autoStart().
   const [autoStarting, setAutoStarting] = useState(false);
   const [autoError, setAutoError] = useState('');
+  // The free audit is one per account: on another workspace the owner subscribes instead.
+  const [needsPlan, setNeedsPlan] = useState(false);
   const autoStartedRef = useRef(false);
 
   useEffect(() => {
@@ -71,6 +73,7 @@ export default function AuditDashboardPage() {
       });
       const json = await res.json();
       if (!res.ok || !json.auditId) {
+        setNeedsPlan(json.code === 'UPGRADE_REQUIRED');
         setAutoError(json.error || 'Could not start your report automatically.');
         setAutoStarting(false);
         return;
@@ -115,7 +118,19 @@ export default function AuditDashboardPage() {
           className="flex items-start gap-3 rounded-xl border border-error-container bg-error-container p-4 text-sm font-medium text-on-error-container"
         >
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-          <span>{autoError} It will retry automatically shortly.</span>
+          {needsPlan ? (
+            <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span>{autoError} Once it&apos;s subscribed, its audit runs automatically every month.</span>
+              <Link
+                href="/dashboard/upgrade"
+                className="shrink-0 rounded-lg bg-primary px-4 py-2 text-center font-semibold text-on-primary hover:opacity-90"
+              >
+                Subscribe this workspace
+              </Link>
+            </div>
+          ) : (
+            <span>{autoError} It will retry automatically shortly.</span>
+          )}
         </div>
       )}
 

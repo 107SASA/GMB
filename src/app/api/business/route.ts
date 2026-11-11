@@ -38,14 +38,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Business limit reached for your plan" }, { status: 403 });
     }
 
-    const body = await req.json();
-    delete body._id;
-    delete body.organizationId;
-    delete body.userId;
+    // Only plain profile fields may come from the client. Spreading the whole
+    // body let a customer create a workspace with subscriptionStatus:'active'
+    // (or trialEndsAt, freeAuditUsed, …) and open the paid dashboard unpaid.
+    const body = await req.json().catch(() => ({}));
+    const PROFILE_FIELDS = ['name', 'category', 'description', 'address', 'area', 'city', 'state', 'country', 'googleMapsUrl', 'services', 'offers', 'tone', 'phone', 'website'] as const;
+    const profile: Record<string, string> = {};
+    for (const f of PROFILE_FIELDS) {
+      if (typeof body?.[f] === 'string') profile[f] = body[f].slice(0, 2000);
+    }
 
     const business = await Business.create({
       reviewReplySettings: newBusinessReviewReplySettings(),
-      ...body,
+      ...profile,
       organizationId,
       userId: auth.userId,
     });

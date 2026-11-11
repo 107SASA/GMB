@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
-  const gate = await requireModule(ctx.userId, 'content_studio');
+  const gate = await requireModule(ctx.userId, 'content_studio', ctx.businessId);
   if (!gate.ok) return gate.response;
 
   await dbConnect();
@@ -74,7 +74,7 @@ const pinSchema = z.object({ action: z.enum(['pin', 'unpin']), id: z.string().mi
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
-  const gate = await requireModule(ctx.userId, 'content_studio');
+  const gate = await requireModule(ctx.userId, 'content_studio', ctx.businessId);
   if (!gate.ok) return gate.response;
 
   const parsed = pinSchema.safeParse(await req.json().catch(() => null));

@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
-    const gate = await requireModule(ctx.userId, 'reputation_agent');
+    const gate = await requireModule(ctx.userId, 'reputation_agent', ctx.businessId);
     if (!gate.ok) return gate.response;
 
     const rl = checkRateLimit(`review-reply:${ctx.userId}`, RATE_LIMIT, RATE_WINDOW_MS);

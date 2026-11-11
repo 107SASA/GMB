@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireBusinessContext } from '@/lib/tenant';
 import { ImportError, MAX_ROWS, parseSpreadsheet } from '@/lib/spreadsheetImport';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,9 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
   try {
     const form = await req.formData();
     const file = form.get('file');

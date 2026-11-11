@@ -42,7 +42,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
-  const gate = await requireModule(ctx.userId, 'reputation_agent');
+  const gate = await requireModule(ctx.userId, 'reputation_agent', ctx.businessId);
   if (!gate.ok) return gate.response;
 
   try {

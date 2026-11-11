@@ -5,6 +5,7 @@ import dbConnect from "@/lib/mongodb";
 import Post from "@/models/Post";
 import { requireBusinessContext } from "@/lib/tenant";
 import { toFriendlyMessage } from "@/lib/errors/friendlyMessage";
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 const STATUSES = ["draft", "pending_approval", "approved", "rejected", "scheduled", "publishing", "published", "blocked", "failed", "archived"] as const;
 
@@ -117,6 +118,9 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+    const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+    if (!planGate.ok) return planGate.response;
 
     await dbConnect();
 

@@ -47,6 +47,12 @@ const adminGroups = [
     ],
   },
   {
+    label: 'GROWTH PARTNERS',
+    links: [
+      { name: 'Growth Partners', icon: 'handshake', href: '/admin/growth-partners' },
+    ],
+  },
+  {
     label: 'AGENTS',
     links: [
       { name: 'Sales Agent', icon: 'support_agent', href: '/admin/sales-agent' },

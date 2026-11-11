@@ -13,6 +13,7 @@ const navLinks = [
   { name: "Showcase", href: "/showcase" },
   { name: "About Us", href: "/about" },
   { name: "Free GBP Report", href: "/free-report" },
+  { name: "Partners", href: "/growth-partner" },
 ];
 
 export function Navbar() {

@@ -183,6 +183,11 @@ export default async function proxy(request: NextRequest) {
     // findById, so the cost is negligible.
     if (user.role === 'SUPER_ADMIN') return NextResponse.next();
 
+    // A Growth Partner has no customer workspace — send them to their own area.
+    if (user.role === 'GROWTH_PARTNER') {
+      return NextResponse.redirect(publicUrl('/partner', request));
+    }
+
     if (!businessId) return NextResponse.next();
     if (!business) return NextResponse.next();
 

@@ -24,8 +24,8 @@ function ForgotPasswordForm() {
   // determines where "back to login" / "continue to login" / the final
   // redirect send the user. The reset flow itself (email → OTP → password)
   // is identical either way; only the destination changes.
-  const isAdminContext = searchParams.get('context') === 'admin';
-  const loginHref = isAdminContext ? '/admin-login' : '/login';
+  const context = searchParams.get('context');
+  const loginHref = context === 'admin' ? '/admin-login' : context === 'partner' ? '/partner-login' : '/login';
 
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');

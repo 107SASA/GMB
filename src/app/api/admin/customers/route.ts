@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     // unless they became customers (trial, paid or past due): see realAccounts.ts.
     const includeShadow = searchParams.get('includeShadow') === 'true';
     const shadowFilter = includeShadow ? {} : await realUserFilter();
-    const query: any = { role: { $ne: 'SUPER_ADMIN' }, $and: [shadowFilter] };
+    const query: any = { role: { $nin: ['SUPER_ADMIN', 'GROWTH_PARTNER'] }, $and: [shadowFilter] };
 
     if (search.trim()) {
       query.$or = [
@@ -155,9 +155,9 @@ export async function GET(req: NextRequest) {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     const [newThisWeek, proCount, enterpriseCount] = await Promise.all([
-      User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, ...shadowFilter, createdAt: { $gte: sevenDaysAgo } }),
-      User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, ...shadowFilter, subscriptionPlan: 'Pro' }),
-      User.countDocuments({ role: { $ne: 'SUPER_ADMIN' }, ...shadowFilter, subscriptionPlan: 'Enterprise' }),
+      User.countDocuments({ role: { $nin: ['SUPER_ADMIN', 'GROWTH_PARTNER'] }, ...shadowFilter, createdAt: { $gte: sevenDaysAgo } }),
+      User.countDocuments({ role: { $nin: ['SUPER_ADMIN', 'GROWTH_PARTNER'] }, ...shadowFilter, subscriptionPlan: 'Pro' }),
+      User.countDocuments({ role: { $nin: ['SUPER_ADMIN', 'GROWTH_PARTNER'] }, ...shadowFilter, subscriptionPlan: 'Enterprise' }),
     ]);
 
     return NextResponse.json({

@@ -18,6 +18,15 @@ export async function finalizeLogin(
   user: { _id: unknown; role: string; activeBusinessId?: unknown; sessionEpoch?: number },
   req: Request
 ): Promise<NextResponse> {
+  // Growth Partners sign in only at /partner-login (POST /api/partner/auth),
+  // never through the customer login methods.
+  if (user.role === 'GROWTH_PARTNER') {
+    return NextResponse.json(
+      { success: false, error: 'This is a Growth Partner account. Please sign in at the partner login page.', code: 'PARTNER_ACCOUNT' },
+      { status: 403 }
+    );
+  }
+
   const userId = String(user._id);
   // Embed the user's current session epoch so this token survives until the
   // next invalidateUserSessions() call for them (see src/lib/sessionInvalidation.ts).

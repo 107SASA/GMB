@@ -267,8 +267,16 @@ test('super-admin CRM untouched: no admin / sales-agent / nurture / lead-engine 
     'src/app/admin/businesses/page.tsx', 'src/app/admin/inbox/page.tsx', 'src/app/api/admin/businesses/route.ts',
     'src/app/admin/customers/page.tsx', 'src/app/api/admin/plan-config/route.ts',
     'src/app/api/admin/usage-limits/route.ts', 'src/app/api/admin/customers/[userId]/usage-limits/route.ts',
+    // Growth Partner program (applications, partner terms) + leaving partner
+    // logins out of the customer counts / lists. Not the platform CRM.
+    'src/components/admin/AdminSidebar.tsx',
+    'src/app/api/admin/customers/route.ts', 'src/app/api/admin/stats/route.ts', 'src/app/api/admin/subscriptions/route.ts',
   ]);
-  const hits = changed.filter((f) => forbidden.test(f) && !notCrm.has(f));
+  const isGrowthPartnerAdmin = (f: string) =>
+    f.startsWith('src/app/admin/growth-partners/') ||
+    f.startsWith('src/app/api/admin/growth-partners/') ||
+    f.startsWith('src/components/admin/partners/');
+  const hits = changed.filter((f) => forbidden.test(f) && !notCrm.has(f) && !isGrowthPartnerAdmin(f));
   assert.deepEqual(hits, [], `super-admin files changed: ${hits.join(', ')}`);
   // The platform tenant is refused by the customer service by construction.
   assert.match(read('src/services/crm/customerLeads.ts'), /organizationId === PLATFORM_TENANT\) throw/);

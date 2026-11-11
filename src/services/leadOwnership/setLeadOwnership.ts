@@ -88,6 +88,15 @@ export async function setLeadOwnership(
     return null;
   }
 
+  // A Growth Partner's lead belongs to the partner: no AI agent (Sales,
+  // Demo, or the default NONE routing) ever takes it over — whatever the
+  // caller asked for (stage moves, payment, "return to AI", inbox release).
+  // It stays HUMAN-owned, which every agent already stands down for. Only
+  // IN_HOUSE (a paying customer's support/product messages) is allowed.
+  if ((lead as any).partnerId && newAgent !== 'HUMAN' && newAgent !== 'IN_HOUSE') {
+    newAgent = 'HUMAN';
+  }
+
   const from = (lead.currentAgent || 'NONE') as LeadAgent;
   const changed = from !== newAgent;
   const stageFrom = lead.currentStage as LeadStage | undefined;

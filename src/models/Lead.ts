@@ -36,6 +36,12 @@ const BuyingSignalSchema = new Schema(
 
 export interface ILead extends Document {
   tenantId: string;
+  /**
+   * Growth Partner who brought this platform lead (models/GrowthPartner.ts).
+   * Partner leads are HUMAN-owned with nurture STOPPED from creation, so no
+   * AI agent, drip or campaign messages them (setLeadOwnership keeps it so).
+   */
+  partnerId?: mongoose.Types.ObjectId | null;
   organizationId?: string;
   businessId?: mongoose.Types.ObjectId;
   assignedUserId?: mongoose.Types.ObjectId;
@@ -252,6 +258,7 @@ export interface ILead extends Document {
 const LeadSchema: Schema = new Schema(
   {
     tenantId: { type: String, required: true, index: true },
+    partnerId: { type: Schema.Types.ObjectId, ref: 'GrowthPartner', default: null },
     organizationId: { type: String, index: true },
     businessId: { type: Schema.Types.ObjectId, ref: 'Business', index: true },
     assignedUserId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
@@ -440,6 +447,8 @@ const LeadSchema: Schema = new Schema(
 // alone is already indexed (inline); this compound serves the two-field
 // lookup directly.
 LeadSchema.index({ tenantId: 1, phone: 1 });
+// A partner's own lead list / pipeline (sparse: almost every lead has none).
+LeadSchema.index({ partnerId: 1, createdAt: -1 }, { partialFilterExpression: { partnerId: { $type: 'objectId' } } });
 // Customer CRM: list / ROI / dedupe per workspace.
 LeadSchema.index({ businessId: 1, createdAt: -1 });
 LeadSchema.index({ businessId: 1, lifeCycleStage: 1 });

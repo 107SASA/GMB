@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { resolveGrowthPartner } from '@/lib/partners/partnerAuth';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
+import { listPartnerOpenFollowUps, partnerLeadStats } from '@/services/partners/partnerLeads';
 
 const KYC_LABEL: Record<string, { text: string; tone: string }> = {
   not_submitted: { text: 'Not submitted', tone: 'bg-surface-container text-on-surface-variant' },
@@ -15,6 +16,18 @@ export default async function PartnerOverviewPage() {
   if (!auth.ok) redirect('/partner-login');
   const p = auth.partner;
   const kyc = KYC_LABEL[p.kycStatus] ?? KYC_LABEL.not_submitted;
+  const [stats, followUps] = await Promise.all([
+    partnerLeadStats(String(p._id)).catch(() => null),
+    listPartnerOpenFollowUps(String(p._id)).catch(() => []),
+  ]);
+  const numbers = stats
+    ? [
+        { label: 'Leads', value: stats.total, href: '/partner/leads' },
+        { label: 'In progress', value: stats.byGroup.open + stats.byGroup.demo + stats.byGroup.closing, href: '/partner/pipeline' },
+        { label: 'Customers', value: stats.customers, href: '/partner/customers' },
+        { label: 'Conversion', value: `${stats.conversionRate}%`, href: '/partner/pipeline' },
+      ]
+    : [];
 
   const terms = [
     { label: 'First payment', value: `${p.firstPaymentRate}%`, hint: "of the customer's first payment" },
@@ -55,6 +68,35 @@ export default async function PartnerOverviewPage() {
           </div>
           <MaterialIcon name="chevron_right" size={20} className="text-outline shrink-0 mt-0.5" />
         </Link>
+      )}
+
+      {numbers.length > 0 && (
+        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-6">
+          {numbers.map((n) => (
+            <Link key={n.label} href={n.href} className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5 hover:border-primary transition-colors">
+              <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide">{n.label}</p>
+              <p className="font-heading text-3xl font-bold text-on-surface mt-1">{n.value}</p>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {followUps.length > 0 && (
+        <div className="mb-6 rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
+          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide mb-3">Open follow-ups</p>
+          <ul className="divide-y divide-outline-variant">
+            {followUps.slice(0, 8).map((f) => (
+              <li key={f._id} className="py-2 flex items-center justify-between gap-3 text-sm">
+                <Link href={`/partner/leads/${f.leadId}`} className="font-medium text-on-surface hover:text-primary truncate">
+                  {f.leadName}
+                </Link>
+                <span className={`text-xs shrink-0 ${f.overdue ? 'text-error font-semibold' : 'text-on-surface-variant'}`}>
+                  {f.type} · {new Date(f.dueAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <div className="grid gap-4 md:grid-cols-3 mb-6">

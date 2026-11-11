@@ -39,9 +39,16 @@ export async function POST(req: Request) {
     await dbConnect();
     const { default: Lead } = await import('@/models/Lead');
     // Platform leads only — a customer's own CRM lead is never released from here.
-    const lead: any = await Lead.findOne({ _id: leadId, tenantId: 'gmbboost-internal' }).select('_id currentAgent humanHandoff').lean();
+    const lead: any = await Lead.findOne({ _id: leadId, tenantId: 'gmbboost-internal' }).select('_id currentAgent humanHandoff partnerId').lean();
     if (!lead) {
       return NextResponse.json({ success: false, error: 'Lead not found.' }, { status: 404 });
+    }
+    // A Growth Partner's lead stays with the partner — the AI never takes it.
+    if (lead.partnerId) {
+      return NextResponse.json(
+        { success: false, error: 'This is a Growth Partner’s lead. The AI agents stay off for it.' },
+        { status: 409 },
+      );
     }
     const isHuman = lead.currentAgent === 'HUMAN' || lead.humanHandoff?.active === true;
     if (!isHuman) {

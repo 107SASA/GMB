@@ -163,6 +163,7 @@ export async function updatePlatformLead(id: string, patch: Record<string, unkno
     }
   }
   if ('nurtureStatus' in patch) {
+    if (lead.partnerId) return { ok: false, status: 409, error: 'This is a Growth Partner’s lead — automated messages stay off for it.' };
     if (lead.nurtureStatus === 'OPTED_OUT') return { ok: false, status: 409, error: 'This person opted out — only they can opt back in.' };
     if (!NURTURE_SETTABLE.includes(patch.nurtureStatus as any)) return { ok: false, status: 400, error: 'Unknown nurture status.' };
     if (patch.nurtureStatus !== lead.nurtureStatus) { set.nurtureStatus = patch.nurtureStatus; changed.push('nurtureStatus'); }

@@ -13,6 +13,9 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 
 const NAV = [
   { name: 'Overview', icon: 'dashboard', href: '/partner' },
+  { name: 'Leads', icon: 'contacts', href: '/partner/leads' },
+  { name: 'Pipeline', icon: 'view_kanban', href: '/partner/pipeline' },
+  { name: 'Customers', icon: 'verified', href: '/partner/customers' },
   { name: 'KYC & Bank', icon: 'badge', href: '/partner/kyc' },
 ];
 

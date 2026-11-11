@@ -28,7 +28,7 @@ export const MILESTONE_EVENT_TYPES = [
 export const LEAD_ROW_FIELDS =
   'name phone email businessId businessType source createdAt currentAgent currentStage intent leadScore aiLeadScore ' +
   'nextBestAction nextActionAt nurtureStatus humanHandoff lastActivityAt lastMeaningfulInteractionAt ' +
-  'city tags assignedUserId deal captureSources subStage subStageId';
+  'city tags assignedUserId deal captureSources subStage subStageId partnerId';
 
 export interface LeadRow {
   lead: any;

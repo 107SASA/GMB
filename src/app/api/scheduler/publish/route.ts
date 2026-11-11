@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     if (!ctx.ok) return ctx.response;
     // ADDITIVE (Sep 2026) — content_studio was never actually enforced
     // server-side; see lib/moduleGating.ts.
-    const gate = await requireModule(ctx.userId, 'content_studio');
+    const gate = await requireModule(ctx.userId, 'content_studio', ctx.businessId);
     if (!gate.ok) return gate.response;
 
     const body = await req.json();

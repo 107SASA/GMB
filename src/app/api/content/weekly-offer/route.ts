@@ -11,6 +11,7 @@ import { contentWeekKey, contentWeekStart } from '@/services/content/plan';
 import { inngest } from '@/services/inngest/client';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import { workspaceHasPlanAccess, PLAN_ACCESS_FIELDS } from '@/lib/billing/entitlements';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 /**
  * Weekly "Anything to promote this week?" question (Sep 2026).
@@ -61,6 +62,9 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+    const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+    if (!planGate.ok) return planGate.response;
     const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: 'Invalid input', details: parsed.error.issues }, { status: 400 });
     const b = parsed.data;

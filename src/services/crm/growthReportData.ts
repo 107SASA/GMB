@@ -100,7 +100,7 @@ export async function sendGrowthReportReadyNotifications(now = new Date()): Prom
     if (leadsIn + wonIn + tasksIn + callsIn === 0) { skipped++; continue; } // nothing happened → no "report ready" noise
     if (biz.userId) {
       const { requireModule } = await import('@/lib/moduleGating');
-      const gate = await requireModule(String(biz.userId), 'sales_agent');
+      const gate = await requireModule(String(biz.userId), 'sales_agent', String(biz._id));
       if (!gate.ok) { skipped++; continue; } // CRM not on this plan → the report page would be locked
     }
 

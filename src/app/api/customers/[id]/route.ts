@@ -3,11 +3,15 @@ import dbConnect from '@/lib/mongodb';
 import Customer from '@/models/Customer';
 import ReviewRequest from '@/models/ReviewRequest';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 /** Owner edits to a customer: groups (tags), opt-out, service info. */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
 
   try {
     await dbConnect();
@@ -52,6 +56,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
 
   try {
     await dbConnect();

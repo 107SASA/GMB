@@ -180,6 +180,21 @@ export async function POST(req: Request) {
       }
     }
 
+    // Platform-wide safety net: each NEW report spends real money (DataForSEO,
+    // Google, Groq) and the phone is not verified first, so rotating IPs and
+    // made-up numbers could otherwise run unlimited reports on our bill.
+    // Counted here, just before a report is created, so invalid form posts and
+    // reused reports (free) don't use up the quota. Resets 00:00 UTC (05:30 IST).
+    const dailyCap = Number(process.env.FREE_REPORT_DAILY_CAP) || 500;
+    const globalRate = await checkDurableRateLimit('free-report-global', dailyCap, 24 * 60 * 60 * 1000);
+    if (!globalRate.allowed && !isQaTestingMode()) {
+      console.error(`[free-report] daily cap of ${dailyCap} reached — new free reports are paused until tomorrow (FREE_REPORT_DAILY_CAP).`);
+      return NextResponse.json(
+        { error: 'We are getting a lot of requests right now. Please try again tomorrow, or message us on WhatsApp.' },
+        { status: 429 }
+      );
+    }
+
     const audit = await createPendingAuditAndDispatch(business, organization, user);
     await attachAudit(audit._id);
 

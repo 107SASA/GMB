@@ -6,6 +6,7 @@ import { phoneDedupeKey } from '@/lib/phone';
 import { buildCustomerLeadIndex, createOrUpdateCustomerLead } from '@/services/crm/customerLeads';
 import { canonicalSource } from '@/services/crm/sources';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const runtime = 'nodejs';
 
@@ -43,6 +44,9 @@ export async function POST(req: NextRequest) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+    const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+    if (!planGate.ok) return planGate.response;
 
     const formData = await req.formData();
     const file = formData.get('file') as File | null;

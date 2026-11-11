@@ -19,7 +19,7 @@ export async function GET(req: Request) {
 
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
-    const gate = await requireModule(ctx.userId, 'sales_agent');
+    const gate = await requireModule(ctx.userId, 'sales_agent', ctx.businessId);
     if (!gate.ok) return gate.response;
 
     await dbConnect();
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
 
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
-    const gate = await requireModule(ctx.userId, 'sales_agent');
+    const gate = await requireModule(ctx.userId, 'sales_agent', ctx.businessId);
     if (!gate.ok) return gate.response;
 
     await dbConnect();

@@ -6,6 +6,7 @@ import { createProposal, locationIdFor, ProposalConflictError } from '@/services
 import { buildAttributeWrite, buildServiceWrite, canonicalFingerprint, mergeRegularHours, mergeSpecialHours, toGoogleHours, validateBusinessName, validateDescription, validateRegularHours, validateServiceArea, validateSpecialHours, withGbpUtm, type HoursPeriodIn, type SpecialHourIn } from '@/services/gbp/changes/policy';
 import { listCategoryAttributes, readLocationAttributes, readLocationRaw } from '@/lib/gbpClient';
 import GbpLocationSnapshot from '@/models/GbpLocationSnapshot';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +50,9 @@ export async function GET() {
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ success: false, error: parsed.error.issues[0]?.message || 'Invalid change.' }, { status: 400 });

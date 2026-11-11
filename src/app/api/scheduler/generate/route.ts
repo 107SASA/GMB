@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     // Now" button only — the autopilot cron dispatches its own Inngest
     // event directly and never goes through this HTTP route, so it's
     // unaffected by this gate.
-    const gate = await requireModule(ctx.userId, 'content_studio');
+    const gate = await requireModule(ctx.userId, 'content_studio', ctx.businessId);
     if (!gate.ok) return gate.response;
 
     const rl = checkRateLimit(`scheduler-generate:${ctx.userId}`, RATE_LIMIT, RATE_WINDOW_MS);

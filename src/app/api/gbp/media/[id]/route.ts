@@ -4,6 +4,7 @@ import { requireBusinessContext } from '@/lib/tenant';
 import { updateAssetCategory, deleteAsset } from '@/lib/gbpMediaService';
 import { GBPAuthError } from '@/lib/gbpClient';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,9 @@ const patchSchema = z.object({
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
   const { id } = await params;
 
   const body = await req.json().catch(() => null);
@@ -44,6 +48,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
   const { id } = await params;
 
   try {

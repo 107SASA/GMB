@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireBusinessContext } from '@/lib/tenant';
 import { resolveAreaPlaces } from '@/lib/gbpClient';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,9 @@ const bodySchema = z.object({
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ success: false, error: 'Provide up to 20 city or PIN queries.' }, { status: 400 });

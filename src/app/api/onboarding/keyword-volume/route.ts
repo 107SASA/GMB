@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireBusinessContext } from '@/lib/tenant';
 import { ownerKeywordVolumes } from '@/services/seo/ownerKeywordVolume';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,9 @@ const bodySchema = z.object({ keywords: z.array(z.string().max(120)).min(1).max(
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature (live keyword data costs money): needs this workspace's plan.
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ success: false, error: 'Invalid keywords.' }, { status: 400 });
   const { volumes, limited } = await ownerKeywordVolumes(String(ctx.businessId), parsed.data.keywords, (ctx.business as any)?.country);

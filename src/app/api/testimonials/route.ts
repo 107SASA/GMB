@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireBusinessContext } from '@/lib/tenant';
 import Testimonial from '@/models/Testimonial';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 /**
  * A client's testimonial about GrowwMatics itself, submitted in one go
@@ -16,6 +17,9 @@ import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
 
   try {
     // One-time-only (owner's explicit call, Sep 2026) — a business gets

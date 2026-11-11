@@ -5,6 +5,7 @@ import { GBPAuthError } from '@/lib/gbpClient';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,9 @@ export const dynamic = 'force-dynamic';
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
   const { id } = await params;
 
   if (!ctx.business.googleConnected) {

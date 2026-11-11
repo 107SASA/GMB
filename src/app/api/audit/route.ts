@@ -78,6 +78,27 @@ export async function POST(req: Request) {
     // endpoint stays open ONLY for (a) SUPER_ADMIN (support/debugging) and
     // (b) the one-time freemium trial report a brand-new, unsubscribed
     // workspace still gets so it can see value before paying.
+    // One free report per ACCOUNT, not per workspace: workspaces are free to
+    // add, so a per-workspace allowance meant unlimited paid-for audits
+    // (DataForSEO / Google / Groq) by adding workspaces.
+    // freeAuditUsed is only set once a report COMPLETES, so a free audit still
+    // running on another unpaid workspace counts too (no parallel freebies).
+    let freeAuditUsedElsewhere = false;
+    if (!workspaceUnlocked && !business.freeAuditUsed && authResult.user.role !== 'SUPER_ADMIN') {
+      const others = await Business.find({ userId: authResult.userId, _id: { $ne: business._id } })
+        .select('_id freeAuditUsed subscriptionStatus')
+        .lean<Array<{ _id: unknown; freeAuditUsed?: boolean; subscriptionStatus?: string }>>();
+      const unpaidOthers = others.filter((o) => !['active', 'trial_active'].includes(o.subscriptionStatus || '')).map((o) => o._id);
+      freeAuditUsedElsewhere =
+        others.some((o) => o.freeAuditUsed) ||
+        (unpaidOthers.length > 0 && Boolean(await Audit.exists({ businessId: { $in: unpaidOthers as any[] }, status: { $in: ['PENDING', 'COMPLETED'] } })));
+    }
+    if (freeAuditUsedElsewhere) {
+      return NextResponse.json(
+        { error: 'Your free audit was already used on another workspace. Subscribe this workspace to audit it.', code: 'UPGRADE_REQUIRED' },
+        { status: 403 }
+      );
+    }
     const isFreemiumTrialAudit = !workspaceUnlocked && !business.freeAuditUsed;
     if (authResult.user.role !== 'SUPER_ADMIN' && !isFreemiumTrialAudit) {
       return NextResponse.json(

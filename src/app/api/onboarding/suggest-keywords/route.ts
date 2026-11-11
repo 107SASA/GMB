@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireBusinessContext } from '@/lib/tenant';
 import { suggestTargetKeywords } from '@/services/ai';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +30,9 @@ const BATCH = 8;
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature (live keyword data costs money): needs this workspace's plan.
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
 
   const rl = checkRateLimit(`suggest-keywords:${ctx.userId}`, 20, 5 * 60 * 1000);
   if (!rl.allowed) {

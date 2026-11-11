@@ -6,6 +6,7 @@ import { requireBusinessContext } from '@/lib/tenant';
 import mongoose from 'mongoose';
 import { customerLeadFilter } from '@/services/crm/access';
 import { createOrUpdateCustomerLead, logLeadActivity } from '@/services/crm/customerLeads';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export async function GET(_req: NextRequest) {
   try {
@@ -38,6 +39,9 @@ export async function POST(req: NextRequest) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+    const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+    if (!planGate.ok) return planGate.response;
 
     await dbConnect();
     const body = await req.json().catch(() => ({}));

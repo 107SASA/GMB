@@ -174,7 +174,8 @@ export async function POST(req: Request) {
       newOrg = await Organization.create({
         name: body.businessName || 'My Organization',
         ownerId: newUser._id,
-        subscriptionPlan: body.selectedPlan === 'starter' ? 'Free' : 'Pro',
+        // Never from the browser: a paid plan is only ever set by the billing webhook.
+        subscriptionPlan: 'Free',
       });
       createdOrgId = newOrg._id.toString();
 

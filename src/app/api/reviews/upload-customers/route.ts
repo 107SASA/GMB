@@ -3,11 +3,15 @@ import dbConnect from '@/lib/mongodb';
 import Customer from '@/models/Customer';
 import { parse } from 'csv-parse/sync';
 import { requireBusinessContext } from '@/lib/tenant';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export async function POST(request: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+    const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+    if (!planGate.ok) return planGate.response;
 
     await dbConnect();
     const formData = await request.formData();

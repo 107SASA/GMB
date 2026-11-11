@@ -4,6 +4,7 @@ import dbConnect from "@/lib/mongodb";
 import Customer from "@/models/Customer";
 import { requireBusinessContext } from "@/lib/tenant";
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 // SEC-13 — bound the work a single upload can trigger (memory + a per-row
 // findOne/save loop). A customer list well past these limits should be split.
@@ -14,6 +15,9 @@ export async function POST(req: NextRequest) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
+    // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+    const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+    if (!planGate.ok) return planGate.response;
 
     await dbConnect();
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { syncReviewsForBusiness } from "@/services/reviews/syncReviews";
 import { requireBusinessContext } from "@/lib/tenant";
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 // Triggered by a cron job or n8n webhook — requires a valid session.
 //
@@ -25,6 +26,9 @@ export async function POST(request: Request) {
 
     const ctx = await requireBusinessContext({ businessIdFromBody: businessIdFromQuery });
     if (!ctx.ok) return ctx.response;
+    // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+    const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+    if (!planGate.ok) return planGate.response;
 
     const result = await syncReviewsForBusiness(ctx.businessId, ctx.organizationId, { requireGbp: true });
 

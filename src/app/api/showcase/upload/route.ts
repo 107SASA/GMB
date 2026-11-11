@@ -3,6 +3,7 @@ import { requireBusinessContext } from '@/lib/tenant';
 import { uploadPublicObject, isStorageConfigured } from '@/lib/storage';
 import ShowcaseAsset, { ShowcaseMediaType } from '@/models/ShowcaseAsset';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,9 @@ const VIDEO_TYPES = ['video/webm', 'video/mp4', 'video/quicktime'];
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Paid feature: this workspace needs its own plan (lib/planGate.ts).
+  const planGate = await requireWorkspacePlan(ctx.userId, ctx.businessId);
+  if (!planGate.ok) return planGate.response;
 
   if (!isStorageConfigured()) {
     return NextResponse.json(

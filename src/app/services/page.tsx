@@ -1,35 +1,19 @@
 import type { Metadata } from "next";
-import { sharedOpenGraph } from "@/lib/seo";
+import { cmsMetadata } from "@/lib/cms/content";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { breadcrumbSchema } from "@/lib/seoSchemas";
 import { COMPANY } from "@/lib/companyInfo";
 import { SERVICES } from "@/lib/servicesData";
 import { ServicesHub } from "@/components/services/ServicesHub";
 
-export const metadata: Metadata = {
-  title: "Local SEO & Digital Marketing Services",
-  description:
-    "SEO, Performance Marketing, Marketing Automation, Process Implementation and Business Consultation for local businesses — all built around your Google Business Profile.",
-  keywords: [
-    "OnDemand Service",
-    "local business services",
-    "Google Business Profile services",
-    "SEO",
-    "performance marketing",
-    "marketing automation",
-    "process implementation",
-    "business consultation",
-  ],
-  alternates: { canonical: "/services" },
-  openGraph: {
-    ...sharedOpenGraph,
-    title: "Local SEO & Digital Marketing Services | Growwmatics AI",
-    description:
-      "SEO, Performance Marketing, Marketing Automation, Process Implementation and Business Consultation for local businesses.",
-    url: "/services",
-    type: "website",
-  },
-};
+// Text editable in Content Studio → Website pages (defaults: src/lib/cms/pages.ts).
+export async function generateMetadata(): Promise<Metadata> {
+  return cmsMetadata("services");
+}
+
+// Rebuilt the moment a Content Studio change is approved; hourly as a safety
+// net (e.g. if the database was unreachable while building).
+export const revalidate = 3600;
 
 const itemListSchema = {
   "@context": "https://schema.org",

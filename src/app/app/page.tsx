@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
+import { cmsMetadata } from "@/lib/cms/content";
 import Link from "next/link";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { appStoreUrl, playStoreUrl } from "@/lib/appStoreLinks";
 
-export const metadata: Metadata = {
-  title: "Get the App",
-  description:
-    "Download the Growwmatics AI mobile app to manage your Google Business Profile, reviews, content, and leads from your phone.",
-  alternates: { canonical: "/app" },
-};
+// Text editable in Content Studio → Website pages (defaults: src/lib/cms/pages.ts).
+export async function generateMetadata(): Promise<Metadata> {
+  return cmsMetadata("app");
+}
+
+// Rebuilt the moment a Content Studio change is approved; hourly as a safety
+// net (e.g. if the database was unreachable while building).
+export const revalidate = 3600;
 
 const PLAY_STORE_URL = playStoreUrl();
 // Set NEXT_PUBLIC_APP_STORE_URL once the iOS app is live on the App Store.

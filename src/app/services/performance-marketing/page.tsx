@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { sharedOpenGraph } from "@/lib/seo";
+import { cmsMetadata, cmsFaqs } from "@/lib/cms/content";
 import { notFound } from "next/navigation";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { serviceSchema, faqPageSchema, breadcrumbSchema } from "@/lib/seoSchemas";
@@ -10,26 +10,22 @@ const SLUG = "performance-marketing";
 const service = getServiceBySlug(SLUG);
 if (!service) throw new Error(`servicesData missing entry for slug "${SLUG}"`);
 
-export const metadata: Metadata = {
-  title: service.metaTitle,
-  description: service.metaDescription,
-  keywords: service.keywords,
-  alternates: { canonical: `/services/${service.slug}` },
-  openGraph: {
-    ...sharedOpenGraph,
-    title: service.metaTitle,
-    description: service.metaDescription,
-    url: `/services/${service.slug}`,
-    type: "website",
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return cmsMetadata(`service-${SLUG}`);
+}
 
-export default function PerformanceMarketingServicePage() {
+// Rebuilt the moment a Content Studio change is approved; hourly as a safety
+// net (e.g. if the database was unreachable while building).
+export const revalidate = 3600;
+
+export default async function PerformanceMarketingServicePage() {
   if (!service) return notFound();
+  // FAQs are editable in Content Studio → Website pages.
+  const faqs = await cmsFaqs(`service-${SLUG}`);
   return (
     <>
       <JsonLd data={serviceSchema(service)} />
-      <JsonLd data={faqPageSchema(service.faqs)} />
+      <JsonLd data={faqPageSchema(faqs)} />
       <JsonLd
         data={breadcrumbSchema([
           { name: "Home", path: "/" },
@@ -37,7 +33,7 @@ export default function PerformanceMarketingServicePage() {
           { name: service.name, path: `/services/${service.slug}` },
         ])}
       />
-      <ServicePageTemplate service={service} />
+      <ServicePageTemplate service={{ ...service, faqs }} />
     </>
   );
 }

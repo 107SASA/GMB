@@ -114,12 +114,15 @@ async function handlePOST(req: Request) {
 
     const hashedPassword = await bcrypt.hash(password, 12);
     try {
+      // Invites made before team roles have no `role` — those were always super admin.
+      const isTeam = (claimed as any).role === 'TEAM_MEMBER';
       await User.create({
         fullName: name.trim(),
         email: invite.email,
         passwordHash: hashedPassword,
         phone: normalizedPhone,
-        role: 'SUPER_ADMIN',
+        role: isTeam ? 'TEAM_MEMBER' : 'SUPER_ADMIN',
+        ...(isTeam ? { teamPermissions: (claimed as any).permissions || [] } : {}),
         isEmailVerified: true,
       });
     } catch (err) {
@@ -128,9 +131,11 @@ async function handlePOST(req: Request) {
       throw err;
     }
 
+    const isTeamInvite = (claimed as any).role === 'TEAM_MEMBER';
     return NextResponse.json({
       success: true,
-      message: 'Super admin account created successfully',
+      role: isTeamInvite ? 'TEAM_MEMBER' : 'SUPER_ADMIN',
+      message: isTeamInvite ? 'Team account created successfully' : 'Super admin account created successfully',
     });
   } catch (error: any) {
     console.error('Accept Invite Error:', error);

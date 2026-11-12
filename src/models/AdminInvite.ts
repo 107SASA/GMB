@@ -16,6 +16,10 @@ export interface IAdminInvite extends Document {
   email: string;
   tokenHash: string;
   invitedBy: mongoose.Types.ObjectId;
+  /** Account this invite creates. Missing on invites made before team roles = SUPER_ADMIN. */
+  role?: 'SUPER_ADMIN' | 'TEAM_MEMBER';
+  /** TEAM_MEMBER only — Content Studio areas granted (see User.teamPermissions). */
+  permissions?: ('blog' | 'cms')[];
   status: 'pending' | 'accepted' | 'expired';
   expiresAt: Date;
   createdAt: Date;
@@ -27,6 +31,8 @@ const AdminInviteSchema: Schema = new Schema(
     email: { type: String, required: true, lowercase: true, trim: true },
     tokenHash: { type: String, required: true, unique: true },
     invitedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    role: { type: String, enum: ['SUPER_ADMIN', 'TEAM_MEMBER'], default: 'SUPER_ADMIN' },
+    permissions: { type: [String], enum: ['blog', 'cms'], default: undefined },
     status: {
       type: String,
       enum: ['pending', 'accepted', 'expired'],

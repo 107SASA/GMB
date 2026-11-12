@@ -76,6 +76,16 @@ export function Footer({ hideBoosterPromo = false }: { hideBoosterPromo?: boolea
               </Link>
             </li>
             <li>
+              <Link href="/blog" className={FOOTER_LINK}>
+                Blog
+              </Link>
+            </li>
+            <li>
+              <Link href="/hi/blog" hrefLang="hi" className={FOOTER_LINK}>
+                हिन्दी ब्लॉग
+              </Link>
+            </li>
+            <li>
               <a
                 href={boostProfileLink()}
                 {...(bookDemoOpensWhatsApp ? { target: "_blank", rel: "noopener noreferrer" } : {})}

@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
+import { cmsMetadata } from "@/lib/cms/content";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { BookDemoButton } from "@/components/shared/BookDemoButton";
 import { FreeReportButton } from "@/components/shared/FreeReportButton";
 import { InkCtaPanel } from "@/components/shared/InkCtaPanel";
 
-export const metadata: Metadata = {
-  title: "About Us",
-  description:
-    "Growwmatics AI builds AI-powered tools that help local businesses win on Google — audits, content, reviews, and lead conversion in one platform.",
-  alternates: { canonical: "/about" },
-};
+// Text editable in Content Studio → Website pages (defaults: src/lib/cms/pages.ts).
+export async function generateMetadata(): Promise<Metadata> {
+  return cmsMetadata("about");
+}
+
+// Rebuilt the moment a Content Studio change is approved; hourly as a safety
+// net (e.g. if the database was unreachable while building).
+export const revalidate = 3600;
 
 const STATS = [
   { value: "2.3+ Cr", label: "Micro businesses in India" },

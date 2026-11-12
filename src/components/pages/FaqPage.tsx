@@ -5,11 +5,11 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { FaqAccordion } from "@/components/shared/FaqAccordion";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
-import { ALL_FAQS } from "@/lib/faqData";
+import { ALL_FAQS, type FaqEntry } from "@/lib/faqData";
 import { BookDemoButton } from "@/components/shared/BookDemoButton";
 import { InkCtaPanel } from "@/components/shared/InkCtaPanel";
 
-export function FaqPage() {
+export function FaqPage({ faqs = ALL_FAQS }: { faqs?: FaqEntry[] }) {
   return (
     <main className="theme-marketing min-h-screen bg-(--mkt-surface) selection:bg-primary-fixed">
       <Navbar />
@@ -34,7 +34,7 @@ export function FaqPage() {
 
       <section className="py-10 px-6 max-w-3xl mx-auto">
         <div className="bg-white rounded-xl border border-(--mkt-line) shadow-sm p-6 md:p-8">
-          <FaqAccordion faqs={ALL_FAQS} defaultOpenIndex={0} />
+          <FaqAccordion faqs={faqs} defaultOpenIndex={0} />
         </div>
       </section>
 

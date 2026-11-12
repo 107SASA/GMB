@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
+import { cmsMetadata } from "@/lib/cms/content";
 import Link from "next/link";
 import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 import { COMPANY } from "@/lib/companyInfo";
 
-export const metadata: Metadata = {
-  // See contact/page.tsx — root layout's template appends " | GrowwMatics AI"
-  // already; don't repeat it here or the rendered <title> doubles it up.
-  title: "Privacy Policy",
-  description:
-    "How Growwmatics AI collects, uses, stores, and protects your data, including Google Business Profile data accessed through the Google APIs.",
-  alternates: { canonical: "/privacy" },
-};
+// Text editable in Content Studio → Website pages (defaults: src/lib/cms/pages.ts).
+export async function generateMetadata(): Promise<Metadata> {
+  return cmsMetadata("privacy");
+}
+
+// Rebuilt the moment a Content Studio change is approved; hourly as a safety
+// net (e.g. if the database was unreachable while building).
+export const revalidate = 3600;
 
 export default function PrivacyPolicyPage() {
   return (

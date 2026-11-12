@@ -61,7 +61,8 @@ export default function InvitesPage() {
       const res = await fetch('/api/admin/invites');
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
-      setInvites(json.data);
+      // Team-member (Content Studio) invites live on /admin/team.
+      setInvites((json.data as any[]).filter((i) => i.role !== 'TEAM_MEMBER'));
     } catch (err: any) {
       setError(friendlyClientMessage(err));
     } finally {
@@ -161,7 +162,7 @@ export default function InvitesPage() {
           </div>
           <div>
             <h1 className="font-heading text-2xl font-bold text-on-surface">Admin Invites</h1>
-            <p className="text-sm text-on-surface-variant">Invite new super admins to the platform</p>
+            <p className="text-sm text-on-surface-variant">Invite new super admins (full access). For the marketing team use <a href="/admin/team" className="font-semibold text-primary underline">Marketing Team</a>.</p>
           </div>
         </div>
         <button

@@ -12,6 +12,7 @@ const navLinks = [
   { name: "How it Works", href: "/#features" },
   { name: "Showcase", href: "/showcase" },
   { name: "About Us", href: "/about" },
+  { name: "Blog", href: "/blog" },
   { name: "Free GBP Report", href: "/free-report" },
   { name: "Partners", href: "/growth-partner" },
 ];

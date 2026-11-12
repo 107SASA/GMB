@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     const plan   = searchParams.get('plan')   || 'all';
     const skip   = (page - 1) * limit;
 
-    const query: any = { role: { $nin: ['SUPER_ADMIN', 'GROWTH_PARTNER'] } };
+    const query: any = { role: { $nin: ['SUPER_ADMIN', 'GROWTH_PARTNER', 'TEAM_MEMBER'] } };
     if (search.trim()) {
       query.$or = [
         { fullName: { $regex: search.trim(), $options: 'i' } },

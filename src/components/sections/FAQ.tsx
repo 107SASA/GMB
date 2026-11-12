@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { FaqAccordion } from "@/components/shared/FaqAccordion";
-import { HOMEPAGE_FAQS } from "@/lib/faqData";
+import { HOMEPAGE_FAQS, type FaqEntry } from "@/lib/faqData";
 
-export function FAQ() {
+/** `faqs` = the approved list from Content Studio (falls back to the built-in one). */
+export function FAQ({ faqs = HOMEPAGE_FAQS }: { faqs?: FaqEntry[] }) {
   return (
     <section id="faq" className="py-14 sm:py-20 md:py-24 px-4 sm:px-6 md:px-12 bg-(--mkt-surface)">
       <div className="max-w-3xl mx-auto">
@@ -13,7 +14,7 @@ export function FAQ() {
           Common questions from business owners
         </h2>
 
-        <FaqAccordion faqs={HOMEPAGE_FAQS} />
+        <FaqAccordion faqs={faqs} />
 
         <div className="text-center mt-10">
           <Link href="/faq" className="inline-block py-2.5 -my-2.5 text-sm font-semibold text-[#006e2c] hover:underline">

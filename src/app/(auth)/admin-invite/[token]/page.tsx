@@ -75,7 +75,7 @@ export default function AcceptInvitePage() {
           </div>
           <h1 className="font-heading text-2xl font-bold text-on-surface mb-2">Account Created!</h1>
           <p className="text-on-surface-variant text-sm">
-            Your super admin account has been created successfully. Redirecting to login...
+            Your account has been created successfully. Redirecting to login...
           </p>
         </div>
       </div>
@@ -90,7 +90,7 @@ export default function AcceptInvitePage() {
             <ShieldCheck className="w-7 h-7 text-white" />
           </div>
           <h1 className="font-heading text-2xl font-bold text-on-surface">Accept Admin Invite</h1>
-          <p className="text-sm text-on-surface-variant mt-1">Set up your super admin account</p>
+          <p className="text-sm text-on-surface-variant mt-1">Set up your account</p>
         </div>
 
         {error && (

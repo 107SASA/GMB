@@ -59,6 +59,7 @@ import {
 import { issueCompanyInvoice, companyInvoiceSweep } from "@/services/inngest/invoiceFunctions";
 import { whatsappCampaignSend } from "@/services/inngest/whatsappCampaign";
 import { serviceMonitorCron } from "@/services/inngest/serviceMonitorFunctions";
+import { blogScheduledPublishCron } from "@/services/inngest/blogFunctions";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -123,5 +124,6 @@ export const { GET, POST, PUT } = serve({
     accountHardPurgeCron,
     whatsappCampaignSend,
     serviceMonitorCron,
+    blogScheduledPublishCron,
   ],
 });

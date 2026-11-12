@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { sharedOpenGraph } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { breadcrumbSchema } from "@/lib/seoSchemas";
 import { FeaturesPage } from "@/components/pages/FeaturesPage";
@@ -10,6 +11,7 @@ export const metadata: Metadata = {
   keywords: ["Growwmatics AI features", "Google Business Profile automation", "review automation", "AI GBP audit"],
   alternates: { canonical: "/features" },
   openGraph: {
+    ...sharedOpenGraph,
     title: "Features — AI Google Business Profile Management | Growwmatics AI",
     description: "Everything included in Growwmatics AI's Google Business Profile growth platform.",
     url: "/features",

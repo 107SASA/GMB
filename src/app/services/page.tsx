@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { sharedOpenGraph } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { breadcrumbSchema } from "@/lib/seoSchemas";
 import { COMPANY } from "@/lib/companyInfo";
@@ -21,6 +22,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: "/services" },
   openGraph: {
+    ...sharedOpenGraph,
     title: "Local SEO & Digital Marketing Services | Growwmatics AI",
     description:
       "SEO, Performance Marketing, Marketing Automation, Process Implementation and Business Consultation for local businesses.",

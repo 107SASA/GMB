@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { sharedOpenGraph } from "@/lib/seo";
 
 // pricing/page.tsx is a Client Component ('use client', live Razorpay
 // checkout state) so it can't export `metadata` itself — a layout.tsx in the
@@ -13,6 +14,7 @@ export const metadata: Metadata = {
   keywords: ["Growwmatics AI pricing", "Google Business Profile pricing", "local SEO software pricing"],
   alternates: { canonical: "/pricing" },
   openGraph: {
+    ...sharedOpenGraph,
     title: "Pricing — Google Business Profile Management Plan | Growwmatics AI",
     description: "Simple, single-plan pricing for Growwmatics AI.",
     url: "/pricing",

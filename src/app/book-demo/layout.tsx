@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { sharedOpenGraph } from "@/lib/seo";
 
 // book-demo/page.tsx is a Client Component ('use client', form state +
 // useSearchParams) so it can't export `metadata` itself — see
@@ -10,6 +11,7 @@ export const metadata: Metadata = {
     "See how Growwmatics AI can grow your Google Business Profile — book a free demo and we'll walk you through it on WhatsApp.",
   alternates: { canonical: "/book-demo" },
   openGraph: {
+    ...sharedOpenGraph,
     title: "Book a Free Demo | Growwmatics AI",
     description: "See how Growwmatics AI can grow your Google Business Profile.",
     url: "/book-demo",

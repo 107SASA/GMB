@@ -41,8 +41,9 @@ export default function AdminLoginPage() {
     setInfo('');
   };
 
-  const finish = () => {
-    router.push('/admin');
+  // Content Studio team members have no /admin access — they land on /studio.
+  const finish = (role?: string) => {
+    router.push(role === 'TEAM_MEMBER' ? '/studio' : '/admin');
     router.refresh();
   };
 
@@ -81,7 +82,7 @@ export default function AdminLoginPage() {
         setCooldown(data.emailSent === false ? 0 : 60);
         return;
       }
-      finish();
+      finish(data.user?.role);
     } catch {
       setError('Network error — please try again');
     } finally {
@@ -109,7 +110,7 @@ export default function AdminLoginPage() {
         codeRef.current?.focus();
         return;
       }
-      finish();
+      finish(data.user?.role);
     } catch {
       setError('Network error — please try again');
     } finally {

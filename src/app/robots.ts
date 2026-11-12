@@ -30,6 +30,12 @@ export default function robots(): MetadataRoute.Robots {
           "/review/",
           "/go/",
           "/verify-phone",
+          // Content Studio (marketing team's editor) and its draft previews.
+          "/studio",
+          "/admin-invite/",
+          "/partner",
+          "/partner-login",
+          "/partner-invite/",
         ],
       },
     ],

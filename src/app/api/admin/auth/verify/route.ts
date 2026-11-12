@@ -46,7 +46,7 @@ async function handlePOST(req: Request) {
 
     await dbConnect();
     const user = await User.findById(result.userId).select('_id role sessionEpoch isDeleted fullName email').lean<any>();
-    if (!user || user.role !== 'SUPER_ADMIN' || user.isDeleted) {
+    if (!user || (user.role !== 'SUPER_ADMIN' && user.role !== 'TEAM_MEMBER') || user.isDeleted) {
       return NextResponse.json({ success: false, error: 'This sign-in has expired. Please sign in again.', restart: true }, { status: 401 });
     }
 

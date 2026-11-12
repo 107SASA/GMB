@@ -1,19 +1,14 @@
 import type { Metadata } from 'next';
-import { sharedOpenGraph } from "@/lib/seo";
+import { cmsMetadata } from "@/lib/cms/content";
 
-export const metadata: Metadata = {
-  title: 'Become a Growth Partner',
-  description:
-    'Agencies, freelancers and consultants: bring local businesses to Growwmatics AI and earn commission on their first payment and every renewal.',
-  alternates: { canonical: '/growth-partner' },
-  openGraph: {
-    ...sharedOpenGraph,
-    title: 'Become a Growth Partner | Growwmatics AI',
-    description: 'Earn recurring commission for every business you bring to Growwmatics AI.',
-    url: '/growth-partner',
-    type: 'website',
-  },
-};
+// Text editable in Content Studio → Website pages (defaults: src/lib/cms/pages.ts).
+export async function generateMetadata(): Promise<Metadata> {
+  return cmsMetadata("growth-partner");
+}
+
+// Rebuilt the moment a Content Studio change is approved; hourly as a safety
+// net (e.g. if the database was unreachable while building).
+export const revalidate = 3600;
 
 export default function GrowthPartnerLayout({ children }: { children: React.ReactNode }) {
   return <div className="theme-marketing">{children}</div>;

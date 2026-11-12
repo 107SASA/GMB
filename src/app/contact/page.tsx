@@ -1,18 +1,19 @@
 import type { Metadata } from "next";
+import { cmsMetadata } from "@/lib/cms/content";
 import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 import { COMPANY } from "@/lib/companyInfo";
 import { bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { BookDemoButton } from "@/components/shared/BookDemoButton";
 
-export const metadata: Metadata = {
-  // Root layout's title.template already appends " | GrowwMatics AI" — a
-  // plain string here previously duplicated it into "...GrowwMatics AI |
-  // GrowwMatics AI" in the rendered <title>. Just the page name here.
-  title: "Contact Us",
-  description: "Get in touch with the Growwmatics AI team — questions about the product, your subscription, or support.",
-  alternates: { canonical: "/contact" },
-};
+// Text editable in Content Studio → Website pages (defaults: src/lib/cms/pages.ts).
+export async function generateMetadata(): Promise<Metadata> {
+  return cmsMetadata("contact");
+}
+
+// Rebuilt the moment a Content Studio change is approved; hourly as a safety
+// net (e.g. if the database was unreachable while building).
+export const revalidate = 3600;
 
 export default function ContactPage() {
   return (

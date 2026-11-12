@@ -38,16 +38,39 @@ const INVITE_TTL_HOURS = 48;
 
 const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
+type InviteRole = 'SUPER_ADMIN' | 'TEAM_MEMBER';
+type TeamPerm = 'blog' | 'cms';
+
+/** Role + Content Studio permissions from the request body. Defaults to a Super Admin invite (the original behaviour). */
+function parseRole(body: any): { role: InviteRole; permissions: TeamPerm[] } | { error: string } {
+  if (body?.role !== 'TEAM_MEMBER') return { role: 'SUPER_ADMIN', permissions: [] };
+  const permissions = (Array.isArray(body?.permissions) ? body.permissions : []).filter(
+    (p: unknown): p is TeamPerm => p === 'blog' || p === 'cms'
+  );
+  const unique = [...new Set(permissions)] as TeamPerm[];
+  if (unique.length === 0) return { error: 'Choose at least one area: Blog or Website pages.' };
+  return { role: 'TEAM_MEMBER', permissions: unique };
+}
+
+const PERM_LABEL: Record<TeamPerm, string> = { blog: 'Blog', cms: 'Website pages' };
+
+function roleLine(role: InviteRole, permissions: TeamPerm[] = []) {
+  return role === 'TEAM_MEMBER'
+    ? `a <b>Content Studio team member</b> (${permissions.map((p) => PERM_LABEL[p]).join(' + ')})`
+    : 'a <b>super admin</b>';
+}
+
 /** Emails the invite link. Never throws; the link is also shown in the panel to copy. */
-async function emailInvite(to: string, link: string, invitedByName: string) {
+async function emailInvite(to: string, link: string, invitedByName: string, role: InviteRole = 'SUPER_ADMIN', permissions: TeamPerm[] = []) {
   const { sendTransactionalEmail } = await import('@/services/email');
   const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;border:1px solid #eaeaea;border-radius:8px">
-    <h2 style="margin:0 0 12px;color:#1a1a2e">You're invited to the Growwmatics AI admin panel</h2>
-    <p style="color:#555;font-size:15px">${esc(invitedByName)} invited you to join as a <b>super admin</b>.</p>
+    <h2 style="margin:0 0 12px;color:#1a1a2e">You're invited to ${role === 'TEAM_MEMBER' ? 'the Growwmatics AI Content Studio' : 'the Growwmatics AI admin panel'}</h2>
+    <p style="color:#555;font-size:15px">${esc(invitedByName)} invited you to join as ${roleLine(role, permissions)}.</p>
     <p style="text-align:center;margin:28px 0"><a href="${link}" style="background:#4f6ef7;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:bold">Accept invite</a></p>
     <p style="color:#888;font-size:13px">This link works once and expires in ${INVITE_TTL_HOURS} hours. If you weren't expecting this, ignore this email.</p>
   </div>`;
-  const r = await sendTransactionalEmail(to, 'Your Growwmatics AI super admin invite', html, undefined, { ignoreQaSuppression: true });
+  const subject = role === 'TEAM_MEMBER' ? 'Your Growwmatics AI Content Studio invite' : 'Your Growwmatics AI super admin invite';
+  const r = await sendTransactionalEmail(to, subject, html, undefined, { ignoreQaSuppression: true });
   if (!r.success) console.error('[admin/invites] invite email failed:', (r as any).error);
   return Boolean(r.success);
 }
@@ -78,6 +101,11 @@ export async function POST(req: Request) {
       );
     }
 
+    const roleChoice = parseRole(body);
+    if ('error' in roleChoice) {
+      return NextResponse.json({ success: false, error: roleChoice.error }, { status: 400 });
+    }
+
     if (await User.exists({ email })) {
       return NextResponse.json(
         { success: false, error: 'A user with this email already exists' },
@@ -105,13 +133,20 @@ export async function POST(req: Request) {
     // An expired pending invite for this email no longer blocks a new one.
     await AdminInvite.updateMany({ email, status: 'pending', expiresAt: { $lte: new Date() } }, { status: 'expired' });
 
-    const invite = await AdminInvite.create({ email, tokenHash, invitedBy: auth.userId, expiresAt: inviteExpiry() });
+    const invite = await AdminInvite.create({
+      email,
+      tokenHash,
+      invitedBy: auth.userId,
+      expiresAt: inviteExpiry(),
+      role: roleChoice.role,
+      ...(roleChoice.role === 'TEAM_MEMBER' ? { permissions: roleChoice.permissions } : {}),
+    });
     const inviteView = invite.toObject();
     delete inviteView.tokenHash;
 
-    const emailSent = await emailInvite(email, inviteLink, (auth.user as any)?.fullName || 'A Growwmatics AI admin');
+    const emailSent = await emailInvite(email, inviteLink, (auth.user as any)?.fullName || 'A Growwmatics AI admin', roleChoice.role, roleChoice.permissions);
     const { logSecurityEvent } = await import('@/services/security/securityLog');
-    await logSecurityEvent(req, { type: 'admin.invite_create', outcome: 'success', severity: 'warning', userId: auth.userId, role: 'SUPER_ADMIN', subject: email, detail: `New super admin invited${emailSent ? ' (emailed)' : ' (email failed — link shown to copy)'}` });
+    await logSecurityEvent(req, { type: 'admin.invite_create', outcome: 'success', severity: 'warning', userId: auth.userId, role: 'SUPER_ADMIN', subject: email, detail: `${roleChoice.role === 'TEAM_MEMBER' ? `New team member invited (${roleChoice.permissions.join(', ')})` : 'New super admin invited'}${emailSent ? ' (emailed)' : ' (email failed — link shown to copy)'}` });
 
     return NextResponse.json({ success: true, data: { invite: inviteView, inviteLink, emailSent } });
   } catch (error: any) {
@@ -155,7 +190,13 @@ export async function PATCH(req: Request) {
     ).select('-tokenHash').lean();
     if (!updated) return NextResponse.json({ success: false, error: 'This invite was already accepted.' }, { status: 400 });
 
-    const emailSent = await emailInvite(invite.email, inviteLink, (auth.user as any)?.fullName || 'A Growwmatics AI admin');
+    const emailSent = await emailInvite(
+      invite.email,
+      inviteLink,
+      (auth.user as any)?.fullName || 'A Growwmatics AI admin',
+      (invite as any).role === 'TEAM_MEMBER' ? 'TEAM_MEMBER' : 'SUPER_ADMIN',
+      ((invite as any).permissions || []) as TeamPerm[]
+    );
     const { logSecurityEvent } = await import('@/services/security/securityLog');
     await logSecurityEvent(req, { type: 'admin.invite_create', outcome: 'success', severity: 'warning', userId: auth.userId, role: 'SUPER_ADMIN', subject: invite.email, detail: `Super admin invite re-sent${emailSent ? ' (emailed)' : ' (email failed — link shown to copy)'}` });
 

@@ -1,23 +1,18 @@
 import type { Metadata } from "next";
-import { sharedOpenGraph } from "@/lib/seo";
+import { cmsMetadata } from "@/lib/cms/content";
 
 // book-demo/page.tsx is a Client Component ('use client', form state +
 // useSearchParams) so it can't export `metadata` itself — see
 // free-report/layout.tsx for why a layout.tsx here fixes that without
 // touching the page's logic.
-export const metadata: Metadata = {
-  title: "Book a Free Demo",
-  description:
-    "See how Growwmatics AI can grow your Google Business Profile — book a free demo and we'll walk you through it on WhatsApp.",
-  alternates: { canonical: "/book-demo" },
-  openGraph: {
-    ...sharedOpenGraph,
-    title: "Book a Free Demo | Growwmatics AI",
-    description: "See how Growwmatics AI can grow your Google Business Profile.",
-    url: "/book-demo",
-    type: "website",
-  },
-};
+// Text editable in Content Studio → Website pages (defaults: src/lib/cms/pages.ts).
+export async function generateMetadata(): Promise<Metadata> {
+  return cmsMetadata("book-demo");
+}
+
+// Rebuilt the moment a Content Studio change is approved; hourly as a safety
+// net (e.g. if the database was unreachable while building).
+export const revalidate = 3600;
 
 export default function BookDemoLayout({ children }: { children: React.ReactNode }) {
   return <div className="theme-marketing">{children}</div>;

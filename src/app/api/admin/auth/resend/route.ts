@@ -25,7 +25,7 @@ async function handlePOST(req: Request) {
     await dbConnect();
     const result = await resendAdminChallenge(challenge, async (userId) => {
       const u = await User.findById(userId).select('email role isDeleted').lean<any>();
-      return u && u.role === 'SUPER_ADMIN' && !u.isDeleted ? u.email : null;
+      return u && (u.role === 'SUPER_ADMIN' || u.role === 'TEAM_MEMBER') && !u.isDeleted ? u.email : null;
     });
 
     if (!result.ok) {

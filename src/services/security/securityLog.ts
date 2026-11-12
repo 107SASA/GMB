@@ -30,6 +30,8 @@ export const SECURITY_EVENT_LABELS: Record<string, string> = {
   'admin.impersonate': 'Signed in as a customer',
   'admin.crm_export': 'Leads exported (CSV)',
   'admin.crm_import': 'Leads imported (CSV)',
+  'admin.team_update': 'Team member access changed',
+  'admin.team_remove': 'Team member removed',
   'webhook.signature_invalid': 'Webhook with a bad signature',
   'security.alert': 'Alert raised',
 };

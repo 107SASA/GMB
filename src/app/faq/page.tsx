@@ -1,36 +1,32 @@
 import type { Metadata } from "next";
-import { sharedOpenGraph } from "@/lib/seo";
+import { cmsMetadata, cmsFaqs } from "@/lib/cms/content";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { faqPageSchema, breadcrumbSchema } from "@/lib/seoSchemas";
-import { ALL_FAQS } from "@/lib/faqData";
 import { FaqPage } from "@/components/pages/FaqPage";
 
-export const metadata: Metadata = {
-  title: "FAQ",
-  description:
-    "Answers to common questions about Growwmatics AI — Google Business Profile automation, free reports, WhatsApp automation, pricing, and multi-location support.",
-  keywords: ["Growwmatics AI FAQ", "Google Business Profile questions", "GBP automation FAQ"],
-  alternates: { canonical: "/faq" },
-  openGraph: {
-    ...sharedOpenGraph,
-    title: "FAQ | Growwmatics AI",
-    description: "Answers to common questions about Growwmatics AI.",
-    url: "/faq",
-    type: "website",
-  },
-};
+// Text editable in Content Studio → Website pages (defaults: src/lib/cms/pages.ts).
+export async function generateMetadata(): Promise<Metadata> {
+  return cmsMetadata("faq");
+}
 
-export default function Page() {
+// Rebuilt the moment a Content Studio change is approved; hourly as a safety
+// net (e.g. if the database was unreachable while building).
+export const revalidate = 3600;
+
+export default async function Page() {
+  // Home page questions first, then the FAQ-page-only ones — both editable in Content Studio.
+  const [home, extra] = await Promise.all([cmsFaqs("home"), cmsFaqs("faq")]);
+  const faqs = [...home, ...extra];
   return (
     <>
-      <JsonLd data={faqPageSchema(ALL_FAQS)} />
+      <JsonLd data={faqPageSchema(faqs)} />
       <JsonLd
         data={breadcrumbSchema([
           { name: "Home", path: "/" },
           { name: "FAQ", path: "/faq" },
         ])}
       />
-      <FaqPage />
+      <FaqPage faqs={faqs} />
     </>
   );
 }

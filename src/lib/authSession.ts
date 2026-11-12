@@ -27,11 +27,12 @@ export async function finalizeLogin(
     );
   }
 
-  // Super admins sign in only at /admin-login (password + emailed code).
+  // Super admins and Content Studio team members sign in only at /admin-login
+  // (password + emailed code).
   // Letting them in here skipped that page's rate limits and the code step.
-  if (user.role === 'SUPER_ADMIN') {
+  if (user.role === 'SUPER_ADMIN' || user.role === 'TEAM_MEMBER') {
     return NextResponse.json(
-      { success: false, error: 'This is a super admin account. Please sign in at the admin login page.', code: 'ADMIN_ACCOUNT' },
+      { success: false, error: 'This is a staff account. Please sign in at the admin login page.', code: 'ADMIN_ACCOUNT' },
       { status: 403 }
     );
   }

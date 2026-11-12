@@ -65,7 +65,9 @@ async function handlePOST(req: Request) {
     }
 
     const user = await User.findOne({ email: normalizedEmail });
-    const hash = user && user.role === 'SUPER_ADMIN' && user.passwordHash ? user.passwordHash : null;
+    // Staff only: Super Admins and Content Studio team members (who land on /studio).
+    const isStaff = user && (user.role === 'SUPER_ADMIN' || user.role === 'TEAM_MEMBER') && !(user as any).isDeleted;
+    const hash = isStaff && user.passwordHash ? user.passwordHash : null;
     const passwordOk = await bcrypt.compare(password, hash || DUMMY_HASH);
     const isValid = Boolean(user && hash && passwordOk);
 
@@ -130,9 +132,9 @@ export async function DELETE() {
     // super admin, bump the session epoch so every token issued so far is
     // rejected by requireSuperAdmin (this signs that admin out on all devices).
     const session = await getSession();
-    if (session?.role === 'SUPER_ADMIN') {
+    if (session?.role === 'SUPER_ADMIN' || session?.role === 'TEAM_MEMBER') {
       await dbConnect();
-      await User.updateOne({ _id: session.userId, role: 'SUPER_ADMIN' }, { $inc: { sessionEpoch: 1 } });
+      await User.updateOne({ _id: session.userId, role: { $in: ['SUPER_ADMIN', 'TEAM_MEMBER'] } }, { $inc: { sessionEpoch: 1 } });
     }
     await destroySession();
     return NextResponse.json({ success: true });

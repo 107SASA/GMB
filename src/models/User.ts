@@ -30,13 +30,23 @@ export interface INotificationPreferences {
   performanceDigestWhatsApp: boolean;
 }
 
+export type TeamPermission = 'blog' | 'cms';
+export const TEAM_PERMISSIONS: TeamPermission[] = ['blog', 'cms'];
+
 export interface IUser extends Document {
   fullName: string;
   email: string;
   phone: string;
   passwordHash?: string;
   /** GROWTH_PARTNER: a Growth Partner login (see models/GrowthPartner.ts) — never a customer workspace. */
-  role: 'SUPER_ADMIN' | 'CLIENT' | 'GROWTH_PARTNER';
+  role: 'SUPER_ADMIN' | 'CLIENT' | 'GROWTH_PARTNER' | 'TEAM_MEMBER';
+  /**
+   * TEAM_MEMBER only: which Content Studio areas (/studio) this person may use.
+   * 'blog' = write/edit blog posts, 'cms' = edit website page SEO and FAQs.
+   * A team member never reaches /admin, the customer dashboard or any
+   * customer data — every change they make waits for Super Admin approval.
+   */
+  teamPermissions?: TeamPermission[];
   companyName?: string;
 
   // Verification states
@@ -198,9 +208,10 @@ const UserSchema: Schema = new Schema(
 
     role: {
       type: String,
-      enum: ['SUPER_ADMIN', 'CLIENT', 'GROWTH_PARTNER'],
+      enum: ['SUPER_ADMIN', 'CLIENT', 'GROWTH_PARTNER', 'TEAM_MEMBER'],
       default: 'CLIENT',
     },
+    teamPermissions: { type: [String], enum: ['blog', 'cms'], default: undefined },
     companyName: { type: String },
 
     isEmailVerified: { type: Boolean, default: false },

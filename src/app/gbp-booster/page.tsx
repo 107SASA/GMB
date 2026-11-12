@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { sharedOpenGraph } from "@/lib/seo";
+import { cmsMetadata } from "@/lib/cms/content";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
@@ -8,20 +8,14 @@ import { BookDemoButton } from "@/components/shared/BookDemoButton";
 import { FreeReportButton } from "@/components/shared/FreeReportButton";
 import { boostProfileLink, bookDemoOpensWhatsApp } from "@/lib/whatsappCta";
 
-export const metadata: Metadata = {
-  title: "Google Business Profile Optimization (GMB Booster)",
-  description:
-    "Rank higher on Google with Growwmatics AI — profile analysis, review automation, and local SEO tips that get you more leads and customers.",
-  alternates: { canonical: "/gbp-booster" },
-  openGraph: {
-    ...sharedOpenGraph,
-    title: "Google Business Profile Optimization (GMB Booster) | Growwmatics AI",
-    description:
-      "AI-powered Google Business Profile growth — audits, reviews, and ranking tips for local businesses.",
-    url: "/gbp-booster",
-    type: "website",
-  },
-};
+// Text editable in Content Studio → Website pages (defaults: src/lib/cms/pages.ts).
+export async function generateMetadata(): Promise<Metadata> {
+  return cmsMetadata("gbp-booster");
+}
+
+// Rebuilt the moment a Content Studio change is approved; hourly as a safety
+// net (e.g. if the database was unreachable while building).
+export const revalidate = 3600;
 
 const FEATURES = [
   {

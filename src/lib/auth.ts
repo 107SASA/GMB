@@ -63,6 +63,17 @@ export async function requireClient(): Promise<
 
     // A Growth Partner login is not a customer: it has its own /partner area
     // and must never reach a customer API (create a workspace, checkout, …).
+    // A Content Studio team member is staff, not a customer — /studio only.
+    if ((user as any).role === 'TEAM_MEMBER') {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { success: false, error: 'This is a team account. Please use the Content Studio.', code: 'TEAM_ACCOUNT' },
+          { status: 403 }
+        ),
+      };
+    }
+
     if ((user as any).role === 'GROWTH_PARTNER') {
       return {
         ok: false,

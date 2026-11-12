@@ -82,6 +82,15 @@ const adminGroups = [
       { name: 'WhatsApp Monitor', icon: 'chat', href: '/admin/whatsapp' },
     ],
   },
+  // Blog + website-page editing (Content Studio). The marketing team works
+  // there with their own TEAM_MEMBER logins; their changes wait for approval.
+  {
+    label: 'WEBSITE & BLOG',
+    links: [
+      { name: 'Content Studio', icon: 'edit_square', href: '/studio' },
+      { name: 'Marketing Team', icon: 'groups', href: '/admin/team' },
+    ],
+  },
   // Approve/reject client submissions before they go public on
   // growwmatics.com/showcase (photo/video uploads and client testimonials).
   {
@@ -95,7 +104,7 @@ const adminGroups = [
     label: 'ADMIN',
     links: [
       { name: 'Settings', icon: 'tune', href: '/admin/settings' },
-      { name: 'Team Invites', icon: 'person_add', href: '/admin/invites' },
+      { name: 'Super Admin Invites', icon: 'person_add', href: '/admin/invites' },
       { name: 'Security Log', icon: 'shield', href: '/admin/security' },
       { name: 'Two-step sign-in', icon: 'phonelink_lock', href: '/admin/two-step' },
     ],
@@ -142,6 +151,22 @@ function useServiceAttention(): { total: number; critical: number } {
   return state;
 }
 
+/** Blog posts / page changes waiting for Super Admin approval, refreshed every 2 minutes. */
+function useStudioWaiting(): number {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const load = () => fetch('/api/studio/summary?count=1')
+      .then((res) => res.json())
+      .then((d) => { if (alive && d?.success) setN(d.data.waiting || 0); })
+      .catch(() => {});
+    load();
+    const timer = setInterval(load, 120_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, []);
+  return n;
+}
+
 /** Unopened WhatsApp chats, refreshed every 30 seconds. */
 function useInboxUnread(): number {
   const [unread, setUnread] = useState(0);
@@ -162,6 +187,7 @@ export function AdminSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const inboxUnread = useInboxUnread();
+  const studioWaiting = useStudioWaiting();
   const partnerAttention = usePartnerAttention();
   const serviceAttention = useServiceAttention();
 
@@ -222,6 +248,11 @@ export function AdminSidebar() {
                       {link.href === '/admin/services' && serviceAttention.total > 0 && (
                         <span className={cn('ml-auto min-w-5 rounded-full px-1.5 text-center text-[11px] font-semibold', serviceAttention.critical > 0 ? 'bg-error text-white' : 'bg-primary text-on-primary')} aria-label={`${serviceAttention.total} services need attention`} title={`${serviceAttention.total} services need attention`}>
                           {serviceAttention.total}
+                        </span>
+                      )}
+                      {link.href === '/studio' && studioWaiting > 0 && (
+                        <span className="ml-auto min-w-5 rounded-full bg-[#f59e0b] px-1.5 text-center text-[11px] font-semibold text-[#1f1300]" aria-label={`${studioWaiting} waiting for approval`} title={`${studioWaiting} waiting for your approval`}>
+                          {studioWaiting}
                         </span>
                       )}
                       {link.href === '/admin/inbox' && inboxUnread > 0 && (

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { sharedOpenGraph } from "@/lib/seo";
 import { notFound } from "next/navigation";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { serviceSchema, faqPageSchema, breadcrumbSchema } from "@/lib/seoSchemas";
@@ -15,6 +16,7 @@ export const metadata: Metadata = {
   keywords: service.keywords,
   alternates: { canonical: `/services/${service.slug}` },
   openGraph: {
+    ...sharedOpenGraph,
     title: service.metaTitle,
     description: service.metaDescription,
     url: `/services/${service.slug}`,

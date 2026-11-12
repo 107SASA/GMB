@@ -10,6 +10,7 @@ import { LoadingScreen, Screen, ScreenTitle } from '@/components/ui';
 import { WorkspaceInactiveScreen } from '@/components/workspace-inactive';
 import { useTheme } from '@/lib/theme';
 import { PendingCaptureRecovery } from '@/components/pending-capture-recovery';
+import { CardSyncRunner } from '@/components/card-sync-runner';
 
 /** Shown on first login when several businesses exist and none is chosen. */
 function SelectBusinessScreen() {
@@ -59,6 +60,8 @@ export default function AppLayout() {
 
   return (
     <>
+    {/* Sends visiting cards captured offline / in quick mode (lib/cardQueue.ts). */}
+    <CardSyncRunner />
     <Tabs
       // Android back returns to the previously visited tab/screen instead of
       // always jumping to the first tab.

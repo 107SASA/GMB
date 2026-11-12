@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { sharedOpenGraph } from "@/lib/seo";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
@@ -13,6 +14,7 @@ export const metadata: Metadata = {
     "Rank higher on Google with Growwmatics AI — profile analysis, review automation, and local SEO tips that get you more leads and customers.",
   alternates: { canonical: "/gbp-booster" },
   openGraph: {
+    ...sharedOpenGraph,
     title: "Google Business Profile Optimization (GMB Booster) | Growwmatics AI",
     description:
       "AI-powered Google Business Profile growth — audits, reviews, and ranking tips for local businesses.",

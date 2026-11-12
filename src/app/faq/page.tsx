@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { sharedOpenGraph } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { faqPageSchema, breadcrumbSchema } from "@/lib/seoSchemas";
 import { ALL_FAQS } from "@/lib/faqData";
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
   keywords: ["Growwmatics AI FAQ", "Google Business Profile questions", "GBP automation FAQ"],
   alternates: { canonical: "/faq" },
   openGraph: {
+    ...sharedOpenGraph,
     title: "FAQ | Growwmatics AI",
     description: "Answers to common questions about Growwmatics AI.",
     url: "/faq",

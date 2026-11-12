@@ -283,7 +283,12 @@ export default function LeadDrawer({ lead, isOpen, onClose, onUpdate }: LeadDraw
 
             {lead.businessCard && (
               <div className="mb-8">
-                <h3 className="text-sm font-bold text-on-surface mb-4">Visiting Card</h3>
+                <h3 className="text-sm font-bold text-on-surface mb-4 flex items-center gap-2">
+                  Visiting Card
+                  {lead.businessCard.needsReview && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Check details</span>
+                  )}
+                </h3>
                 <div className="bg-surface rounded-2xl p-4 border border-outline-variant space-y-3 text-sm">
                   {(lead.businessCard.imageKeys ?? []).map((_: string, side: number) => (
                     // Private photo served by an authenticated route (session cookie).

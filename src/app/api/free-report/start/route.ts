@@ -8,6 +8,8 @@ import { normalizePhoneE164 } from '@/lib/phone';
 import { getClientIp } from '@/lib/rateLimit';
 import { checkDurableRateLimit } from '@/lib/durableRateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
+import { checkFreeReportOtp, consumeFreeReportOtp } from '@/services/auth/freeReportOtp';
+import { markPhoneVerified } from '@/services/auth/phoneVerification';
 import {
   fileFreeReportPlatformLead,
   linkPlatformLeadAudit,
@@ -51,6 +53,18 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: 'Please enter a valid phone number in international format, e.g. +14155550100.' },
         { status: 400 }
+      );
+    }
+
+    // The number must be proven with the WhatsApp code from
+    // POST /api/free-report/send-otp — visitors were entering made-up or
+    // other people's numbers. Checked before the per-phone limit below so a
+    // mistyped code doesn't use up the real owner's daily reports.
+    const otpCheck = await checkFreeReportOtp(normalizedPhone, String(body.otp || ''));
+    if (!otpCheck.ok) {
+      return NextResponse.json(
+        { error: otpCheck.error, otpRequired: true, otpExpired: !!otpCheck.expired },
+        { status: 401 }
       );
     }
 
@@ -108,6 +122,11 @@ export async function POST(req: Request) {
       },
     });
 
+    // The WhatsApp code above proves the number belongs to this visitor.
+    await markPhoneVerified(user._id, 'whatsapp_otp').catch((err) =>
+      console.warn('[free-report] markPhoneVerified failed:', (err as Error)?.message)
+    );
+
     // CRM: upsert Platform Lead immediately at submit (before audit finishes),
     // apply FREE_REPORT_SUBMITTED, then attach auditId when the audit is known.
     // WhatsApp nurture still waits on the post-audit sales drip + flags.
@@ -153,6 +172,7 @@ export async function POST(req: Request) {
         .lean();
       if (existingAudit) {
         await attachAudit((existingAudit as any)._id);
+        await consumeFreeReportOtp(normalizedPhone);
         return NextResponse.json(
           { success: true, businessId: business._id, auditId: (existingAudit as any)._id, reused: true },
           { status: 200 }
@@ -171,6 +191,7 @@ export async function POST(req: Request) {
         const isStale = Date.now() - new Date((pendingAudit as any).createdAt).getTime() > STALE_PENDING_MS;
         if (!isStale) {
           await attachAudit((pendingAudit as any)._id);
+          await consumeFreeReportOtp(normalizedPhone);
           return NextResponse.json(
             { success: true, businessId: business._id, auditId: (pendingAudit as any)._id, reused: true },
             { status: 200 }
@@ -181,8 +202,8 @@ export async function POST(req: Request) {
     }
 
     // Platform-wide safety net: each NEW report spends real money (DataForSEO,
-    // Google, Groq) and the phone is not verified first, so rotating IPs and
-    // made-up numbers could otherwise run unlimited reports on our bill.
+    // Google, Groq). The WhatsApp code stops made-up numbers; this cap still
+    // bounds the bill if many real numbers are used.
     // Counted here, just before a report is created, so invalid form posts and
     // reused reports (free) don't use up the quota. Resets 00:00 UTC (05:30 IST).
     const dailyCap = Number(process.env.FREE_REPORT_DAILY_CAP) || 500;
@@ -197,6 +218,7 @@ export async function POST(req: Request) {
 
     const audit = await createPendingAuditAndDispatch(business, organization, user);
     await attachAudit(audit._id);
+    await consumeFreeReportOtp(normalizedPhone);
 
     return NextResponse.json(
       { success: true, businessId: business._id, auditId: audit._id, reused: false },

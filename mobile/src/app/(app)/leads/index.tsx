@@ -21,7 +21,7 @@ import { useBusiness } from '@/business/BusinessContext';
 import { AppHeader } from '@/components/app-header';
 import { InvestmentSheet } from '@/components/investment-sheet';
 import { Badge, Chip, EmptyState, Field, Screen, Skeleton } from '@/components/ui';
-import { listQueuedCards } from '@/lib/cardQueue';
+import { listQueue, subscribeQueue } from '@/lib/cardQueue';
 import { timeAgo } from '@/lib/format';
 import { BRAND_GRADIENT, useTheme } from '@/lib/theme';
 
@@ -56,6 +56,7 @@ function LeadCard({ lead, stages }: { lead: Lead; stages: LeadStages | undefined
         )}
       </View>
       <View className="mt-2 flex-row flex-wrap items-center gap-2">
+        {lead.businessCard?.needsReview && <Badge label="Check details" tone="warning" />}
         <Badge label={lead.source} />
         <Badge
           label={stageLabel(stages, lead)}
@@ -109,6 +110,7 @@ export default function LeadsScreen() {
   const [search, setSearch] = useState('');
   // Visiting cards photographed offline (lib/cardQueue.ts), not yet read.
   const [waitingCards, setWaitingCards] = useState(0);
+  const [stuckCards, setStuckCards] = useState(0);
   // Hide the floating scan button while typing (Android lifts it above the keyboard, over the list).
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   useEffect(() => {
@@ -119,11 +121,15 @@ export default function LeadsScreen() {
       hide.remove();
     };
   }, []);
-  useFocusEffect(
-    useCallback(() => {
-      void listQueuedCards().then((q) => setWaitingCards(q.length));
-    }, [])
-  );
+  const countQueue = useCallback(() => {
+    void listQueue().then((q) => {
+      setWaitingCards(q.filter((i) => i.status === 'waiting').length);
+      setStuckCards(q.filter((i) => i.status !== 'waiting').length);
+    });
+  }, []);
+  useFocusEffect(countQueue);
+  // Live while the list is open — the background sync adds cards as the network allows.
+  useEffect(() => subscribeQueue(countQueue), [countQueue]);
   // 'all' | lifecycle group; subFilter narrows to one sub-stage of that group.
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [subFilter, setSubFilter] = useState<string | null>(null);
@@ -207,7 +213,7 @@ export default function LeadsScreen() {
         </ScrollView>
       </View>
 
-      {waitingCards > 0 && (
+      {waitingCards + stuckCards > 0 && (
         <Pressable
           onPress={() => router.push('/leads/scan-card')}
           style={{
@@ -225,7 +231,9 @@ export default function LeadsScreen() {
         >
           <Ionicons name="card-outline" size={18} color={t.brandBright} />
           <Text className="flex-1 font-sans-semibold text-sm text-zinc-200">
-            {waitingCards} visiting {waitingCards === 1 ? 'card' : 'cards'} waiting to be read
+            {stuckCards > 0
+              ? `${stuckCards} visiting ${stuckCards === 1 ? 'card needs' : 'cards need'} your attention`
+              : `${waitingCards} visiting ${waitingCards === 1 ? 'card' : 'cards'} being added to your CRM`}
           </Text>
           <Ionicons name="chevron-forward" size={16} color={t.textFaint} />
         </Pressable>

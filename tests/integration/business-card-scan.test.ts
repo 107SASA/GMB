@@ -11,9 +11,12 @@ import { PLAN_DEFAULTS } from '../../src/lib/planDefaults.ts';
 import {
   isEmptyExtraction,
   isOwnCardImageKey,
+  isValidClientScanId,
+  leadFromCard,
   needsFallback,
   pickCardModels,
   sanitizeCardExtraction,
+  tiledSharpness,
 } from '../../src/services/crm/businessCardParse.ts';
 import { canonicalSource, ORGANIC_SOURCES } from '../../src/services/crm/sources.ts';
 
@@ -140,4 +143,71 @@ test('models: preview used only when no stable exists; Flash alone reads with no
   });
   assert.deepEqual(pickCardModels([gen('gemini-3.8-flash')]), { primary: 'gemini-3.8-flash', fallback: null });
   assert.deepEqual(pickCardModels([]), { primary: null, fallback: null });
+});
+
+// ── Auto-save (no confirmation) ──────────────────────────────────────────
+
+test('auto-save: mobile number becomes the lead phone, landline kept as another number', () => {
+  const f = sanitizeCardExtraction(
+    { name: 'Rajesh Kumar', company: 'ABC', phones: [{ number: '011-23456789', label: 'office' }, { number: '9876543210', label: 'mobile' }], emails: ['r@abc.in'] },
+    norm,
+  );
+  const l = leadFromCard(f);
+  assert.equal(l.name, 'Rajesh Kumar');
+  assert.equal(l.phone, '+919876543210');
+  assert.equal(l.email, 'r@abc.in');
+  assert.deepEqual(l.otherPhones, ['+911123456789']); // Delhi landline, normalized
+  assert.equal(l.needsReview, false);
+});
+
+test('auto-save: a number that cannot be normalized is kept as printed and flagged', () => {
+  const l = leadFromCard(sanitizeCardExtraction({ name: 'A B', phones: [{ number: '9876543210', label: 'mobile' }, { number: '2345678', label: 'office' }] }, norm));
+  assert.deepEqual(l.otherPhones, ['2345678']);
+  assert.equal(l.needsReview, true);
+});
+
+test('auto-save: fully clear card is not flagged', () => {
+  const l = leadFromCard(sanitizeCardExtraction({ name: 'A B', phones: [{ number: '+91 98765 43210', label: 'mobile' }] }, norm));
+  assert.equal(l.needsReview, false);
+});
+
+test('auto-save: unsure name/phone, or no name, is flagged "Check details"; name falls back to company', () => {
+  assert.equal(leadFromCard(sanitizeCardExtraction({ name: 'A', phones: [{ number: '9876543210', label: 'mobile' }], uncertain: ['phones'] }, norm)).needsReview, true);
+  const noName = leadFromCard(sanitizeCardExtraction({ company: 'Mulsetu Pvt Ltd', emails: ['x@y.in'] }, norm));
+  assert.equal(noName.name, 'Mulsetu Pvt Ltd');
+  assert.equal(noName.needsReview, true);
+});
+
+test('auto-save: client card ids are validated (idempotent retries)', () => {
+  assert.equal(isValidClientScanId('lx3k2-ab12cd34'), true);
+  assert.equal(isValidClientScanId('../x'), false);
+  assert.equal(isValidClientScanId(''), false);
+  assert.equal(isValidClientScanId(42), false);
+});
+
+// ── Blur ─────────────────────────────────────────────────────────────────
+
+test('blur: server sharpness matches the app measure (same thresholds) — sharp vs blurred stripes', () => {
+  const W = 640, H = 360;
+  const img = new Uint8Array(W * H).fill(235);
+  for (let y = 90; y < 270; y += 18) for (let x = 120; x < 520; x++) if ((x >> 3) % 3 !== 0) for (let t = 0; t < 4; t++) img[(y + t) * W + x] = 30;
+  const blurred = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let s = 0, n = 0;
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+      const yy = y + dy, xx = x + dx;
+      if (yy >= 0 && yy < H && xx >= 0 && xx < W) { s += img[yy * W + xx]; n++; }
+    }
+    blurred[y * W + x] = s / n;
+  }
+  assert.ok(tiledSharpness(img, W, H) > 1000);
+  assert.ok(tiledSharpness(blurred, W, H) < 250);
+});
+
+test('blur: the app and server use the same sharpness code', () => {
+  const body = (src: string) => src.slice(src.indexOf('export function tiledSharpness'), src.indexOf("scores.sort"));
+  const norm = (s: string) => s.replace(/\s+/g, '').replace(/constcw=Math\.floor\(w\*centre\);constch=Math\.floor\(h\*centre\);/, '');
+  const app = norm(body(read('mobile/src/lib/sharpness.ts'))).replace(/Math\.floor\(cw\/cols\)/, 'Math.floor(Math.floor(w*centre)/cols)').replace(/Math\.floor\(ch\/rows\)/, 'Math.floor(Math.floor(h*centre)/rows)');
+  const server = norm(body(read('src/services/crm/businessCardParse.ts')));
+  assert.equal(app, server);
 });

@@ -49,6 +49,8 @@ export interface CustomerLeadInput {
     otherEmails?: string[];
     metAt?: string;
     imageKeys?: string[];
+    needsReview?: boolean;
+    clientScanId?: string;
   } | null;
   /** Initial stage; anything other than 'initial' must be a lifecycle group. */
   lifeCycleStage?: 'initial' | 'active' | 'converted' | 'closed';
@@ -151,8 +153,8 @@ export async function findCustomerLeadMatch(
 }
 
 /** Bounded, empty-free copy of visiting-card details. */
-function cleanBusinessCard(c: NonNullable<CustomerLeadInput['businessCard']>): Record<string, string | string[]> {
-  const out: Record<string, string | string[]> = {};
+function cleanBusinessCard(c: NonNullable<CustomerLeadInput['businessCard']>): Record<string, string | string[] | boolean> {
+  const out: Record<string, string | string[] | boolean> = {};
   const str = (k: 'company' | 'designation' | 'website' | 'address' | 'metAt', max: number) => {
     const v = typeof c[k] === 'string' ? c[k]!.trim().slice(0, max) : '';
     if (v) out[k] = v;
@@ -162,6 +164,8 @@ function cleanBusinessCard(c: NonNullable<CustomerLeadInput['businessCard']>): R
     const arr = (Array.isArray(c[k]) ? c[k]! : []).map((x) => String(x).trim()).filter(Boolean).slice(0, 10);
     if (arr.length) out[k] = arr;
   }
+  if (c.needsReview) out.needsReview = true;
+  if (typeof c.clientScanId === 'string' && c.clientScanId) out.clientScanId = c.clientScanId.slice(0, 64);
   return out;
 }
 
@@ -193,7 +197,9 @@ export async function createOrUpdateCustomerLead(
       const prev = existing.businessCard ? (existing.businessCard.toObject?.() ?? existing.businessCard) : {};
       const merged: Record<string, unknown> = { ...prev };
       for (const [k, v] of Object.entries(cleanBusinessCard(input.businessCard))) {
-        if (Array.isArray(v)) merged[k] = Array.from(new Set([...((prev as any)[k] ?? []), ...v])).slice(0, 10);
+        if (k === 'needsReview') continue; // an existing lead is the owner's data — don't flag it
+        if (k === 'clientScanId') merged[k] = v; // latest capture id, so its retry finds this lead
+        else if (Array.isArray(v)) merged[k] = Array.from(new Set([...((prev as any)[k] ?? []), ...v])).slice(0, 10);
         else if (v && !(prev as any)[k]) merged[k] = v;
       }
       merged.scannedAt = new Date();

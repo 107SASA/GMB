@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { api } from '../client';
+import { api, businessHeaders } from '../client';
 
 /**
  * CRM leads — same /api/crm/leads endpoints the web CRM (list + Kanban)
@@ -45,6 +45,8 @@ const leadSchema = z.object({
       otherEmails: z.array(z.string()).optional(),
       metAt: z.string().optional(),
       imageKeys: z.array(z.string()).optional(),
+      // Saved automatically (no confirmation) and the AI was unsure → "Check details".
+      needsReview: z.boolean().optional(),
     })
     .nullable()
     .optional()
@@ -77,6 +79,13 @@ export type LeadPatch = Partial<Pick<Lead, 'notes' | 'status' | 'tags' | 'lifeCy
   subStageId?: string | null;
   subStage?: string | null;
   deal?: DealInput;
+  // "Edit lead" — contact + visiting-card details. The server refuses a phone /
+  // email that belongs to another lead (409).
+  name?: string;
+  phone?: string;
+  email?: string;
+  city?: string;
+  businessCard?: { company?: string; designation?: string; website?: string; address?: string; metAt?: string; needsReview?: boolean };
 };
 
 export async function updateLead(id: string, patch: LeadPatch): Promise<void> {
@@ -190,16 +199,55 @@ export type CardPhoto = { uri: string; mimeType: string; fileName: string };
  * POST /api/leads/business-card/scan — the server reads the card with AI and
  * returns the form fields. Saves nothing; the owner reviews and submits.
  */
-export async function scanBusinessCard(front: CardPhoto, back?: CardPhoto | null): Promise<CardScanResult> {
+export async function scanBusinessCard(front: CardPhoto, back?: CardPhoto | null, opts: { signal?: AbortSignal } = {}): Promise<CardScanResult> {
   const form = new FormData();
   // React Native's FormData accepts this {uri,name,type} shape in place of a Blob.
   form.append('front', { uri: front.uri, name: front.fileName, type: front.mimeType } as unknown as Blob);
   if (back) form.append('back', { uri: back.uri, name: back.fileName, type: back.mimeType } as unknown as Blob);
   const { data } = await api.post('/api/leads/business-card/scan', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 90_000,
+    timeout: 60_000,
+    signal: opts.signal,
   });
   return scanResponseSchema.parse(data);
+}
+
+const autoSaveResponseSchema = z.object({
+  success: z.literal(true),
+  saved: z.literal(true),
+  existing: z.boolean().catch(false),
+  needsReview: z.boolean().catch(false),
+  lead: leadSchema,
+});
+export type CardAutoSaveResult = z.infer<typeof autoSaveResponseSchema>;
+
+/**
+ * POST /api/leads/business-card/scan with autoSave=1 — read AND save in one
+ * call (quick / offline capture, no confirmation). `clientId` is the phone's
+ * id for this card: a retry after a dropped connection returns the same lead.
+ */
+export async function scanAndSaveCard(params: {
+  clientId: string;
+  businessId: string | null;
+  front: CardPhoto;
+  back: CardPhoto | null;
+  metAt: string;
+}): Promise<CardAutoSaveResult> {
+  const form = new FormData();
+  form.append('front', { uri: params.front.uri, name: params.front.fileName, type: params.front.mimeType } as unknown as Blob);
+  if (params.back) form.append('back', { uri: params.back.uri, name: params.back.fileName, type: params.back.mimeType } as unknown as Blob);
+  form.append('autoSave', '1');
+  form.append('clientId', params.clientId);
+  if (params.metAt) form.append('metAt', params.metAt);
+  const { data } = await api.post('/api/leads/business-card/scan', form, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+      // The workspace the card was captured in, even if the owner switched since.
+      ...(params.businessId ? businessHeaders(params.businessId).headers : {}),
+    },
+    timeout: 60_000,
+  });
+  return autoSaveResponseSchema.parse(data);
 }
 
 export type BusinessCardLeadInput = {
@@ -220,7 +268,21 @@ export type BusinessCardLeadInput = {
 };
 
 /** POST /api/leads/business-card — saves the reviewed card form (dedupes by phone/email). */
-export async function saveBusinessCardLead(input: BusinessCardLeadInput): Promise<QuickAddResult> {
-  const { data } = await api.post('/api/leads/business-card', input);
+export async function saveBusinessCardLead(input: BusinessCardLeadInput, businessId?: string | null): Promise<QuickAddResult> {
+  const { data } = await api.post('/api/leads/business-card', input, businessId ? businessHeaders(businessId) : undefined);
   return quickAddResponseSchema.parse(data);
+}
+
+const cardEventsSchema = z.object({
+  success: z.literal(true),
+  events: z
+    .array(z.object({ name: z.string(), count: z.number().catch(0), lastUsedAt: z.string().nullable().catch(null) }))
+    .catch([]),
+});
+export type CardEvent = z.infer<typeof cardEventsSchema>['events'][number];
+
+/** GET /api/leads/business-card/events — "Where you met" values used in this workspace, newest first. */
+export async function fetchCardEvents(): Promise<CardEvent[]> {
+  const { data } = await api.get('/api/leads/business-card/events');
+  return cardEventsSchema.parse(data).events;
 }

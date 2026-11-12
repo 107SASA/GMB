@@ -4,7 +4,8 @@ import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
-import { changeCustomerLeadStage } from '@/services/crm/customerLeads';
+import { changeCustomerLeadStage, findCustomerLeadMatch } from '@/services/crm/customerLeads';
+import { normalizePhoneE164 } from '@/lib/phone';
 
 const has = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 
@@ -41,7 +42,51 @@ export async function PATCH(
     if (has(data, 'interest')) lead.interest = data.interest;
     if (has(data, 'status') && ['active', 'inactive'].includes(data.status)) lead.status = data.status;
     if (has(data, 'tags') && Array.isArray(data.tags)) lead.tags = data.tags.map(String).slice(0, 20);
-    if (has(data, 'name') && typeof data.name === 'string' && data.name.trim()) lead.name = data.name.trim();
+    if (has(data, 'name') && typeof data.name === 'string' && data.name.trim()) lead.name = data.name.trim().slice(0, 120);
+
+    // Contact details (app "Edit lead"). A number / email that already belongs
+    // to ANOTHER lead in this workspace is refused — merging is not automatic.
+    if (has(data, 'phone')) {
+      const raw = typeof data.phone === 'string' ? data.phone.trim() : '';
+      const phone = raw ? normalizePhoneE164(raw) : null;
+      if (raw && !phone) return NextResponse.json({ error: 'The phone number looks incomplete. Use a 10-digit number or +country format.' }, { status: 400 });
+      if (lead.source === 'WhatsApp' && lead.phone && phone !== lead.phone) {
+        return NextResponse.json({ error: "This number is linked to the lead's WhatsApp chat, so it can't be changed." }, { status: 400 });
+      }
+      if (phone && phone !== lead.phone) {
+        const other = await findCustomerLeadMatch(ctx.businessId, phone, null);
+        if (other && String(other._id) !== String(lead._id)) {
+          return NextResponse.json({ error: `This number already belongs to another lead (${other.name}).`, code: 'DUPLICATE_PHONE' }, { status: 409 });
+        }
+      }
+      lead.phone = phone ?? undefined;
+    }
+    if (has(data, 'email')) {
+      const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : '';
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: 'The email address looks wrong.' }, { status: 400 });
+      if (email && email !== lead.email) {
+        const other = await findCustomerLeadMatch(ctx.businessId, null, email);
+        if (other && String(other._id) !== String(lead._id)) {
+          return NextResponse.json({ error: `This email already belongs to another lead (${other.name}).`, code: 'DUPLICATE_EMAIL' }, { status: 409 });
+        }
+      }
+      lead.email = email || undefined;
+    }
+    if (has(data, 'city')) lead.city = typeof data.city === 'string' ? data.city.trim().slice(0, 100) || undefined : undefined;
+    if (has(data, 'businessCard') && data.businessCard && typeof data.businessCard === 'object') {
+      const card: any = lead.businessCard ? (lead.businessCard.toObject?.() ?? { ...lead.businessCard }) : {};
+      const limits: Record<string, number> = { company: 200, designation: 200, website: 300, address: 500, metAt: 200 };
+      for (const [k, max] of Object.entries(limits)) {
+        if (has(data.businessCard, k)) {
+          const v = typeof data.businessCard[k] === 'string' ? data.businessCard[k].trim().slice(0, max) : '';
+          if (v) card[k] = v;
+          else delete card[k];
+        }
+      }
+      // Saving the edit form = the owner has checked the details.
+      if (has(data.businessCard, 'needsReview')) card.needsReview = !!data.businessCard.needsReview;
+      lead.businessCard = card;
+    }
     lead.lastActivityAt = new Date();
     await lead.save();
 

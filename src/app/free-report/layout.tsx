@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { sharedOpenGraph } from "@/lib/seo";
 
 // free-report/page.tsx is a Client Component ('use client', autocomplete +
 // form state) so it can't export `metadata` itself — see pricing/layout.tsx
@@ -17,6 +18,7 @@ export const metadata: Metadata = {
   ],
   alternates: { canonical: "/free-report" },
   openGraph: {
+    ...sharedOpenGraph,
     title: "Get Your Free Google Business Profile Report | Growwmatics AI",
     description:
       "See your review score, profile completion, and competitor comparison — free, in minutes.",

@@ -98,14 +98,16 @@ export const metadata: Metadata = {
       "AI that runs your Google Business Profile: Google posts, review replies, more 5-star reviews and WhatsApp lead follow-up for local businesses in India. Free GBP report.",
     url: "https://growwmatics.com",
     siteName: "Growwmatics AI",
+    locale: "en_IN",
     type: "website",
   },
 
+  // Only the card type: a hard-coded title/description here was inherited by
+  // EVERY page (no page sets `twitter`), so all shares on X showed the
+  // homepage title. Without them X falls back to each page's own og:title /
+  // og:description / og:image.
   twitter: {
     card: "summary_large_image",
-    title: "Growwmatics AI — Google Business Profile Management & Local SEO",
-    description:
-      "AI that runs your Google Business Profile: Google posts, review replies, more 5-star reviews and WhatsApp lead follow-up for local businesses in India. Free GBP report.",
   },
 };
 

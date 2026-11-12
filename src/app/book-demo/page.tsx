@@ -1,7 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useState } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
@@ -21,18 +20,10 @@ const AGENDA = [
 
 const BUDGET_OPTIONS = ['More than ₹5000', '₹3000 - ₹5000', 'Less than ₹3000'] as const;
 
+// No useSearchParams() here on purpose: inside a <Suspense fallback={null}>
+// it made the server HTML empty (no <h1>, no copy), so crawlers indexed a blank
+// page. `?origin=` is only needed on submit, so it is read from the URL then.
 export default function BookDemoPage() {
-  return (
-    <Suspense fallback={null}>
-      <BookDemoForm />
-    </Suspense>
-  );
-}
-
-function BookDemoForm() {
-  const searchParams = useSearchParams();
-  const origin = searchParams.get('origin') || 'book-demo-page';
-
   const [business, setBusiness] = useState<SelectedBusiness | null>(null);
   const [contactName, setContactName] = useState('');
   const [email, setEmail] = useState('');
@@ -125,7 +116,7 @@ function BookDemoForm() {
           email: email.trim() || undefined,
           phone,
           budget,
-          origin,
+          origin: new URLSearchParams(window.location.search).get('origin') || 'book-demo-page',
           date: slotTime ? slotDate : undefined,
           time: slotTime || undefined,
         }),

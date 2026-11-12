@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
@@ -68,16 +68,78 @@ export default function FreeReportPage() {
   const [phone, setPhone] = useState('+91');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // WhatsApp code step — the report only runs for a number that got the code.
+  const [otpSentTo, setOtpSentTo] = useState<string | null>(null);
+  const [maskedPhone, setMaskedPhone] = useState('');
+  const [otp, setOtp] = useState('');
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
 
-  const handleSubmit = async () => {
-    setError('');
-    const business = selected;
-    if (!business) {
+  const otpSent = otpSentTo !== null && otpSentTo === phone;
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
+  const handlePhoneChange = (value: string) => {
+    setPhone(value);
+    if (otpSentTo !== null && value !== otpSentTo) {
+      setOtpSentTo(null);
+      setOtp('');
+      setResendIn(0);
+    }
+  };
+
+  const validateForm = () => {
+    if (!selected) {
       setError('Please search for and select your business.');
-      return;
+      return false;
     }
     if (!phone || phone.replace(/\D/g, '').length < 8) {
       setError('Please enter a valid WhatsApp number.');
+      return false;
+    }
+    return true;
+  };
+
+  const handleSendOtp = async () => {
+    setError('');
+    if (!validateForm()) return;
+    setSendingOtp(true);
+    try {
+      const res = await fetch('/api/free-report/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setError(json.error || 'Could not send the code. Please try again.');
+        return;
+      }
+      setOtpSentTo(phone);
+      setMaskedPhone(json.maskedPhone || phone);
+      setOtp('');
+      setResendIn(30);
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    setError('');
+    if (!validateForm()) return;
+    const business = selected!;
+    if (!otpSent) {
+      await handleSendOtp();
+      return;
+    }
+    if (otp.replace(/\D/g, '').length !== 6) {
+      setError('Please enter the 6-digit code sent to your WhatsApp.');
       return;
     }
 
@@ -107,10 +169,16 @@ export default function FreeReportPage() {
           hasHours: business.hasHours,
           googleTypes: business.googleTypes,
           phone,
+          otp,
         }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
+        if (json.otpExpired) {
+          setOtpSentTo(null);
+          setOtp('');
+          setResendIn(0);
+        }
         setError(json.error || 'Something went wrong. Please try again.');
         setSubmitting(false);
         return;
@@ -238,8 +306,49 @@ export default function FreeReportPage() {
                   </span>
                   <label className="text-sm font-bold text-[#101613]">Your WhatsApp number</label>
                 </div>
-                <PhoneNumberInput value={phone} onChange={setPhone} placeholder="Phone number" />
+                <PhoneNumberInput value={phone} onChange={handlePhoneChange} placeholder="Phone number" />
+                <p className="text-xs text-[#3d4a3d] mt-2">
+                  We&apos;ll send a code on WhatsApp to confirm this is your number.
+                </p>
               </div>
+
+              {otpSent && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="w-6 h-6 rounded-md bg-[#006e2c] text-white font-mkt-mono text-[11px] font-bold flex items-center justify-center shrink-0">
+                      3
+                    </span>
+                    <label htmlFor="free-report-otp" className="text-sm font-bold text-[#101613]">
+                      Enter the code from WhatsApp
+                    </label>
+                  </div>
+                  <input
+                    id="free-report-otp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSubmit();
+                    }}
+                    placeholder="6-digit code"
+                    className="w-full px-4 py-3 rounded-lg border border-(--mkt-line) bg-white font-mkt-mono text-lg tracking-[0.4em] text-[#101613] focus:outline-none focus:ring-2 focus:ring-[#006e2c]/40 min-h-[48px]"
+                  />
+                  <div className="flex items-center justify-between gap-2 mt-2 text-xs text-[#3d4a3d]">
+                    <span>Sent to {maskedPhone}</span>
+                    <button
+                      type="button"
+                      onClick={handleSendOtp}
+                      disabled={resendIn > 0 || sendingOtp}
+                      className="font-semibold text-[#006e2c] disabled:text-[#6b756f] disabled:cursor-not-allowed min-h-11 px-1"
+                    >
+                      {sendingOtp ? 'Sending…' : resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {error && (
                 <div
@@ -254,16 +363,18 @@ export default function FreeReportPage() {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || sendingOtp}
                 className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#006e2c] text-white rounded-lg font-bold hover:bg-[#005a24] transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] text-base"
               >
-                {submitting ? (
+                {submitting || sendingOtp ? (
                   <>
                     <MaterialIcon name="progress_activity" size={16} className="animate-spin text-white" />
-                    Generating your report…
+                    {submitting ? 'Generating your report…' : 'Sending code…'}
                   </>
+                ) : otpSent ? (
+                  'Verify & get my report'
                 ) : (
-                  'Submit'
+                  'Send code on WhatsApp'
                 )}
               </button>
             </div>

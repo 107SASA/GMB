@@ -105,6 +105,10 @@ export interface ILead extends Document {
     /** PRIVATE storage keys (front, back) — served only via /api/crm/leads/[id]/card-image. */
     imageKeys?: string[];
     scannedAt?: Date;
+    /** Saved automatically (no confirmation) and the AI was unsure — shown as "Check details". */
+    needsReview?: boolean;
+    /** Id the phone gave this captured card — a retried upload returns this lead, never a second one. */
+    clientScanId?: string;
   } | null;
   lostReason?: string;
   captureSources?: string[];
@@ -338,6 +342,8 @@ const LeadSchema: Schema = new Schema(
         metAt: { type: String, maxlength: 200 },
         imageKeys: { type: [String], default: undefined },
         scannedAt: { type: Date },
+        needsReview: { type: Boolean },
+        clientScanId: { type: String, maxlength: 64 },
       }, { _id: false }),
       default: undefined,
     },
@@ -460,6 +466,8 @@ LeadSchema.index({ tenantId: 1, phone: 1 });
 LeadSchema.index({ partnerId: 1, createdAt: -1 }, { partialFilterExpression: { partnerId: { $type: 'objectId' } } });
 // Customer CRM: list / ROI / dedupe per workspace.
 LeadSchema.index({ businessId: 1, createdAt: -1 });
+// Visiting-card retries (offline queue) look up the lead by the phone's card id.
+LeadSchema.index({ businessId: 1, 'businessCard.clientScanId': 1 }, { partialFilterExpression: { 'businessCard.clientScanId': { $type: 'string' } } });
 LeadSchema.index({ businessId: 1, lifeCycleStage: 1 });
 // Customer CRM dedupe fast path (exact normalized phone inside a workspace).
 LeadSchema.index({ businessId: 1, phone: 1 });

@@ -70,6 +70,8 @@ export const CARD_PROMPT = [
   '- emails: every email address, lowercase. website: the main website without "http://".',
   '- address: full postal address on one line. city: the city from the address.',
   '- uncertain: names of fields you could not read clearly (blurry, cut off, ambiguous).',
+  '- Phone numbers: if ANY digit is blurry or ambiguous (e.g. 1/7, 3/8, 5/6, 0/8), still return your best reading but add "phones" to uncertain. Never drop or add digits.',
+  '- If the whole photo is too blurry to read the name or any contact, return empty fields rather than guesses.',
   '- isBusinessCard: false if the image is not a business/visiting card.',
 ].join('\n');
 
@@ -185,4 +187,76 @@ export function pickCardModels(models: GeminiModelInfo[]): { primary: string | n
   const lite = best(true);
   const flash = best(false);
   return { primary: lite ?? flash, fallback: lite ? flash : null };
+}
+
+// ── Auto-save (no confirmation step) ─────────────────────────────────────
+// Cards captured in quick / offline mode are read and saved without the
+// owner checking the form. These rules decide what goes into the lead and
+// whether it is flagged "Check details" for the owner to look at later.
+
+export interface AutoSaveLead {
+  name: string;
+  phone: string | null;
+  email: string | null;
+  otherPhones: string[];
+  otherEmails: string[];
+  needsReview: boolean;
+}
+
+const isE164 = (p: string) => /^\+\d{8,15}$/.test(p);
+
+export function leadFromCard(f: CardFields): AutoSaveLead {
+  const phones = f.phones.map((p) => p.number);
+  const phone = phones.find(isE164) ?? null;
+  const email = f.emails[0] ?? null;
+  const unsure = f.uncertain.some((u) => u === 'name' || u === 'phones' || u === 'emails');
+  return {
+    // No printed name → company, then the number, so the lead is still findable.
+    name: f.name || f.company || phone || email || 'Visiting card',
+    phone,
+    email,
+    otherPhones: phones.filter((p) => p !== phone),
+    otherEmails: f.emails.filter((e) => e !== email),
+    needsReview: unsure || !f.name || (!phone && !email) || phones.some((p) => !isE164(p)),
+  };
+}
+
+/** Client-generated id of one captured card (offline queue) — makes retries idempotent. */
+export function isValidClientScanId(id: unknown): id is string {
+  return typeof id === 'string' && /^[A-Za-z0-9_-]{6,64}$/.test(id);
+}
+
+// ── Photo sharpness (logged next to the AI result to tune the app's blur warning) ──
+// Same measure as the app's lib/sharpness.ts: variance of the Laplacian per tile
+// over the centre 70% of a 640px-wide grayscale image, 2nd-best tile.
+export function tiledSharpness(gray: ArrayLike<number>, w: number, h: number, cols = 6, rows = 4, centre = 0.7): number {
+  if (w < 8 || h < 8) return 0;
+  const cx0 = Math.floor((w * (1 - centre)) / 2);
+  const cy0 = Math.floor((h * (1 - centre)) / 2);
+  const tw = Math.max(2, Math.floor(Math.floor(w * centre) / cols));
+  const th = Math.max(2, Math.floor(Math.floor(h * centre) / rows));
+  const scores: number[] = [];
+  for (let ty = 0; ty < rows; ty++) {
+    for (let tx = 0; tx < cols; tx++) {
+      const x0 = Math.max(1, cx0 + tx * tw);
+      const y0 = Math.max(1, cy0 + ty * th);
+      const x1 = Math.min(w - 1, x0 + tw);
+      const y1 = Math.min(h - 1, y0 + th);
+      let n = 0;
+      let sum = 0;
+      let sq = 0;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const i = y * w + x;
+          const l = gray[i - 1] + gray[i + 1] + gray[i - w] + gray[i + w] - 4 * gray[i];
+          sum += l;
+          sq += l * l;
+          n++;
+        }
+      }
+      if (n) scores.push(sq / n - (sum / n) ** 2);
+    }
+  }
+  scores.sort((a, b) => b - a);
+  return scores[1] ?? scores[0] ?? 0;
 }

@@ -29,6 +29,7 @@ import {
 import { useBusiness } from '@/business/BusinessContext';
 import { useCrmCaptureConsent } from '@/components/consent-sheet';
 import { DealValueSheet } from '@/components/deal-value-sheet';
+import { EditLeadSheet } from '@/components/edit-lead-sheet';
 import { FollowUpTasks } from '@/components/follow-up-tasks';
 import {
   BackChevron,
@@ -202,6 +203,7 @@ export default function LeadDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   // Won needs the deal value: 'win' = moving to converted, 'edit' = record/edit it.
   const [dealMode, setDealMode] = useState<null | 'win' | 'edit'>(null);
+  const [editing, setEditing] = useState(false);
 
   // Plan-A call logging: when a call was started from here, coming back to
   // the foreground opens a "How did the call go?" prompt.
@@ -350,7 +352,13 @@ export default function LeadDetailScreen() {
             {lead.phone ? ` · ${lead.phone}` : ''}
           </Text>
         </View>
+        <Pressable onPress={() => setEditing(true)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Edit lead"
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: t.border }}>
+          <Ionicons name="create-outline" size={15} color={t.brandBright} />
+          <Text className="font-sans-semibold text-sm text-indigo-300">Edit</Text>
+        </Pressable>
       </View>
+      <EditLeadSheet visible={editing} lead={lead} businessId={activeBusinessId} onClose={() => setEditing(false)} />
 
       <ScrollView
         contentContainerClassName="px-5 pb-10"
@@ -366,6 +374,30 @@ export default function LeadDetailScreen() {
           />
         }
       >
+        {/* Saved automatically from a visiting card and the AI was unsure */}
+        {lead.businessCard?.needsReview && (
+          <View style={{ marginTop: 16, gap: 10, borderRadius: 16, borderWidth: 1, borderColor: '#f59e0b80', backgroundColor: '#f59e0b14', padding: 14 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Ionicons name="alert-circle-outline" size={18} color="#fbbf24" />
+              <Text className="flex-1 font-sans text-sm text-zinc-200">
+                Saved automatically from a visiting card. Some details were unclear — please check them against the photo below.
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 16, justifyContent: 'flex-end' }}>
+              <Pressable onPress={() => setEditing(true)} hitSlop={6}>
+                <Text className="font-sans-semibold text-sm text-indigo-300">Edit</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => patch.mutate({ businessCard: { ...lead.businessCard, needsReview: false } })}
+                disabled={patch.isPending}
+                hitSlop={6}
+              >
+                <Text className="font-sans-semibold text-sm text-emerald-400">Looks right</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
         {/* Contact actions */}
         <View className="mt-4 flex-row gap-3">
           {!!lead.phone && (

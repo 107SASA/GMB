@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNetInfo } from '@react-native-community/netinfo';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Contact } from 'expo-contacts';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
@@ -14,34 +14,58 @@ import {
   logLeadActivity,
   saveBusinessCardLead,
   scanBusinessCard,
+  type BusinessCardLeadInput,
   type CardFields,
   type CardPhoto,
   type QuickAddResult,
 } from '@/api/endpoints/leads';
 import { useBusiness } from '@/business/BusinessContext';
+import { EventPicker, loadLastEvent, rememberEvent } from '@/components/event-picker';
 import { BackChevron, ErrorText, Field, PrimaryButton, Screen, SecondaryButton } from '@/components/ui';
-import { enqueueCard, isOfflineError, listQueuedCards, removeQueuedCard, type QueuedCard } from '@/lib/cardQueue';
+import {
+  enqueueCard,
+  enqueueSave,
+  getSyncState,
+  isOfflineError,
+  listQueue,
+  recentSyncedResults,
+  removeQueued,
+  retryQueued,
+  shrinkPhoto,
+  subscribeQueue,
+  syncCardQueue,
+  type QueueItem,
+  type QueuedCard,
+  type SyncedResult,
+} from '@/lib/cardQueue';
+import { checkPhotoBlur } from '@/lib/blur';
 import { whatsappNumber } from '@/lib/format';
 import { parsePhoneCandidate } from '@/lib/phone';
 import { useTheme, withAlpha } from '@/lib/theme';
 
 /**
- * Scan a visiting card → AI fills the form → owner checks it → Save.
- * Nothing reaches the CRM until Save. "Where we met" is remembered between
- * scans so a whole conference can be tagged without retyping it.
+ * Visiting-card capture, built for crowded conference halls:
  *
- * No signal? The photos are kept on the phone (lib/cardQueue.ts) and listed
- * as "waiting" until the owner reads them with a connection.
+ *  - "Save card" (default, no confirmation): the photo is kept on the phone
+ *    and sent in the background (lib/cardQueue.ts + CardSyncRunner). The
+ *    server reads AND saves the lead in one call; unclear reads are flagged
+ *    "Check details" on the lead, which the owner can edit later. Works with
+ *    no network — cards are sent automatically when it comes back.
+ *  - "Read & check now": read, check the form, save (online). On a slow
+ *    network it offers to switch to background after 15 s, and does so by
+ *    itself after 45 s. A Save that fails for lack of network is kept and
+ *    sent later too.
  *
- * After saving, the owner can send an intro from THEIR OWN WhatsApp / email
- * app (nothing is sent automatically — exchanging a card is not consent to
- * be messaged by a system) and add the person to the phone's contacts.
+ * Photos are shrunk on the phone (≤1280px, ~200 KB) before anything is sent.
+ * After a checked save, the owner can send an intro from THEIR OWN WhatsApp /
+ * email app — nothing is ever sent automatically.
  */
 
-const MET_AT_KEY = 'cardScan.metAt';
 const INTRO_KEY = 'cardScan.introTemplate';
 const DEFAULT_INTRO =
   'Hi {name}, it was great meeting you{at event}! This is {business}. Saving your number here — do reach out whenever we can help.';
+const SLOW_HINT_MS = 15_000;
+const SLOW_SWITCH_MS = 45_000;
 
 function fillIntro(template: string, v: { name: string; event: string; business: string }): string {
   return template
@@ -72,17 +96,22 @@ const EMPTY_FORM: Form = {
   name: '', phone: '', email: '', company: '', designation: '', website: '', address: '', city: '', metAt: '', notes: '', valuation: '',
 };
 
+const EMPTY_FIELDS: CardFields = {
+  isBusinessCard: true, name: '', designation: '', company: '', phones: [], emails: [], website: '', address: '', city: '', uncertain: [],
+};
+
 async function capture(source: 'camera' | 'library'): Promise<CardPhoto | null> {
   const perm =
     source === 'camera'
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!perm.granted) throw new Error('permission');
-  const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.7 };
+  const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.8 };
   const result = source === 'camera' ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
   if (result.canceled || result.assets.length === 0) return null;
   const a = result.assets[0];
-  return { uri: a.uri, mimeType: a.mimeType ?? 'image/jpeg', fileName: a.fileName ?? `card-${Date.now()}.jpg` };
+  // ~2–4 MB camera file → ~200 KB: the difference between seconds and minutes on conference Wi-Fi.
+  return shrinkPhoto({ uri: a.uri, mimeType: a.mimeType ?? 'image/jpeg', fileName: a.fileName ?? `card-${Date.now()}.jpg` }, a.width, a.height);
 }
 
 function PhotoSlot({
@@ -170,6 +199,45 @@ function Labeled({ label, unsure, children }: { label: string; unsure?: boolean;
   );
 }
 
+
+function QueueRow({
+  item,
+  status,
+  actions,
+}: {
+  item: QueueItem;
+  status: string;
+  actions?: { label: string; onPress: () => void; tone?: 'danger' }[];
+}) {
+  const t = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1, borderColor: t.border, backgroundColor: t.card, padding: 10 }}>
+      {item.kind === 'scan' ? (
+        <Image source={{ uri: item.front.uri }} style={{ width: 64, height: 38, borderRadius: 6 }} contentFit="cover" />
+      ) : (
+        <View style={{ width: 64, height: 38, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha(t.brand, 0.12) }}>
+          <Ionicons name="person-outline" size={18} color={t.brandBright} />
+        </View>
+      )}
+      <View style={{ flex: 1 }}>
+        <Text className="font-sans-semibold text-sm text-zinc-200" numberOfLines={1}>
+          {item.kind === 'save' ? item.label : item.metAt || 'Visiting card'}
+        </Text>
+        <Text className="font-sans text-xs text-zinc-500" numberOfLines={2}>{status}</Text>
+      </View>
+      {actions?.map((a) => (
+        <Pressable key={a.label} onPress={a.onPress} hitSlop={6}>
+          <Text className={`font-sans-semibold text-sm ${a.tone === 'danger' ? 'text-zinc-500' : 'text-indigo-300'}`}>{a.label}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function SectionTitle({ children }: { children: string }) {
+  return <Text className="mt-2 font-sans-bold text-xs uppercase tracking-wider text-zinc-500">{children}</Text>;
+}
+
 export default function ScanCardScreen() {
   const router = useRouter();
   const t = useTheme();
@@ -184,28 +252,53 @@ export default function ScanCardScreen() {
   const [scanned, setScanned] = useState<{ fields: CardFields; imageKeys: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [savedCount, setSavedCount] = useState(0);
-  const [queue, setQueue] = useState<QueuedCard[]>([]);
-  const [queueId, setQueueId] = useState<string | null>(null);
+  const [capturedCount, setCapturedCount] = useState(0);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [sync, setSync] = useState(getSyncState());
+  const [results, setResults] = useState<SyncedResult[]>(recentSyncedResults());
+  const [typingFor, setTypingFor] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
+  const [slow, setSlow] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<Saved | null>(null);
   const [intro, setIntro] = useState(DEFAULT_INTRO);
   const [editingIntro, setEditingIntro] = useState(false);
   const [sentVia, setSentVia] = useState<string[]>([]);
+  // Instant on-phone blur check per photo (warning only — "Use anyway" always works).
+  const [blur, setBlur] = useState<{ front: boolean; back: boolean }>({ front: false, back: false });
+  // Cards captured on this screen — if one comes back unreadable while the
+  // person may still be at the stall, say so straight away.
+  const [sessionIds, setSessionIds] = useState<string[]>([]);
+  const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([]);
 
-  const refreshQueue = useCallback(() => {
-    void listQueuedCards().then(setQueue);
+  // Live view of the background queue.
+  const refresh = useCallback(() => {
+    void listQueue().then(setQueue);
+    setSync(getSyncState());
+    setResults([...recentSyncedResults()]);
   }, []);
-  useFocusEffect(refreshQueue);
-
-  // Remembered event ("Delhi Expo 2026") and intro message for the next scans.
   useEffect(() => {
-    AsyncStorage.getItem(MET_AT_KEY)
-      .then((v) => v && setForm((f) => (f.metAt ? f : { ...f, metAt: v })))
-      .catch(() => {});
+    refresh();
+    return subscribeQueue(() => {
+      refresh();
+      void queryClient.invalidateQueries({ queryKey: ['crm-leads', activeBusinessId] });
+    });
+  }, [refresh, queryClient, activeBusinessId]);
+
+  useEffect(() => {
     AsyncStorage.getItem(INTRO_KEY)
       .then((v) => v && setIntro(v))
       .catch(() => {});
   }, []);
+
+  // Last "Where you met" in THIS workspace is pre-selected (event-picker.tsx).
+  useEffect(() => {
+    void loadLastEvent(activeBusinessId).then((v) => setForm((f) => ({ ...f, metAt: v })));
+  }, [activeBusinessId]);
+
+  // Leaving the screen mid-read cancels the upload.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const set = (k: keyof Form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -213,10 +306,11 @@ export default function ScanCardScreen() {
     setFront(null);
     setBack(null);
     setScanned(null);
-    setQueueId(null);
+    setTypingFor(null);
     setSaved(null);
     setSentVia([]);
     setError(null);
+    setBlur({ front: false, back: false });
     setForm((f) => ({ ...EMPTY_FORM, metAt: f.metAt }));
   }
 
@@ -227,6 +321,10 @@ export default function ScanCardScreen() {
       (slot === 'front' ? setFront : setBack)(p);
       setError(null);
       setNotice(null);
+      setBlur((b) => ({ ...b, [slot]: false }));
+      void checkPhotoBlur(p.uri).then((r) => {
+        if (r?.blurry) setBlur((b) => ({ ...b, [slot]: true }));
+      });
     } catch (e: any) {
       if (e?.message === 'permission') {
         Alert.alert(
@@ -240,26 +338,41 @@ export default function ScanCardScreen() {
     }
   }
 
-  async function keepForLater() {
-    if (!front) return;
+  /** Default: keep the card and let the background sync read + save it. */
+  async function saveCard(photos: { front: CardPhoto; back: CardPhoto | null } | null = front ? { front, back } : null, why?: string) {
+    if (!photos) return;
     try {
-      await enqueueCard(front, back, form.metAt.trim());
-      await AsyncStorage.setItem(MET_AT_KEY, form.metAt.trim()).catch(() => {});
+      const card = await enqueueCard({ businessId: activeBusinessId, front: photos.front, back: photos.back, metAt: form.metAt });
+      setSessionIds((ids) => [...ids, card.id]);
+      await rememberEvent(activeBusinessId, form.metAt);
+      setCapturedCount((c) => c + 1);
       resetForNext();
-      setNotice('Saved on this phone. Read it when you have internet — it will wait in the list below.');
-      refreshQueue();
+      setNotice(
+        why ??
+          (offline
+            ? "Card saved on this phone. It will be added to your CRM automatically when you're back online."
+            : 'Card saved. It is being added to your CRM in the background — take the next one.'),
+      );
+      void syncCardQueue();
     } catch (e: any) {
       setError(e?.message || 'Could not keep the photo on this phone.');
     }
   }
 
-  const scan = useMutation({
-    mutationFn: (p: { front: CardPhoto; back: CardPhoto | null; queued?: boolean }) => scanBusinessCard(p.front, p.back),
-    onMutate: () => {
-      setError(null);
-      setNotice(null);
-    },
-    onSuccess: ({ fields, imageKeys }) => {
+  /** Optional: read now and check the form before saving (online). */
+  async function readNow() {
+    if (!front) return;
+    const photos = { front, back };
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setReading(true);
+    setSlow(false);
+    setError(null);
+    setNotice(null);
+    const hint = setTimeout(() => setSlow(true), SLOW_HINT_MS);
+    const giveUp = setTimeout(() => ac.abort(), SLOW_SWITCH_MS);
+    try {
+      const { fields, imageKeys } = await scanBusinessCard(photos.front, photos.back, { signal: ac.signal });
       setScanned({ fields, imageKeys });
       setForm((f) => ({
         ...f,
@@ -272,30 +385,20 @@ export default function ScanCardScreen() {
         address: fields.address,
         city: fields.city,
       }));
-    },
-    onError: (err, vars) => {
-      if (isOfflineError(err) && !vars.queued) {
-        // Lost signal mid-scan: keep the card instead of losing it.
-        void keepForLater();
-        return;
+    } catch (err) {
+      if (isOfflineError(err)) {
+        // No / too slow network (or the owner tapped "save in background").
+        await saveCard(photos, 'The network is slow, so the card was saved on this phone. It will be added to your CRM automatically.');
+      } else {
+        setError(getApiErrorMessage(err, 'Could not read the card. Try again, or tap Save card to do it in the background.'));
       }
-      setError(getApiErrorMessage(err, 'Could not read the card. Check your internet and try again.'));
-    },
-  });
-
-  function readQueued(card: QueuedCard) {
-    setFront(card.front);
-    setBack(card.back);
-    setQueueId(card.id);
-    setForm((f) => ({ ...EMPTY_FORM, metAt: card.metAt || f.metAt }));
-    scan.mutate({ front: card.front, back: card.back, queued: true });
-  }
-
-  function discardQueued(card: QueuedCard) {
-    Alert.alert('Remove this card?', 'The photo will be deleted from this phone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => void removeQueuedCard(card.id).then(refreshQueue) },
-    ]);
+    } finally {
+      clearTimeout(hint);
+      clearTimeout(giveUp);
+      abortRef.current = null;
+      setReading(false);
+      setSlow(false);
+    }
   }
 
   const trimmedValuation = form.valuation.trim();
@@ -303,40 +406,67 @@ export default function ScanCardScreen() {
   const phoneValid = !form.phone.trim() || parsePhoneCandidate(form.phone) !== null;
   const hasContact = !!(form.name.trim() || form.phone.trim() || form.email.trim());
 
-  const save = useMutation({
-    mutationFn: async () => {
-      const primaryPhone = form.phone.trim();
-      const primaryEmail = form.email.trim().toLowerCase();
-      const otherPhones = scanned?.fields.phones.map((p) => p.number).filter((n) => n !== primaryPhone) ?? [];
-      const otherEmails = scanned?.fields.emails.filter((e) => e !== primaryEmail) ?? [];
-      const result = await saveBusinessCardLead({
-        name: form.name.trim() || undefined,
-        phone: primaryPhone || undefined,
-        email: primaryEmail || undefined,
-        company: form.company.trim() || undefined,
-        designation: form.designation.trim() || undefined,
-        website: form.website.trim() || undefined,
-        address: form.address.trim() || undefined,
-        city: form.city.trim() || undefined,
-        metAt: form.metAt.trim() || undefined,
-        notes: form.notes.trim() || undefined,
-        valuation: trimmedValuation ? Number(trimmedValuation) : undefined,
-        otherPhones,
-        otherEmails,
-        imageKeys: scanned?.imageKeys,
-      });
-      await AsyncStorage.setItem(MET_AT_KEY, form.metAt.trim()).catch(() => {});
-      return { result, phones: [primaryPhone, ...otherPhones].filter(Boolean), emails: [primaryEmail, ...otherEmails].filter(Boolean) };
-    },
-    onMutate: () => setError(null),
-    onSuccess: ({ result, phones, emails }) => {
+  async function saveChecked() {
+    const primaryPhone = form.phone.trim();
+    const primaryEmail = form.email.trim().toLowerCase();
+    const otherPhones = scanned?.fields.phones.map((p) => p.number).filter((n) => n !== primaryPhone) ?? [];
+    const otherEmails = scanned?.fields.emails.filter((e) => e !== primaryEmail) ?? [];
+    const payload: BusinessCardLeadInput = {
+      name: form.name.trim() || undefined,
+      phone: primaryPhone || undefined,
+      email: primaryEmail || undefined,
+      company: form.company.trim() || undefined,
+      designation: form.designation.trim() || undefined,
+      website: form.website.trim() || undefined,
+      address: form.address.trim() || undefined,
+      city: form.city.trim() || undefined,
+      metAt: form.metAt.trim() || undefined,
+      notes: form.notes.trim() || undefined,
+      valuation: trimmedValuation ? Number(trimmedValuation) : undefined,
+      otherPhones,
+      otherEmails,
+      imageKeys: scanned?.imageKeys,
+    };
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await saveBusinessCardLead(payload);
+      await rememberEvent(activeBusinessId, form.metAt);
       void queryClient.invalidateQueries({ queryKey: ['crm-leads', activeBusinessId] });
-      if (queueId) void removeQueuedCard(queueId).then(refreshQueue);
-      setSavedCount((c) => c + 1);
-      setSaved({ result, form, phones, emails });
-    },
-    onError: (err) => setError(getApiErrorMessage(err, 'Failed to save the lead.')),
-  });
+      void queryClient.invalidateQueries({ queryKey: ['card-events', activeBusinessId] });
+      if (typingFor) void removeQueued(typingFor);
+      setCapturedCount((c) => c + 1);
+      setSaved({ result, form, phones: [primaryPhone, ...otherPhones].filter(Boolean), emails: [primaryEmail, ...otherEmails].filter(Boolean) });
+    } catch (err) {
+      if (isOfflineError(err)) {
+        await enqueueSave({ businessId: activeBusinessId, payload, label: payload.name || payload.company || payload.phone || 'Visiting card' });
+        await rememberEvent(activeBusinessId, form.metAt);
+        if (typingFor) void removeQueued(typingFor);
+        setCapturedCount((c) => c + 1);
+        resetForNext();
+        setNotice("No network — the lead is saved on this phone and will be added to your CRM automatically.");
+      } else {
+        setError(getApiErrorMessage(err, 'Failed to save the lead.'));
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function typeQueued(item: QueuedCard) {
+    setFront(item.front);
+    setBack(item.back);
+    setTypingFor(item.id);
+    setForm((f) => ({ ...EMPTY_FORM, metAt: item.metAt || f.metAt }));
+    setScanned({ fields: EMPTY_FIELDS, imageKeys: [] });
+  }
+
+  function discardQueued(item: QueueItem) {
+    Alert.alert('Remove this card?', 'It will be deleted from this phone and not added to your CRM.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => void removeQueued(item.id) },
+    ]);
+  }
 
   const introText = saved
     ? fillIntro(intro, { name: saved.form.name, event: saved.form.metAt.trim(), business: activeBusiness?.name ?? 'us' })
@@ -382,7 +512,22 @@ export default function ScanCardScreen() {
   }
 
   const unsure = (k: string) => !!scanned?.fields.uncertain.includes(k);
-  const canSave = hasContact && phoneValid && valuationValid && !save.isPending;
+  const canSave = hasContact && phoneValid && valuationValid && !saving;
+
+  const waiting = queue.filter((i) => i.status === 'waiting');
+  const unreadable = queue.filter((i) => i.status === 'unreadable' || i.status === 'failed');
+  const justFailed = unreadable.find((i) => sessionIds.includes(i.id) && !dismissedAlerts.includes(i.id) && i.kind === 'scan') as
+    | QueuedCard
+    | undefined;
+
+  async function retakeFailed(item: QueuedCard) {
+    await removeQueued(item.id);
+    setDismissedAlerts((d) => [...d, item.id]);
+    resetForNext();
+    void take('front', 'camera');
+  }
+
+  const waitingStatus = sync.running && !offline ? 'Sending…' : offline || sync.offline ? 'Waiting for network' : 'Waiting to send';
 
   return (
     <Screen>
@@ -391,13 +536,13 @@ export default function ScanCardScreen() {
           <BackChevron />
         </Pressable>
         <Text className="font-display-bold text-lg text-white">Scan visiting card</Text>
-        {savedCount > 0 && <Text className="ml-auto font-sans text-xs text-zinc-500">{savedCount} saved</Text>}
+        {capturedCount > 0 && <Text className="ml-auto font-sans text-xs text-zinc-500">{capturedCount} this session</Text>}
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerClassName="gap-4 px-4 pb-16 pt-4" keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
           {saved ? (
-            /* ── Saved: intro message + contacts ─────────────────────── */
+            /* ── Checked lead saved: intro message + contacts ────────── */
             <>
               <View style={{ alignItems: 'center', gap: 6, paddingVertical: 8 }}>
                 <Ionicons name="checkmark-circle" size={44} color={t.brandBright} />
@@ -437,10 +582,7 @@ export default function ScanCardScreen() {
                   )}
                   <Text className="font-sans text-xs text-zinc-600">Opens your own app — you press send.</Text>
                   {!!saved.form.phone && (
-                    <SecondaryButton
-                      title={sentVia.includes('WhatsApp') ? 'WhatsApp opened ✓' : 'Send on WhatsApp'}
-                      onPress={() => void sendIntro('WhatsApp')}
-                    />
+                    <SecondaryButton title={sentVia.includes('WhatsApp') ? 'WhatsApp opened ✓' : 'Send on WhatsApp'} onPress={() => void sendIntro('WhatsApp')} />
                   )}
                   {!!saved.form.email && (
                     <SecondaryButton title={sentVia.includes('email') ? 'Email opened ✓' : 'Send email'} onPress={() => void sendIntro('email')} />
@@ -461,15 +603,56 @@ export default function ScanCardScreen() {
           ) : !scanned ? (
             /* ── Capture ─────────────────────────────────────────────── */
             <>
-              <Text className="font-sans text-sm text-zinc-400">
-                Hold the card flat in good light. We read the details for you; you check them before anything is saved.
-              </Text>
+              <Labeled label="Where you met">
+                <EventPicker businessId={activeBusinessId} value={form.metAt} onChange={set('metAt')} />
+              </Labeled>
               {offline && (
                 <Text className="font-sans text-sm text-amber-400">
-                  You're offline. Take the photo anyway — it's kept on this phone and read when you're back online.
+                  You're offline — keep scanning. Cards are saved on this phone and added to your CRM automatically when the network is back.
                 </Text>
               )}
+              {justFailed && (
+                <View style={{ gap: 10, borderRadius: 16, borderWidth: 1, borderColor: '#f59e0b80', backgroundColor: '#f59e0b14', padding: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Image source={{ uri: justFailed.front.uri }} style={{ width: 64, height: 38, borderRadius: 6 }} contentFit="cover" />
+                    <Text className="flex-1 font-sans text-sm text-zinc-200">
+                      The card you just saved couldn't be read{justFailed.lastError ? ` — ${justFailed.lastError}` : '.'} Retake it while you're still there?
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 18 }}>
+                    <Pressable onPress={() => setDismissedAlerts((d) => [...d, justFailed.id])} hitSlop={6}>
+                      <Text className="font-sans-semibold text-sm text-zinc-500">Later</Text>
+                    </Pressable>
+                    <Pressable onPress={() => typeQueued(justFailed)} hitSlop={6}>
+                      <Text className="font-sans-semibold text-sm text-indigo-300">Type it</Text>
+                    </Pressable>
+                    <Pressable onPress={() => void retakeFailed(justFailed)} hitSlop={6}>
+                      <Text className="font-sans-semibold text-sm text-emerald-400">Retake</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
               <PhotoSlot label="Front of card" photo={front} onTake={() => void take('front', 'camera')} onPick={() => void take('front', 'library')} />
+              {!front && (
+                <Text className="font-sans text-xs text-zinc-500">
+                  Tips: lay the card flat · good light, no glare · card fills most of the photo · hold still for a second.
+                </Text>
+              )}
+              {front && blur.front && (
+                <View style={{ gap: 8, borderRadius: 14, borderWidth: 1, borderColor: '#f59e0b80', backgroundColor: '#f59e0b14', padding: 12 }}>
+                  <Text className="font-sans text-sm text-zinc-200">
+                    This photo looks blurry — the details may not be readable. Hold the phone still and tap the card on screen to focus.
+                  </Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 18 }}>
+                    <Pressable onPress={() => setBlur((b) => ({ ...b, front: false }))} hitSlop={6}>
+                      <Text className="font-sans-semibold text-sm text-zinc-400">Use anyway</Text>
+                    </Pressable>
+                    <Pressable onPress={() => void take('front', 'camera')} hitSlop={6}>
+                      <Text className="font-sans-semibold text-sm text-emerald-400">Retake</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
               {front && (
                 <PhotoSlot
                   label="Back of card (optional)"
@@ -479,65 +662,104 @@ export default function ScanCardScreen() {
                   onRemove={() => setBack(null)}
                 />
               )}
-              {front && (
-                <Labeled label="Where you met">
-                  <Field value={form.metAt} onChangeText={set('metAt')} placeholder="e.g. Delhi Expo 2026 (remembered)" />
-                </Labeled>
+              {back && blur.back && (
+                <Text className="font-sans text-sm text-amber-400">
+                  The back photo looks blurry.{' '}
+                  <Text className="font-sans-semibold text-emerald-400" onPress={() => void take('back', 'camera')}>Retake</Text>
+                  {'  ·  '}
+                  <Text className="font-sans-semibold text-zinc-400" onPress={() => setBlur((b) => ({ ...b, back: false }))}>Use anyway</Text>
+                </Text>
               )}
               {!!notice && <Text className="font-sans text-sm text-emerald-400">{notice}</Text>}
               <ErrorText>{error}</ErrorText>
-              {scan.isPending ? (
-                <View style={{ alignItems: 'center', gap: 8, paddingVertical: 12 }}>
+
+              {reading ? (
+                <View style={{ alignItems: 'center', gap: 10, paddingVertical: 12 }}>
                   <ActivityIndicator />
                   <Text className="font-sans text-sm text-zinc-400">Reading the card…</Text>
+                  {slow && (
+                    <>
+                      <Text className="text-center font-sans text-sm text-amber-400">The network is slow.</Text>
+                      <SecondaryButton title="Save in background instead" onPress={() => abortRef.current?.abort()} />
+                    </>
+                  )}
                 </View>
-              ) : offline ? (
-                <PrimaryButton title="Keep for later" disabled={!front} onPress={() => void keepForLater()} />
               ) : (
-                <PrimaryButton title="Read card" disabled={!front} onPress={() => front && scan.mutate({ front, back })} />
-              )}
-              <Pressable
-                onPress={() =>
-                  setScanned({
-                    fields: { isBusinessCard: true, name: '', designation: '', company: '', phones: [], emails: [], website: '', address: '', city: '', uncertain: [] },
-                    imageKeys: [],
-                  })
-                }
-                hitSlop={6}
-              >
-                <Text className="text-center font-sans text-sm text-zinc-500">Type the details instead</Text>
-              </Pressable>
-
-              {queue.length > 0 && (
-                <View style={{ gap: 10, marginTop: 8 }}>
-                  <Text className="font-sans-bold text-xs uppercase tracking-wider text-zinc-500">
-                    Waiting to be read ({queue.length})
+                <>
+                  <PrimaryButton
+                    title={!front ? 'Take a photo first' : blur.front ? 'Save anyway' : 'Save card'}
+                    disabled={!front}
+                    onPress={() => void saveCard()}
+                  />
+                  <Text className="text-center font-sans text-xs text-zinc-500">
+                    Saved straight to your CRM — no checking needed. Unclear ones are marked “Check details”.
                   </Text>
-                  {queue.map((card) => (
-                    <View
-                      key={card.id}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1, borderColor: t.border, backgroundColor: t.card, padding: 10 }}
+                  <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 20 }}>
+                    <Pressable onPress={() => void readNow()} disabled={!front || offline} hitSlop={6} style={{ opacity: !front || offline ? 0.4 : 1 }}>
+                      <Text className="font-sans-semibold text-sm text-indigo-300">Read & check now</Text>
+                    </Pressable>
+                    <Pressable onPress={() => setScanned({ fields: EMPTY_FIELDS, imageKeys: [] })} hitSlop={6}>
+                      <Text className="font-sans text-sm text-zinc-500">Type it instead</Text>
+                    </Pressable>
+                  </View>
+                </>
+              )}
+
+              {!!sync.message && <Text className="font-sans text-sm text-amber-400">{sync.message}</Text>}
+
+              {waiting.length > 0 && (
+                <View style={{ gap: 8 }}>
+                  <SectionTitle>{`Adding to CRM (${waiting.length})`}</SectionTitle>
+                  {waiting.map((item) => (
+                    <QueueRow
+                      key={item.id}
+                      item={item}
+                      status={item.attempts > 0 && item.lastError ? `${waitingStatus} · last try: ${item.lastError}` : waitingStatus}
+                    />
+                  ))}
+                </View>
+              )}
+
+              {unreadable.length > 0 && (
+                <View style={{ gap: 8 }}>
+                  <SectionTitle>{`Couldn't add (${unreadable.length})`}</SectionTitle>
+                  {unreadable.map((item) => (
+                    <QueueRow
+                      key={item.id}
+                      item={item}
+                      status={item.lastError || "We couldn't read this card."}
+                      actions={[
+                        { label: 'Retry', onPress: () => void retryQueued(item.id) },
+                        ...(item.kind === 'scan' ? [{ label: 'Type', onPress: () => typeQueued(item) }] : []),
+                        { label: 'Delete', onPress: () => discardQueued(item), tone: 'danger' as const },
+                      ]}
+                    />
+                  ))}
+                </View>
+              )}
+
+              {results.length > 0 && (
+                <View style={{ gap: 8 }}>
+                  <SectionTitle>Added just now</SectionTitle>
+                  {results.slice(0, 10).map((r) => (
+                    <Pressable
+                      key={`${r.leadId}-${r.at}`}
+                      onPress={() => router.push(`/leads/${r.leadId}`)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, borderWidth: 1, borderColor: t.border, backgroundColor: t.card, paddingHorizontal: 12, minHeight: 48 }}
                     >
-                      <Image source={{ uri: card.front.uri }} style={{ width: 70, height: 40, borderRadius: 6 }} contentFit="cover" />
-                      <View style={{ flex: 1 }}>
-                        <Text className="font-sans-semibold text-sm text-zinc-200" numberOfLines={1}>
-                          {card.metAt || 'Visiting card'}
-                        </Text>
-                        <Text className="font-sans text-xs text-zinc-500">{new Date(card.createdAt).toLocaleString()}</Text>
-                      </View>
-                      <Pressable onPress={() => readQueued(card)} disabled={offline || scan.isPending} hitSlop={6} style={{ opacity: offline || scan.isPending ? 0.4 : 1 }}>
-                        <Text className="font-sans-semibold text-sm text-indigo-300">Read now</Text>
-                      </Pressable>
-                      <Pressable onPress={() => discardQueued(card)} hitSlop={6}>
-                        <Ionicons name="trash-outline" size={18} color={t.textFaint} />
-                      </Pressable>
-                    </View>
+                      <Ionicons name={r.needsReview ? 'alert-circle-outline' : 'checkmark-circle-outline'} size={18} color={r.needsReview ? '#fbbf24' : t.brandBright} />
+                      <Text className="flex-1 font-sans-semibold text-sm text-zinc-200" numberOfLines={1}>{r.name}</Text>
+                      <Text className={`font-sans text-xs ${r.needsReview ? 'text-amber-400' : 'text-zinc-500'}`}>
+                        {r.needsReview ? 'Check details' : r.existing ? 'Already in CRM' : 'Added'}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={14} color={t.textFaint} />
+                    </Pressable>
                   ))}
                 </View>
               )}
             </>
           ) : (
-            /* ── Review form ─────────────────────────────────────────── */
+            /* ── Check form ("Read & check now" / "Type it") ─────────── */
             <>
               {front && (
                 <Image source={{ uri: front.uri }} style={{ width: '100%', aspectRatio: 1.75, borderRadius: 14 }} contentFit="cover" />
@@ -582,7 +804,7 @@ export default function ScanCardScreen() {
               </Labeled>
 
               <Labeled label="Where you met">
-                <Field value={form.metAt} onChangeText={set('metAt')} placeholder="e.g. Delhi Expo 2026 (remembered for next scan)" />
+                <EventPicker businessId={activeBusinessId} value={form.metAt} onChange={set('metAt')} />
               </Labeled>
               <Labeled label="Notes">
                 <Field value={form.notes} onChangeText={set('notes')} placeholder="What did you talk about? (optional)" multiline className="min-h-20" textAlignVertical="top" />
@@ -595,10 +817,11 @@ export default function ScanCardScreen() {
               {!hasContact && <Text className="font-sans text-sm text-zinc-500">Add at least a name, phone or email.</Text>}
               <ErrorText>{error}</ErrorText>
 
-              <PrimaryButton title="Save lead" loading={save.isPending} disabled={!canSave} onPress={() => save.mutate()} />
+              <PrimaryButton title="Save lead" loading={saving} disabled={!canSave} onPress={() => void saveChecked()} />
               <Pressable
                 onPress={() => {
                   setScanned(null);
+                  setTypingFor(null);
                   setError(null);
                   setForm((f) => ({ ...EMPTY_FORM, metAt: f.metAt }));
                 }}

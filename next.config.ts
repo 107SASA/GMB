@@ -65,6 +65,14 @@ const noStoreHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Type-checking the whole project needs ~3.8 GB of memory, more than the
+  // production droplet has (3.8 GB RAM) — `next build` died with "JavaScript
+  // heap out of memory" in the "Running TypeScript" step. The droplet sets
+  // SKIP_BUILD_TYPECHECK=1 and skips that step; types are checked before
+  // pushing instead (`npm run typecheck`). Every other build still checks.
+  typescript: {
+    ignoreBuildErrors: process.env.SKIP_BUILD_TYPECHECK === '1',
+  },
   serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
   experimental: {
     // src/proxy.ts matches /api/*, and while a proxy runs Next.js buffers the

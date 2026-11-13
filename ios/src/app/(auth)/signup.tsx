@@ -119,7 +119,7 @@ export default function SignupScreen() {
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
-        <ScrollView contentContainerClassName="flex-grow px-6 pb-10 pt-4" keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerClassName="flex-grow justify-center px-6 py-10" keyboardShouldPersistTaps="handled">
           <Text className="font-display text-[28px] tracking-tight text-white">{title}</Text>
           {step === 'name' && (
             <Text className="mt-2 font-sans text-sm text-zinc-400">

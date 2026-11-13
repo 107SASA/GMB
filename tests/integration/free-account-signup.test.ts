@@ -119,3 +119,11 @@ test('admin: free-account filter + call reasons on Leads; funnel is super-admin 
   assert.match(read('src/services/admin/pipelineQuery.ts'), /'freeAccount\.callReasons\.0'/);
   assert.match(read('src/app/api/admin/free-accounts/funnel/route.ts'), /requireSuperAdmin\(\)/);
 });
+
+test('report in the app: the full website report, no prices, with a WhatsApp help button', () => {
+  assert.match(read('src/services/leads/reportLink.ts'), /\/free-report\/result\?auditId=/);
+  assert.match(read('src/app/free-report/result/page.tsx'), /appMode=\{appMode\}/);
+  const view = read('src/components/audit/FreeReportView.tsx');
+  assert.match(view, /\{!appMode && \(\s*<div id="unlock"/);
+  assert.match(view, /getSupportLink\(APP_ACCESS_MESSAGE\)/);
+});

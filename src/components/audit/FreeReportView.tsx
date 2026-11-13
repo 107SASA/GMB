@@ -18,6 +18,7 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import AreaVisibilitySection from './AreaVisibilitySection';
 import { FaqAccordion } from '@/components/shared/FaqAccordion';
 import { ALL_FAQS } from '@/lib/faqData';
+import { APP_ACCESS_MESSAGE, getSupportLink } from '@/lib/whatsappCta';
 import ConsultantSections from '@/components/audit/ConsultantSections';
 import { GROWWMATICS_CAPABILITIES, type Capability } from '@/services/audit/findings';
 import {
@@ -136,7 +137,12 @@ function FixTags({ finding }: { finding: any }) {
   );
 }
 
-export default function FreeReportView({ audit, pricing = {} }: { audit: FreeReportAudit; pricing?: FreeReportPricing }) {
+/**
+ * appMode (opened from the mobile app, ?app=1): the same report, minus every
+ * price, buy button, plan sidebar and the FAQ (App Store / Play rules — no
+ * purchase steering inside the app). Report content is identical to the website.
+ */
+export default function FreeReportView({ audit, pricing = {}, appMode = false }: { audit: FreeReportAudit; pricing?: FreeReportPricing; appMode?: boolean }) {
   const d = audit.auditData || {};
   const facts = d.facts;
   const legacy = isLegacyAudit(d);
@@ -214,9 +220,11 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
             <span className="hidden sm:inline text-outline mx-2">·</span>
             <span className="hidden sm:inline text-sm text-on-surface-variant truncate">Your Free Business Report</span>
           </div>
-          <Link href="/free-report" className="text-sm font-medium text-primary hover:underline shrink-0 min-h-11 inline-flex items-center">
-            Change business
-          </Link>
+          {!appMode && (
+            <Link href="/free-report" className="text-sm font-medium text-primary hover:underline shrink-0 min-h-11 inline-flex items-center">
+              Change business
+            </Link>
+          )}
         </div>
       </div>
 
@@ -285,6 +293,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
                     <div className="text-xs text-on-surface-variant mt-1">of checked profile fields complete</div>
                   </div>
                 </div>
+                {!appMode && (
                 <Link
                   href={checkoutHref}
                   className="block w-full text-center py-4 bg-primary text-on-primary rounded-lg font-bold hover:bg-primary-container transition-all card-shadow"
@@ -296,6 +305,7 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
                       : 'Start today'}
                   </span>
                 </Link>
+                )}
               </div>
             )}
           </div>
@@ -479,12 +489,14 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
                   {competitorsAhead - 5} more business{competitorsAhead - 5 === 1 ? '' : 'es'} appeared above you…
                 </p>
               )}
-              <Link
-                href={checkoutHref}
-                className="mt-4 block w-full text-center py-3 bg-primary text-on-primary rounded-lg font-bold hover:bg-primary-container transition-all"
-              >
-                Beat Your Competitors →
-              </Link>
+              {!appMode && (
+                <Link
+                  href={checkoutHref}
+                  className="mt-4 block w-full text-center py-3 bg-primary text-on-primary rounded-lg font-bold hover:bg-primary-container transition-all"
+                >
+                  Beat Your Competitors →
+                </Link>
+              )}
             </div>
           )}
 
@@ -507,12 +519,14 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
                   </li>
                 ))}
               </ul>
-              <Link
-                href={checkoutHref}
-                className="mt-5 block w-full text-center py-3 bg-primary text-on-primary rounded-lg font-bold hover:bg-primary-container transition-all"
-              >
-                See How We Fix These Issues →
-              </Link>
+              {!appMode && (
+                <Link
+                  href={checkoutHref}
+                  className="mt-5 block w-full text-center py-3 bg-primary text-on-primary rounded-lg font-bold hover:bg-primary-container transition-all"
+                >
+                  See How We Fix These Issues →
+                </Link>
+              )}
             </div>
           )}
 
@@ -651,24 +665,46 @@ export default function FreeReportView({ audit, pricing = {} }: { audit: FreeRep
               keywordTable={keywordTable}
               businessName={audit.businessName}
               city={city}
-              checkoutHref={checkoutHref}
+              checkoutHref={appMode ? null : checkoutHref}
             />
           )}
 
-          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
-            <SectionHeader title="Common questions" icon="help" />
-            <FaqAccordion faqs={ALL_FAQS} defaultOpenIndex={null} />
-          </div>
+          {/* App mode: no prices here — the help button opens WhatsApp, where the
+              team / auto-reply shares the plans (outside the app, as the stores allow).
+              Same message as the app's lock screens (services/whatsapp/appAccessHelp.ts). */}
+          {appMode && (
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6 text-center">
+              <h3 className="font-heading text-lg font-bold text-on-surface">Questions about your report?</h3>
+              <p className="mt-1 text-sm text-on-surface-variant">Our team can explain it and help you fix it.</p>
+              <a
+                href={getSupportLink(APP_ACCESS_MESSAGE)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 min-h-12 rounded-lg bg-primary text-on-primary font-bold hover:bg-primary-container transition-all"
+              >
+                <MaterialIcon name="chat" size={18} /> Chat with us on WhatsApp
+              </a>
+            </div>
+          )}
+
+          {!appMode && (
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
+              <SectionHeader title="Common questions" icon="help" />
+              <FaqAccordion faqs={ALL_FAQS} defaultOpenIndex={null} />
+            </div>
+          )}
         </div>
 
-        <div id="unlock" className="w-full lg:w-auto">
-          <AuditPaywallSidebar
-            unlockHeadline="Your report is free to keep. Unlock the full detailed report — every issue, every keyword gap, and a step-by-step action plan — plus the whole platform."
-            showComparison
-            sticky={false}
-            promoStyle
-          />
-        </div>
+        {!appMode && (
+          <div id="unlock" className="w-full lg:w-auto">
+            <AuditPaywallSidebar
+              unlockHeadline="Your report is free to keep. Unlock the full detailed report — every issue, every keyword gap, and a step-by-step action plan — plus the whole platform."
+              showComparison
+              sticky={false}
+              promoStyle
+            />
+          </div>
+        )}
       </div>
     </div>
   );

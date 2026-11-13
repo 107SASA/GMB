@@ -24,6 +24,8 @@ export function CardSyncRunner() {
       if (saved > 0 && !cancelled) {
         void queryClient.invalidateQueries({ queryKey: ['crm-leads'] });
         void queryClient.invalidateQueries({ queryKey: ['card-events'] });
+        // Free CRM tier: lead / scan counters (billing status).
+        void queryClient.invalidateQueries({ queryKey: ['workspace-access'] });
       }
     };
 

@@ -33,6 +33,10 @@ export async function queryPipeline(p: URLSearchParams) {
   if (partner === 'yes') and.push({ partnerId: { $type: 'objectId' } });
   else if (partner === 'no') and.push({ partnerId: null });
   else if (partner && /^[a-f0-9]{24}$/i.test(partner)) and.push({ partnerId: partner });
+  // Free accounts (CRM + card scan): any / the ones sales should call now.
+  const free = p.get('free');
+  if (free === 'yes') and.push({ 'freeAccount.updatedAt': { $exists: true } });
+  else if (free === 'call') and.push({ 'freeAccount.callReasons.0': { $exists: true } });
   if (p.get('assigned') === 'none') and.push({ assignedUserId: null });
   else eq('assignedUserId', 'assigned');
 
@@ -196,5 +200,16 @@ export function toRow(r: LeadRow, ws?: Workspace) {
     paymentStatus: paymentStatus(r, ws),
     trialEndsAt: isOnTrialNow(l) && l.trial?.endsAt ? l.trial.endsAt : null,
     partner: l.partnerId ? (l.partnerInfo ?? { id: String(l.partnerId), code: null, name: 'Growth Partner' }) : null,
+    // Free account usage + why to call (services/leads/freeAccountSignals.ts).
+    freeAccount: l.freeAccount
+      ? {
+          activeLeads: l.freeAccount.activeLeads ?? null,
+          maxActiveLeads: l.freeAccount.maxActiveLeads ?? null,
+          scansThisMonth: l.freeAccount.scansThisMonth ?? null,
+          maxScansPerMonth: l.freeAccount.maxScansPerMonth ?? null,
+          reportScore: l.freeAccount.reportScore ?? null,
+          callReasons: l.freeAccount.callReasons ?? [],
+        }
+      : null,
   };
 }

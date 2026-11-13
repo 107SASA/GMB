@@ -21,6 +21,8 @@ const PlanConfigSchema = new Schema<IPlanConfig>(
     maxAIGenerations:          { type: Number, required: true },
     // Optional — configs saved before this field fall back to the plan default.
     maxCardScansPerMonth:      { type: Number },
+    // Optional — CRM leads not yet Won/Lost; -1 unlimited; Free plan 0 = free CRM off.
+    maxActiveLeads:            { type: Number },
     updatedBy:                 { type: String, default: '' },
   },
   { timestamps: true }

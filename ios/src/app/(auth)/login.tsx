@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
@@ -22,6 +23,7 @@ type PhoneStep = 'enter-phone' | 'enter-otp';
 // this only removes the customer-facing mobile UI for it.
 export default function LoginScreen() {
   const { requestPhoneOtp, loginWithPhone } = useAuth();
+  const router = useRouter();
 
   const [phoneStep, setPhoneStep] = useState<PhoneStep>('enter-phone');
   // Small phones (<360dp, e.g. 320-wide): drop the form's extra inset so the
@@ -152,9 +154,12 @@ export default function LoginScreen() {
             </View>
           )}
 
-          <Text className="mt-10 text-center font-sans text-xs text-zinc-500">
-            Accounts are managed on the Growwmatics AI website.
-          </Text>
+          {/* Free account: CRM + visiting-card scanner (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md). */}
+          <Pressable onPress={() => router.push('/signup')} style={{ marginTop: 40, alignItems: 'center', paddingVertical: 6 }}>
+            <Text className="text-center font-sans text-sm text-zinc-400">
+              New here? <Text className="font-sans-semibold text-brand-bright">Create a free account</Text>
+            </Text>
+          </Pressable>
           {getPrivacyPolicyUrl() && (
             <Text
               accessibilityRole="link"

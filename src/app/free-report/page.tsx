@@ -183,6 +183,11 @@ export default function FreeReportPage() {
         setSubmitting(false);
         return;
       }
+      // This number already has an account: the code logged them in — open their dashboard.
+      if (json.loggedIn) {
+        window.location.href = json.redirect || '/dashboard';
+        return;
+      }
       router.push(`/free-report/result?auditId=${json.auditId}`);
     } catch {
       setError('Network error. Please try again.');

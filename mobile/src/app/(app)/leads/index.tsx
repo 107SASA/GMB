@@ -104,7 +104,7 @@ function CaptureAction({
 }
 
 export default function LeadsScreen() {
-  const { activeBusinessId } = useBusiness();
+  const { activeBusinessId, freeCrm, refreshWorkspaceAccess } = useBusiness();
   const t = useTheme();
   const router = useRouter();
   const [search, setSearch] = useState('');
@@ -128,6 +128,13 @@ export default function LeadsScreen() {
     });
   }, []);
   useFocusEffect(countQueue);
+  // Free CRM tier: refresh the lead / scan counters each time the CRM opens.
+  useFocusEffect(
+    useCallback(() => {
+      if (freeCrm) void refreshWorkspaceAccess();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [!!freeCrm])
+  );
   // Live while the list is open — the background sync adds cards as the network allows.
   useEffect(() => subscribeQueue(countQueue), [countQueue]);
   // 'all' | lifecycle group; subFilter narrows to one sub-stage of that group.
@@ -196,6 +203,26 @@ export default function LeadsScreen() {
   return (
     <Screen>
       <AppHeader title="CRM" />
+
+      {freeCrm && (
+        <View style={{ marginHorizontal: 20, marginBottom: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          <Badge label="Free plan" tone="info" />
+          {freeCrm.maxActiveLeads >= 0 && (
+            <Badge
+              label={`${freeCrm.activeLeads} / ${freeCrm.maxActiveLeads} active leads`}
+              tone={freeCrm.activeLeads >= freeCrm.maxActiveLeads ? 'warning' : 'neutral'}
+            />
+          )}
+          {freeCrm.maxScansPerMonth >= 0 && (
+            <Badge
+              label={`${freeCrm.scansUsed} / ${freeCrm.maxScansPerMonth} card scans${
+                freeCrm.scansResetAt ? ` · resets ${new Date(freeCrm.scansResetAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` : ''
+              }`}
+              tone={freeCrm.scansUsed >= freeCrm.maxScansPerMonth ? 'warning' : 'neutral'}
+            />
+          )}
+        </View>
+      )}
 
       {/* Capture actions (Phase 4B) */}
       <View className="pb-3">

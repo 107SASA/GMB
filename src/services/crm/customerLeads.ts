@@ -67,8 +67,10 @@ export interface CustomerLeadInput {
 export interface CustomerLeadResult {
   lead: any;
   created: boolean;
-  /** Why an input row was not saved (no name/phone/email). */
+  /** Why an input row was not saved (no name/phone/email, or the active-lead limit). */
   skippedReason?: string;
+  /** 'LEAD_LIMIT' when the workspace is at its plan's active-lead cap (Free CRM tier: 200). */
+  code?: 'LEAD_LIMIT';
 }
 
 async function models() {
@@ -99,6 +101,8 @@ export async function logLeadActivity(lead: { _id: any; tenantId: string; organi
 export interface CustomerLeadIndex {
   byPhone: Map<string, string>;
   byEmail: Map<string, string>;
+  /** Active-lead cap for this import, read once and counted up as rows are created. */
+  capacity?: { limit: number; used: number } | null;
 }
 
 export async function buildCustomerLeadIndex(businessId: string): Promise<CustomerLeadIndex> {
@@ -211,6 +215,20 @@ export async function createOrUpdateCustomerLead(
     return { lead: existing, created: false };
   }
 
+  // Plan cap on active (not Won/Lost) leads — Free CRM tier 200, Pro unlimited.
+  // Bulk imports read it once (opts.index) and count up; single adds query it.
+  const { activeLeadCapacity, leadLimitMessage } = await import('@/lib/freeCrm');
+  let capacity = opts.index?.capacity ?? null;
+  if (!capacity) {
+    const c = await activeLeadCapacity(input.businessId);
+    capacity = { limit: c.limit, used: c.used };
+    if (opts.index) opts.index.capacity = capacity;
+  }
+  const startsActive = !input.lifeCycleStage || input.lifeCycleStage === 'initial' || input.lifeCycleStage === 'active';
+  if (startsActive && capacity.limit >= 0 && capacity.used >= capacity.limit) {
+    return { lead: null, created: false, skippedReason: leadLimitMessage(capacity.limit), code: 'LEAD_LIMIT' };
+  }
+
   const lead = await Lead.create({
     tenantId: input.organizationId,
     organizationId: input.organizationId,
@@ -236,6 +254,7 @@ export async function createOrUpdateCustomerLead(
   await logLeadActivity(lead, { type: 'lead_created', content: `Lead created — source: ${source}`, metadata: { source }, createdBy: input.createdBy });
   if (input.activity) await logLeadActivity(lead, input.activity);
   if (opts.index) addToIndex(opts.index, lead);
+  if (startsActive) capacity.used += 1;
 
   if (!input.skipAutomation) {
     const { inngest } = await import('@/services/inngest/client');

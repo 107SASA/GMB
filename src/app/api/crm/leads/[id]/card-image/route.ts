@@ -2,7 +2,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
-import { requireModule } from '@/lib/moduleGating';
+import { requireCrmModule } from '@/lib/moduleGating';
 import { getPrivateObject, isStorageConfigured } from '@/lib/storage';
 import { isOwnCardImageKey } from '@/services/crm/businessCardParse';
 
@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
-  const gate = await requireModule(ctx.userId, 'sales_agent', ctx.businessId);
+  const gate = await requireCrmModule(ctx.userId, ctx.businessId);
   if (!gate.ok) return gate.response;
   if (!isStorageConfigured()) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 

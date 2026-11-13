@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireBusinessContext } from '@/lib/tenant';
-import { requireModule } from '@/lib/moduleGating';
+import { requireCrmModule } from '@/lib/moduleGating';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import { updateFollowUpTask } from '@/services/crm/followUps';
 
@@ -12,7 +12,7 @@ export async function PATCH(
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
-    const gate = await requireModule(ctx.userId, 'sales_agent', ctx.businessId);
+    const gate = await requireCrmModule(ctx.userId, ctx.businessId);
     if (!gate.ok) return gate.response;
 
     const { id } = await params;

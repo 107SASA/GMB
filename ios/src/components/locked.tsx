@@ -1,8 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Linking, ScrollView, Text, View } from 'react-native';
 
+import { useBusiness } from '@/business/BusinessContext';
 import { MODULE_NAMES, SURFACE_MODULES, useEntitlements, type SurfaceKey } from '@/entitlements/entitlements';
-import { Screen } from '@/components/ui';
+import { FreeReportCard } from '@/components/free-report-card';
+import { Screen, SecondaryButton, useInfoSheet } from '@/components/ui';
+import { ACTIVATE_MESSAGE, getSupportWhatsAppLink } from '@/lib/support';
 import { useTheme } from '@/lib/theme';
 
 /**
@@ -15,6 +19,8 @@ import { useTheme } from '@/lib/theme';
 export function LockedScreen({ surface }: { surface: SurfaceKey }) {
   const moduleName = MODULE_NAMES[SURFACE_MODULES[surface]];
   const t = useTheme();
+  const { freeCrm } = useBusiness();
+  if (freeCrm) return <FreeCrmLockedScreen moduleName={surface === 'inbox' ? 'Inbox' : moduleName} />;
   return (
     <Screen>
       <View className="flex-1 items-center justify-center gap-3 px-10">
@@ -64,4 +70,50 @@ export function BillingBanner() {
   }
 
   return null;
+}
+
+/**
+ * Free CRM tier (unpaid workspace): every tab except the CRM is locked.
+ * STORE COMPLIANCE — neutral copy, no price, no "upgrade/buy", no pricing
+ * link. The WhatsApp button reuses the "workspace inactive" screen's message,
+ * so the existing WhatsApp auto-reply handles it (services/whatsapp/appAccessHelp.ts).
+ */
+function FreeCrmLockedScreen({ moduleName }: { moduleName: string }) {
+  const t = useTheme();
+  const router = useRouter();
+  const info = useInfoSheet();
+
+  function contactUs() {
+    const link = getSupportWhatsAppLink(ACTIVATE_MESSAGE);
+    if (!link) {
+      info.show('Contact us', 'Reach us at support@growwmatics.com and our team will help you.');
+      return;
+    }
+    Linking.openURL(link).catch(() =>
+      info.show('Could not open WhatsApp', 'Make sure WhatsApp is installed, then try again — or reach us at support@growwmatics.com.')
+    );
+  }
+
+  return (
+    <Screen>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', gap: 16, paddingHorizontal: 20, paddingVertical: 24 }}>
+        {/* The free Google profile report (score, top fixes, full report). */}
+        <FreeReportCard />
+        <View className="items-center gap-3">
+          <View className="h-14 w-14 items-center justify-center rounded-full bg-surface-raised">
+            <Ionicons name="lock-closed-outline" size={24} color={t.textFaint} />
+          </View>
+          <Text className="font-display-bold text-lg text-white">{moduleName}</Text>
+          <Text className="text-center font-sans text-sm text-zinc-400">
+            This feature isn't included in your current plan. Your plan includes the CRM and visiting-card scan.
+          </Text>
+        </View>
+        <View style={{ gap: 10 }}>
+          <SecondaryButton title="Open CRM" onPress={() => router.push('/leads')} />
+          <SecondaryButton title="Chat with us on WhatsApp" onPress={contactUs} />
+        </View>
+      </ScrollView>
+      {info.node}
+    </Screen>
+  );
 }

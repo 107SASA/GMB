@@ -130,6 +130,10 @@ function RootNavigator() {
     } else if (typeof data?.growthReportMonth === 'string') {
       // Customer CRM: "Your <Month> Growth Report is ready".
       router.push({ pathname: '/leads/growth-report', params: { month: data.growthReportMonth } });
+    } else if (data?.freeReport === '1') {
+      // Free account: "Your free Google profile report is ready" — the Home
+      // lock screen shows the report card.
+      router.push('/dashboard');
     } else if (data?.crmLeads === '1') {
       // Customer CRM: several leads are overdue for a follow-up.
       router.push('/leads');

@@ -7,10 +7,10 @@ import AIUsageLog from '@/models/AIUsageLog';
 import PlanConfig from '@/models/PlanConfig';
 import Post from '@/models/Post';
 import Subscription from '@/models/Subscription';
-import { defaultCardScans, getPlanDefaults, type PlanLimits } from '@/lib/planDefaults';
+import { defaultActiveLeads, defaultCardScans, getPlanDefaults, type PlanLimits } from '@/lib/planDefaults';
 import { limitsPlanFor } from '@/lib/billing/entitlements';
 
-async function getPlanLimitsFromDB(planName: string): Promise<PlanLimits> {
+export async function getPlanLimitsFromDB(planName: string): Promise<PlanLimits> {
   if (planName === 'Enterprise') planName = 'Pro'; // legacy paid tier → THE paid plan
   try {
     const config = await PlanConfig.findOne({ plan: planName }).lean() as any;
@@ -23,6 +23,7 @@ async function getPlanLimitsFromDB(planName: string): Promise<PlanLimits> {
         reviewRequestCooldownDays: config.reviewRequestCooldownDays,
         maxAIGenerations:          config.maxAIGenerations,
         maxCardScansPerMonth:      config.maxCardScansPerMonth ?? defaultCardScans(planName),
+        maxActiveLeads:            config.maxActiveLeads ?? defaultActiveLeads(planName),
       };
     }
   } catch { /* fall through to hardcoded */ }
@@ -38,7 +39,7 @@ function startOfWeekUTC(): Date {
   return start;
 }
 
-async function resolveUserLimits(
+export async function resolveUserLimits(
   userId: string | mongoose.Types.ObjectId,
   planName: string
 ): Promise<PlanLimits> {
@@ -58,6 +59,7 @@ async function resolveUserLimits(
     reviewRequestCooldownDays: override.reviewRequestCooldownDays ?? planLimits.reviewRequestCooldownDays,
     maxAIGenerations:          override.maxAIGenerations          ?? planLimits.maxAIGenerations,
     maxCardScansPerMonth:      override.maxCardScansPerMonth      ?? planLimits.maxCardScansPerMonth,
+    maxActiveLeads:            override.maxActiveLeads            ?? planLimits.maxActiveLeads,
   };
 }
 

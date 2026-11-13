@@ -11,6 +11,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { setActiveBusinessIdHeader } from '@/api/client';
+import { fetchBillingStatus, type FreeCrmUsage } from '@/api/endpoints/account';
 import { deleteWorkspace, fetchBusinesses, type Business } from '@/api/endpoints/businesses';
 import { useAuth } from '@/auth/AuthContext';
 
@@ -50,6 +51,14 @@ interface BusinessContextValue {
   needsOnboarding: boolean;
   /** Which step the onboarding wizard should start on (see OnboardingStep). */
   onboardingStep: OnboardingStep;
+  /**
+   * Free CRM tier: the active workspace is unpaid but keeps the CRM + card
+   * scan (with these limits); every other tab shows the locked screen.
+   * null = paid / trial / legacy, or not known yet.
+   */
+  freeCrm: FreeCrmUsage | null;
+  /** Re-checks the active workspace's billing state (e.g. after paying). */
+  refreshWorkspaceAccess: () => Promise<void>;
   selectBusiness: (businessId: string) => Promise<void>;
   /**
    * Soft-deletes a workspace. If the deleted one was active, switches to the
@@ -160,9 +169,25 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     [activeBusinessId, queryClient]
   );
 
+  // Per-workspace billing state — only used for the Free CRM tier here (the
+  // server enforces every lock; this decides which tabs show the lock screen).
+  const hasActiveBusiness = businesses.some((b) => b._id === activeBusinessId);
+  const access = useQuery({
+    queryKey: ['workspace-access', activeBusinessId],
+    queryFn: fetchBillingStatus,
+    enabled: isAuthenticated && hasActiveBusiness,
+  });
+  const { refetch: refetchAccess } = access;
+  const refreshWorkspaceAccess = useCallback(async () => {
+    await refetchAccess();
+  }, [refetchAccess]);
+  const workspace = access.data?.workspace;
+  const freeCrm = hasActiveBusiness && workspace && !workspace.isActive && workspace.freeCrm?.enabled ? workspace.freeCrm : null;
+  const accessLoading = hasActiveBusiness && access.isPending && access.fetchStatus !== 'idle';
+
   const value = useMemo<BusinessContextValue>(() => {
     const activeBusiness = businesses.find((b) => b._id === activeBusinessId) ?? null;
-    const isLoading = isFetching || (isAuthenticated && !restored);
+    const isLoading = isFetching || (isAuthenticated && !restored) || accessLoading;
     const needsSelection = !isLoading && businesses.length > 1 && activeBusiness === null;
 
     // Onboarding gate. Deliberately independent of subscription status (unlike
@@ -175,7 +200,8 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     if (isAuthenticated && !isLoading && !needsSelection) {
       if (businesses.length === 0) {
         onboardingStep = 'create';
-      } else if (activeBusiness && !activeBusiness.intakeCompleted) {
+      } else if (activeBusiness && !activeBusiness.intakeCompleted && !freeCrm) {
+        // (Free CRM workspaces skip the post-payment intake — it's for paid plans.)
         const createdAt = activeBusiness.createdAt ? new Date(activeBusiness.createdAt) : null;
         if (createdAt && createdAt >= INTAKE_ENFORCED_SINCE) {
           onboardingStep = 'intake';
@@ -191,10 +217,12 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       needsSelection,
       needsOnboarding: onboardingStep !== null,
       onboardingStep,
+      freeCrm,
+      refreshWorkspaceAccess,
       selectBusiness,
       deleteBusiness,
     };
-  }, [businesses, isFetching, isAuthenticated, restored, activeBusinessId, selectBusiness, deleteBusiness]);
+  }, [businesses, isFetching, isAuthenticated, restored, activeBusinessId, accessLoading, freeCrm, refreshWorkspaceAccess, selectBusiness, deleteBusiness]);
 
   return <BusinessContext.Provider value={value}>{children}</BusinessContext.Provider>;
 }

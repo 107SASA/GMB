@@ -3,7 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
 import { phoneDedupeKey } from '@/lib/phone';
-import { requireModule } from '@/lib/moduleGating';
+import { requireCrmModule } from '@/lib/moduleGating';
 import { createOrUpdateCustomerLead } from '@/services/crm/customerLeads';
 import mongoose from 'mongoose';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
-    const gate = await requireModule(ctx.userId, 'sales_agent', ctx.businessId);
+    const gate = await requireCrmModule(ctx.userId, ctx.businessId);
     if (!gate.ok) return gate.response;
 
     await dbConnect();
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
-    const gate = await requireModule(ctx.userId, 'sales_agent', ctx.businessId);
+    const gate = await requireCrmModule(ctx.userId, ctx.businessId);
     if (!gate.ok) return gate.response;
 
     const data = await req.json();
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
       lifeCycleStage: ['initial', 'active', 'closed'].includes(data.lifeCycleStage) ? data.lifeCycleStage : 'initial',
       createdBy: ctx.userId,
     });
-    if (!r.lead) return NextResponse.json({ error: r.skippedReason }, { status: 400 });
+    if (!r.lead) return NextResponse.json({ error: r.skippedReason, ...(r.code ? { code: r.code } : {}) }, { status: r.code === 'LEAD_LIMIT' ? 403 : 400 });
 
     return NextResponse.json({ success: true, lead: r.lead, existing: !r.created }, { status: r.created ? 201 : 200 });
   } catch (error: any) {

@@ -222,6 +222,7 @@ const LIMIT_FIELDS = [
   { key: 'reviewRequestCooldownDays', label: 'Review Request Cooldown',     unit: 'days' },
   { key: 'maxAIGenerations',          label: 'Max AI Generations / Month',  unit: 'gens' },
   { key: 'maxCardScansPerMonth',      label: 'Visiting Card Scans / Month', unit: 'scans' },
+  { key: 'maxActiveLeads',            label: 'Max Active CRM Leads',        unit: 'leads' },
 ] as const;
 
 type LimitKey = typeof LIMIT_FIELDS[number]['key'];
@@ -233,6 +234,7 @@ interface LimitOverride {
   reviewRequestCooldownDays: number | null;
   maxAIGenerations:          number | null;
   maxCardScansPerMonth:      number | null;
+  maxActiveLeads:            number | null;
   adminNotes:                string;
 }
 
@@ -271,6 +273,7 @@ function EditLimitsModal({
     reviewRequestCooldownDays: row.override.reviewRequestCooldownDays,
     maxAIGenerations:          row.override.maxAIGenerations,
     maxCardScansPerMonth:      row.override.maxCardScansPerMonth,
+    maxActiveLeads:            row.override.maxActiveLeads,
   }));
   const [notes, setNotes]     = useState(row.override.adminNotes);
   const [saving, setSaving]   = useState(false);
@@ -298,6 +301,7 @@ function EditLimitsModal({
       reviewRequestCooldownDays: null,
       maxAIGenerations:          null,
       maxCardScansPerMonth:      null,
+      maxActiveLeads:            null,
     });
     setNotes('');
   };
@@ -449,6 +453,7 @@ interface PlanConfigRow {
   reviewRequestCooldownDays: number;
   maxAIGenerations:          number;
   maxCardScansPerMonth:      number;
+  maxActiveLeads:            number;
   isCustom: boolean;
 }
 
@@ -471,6 +476,7 @@ function EditPlanModal({
     reviewRequestCooldownDays: config.reviewRequestCooldownDays,
     maxAIGenerations:          config.maxAIGenerations,
     maxCardScansPerMonth:      config.maxCardScansPerMonth,
+    maxActiveLeads:            config.maxActiveLeads,
   });
   const [saving, setSaving]       = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -656,6 +662,7 @@ function UsageLimitsTab() {
       reviewRequestCooldownDays: hc.reviewRequestCooldownDays,
       maxAIGenerations:          hc.maxAIGenerations,
       maxCardScansPerMonth:      hc.maxCardScansPerMonth,
+      maxActiveLeads:            hc.maxActiveLeads,
       isCustom: false,
     } as PlanConfigRow;
   });

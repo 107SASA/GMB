@@ -122,8 +122,8 @@ export default function LoginForm({ staleSession = false }: { staleSession?: boo
                   {noAccount ? (
                     <>
                       No account found for this number.{' '}
-                      <a href="/free-report" className="underline hover:text-primary">Get your free report</a>{' '}
-                      or <a href="/book-demo" className="underline hover:text-primary">book a demo</a> to get started.
+                      <a href="/signup" className="underline hover:text-primary">Create a free account</a>{' '}
+                      or <a href="/book-demo" className="underline hover:text-primary">book a demo</a>.
                     </>
                   ) : (
                     phoneError
@@ -191,7 +191,7 @@ export default function LoginForm({ staleSession = false }: { staleSession?: boo
           )}
 
       <p className="text-center text-sm font-medium text-on-surface-variant mt-8">
-        Don&apos;t have an account? <a href="/free-report" className="text-primary hover:text-primary-container">Get your free report</a>
+        Don&apos;t have an account? <a href="/signup" className="text-primary hover:text-primary-container">Create a free account</a>
       </p>
     </div>
   );

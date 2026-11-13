@@ -325,3 +325,33 @@ export async function provisionShadowAccount(
 
   return { user, organization, business, reused };
 }
+
+/**
+ * The account behind a phone number, and whether it is "established" (a real
+ * account, or one with any paid / trial workspace) — the same rule
+ * provisionShadowAccount uses to refuse anonymous reuse. Used by the free
+ * account sign-up and the free report: once the number is OTP-verified, an
+ * established account is simply logged in instead of being refused.
+ */
+export async function findAccountForPhone(phone: string): Promise<{ user: any | null; established: boolean }> {
+  await dbConnect();
+  const normalizedPhone = normalizePhoneE164(phone);
+  if (!normalizedPhone) return { user: null, established: false };
+  const user = await User.findOne({ phone: normalizedPhone });
+  if (!user) return { user: null, established: false };
+  const candidates = user.businessIds?.length ? await Business.find({ _id: { $in: user.businessIds } }).lean() : [];
+  const established =
+    !user.isShadowAccount ||
+    candidates.some((c: any) =>
+      isWorkspaceUnlocked({
+        subscriptionStatus: c.subscriptionStatus,
+        userSubscriptionPlan: user.subscriptionPlan,
+        businessCreatedAt: c.createdAt,
+        trialEndsAt: c.trialEndsAt,
+        trialCancelledAt: c.trialCancelledAt,
+        paymentGraceEndsAt: c.paymentGraceEndsAt,
+        paymentAccessHold: c.paymentAccessHold,
+      }),
+    );
+  return { user, established };
+}

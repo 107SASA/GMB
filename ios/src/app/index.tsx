@@ -11,7 +11,7 @@ import { useTheme } from '@/lib/theme';
 export default function Index() {
   const t = useTheme();
   const { isAuthenticated } = useAuth();
-  const { isLoading, needsOnboarding } = useBusiness();
+  const { isLoading, needsOnboarding, freeCrm } = useBusiness();
   // Signed-out launches show the intro slides once per install (app/welcome.tsx).
   const [introSeen, setIntroSeen] = useState<boolean | null>(null);
 
@@ -34,5 +34,6 @@ export default function Index() {
   // Wait for the workspace list before choosing between onboarding and the
   // dashboard, so a returning user never flashes the wizard.
   if (isLoading) return <LoadingScreen />;
-  return <Redirect href={needsOnboarding ? '/onboarding' : '/dashboard'} />;
+  // Free CRM tier: the CRM is the only open tab, so start there.
+  return <Redirect href={needsOnboarding ? '/onboarding' : freeCrm ? '/leads' : '/dashboard'} />;
 }

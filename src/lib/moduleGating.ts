@@ -52,3 +52,20 @@ export async function requireModule(
     response: NextResponse.json({ error: 'MODULE_LOCKED', module }, { status: 403 }),
   };
 }
+
+/**
+ * CRM routes (leads, follow-ups, calls, card scan): the paid sales_agent
+ * check first; an unpaid workspace then gets the Free CRM tier (lib/freeCrm.ts)
+ * — CRM + visiting-card scan, within the Free plan's limits. The WhatsApp
+ * inbox (same module) keeps using requireModule and stays paid-only.
+ */
+export async function requireCrmModule(
+  userId: string,
+  businessId: string
+): Promise<{ ok: true; free?: boolean } | { ok: false; response: NextResponse }> {
+  const paid = await requireModule(userId, 'sales_agent', businessId);
+  if (paid.ok) return paid;
+  const { freeCrmAllowed } = await import('@/lib/freeCrm');
+  if (await freeCrmAllowed(userId, businessId)) return { ok: true, free: true };
+  return paid;
+}

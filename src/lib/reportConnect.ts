@@ -18,7 +18,7 @@ import type { ShadowBusinessData } from '@/lib/shadowAccount';
  * ran its ranking search for city "Unknown". Best-effort: a failure leaves
  * the old minimal data, and the audit then reports those fields as unknown.
  */
-async function listingFacts(placeId?: string): Promise<Partial<ShadowBusinessData>> {
+export async function listingFacts(placeId?: string): Promise<Partial<ShadowBusinessData>> {
   if (!placeId) return {};
   let d: PlaceDetailsResult | null = null;
   try {

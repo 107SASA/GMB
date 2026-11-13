@@ -54,6 +54,14 @@ interface Row {
   lastActivityAt: string | null;
   ownership: string;
   partner?: { id: string; code: string | null; name: string } | null;
+  freeAccount?: {
+    activeLeads: number | null;
+    maxActiveLeads: number | null;
+    scansThisMonth: number | null;
+    maxScansPerMonth: number | null;
+    reportScore: number | null;
+    callReasons: string[];
+  } | null;
   humanHandoff: { reason: string | null; since: string | null } | null;
   demoStatus: string | null;
   paymentStatus: string;
@@ -185,6 +193,7 @@ export default function LeadsPipelinePage() {
 
   return (
     <div className="space-y-5">
+      <FreeAccountFunnel />
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 bg-primary rounded-xl flex items-center justify-center shadow-sm">
@@ -271,6 +280,7 @@ export default function LeadsPipelinePage() {
         ) : (
           <Filter label="Partner" value={val('partner')} options={['yes', 'no']} onChange={(v) => setParam('partner', v)} />
         )}
+        <Filter label="Free account" value={val('free')} options={['yes', 'call']} onChange={(v) => setParam('free', v)} />
         <Filter label="Demo" value={val('demo')} options={['any', 'scheduled', 'completed', 'none']} onChange={(v) => setParam('demo', v)} />
         <Filter label="Payment" value={val('payment')} options={['verified', 'trial', 'pending', 'none']} onChange={(v) => setParam('payment', v)} />
         <select className={selectCls} value={val('minScore')} onChange={(e) => setParam('minScore', e.target.value)}>
@@ -356,6 +366,23 @@ export default function LeadsPipelinePage() {
                         <OwnershipBadge ownership={r.ownership} />
                       )}
                       {r.humanHandoff && <div className="text-xs text-warning-text mt-0.5">{r.humanHandoff.reason}</div>}
+                      {r.freeAccount && (
+                        <div className="mt-1 space-y-0.5">
+                          <span
+                            title={[
+                              r.freeAccount.activeLeads != null && r.freeAccount.maxActiveLeads != null ? `${r.freeAccount.activeLeads}/${r.freeAccount.maxActiveLeads} active leads` : '',
+                              r.freeAccount.scansThisMonth != null && r.freeAccount.maxScansPerMonth != null ? `${r.freeAccount.scansThisMonth}/${r.freeAccount.maxScansPerMonth} card scans this month` : '',
+                              r.freeAccount.reportScore != null ? `Report score ${r.freeAccount.reportScore}/100` : '',
+                            ].filter(Boolean).join(' · ')}
+                            className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded bg-secondary-container text-on-secondary-container"
+                          >
+                            Free account
+                          </span>
+                          {r.freeAccount.callReasons.map((reason) => (
+                            <div key={reason} className="text-xs font-medium text-warning-text">📞 {reason}</div>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2.5">
                       <StageSelect value={r.currentStage} disabled={busyId === r._id || r.currentStage === 'HUMAN_HANDOFF'} onChange={(stage) => changeStage(r._id, stage)} />
@@ -415,6 +442,47 @@ export default function LeadsPipelinePage() {
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Free account funnel, last 30 days (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md §7). Hidden until there is data. */
+function FreeAccountFunnel() {
+  const [f, setF] = useState<Record<string, number> | null>(null);
+  useEffect(() => {
+    fetch('/api/admin/free-accounts/funnel?days=30')
+      .then((r) => r.json())
+      .then((j) => setF(j?.success ? j.funnel : null))
+      .catch(() => setF(null));
+  }, []);
+  if (!f || Object.values(f).every((n) => !n)) return null;
+  const items: Array<[string, number, string | null]> = [
+    ['App sign-ups', f.appSignups, '/admin/leads?source=App%20Sign-up'],
+    ['Website sign-ups', f.websiteSignups, '/admin/leads?source=Website%20Sign-up'],
+    ['Free reports', f.freeReports, null],
+    ['Active this week', f.activeThisWeek, '/admin/leads?free=yes'],
+    ['Asked to unlock', f.askedToUnlock, '/admin/leads?free=call'],
+    ['Needs a call', f.needsCall, '/admin/leads?free=call'],
+    ['Became paid', f.becamePaid, null],
+  ];
+  return (
+    <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3">
+      <div className="text-xs font-bold uppercase tracking-wider text-outline mb-2">Free accounts · last 30 days</div>
+      <div className="flex flex-wrap gap-x-6 gap-y-2">
+        {items.map(([label, n, href]) => {
+          const body = (
+            <>
+              <span className="text-lg font-bold text-on-surface">{n ?? 0}</span>{' '}
+              <span className="text-xs text-on-surface-variant">{label}</span>
+            </>
+          );
+          return href ? (
+            <Link key={label} href={href} className="hover:underline">{body}</Link>
+          ) : (
+            <span key={label}>{body}</span>
+          );
+        })}
       </div>
     </div>
   );

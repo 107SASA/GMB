@@ -267,6 +267,13 @@ test('super-admin CRM untouched: no admin / sales-agent / nurture / lead-engine 
     'src/app/admin/businesses/page.tsx', 'src/app/admin/inbox/page.tsx', 'src/app/api/admin/businesses/route.ts',
     'src/app/admin/customers/page.tsx', 'src/app/api/admin/plan-config/route.ts',
     'src/app/api/admin/usage-limits/route.ts', 'src/app/api/admin/customers/[userId]/usage-limits/route.ts',
+    // Free account sign-up (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md): platform switches on
+    // Admin → Settings, and the two new prospect sources ("App Sign-up", "Website Sign-up")
+    // in the admin CRM's source list — no admin CRM behaviour changes.
+    'src/app/api/admin/settings/route.ts', 'src/app/admin/settings/page.tsx', 'src/lib/admin/platformCrm.ts',
+    // Free accounts on Admin → Leads: usage + "needs a call" reasons, a filter, a funnel strip.
+    'src/app/admin/leads/page.tsx', 'src/services/admin/pipelineQuery.ts', 'src/services/admin/conversionReport.ts',
+    'src/app/api/admin/free-accounts/funnel/route.ts',
     // Growth Partner program (applications, partner terms) + leaving partner
     // logins out of the customer counts / lists. Not the platform CRM.
     'src/components/admin/AdminSidebar.tsx',
@@ -341,6 +348,11 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
       // + a list / button send that falls back to the same choices as text is
       //   now logged with its Twilio reason (lib/whatsappDiagnostics.ts).
       'sendButtonsOrText', 'presentSlots',
+      // + free accounts (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md, not the platform CRM's
+      //   behaviour): daily free-account usage / "needs a call" sync, the 90-day
+      //   clean-up of never-verified shadow accounts (dry run by default), and the
+      //   abandoned-signup job now skips any account with CRM leads.
+      'freeAccountSignalsCron', 'shadowAccountCleanupCron', 'cleanupAbandonedSignups',
       // + demo booking handoff (not CRM): the "team member will help" message
       //   goes out once, and the reason is logged and shown on the timeline.
       'bookingAgentReply', 'markSchedulingPaused', 'pauseAutomatedScheduling',

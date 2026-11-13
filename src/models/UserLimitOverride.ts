@@ -13,6 +13,7 @@ export interface IUserLimitOverride extends Document {
   reviewRequestCooldownDays: number | null;
   maxAIGenerations:          number | null;
   maxCardScansPerMonth:      number | null;
+  maxActiveLeads:            number | null;
   adminNotes:                string;
   updatedBy:                 string;
   createdAt:                 Date;
@@ -28,6 +29,7 @@ const UserLimitOverrideSchema = new Schema<IUserLimitOverride>(
     reviewRequestCooldownDays: { type: Number, default: null },
     maxAIGenerations:          { type: Number, default: null },
     maxCardScansPerMonth:      { type: Number, default: null },
+    maxActiveLeads:            { type: Number, default: null },
     adminNotes:                { type: String, default: '' },
     updatedBy:                 { type: String, default: '' },
   },

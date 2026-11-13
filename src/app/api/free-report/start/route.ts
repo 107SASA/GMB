@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
-import Audit from '@/models/Audit';
-import { provisionShadowAccount, CLAIMED_OR_PAID_REUSE_ERROR } from '@/lib/shadowAccount';
+import { provisionShadowAccount, findAccountForPhone, CLAIMED_OR_PAID_REUSE_ERROR } from '@/lib/shadowAccount';
+import { finalizeLogin } from '@/lib/authSession';
+import { startOrReuseFreeReport } from '@/services/leads/freeReport';
 import { usablePersonName } from '@/lib/personName';
-import { createPendingAuditAndDispatch } from '@/lib/startAudit';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { getClientIp } from '@/lib/rateLimit';
 import { checkDurableRateLimit } from '@/lib/durableRateLimit';
@@ -66,6 +66,21 @@ export async function POST(req: Request) {
         { error: otpCheck.error, otpRequired: true, otpExpired: !!otpCheck.expired },
         { status: 401 }
       );
+    }
+
+    // The code proves the number is theirs. A number that already has an
+    // established account (a real account, or a paid / trial workspace) is
+    // simply logged in and sent to its dashboard — no new report (paying
+    // customers get theirs monthly; free accounts got one at sign-up).
+    // Replaces the old "An account already exists… please log in" dead end.
+    const account = await findAccountForPhone(normalizedPhone);
+    if (account.user && account.established) {
+      await consumeFreeReportOtp(normalizedPhone);
+      await markPhoneVerified(account.user._id, 'whatsapp_otp').catch(() => {});
+      const login = await finalizeLogin(account.user, req);
+      if (login.status !== 200) return login; // staff / partner accounts sign in elsewhere
+      // The session cookie set by finalizeLogin (next/headers) goes out with this response.
+      return NextResponse.json({ success: true, loggedIn: true, redirect: '/dashboard' }, { status: 200 });
     }
 
     // Also cap by phone number so rotating IPs (proxies/VPNs) can't be used
@@ -156,73 +171,18 @@ export async function POST(req: Request) {
       );
     };
 
-    // Reuse an existing report instead of generating a duplicate one if this
-    // phone number has already been through this flow with a completed audit.
-    // A reused report is capped at 30 days old — beyond that the visitor
-    // gets a fresh one (cheap for the same listing: rank, keyword, locality
-    // and narrative data are all cached by Google Place ID).
-    if (reused) {
-      const REUSE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-      const existingAudit = await Audit.findOne({
-        businessId: business._id,
-        status: 'COMPLETED',
-        createdAt: { $gte: new Date(Date.now() - REUSE_MAX_AGE_MS) },
-      })
-        .sort({ createdAt: -1 })
-        .lean();
-      if (existingAudit) {
-        await attachAudit((existingAudit as any)._id);
-        await consumeFreeReportOtp(normalizedPhone);
-        return NextResponse.json(
-          { success: true, businessId: business._id, auditId: (existingAudit as any)._id, reused: true },
-          { status: 200 }
-        );
-      }
-      const pendingAudit = await Audit.findOne({ businessId: business._id, status: 'PENDING' })
-        .sort({ createdAt: -1 })
-        .lean();
-      if (pendingAudit) {
-        // A PENDING audit older than this is treated as abandoned (e.g. the
-        // Inngest job never ran — a dev-server restart mid-job, a dropped
-        // event). Fast-mode audits normally complete in ~15-20s; without this
-        // check, resubmitting the form just handed the visitor back the SAME
-        // stuck audit forever, with no way to actually get a report.
-        const STALE_PENDING_MS = 2 * 60 * 1000;
-        const isStale = Date.now() - new Date((pendingAudit as any).createdAt).getTime() > STALE_PENDING_MS;
-        if (!isStale) {
-          await attachAudit((pendingAudit as any)._id);
-          await consumeFreeReportOtp(normalizedPhone);
-          return NextResponse.json(
-            { success: true, businessId: business._id, auditId: (pendingAudit as any)._id, reused: true },
-            { status: 200 }
-          );
-        }
-        await Audit.updateOne({ _id: (pendingAudit as any)._id }, { $set: { status: 'FAILED' } });
-      }
+    // Reuse a recent / in-progress report for a returning number, otherwise
+    // start a new one (daily cap applies) — services/leads/freeReport.ts.
+    const started = await startOrReuseFreeReport(business, organization, user, { reuse: reused });
+    if (!started.ok) {
+      return NextResponse.json({ error: started.error }, { status: 429 });
     }
-
-    // Platform-wide safety net: each NEW report spends real money (DataForSEO,
-    // Google, Groq). The WhatsApp code stops made-up numbers; this cap still
-    // bounds the bill if many real numbers are used.
-    // Counted here, just before a report is created, so invalid form posts and
-    // reused reports (free) don't use up the quota. Resets 00:00 UTC (05:30 IST).
-    const dailyCap = Number(process.env.FREE_REPORT_DAILY_CAP) || 500;
-    const globalRate = await checkDurableRateLimit('free-report-global', dailyCap, 24 * 60 * 60 * 1000);
-    if (!globalRate.allowed && !isQaTestingMode()) {
-      console.error(`[free-report] daily cap of ${dailyCap} reached — new free reports are paused until tomorrow (FREE_REPORT_DAILY_CAP).`);
-      return NextResponse.json(
-        { error: 'We are getting a lot of requests right now. Please try again tomorrow, or message us on WhatsApp.' },
-        { status: 429 }
-      );
-    }
-
-    const audit = await createPendingAuditAndDispatch(business, organization, user);
-    await attachAudit(audit._id);
+    await attachAudit(started.auditId);
     await consumeFreeReportOtp(normalizedPhone);
 
     return NextResponse.json(
-      { success: true, businessId: business._id, auditId: audit._id, reused: false },
-      { status: 201 }
+      { success: true, businessId: business._id, auditId: started.auditId, reused: started.reused },
+      { status: started.reused ? 200 : 201 }
     );
   } catch (error: any) {
     console.error('Free Report Start Error:', error);

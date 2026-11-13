@@ -24,6 +24,7 @@ async function getPlanLimits(planName: string): Promise<PlanLimits> {
         reviewRequestCooldownDays: config.reviewRequestCooldownDays,
         maxAIGenerations:          config.maxAIGenerations,
         maxCardScansPerMonth:      config.maxCardScansPerMonth ?? getPlanDefaults(planName).maxCardScansPerMonth,
+        maxActiveLeads:            config.maxActiveLeads ?? getPlanDefaults(planName).maxActiveLeads,
       };
     }
   } catch { /* fall through */ }
@@ -75,6 +76,7 @@ export async function GET() {
       reviewRequestCooldownDays: override?.reviewRequestCooldownDays ?? planLimits.reviewRequestCooldownDays,
       maxAIGenerations:          override?.maxAIGenerations          ?? planLimits.maxAIGenerations,
       maxCardScansPerMonth:      override?.maxCardScansPerMonth      ?? planLimits.maxCardScansPerMonth,
+      maxActiveLeads:            override?.maxActiveLeads            ?? planLimits.maxActiveLeads,
     };
 
     // SubscriptionUsage only buckets postsUsed by month — for a weekly-cap

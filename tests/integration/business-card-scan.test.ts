@@ -211,3 +211,40 @@ test('blur: the app and server use the same sharpness code', () => {
   const server = norm(body(read('src/services/crm/businessCardParse.ts')));
   assert.equal(app, server);
 });
+
+// ── Free CRM tier ────────────────────────────────────────────────────────
+test('free CRM: unpaid / cancelled / trial-ended workspaces qualify; paid, grace, held and restricted do not', async () => {
+  const { freeCrmEligible } = await import('../../src/lib/billing/entitlements.ts');
+  const now = new Date('2026-11-13T00:00:00Z');
+  const past = new Date('2026-10-01T00:00:00Z');
+  const future = new Date('2026-12-01T00:00:00Z');
+  assert.equal(freeCrmEligible({ subscriptionStatus: 'trialing' } as any, null, now), true); // never paid
+  assert.equal(freeCrmEligible({ subscriptionStatus: 'canceled' } as any, null, now), true);
+  assert.equal(freeCrmEligible({ subscriptionStatus: 'trial_active', trialEndsAt: past, trialCancelledAt: past } as any, null, now), true);
+  assert.equal(freeCrmEligible({ subscriptionStatus: 'active' } as any, null, now), false); // paid → full plan
+  assert.equal(freeCrmEligible({ subscriptionStatus: 'active', paymentAccessHold: true } as any, null, now), false); // held
+  assert.equal(freeCrmEligible({ subscriptionStatus: 'past_due', paymentGraceEndsAt: future } as any, null, now), false); // grace = paid
+  assert.equal(freeCrmEligible({ subscriptionStatus: 'past_due', paymentGraceEndsAt: past } as any, null, now), false); // restricted by policy
+  assert.equal(freeCrmEligible({ subscriptionStatus: 'canceled' } as any, { accessHold: true } as any, now), false); // user-level hold
+  assert.equal(freeCrmEligible(null, null, now), false);
+});
+
+test('free CRM: default limits — Free 200 active leads + 50 scans, Pro unlimited leads', () => {
+  assert.equal(PLAN_DEFAULTS.Free.maxActiveLeads, 200);
+  assert.equal(PLAN_DEFAULTS.Free.maxCardScansPerMonth, 50);
+  assert.equal(PLAN_DEFAULTS.Pro.maxActiveLeads, -1);
+});
+
+test('free CRM: CRM routes opt in; the WhatsApp inbox stays paid-only', () => {
+  for (const f of ['src/app/api/crm/leads/route.ts', 'src/app/api/leads/quick-add/route.ts', 'src/app/api/leads/business-card/scan/route.ts', 'src/app/api/followups/route.ts']) {
+    assert.match(read(f), /requireCrmModule\(ctx\.userId, ctx\.businessId\)/, f);
+  }
+  for (const f of ['src/app/api/inbox/threads/route.ts', 'src/app/api/inbox/messages/route.ts']) {
+    assert.doesNotMatch(read(f), /requireCrmModule/, f);
+  }
+});
+
+test('free CRM: the lead cap is checked before the card-scan AI call', () => {
+  const route = read('src/app/api/leads/business-card/scan/route.ts');
+  assert.ok(route.indexOf('activeLeadCapacity(') < route.indexOf('scanBusinessCard('));
+});

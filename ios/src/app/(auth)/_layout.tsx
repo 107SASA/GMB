@@ -16,6 +16,7 @@ export default function AuthLayout() {
   // Sign-in button's onPress, which is what flips isAuthenticated) never
   // has the navigator it's inside of pulled out from under it mid-render.
   useEffect(() => {
+    // Free accounts land on Home's locked screen, which shows their free report + "Open CRM".
     if (isAuthenticated) router.replace('/dashboard');
   }, [isAuthenticated, router]);
 

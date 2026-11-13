@@ -140,10 +140,25 @@ export const workspaceBillingSchema = z
       })
       .nullable()
       .catch(null),
+    // Free CRM tier (server lib/freeCrm.ts): an unpaid workspace keeps the
+    // CRM + visiting-card scan, within these limits. null = not on it.
+    freeCrm: z
+      .object({
+        enabled: z.literal(true),
+        activeLeads: z.number().catch(0),
+        maxActiveLeads: z.number().catch(-1),
+        scansUsed: z.number().catch(0),
+        maxScansPerMonth: z.number().catch(-1),
+        scansResetAt: z.string().nullable().catch(null),
+      })
+      .nullable()
+      .optional()
+      .catch(null),
   })
   .nullable()
   .catch(null);
 export type WorkspaceBilling = z.infer<typeof workspaceBillingSchema>;
+export type FreeCrmUsage = NonNullable<NonNullable<WorkspaceBilling>['freeCrm']>;
 
 const billingStatusResponseSchema = z.object({
   subscription: billingStatusSchema,

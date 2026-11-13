@@ -18,11 +18,17 @@ import { isQaTestingMode } from '@/lib/testingMode';
 
 export const FREE_REPORT_OTP_TTL_MS = 10 * 60 * 1000;
 const MAX_WRONG_ATTEMPTS = 5;
-const PURPOSE = 'free_report' as const;
+
+/** What a code is for — a sign-up code can't be used for a report and vice versa. */
+export type PhoneOtpPurpose = 'free_report' | 'signup';
 
 export type SendFreeReportOtpResult = { ok: true } | { ok: false; error: string };
 
-export async function sendFreeReportOtp(phone: string): Promise<SendFreeReportOtpResult> {
+export function sendFreeReportOtp(phone: string): Promise<SendFreeReportOtpResult> {
+  return sendPhoneOtp(phone, 'free_report');
+}
+
+export async function sendPhoneOtp(phone: string, PURPOSE: PhoneOtpPurpose): Promise<SendFreeReportOtpResult> {
   await dbConnect();
   const otp = generateOTP();
   await PhoneOtpChallenge.findOneAndUpdate(
@@ -59,7 +65,11 @@ export type CheckFreeReportOtpResult =
   | { ok: false; error: string; expired?: boolean };
 
 /** Checks the code without using it up. Wrong codes count toward a limit. */
-export async function checkFreeReportOtp(phone: string, otp: string): Promise<CheckFreeReportOtpResult> {
+export function checkFreeReportOtp(phone: string, otp: string): Promise<CheckFreeReportOtpResult> {
+  return checkPhoneOtp(phone, otp, 'free_report');
+}
+
+export async function checkPhoneOtp(phone: string, otp: string, PURPOSE: PhoneOtpPurpose): Promise<CheckFreeReportOtpResult> {
   await dbConnect();
   const code = String(otp || '').replace(/\D/g, '');
   if (code.length !== 6) return { ok: false, error: 'Please enter the 6-digit code sent to your WhatsApp.' };
@@ -86,7 +96,11 @@ export async function checkFreeReportOtp(phone: string, otp: string): Promise<Ch
 }
 
 /** Call once the report has been created, so the code can't be used again. */
-export async function consumeFreeReportOtp(phone: string): Promise<void> {
+export function consumeFreeReportOtp(phone: string): Promise<void> {
+  return consumePhoneOtp(phone, 'free_report');
+}
+
+export async function consumePhoneOtp(phone: string, purpose: PhoneOtpPurpose): Promise<void> {
   await dbConnect();
-  await PhoneOtpChallenge.deleteOne({ phone, purpose: PURPOSE });
+  await PhoneOtpChallenge.deleteOne({ phone, purpose });
 }

@@ -5146,6 +5146,10 @@ export const cleanupAbandonedSignups = inngest.createFunction(
 
         const hasAudit = await Audit.findOne({ userId: c.id }).select("_id").lean();
         if (hasAudit) continue;
+        // Free CRM tier (unpaid accounts keep the CRM): never remove an
+        // account whose workspace has CRM leads — that is real data in use.
+        const ownedBizIds = (await BusinessModel.find({ userId: c.id }).select("_id").lean()).map((b: any) => b._id);
+        if (ownedBizIds.length && (await Lead.exists({ businessId: { $in: ownedBizIds } }))) continue;
 
         await BusinessModel.deleteMany({ userId: c.id });
         await Organization.deleteMany({ ownerId: c.id });
@@ -5802,6 +5806,36 @@ export const dataRetentionCleanupCron = inngest.createFunction(
 // account must never be charged) and expires billing records of purged
 // accounts after BILLING_RETENTION_YEARS.
 // Runs daily ~03:45 UTC.
+// Free accounts (CRM + card scan): refresh each prospect's usage and "needs a
+// call" reasons in Admin → Leads (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md).
+// Daily ~04:15 UTC (09:45 IST), before the sales team starts.
+export const freeAccountSignalsCron = inngest.createFunction(
+  { id: "free-account-signals", retries: 1, triggers: [{ cron: "15 4 * * *" }, { event: "free-account/signals.requested" }] },
+  async ({ step }) => {
+    return step.run("sync-free-account-signals", async () => {
+      const { syncFreeAccountSignals } = await import("@/services/leads/freeAccountSignals");
+      const res = await syncFreeAccountSignals();
+      console.log(`[free-account-signals] checked=${res.checked} updated=${res.updated} cleared=${res.cleared}`);
+      return res;
+    });
+  }
+);
+
+// 90-day clean-up of never-verified shadow accounts (old website free reports).
+// Dry run unless SHADOW_CLEANUP_MODE=live (services/account/shadowCleanup.ts).
+// Daily ~03:30 UTC, before accountHardPurgeCron.
+export const shadowAccountCleanupCron = inngest.createFunction(
+  { id: "shadow-account-cleanup", retries: 1, triggers: [{ cron: "30 3 * * *" }] },
+  async ({ step }) => {
+    return step.run("cleanup-stale-shadow-accounts", async () => {
+      const { cleanupStaleShadowAccounts, shadowCleanupModeFromEnv } = await import("@/services/account/shadowCleanup");
+      const res = await cleanupStaleShadowAccounts({ mode: shadowCleanupModeFromEnv() });
+      console.log(`[shadow-cleanup] ${res.mode} candidates=${res.candidates} ${res.mode === "live" ? "removed" : "would-remove"}=${res.removed} skipped=${res.skipped}`);
+      return res;
+    });
+  }
+);
+
 export const accountHardPurgeCron = inngest.createFunction(
   { id: "account-hard-purge", retries: 1, triggers: [{ cron: "45 3 * * *" }, { event: "account/purge.requested" }] },
   async ({ event, step }) => {

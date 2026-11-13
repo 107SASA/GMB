@@ -443,6 +443,32 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
     if (!(await trialOrPaidForPhone(phone))) {
       const { getSalesAgentConfig } = await import('@/services/sales/salesAgent');
       const config = await getSalesAgentConfig().catch(() => null);
+      // Free CRM account (never paid): its own reply + a pricing-question
+      // signal on the sales lead so the team calls. Others: "complete your payment".
+      const { freeCrmContextForPhone, freeCrmAccessReplyText } = await import('@/services/whatsapp/appAccessHelp');
+      const freeCtx = await freeCrmContextForPhone(phone).catch(() => ({ free: false, reportUrl: null }));
+      if (freeCtx.free) {
+        await sendOutboundMessage(phone, freeCrmAccessReplyText({ reportUrl: freeCtx.reportUrl, subscribeUrl: config?.subscribeUrl }));
+        try {
+          const [{ default: Lead }, { normalizePhoneE164 }, { applyFormSignal }] = await Promise.all([
+            import('@/models/Lead'),
+            import('@/lib/phone'),
+            import('@/services/leadIntelligence/formSignals'),
+          ]);
+          const lead: any = await Lead.findOne({ phone: normalizePhoneE164(phone) || phone, tenantId: 'gmbboost-internal' }).select('_id').lean();
+          if (lead) {
+            await applyFormSignal(lead._id, 'PRICING_QUESTION', 'app-unlock-request');
+            // Shown at once in Admin → Leads ("Needs a call"); the daily sync keeps it 14 days.
+            await Lead.updateOne(
+              { _id: lead._id },
+              { $set: { 'freeAccount.unlockRequestedAt': new Date() }, $addToSet: { 'freeAccount.callReasons': 'Asked to unlock on WhatsApp' } },
+            );
+          }
+        } catch (err) {
+          console.warn('[whatsapp] free CRM unlock signal failed:', (err as Error)?.message);
+        }
+        return;
+      }
       await sendOutboundMessage(phone, appAccessReplyText(config?.subscribeUrl));
       return;
     }

@@ -14,6 +14,13 @@ const WHATSAPP_NUMBER = (process.env.EXPO_PUBLIC_WHATSAPP_NUMBER || '').replace(
 export const SUPPORT_MESSAGE = 'Hi, I need help with my Growwmatics AI account';
 
 /**
+ * Sent from a locked tab on the Free CRM tier. Must match APP_ACCESS_MESSAGE in
+ * the web's src/lib/whatsappCta.ts exactly — the WhatsApp webhook recognises it
+ * and replies outside the app (services/whatsapp/appAccessHelp.ts).
+ */
+export const ACTIVATE_MESSAGE = "Hi, I'm not able to access my Growwmatics AI dashboard in the app";
+
+/**
  * The website's privacy policy (App Store guideline 5.1.1(i) wants it
  * reachable inside the app). Null when the API URL isn't configured.
  */

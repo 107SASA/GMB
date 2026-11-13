@@ -78,9 +78,20 @@ async function getWorkspaceStatus(user: any, userId: string) {
     }
   }
 
+  // Free CRM tier (lib/freeCrm.ts): an unpaid workspace keeps the CRM + card
+  // scan. The app and the website open those screens and lock the rest.
+  let freeCrm: Record<string, unknown> | null = null;
+  if (!isActive) {
+    const { freeCrmAllowed, freeCrmUsage } = await import('@/lib/freeCrm');
+    if (await freeCrmAllowed(userId, businessId).catch(() => false)) {
+      freeCrm = { enabled: true, ...(await freeCrmUsage(userId, businessId).catch(() => ({}))) };
+    }
+  }
+
   return {
     businessId,
     name: business.name,
+    freeCrm,
     subscriptionStatus: business.subscriptionStatus ?? 'trialing',
     freeAuditUsed: Boolean(business.freeAuditUsed),
     isActive,

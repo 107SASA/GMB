@@ -16,7 +16,11 @@ test('start route checks the WhatsApp code before creating anything', () => {
   assert.ok(check > 0, 'start route must call checkFreeReportOtp');
   assert.ok(check < src.indexOf('provisionShadowAccount({'), 'code check must come before the shadow account');
   assert.ok(check < src.indexOf('fileFreeReportPlatformLead('), 'code check must come before the CRM lead');
-  assert.ok(check < src.indexOf('createPendingAuditAndDispatch('), 'code check must come before the audit');
+  // The audit is created by the shared step (services/leads/freeReport.ts).
+  assert.ok(src.indexOf('startOrReuseFreeReport(') > 0, 'start route must create the report through startOrReuseFreeReport');
+  assert.ok(check < src.indexOf('startOrReuseFreeReport('), 'code check must come before the audit');
+  // An existing account is logged in only AFTER the code proved the number.
+  assert.ok(check < src.indexOf('finalizeLogin('), 'code check must come before logging an existing account in');
   assert.ok(check < src.indexOf('free-report-phone:'), 'a wrong code must not use up the per-phone report limit');
   assert.match(src, /if \(!otpCheck\.ok\)[\s\S]{0,200}status: 401/);
 });

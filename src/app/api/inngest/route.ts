@@ -54,7 +54,9 @@ import {
   nurtureSchedulerTick,
   proactiveNbaScheduler,
   dataRetentionCleanupCron,
-  accountHardPurgeCron
+  accountHardPurgeCron,
+  freeAccountSignalsCron,
+  shadowAccountCleanupCron
 } from "@/services/inngest/functions";
 import { issueCompanyInvoice, companyInvoiceSweep } from "@/services/inngest/invoiceFunctions";
 import { whatsappCampaignSend } from "@/services/inngest/whatsappCampaign";
@@ -122,6 +124,8 @@ export const { GET, POST, PUT } = serve({
     ...(process.env.LEAD_ENGINE_V2 === 'true' ? [proactiveNbaScheduler] : []),
     dataRetentionCleanupCron,
     accountHardPurgeCron,
+    freeAccountSignalsCron,
+    shadowAccountCleanupCron,
     whatsappCampaignSend,
     serviceMonitorCron,
     blogScheduledPublishCron,

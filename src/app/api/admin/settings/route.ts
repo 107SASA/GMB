@@ -23,11 +23,16 @@ export async function GET() {
   try {
     await dbConnect();
 
-    const settings = await PlatformSettings.findOne().select('supportEmail').lean();
+    const settings = (await PlatformSettings.findOne().select('supportEmail freeSignupEnabled freeSignupAutoReport').lean()) as any;
 
     return NextResponse.json({
       success: true,
-      data: { supportEmail: settings?.supportEmail || '' },
+      data: {
+        supportEmail: settings?.supportEmail || '',
+        // Free account sign-up (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md) — default on.
+        freeSignupEnabled: settings?.freeSignupEnabled !== false,
+        freeSignupAutoReport: settings?.freeSignupAutoReport !== false,
+      },
     });
   } catch (error: any) {
     console.error('Settings GET Error:', error);
@@ -46,17 +51,39 @@ export async function PATCH(req: NextRequest) {
     await dbConnect();
 
     const body = await req.json();
-    if (typeof body.supportEmail !== 'string') {
-      return NextResponse.json({ success: false, error: 'supportEmail is required' }, { status: 400 });
+    const update: Record<string, unknown> = {};
+    if (body.supportEmail !== undefined) {
+      if (typeof body.supportEmail !== 'string') {
+        return NextResponse.json({ success: false, error: 'supportEmail must be text' }, { status: 400 });
+      }
+      update.supportEmail = body.supportEmail;
+    }
+    for (const key of ['freeSignupEnabled', 'freeSignupAutoReport'] as const) {
+      if (body[key] !== undefined) {
+        if (typeof body[key] !== 'boolean') {
+          return NextResponse.json({ success: false, error: `${key} must be true or false` }, { status: 400 });
+        }
+        update[key] = body[key];
+      }
+    }
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ success: false, error: 'Nothing to update' }, { status: 400 });
     }
 
-    const settings = await PlatformSettings.findOneAndUpdate(
+    const settings = (await PlatformSettings.findOneAndUpdate(
       {},
-      { $set: { supportEmail: body.supportEmail } },
+      { $set: update },
       { upsert: true, new: true, setDefaultsOnInsert: true }
-    ).select('supportEmail').lean();
+    ).select('supportEmail freeSignupEnabled freeSignupAutoReport').lean()) as any;
 
-    return NextResponse.json({ success: true, data: { supportEmail: settings?.supportEmail || '' } });
+    return NextResponse.json({
+      success: true,
+      data: {
+        supportEmail: settings?.supportEmail || '',
+        freeSignupEnabled: settings?.freeSignupEnabled !== false,
+        freeSignupAutoReport: settings?.freeSignupAutoReport !== false,
+      },
+    });
   } catch (error: any) {
     console.error('Settings PATCH Error:', error);
     return NextResponse.json(

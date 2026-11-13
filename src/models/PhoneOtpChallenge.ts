@@ -11,7 +11,7 @@ import mongoose, { Schema, Model } from 'mongoose';
  */
 export interface IPhoneOtpChallenge {
   phone: string;
-  purpose: 'free_report';
+  purpose: 'free_report' | 'signup';
   codeHash: string;
   attempts: number;
   expiresAt: Date;
@@ -21,7 +21,7 @@ export interface IPhoneOtpChallenge {
 const PhoneOtpChallengeSchema = new Schema<IPhoneOtpChallenge>(
   {
     phone: { type: String, required: true },
-    purpose: { type: String, required: true, enum: ['free_report'] },
+    purpose: { type: String, required: true, enum: ['free_report', 'signup'] },
     codeHash: { type: String, required: true },
     attempts: { type: Number, default: 0 },
     // MongoDB's TTL monitor removes the document once the code has expired.

@@ -87,6 +87,11 @@ export default function PublicReportPage() {
   const [expiresAt, setExpires] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // ?app=1 — opened from the mobile app: no sales block (App Store / Play rules).
+  const [appMode, setAppMode] = useState(false);
+  useEffect(() => {
+    setAppMode(new URLSearchParams(window.location.search).get('app') === '1');
+  }, []);
 
   useEffect(() => {
     fetch(`/api/reports/${token}`)
@@ -349,6 +354,7 @@ export default function PublicReportPage() {
           </div>
         )}
 
+        {!appMode && (
         <div className="bg-primary rounded-xl p-6 sm:p-8 text-center text-on-primary">
           <h2 className="font-heading text-2xl font-bold mb-2">Ready to boost your Google ranking?</h2>
           <p className="text-primary-fixed-dim text-sm mb-6">
@@ -361,6 +367,7 @@ export default function PublicReportPage() {
             Get Started Free
           </Link>
         </div>
+        )}
       </div>
     </div>
   );

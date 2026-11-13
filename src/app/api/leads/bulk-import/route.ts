@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { requireBusinessContext } from '@/lib/tenant';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
-import { requireModule } from '@/lib/moduleGating';
+import { requireCrmModule } from '@/lib/moduleGating';
 import { buildCustomerLeadIndex, createOrUpdateCustomerLead } from '@/services/crm/customerLeads';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
-    const gate = await requireModule(ctx.userId, 'sales_agent', ctx.businessId);
+    const gate = await requireCrmModule(ctx.userId, ctx.businessId);
     if (!gate.ok) return gate.response;
 
     const data = await req.json();
@@ -40,6 +40,8 @@ export async function POST(req: Request) {
     const seenKeys = new Set(index.byPhone.keys());
 
     let created = 0;
+
+    let limitMessage: string | null = null;
     let skipped = 0;
 
     for (const raw of data.leads) {
@@ -70,9 +72,11 @@ export async function POST(req: Request) {
       }, { index });
       if (r.created) created++;
       else skipped++;
+      if (r.code === 'LEAD_LIMIT') limitMessage = r.skippedReason ?? null;
     }
 
-    return NextResponse.json({ success: true, created, skipped });
+    // limitReached: some contacts were not added because of the active-lead cap.
+    return NextResponse.json({ success: true, created, skipped, ...(limitMessage ? { limitReached: true, message: limitMessage } : {}) });
   } catch (error: any) {
     return NextResponse.json({ error: toFriendlyMessage(error) }, { status: 500 });
   }

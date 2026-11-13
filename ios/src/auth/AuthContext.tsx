@@ -16,8 +16,12 @@ import {
   fetchCurrentUser,
   login as apiLogin,
   requestPhoneLoginOtp,
+  requestSignupOtp as apiRequestSignupOtp,
+  signUpWithPhone,
   verifyPhoneLoginOtp,
   type CurrentUser,
+  type SignupInput,
+  type SignupResponse,
 } from '@/api/endpoints/auth';
 import {
   registerForPushNotifications,
@@ -37,6 +41,10 @@ interface AuthContextValue {
   requestPhoneOtp: (phone: string) => Promise<{ maskedPhone?: string }>;
   /** Verifies the OTP and completes login — same session as email login. */
   loginWithPhone: (phone: string, otp: string) => Promise<void>;
+  /** Free account sign-up: WhatsApp code for a new account (or an existing one → signs in). */
+  requestSignupOtp: (phone: string) => Promise<{ maskedPhone?: string; existingAccount: boolean }>;
+  /** Verifies the code, creates the free account (or signs in) and starts the session. */
+  signUp: (input: SignupInput) => Promise<SignupResponse>;
   logout: () => Promise<void>;
   /** Re-fetches /api/auth/me (e.g. after subscription changes). */
   refreshUser: () => Promise<void>;
@@ -144,6 +152,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void registerForPushNotifications(true);
   }, []);
 
+  const requestSignupOtp = useCallback(async (phone: string) => {
+    return apiRequestSignupOtp(phone);
+  }, []);
+
+  const signUp = useCallback(async (input: SignupInput) => {
+    const result = await signUpWithPhone(input);
+    setAuthToken(result.token);
+    await SecureStore.setItemAsync(TOKEN_KEY, result.token);
+    const me = await fetchCurrentUser();
+    setUser(me);
+    void registerForPushNotifications(true);
+    return result;
+  }, []);
+
   const logout = useCallback(async () => {
     // Remove this device's push token first — the DELETE needs the still-
     // valid Authorization header. Best-effort; dead tokens are also pruned
@@ -167,10 +189,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       requestPhoneOtp,
       loginWithPhone,
+      requestSignupOtp,
+      signUp,
       logout,
       refreshUser,
     }),
-    [isHydrating, user, login, requestPhoneOtp, loginWithPhone, logout, refreshUser]
+    [isHydrating, user, login, requestPhoneOtp, loginWithPhone, requestSignupOtp, signUp, logout, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

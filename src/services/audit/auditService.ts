@@ -1962,6 +1962,21 @@ async function processAuditJobInner(auditId: string) {
         console.error(`[auditService] Failed to update freeAuditUsed for business ${audit.businessId}:`, gateErr);
       }
 
+      // Free account (unpaid workspace): "your free report is ready" push to
+      // the app — its lock screens show the report card. Best-effort.
+      if (audit.fastMode && !['active', 'trial_active'].includes(String(business.subscriptionStatus || ''))) {
+        try {
+          const { sendPushToBusinessUsers } = await import('@/services/push');
+          await sendPushToBusinessUsers(String(audit.businessId), {
+            title: 'Your free Google profile report is ready',
+            body: `${business.name || 'Your business'} scored ${finalScore}/100. Tap to see what to fix first.`,
+            data: { freeReport: '1' },
+          });
+        } catch (pushErr: any) {
+          console.warn('[auditService] free report push failed:', pushErr?.message);
+        }
+      }
+
       // ── Upsert the SEO brain ──────────────────────────────────────────────
       // Every completed audit — free reports included — creates the next
       // SeoPlan version and supersedes the prior active one. Content jobs and

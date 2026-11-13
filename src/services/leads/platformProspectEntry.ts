@@ -188,3 +188,25 @@ export async function syncPlatformLeadName(phone: string, fullName: string, busi
     BookingConversation.updateMany({ phoneKey: key, 'details.name': { $in: placeholders } }, { $set: { 'details.name': name } }),
   ]);
 }
+
+/**
+ * Free account created in the app / on the website → a prospect in the
+ * super-admin CRM (source "App Sign-up" / "Website Sign-up"), so sales can
+ * follow up outside the app. docs/FREE_ACCOUNT_REGISTRATION_PLAN.md
+ */
+export async function fileSignupPlatformLead(input: {
+  name: string;
+  phone: string;
+  businessName: string;
+  channel: 'app' | 'website';
+}): Promise<{ leadId: string; created: boolean }> {
+  const app = input.channel === 'app';
+  return upsertPlatformProspectLead({
+    name: input.name,
+    phone: input.phone,
+    businessName: input.businessName,
+    notes: `Created a free account ${app ? 'in the app' : 'on the website'} for "${input.businessName}"`,
+    source: app ? 'App Sign-up' : 'Website Sign-up',
+    ownershipActor: app ? 'app-signup' : 'website-signup',
+  });
+}

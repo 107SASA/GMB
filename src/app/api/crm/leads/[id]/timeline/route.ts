@@ -5,7 +5,7 @@ import FollowUp from '@/models/FollowUp';
 import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
 import { customerLeadFilter } from '@/services/crm/access';
-import { requireModule } from '@/lib/moduleGating';
+import { requireCrmModule } from '@/lib/moduleGating';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 
 export async function GET(
@@ -15,7 +15,7 @@ export async function GET(
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
-    const gate = await requireModule(ctx.userId, 'sales_agent', ctx.businessId);
+    const gate = await requireCrmModule(ctx.userId, ctx.businessId);
     if (!gate.ok) return gate.response;
 
     const resolvedParams = await params;

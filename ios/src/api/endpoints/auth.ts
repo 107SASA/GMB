@@ -142,3 +142,41 @@ export async function resetPassword(params: {
 }): Promise<void> {
   await api.post('/api/auth/reset-password', params);
 }
+
+// --- Free account sign-up (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md) -------------------
+
+const signupOtpResponseSchema = z.object({
+  success: z.literal(true),
+  maskedPhone: z.string().optional(),
+  /** This number already has an account — the code will just sign them in. */
+  existingAccount: z.boolean().catch(false),
+});
+
+/** POST /api/auth/signup/send-otp — WhatsApp code for a new free account. */
+export async function requestSignupOtp(phone: string): Promise<z.infer<typeof signupOtpResponseSchema>> {
+  const { data } = await api.post('/api/auth/signup/send-otp', { phone });
+  return signupOtpResponseSchema.parse(data);
+}
+
+export interface SignupInput {
+  phone: string;
+  otp: string;
+  name: string;
+  business: { name?: string; category?: string; city?: string; googlePlaceId?: string };
+}
+
+const signupResponseSchema = loginResponseSchema.extend({
+  outcome: z.enum(['created', 'claimed', 'existing']).catch('created'),
+  reportStarted: z.boolean().catch(false),
+});
+export type SignupResponse = z.infer<typeof signupResponseSchema>;
+
+/**
+ * POST /api/auth/signup — verifies the code and creates the free account
+ * (CRM + card scan), or just signs in a number that already has one.
+ * Same x-client: mobile token response as login, plus { outcome, reportStarted }.
+ */
+export async function signUpWithPhone(input: SignupInput): Promise<SignupResponse> {
+  const { data } = await api.post('/api/auth/signup', { ...input, channel: 'app' });
+  return signupResponseSchema.parse(data);
+}

@@ -16,7 +16,7 @@ const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
   name: "Growwmatics AI",
-  alternateName: ["Growwmatics", "GrowwMatics"],
+  alternateName: ["Growwmatics", "GrowwMatics", "Growmatics", "Growmatic", "Growwmatic"],
   url: "https://growwmatics.com",
   logo: "https://growwmatics.com/icon.png",
   description: "AI-powered Google Business Profile management and local SEO for local businesses in India.",
@@ -28,7 +28,7 @@ const websiteSchema = {
   "@context": "https://schema.org",
   "@type": "WebSite",
   name: "Growwmatics AI",
-  alternateName: ["Growwmatics", "GrowwMatics"],
+  alternateName: ["Growwmatics", "GrowwMatics", "Growmatics", "Growmatic", "Growwmatic"],
   url: "https://growwmatics.com",
 };
 
@@ -84,6 +84,8 @@ export const metadata: Metadata = {
     "WhatsApp automation",
     "Growwmatics AI",
     "Growwmatics",
+    "Growmatics",
+    "Growmatic",
   ],
 
   // Search Console ownership tag — set GOOGLE_SITE_VERIFICATION in

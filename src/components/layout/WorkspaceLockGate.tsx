@@ -33,6 +33,39 @@ function isFreePage(pathname: string): boolean {
   return FREE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+/** Pages open on the Free CRM tier (the WhatsApp inbox stays paid). */
+const FREE_CRM_PREFIXES = ['/dashboard/crm'];
+function isFreeCrmPage(pathname: string): boolean {
+  return FREE_CRM_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+interface FreeCrmUsage {
+  enabled: true;
+  activeLeads?: number;
+  maxActiveLeads?: number;
+  scansUsed?: number;
+  maxScansPerMonth?: number;
+}
+
+function FreeCrmBanner({ usage }: { usage: FreeCrmUsage }) {
+  const leads = typeof usage.activeLeads === 'number' && typeof usage.maxActiveLeads === 'number' && usage.maxActiveLeads >= 0
+    ? `${usage.activeLeads} / ${usage.maxActiveLeads} active leads`
+    : null;
+  const scans = typeof usage.scansUsed === 'number' && typeof usage.maxScansPerMonth === 'number' && usage.maxScansPerMonth >= 0
+    ? `${usage.scansUsed} / ${usage.maxScansPerMonth} card scans this month`
+    : null;
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-sm">
+      <span className="font-bold text-on-surface">Free CRM</span>
+      {leads && <span className="text-on-surface-variant">{leads}</span>}
+      {scans && <span className="text-on-surface-variant">{scans}</span>}
+      <a href="/dashboard/upgrade" className="ml-auto font-semibold text-primary hover:underline">
+        Unlock Google profile tools →
+      </a>
+    </div>
+  );
+}
+
 // Payment failure with a PARTIAL restriction (super-admin billing policy):
 // only pages of the restricted paid modules are blurred. Same module split
 // as the server's requireModule gates on these pages' APIs.
@@ -59,6 +92,8 @@ export default function WorkspaceLockGate({ children }: { children: React.ReactN
   const [locked, setLocked] = useState<boolean | null>(null);
   // null = whole workspace locked (or not locked); a list = only these modules' pages.
   const [restrictedOnly, setRestrictedOnly] = useState<string[] | null>(null);
+  // Free CRM tier (unpaid workspace): the CRM pages stay open — lib/freeCrm.ts.
+  const [freeCrm, setFreeCrm] = useState<FreeCrmUsage | null>(null);
 
   // Re-check on navigation so the gate lifts immediately after subscribing.
   useEffect(() => {
@@ -72,6 +107,7 @@ export default function WorkspaceLockGate({ children }: { children: React.ReactN
         const partial =
           access?.mode === 'restricted' && Array.isArray(access.restrictedModules) && access.restrictedModules.length < 4;
         setRestrictedOnly(partial ? access.restrictedModules : null);
+        setFreeCrm(j?.workspace?.freeCrm?.enabled ? j.workspace.freeCrm : null);
       })
       .catch(() => { if (!cancelled) setLocked(false); });
     return () => { cancelled = true; };
@@ -90,6 +126,14 @@ export default function WorkspaceLockGate({ children }: { children: React.ReactN
   // Still checking, unlocked, or on a free page → render normally (never flash a
   // blur at a paying customer).
   if (locked !== true || isFreePage(pathname)) return <>{children}</>;
+  if (freeCrm && isFreeCrmPage(pathname)) {
+    return (
+      <>
+        <FreeCrmBanner usage={freeCrm} />
+        {children}
+      </>
+    );
+  }
   if (restrictedOnly) {
     const mod = pageModule(pathname);
     if (!mod || !restrictedOnly.includes(mod)) return <>{children}</>;

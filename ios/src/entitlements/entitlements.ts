@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 
 import type { ModuleKey } from '@/api/endpoints/auth';
 import { useAuth } from '@/auth/AuthContext';
+import { useBusiness } from '@/business/BusinessContext';
 import { ALL_MODULE_KEYS, computeEntitlements, type Entitlements } from './compute';
 
 /**
@@ -47,14 +48,35 @@ export const HIDE_TAB_WHEN_LOCKED: Record<ModuleKey, boolean> = {
   marketing_automation: false,
 };
 
+/** Free CRM state of the active workspace; null outside <BusinessProvider> (screens rendered on their own). */
+function useFreeCrm() {
+  try {
+    return useBusiness().freeCrm ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function useEntitlements(): Entitlements {
   const { user } = useAuth();
+  const freeCrm = useFreeCrm();
   const sub = user?.subscription;
-  return useMemo(() => computeEntitlements(sub), [sub]);
+  return useMemo(() => {
+    const ent = computeEntitlements(sub);
+    // Free CRM tier (unpaid workspace): only the CRM module is open.
+    if (!freeCrm) return ent;
+    const modules = { ...ent.modules };
+    for (const key of Object.keys(modules) as (keyof typeof modules)[]) modules[key] = key === 'sales_agent';
+    return { ...ent, modules };
+  }, [sub, freeCrm]);
 }
 
 /** True when the given app surface should render as locked. */
 export function useSurfaceLocked(surface: SurfaceKey): boolean {
   const { modules } = useEntitlements();
+  const freeCrm = useFreeCrm();
+  // Free CRM tier: the CRM (leads + card scan) only — the WhatsApp inbox shares
+  // the module but stays paid, like on the server.
+  if (freeCrm && surface !== 'leads') return true;
   return !modules[SURFACE_MODULES[surface]];
 }

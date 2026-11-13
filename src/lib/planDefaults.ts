@@ -24,6 +24,8 @@ export interface PlanLimits {
   maxAIGenerations:          number;
   /** Visiting-card scans per calendar month (AI reads each card). */
   maxCardScansPerMonth:      number;
+  /** CRM leads not yet Won or Lost (-1 = unlimited). Free plan: 0 turns the free CRM off. */
+  maxActiveLeads:            number;
 }
 
 /**
@@ -47,7 +49,9 @@ export const PLAN_DEFAULTS: Record<string, PlanLimits> = {
     maxWhatsAppMessagesPerDay: 10,
     reviewRequestCooldownDays: 30,
     maxAIGenerations:          20,
-    maxCardScansPerMonth:      25,
+    // Free CRM tier (unpaid workspaces): CRM + card scan only.
+    maxCardScansPerMonth:      50,
+    maxActiveLeads:            200,
   },
   Pro: {
     maxAuditsPerBusiness:      1,
@@ -62,6 +66,7 @@ export const PLAN_DEFAULTS: Record<string, PlanLimits> = {
     maxAIGenerations:          100,
     // ~₹0.02–0.10 per scan (Gemini Flash-Lite) — generous on purpose.
     maxCardScansPerMonth:      500,
+    maxActiveLeads:            -1,
   },
 };
 
@@ -70,6 +75,11 @@ export const FALLBACK_LIMITS: PlanLimits = PLAN_DEFAULTS.Free;
 /** Code default for the card-scan cap (PlanConfig rows saved before this field existed have none). */
 export function defaultCardScans(plan: string): number {
   return getPlanDefaults(plan).maxCardScansPerMonth;
+}
+
+/** Code default for the active-lead cap (PlanConfig rows saved before this field existed have none). */
+export function defaultActiveLeads(plan: string): number {
+  return getPlanDefaults(plan).maxActiveLeads;
 }
 
 export function getPlanDefaults(plan: string): PlanLimits {

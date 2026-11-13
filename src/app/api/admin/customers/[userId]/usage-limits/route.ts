@@ -31,6 +31,7 @@ export async function GET(
       reviewRequestCooldownDays: override?.reviewRequestCooldownDays,
       maxAIGenerations:          override?.maxAIGenerations,
       maxCardScansPerMonth:      override?.maxCardScansPerMonth,
+      maxActiveLeads:            override?.maxActiveLeads,
     });
 
     return NextResponse.json({
@@ -48,6 +49,7 @@ export async function GET(
           reviewRequestCooldownDays: override?.reviewRequestCooldownDays ?? null,
           maxAIGenerations:          override?.maxAIGenerations          ?? null,
           maxCardScansPerMonth:      override?.maxCardScansPerMonth      ?? null,
+          maxActiveLeads:            override?.maxActiveLeads            ?? null,
           adminNotes:                override?.adminNotes                ?? '',
         },
         effective,
@@ -85,6 +87,7 @@ export async function PATCH(
       'reviewRequestCooldownDays',
       'maxAIGenerations',
       'maxCardScansPerMonth',
+      'maxActiveLeads',
       'adminNotes',
     ] as const;
 
@@ -100,7 +103,8 @@ export async function PATCH(
             update[key] = null;
           } else {
             const n = Number(val);
-            if (!isFinite(n) || n < 0) {
+            // -1 = unlimited.
+            if (!isFinite(n) || (n < 0 && n !== -1)) {
               return NextResponse.json({ error: `Invalid value for ${key}` }, { status: 400 });
             }
             update[key] = Math.round(n);
@@ -123,6 +127,7 @@ export async function PATCH(
       reviewRequestCooldownDays: override.reviewRequestCooldownDays,
       maxAIGenerations:          override.maxAIGenerations,
       maxCardScansPerMonth:      override.maxCardScansPerMonth,
+      maxActiveLeads:            override.maxActiveLeads,
     });
 
     return NextResponse.json({ success: true, effective });

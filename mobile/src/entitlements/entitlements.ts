@@ -50,10 +50,16 @@ export const HIDE_TAB_WHEN_LOCKED: Record<ModuleKey, boolean> = {
 
 export function useEntitlements(): Entitlements {
   const { user } = useAuth();
-  const { workspaceRestrictedModules } = useBusiness();
+  const { workspaceRestrictedModules, freeCrm } = useBusiness();
   const sub = user?.subscription;
   return useMemo(() => {
     const ent = computeEntitlements(sub);
+    // Free CRM tier (unpaid workspace): only the CRM module is open.
+    if (freeCrm) {
+      const modules = { ...ent.modules };
+      for (const key of ALL_MODULE_KEYS) modules[key] = key === 'sales_agent';
+      return { ...ent, modules };
+    }
     if (!workspaceRestrictedModules?.length) return ent;
     // The user-level plan is shared by all of the owner's workspaces; a
     // failed payment on THIS workspace can still lock some of its modules.
@@ -62,11 +68,15 @@ export function useEntitlements(): Entitlements {
       if (workspaceRestrictedModules.includes(key)) modules[key] = false;
     }
     return { ...ent, modules };
-  }, [sub, workspaceRestrictedModules]);
+  }, [sub, workspaceRestrictedModules, freeCrm]);
 }
 
 /** True when the given app surface should render as locked. */
 export function useSurfaceLocked(surface: SurfaceKey): boolean {
   const { modules } = useEntitlements();
+  const { freeCrm } = useBusiness();
+  // Free CRM tier: the CRM (leads + card scan) only — the WhatsApp inbox shares
+  // the module but stays paid, like on the server.
+  if (freeCrm && surface !== 'leads') return true;
   return !modules[SURFACE_MODULES[surface]];
 }

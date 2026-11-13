@@ -156,3 +156,25 @@ export function limitsPlanFor(
   if (sub?.billingStatus === 'PastDue' && inGrace(sub.paymentGraceEndsAt, now)) return 'Pro';
   return 'Free';
 }
+
+// ── Free CRM tier (Nov 2026) ─────────────────────────────────────────────
+// Any workspace WITHOUT plan access (never paid, cancelled, trial ended)
+// keeps the CRM + visiting-card scan for free, within the Free plan's limits
+// (maxActiveLeads, maxCardScansPerMonth — super admin). Everything else
+// stays locked. NOT for: a workspace held after recovery, a payment-failure
+// restriction (the frozen policy decides), or a user-level access hold.
+// Only routes that opt in (requireCrmModule) use it — the WhatsApp inbox,
+// which shares the sales_agent module, stays paid-only.
+
+export const FREE_CRM_MODULE = 'sales_agent';
+
+export function freeCrmEligible(
+  ws: WorkspacePlanFacts | null | undefined,
+  sub: UserSubscriptionFacts | null | undefined,
+  now: Date = new Date()
+): boolean {
+  if (!ws) return false;
+  if (sub?.accessHold === true) return false;
+  if (sub?.billingStatus === 'PastDue' && !inGrace(sub.paymentGraceEndsAt, now)) return false;
+  return workspaceAccessState(ws, now).mode === 'none';
+}

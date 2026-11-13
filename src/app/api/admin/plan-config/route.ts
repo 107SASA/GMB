@@ -15,6 +15,7 @@ const LIMIT_KEYS: (keyof PlanLimits)[] = [
   'reviewRequestCooldownDays',
   'maxAIGenerations',
   'maxCardScansPerMonth',
+  'maxActiveLeads',
 ];
 
 // GET — returns all plan configs, falling back to hardcoded defaults for any not in DB
@@ -41,6 +42,7 @@ export async function GET(_req: NextRequest) {
         reviewRequestCooldownDays: db?.reviewRequestCooldownDays ?? hc.reviewRequestCooldownDays,
         maxAIGenerations:          db?.maxAIGenerations          ?? hc.maxAIGenerations,
         maxCardScansPerMonth:      db?.maxCardScansPerMonth      ?? hc.maxCardScansPerMonth,
+        maxActiveLeads:            db?.maxActiveLeads            ?? hc.maxActiveLeads,
         isCustom: !!db,
         updatedAt: db?.updatedAt ?? null,
       };
@@ -72,7 +74,8 @@ export async function PATCH(req: NextRequest) {
     for (const key of LIMIT_KEYS) {
       if (key in rest) {
         const val = Number(rest[key]);
-        if (!isFinite(val) || val < 0) {
+        // -1 = unlimited (e.g. Pro's maxActiveLeads).
+        if (!isFinite(val) || (val < 0 && val !== -1)) {
           return NextResponse.json({ error: `Invalid value for ${key}` }, { status: 400 });
         }
         update[key] = Math.round(val);

@@ -63,7 +63,7 @@ export function parseCrmStage(text: unknown): CrmStage | null {
 
 /** Sources allowed on a Lead (models/Lead.ts). */
 export const CRM_SOURCES = [
-  'Website Free Report', 'Website Demo Booking', 'WhatsApp Free Report',
+  'Website Free Report', 'Website Demo Booking', 'WhatsApp Free Report', 'App Sign-up', 'Website Sign-up',
   'WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking',
   'Google Business Profile', 'Phone Call', 'Contacts Import', 'CSV Import', 'Campaign Import', 'Appointment',
 ] as const;

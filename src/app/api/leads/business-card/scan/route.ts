@@ -4,7 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import AIUsageLog from '@/models/AIUsageLog';
 import Lead from '@/models/Lead';
 import { requireBusinessContext } from '@/lib/tenant';
-import { requireModule } from '@/lib/moduleGating';
+import { requireCrmModule } from '@/lib/moduleGating';
 import { checkUsageLimit } from '@/lib/featureGating';
 import { isStorageConfigured, uploadPrivateObject } from '@/lib/storage';
 import { geminiApiKey, scanBusinessCard, type CardImage } from '@/services/crm/businessCardScan';
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireBusinessContext();
     if (!ctx.ok) return ctx.response;
-    const gate = await requireModule(ctx.userId, 'sales_agent', ctx.businessId);
+    const gate = await requireCrmModule(ctx.userId, ctx.businessId);
     if (!gate.ok) return gate.response;
 
     if (!geminiApiKey()) {
@@ -88,6 +88,13 @@ export async function POST(req: Request) {
         { error: `You've used all ${quota.limit} card scans for this month. You can still add the lead by typing the details.`, code: quota.code, limit: quota.limit, used: quota.used },
         { status: 403 },
       );
+    }
+    // Active-lead cap (Free CRM tier: 200) — checked BEFORE the paid AI read,
+    // so a card that couldn't be saved anyway costs nothing.
+    const { activeLeadCapacity, leadLimitMessage } = await import('@/lib/freeCrm');
+    const capacity = await activeLeadCapacity(ctx.businessId);
+    if (!capacity.allowed) {
+      return NextResponse.json({ error: leadLimitMessage(capacity.limit), code: 'LEAD_LIMIT', limit: capacity.limit, used: capacity.used }, { status: 403 });
     }
     // Abuse guard on top — each scan is a paid AI call.
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -190,7 +197,12 @@ export async function POST(req: Request) {
         createdBy: ctx.userId,
       },
     });
-    if (!r.lead) return NextResponse.json({ error: r.skippedReason, fields: f, imageKeys }, { status: 422 });
+    if (!r.lead) {
+      return NextResponse.json(
+        { error: r.skippedReason, fields: f, imageKeys, ...(r.code ? { code: r.code } : {}) },
+        { status: r.code === 'LEAD_LIMIT' ? 403 : 422 },
+      );
+    }
     return NextResponse.json({ success: true, saved: true, existing: !r.created, lead: r.lead, needsReview: l.needsReview && r.created });
   } catch (error: any) {
     console.error('[business-card/scan]', error?.message);

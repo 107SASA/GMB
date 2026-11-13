@@ -35,6 +35,13 @@ export const HOMEPAGE_FAQS: FaqEntry[] = [
 /** Extra FAQs shown only on the standalone /faq page — not on the homepage teaser. */
 export const ADDITIONAL_FAQS: FaqEntry[] = [
   {
+    // People often type the brand with one "w" — this gives Google a natural,
+    // visible place on the site that connects those spellings to us.
+    question: "Is it Growwmatics or Growmatics?",
+    answer:
+      "Our name is Growwmatics AI, spelled with a double \"w\" (Groww + matics). Many people search for us as Growmatics, Growmatic or Growwmatic — it's the same company, and our only official website is growwmatics.com.",
+  },
+  {
     question: "Is there a free trial?",
     answer:
       "There's no separate paid free trial — every new business gets one free Google Business Profile audit/report to try the platform before subscribing, no credit card required.",

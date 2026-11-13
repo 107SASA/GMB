@@ -11,7 +11,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { setActiveBusinessIdHeader } from '@/api/client';
-import { fetchBillingStatus } from '@/api/endpoints/account';
+import { fetchBillingStatus, type FreeCrmUsage } from '@/api/endpoints/account';
 import { deleteWorkspace, fetchBusinesses, type Business } from '@/api/endpoints/businesses';
 import { useAuth } from '@/auth/AuthContext';
 
@@ -68,6 +68,12 @@ interface BusinessContextValue {
    * like the web). null = no workspace-level restriction.
    */
   workspaceRestrictedModules: string[] | null;
+  /**
+   * Free CRM tier: the active workspace is unpaid but keeps the CRM + card
+   * scan (with these limits); every other tab shows the locked screen.
+   * null = paid / trial, or fully locked.
+   */
+  freeCrm: FreeCrmUsage | null;
   /** Re-checks the active workspace's billing state (e.g. after paying). */
   refreshWorkspaceAccess: () => Promise<void>;
   selectBusiness: (businessId: string) => Promise<void>;
@@ -207,7 +213,8 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     workspace?.access?.mode === 'restricted' &&
     Array.isArray(workspace.access.restrictedModules) &&
     workspace.access.restrictedModules.length < PAID_MODULE_COUNT;
-  const workspaceLocked = hasActiveBusiness && !!workspace && !workspace.isActive && !partial;
+  const freeCrm = hasActiveBusiness && workspace && !workspace.isActive && workspace.freeCrm?.enabled ? workspace.freeCrm : null;
+  const workspaceLocked = hasActiveBusiness && !!workspace && !workspace.isActive && !partial && !freeCrm;
   const workspaceRestrictedModules =
     hasActiveBusiness && partial ? (workspace?.access?.restrictedModules ?? null) : null;
   const workspaceLockReason: BusinessContextValue['workspaceLockReason'] = !workspaceLocked
@@ -232,7 +239,8 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     if (isAuthenticated && !isLoading && !needsSelection) {
       if (businesses.length === 0) {
         onboardingStep = 'create';
-      } else if (activeBusiness && !activeBusiness.intakeCompleted && !workspaceLocked) {
+      } else if (activeBusiness && !activeBusiness.intakeCompleted && !workspaceLocked && !freeCrm) {
+        // (Free CRM workspaces skip the post-payment intake — it's for paid plans.)
         const createdAt = activeBusiness.createdAt ? new Date(activeBusiness.createdAt) : null;
         if (createdAt && createdAt >= INTAKE_ENFORCED_SINCE) {
           onboardingStep = 'intake';
@@ -251,6 +259,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       workspaceLocked,
       workspaceLockReason,
       workspaceRestrictedModules,
+      freeCrm,
       refreshWorkspaceAccess,
       selectBusiness,
       deleteBusiness,
@@ -265,6 +274,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     workspaceLocked,
     workspaceLockReason,
     workspaceRestrictedModules,
+    freeCrm,
     refreshWorkspaceAccess,
     selectBusiness,
     deleteBusiness,

@@ -104,7 +104,7 @@ export async function saveCallAsLead(opts: {
   if (!mongoose.isValidObjectId(opts.callEventId)) return { ok: false, status: 404, error: 'Call not found' };
   const ev: any = await CallEvent.findOne({ _id: opts.callEventId, businessId: opts.businessId });
   if (!ev) return { ok: false, status: 404, error: 'Call not found' };
-  const { lead, created } = await createOrUpdateCustomerLead({
+  const { lead, created, skippedReason, code } = await createOrUpdateCustomerLead({
     businessId: opts.businessId, organizationId: opts.organizationId,
     name: opts.name || ev.callerName || null, phone: ev.phone, source: 'Phone Call', notes: opts.notes || null, createdBy: opts.userId,
     activity: {
@@ -114,7 +114,7 @@ export async function saveCallAsLead(opts: {
       createdBy: opts.userId,
     },
   });
-  if (!lead) return { ok: false, status: 400, error: 'Could not save this caller.' };
+  if (!lead) return { ok: false, status: code === 'LEAD_LIMIT' ? 403 : 400, error: skippedReason || 'Could not save this caller.' };
   lead.lastContactedAt = ev.startedAt;
   await lead.save();
   ev.leadId = lead._id;

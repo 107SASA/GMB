@@ -27,8 +27,11 @@ export default function PrivacyPolicyPage() {
             password (stored in hashed form) when you create an account.
           </li>
           <li>
-            <strong>Phone sign-in</strong> — when you sign in with your phone number, we send a
-            one-time code to that number over WhatsApp.
+            <strong>Phone sign-in and free accounts</strong> — when you sign in or create a free
+            account (in our mobile apps or on our website) with your phone number, we send a
+            one-time code to that number over WhatsApp. When you create a free account we also ask
+            for your name and your business (its name, category and city, or its Google listing);
+            if you pick a Google listing we prepare a free report on it.
           </li>
           <li>
             <strong>Business information</strong> — details about the businesses (workspaces) you
@@ -56,6 +59,20 @@ export default function PrivacyPolicyPage() {
             if you use a call-tracking number, call details such as the caller&apos;s number, name, time
             and duration. In our mobile apps you can import contacts from your phone — only the
             contacts you select are sent; your address book is never uploaded as a whole.
+          </li>
+          <li>
+            <strong>Visiting cards you scan</strong> — in our mobile apps you can photograph a
+            visiting card (front and, if you choose, back) that someone gave you. The camera is used
+            only when you tap to take the photo, and no location is attached to card photos. The
+            photos are made smaller on your phone and sent to us; if you have no internet connection
+            they wait on your phone, inside the app, until they can be sent. We use an AI service
+            (Google Gemini) to read the card&apos;s details — such as the person&apos;s name, job title,
+            company, phone numbers, email, website and address — and save them as a lead in your CRM
+            together with any note or event name you add. Card photos are stored privately with our
+            cloud storage provider (not at a public link) and can only be viewed by signed-in users
+            of your workspace. You can edit or delete these leads at any time; they are erased with
+            your account. Please only scan cards that were given to you. &quot;Save to phone
+            contacts&quot; opens your phone&apos;s own contact form — we do not read your contacts for it.
           </li>
           <li>
             <strong>Push notifications</strong> — if you allow notifications in our mobile apps, we
@@ -140,8 +157,8 @@ export default function PrivacyPolicyPage() {
       <LegalSection heading="4. Sharing & Third-Party Services">
         <p>
           We share data only with service providers that help us operate, and only as needed. These
-          include Google (Business Profile APIs, Places and Maps, and Google Analytics on our
-          website), Razorpay (payments), Groq (AI features — for example, a review&apos;s text and your
+          include Google (Business Profile APIs, Places and Maps, Gemini AI to read the visiting
+          cards you scan, and Google Analytics on our website), Razorpay (payments), Groq (AI features — for example, a review&apos;s text and your
           business details are sent to generate a reply draft), Twilio and Meta (WhatsApp messages;
           Twilio also provides call tracking), Resend and SendGrid (email), DigitalOcean (file
           storage), Inngest (background processing), and Expo, Apple and Google (delivering push

@@ -66,6 +66,7 @@ export async function GET(req: NextRequest) {
         reviewRequestCooldownDays: config.reviewRequestCooldownDays,
         maxAIGenerations:          config.maxAIGenerations,
         maxCardScansPerMonth:      config.maxCardScansPerMonth ?? getPlanDefaults(name).maxCardScansPerMonth,
+        maxActiveLeads:            config.maxActiveLeads ?? getPlanDefaults(name).maxActiveLeads,
       };
     };
 
@@ -91,6 +92,7 @@ export async function GET(req: NextRequest) {
         reviewRequestCooldownDays: override.reviewRequestCooldownDays,
         maxAIGenerations:          override.maxAIGenerations,
         maxCardScansPerMonth:      override.maxCardScansPerMonth,
+        maxActiveLeads:            override.maxActiveLeads,
       }, planLimits);
 
       return {
@@ -110,6 +112,7 @@ export async function GET(req: NextRequest) {
           reviewRequestCooldownDays: override.reviewRequestCooldownDays ?? null,
           maxAIGenerations:          override.maxAIGenerations          ?? null,
           maxCardScansPerMonth:      override.maxCardScansPerMonth      ?? null,
+          maxActiveLeads:            override.maxActiveLeads            ?? null,
           adminNotes:                override.adminNotes                ?? '',
         },
         hasOverride: effective.overriddenFields.length > 0,

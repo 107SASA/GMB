@@ -10,6 +10,10 @@ export interface IPlatformSettings extends Document {
    * across every prospect/customer, not per-tenant.
    */
   salesKanbanColumns: string[];
+  /** Free account sign-up in the app (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md). Default on. */
+  freeSignupEnabled: boolean;
+  /** Generate the free Google profile report at sign-up when a listing was picked. Default on. */
+  freeSignupAutoReport: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -30,6 +34,8 @@ const PlatformSettingsSchema: Schema = new Schema(
       type: [String],
       default: ['Lead', 'Contacted', 'Demo Scheduled', 'Negotiating', 'Customer', 'Lost'],
     },
+    freeSignupEnabled: { type: Boolean, default: true },
+    freeSignupAutoReport: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

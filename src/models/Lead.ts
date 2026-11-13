@@ -92,6 +92,23 @@ export interface ILead extends Document {
   businessType?: string;
   /** Super admin CRM: city / area, and why a lead was marked lost. */
   city?: string;
+  /**
+   * Super-admin CRM: usage of this prospect's FREE account (CRM + card scan),
+   * refreshed daily by freeAccountSignalsCron, and why sales should call
+   * (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md).
+   */
+  freeAccount?: {
+    businessId?: mongoose.Types.ObjectId;
+    activeLeads?: number;
+    maxActiveLeads?: number;
+    scansThisMonth?: number;
+    maxScansPerMonth?: number;
+    reportScore?: number | null;
+    lastActiveAt?: Date | null;
+    unlockRequestedAt?: Date | null;
+    callReasons?: string[];
+    updatedAt?: Date;
+  } | null;
   /** Customer CRM: details read from a scanned visiting card (source 'Business Card'). */
   businessCard?: {
     company?: string;
@@ -283,7 +300,9 @@ const LeadSchema: Schema = new Schema(
       type: String, 
       enum: ['WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking', 'Google Business Profile', 'Phone Call', 'Contacts Import', 'CSV Import', 'Campaign Import', 'Appointment', 'Business Card',
         // Platform (super admin CRM) capture channels.
-        'Website Free Report', 'Website Demo Booking', 'WhatsApp Free Report'],
+        'Website Free Report', 'Website Demo Booking', 'WhatsApp Free Report',
+        // Free account created in the app / on the website (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md).
+        'App Sign-up', 'Website Sign-up'],
       default: 'Manual'
     },
     leadType: {
@@ -329,6 +348,22 @@ const LeadSchema: Schema = new Schema(
     qualificationStatus: { type: String },
     businessType: { type: String },
     city: { type: String },
+    // Super-admin CRM: free-account usage + call reasons (see ILead.freeAccount).
+    freeAccount: {
+      type: new Schema({
+        businessId: { type: Schema.Types.ObjectId, ref: 'Business' },
+        activeLeads: { type: Number },
+        maxActiveLeads: { type: Number },
+        scansThisMonth: { type: Number },
+        maxScansPerMonth: { type: Number },
+        reportScore: { type: Number, default: null },
+        lastActiveAt: { type: Date, default: null },
+        unlockRequestedAt: { type: Date, default: null },
+        callReasons: { type: [String], default: undefined },
+        updatedAt: { type: Date },
+      }, { _id: false }),
+      default: undefined,
+    },
     // Customer CRM: visiting-card scan (see ILead.businessCard). Absent on every
     // other lead, so existing documents are unaffected.
     businessCard: {

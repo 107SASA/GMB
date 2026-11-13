@@ -6,10 +6,15 @@ import { WhatsAppTemplatesCard } from '@/components/admin/WhatsAppTemplatesCard'
 
 interface Settings {
   supportEmail: string;
+  /** Free account sign-up (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md). */
+  freeSignupEnabled: boolean;
+  freeSignupAutoReport: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
   supportEmail: '',
+  freeSignupEnabled: true,
+  freeSignupAutoReport: true,
 };
 
 // ── Danger action modal ───────────────────────────────────────────────────────
@@ -222,6 +227,31 @@ export default function SettingsPage() {
                 placeholder="support@yourdomain.com"
                 className="w-full px-4 py-2.5 border border-outline-variant rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
               />
+            </Field>
+
+            {/* Free accounts — limits (200 active leads, 50 card scans) live in
+                Admin → Customers → plan limits ("Free" plan). */}
+            <Field label="Free sign-up" hint="New free accounts from the app. Off = only existing accounts can sign in.">
+              <label className="flex items-center gap-3 text-sm text-on-surface">
+                <input
+                  type="checkbox"
+                  checked={settings.freeSignupEnabled}
+                  onChange={e => setSettings(s => ({ ...s, freeSignupEnabled: e.target.checked }))}
+                  className="h-4 w-4 accent-primary"
+                />
+                Allow new free accounts
+              </label>
+            </Field>
+            <Field label="Free report at sign-up" hint="Generate the free Google profile report when a listing was picked.">
+              <label className="flex items-center gap-3 text-sm text-on-surface">
+                <input
+                  type="checkbox"
+                  checked={settings.freeSignupAutoReport}
+                  onChange={e => setSettings(s => ({ ...s, freeSignupAutoReport: e.target.checked }))}
+                  className="h-4 w-4 accent-primary"
+                />
+                Generate automatically
+              </label>
             </Field>
           </div>
 

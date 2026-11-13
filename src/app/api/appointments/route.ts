@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
         interest: typeof body.serviceInterest === 'string' ? body.serviceInterest : null,
         createdBy: ctx.userId,
       });
-      if (!r.lead) return NextResponse.json({ error: r.skippedReason }, { status: 400 });
+      if (!r.lead) return NextResponse.json({ error: r.skippedReason, ...(r.code ? { code: r.code } : {}) }, { status: r.code === 'LEAD_LIMIT' ? 403 : 400 });
       lead = r.lead;
     } else {
       return NextResponse.json({ error: 'leadId, or a name/phone/email, is required' }, { status: 400 });

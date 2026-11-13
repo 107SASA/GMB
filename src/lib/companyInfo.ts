@@ -34,4 +34,4 @@ export const COMPANY = {
 export const BRAND_ATTRIBUTION = `${COMPANY.name} is a product of ${COMPANY.legalName}.`;
 
 /** Human-readable "last updated" date shown on the legal pages. */
-export const LEGAL_LAST_UPDATED = 'July 2026';
+export const LEGAL_LAST_UPDATED = 'November 2026';

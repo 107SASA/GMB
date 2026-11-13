@@ -123,7 +123,8 @@ export function PricingCards() {
         </div>
 
         <div className="mt-auto pt-6 border-t border-outline-variant flex-grow-0">
-          <Link href="/onboarding" className="block w-full">
+          {/* Free account first (CRM + free report), subscribe after — docs/FREE_ACCOUNT_REGISTRATION_PLAN.md D6. */}
+          <Link href="/signup" className="block w-full">
             <button className="w-full py-4 rounded-lg font-bold transition-all bg-primary text-on-primary hover:bg-primary-container card-shadow">
               Start With a Free Audit
             </button>

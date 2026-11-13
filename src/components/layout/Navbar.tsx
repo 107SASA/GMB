@@ -12,7 +12,6 @@ const navLinks = [
   { name: "How it Works", href: "/#features" },
   { name: "Showcase", href: "/showcase" },
   { name: "About Us", href: "/about" },
-  { name: "Blog", href: "/blog" },
   { name: "Free GBP Report", href: "/free-report" },
   { name: "Partners", href: "/growth-partner" },
 ];
@@ -89,7 +88,9 @@ export function Navbar() {
       <nav className="max-w-[1280px] mx-auto w-full flex items-center justify-between gap-3">
         <Link href="/" className="flex items-center gap-2.5 shrink-0 min-w-0 min-h-11">
           <img src="/brand/icon.png" alt="Growwmatics AI" className="w-8 h-8 md:w-9 md:h-9 object-contain shrink-0" />
-          <span className="font-mkt-display text-base sm:text-lg md:text-xl font-semibold tracking-tight text-[#101613] truncate">
+          {/* Wordmark hidden only at lg (1024–1279px): logo + 6 links + CTAs don't fit
+              at that width with it, and the links were squeezing into "Login". */}
+          <span className="font-mkt-display text-base sm:text-lg md:text-xl font-semibold tracking-tight text-[#101613] truncate lg:hidden xl:block">
             Growwmatics AI
           </span>
         </Link>
@@ -202,7 +203,7 @@ export function Navbar() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="absolute top-full left-0 right-0 bg-white border-b border-(--mkt-line) px-4 py-5 sm:px-6 flex flex-col gap-1 lg:hidden shadow-lg max-h-[min(100dvh-4rem,100vh-4rem)] overflow-y-auto overscroll-contain"
+            className="absolute top-full left-0 right-0 bg-white border-b border-(--mkt-line) px-4 py-5 sm:px-6 flex flex-col gap-1 lg:hidden shadow-lg max-h-[calc(100dvh-4rem)] md:max-h-[calc(100dvh-72px)] overflow-y-auto overscroll-contain"
           >
             <div className="pb-2">
               <button

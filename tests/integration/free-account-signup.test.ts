@@ -17,7 +17,10 @@ test('sign-up: the WhatsApp code is checked before any account is touched or any
   const check = src.indexOf("checkPhoneOtp(phone, String(body.otp || ''), 'signup')");
   assert.ok(check > 0, 'sign-up must check a signup-purpose code');
   assert.ok(check < src.indexOf('registerFreeAccount('), 'code before creating the account');
-  assert.ok(check < src.indexOf('finalizeLogin('), 'code before logging in');
+  assert.ok(check < src.lastIndexOf('finalizeLogin('), 'code before the normal login');
+  // The only earlier login: the store-reviewer number with its fixed code (lib/reviewerAccount.ts).
+  assert.match(src, /isReviewerUser\(reviewer\.user\) && isReviewerOtp\(/);
+  assert.ok(src.indexOf('finalizeLogin(') > src.indexOf('isReviewerOtp('));
   assert.ok(src.indexOf('registerFreeAccount(') < src.indexOf("consumePhoneOtp(phone, 'signup')"), 'code used up only after success');
   assert.match(src, /if \(!otpCheck\.ok\)[\s\S]{0,200}status: 401/);
 });

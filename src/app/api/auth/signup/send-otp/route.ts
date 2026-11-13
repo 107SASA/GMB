@@ -6,6 +6,7 @@ import { isQaTestingMode } from '@/lib/testingMode';
 import { sendPhoneOtp } from '@/services/auth/freeReportOtp';
 import { findAccountForPhone } from '@/lib/shadowAccount';
 import { getFreeSignupSettings } from '@/lib/freeSignupSettings';
+import { isReviewerUser } from '@/lib/reviewerAccount';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +41,11 @@ export async function POST(req: Request) {
     const existingAccount = !!account.user && account.established;
     if (!existingAccount && !(await getFreeSignupSettings()).enabled) {
       return NextResponse.json({ success: false, error: 'New sign-ups are paused right now. Please try again later.', code: 'SIGNUP_CLOSED' }, { status: 403 });
+    }
+
+    // Store-reviewer account: fixed code, nothing to send (lib/reviewerAccount.ts).
+    if (account.user && isReviewerUser(account.user)) {
+      return NextResponse.json({ success: true, maskedPhone: maskPhone(phone), existingAccount: true });
     }
 
     const result = await sendPhoneOtp(phone, 'signup');

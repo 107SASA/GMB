@@ -9,6 +9,7 @@ import { findAccountForPhone } from '@/lib/shadowAccount';
 import { getFreeSignupSettings } from '@/lib/freeSignupSettings';
 import { markPhoneVerified } from '@/services/auth/phoneVerification';
 import { registerFreeAccount } from '@/services/auth/freeAccount';
+import { isReviewerOtp, isReviewerUser } from '@/lib/reviewerAccount';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,15 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const phone = normalizePhoneE164(String(body.phone || ''));
     if (!phone) return NextResponse.json({ success: false, error: 'Please enter a valid WhatsApp number.' }, { status: 400 });
+
+    // Store-reviewer account (App Review / Play "App access"): its fixed code
+    // signs it in here too, exactly like the login screen.
+    const reviewer = await findAccountForPhone(phone);
+    if (reviewer.user && isReviewerUser(reviewer.user) && isReviewerOtp(String(body.otp || ''))) {
+      const login = await finalizeLogin(reviewer.user, req);
+      if (login.status !== 200) return login;
+      return NextResponse.json({ ...(await login.json()), outcome: 'existing', reportStarted: false }, { status: 200 });
+    }
 
     const otpCheck = await checkPhoneOtp(phone, String(body.otp || ''), 'signup');
     if (!otpCheck.ok) {

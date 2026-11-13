@@ -145,3 +145,117 @@ export async function syncFreeAccountSignals(now: Date = new Date(), limit = 500
   }
   return { checked: prospects.length, updated, cleared };
 }
+
+// ── Every free account is a sales lead ───────────────────────────────────
+
+/**
+ * Files a super-admin CRM prospect ("App Sign-up" / "Website Sign-up") for
+ * real, verified free accounts that have none yet — e.g. a website sign-up
+ * that never paid, or an account that existed before free accounts did.
+ * Old shadow accounts are skipped (their free report already filed one).
+ */
+export async function ensureFreeAccountLeads(now: Date = new Date(), limit = 500): Promise<{ checked: number; filed: number }> {
+  const [{ default: dbConnect }, { default: User }, { default: Business }, { default: Lead }, freeCrm, { fileSignupPlatformLead }] = await Promise.all([
+    import('@/lib/mongodb'),
+    import('@/models/User'),
+    import('@/models/Business'),
+    import('@/models/Lead'),
+    import('@/lib/freeCrm'),
+    import('@/services/leads/platformProspectEntry'),
+  ]);
+  await dbConnect();
+  const since = new Date(now.getTime() - 365 * DAY);
+  const users: any[] = await User.find({
+    role: 'CLIENT',
+    isShadowAccount: { $ne: true },
+    isDeleted: { $ne: true },
+    phone: { $type: 'string', $regex: /^\+/ },
+    createdAt: { $gte: since },
+  })
+    .select('_id fullName phone activeBusinessId businessIds')
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
+  let filed = 0;
+  for (const u of users) {
+    try {
+      if (await Lead.exists({ tenantId: 'gmbboost-internal', phone: u.phone })) continue;
+      const businessId = String(u.activeBusinessId ?? u.businessIds?.[0] ?? '');
+      if (!businessId || !(await freeCrm.freeCrmAllowed(String(u._id), businessId))) continue;
+      const biz: any = await Business.findById(businessId).select('name provisionedVia').lean();
+      await fileSignupPlatformLead({
+        name: u.fullName || biz?.name || u.phone,
+        phone: u.phone,
+        businessName: biz?.name || 'Business',
+        channel: biz?.provisionedVia === 'app-signup' ? 'app' : 'website',
+      });
+      filed++;
+    } catch (err) {
+      console.warn('[free-account-leads] skipped', String(u._id), (err as Error)?.message);
+    }
+  }
+  return { checked: users.length, filed };
+}
+
+// ── "Get your free report" nudges ────────────────────────────────────────
+
+/** Pure: which nudge (1 or 2) is due for a free account with no report, if any. Day 1 and day 3. */
+export function freeReportNudgeDue(ageDays: number, sent: number): 1 | 2 | null {
+  if (sent === 0 && ageDays >= 1) return 1;
+  if (sent === 1 && ageDays >= 3) return 2;
+  return null;
+}
+
+/**
+ * Free accounts that skipped picking their Google listing get no report, so
+ * the WhatsApp sales nurture (which starts when a report completes) never
+ * begins. Two push notifications (day 1, day 3) bring them to the in-app
+ * "Get your free report" card; once they pick a listing, the report — and
+ * with it the normal nurture — starts. Push only: a WhatsApp message here
+ * would need a Meta-approved template (outside the 24-hour window).
+ */
+export async function nudgeFreeReport(now: Date = new Date(), limit = 500): Promise<{ checked: number; sent: number }> {
+  const [{ default: dbConnect }, { default: Business }, { default: Audit }, freeCrm, { FREE_SIGNUP_SOURCES }] = await Promise.all([
+    import('@/lib/mongodb'),
+    import('@/models/Business'),
+    import('@/models/Audit'),
+    import('@/lib/freeCrm'),
+    import('@/lib/admin/realAccounts'),
+  ]);
+  await dbConnect();
+  const businesses: any[] = await Business.find({
+    provisionedVia: { $in: [...FREE_SIGNUP_SOURCES] },
+    isDeleted: { $ne: true },
+    createdAt: { $gte: new Date(now.getTime() - 14 * DAY), $lte: new Date(now.getTime() - DAY) },
+    $or: [{ freeReportNudgeCount: { $exists: false } }, { freeReportNudgeCount: { $lt: 2 } }],
+  })
+    .select('_id userId name createdAt freeReportNudgeCount')
+    .limit(limit)
+    .lean();
+  let sent = 0;
+  const { sendPushToBusinessUsers } = await import('@/services/push');
+  for (const b of businesses) {
+    try {
+      const due = freeReportNudgeDue((now.getTime() - new Date(b.createdAt).getTime()) / DAY, b.freeReportNudgeCount ?? 0);
+      if (!due || !b.userId) continue;
+      if (await Audit.exists({ businessId: b._id })) {
+        await Business.updateOne({ _id: b._id }, { $set: { freeReportNudgeCount: 2 } }); // has one — never nudge
+        continue;
+      }
+      if (!(await freeCrm.freeCrmAllowed(String(b.userId), String(b._id)))) continue;
+      await sendPushToBusinessUsers(String(b._id), {
+        title: due === 1 ? 'Get your free Google profile report' : 'Your free report is one tap away',
+        body:
+          due === 1
+            ? `See how ${b.name || 'your business'} shows up on Google and what to fix first. Pick your listing in the app.`
+            : 'Customers search Google before they call. Pick your listing and we will show you what to fix — free.',
+        data: { freeReport: '1' },
+      });
+      await Business.updateOne({ _id: b._id }, { $set: { freeReportNudgeCount: due, freeReportNudgedAt: now } });
+      sent++;
+    } catch (err) {
+      console.warn('[free-report-nudge] skipped', String(b._id), (err as Error)?.message);
+    }
+  }
+  return { checked: businesses.length, sent };
+}

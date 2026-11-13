@@ -24,12 +24,27 @@ export async function realUserFilter(): Promise<Record<string, unknown>> {
 
 /** Business filter: normally created workspaces, plus free-report ones now on a plan or trial. */
 export function realBusinessFilter(): Record<string, unknown> {
-  return { $or: [{ provisionedVia: { $exists: false } }, { subscriptionStatus: { $in: [...CUSTOMER_STATUSES] } }] };
+  return {
+    $or: [
+      { provisionedVia: { $exists: false } },
+      { subscriptionStatus: { $in: [...CUSTOMER_STATUSES] } },
+      // Free accounts created in the app / on the website are real, OTP-verified
+      // sign-ups (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md) — not lead-gen traffic.
+      { provisionedVia: { $in: [...FREE_SIGNUP_SOURCES] } },
+    ],
+  };
 }
 
-/** "Paid" / "Free trial" / "Payment failed" / null for a workspace status. */
+/** provisionedVia of free-account sign-ups (services/auth/freeAccount.ts). */
+export const FREE_SIGNUP_SOURCES = ['app-signup', 'website-signup'] as const;
+
+/** "Paid" / "Free trial" / "Payment failed" / "Free CRM" (any other status) for a workspace. */
 export function workspacePlanLabel(status: string | null | undefined): string | null {
-  return status === 'active' ? 'Paid' : status === 'trial_active' ? 'Free trial' : status === 'past_due' ? 'Payment failed' : null;
+  if (status === 'active') return 'Paid';
+  if (status === 'trial_active') return 'Free trial';
+  if (status === 'past_due') return 'Payment failed';
+  // Every other listed workspace is on the Free CRM tier (CRM + card scan, lib/freeCrm.ts).
+  return status === 'canceled' ? 'Cancelled · Free CRM' : 'Free CRM';
 }
 
 /**

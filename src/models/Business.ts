@@ -155,6 +155,9 @@ export interface IBusiness extends Document {
   // flow (see src/lib/shadowAccount.ts), e.g. 'free-report-form'. Undefined
   // for every business created through the normal onboarding wizard.
   provisionedVia?: string;
+  /** Free account without a report: "get your free report" push nudges sent (max 2). */
+  freeReportNudgeCount?: number;
+  freeReportNudgedAt?: Date;
   // ADDITIVE — per-workspace subscription gate. Each workspace (Business) must
   // have its own active subscription before its dashboard is accessible. New
   // workspaces default to 'trialing' + freeAuditUsed:false, so they get exactly
@@ -471,6 +474,9 @@ const BusinessSchema: Schema = new Schema(
     purgedAt: { type: Date },
     // ADDITIVE — see provisionedVia in IBusiness above.
     provisionedVia: { type: String },
+    // Free account without a report: "get your free report" push nudges sent (max 2 — freeAccountSignals.ts).
+    freeReportNudgeCount: { type: Number },
+    freeReportNudgedAt: { type: Date },
     // ADDITIVE — per-workspace subscription gate (see IBusiness above).
     subscriptionStatus: {
       type: String,

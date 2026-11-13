@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { freeCrmAccessReplyText, appAccessReplyText } from '../../src/services/whatsapp/appAccessHelp.ts';
-import { freeAccountCallReasons } from '../../src/services/leads/freeAccountSignals.ts';
+import { freeAccountCallReasons, freeReportNudgeDue } from '../../src/services/leads/freeAccountSignals.ts';
 import { isStaleShadowAccount, shadowCleanupModeFromEnv } from '../../src/services/account/shadowCleanup.ts';
 
 const read = (p: string) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
@@ -126,4 +126,27 @@ test('report in the app: the full website report, no prices, with a WhatsApp hel
   const view = read('src/components/audit/FreeReportView.tsx');
   assert.match(view, /\{!appMode && \(\s*<div id="unlock"/);
   assert.match(view, /getSupportLink\(APP_ACCESS_MESSAGE\)/);
+});
+
+// ── Free accounts in the super admin ─────────────────────────────────────
+
+test('free report nudges: day 1 and day 3, never more than two', () => {
+  assert.equal(freeReportNudgeDue(0.5, 0), null);
+  assert.equal(freeReportNudgeDue(1.2, 0), 1);
+  assert.equal(freeReportNudgeDue(2, 1), null);
+  assert.equal(freeReportNudgeDue(3.1, 1), 2);
+  assert.equal(freeReportNudgeDue(9, 2), null);
+});
+
+test('admin: free accounts are real accounts labelled "Free CRM"; every free account gets a sales lead', async () => {
+  const src = read('src/lib/admin/realAccounts.ts');
+  assert.match(src, /FREE_SIGNUP_SOURCES = \['app-signup', 'website-signup'\]/);
+  assert.match(src, /provisionedVia: \{ \$in: \[\.\.\.FREE_SIGNUP_SOURCES\] \}/);
+  assert.match(src, /'Free CRM'/);
+  // Signing up again with an unpaid account still files the lead.
+  const reg = read('src/services/auth/freeAccount.ts');
+  assert.ok(reg.indexOf('fileSignupPlatformLead(') < reg.indexOf("return { outcome: 'existing'"));
+  // The daily job files missing leads, refreshes call reasons, sends the nudges.
+  const fn = read('src/services/inngest/functions.ts');
+  for (const step of ['ensure-free-account-leads', 'sync-free-account-signals', 'free-report-nudges']) assert.ok(fn.includes(step), step);
 });

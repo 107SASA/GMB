@@ -5812,12 +5812,27 @@ export const dataRetentionCleanupCron = inngest.createFunction(
 export const freeAccountSignalsCron = inngest.createFunction(
   { id: "free-account-signals", retries: 1, triggers: [{ cron: "15 4 * * *" }, { event: "free-account/signals.requested" }] },
   async ({ step }) => {
-    return step.run("sync-free-account-signals", async () => {
+    // Every free account is a sales lead first, then usage + call reasons.
+    const leads = await step.run("ensure-free-account-leads", async () => {
+      const { ensureFreeAccountLeads } = await import("@/services/leads/freeAccountSignals");
+      const res = await ensureFreeAccountLeads();
+      console.log(`[free-account-leads] checked=${res.checked} filed=${res.filed}`);
+      return res;
+    });
+    const signals = await step.run("sync-free-account-signals", async () => {
       const { syncFreeAccountSignals } = await import("@/services/leads/freeAccountSignals");
       const res = await syncFreeAccountSignals();
       console.log(`[free-account-signals] checked=${res.checked} updated=${res.updated} cleared=${res.cleared}`);
       return res;
     });
+    // Free accounts with no report yet: "get your free report" push (day 1, day 3).
+    const nudges = await step.run("free-report-nudges", async () => {
+      const { nudgeFreeReport } = await import("@/services/leads/freeAccountSignals");
+      const res = await nudgeFreeReport();
+      console.log(`[free-report-nudge] checked=${res.checked} sent=${res.sent}`);
+      return res;
+    });
+    return { leads, signals, nudges };
   }
 );
 

@@ -274,6 +274,8 @@ test('super-admin CRM untouched: no admin / sales-agent / nurture / lead-engine 
     // Free accounts on Admin → Leads: usage + "needs a call" reasons, a filter, a funnel strip.
     'src/app/admin/leads/page.tsx', 'src/services/admin/pipelineQuery.ts', 'src/services/admin/conversionReport.ts',
     'src/app/api/admin/free-accounts/funnel/route.ts',
+    // Free accounts listed as real accounts with a "Free CRM" plan label in Admin → Customers / Businesses.
+    'src/lib/admin/realAccounts.ts',
     // Growth Partner program (applications, partner terms) + leaving partner
     // logins out of the customer counts / lists. Not the platform CRM.
     'src/components/admin/AdminSidebar.tsx',

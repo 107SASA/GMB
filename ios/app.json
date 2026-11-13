@@ -2,8 +2,10 @@
   "expo": {
     "name": "Growwmatics AI",
     "slug": "growwmatics-ios",
-    "version": "1.0.0",
-    "platforms": ["ios"],
+    "version": "1.0.3",
+    "platforms": [
+      "ios"
+    ],
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "growwmatics",
@@ -12,7 +14,13 @@
       "bundleIdentifier": "com.growwmatics.app",
       "buildNumber": "1",
       "supportsTablet": false,
-      "associatedDomains": ["applinks:growwmatics.com", "applinks:www.growwmatics.com"]
+      "associatedDomains": [
+        "applinks:growwmatics.com",
+        "applinks:www.growwmatics.com"
+      ],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "plugins": [
       "expo-router",
@@ -67,7 +75,11 @@
       "reactCompiler": true
     },
     "extra": {
-      "router": {}
-    }
+      "router": {},
+      "eas": {
+        "projectId": "227ffac6-5d98-47c1-bf98-c3231a97c4af"
+      }
+    },
+    "owner": "growwmaticsais-team"
   }
 }

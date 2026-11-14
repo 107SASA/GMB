@@ -47,8 +47,12 @@ describe('app.json', () => {
     expect(pluginOptions('expo-location')).toMatchObject({
       locationAlwaysAndWhenInUsePermission: false,
       locationAlwaysPermission: false,
-      motionUsagePermission: false,
     });
+    // Exception: Apple rejects the upload without a motion purpose string because
+    // expo-location's native code references Core Motion (ITMS-90683, Nov 2026),
+    // even though the app never asks for motion access.
+    expect(pluginOptions('expo-location')?.motionUsagePermission).toEqual(expect.any(String));
+    expect(appJson.ios.infoPlist?.NSMotionUsageDescription).toEqual(expect.any(String));
     expect(pluginOptions('expo-location')?.locationWhenInUsePermission).toEqual(expect.stringContaining('photo'));
   });
 

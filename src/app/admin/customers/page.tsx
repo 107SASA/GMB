@@ -1206,7 +1206,7 @@ function CustomersTab() {
                     </td>
                     <td className="px-6 py-4">
                       {customer.workspacePlan ? (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${customer.workspacePlan === 'Paid' ? 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed' : customer.workspacePlan === 'Free trial' ? 'bg-primary-fixed text-primary border-primary-fixed-dim' : 'bg-error-container text-on-error-container border-error-container'}`}>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${customer.workspacePlan === 'Paid' ? 'bg-secondary-container/40 text-on-secondary-container border-secondary-fixed' : customer.workspacePlan === 'Free trial' ? 'bg-primary-fixed text-primary border-primary-fixed-dim' : customer.workspacePlan.includes('Free CRM') ? 'bg-surface-container text-on-surface-variant border-outline-variant' : 'bg-error-container text-on-error-container border-error-container'}`}>
                           {customer.workspacePlan}
                           {customer.trialEndsAt ? ` · until ${new Date(customer.trialEndsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
                         </span>

@@ -41,6 +41,8 @@ export default function FreeReportResultPage() {
 function FreeReportResultContent() {
   const searchParams = useSearchParams();
   const auditId = searchParams.get('auditId');
+  // ?app=1 — opened from the mobile app: same report, no prices / buy buttons.
+  const appMode = searchParams.get('app') === '1';
 
   const [audit, setAudit] = useState<AuditDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -139,6 +141,7 @@ function FreeReportResultContent() {
     <FreeReportView
       audit={audit!}
       pricing={{ heroPrice, heroCycleLabel, heroDailyRate, cycle: heroDuration?.cycle }}
+      appMode={appMode}
     />
   );
 }

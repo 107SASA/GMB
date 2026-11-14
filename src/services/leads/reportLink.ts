@@ -4,9 +4,9 @@ import dbConnect from '@/lib/mongodb';
 import ReportShare from '@/models/ReportShare';
 
 /**
- * Public, expiring link to a completed report (/reports/[token]) — the same
- * share tokens the dashboard's "Share" button creates. `app: true` adds
- * ?app=1: the page then hides its sales block (App Store / Play rules).
+ * Public, expiring link to a completed report — the website's full free
+ * report page (/free-report/result) with a share token, same as WhatsApp
+ * report links. `app: true` adds app=1: no prices / buy buttons (App Store / Play rules).
  */
 export async function reportShareLink(auditIdRaw: unknown, userId: string, opts: { app?: boolean } = {}): Promise<string | null> {
   if (!mongoose.isValidObjectId(String(auditIdRaw))) return null;
@@ -23,5 +23,7 @@ export async function reportShareLink(auditIdRaw: unknown, userId: string, opts:
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
   }
-  return `${base}/reports/${share.token}${opts.app ? '?app=1' : ''}`;
+  // The full report — same page and format as the website free report
+  // (/free-report/result renders a share token without sign-in).
+  return `${base}/free-report/result?auditId=${share.token}${opts.app ? '&app=1' : ''}`;
 }

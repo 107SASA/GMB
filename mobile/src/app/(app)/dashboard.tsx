@@ -189,7 +189,7 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [refreshUser, queryClient]);
 
-  if (locked) return <LockedScreen surface="dashboard" />;
+  if (locked) return <LockedScreen surface="dashboard" preview="home" />;
 
   return (
     <Screen>

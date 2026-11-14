@@ -53,9 +53,12 @@ describe('app.json', () => {
   });
 
   it('is not linked to the Android app’s EAS project or update channel', () => {
-    expect(appJson.extra?.eas).toBeUndefined();
+    // Its own EAS project (growwmatics-ios, Nov 2026) — never the Android app's
+    // (growwmatics-ai), whose OTA updates would otherwise overwrite this app's JS.
+    const ANDROID_PROJECT_ID = '91c22f50-4311-483d-bed3-f30af62c7e9e';
+    expect(appJson.extra?.eas?.projectId).toBeDefined();
+    expect(appJson.extra?.eas?.projectId).not.toBe(ANDROID_PROJECT_ID);
     expect(appJson.updates).toBeUndefined();
-    expect(appJson.owner).toBeUndefined();
   });
 });
 

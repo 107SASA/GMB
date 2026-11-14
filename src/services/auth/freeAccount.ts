@@ -62,7 +62,21 @@ export async function registerFreeAccount(input: FreeSignupInput): Promise<FreeS
   await dbConnect();
   const existing = await findAccountForPhone(input.phone);
   if (existing.user && existing.established) {
-    const business = existing.user.activeBusinessId ? await Business.findById(existing.user.activeBusinessId).lean() : null;
+    const business: any = existing.user.activeBusinessId ? await Business.findById(existing.user.activeBusinessId).lean() : null;
+    // An unpaid account (Free CRM) signing up again is still a prospect —
+    // make sure sales has a lead for it (the first source is kept).
+    if (business) {
+      const { freeCrmAllowed } = await import('@/lib/freeCrm');
+      if (await freeCrmAllowed(String(existing.user._id), String(business._id)).catch(() => false)) {
+        const { fileSignupPlatformLead } = await import('@/services/leads/platformProspectEntry');
+        await fileSignupPlatformLead({
+          name: existing.user.fullName || input.personName || business.name,
+          phone: input.phone,
+          businessName: business.name,
+          channel: input.channel,
+        }).catch((err) => console.error('[free-signup] CRM lead for existing free account failed:', (err as Error)?.message));
+      }
+    }
     return { outcome: 'existing', user: existing.user, business, auditId: null };
   }
 

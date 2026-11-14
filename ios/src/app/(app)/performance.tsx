@@ -30,7 +30,7 @@ export default function PerformanceScreen() {
   const t = useTheme();
   const [refreshing, setRefreshing] = useState(false);
 
-  if (locked) return <LockedScreen surface="dashboard" />;
+  if (locked) return <LockedScreen surface="dashboard" preview="performance" />;
 
   const onRefresh = async () => {
     setRefreshing(true);

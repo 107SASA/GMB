@@ -36,7 +36,7 @@ export default function PostsScreen() {
     if (params.tab === 'photos' || params.tab === 'posts') setSection(params.tab);
   }, [params.tab]);
 
-  if (locked) return <LockedScreen surface="scheduler" />;
+  if (locked) return <LockedScreen surface="scheduler" preview="posts" />;
 
   const onRefresh = async () => {
     setRefreshing(true);

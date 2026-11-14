@@ -411,7 +411,7 @@ export default function ReviewsScreen() {
 
   // After all hooks (rules-of-hooks). reviews/_layout.tsx also locks this
   // stack on the same Reviews & Reputation module.
-  if (locked) return <LockedScreen surface="reviews" />;
+  if (locked) return <LockedScreen surface="reviews" preview="reviews" />;
 
   return (
     <Screen>

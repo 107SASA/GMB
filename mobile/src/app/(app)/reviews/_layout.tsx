@@ -7,7 +7,7 @@ import { useTheme } from '@/lib/theme';
 
 export default function ReviewsLayout() {
   const t = useTheme();
-  if (useSurfaceLocked('reviews')) return <LockedScreen surface="reviews" />;
+  if (useSurfaceLocked('reviews')) return <LockedScreen surface="reviews" preview="reviews" />;
 
   return (
     <Stack

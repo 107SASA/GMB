@@ -34,7 +34,7 @@ export default function GbpScreen() {
   const t = useTheme();
   const locked = useSurfaceLocked('dashboard');
 
-  if (locked) return <LockedScreen surface="dashboard" />;
+  if (locked) return <LockedScreen surface="dashboard" preview="profile" />;
 
   const onRefresh = async () => {
     setRefreshing(true);

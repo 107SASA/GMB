@@ -42,7 +42,7 @@ export async function publishPost(postId: string, opts: { allowFrom?: string[]; 
   }
 
   const create = opts.deps?.createLocalPost ?? (await import('@/lib/gbpClient')).createLocalPost;
-  const summary = [claim.title, claim.content].filter(Boolean).join('\n\n').slice(0, 1500);
+  const summary = (await import('@/services/content/livePost')).buildPostSummary(claim);
   let res: { liveWriteApplied: boolean; postName?: string };
   try {
     res = await create(String(claim.businessId), { summary, mediaUrl: claim.imageUrl || undefined });

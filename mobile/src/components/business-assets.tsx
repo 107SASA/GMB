@@ -16,6 +16,7 @@ import {
 } from '@/api/endpoints/gbp';
 import { useBusiness } from '@/business/BusinessContext';
 import { EmptyState, InfoSheet, Skeleton, useInfoSheet } from '@/components/ui';
+import { MediaPreviewModal } from '@/components/media-preview-modal';
 import { promptConnectGoogle } from '@/lib/connectGoogle';
 import { formatDateTime } from '@/lib/format';
 import { BRAND_GRADIENT, useTheme } from '@/lib/theme';
@@ -168,6 +169,8 @@ export function BusinessAssets() {
   const { width } = useWindowDimensions();
   const stackActions = width < 380;
   const info = useInfoSheet();
+  // Just-uploaded photo/video, shown with its publish / schedule / delete actions.
+  const [uploaded, setUploaded] = useState<GbpMediaItem | null>(null);
 
   const media = useQuery({
     queryKey: ['gbp-media', activeBusinessId],
@@ -180,7 +183,9 @@ export function BusinessAssets() {
     mutationFn: uploadGbpMedia,
     onSuccess: (asset) => {
       void queryClient.invalidateQueries({ queryKey: ['gbp-media', activeBusinessId] });
-      info.show(asset.mediaType === 'video' ? 'Video saved' : 'Photo saved', "It's staged — publish or schedule it from View All.");
+      // Straight to Publish Now / Schedule for Later / Delete for the new
+      // item — no detour through View All.
+      setUploaded(asset);
     },
     onError: (error) => info.show('Upload failed', getApiErrorMessage(error, 'Please try again.')),
     onSettled: () => {
@@ -520,6 +525,13 @@ export function BusinessAssets() {
         message="Profiles with regular new photos are shown more often in local search and get more calls, direction requests, and website clicks — Google treats fresh media as a signal that a business is active. Aim for a few new photos every week."
       />
       {info.node}
+      {uploaded && (
+        <MediaPreviewModal
+          item={(media.data?.media ?? []).find((m) => m._id === uploaded._id) ?? uploaded}
+          justUploaded
+          onClose={() => setUploaded(null)}
+        />
+      )}
 
       {/* Scheduled Photos — real, from GbpMediaAsset.scheduledFor (see
           gbpMediaService.scheduleAsset + publishScheduledMediaCron). */}

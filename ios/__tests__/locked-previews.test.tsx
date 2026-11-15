@@ -57,11 +57,11 @@ describe('Free CRM lock screens with a sample preview', () => {
   });
 
   const cases: Array<[LockedPreviewKind, 'dashboard' | 'reviews' | 'scheduler', string]> = [
-    ['home', 'dashboard', 'Your Google dashboard'],
-    ['performance', 'dashboard', 'Google ranking'],
-    ['posts', 'scheduler', 'Google posts'],
-    ['reviews', 'reviews', 'Reviews'],
-    ['profile', 'dashboard', 'Google profile'],
+    ['home', 'dashboard', 'Unlock your Google dashboard'],
+    ['performance', 'dashboard', 'Unlock Performance Analytics'],
+    ['posts', 'scheduler', 'Unlock Google Posts'],
+    ['reviews', 'reviews', 'Unlock Review Automation'],
+    ['profile', 'dashboard', 'Unlock Profile Optimization'],
   ];
 
   it.each(cases)('%s: sample preview label, its own title, WhatsApp button, no purchase wording', async (kind, surface, title) => {
@@ -74,12 +74,15 @@ describe('Free CRM lock screens with a sample preview', () => {
     await waitFor(() => expect(allText()).not.toMatch(PURCHASE));
   });
 
-  it('posts preview uses the business name; performance shows the real report score', async () => {
+  it('every preview is a Growwmatics sample (logo in the corner); posts show sample posts', () => {
     const { unmount } = wrap(<LockedScreen surface="scheduler" preview="posts" />);
-    expect(screen.getByText('New this week at Shree Shop')).toBeTruthy();
+    expect(screen.getByTestId('preview-logo')).toBeTruthy();
+    expect(screen.getByText('AI-Powered Automation Boosts a Growing Business')).toBeTruthy();
+    expect(screen.getByText(/Shree Shop every week/)).toBeTruthy();
     unmount();
     wrap(<LockedScreen surface="dashboard" preview="performance" />);
-    await waitFor(() => expect(screen.getByText('83')).toBeTruthy());
+    expect(screen.getByTestId('preview-logo')).toBeTruthy();
+    expect(screen.getByText('GBP Performance')).toBeTruthy();
   });
 
   it('the free report card is on Home only', async () => {

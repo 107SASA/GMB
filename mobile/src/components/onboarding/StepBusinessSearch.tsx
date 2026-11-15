@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import {
@@ -14,6 +14,11 @@ import { useTheme } from '@/lib/theme';
 
 interface Props {
   onSelected: (placeId: string, details: PlaceDetails) => void;
+  /**
+   * Inside another screen's card (sign-up): no own title or scroll area,
+   * a search icon inside the box, no autofocus.
+   */
+  embedded?: boolean;
 }
 
 /**
@@ -24,7 +29,7 @@ interface Props {
  * Google Places result so googlePlaceId is set (rank tracking, SEO analyzer
  * and GBP insights all key off it).
  */
-export function StepBusinessSearch({ onSelected }: Props) {
+export function StepBusinessSearch({ onSelected, embedded = false }: Props) {
   const t = useTheme();
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
@@ -73,6 +78,78 @@ export function StepBusinessSearch({ onSelected }: Props) {
     } finally {
       setFetchingDetails(false);
     }
+  }
+
+  const results = (
+    <>
+      <ErrorText>{error}</ErrorText>
+      {suggestions.length > 0 && (
+        <View className="mt-3 overflow-hidden rounded-card border border-surface-border">
+          {suggestions.map((item, i) => (
+            <Pressable
+              key={item.placeId}
+              onPress={() => select(item)}
+              disabled={fetchingDetails}
+              // No `className` on the Pressable — react-native-css-interop can
+              // swallow onPress on styled Pressables (see components/ui.tsx).
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 14,
+                borderTopWidth: i === 0 ? 0 : 1,
+                borderTopColor: t.border,
+                backgroundColor: t.card,
+              }}
+            >
+              <Ionicons name="location-outline" size={18} color={t.brandBright} style={{ marginTop: 2 }} />
+              <View className="flex-1">
+                <Text className="font-sans-semibold text-sm" style={{ color: t.text }}>{item.mainText}</Text>
+                {!!item.secondaryText && (
+                  <Text className="mt-0.5 font-sans text-xs" style={{ color: t.textFaint }}>{item.secondaryText}</Text>
+                )}
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <View>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: t.border,
+            backgroundColor: t.bg,
+            paddingHorizontal: 14,
+            minHeight: 54,
+          }}
+        >
+          <Ionicons name="search" size={20} color={t.textFaint} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Enter business name or address"
+            placeholderTextColor={t.textFaint}
+            selectionColor={t.brandBright}
+            editable={!fetchingDetails}
+            returnKeyType="search"
+            accessibilityLabel="Search your business"
+            style={{ flex: 1, paddingVertical: 14, fontFamily: 'Inter_400Regular', fontSize: 16, color: t.text }}
+          />
+          {(searching || fetchingDetails) && <ActivityIndicator color={t.brandBright} />}
+        </View>
+        {results}
+      </View>
+    );
   }
 
   return (

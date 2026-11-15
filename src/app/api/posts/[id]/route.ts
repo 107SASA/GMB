@@ -6,6 +6,7 @@ import Post from "@/models/Post";
 import { requireBusinessContext } from "@/lib/tenant";
 import { inngest } from "@/services/inngest/client";
 import { requireWorkspacePlan } from '@/lib/planGate';
+import { LivePostError, pushLivePostEdit, removeLivePost } from "@/services/content/livePost";
 
 /**
  * Fields a client is allowed to change on a post.
@@ -71,13 +72,28 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ message: "Post not found" }, { status: 404 });
     }
 
-    // Matches the guard in /api/scheduler/posts/[id]: once a post is live it is
-    // an immutable record of what was published.
+    // A live post: only its text can change, and it changes on Google first
+    // (services/content/livePost.ts). Status, schedule and image stay as published.
     if (post.status === "published") {
-      return NextResponse.json(
-        { message: "Published posts cannot be edited" },
-        { status: 400 }
-      );
+      const { title, content, hashtags, cta, ...rest } = parsed.data;
+      if (Object.keys(rest).length > 0) {
+        return NextResponse.json(
+          { message: "Only the text of a published post can be changed" },
+          { status: 400 }
+        );
+      }
+      if (title !== undefined) post.title = title;
+      if (content !== undefined) post.content = content;
+      if (hashtags !== undefined) post.hashtags = hashtags;
+      if (cta !== undefined) post.cta = cta;
+      try {
+        if (title !== undefined || content !== undefined) await pushLivePostEdit(post);
+      } catch (err) {
+        if (err instanceof LivePostError) return NextResponse.json({ message: err.message, code: err.code }, { status: err.status });
+        throw err;
+      }
+      await post.save();
+      return NextResponse.json({ message: "Post updated", post });
     }
 
     const wasScheduled = post.status === "scheduled";
@@ -129,11 +145,12 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       return NextResponse.json({ message: "Post not found" }, { status: 404 });
     }
 
-    if (post.status === "published") {
-      return NextResponse.json(
-        { message: "Published posts cannot be deleted" },
-        { status: 400 }
-      );
+    // Live on Google: removed there first, then here.
+    try {
+      await removeLivePost(post);
+    } catch (err) {
+      if (err instanceof LivePostError) return NextResponse.json({ message: err.message, code: err.code }, { status: err.status });
+      throw err;
     }
 
     const wasScheduled = post.status === "scheduled";

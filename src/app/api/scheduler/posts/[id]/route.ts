@@ -7,6 +7,7 @@ import { requireModule } from '@/lib/moduleGating';
 import mongoose from 'mongoose';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import { inngest } from '@/services/inngest/client';
+import { LivePostError, pushLivePostEdit, removeLivePost } from '@/services/content/livePost';
 
 /** GET -> single post, for the mobile post-detail screen (view a post that
  *  isn't necessarily still in the buffer's ±calendar-window `allPosts`). */
@@ -65,8 +66,12 @@ export async function DELETE(
       return NextResponse.json({ error: 'Post not found or access denied' }, { status: 404 });
     }
 
-    if (post.status === 'published') {
-      return NextResponse.json({ error: 'Published posts cannot be deleted' }, { status: 400 });
+    // Live on Google: removed there first, then here (services/content/livePost.ts).
+    try {
+      await removeLivePost(post);
+    } catch (err) {
+      if (err instanceof LivePostError) return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
+      throw err;
     }
 
     const wasScheduled = post.status === 'scheduled';
@@ -129,6 +134,16 @@ export async function PATCH(
     if (content !== undefined) post.content = content;
     if (hashtags !== undefined) post.hashtags = hashtags;
     if (cta !== undefined) post.cta = cta;
+    // Live on Google: the new text goes to Google first; if Google refuses,
+    // nothing is saved here (services/content/livePost.ts).
+    if (post.status === 'published' && (title !== undefined || content !== undefined)) {
+      try {
+        await pushLivePostEdit(post);
+      } catch (err) {
+        if (err instanceof LivePostError) return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
+        throw err;
+      }
+    }
     await post.save();
 
     return NextResponse.json({ success: true, post }, { status: 200 });

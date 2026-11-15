@@ -1,17 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { Text, View } from 'react-native';
 
 import type { FreeReport } from '@/api/endpoints/freeReport';
-import { useTheme } from '@/lib/theme';
+import { useTheme, withAlpha } from '@/lib/theme';
 
 /**
  * What a locked tab looks like when unlocked — drawn BEHIND the lock card for
- * Free CRM accounts (components/locked.tsx), faded and not touchable.
+ * Free CRM accounts (components/locked.tsx), blurred and not touchable.
  *
- * Honest by design: every preview is labelled "Sample preview" by the lock
- * screen, uses the business's own name / category, and shows real report
- * numbers where we have them (score, top fixes) — sample numbers only where
- * we don't. STORE COMPLIANCE — no prices, no "upgrade/buy" wording.
+ * Honest by design: it's a sample of the real screens (same layout as the
+ * Performance / Posts / Home tabs) for a sample business — the Growwmatics
+ * logo sits in the corner, numbers are blurred, post images are posts our AI
+ * made — and the lock screen labels it "Sample preview".
+ * STORE COMPLIANCE — no prices, no "upgrade/buy" wording.
  */
 
 export type LockedPreviewKind = 'home' | 'performance' | 'posts' | 'reviews' | 'profile';
@@ -22,155 +24,207 @@ export interface PreviewContext {
   report: FreeReport | null;
 }
 
-/** One-line description shown on the lock card for each preview. */
+const LOGO = require('../../assets/images/icon.png');
+const SAMPLE_POST_1 = require('../../assets/images/sample/post-ai-automation.jpg');
+const SAMPLE_POST_2 = require('../../assets/images/sample/post-services.jpg');
+
+/** Title + one line shown on the lock card for each preview. */
 export function previewCopy(kind: LockedPreviewKind, businessName: string): { title: string; body: string } {
   switch (kind) {
     case 'home':
-      return { title: 'Your Google dashboard', body: 'Calls, website clicks and direction requests from Google, every day.' };
+      return { title: 'Unlock your Google dashboard', body: 'Calls, website clicks and direction requests from Google, every day.' };
     case 'performance':
-      return { title: 'Google ranking', body: 'Where you rank for every search in your area, and what moves you up.' };
+      return { title: 'Unlock Performance Analytics', body: 'Get detailed views, calls, directions and ranking trends for your business.' };
     case 'posts':
-      return { title: 'Google posts', body: `We write and publish posts for ${businessName} every week.` };
+      return { title: 'Unlock Google Posts', body: `We write, design and publish posts and photos for ${businessName} every week.` };
     case 'reviews':
-      return { title: 'Reviews', body: 'Ask happy customers for reviews and reply to every review automatically.' };
+      return { title: 'Unlock Review Automation', body: 'Ask happy customers for reviews and reply to every review automatically.' };
     case 'profile':
-      return { title: 'Google profile', body: 'Fix and update your Google profile right from the app.' };
+      return { title: 'Unlock Profile Optimization', body: 'Fix and update your Google profile right from the app.' };
   }
+}
+
+/** Text drawn as a soft smudge — sample numbers read as "a number here", not a value. */
+function Blurred({ children, size = 28 }: { children: string; size?: number }) {
+  const t = useTheme();
+  return (
+    <Text
+      style={{
+        fontFamily: 'PublicSans_700Bold',
+        fontSize: size,
+        color: withAlpha(t.text, 0.28),
+        textShadowColor: t.text,
+        textShadowRadius: size / 3,
+        textShadowOffset: { width: 0, height: 0 },
+      }}
+    >
+      {children}
+    </Text>
+  );
 }
 
 function Box({ children, style }: { children: React.ReactNode; style?: object }) {
   const t = useTheme();
   return (
-    <View style={[{ borderRadius: 16, borderWidth: 1, borderColor: t.border, backgroundColor: t.card, padding: 14 }, style]}>
+    <View style={[{ borderRadius: 18, borderWidth: 1, borderColor: t.border, backgroundColor: t.card, padding: 14 }, style]}>
       {children}
     </View>
   );
 }
 
-function Stat({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
+/** Sample header: Growwmatics logo in the corner + the screen's title. */
+function Header({ title, subtitle }: { title: string; subtitle?: string }) {
   const t = useTheme();
   return (
-    <Box style={{ flex: 1, gap: 6 }}>
-      <Ionicons name={icon} size={18} color={t.brandBright} />
-      <Text className="font-display-bold text-2xl text-white">{value}</Text>
-      <Text className="font-sans text-xs text-zinc-400">{label}</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }} testID="preview-logo">
+      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: t.border }}>
+        <Image source={LOGO} style={{ width: 28, height: 28 }} contentFit="contain" />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text className="font-display-bold text-lg" style={{ color: t.text }} numberOfLines={1}>{title}</Text>
+        {!!subtitle && <Text className="font-sans text-xs" style={{ color: t.textFaint }} numberOfLines={1}>{subtitle}</Text>}
+      </View>
+    </View>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  const t = useTheme();
+  return (
+    <Box style={{ flex: 1, gap: 4 }}>
+      <Text className="font-sans text-xs" style={{ color: t.textDim }}>{label}</Text>
+      <Blurred>{value}</Blurred>
     </Box>
   );
 }
 
-function Bars() {
+/** "Last 6 months" area chart, drawn with bars so it needs no chart library. */
+function Trend() {
   const t = useTheme();
-  const h = [38, 52, 44, 66, 58, 74, 88];
+  const h = [12, 14, 18, 30, 52, 58, 61, 68, 80, 72, 88, 96];
   return (
     <Box style={{ gap: 10 }}>
-      <Text className="font-sans-semibold text-sm text-zinc-300">Profile views · last 7 days</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, height: 96 }}>
+      <Text className="font-sans-semibold text-sm" style={{ color: t.textDim }}>Last 6 Months Trends</Text>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {['Views', 'Calls', 'Directions'].map((c, i) => (
+          <View key={c} style={{ borderRadius: 999, borderWidth: 1, borderColor: i === 0 ? t.brandBright : t.border, paddingHorizontal: 12, paddingVertical: 5 }}>
+            <Text className="font-sans-semibold text-xs" style={{ color: i === 0 ? t.brandBright : t.textFaint }}>{c}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 90 }}>
         {h.map((v, i) => (
-          <View key={i} style={{ flex: 1, height: `${v}%`, borderRadius: 6, backgroundColor: t.brand }} />
+          <View key={i} style={{ flex: 1, height: `${v}%`, borderTopLeftRadius: 4, borderTopRightRadius: 4, backgroundColor: withAlpha(t.brand, 0.45) }} />
         ))}
       </View>
     </Box>
   );
 }
 
-const what = (category: string | null) => (category || 'your service').toLowerCase();
-
-export function LockedPreview({ kind, ctx }: { kind: LockedPreviewKind; ctx: PreviewContext }) {
+function PostCard({ image, title, status, when }: { image: number; title: string; status: string; when: string }) {
   const t = useTheme();
-  const name = ctx.businessName;
+  return (
+    <Box style={{ padding: 0, overflow: 'hidden' }}>
+      <View>
+        <Image source={image} style={{ width: '100%', height: 130 }} contentFit="cover" blurRadius={3} />
+        <View style={{ position: 'absolute', left: 10, top: 10, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, backgroundColor: 'rgba(90,60,0,0.9)', paddingHorizontal: 10, paddingVertical: 4 }}>
+          <Ionicons name="newspaper-outline" size={12} color="#ffd38a" />
+          <Text className="font-sans-bold text-xs" style={{ color: '#ffd38a' }}>Update Post</Text>
+        </View>
+      </View>
+      <View style={{ padding: 14, gap: 8 }}>
+        <Text className="font-sans-bold text-base" style={{ color: t.text }} numberOfLines={1}>{title}</Text>
+        <View style={{ alignSelf: 'flex-start', borderRadius: 999, backgroundColor: withAlpha(t.brand, 0.2), paddingHorizontal: 10, paddingVertical: 3 }}>
+          <Text className="font-sans-bold text-xs" style={{ color: t.brandBright }}>{status}</Text>
+        </View>
+        <Text className="font-sans text-xs" style={{ color: t.textFaint }}>{when}</Text>
+      </View>
+    </Box>
+  );
+}
+
+export function LockedPreview({ kind }: { kind: LockedPreviewKind; ctx: PreviewContext }) {
+  const t = useTheme();
 
   if (kind === 'home') {
     return (
       <View style={{ gap: 12 }}>
-        <View style={{ flexDirection: 'row', gap: 12 }}>
-          <Stat icon="call-outline" label="Calls from Google" value="48" />
-          <Stat icon="navigate-outline" label="Direction requests" value="37" />
+        <Header title="Growwmatics AI" subtitle="Sample business · Pune" />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Stat label="Calls" value="48" />
+          <Stat label="Directions" value="37" />
         </View>
-        <View style={{ flexDirection: 'row', gap: 12 }}>
-          <Stat icon="globe-outline" label="Website clicks" value="126" />
-          <Stat icon="eye-outline" label="Profile views" value="2,340" />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Stat label="Website clicks" value="126" />
+          <Stat label="Views" value="2,340" />
         </View>
-        <Bars />
+        <Trend />
       </View>
     );
   }
 
   if (kind === 'performance') {
-    const keywords = [
-      `${what(ctx.category)} near me`,
-      `best ${what(ctx.category)}`,
-      `${name.toLowerCase()}`,
-      `${what(ctx.category)} open now`,
-    ];
-    const ranks = [7, 12, 1, 18];
     return (
       <View style={{ gap: 12 }}>
-        <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <Text className="font-display-bold text-white" style={{ fontSize: 36 }}>
-            {ctx.report?.score ?? 72}
+        <Header title="GBP Performance" subtitle="Last 28 days" />
+        <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: withAlpha(t.brand, 0.12), borderColor: withAlpha(t.brand, 0.3) }}>
+          <Ionicons name="sparkles" size={18} color={t.brandBright} />
+          <Text className="flex-1 font-sans-semibold text-sm" style={{ color: t.brandBright }} numberOfLines={2}>
+            Next priority: more reviews than the businesses above you
           </Text>
-          <Text className="flex-1 font-sans text-sm text-zinc-400">Google profile score · checked every month</Text>
         </Box>
-        <Box style={{ gap: 12 }}>
-          <Text className="font-sans-semibold text-sm text-zinc-300">Your position on Google Maps</Text>
-          {keywords.map((k, i) => (
-            <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text className="flex-1 font-sans text-sm text-zinc-300" numberOfLines={1}>{k}</Text>
-              <View style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: ranks[i] <= 3 ? '#16a34a40' : '#f59e0b33' }}>
-                <Text className="font-sans-semibold text-xs text-white">#{ranks[i]}</Text>
-              </View>
-            </View>
-          ))}
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Stat label="Views" value="375" />
+          <Stat label="Calls" value="25" />
+          <Stat label="Directions" value="16" />
+        </View>
+        <Box style={{ gap: 4 }}>
+          <Text className="font-sans text-xs" style={{ color: t.textDim }}>Latest Google Rank</Text>
+          <Blurred size={34}>#2.6</Blurred>
+          <Text className="font-sans text-xs" style={{ color: t.textFaint }}>Average rank across 45 searches</Text>
         </Box>
-        {(ctx.report?.topFixes?.length ?? 0) > 0 && (
-          <Box style={{ gap: 8 }}>
-            <Text className="font-sans-semibold text-sm text-zinc-300">Fixes we handle for you</Text>
-            {ctx.report!.topFixes.map((f) => (
-              <Text key={f} className="font-sans text-sm text-zinc-400" numberOfLines={1}>• {f}</Text>
-            ))}
-          </Box>
-        )}
+        <Trend />
       </View>
     );
   }
 
   if (kind === 'posts') {
-    const posts = [
-      { title: `New this week at ${name}`, body: `Fresh updates from ${name} — drop in or call us to know more.`, when: 'Published · Mon' },
-      { title: `Why customers choose ${name}`, body: `Trusted ${what(ctx.category)} with real reviews from local customers.`, when: 'Scheduled · Thu' },
-      { title: `Festival offer at ${name}`, body: 'A special offer for this festive week. Visit us or message us on WhatsApp.', when: 'Draft · Sat' },
-    ];
     return (
       <View style={{ gap: 12 }}>
-        {posts.map((p) => (
-          <Box key={p.title} style={{ gap: 6 }}>
-            <View style={{ height: 90, borderRadius: 10, backgroundColor: t.brand, opacity: 0.35 }} />
-            <Text className="font-sans-semibold text-base text-white" numberOfLines={1}>{p.title}</Text>
-            <Text className="font-sans text-sm text-zinc-400" numberOfLines={2}>{p.body}</Text>
-            <Text className="font-sans text-xs text-zinc-500">{p.when}</Text>
-          </Box>
-        ))}
+        <Header title="Posts" subtitle="Growwmatics AI · sample" />
+        <View style={{ flexDirection: 'row', borderRadius: 999, borderWidth: 1, borderColor: t.border, padding: 4 }}>
+          <View style={{ flex: 1, alignItems: 'center', borderRadius: 999, backgroundColor: t.brand, paddingVertical: 8 }}>
+            <Text className="font-sans-bold text-sm" style={{ color: '#ffffff' }}>Posts</Text>
+          </View>
+          <View style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }}>
+            <Text className="font-sans-bold text-sm" style={{ color: t.textFaint }}>Photos</Text>
+          </View>
+        </View>
+        <Text className="font-display-bold text-base" style={{ color: t.text }}>Upcoming Posts</Text>
+        <PostCard image={SAMPLE_POST_1} title="AI-Powered Automation Boosts a Growing Business" status="SCHEDULED" when="Scheduled for: Thu, 7:00 pm" />
+        <Text className="font-display-bold text-base" style={{ color: t.text }}>Recent Posts</Text>
+        <PostCard image={SAMPLE_POST_2} title="Building Digital Experiences That Drive Real Impact" status="PUBLISHED" when="Posted on: Mon, 10:30 am" />
       </View>
     );
   }
 
   if (kind === 'reviews') {
     const reviews = [
-      { who: 'Priya S.', stars: 5, text: `Very happy with ${name}. Quick and polite service!`, reply: `Thank you Priya! We're glad you had a great experience — team ${name}` },
-      { who: 'Rahul K.', stars: 4, text: 'Good experience overall, will come again.', reply: `Thanks Rahul! See you again soon — team ${name}` },
-      { who: 'Anita M.', stars: 5, text: 'Highly recommended.', reply: 'Thank you so much, Anita!' },
+      { who: 'Priya S.', text: 'Very happy with the service. Quick and polite!', reply: "Thank you Priya! We're glad you had a great experience." },
+      { who: 'Rahul K.', text: 'Good experience overall, will come again.', reply: 'Thanks Rahul! See you again soon.' },
     ];
     return (
       <View style={{ gap: 12 }}>
+        <Header title="Reviews" subtitle="Growwmatics AI · sample" />
         <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <Text className="font-display-bold text-white" style={{ fontSize: 32 }}>4.7</Text>
-          <Text className="flex-1 font-sans text-sm text-zinc-400">★★★★★ · 18 new reviews this month</Text>
+          <Blurred size={32}>4.7</Blurred>
+          <Text className="flex-1 font-sans text-sm" style={{ color: t.textDim }}>★★★★★ · new reviews this month</Text>
         </Box>
         {reviews.map((r) => (
           <Box key={r.who} style={{ gap: 6 }}>
-            <Text className="font-sans-semibold text-sm text-white">{r.who} · {'★'.repeat(r.stars)}</Text>
-            <Text className="font-sans text-sm text-zinc-300">{r.text}</Text>
-            <Text className="font-sans text-xs text-zinc-500">Reply: {r.reply}</Text>
+            <Text className="font-sans-semibold text-sm" style={{ color: t.text }}>{r.who} · ★★★★★</Text>
+            <Text className="font-sans text-sm" style={{ color: t.textDim }}>{r.text}</Text>
+            <Text className="font-sans text-xs" style={{ color: t.textFaint }}>AI reply: {r.reply}</Text>
           </Box>
         ))}
       </View>
@@ -180,14 +234,17 @@ export function LockedPreview({ kind, ctx }: { kind: LockedPreviewKind; ctx: Pre
   // profile
   const rows = ['Business hours', 'Services list', 'Photos (10+)', 'Business description', 'Website & phone'];
   return (
-    <Box style={{ gap: 12 }}>
-      <Text className="font-sans-semibold text-sm text-zinc-300">Google profile checklist</Text>
-      {rows.map((r, i) => (
-        <View key={r} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Ionicons name={i < 3 ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={i < 3 ? t.brandBright : t.textFaint} />
-          <Text className="font-sans text-sm text-zinc-300">{r}</Text>
-        </View>
-      ))}
-    </Box>
+    <View style={{ gap: 12 }}>
+      <Header title="Business Profile" subtitle="Growwmatics AI · sample" />
+      <Box style={{ gap: 12 }}>
+        <Text className="font-sans-semibold text-sm" style={{ color: t.textDim }}>Google profile checklist</Text>
+        {rows.map((r, i) => (
+          <View key={r} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Ionicons name={i < 3 ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={i < 3 ? t.brandBright : t.textFaint} />
+            <Text className="font-sans text-sm" style={{ color: t.textDim }}>{r}</Text>
+          </View>
+        ))}
+      </Box>
+    </View>
   );
 }

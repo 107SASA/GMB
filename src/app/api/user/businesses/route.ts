@@ -4,6 +4,7 @@ import User from '@/models/User';
 import Business from '@/models/Business';
 import GbpMediaAsset from '@/models/GbpMediaAsset';
 import { requireClient } from '@/lib/auth';
+import { isBusinessPaid } from '@/lib/loginWorkspace';
 
 export async function GET(req: Request) {
   try {
@@ -53,9 +54,13 @@ export async function GET(req: Request) {
       .lean();
     const logoByBusinessId = new Map(logos.map((l) => [l.businessId.toString(), l.url]));
 
+    // planActive = paid / trial / grace — the Pro/Free badge on the app's
+    // workspace picker (same rule as the web, see lib/loginWorkspace.ts).
+    const ownerPlan = (authResult.user as any).subscriptionPlan;
     const businessesWithLogo = businesses.map((b) => ({
       ...b,
       logoUrl: logoByBusinessId.get((b._id as any).toString()) ?? null,
+      planActive: isBusinessPaid(b as any, ownerPlan),
     }));
 
     return NextResponse.json(businessesWithLogo, { status: 200 });

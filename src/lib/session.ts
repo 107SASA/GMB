@@ -96,4 +96,6 @@ export async function destroySession(): Promise<void> {
   // The active-workspace cookie is meaningless without a session — leaving it
   // behind just confuses the next sign-in (and proxy.ts's workspace gate).
   cookieStore.delete('activeBusinessId');
+  // Pending "choose a workspace" prompt (see lib/loginWorkspace.ts).
+  cookieStore.delete('chooseWorkspace');
 }

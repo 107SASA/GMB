@@ -6,6 +6,11 @@ import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import LoginLink from '@/models/LoginLink';
 import { createSession } from '@/lib/session';
+import {
+  resolveLoginWorkspace,
+  CHOOSE_WORKSPACE_COOKIE,
+  CHOOSE_WORKSPACE_COOKIE_OPTIONS,
+} from '@/lib/loginWorkspace';
 
 /**
  * "Save to dashboard" link sent after the WhatsApp report — a single-use,
@@ -46,15 +51,20 @@ export async function GET(
 
   await createSession(user._id.toString(), user.role, user.sessionEpoch ?? 0);
 
-  if (user.activeBusinessId) {
-    const cookieStore = await cookies();
-    cookieStore.set('activeBusinessId', user.activeBusinessId.toString(), {
+  const { activeBusinessId, workspaceCount } = await resolveLoginWorkspace(user);
+  const cookieStore = await cookies();
+  if (activeBusinessId) {
+    cookieStore.set('activeBusinessId', activeBusinessId, {
       path: '/',
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 30,
     });
+  }
+  // 2+ workspaces: /dashboard sends them to the picker first (see proxy.ts).
+  if (workspaceCount > 1) {
+    cookieStore.set(CHOOSE_WORKSPACE_COOKIE, '1', CHOOSE_WORKSPACE_COOKIE_OPTIONS);
   }
 
   const base = process.env.NEXT_PUBLIC_APP_URL || req.url;

@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import { useBusiness } from '@/business/BusinessContext';
-import { InitialsAvatar, useConfirmSheet, useInfoSheet } from '@/components/ui';
+import { Badge, InitialsAvatar, useConfirmSheet, useInfoSheet } from '@/components/ui';
 import { useTheme, withAlpha } from '@/lib/theme';
 
 /**
@@ -12,18 +12,29 @@ import { useTheme, withAlpha } from '@/lib/theme';
  * (updates the x-business-id header and persists the choice).
  * Used both as the first-run picker and as the switcher in the More tab.
  *
- * When the user has more than one workspace, each row exposes a delete
- * action (trash → confirm). The last remaining workspace can't be deleted —
- * the app always needs at least one active business.
+ * Each row shows a Pro/Free badge. As the switcher (default), a user with more
+ * than one workspace gets a delete action per row (trash → confirm); the last
+ * remaining workspace can't be deleted — the app always needs one.
+ * As the sign-in `picker`, the last-used workspace is listed first and tagged
+ * "Last used", and delete is hidden so a tap always just opens a workspace.
  */
-export function BusinessSwitcher() {
-  const { businesses, activeBusinessId, selectBusiness, deleteBusiness } = useBusiness();
+export function BusinessSwitcher({ mode = 'switcher' }: { mode?: 'switcher' | 'picker' }) {
+  const { businesses, activeBusinessId, lastUsedBusinessId, selectBusiness, deleteBusiness } = useBusiness();
+  const picker = mode === 'picker';
   const t = useTheme();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const info = useInfoSheet();
   const confirmSheet = useConfirmSheet();
 
-  const canDelete = businesses.length > 1;
+  const canDelete = !picker && businesses.length > 1;
+
+  // Picker: last used first, then paid workspaces, then the rest (stable).
+  const rows = useMemo(() => {
+    if (!picker) return businesses;
+    const rank = (b: (typeof businesses)[number]) =>
+      (b._id === lastUsedBusinessId ? 2 : 0) + (b.planActive ? 1 : 0);
+    return [...businesses].sort((a, b) => rank(b) - rank(a));
+  }, [businesses, lastUsedBusinessId, picker]);
 
   const confirmDelete = (id: string, name: string) => {
     confirmSheet.confirm({
@@ -47,8 +58,10 @@ export function BusinessSwitcher() {
 
   return (
     <View className="gap-2.5">
-      {businesses.map((business) => {
+      {rows.map((business) => {
         const active = business._id === activeBusinessId;
+        // In the picker nothing is selected yet, so "Last used" gets the highlight.
+        const highlighted = active || (picker && business._id === lastUsedBusinessId);
         const busy = deletingId === business._id;
         return (
           <Pressable
@@ -65,18 +78,22 @@ export function BusinessSwitcher() {
               borderRadius: 20,
               borderWidth: 1,
               padding: 14,
-              borderColor: active ? withAlpha(t.brand, 0.6) : t.border,
-              backgroundColor: active ? withAlpha(t.brand, 0.1) : t.card,
+              borderColor: highlighted ? withAlpha(t.brand, 0.6) : t.border,
+              backgroundColor: highlighted ? withAlpha(t.brand, 0.1) : t.card,
               opacity: busy ? 0.5 : 1,
             }}
           >
             <InitialsAvatar
               name={business.name}
               size={40}
-              colors={active ? undefined : t.inactiveAvatar}
+              colors={highlighted ? undefined : t.inactiveAvatar}
               imageUrl={business.logoUrl}
             />
-            <View className="flex-1">
+            <View className="min-w-0 flex-1">
+              <View className="mb-1 flex-row flex-wrap gap-1.5">
+                <Badge label={business.planActive ? 'Pro' : 'Free'} tone={business.planActive ? 'positive' : 'neutral'} />
+                {picker && business._id === lastUsedBusinessId && <Badge label="Last used" tone="info" />}
+              </View>
               <Text className="font-sans-semibold text-base text-white" numberOfLines={1}>
                 {business.name}
               </Text>
@@ -86,7 +103,9 @@ export function BusinessSwitcher() {
                 </Text>
               )}
             </View>
-            {active ? (
+            {picker ? (
+              <Ionicons name="chevron-forward" size={20} color={highlighted ? t.brandBright : t.textFaint} />
+            ) : active ? (
               <Ionicons name="checkmark-circle" size={22} color={t.brandBright} />
             ) : (
               <View className="h-5 w-5 rounded-full border-2 border-surface-border" />

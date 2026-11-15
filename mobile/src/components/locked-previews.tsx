@@ -1,18 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Text, View } from 'react-native';
 
 import type { FreeReport } from '@/api/endpoints/freeReport';
-import { useTheme, withAlpha } from '@/lib/theme';
+import { BRAND_GRADIENT, CRITICAL_GRADIENT, useTheme, withAlpha } from '@/lib/theme';
 
 /**
  * What a locked tab looks like when unlocked — drawn BEHIND the lock card for
  * Free CRM accounts (components/locked.tsx), blurred and not touchable.
  *
  * Honest by design: it's a sample of the real screens (same layout as the
- * Performance / Posts / Home tabs) for a sample business — the Growwmatics
- * logo sits in the corner, numbers are blurred, post images are posts our AI
- * made — and the lock screen labels it "Sample preview".
+ * Performance / Posts / Home tabs, under the tab's real header) — numbers
+ * are blurred, post images are posts our AI made — and the lock screen
+ * labels it "Sample preview".
  * STORE COMPLIANCE — no prices, no "upgrade/buy" wording.
  */
 
@@ -24,7 +25,6 @@ export interface PreviewContext {
   report: FreeReport | null;
 }
 
-const LOGO = require('../../assets/images/icon.png');
 const SAMPLE_POST_1 = require('../../assets/images/sample/post-ai-automation.jpg');
 const SAMPLE_POST_2 = require('../../assets/images/sample/post-services.jpg');
 
@@ -72,18 +72,37 @@ function Box({ children, style }: { children: React.ReactNode; style?: object })
   );
 }
 
-/** Sample header: Growwmatics logo in the corner + the screen's title. */
-function Header({ title, subtitle }: { title: string; subtitle?: string }) {
+/** "GBP Performance · Last 28 days" row with the Google logo and Sync — as on the real Performance tab. */
+function GbpTitle() {
   const t = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }} testID="preview-logo">
-      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: t.border }}>
-        <Image source={LOGO} style={{ width: 28, height: 28 }} contentFit="contain" />
-      </View>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <Ionicons name="logo-google" size={24} color="#4285F4" />
       <View style={{ flex: 1 }}>
-        <Text className="font-display-bold text-lg" style={{ color: t.text }} numberOfLines={1}>{title}</Text>
-        {!!subtitle && <Text className="font-sans text-xs" style={{ color: t.textFaint }} numberOfLines={1}>{subtitle}</Text>}
+        <Text className="font-display-bold text-lg" style={{ color: t.text }}>GBP Performance</Text>
+        <Text className="font-sans text-xs" style={{ color: t.textFaint }}>Last 28 days</Text>
       </View>
+      <Ionicons name="sync-outline" size={18} color={t.brandBright} />
+      <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>Sync</Text>
+    </View>
+  );
+}
+
+/** "Upcoming Posts  3  (+)" — as on the real Posts tab. */
+function SectionTitle({ title, count, add = false }: { title: string; count: number; add?: boolean }) {
+  const t = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <Text className="font-display-bold text-lg" style={{ color: t.text }}>{title}</Text>
+      <View style={{ minWidth: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: t.overlay }}>
+        <Text className="font-sans-bold text-xs" style={{ color: t.textDim }}>{count}</Text>
+      </View>
+      <View style={{ flex: 1 }} />
+      {add && (
+        <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: t.brandBright }}>
+          <Ionicons name="add" size={20} color={t.bg} />
+        </View>
+      )}
     </View>
   );
 }
@@ -143,22 +162,134 @@ function PostCard({ image, title, status, when }: { image: number; title: string
   );
 }
 
+/** "Where you rank" list — as on the real Performance tab. */
+function RankList() {
+  const t = useTheme();
+  const rows: [string, number][] = [
+    ['digital marketing agency near me', 2],
+    ['website development company', 4],
+    ['seo services', 3],
+    ['social media marketing', 7],
+    ['google business profile help', 1],
+  ];
+  return (
+    <Box style={{ gap: 12 }}>
+      <Text className="font-sans-semibold text-sm" style={{ color: t.textDim }}>Where you rank on Google Maps</Text>
+      {rows.map(([k, r]) => (
+        <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Ionicons name="search" size={14} color={t.textFaint} />
+          <Text className="flex-1 font-sans text-sm" style={{ color: t.textDim }} numberOfLines={1}>{k}</Text>
+          <View style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: withAlpha(r <= 3 ? t.brand : t.amber, 0.2) }}>
+            <Text className="font-sans-bold text-xs" style={{ color: r <= 3 ? t.brandBright : t.amber }}>#{r}</Text>
+          </View>
+        </View>
+      ))}
+    </Box>
+  );
+}
+
+/** Row of three photo tiles (sample post images). */
+function PhotoStrip() {
+  return (
+    <View style={{ flexDirection: 'row', gap: 8 }}>
+      {[SAMPLE_POST_2, SAMPLE_POST_1, SAMPLE_POST_2].map((img, i) => (
+        <Image key={i} source={img} style={{ flex: 1, height: 90, borderRadius: 14 }} contentFit="cover" blurRadius={3} />
+      ))}
+    </View>
+  );
+}
+
 export function LockedPreview({ kind }: { kind: LockedPreviewKind; ctx: PreviewContext }) {
   const t = useTheme();
 
   if (kind === 'home') {
+    // Same cards, same order as the real Home tab (app/(app)/dashboard.tsx).
     return (
-      <View style={{ gap: 12 }}>
-        <Header title="Growwmatics AI" subtitle="Sample business · Pune" />
+      <View style={{ gap: 14 }}>
+        <LinearGradient colors={[...CRITICAL_GRADIENT]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 22, padding: 18, gap: 12 }}>
+          <Text className="font-sans text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>This Week&apos;s Reviews</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text className="font-display-bold text-lg" style={{ color: '#ffffff' }}>No recent reviews received</Text>
+            <Text className="font-display-bold text-xl" style={{ color: '#ffd6d6' }}>0/3</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)' }}>
+              <Ionicons name="flame" size={16} color="#ffb74d" />
+            </View>
+            <View style={{ flex: 1, height: 8, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.18)' }} />
+          </View>
+          <Text className="font-sans text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
+            Your last review was 7 days ago, reviews are vital for good Google ranking.
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-around' }}>
+            {([['people-outline', 'MORE CUSTOMERS'], ['star-outline', 'MORE REVIEWS'], ['trending-up', 'BETTER RANKING']] as const).map(([icon, label]) => (
+              <View key={label} style={{ alignItems: 'center', gap: 6, width: 90 }}>
+                <View style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)' }}>
+                  <Ionicons name={icon} size={20} color="#ffffff" />
+                </View>
+                <Text className="text-center font-sans-bold text-[10px]" style={{ color: '#ffffff', letterSpacing: 0.6 }}>{label}</Text>
+              </View>
+            ))}
+          </View>
+        </LinearGradient>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1, justifyContent: 'center', borderRadius: 16, borderWidth: 1, borderColor: t.border, backgroundColor: t.card, paddingHorizontal: 14, height: 50 }}>
+            <Text className="font-sans text-sm" style={{ color: t.textFaint }}>Customer Phone Number</Text>
+          </View>
+          {(['people-outline', 'qr-code-outline'] as const).map((icon) => (
+            <View key={icon} style={{ width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: t.border, backgroundColor: t.card }}>
+              <Ionicons name={icon} size={20} color={t.brandBright} />
+            </View>
+          ))}
+        </View>
+        <LinearGradient colors={[...BRAND_GRADIENT]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: 999, height: 48, alignItems: 'center', justifyContent: 'center' }}>
+          <Text className="font-sans-bold text-base" style={{ color: '#ffffff' }}>Send Review Link</Text>
+        </LinearGradient>
+
+        <Box style={{ gap: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha(t.brand, 0.15) }}>
+              <Ionicons name="sparkles" size={18} color={t.brandBright} />
+            </View>
+            <Text className="flex-1 font-sans-bold text-base" style={{ color: t.text }}>GrowwMatics AI Agent</Text>
+            <View style={{ borderRadius: 999, backgroundColor: withAlpha(t.rose, 0.15), paddingHorizontal: 10, paddingVertical: 3 }}>
+              <Text className="font-sans-bold text-xs" style={{ color: t.rose }}>Needs Attention</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, backgroundColor: t.overlay, padding: 12 }}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text className="font-sans-bold text-sm" style={{ color: t.text }}>4 Photos left</Text>
+              <Text className="font-sans text-xs" style={{ color: t.textDim }}>No photos added in 2 weeks</Text>
+            </View>
+            <View style={{ borderRadius: 999, backgroundColor: t.brand, paddingHorizontal: 14, paddingVertical: 8 }}>
+              <Text className="font-sans-bold text-xs" style={{ color: '#ffffff' }}>Add Photos</Text>
+            </View>
+          </View>
+        </Box>
+
+        <Box style={{ gap: 12 }}>
+          {([['storefront-outline', 'GBP Profile SEO', '75% complete'], ['newspaper-outline', 'Posts Published', 'this month']] as const).map(([icon, title, sub]) => (
+            <View key={title} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha(t.brand, 0.12) }}>
+                <Ionicons name={icon} size={20} color={t.brandBright} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text className="font-sans-bold text-base" style={{ color: t.text }}>{title}</Text>
+                <Text className="font-sans text-xs" style={{ color: t.textDim }}>{sub}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={t.textFaint} />
+            </View>
+          ))}
+        </Box>
+
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Stat label="Calls" value="48" />
           <Stat label="Directions" value="37" />
-        </View>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Stat label="Website clicks" value="126" />
           <Stat label="Views" value="2,340" />
         </View>
         <Trend />
+        <PhotoStrip />
       </View>
     );
   }
@@ -166,7 +297,7 @@ export function LockedPreview({ kind }: { kind: LockedPreviewKind; ctx: PreviewC
   if (kind === 'performance') {
     return (
       <View style={{ gap: 12 }}>
-        <Header title="GBP Performance" subtitle="Last 28 days" />
+        <GbpTitle />
         <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: withAlpha(t.brand, 0.12), borderColor: withAlpha(t.brand, 0.3) }}>
           <Ionicons name="sparkles" size={18} color={t.brandBright} />
           <Text className="flex-1 font-sans-semibold text-sm" style={{ color: t.brandBright }} numberOfLines={2}>
@@ -184,6 +315,12 @@ export function LockedPreview({ kind }: { kind: LockedPreviewKind; ctx: PreviewC
           <Text className="font-sans text-xs" style={{ color: t.textFaint }}>Average rank across 45 searches</Text>
         </Box>
         <Trend />
+        <RankList />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Stat label="Website clicks" value="126" />
+          <Stat label="Bookings" value="14" />
+        </View>
+        <Trend />
       </View>
     );
   }
@@ -191,7 +328,6 @@ export function LockedPreview({ kind }: { kind: LockedPreviewKind; ctx: PreviewC
   if (kind === 'posts') {
     return (
       <View style={{ gap: 12 }}>
-        <Header title="Posts" subtitle="Growwmatics AI · sample" />
         <View style={{ flexDirection: 'row', borderRadius: 999, borderWidth: 1, borderColor: t.border, padding: 4 }}>
           <View style={{ flex: 1, alignItems: 'center', borderRadius: 999, backgroundColor: t.brand, paddingVertical: 8 }}>
             <Text className="font-sans-bold text-sm" style={{ color: '#ffffff' }}>Posts</Text>
@@ -200,10 +336,12 @@ export function LockedPreview({ kind }: { kind: LockedPreviewKind; ctx: PreviewC
             <Text className="font-sans-bold text-sm" style={{ color: t.textFaint }}>Photos</Text>
           </View>
         </View>
-        <Text className="font-display-bold text-base" style={{ color: t.text }}>Upcoming Posts</Text>
+        <SectionTitle title="Upcoming Posts" count={3} add />
         <PostCard image={SAMPLE_POST_1} title="AI-Powered Automation Boosts a Growing Business" status="SCHEDULED" when="Scheduled for: Thu, 7:00 pm" />
-        <Text className="font-display-bold text-base" style={{ color: t.text }}>Recent Posts</Text>
+        <SectionTitle title="Recent Posts" count={9} />
         <PostCard image={SAMPLE_POST_2} title="Building Digital Experiences That Drive Real Impact" status="PUBLISHED" when="Posted on: Mon, 10:30 am" />
+        <PostCard image={SAMPLE_POST_1} title="How AI Helps Local Businesses Get Found" status="PUBLISHED" when="Posted on: Fri, 6:15 pm" />
+        <PhotoStrip />
       </View>
     );
   }
@@ -212,10 +350,15 @@ export function LockedPreview({ kind }: { kind: LockedPreviewKind; ctx: PreviewC
     const reviews = [
       { who: 'Priya S.', text: 'Very happy with the service. Quick and polite!', reply: "Thank you Priya! We're glad you had a great experience." },
       { who: 'Rahul K.', text: 'Good experience overall, will come again.', reply: 'Thanks Rahul! See you again soon.' },
+      { who: 'Anita M.', text: 'Highly recommended. Very professional team.', reply: 'Thank you so much, Anita!' },
+      { who: 'Suresh P.', text: 'Got my website and Google profile done quickly.', reply: 'Glad we could help, Suresh!' },
+      { who: 'Meera J.', text: 'Great support on WhatsApp, always quick to reply.', reply: 'Thanks Meera, happy to help anytime.' },
+      { who: 'Vikram R.', text: 'Our calls from Google doubled in two months.', reply: 'That is great to hear, Vikram!' },
+      { who: 'Pooja N.', text: 'Clear reports every week, easy to understand.', reply: 'Thank you Pooja, glad they help.' },
+      { who: 'Arjun T.', text: 'Fast and friendly service.', reply: 'Thanks Arjun!' },
     ];
     return (
       <View style={{ gap: 12 }}>
-        <Header title="Reviews" subtitle="Growwmatics AI · sample" />
         <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Blurred size={32}>4.7</Blurred>
           <Text className="flex-1 font-sans text-sm" style={{ color: t.textDim }}>★★★★★ · new reviews this month</Text>
@@ -235,7 +378,6 @@ export function LockedPreview({ kind }: { kind: LockedPreviewKind; ctx: PreviewC
   const rows = ['Business hours', 'Services list', 'Photos (10+)', 'Business description', 'Website & phone'];
   return (
     <View style={{ gap: 12 }}>
-      <Header title="Business Profile" subtitle="Growwmatics AI · sample" />
       <Box style={{ gap: 12 }}>
         <Text className="font-sans-semibold text-sm" style={{ color: t.textDim }}>Google profile checklist</Text>
         {rows.map((r, i) => (
@@ -245,6 +387,33 @@ export function LockedPreview({ kind }: { kind: LockedPreviewKind; ctx: PreviewC
           </View>
         ))}
       </Box>
+      <Box style={{ gap: 12 }}>
+        <Text className="font-sans-semibold text-sm" style={{ color: t.textDim }}>Business info</Text>
+        {([['storefront-outline', 'Business name'], ['pricetag-outline', 'Category'], ['time-outline', 'Opening hours'], ['call-outline', 'Phone number'], ['globe-outline', 'Website'], ['location-outline', 'Address']] as const).map(([icon, label]) => (
+          <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Ionicons name={icon} size={18} color={t.brandBright} />
+            <Text className="flex-1 font-sans text-sm" style={{ color: t.textDim }}>{label}</Text>
+            <Ionicons name="chevron-forward" size={16} color={t.textFaint} />
+          </View>
+        ))}
+      </Box>
+      <Box style={{ gap: 10 }}>
+        <Text className="font-sans-semibold text-sm" style={{ color: t.textDim }}>Services</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {['Website design', 'SEO', 'Google profile', 'Social media', 'WhatsApp marketing', 'Ads'].map((x) => (
+            <View key={x} style={{ borderRadius: 999, borderWidth: 1, borderColor: t.border, paddingHorizontal: 12, paddingVertical: 6 }}>
+              <Text className="font-sans text-xs" style={{ color: t.textDim }}>{x}</Text>
+            </View>
+          ))}
+        </View>
+      </Box>
+      <Box style={{ gap: 12 }}>
+        <Text className="font-sans-semibold text-sm" style={{ color: t.textDim }}>Profile strength</Text>
+        <View style={{ height: 8, borderRadius: 999, backgroundColor: t.overlay }}>
+          <View style={{ width: '75%', height: 8, borderRadius: 999, backgroundColor: t.brand }} />
+        </View>
+      </Box>
+      <PhotoStrip />
     </View>
   );
 }

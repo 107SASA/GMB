@@ -2,7 +2,7 @@
   "expo": {
     "name": "Growwmatics AI",
     "slug": "growwmatics-ios",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "platforms": [
       "ios"
     ],

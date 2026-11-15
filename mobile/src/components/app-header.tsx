@@ -6,6 +6,7 @@ import { Linking, Modal, Pressable, ScrollView, Text, useWindowDimensions, View 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchNotifications } from '@/api/endpoints/notifications';
+import { useAuth } from '@/auth/AuthContext';
 import { useBusiness } from '@/business/BusinessContext';
 import { BusinessSwitcher } from '@/components/business-switcher';
 import { InfoSheet, InitialsAvatar } from '@/components/ui';
@@ -50,6 +51,7 @@ const WHATSAPP_GREEN = '#128C7E';
 
 export function AppHeader({ title }: { title: string }) {
   const { activeBusiness } = useBusiness();
+  const { user } = useAuth();
   const router = useRouter();
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -101,7 +103,8 @@ export function AppHeader({ title }: { title: string }) {
           on a near-white circle in light mode. This also keeps one small
           brand-green accent in the header, matching the "green only as
           small accents" direction. */}
-      <InitialsAvatar name={activeBusiness?.name} size={compact ? 36 : 44} imageUrl={activeBusiness?.logoUrl} />
+      {/* Business logo, else the business's first letter, else the person's — never a "?". */}
+      <InitialsAvatar name={activeBusiness?.name || user?.name || 'G'} size={compact ? 36 : 44} imageUrl={activeBusiness?.logoUrl} />
 
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text className="font-display text-xl tracking-tight" style={{ color: t.text }} numberOfLines={1}>

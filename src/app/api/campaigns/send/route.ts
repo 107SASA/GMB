@@ -6,6 +6,7 @@ import { requireBusinessContext } from '@/lib/tenant';
 import { requireModule } from '@/lib/moduleGating';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
 import { evaluateReviewSendEligibility } from '@/lib/reviewSendEligibility';
+import { checkReviewResend } from '@/lib/reviewResendCheck';
 
 export async function POST(req: Request) {
   const ctx = await requireBusinessContext();
@@ -17,12 +18,28 @@ export async function POST(req: Request) {
 
   try {
     await dbConnect();
-    const { customerId } = await req.json();
+    const { customerId, confirmResend } = await req.json();
 
     // Verify customer belongs to this business
     const customer = await Customer.findOne({ _id: customerId, businessId: ctx.businessId });
     if (!customer) {
       return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
+    }
+
+    // Already asked before: 24h gap, max 3 requests, owner confirms
+    // (lib/reviewResendRule.ts). Failed sends don't count.
+    const resend = await checkReviewResend({ businessId: ctx.businessId, customerId: customer._id, confirmed: confirmResend === true });
+    if (resend.decision.kind === 'confirm') {
+      return NextResponse.json(
+        { error: resend.message, code: 'RESEND_CONFIRM', alreadySentAt: resend.alreadySentAt, sentCount: resend.sentCount },
+        { status: 409 }
+      );
+    }
+    if (resend.decision.kind !== 'send') {
+      return NextResponse.json(
+        { error: resend.message, code: 'RESEND_BLOCKED', alreadySentAt: resend.alreadySentAt, sentCount: resend.sentCount },
+        { status: 400 }
+      );
     }
 
     const eligibility = await evaluateReviewSendEligibility({

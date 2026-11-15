@@ -22,6 +22,7 @@
  */
 import dbConnect from '@/lib/mongodb';
 import mongoose from 'mongoose';
+import { checkReviewResend } from '@/lib/reviewResendCheck';
 
 const DAY_MS = 24 * 3_600_000;
 /** A reminder deferred by a full day is still reserved for up to this many days. */
@@ -193,10 +194,17 @@ export async function dispatchCampaignQueue(businessId: string, now = new Date()
         customerId: item.customerId,
         $or: [{ automationStatus: 'Active' }, { sentAt: { $gte: new Date(now.getTime() - ASKED_RECENTLY_DAYS * DAY_MS) } }],
       });
+      // Same per-number limits as a manual send (lib/reviewResendRule.ts):
+      // after 3 requests, or while reminders are still going out — skip.
+      const resend = customer && !askedRecently
+        ? await checkReviewResend({ businessId, customerId: item.customerId, confirmed: true })
+        : null;
       const eligibility = !customer
         ? { allowed: false, code: 'CUSTOMER_MISSING', message: 'Customer was deleted.' }
         : askedRecently
           ? { allowed: false, code: 'ALREADY_ASKED', message: `Already asked for a review in the last ${ASKED_RECENTLY_DAYS} days.` }
+          : resend && resend.decision.kind !== 'send'
+            ? { allowed: false, code: 'RESEND_LIMIT', message: resend.message }
           : await evaluateReviewSendEligibility({ source: 'campaign', businessId, userId: String(business.userId), customer, campaignId: String(campaign._id) });
       if (!eligibility.allowed) {
         await CampaignQueueItem.updateOne({ _id: item._id }, { $set: { status: 'skipped', reason: eligibility.message || eligibility.code } });

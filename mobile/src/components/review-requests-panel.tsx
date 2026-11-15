@@ -10,7 +10,7 @@ import { fetchReviewRequests, type ReviewRequestOverview } from '@/api/endpoints
 import { fetchReviews } from '@/api/endpoints/reviews';
 import { useBusiness } from '@/business/BusinessContext';
 import { ContactPickerModal } from '@/components/contact-picker-modal';
-import { Badge, EmptyState, Field, LabeledField, PrimaryButton, Skeleton, useInfoSheet } from '@/components/ui';
+import { Badge, ConfirmSheet, EmptyState, Field, LabeledField, PrimaryButton, Skeleton, useInfoSheet } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
@@ -156,6 +156,8 @@ export function ReviewRequestsPanel() {
   const [search, setSearch] = useState('');
   const [duplicate, setDuplicate] = useState<Extract<Awaited<ReturnType<typeof addCustomer>>, { created: false }> | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  // Customer already got a review link and one more is allowed: ask first.
+  const [resendAsk, setResendAsk] = useState<{ customerId: string; message: string } | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setSearch(searchInput.trim()), 300);
@@ -211,9 +213,17 @@ export function ReviewRequestsPanel() {
   });
 
   const send = useMutation({
-    mutationFn: (customerId: string) => sendReviewRequest(customerId),
-    onMutate: (customerId) => setSendingId(customerId),
-    onSuccess: async (result) => {
+    mutationFn: (vars: { customerId: string; confirmResend?: boolean }) => sendReviewRequest(vars.customerId, vars.confirmResend),
+    onMutate: (vars) => setSendingId(vars.customerId),
+    onSuccess: async (result, vars) => {
+      if (result.needsConfirm) {
+        setResendAsk({ customerId: vars.customerId, message: result.message ?? 'A review link was already sent to this customer. Send again?' });
+        return;
+      }
+      if (result.alreadySent) {
+        info.show('Review link already sent', result.message ?? 'This customer already got a review link.');
+        return;
+      }
       setDuplicate(null);
       setName('');
       setPhone('');
@@ -242,7 +252,7 @@ export function ReviewRequestsPanel() {
             customer={item}
             summary={latest[item._id]}
             sending={sendingId === item._id}
-            onSend={() => send.mutate(item._id)}
+            onSend={() => send.mutate({ customerId: item._id })}
           />
         )}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 28, flexGrow: 1 }}
@@ -326,7 +336,7 @@ export function ReviewRequestsPanel() {
                     <View className="mt-3">
                       <PrimaryButton
                         title="Send Review Request"
-                        onPress={() => send.mutate(duplicate.customerId!)}
+                        onPress={() => send.mutate({ customerId: duplicate.customerId! })}
                         loading={sendingId === duplicate.customerId}
                       />
                     </View>
@@ -370,6 +380,19 @@ export function ReviewRequestsPanel() {
           if (!name.trim() && contact.name) setName(contact.name);
           setPickerOpen(false);
         }}
+      />
+      <ConfirmSheet
+        visible={!!resendAsk}
+        onCancel={() => setResendAsk(null)}
+        onConfirm={() => {
+          if (!resendAsk) return;
+          send.mutate({ customerId: resendAsk.customerId, confirmResend: true });
+          setResendAsk(null);
+        }}
+        title="Review link already sent"
+        message={resendAsk?.message ?? ''}
+        confirmLabel="Send again"
+        cancelLabel="Don't send"
       />
       {info.node}
     </>

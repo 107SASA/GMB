@@ -7,6 +7,7 @@ import {
   Loader2, Star, Trash2, Mail, Sparkles, ChevronLeft, ChevronRight, Tag, UserPlus, Import
 } from 'lucide-react';
 import CustomerUploadModal from '@/components/campaigns/CustomerUploadModal';
+import ResendConfirmDialog from '@/components/reviews/ResendConfirmDialog';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { useBusiness } from '@/context/BusinessContext';
 
@@ -129,6 +130,8 @@ export default function CampaignsDashboard() {
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [existingSend, setExistingSend] = useState<{ customerId: string; allowed: boolean; message: string } | null>(null);
+  // Customer already got a review link and one more is allowed: ask first.
+  const [resendAsk, setResendAsk] = useState<{ customerId: string; message: string } | null>(null);
   const [requestMetrics, setRequestMetrics] = useState<RequestMetrics>(EMPTY_METRICS);
   const [latestByCustomer, setLatestByCustomer] = useState<Record<string, RequestSummary>>({});
   const [importingLeads, setImportingLeads] = useState(false);
@@ -227,16 +230,21 @@ export default function CampaignsDashboard() {
 
   useEffect(() => { setPage(1); }, [search, statusFilter, tagFilter]);
 
-  const handleSendRequest = async (customerId: string) => {
+  const handleSendRequest = async (customerId: string, confirmResend = false) => {
     setSendingId(customerId);
     try {
       const res = await fetch('/api/campaigns/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId })
+        body: JSON.stringify({ customerId, confirmResend: confirmResend || undefined })
       });
       const json = await res.json().catch(() => ({}));
-      if (res.ok && json.queued) {
+      setResendAsk(null);
+      if (json.code === 'RESEND_CONFIRM') {
+        setResendAsk({ customerId, message: json.error || 'A review link was already sent to this customer. Send again?' });
+      } else if (json.code === 'RESEND_BLOCKED') {
+        toast.info('Review link already sent', { description: json.error });
+      } else if (res.ok && json.queued) {
         // Today's WhatsApp limit is used — it goes out tomorrow morning.
         toast.info(json.message || 'Scheduled for tomorrow morning.');
         fetchQueue();
@@ -973,6 +981,13 @@ export default function CampaignsDashboard() {
         </div>
       )}
 
+      <ResendConfirmDialog
+        open={!!resendAsk}
+        message={resendAsk?.message || ''}
+        busy={!!resendAsk && sendingId === resendAsk.customerId}
+        onCancel={() => setResendAsk(null)}
+        onConfirm={() => { if (resendAsk) void handleSendRequest(resendAsk.customerId, true); }}
+      />
     </div>
   );
 }

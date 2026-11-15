@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Send, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Send, Loader2, CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import ResendConfirmDialog from '@/components/reviews/ResendConfirmDialog';
 import { PhoneNumberInput } from '@/components/shared/PhoneNumberInput';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
 
@@ -16,9 +17,11 @@ export default function QuickReviewRequest() {
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; info?: boolean; text: string } | null>(null);
+  // This number already got a link and one more is allowed: ask first.
+  const [confirmText, setConfirmText] = useState<string | null>(null);
 
-  const send = async () => {
+  const send = async (confirmResend = false) => {
     if (phone.replace(/\D/g, '').length < 8) {
       setResult({ ok: false, text: 'Enter a valid phone number first.' });
       return;
@@ -29,11 +32,20 @@ export default function QuickReviewRequest() {
       const res = await fetch('/api/customers/quick-add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, name: name.trim() || undefined }),
+        body: JSON.stringify({ phone, name: name.trim() || undefined, confirmResend: confirmResend || undefined }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Could not send the request.');
 
+      if (json.needsConfirm) {
+        setConfirmText(json.reason || 'A review link was already sent to this number. Send again?');
+        return;
+      }
+      setConfirmText(null);
+      if (json.alreadySent) {
+        setResult({ ok: false, info: true, text: json.reason || 'Review link already sent to this customer.' });
+        return;
+      }
       if (json.reviewRequestSent) {
         setResult({ ok: true, text: `Review request sent on WhatsApp${json.existing ? ' (existing customer)' : ''}.` });
         setPhone('');
@@ -75,9 +87,9 @@ export default function QuickReviewRequest() {
         </div>
         <button
           type="button"
-          onClick={send}
+          onClick={() => void send()}
           disabled={busy}
-          className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-white text-sm font-semibold disabled:opacity-60 shrink-0"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-white text-sm font-semibold disabled:opacity-60 shrink-0"
         >
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           Send request
@@ -86,16 +98,31 @@ export default function QuickReviewRequest() {
 
       {result && (
         <div
-          className={`mt-3 flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
+          role="status"
+          className={`mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm leading-relaxed break-words ${
             result.ok
               ? 'bg-secondary-container/40 border border-secondary-fixed text-on-secondary-container'
-              : 'bg-error-container border border-error-container text-on-error-container'
+              : result.info
+                ? 'bg-surface-container border border-outline-variant text-on-surface'
+                : 'bg-error-container border border-error-container text-on-error-container'
           }`}
         >
-          {result.ok ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
-          {result.text}
+          {result.ok
+            ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+            : result.info
+              ? <Info className="w-4 h-4 shrink-0 mt-0.5 text-primary" />
+              : <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />}
+          <span className="min-w-0">{result.text}</span>
         </div>
       )}
+
+      <ResendConfirmDialog
+        open={!!confirmText}
+        message={confirmText || ''}
+        busy={busy}
+        onCancel={() => setConfirmText(null)}
+        onConfirm={() => void send(true)}
+      />
     </div>
   );
 }

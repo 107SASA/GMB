@@ -1,3 +1,4 @@
+import { usablePersonName } from './personName.ts';
 import { randomBytes } from 'crypto';
 
 /**
@@ -146,6 +147,11 @@ export function applyClick(current: { clicked?: boolean; clickCount?: number }):
   };
 }
 
+/** {{1}} for a review request: the customer's name, or "there" when it is empty or only a phone number. */
+export function greetingName(customerName: string): string {
+  return usablePersonName(String(customerName || '').replace(/\s+/g, ' ')) || 'there';
+}
+
 export function buildUtilityReviewVariables(
   customerName: string,
   businessName: string,
@@ -155,7 +161,7 @@ export function buildUtilityReviewVariables(
     throw new Error('ReviewRequest token is required for the utility template');
   }
   return {
-    '1': customerName || 'there',
+    '1': greetingName(customerName),
     '2': businessName || 'our business',
     '3': token,
   };
@@ -167,7 +173,7 @@ export function buildLegacyReviewVariables(
   placeId: string
 ): Record<'1' | '2' | '3', string> {
   return {
-    '1': customerName || 'there',
+    '1': greetingName(customerName),
     '2': businessName || 'our business',
     '3': placeId,
   };

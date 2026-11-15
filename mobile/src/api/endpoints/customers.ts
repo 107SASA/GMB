@@ -25,6 +25,12 @@ const quickAddResponseSchema = z.object({
   /** Today's WhatsApp limit was used — scheduled for tomorrow morning. */
   reviewRequestQueued: z.boolean().optional().catch(false),
   reason: z.string().optional(),
+  /** This number already got a review link — ask the owner, then resend with confirmResend. */
+  needsConfirm: z.boolean().optional().catch(false),
+  alreadySentAt: z.string().optional(),
+  /** Already sent and no resend allowed (within 24h, or 3 requests reached). */
+  alreadySent: z.boolean().optional().catch(false),
+  sentCount: z.number().optional().catch(undefined),
 });
 export type QuickAddCustomerResult = z.infer<typeof quickAddResponseSchema>;
 
@@ -34,7 +40,7 @@ export type QuickAddCustomerResult = z.infer<typeof quickAddResponseSchema>;
  * the dashboard "Add Customer" card calls; the mobile "Add lead" screen
  * under All Contacts is unrelated (CRM pipeline, endpoints/leads.ts).
  */
-export async function quickAddCustomer(params: { phone: string; name?: string }): Promise<QuickAddCustomerResult> {
+export async function quickAddCustomer(params: { phone: string; name?: string; confirmResend?: boolean }): Promise<QuickAddCustomerResult> {
   const { data } = await api.post('/api/customers/quick-add', params);
   return quickAddResponseSchema.parse(data);
 }
@@ -103,9 +109,29 @@ export async function addCustomer(params: { name: string; phone: string }): Prom
   }
 }
 
+export type SendReviewRequestResult = {
+  queued: boolean;
+  message: string | null;
+  /** Already sent before; one more is allowed — ask, then call again with confirmResend. */
+  needsConfirm?: boolean;
+  /** Already sent and no resend allowed now (within 24h, or 3 requests reached). */
+  alreadySent?: boolean;
+};
+
 /** POST /api/campaigns/send — existing one-customer review request. */
-export async function sendReviewRequest(customerId: string): Promise<{ queued: boolean; message: string | null }> {
-  const { data } = await api.post('/api/campaigns/send', { customerId });
-  // queued: today's WhatsApp limit was used — it goes out tomorrow morning.
-  return { queued: data?.queued === true, message: typeof data?.message === 'string' ? data.message : null };
+export async function sendReviewRequest(customerId: string, confirmResend = false): Promise<SendReviewRequestResult> {
+  try {
+    const { data } = await api.post('/api/campaigns/send', { customerId, ...(confirmResend ? { confirmResend: true } : {}) });
+    // queued: today's WhatsApp limit was used — it goes out tomorrow morning.
+    return { queued: data?.queued === true, message: typeof data?.message === 'string' ? data.message : null };
+  } catch (error) {
+    // Resend rule answers (409 RESEND_CONFIRM / 400 RESEND_BLOCKED) are not errors for the owner.
+    if (axios.isAxiosError(error)) {
+      const body = error.response?.data as { code?: string; error?: string } | undefined;
+      const message = typeof body?.error === 'string' ? body.error : null;
+      if (body?.code === 'RESEND_CONFIRM') return { queued: false, message, needsConfirm: true };
+      if (body?.code === 'RESEND_BLOCKED') return { queued: false, message, alreadySent: true };
+    }
+    throw error;
+  }
 }

@@ -90,3 +90,32 @@ export function composePerformanceDigest(d: PerformanceDigest, businessName: str
   lines.push('', `View your insights: ${link}`, '', '— Team Growwmatics AI');
   return lines.join('\n');
 }
+
+/** One metric for the performance-update template: "40 (+21%)", "5 (up from 0)" or "12". */
+function metricValue(r: DigestRow | undefined): string {
+  if (!r) return '0';
+  if (r.pctChange != null) return `${r.current} (${r.pctChange > 0 ? '+' : ''}${r.pctChange}%)`;
+  if (r.previous === 0 && r.current > 0) return `${r.current} (up from 0)`;
+  return String(r.current);
+}
+
+/**
+ * Variables for the performanceUpdate WhatsApp template (lib/whatsappTemplates.ts),
+ * which keeps each metric on its own line in the template text — a variable
+ * cannot carry a line break. null when there is nothing measured to send.
+ */
+export function performanceUpdateVariables(d: PerformanceDigest, businessName: string): Record<string, string> | null {
+  if (!d.rows) return null;
+  const row = (label: string) => d.rows!.find((r) => r.label === label);
+  const name = String(businessName || '').replace(/\s+/g, ' ').trim() || 'there';
+  return {
+    '1': name,
+    '2': `${fmtDate(d.period.start)} – ${fmtDate(d.period.end)}`,
+    '3': metricValue(row('Total views')),
+    '4': metricValue(row('Search views')),
+    '5': metricValue(row('Maps views')),
+    '6': metricValue(row('Calls')),
+    '7': metricValue(row('Website clicks')),
+    '8': metricValue(row('Direction requests')),
+  };
+}

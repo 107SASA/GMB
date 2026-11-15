@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Customer from '@/models/Customer';
+import { checkReviewResend } from '@/lib/reviewResendCheck';
 import { requireBusinessContext } from '@/lib/tenant';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { inngest } from '@/services/inngest/client';
@@ -53,6 +54,31 @@ export async function POST(req: Request) {
         phone,
         service: typeof data.service === 'string' && data.service.trim() ? data.service.trim() : undefined,
       });
+    }
+
+    // Already asked this number before? Follow-ups already go out
+    // automatically, so a resend needs 24h since the last request, at most
+    // 3 requests per number, and the owner's confirmation (confirmResend).
+    // Checked on every call, so a confirmed resend can't skip the limits.
+    // A failed send doesn't count as "already sent".
+    if (existing) {
+      const resend = await checkReviewResend({ businessId: ctx.businessId, customerId: customer._id, confirmed: data.confirmResend === true });
+      if (resend.decision.kind !== 'send') {
+        return NextResponse.json(
+          {
+            success: true,
+            existing,
+            customer,
+            reviewRequestSent: false,
+            needsConfirm: resend.decision.kind === 'confirm',
+            alreadySent: resend.decision.kind !== 'confirm',
+            alreadySentAt: resend.alreadySentAt,
+            sentCount: resend.sentCount,
+            reason: resend.message,
+          },
+          { status: 200 }
+        );
+      }
     }
 
     const eligibility = await evaluateReviewSendEligibility({

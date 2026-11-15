@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import { requireBusinessContext } from '@/lib/tenant';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { evaluateReviewSendEligibility } from '@/lib/reviewSendEligibility';
+import { checkReviewResend } from '@/lib/reviewResendCheck';
 import { existingCustomerSendOffer } from '@/lib/reviewRequestFlow';
 import { requireWorkspacePlan } from '@/lib/planGate';
 
@@ -117,12 +118,13 @@ export async function POST(req: Request) {
         userId: ctx.userId,
         customer: existing,
       });
+      const resend = await checkReviewResend({ businessId: ctx.businessId, customerId: existing._id, confirmed: false });
       return NextResponse.json({
         success: false,
         code: offer.code,
         message: offer.message,
         customerId: offer.customerId,
-        eligibility: { allowed: eligibility.allowed, code: eligibility.code, message: eligibility.message },
+        eligibility: resendEligibility(eligibility, resend),
       }, { status: 409 });
     }
 
@@ -148,12 +150,13 @@ export async function POST(req: Request) {
           userId: ctx.userId,
           customer: existing,
         });
+        const resend = await checkReviewResend({ businessId: ctx.businessId, customerId: existing._id, confirmed: false });
         return NextResponse.json({
           success: false,
           code: 'CUSTOMER_EXISTS',
           message: 'Customer already exists',
           customerId: existing._id.toString(),
-          eligibility: { allowed: eligibility.allowed, code: eligibility.code, message: eligibility.message },
+          eligibility: resendEligibility(eligibility, resend),
         }, { status: 409 });
       }
       return NextResponse.json({
@@ -164,4 +167,21 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
+}
+
+/** Duplicate-customer send offer: a blocked resend (24h / 3 max) wins over a plain "allowed". */
+function resendEligibility(
+  eligibility: { allowed: boolean; code: string; message: string },
+  resend: Awaited<ReturnType<typeof checkReviewResend>>
+) {
+  const kind = resend.decision.kind;
+  if (eligibility.allowed && kind !== 'send' && kind !== 'confirm') {
+    return { allowed: false, code: 'RESEND_BLOCKED', message: resend.message };
+  }
+  return {
+    allowed: eligibility.allowed,
+    code: eligibility.code,
+    message: eligibility.message,
+    ...(kind === 'confirm' ? { alreadySentAt: resend.alreadySentAt } : {}),
+  };
 }

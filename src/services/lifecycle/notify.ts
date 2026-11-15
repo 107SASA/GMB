@@ -362,7 +362,7 @@ export async function contentPrompts(businessId: string, now: Date, businessName
  */
 export async function sendPerformanceDigest(businessId: string, now = new Date()): Promise<{ status: string }> {
   await dbConnect();
-  const [{ default: Business }, { default: GBPInsights }, { buildPerformanceDigest, composePerformanceDigest, DIGEST_DAYS, DATA_LAG_DAYS }] = await Promise.all([
+  const [{ default: Business }, { default: GBPInsights }, { buildPerformanceDigest, composePerformanceDigest, performanceUpdateVariables, DIGEST_DAYS, DATA_LAG_DAYS }] = await Promise.all([
     import('@/models/Business'), import('@/models/GBPInsights'), import('./performanceDigest'),
   ]);
   const b: any = await Business.findById(businessId).select('name performanceDigestLastSentAt').lean();
@@ -372,8 +372,12 @@ export async function sendPerformanceDigest(businessId: string, now = new Date()
     .select('date views viewsSearch viewsMaps callClicks websiteClicks directionRequests conversations').lean();
   const insightsLink = absoluteLink('/dashboard/insights');
   if (!insightsLink) return { status: 'no_app_url' };
-  const text = composePerformanceDigest(buildPerformanceDigest(rows, now), b.name || 'your business', insightsLink);
+  const digest = buildPerformanceDigest(rows, now);
+  const text = composePerformanceDigest(digest, b.name || 'your business', insightsLink);
   if (!text) return { status: 'not_enough_data' };
+  const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
+  const templateVars = WA_TEMPLATES.performanceUpdate ? performanceUpdateVariables(digest, b.name || 'your business') : null;
+  const template = templateVars ? { sid: WA_TEMPLATES.performanceUpdate, variables: templateVars } : undefined;
   // Claim the 15-day slot first (half a day of slack so a daily cron isn't pushed later each cycle).
   const due = new Date(now.getTime() - (DIGEST_DAYS * DAY - 12 * 3_600_000));
   const claimed = await Business.findOneAndUpdate(
@@ -381,7 +385,7 @@ export async function sendPerformanceDigest(businessId: string, now = new Date()
     { $set: { performanceDigestLastSentAt: now } },
   );
   if (!claimed) return { status: 'not_due' };
-  const res = await notifyOwner(businessId, { event: 'performance_digest', text });
+  const res = await notifyOwner(businessId, { event: 'performance_digest', text, template });
   // Held back by the 2-per-15-days performance-update limit (or a failed
   // send): give the 15-day slot back so tomorrow's cron can try again.
   if (res.status === 'failed' || (res.status === 'skipped' && res.reason === 'performance_update_limit')) {

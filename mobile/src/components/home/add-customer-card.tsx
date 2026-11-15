@@ -8,7 +8,7 @@ import { quickAddCustomer } from '@/api/endpoints/customers';
 import { useBusiness } from '@/business/BusinessContext';
 import { ContactPickerModal } from '@/components/contact-picker-modal';
 import { ReviewQrModal } from '@/components/review-qr-modal';
-import { Field, PrimaryButton, useInfoSheet } from '@/components/ui';
+import { ConfirmSheet, Field, PrimaryButton, useInfoSheet } from '@/components/ui';
 import { useTheme } from '@/lib/theme';
 
 /**
@@ -30,14 +30,23 @@ export function AddCustomerCard() {
   const [phone, setPhone] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+  // Set when this number already got a review link: owner confirms a resend.
+  const [resend, setResend] = useState<{ phone: string; message: string } | null>(null);
   const info = useInfoSheet();
 
   const add = useMutation({
-    mutationFn: () => quickAddCustomer({ phone: phone.trim() }),
-    onSuccess: (result) => {
+    mutationFn: (vars: { phone: string; confirmResend?: boolean }) => quickAddCustomer(vars),
+    onSuccess: (result, vars) => {
+      if (result.needsConfirm) {
+        setResend({ phone: vars.phone, message: result.reason ?? 'A review link was already sent to this number. Send again?' });
+        return;
+      }
       setPhone('');
       if (!result.reviewRequestSent) {
-        info.show(result.reviewRequestQueued ? 'Scheduled for tomorrow' : 'Customer saved', result.reason ?? 'No review request was sent.');
+        info.show(
+          result.alreadySent ? 'Review link already sent' : result.reviewRequestQueued ? 'Scheduled for tomorrow' : 'Customer saved',
+          result.reason ?? 'No review request was sent.'
+        );
         return;
       }
       info.show(
@@ -99,7 +108,7 @@ export function AddCustomerCard() {
       <View className="mt-3">
         <PrimaryButton
           title="Send Review Link"
-          onPress={() => add.mutate()}
+          onPress={() => add.mutate({ phone: phone.trim() })}
           loading={add.isPending}
           disabled={phone.trim().length < 7}
         />
@@ -118,6 +127,19 @@ export function AddCustomerCard() {
         onClose={() => setQrOpen(false)}
         businessName={activeBusiness?.name ?? 'your business'}
         placeId={activeBusiness?.googlePlaceId ?? activeBusiness?.placeId}
+      />
+      <ConfirmSheet
+        visible={!!resend}
+        onCancel={() => setResend(null)}
+        onConfirm={() => {
+          if (!resend) return;
+          add.mutate({ phone: resend.phone, confirmResend: true });
+          setResend(null);
+        }}
+        title="Review link already sent"
+        message={resend?.message ?? ''}
+        confirmLabel="Send again"
+        cancelLabel="Don't send"
       />
       {info.node}
     </View>

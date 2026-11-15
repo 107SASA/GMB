@@ -566,16 +566,16 @@ export default function ProfileOptimizationPage() {
               <>
                 {description?.text ? (
                   <>
-                    <p className="text-xs text-on-surface-variant">Suggested by Growwmatics AI</p>
+                    <p className="text-xs text-on-surface-variant">{description.origin === 'template' ? 'Basic template — edit it to add your own detail' : 'Suggested by Growwmatics AI from your SEO plan'}</p>
                     <p className="text-sm whitespace-pre-wrap break-words">{description.text}</p>
                   </>
                 ) : (
-                  <p className="text-sm text-on-surface-variant">{description?.current ? 'On Google now:' : 'Your profile has no description yet.'}</p>
+                  <p className="text-sm text-on-surface-variant">{description?.current ? (description?.reason === 'current_is_good' ? 'Your description is already in good shape — no change suggested. On Google now:' : 'On Google now:') : 'Your profile has no description yet.'}</p>
                 )}
                 {!description?.text && description?.current && <p className="text-sm whitespace-pre-wrap break-words">{description.current}</p>}
                 <div className="flex flex-wrap gap-2">
                   {description?.text && description.validation?.valid && (
-                    <button disabled={busy} className={btnPrimary} onClick={() => propose({ kind: 'description', proposed: description.text, source: 'recommendation', context: { tokens: description.tokens || [], competitorNames: description.competitorNames || [] } })}>Use this description</button>
+                    <button disabled={busy} className={btnPrimary} onClick={() => propose({ kind: 'description', proposed: description.text, source: description.origin === 'template' ? 'template' : 'seo_plan', context: { tokens: description.tokens || [], competitorNames: description.competitorNames || [] } })}>Use this description</button>
                   )}
                   <button disabled={busy} className={btnOutline} onClick={() => setDescDraft(description?.text || description?.current || '')}>
                     {description?.text ? 'Edit it / write my own' : description?.current ? 'Edit description' : 'Write a description'}

@@ -56,10 +56,11 @@ test('every proposal status write in the store goes through a path the release h
     assert.equal(store.includes(bypass), false, bypass);
   }
   // Query-style status writes: the approval and the two EXECUTING claims (all
-  // key-holding), and the owner's discard (BLOCKED — a closing status whose
-  // key the findOneAndUpdate hook releases).
+  // key-holding), the owner's discard and the close of proposals made for a
+  // previously connected listing (BLOCKED — closing statuses whose key the
+  // findOneAndUpdate / updateMany hooks release).
   const queryWrites = [...store.matchAll(/\$set: \{ status: '([A-Z]+)'/g)].map((m) => m[1]);
-  assert.deepEqual(queryWrites.sort(), ['APPROVED', 'BLOCKED', 'EXECUTING', 'EXECUTING']);
+  assert.deepEqual(queryWrites.sort(), ['APPROVED', 'BLOCKED', 'BLOCKED', 'EXECUTING', 'EXECUTING']);
   // The key is only ever written when a proposal is created.
   assert.equal([...store.matchAll(/openKey(,|:)/g)].length, 1);
   assert.match(store, /GbpProfileChange\.create\(\{[\s\S]*?status,\s*openKey,/);
@@ -75,7 +76,11 @@ test('a failed pre-write read hands the claim back instead of marking an unresol
   const handBack = execute.slice(execute.indexOf('const handBack'), execute.indexOf('const guard'));
   assert.match(handBack, /claimed\.status = 'APPROVED';\s*claimed\.executedAt = pending\.executedAt \?\? null;/);
   assert.equal(handBack.includes('openKey'), false, 'the hand-back keeps the open-proposal key');
-  assert.match(execute, /if \(!guard\.ok\) return handBack\(guard\.error\);/);
+  // A location mismatch hands the claim back, except when another listing is
+  // connected: then the proposal can never apply and is closed instead.
+  const guardBlock = execute.slice(execute.indexOf('if (!guard.ok) {'), execute.indexOf('// Writes were switched off'));
+  assert.match(guardBlock, /proposalsForOtherListing\(\[claimed\], connected\)\.length[\s\S]*?failClosed\(toRecord\(claimed\), 'BLOCKED', OTHER_LISTING_ERROR/);
+  assert.match(guardBlock, /return handBack\(guard\.error\);/);
   assert.match(execute, /if \(!fr5ProfileMutationAllowed\(\)\) return handBack\(LIVE_WRITES_DISABLED, false\);/);
 });
 

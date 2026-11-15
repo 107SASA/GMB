@@ -54,7 +54,8 @@ export function statusInfo(status: string): { label: string; group: StatusGroup;
 }
 
 export function sourceLabel(source: string): string {
-  if (source === 'recommendation') return 'Suggested by Growwmatics AI';
+  if (source === 'recommendation' || source === 'seo_plan') return 'Suggested by Growwmatics AI';
+  if (source === 'template') return 'Basic template';
   if (source === 'owner') return 'Entered by you';
   return 'Created in Growwmatics AI';
 }

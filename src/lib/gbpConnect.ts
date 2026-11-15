@@ -67,6 +67,16 @@ export async function finalizeGbpConnection(input: FinalizeGbpConnectionInput): 
     googleConnected: true,
     googleLocationId: input.locationId,
   });
+  // A different listing may be connected now: close the old listing's open
+  // proposals so their Apply buttons don't sit there failing. Best-effort.
+  try {
+    const { closeProposalsForOtherListing } = await import('@/services/gbp/changes/store');
+    const closed = await closeProposalsForOtherListing(input.businessId, input.locationId);
+    if (closed) console.log(`[gbpConnect] closed ${closed} proposal(s) made for a previously connected listing (business ${input.businessId})`);
+  } catch (e: any) {
+    console.warn('[gbpConnect] could not close old-listing proposals:', e?.message);
+  }
+
   // Signed in is not the same as Google allowing access: nothing Google-
   // dependent runs until the sync below confirms it (services/gbp/access).
   await markGoogleAccessChecking(input.businessId);

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireBusinessContext } from '@/lib/tenant';
 import GbpProfileChange from '@/models/GbpProfileChange';
-import { createProposal, locationIdFor, ProposalConflictError } from '@/services/gbp/changes/store';
+import { closeProposalsForOtherListing, createProposal, locationIdFor, ProposalConflictError } from '@/services/gbp/changes/store';
 import { buildAttributeWrite, buildServiceWrite, canonicalFingerprint, mergeRegularHours, mergeSpecialHours, toGoogleHours, validateBusinessName, validateDescription, validateRegularHours, validateServiceArea, validateSpecialHours, withGbpUtm, type HoursPeriodIn, type SpecialHourIn } from '@/services/gbp/changes/policy';
 import { listCategoryAttributes, readLocationAttributes, readLocationRaw } from '@/lib/gbpClient';
 import GbpLocationSnapshot from '@/models/GbpLocationSnapshot';
@@ -33,6 +33,10 @@ const bodySchema = z.object({
 export async function GET() {
   const ctx = await requireBusinessContext();
   if (!ctx.ok) return ctx.response;
+  // Workspaces that switched listings before the connect step did this:
+  // close the old listing's open proposals before showing the list.
+  const connected = await locationIdFor(ctx.businessId).catch(() => null);
+  if (connected) await closeProposalsForOtherListing(ctx.businessId, connected).catch(() => 0);
   const changes = await GbpProfileChange.find({ businessId: ctx.businessId }).sort({ createdAt: -1 }).limit(50).lean();
   // Google's API returns submitted values straight away, even while Google
   // still reviews them before they show publicly. metadata.hasPendingEdits

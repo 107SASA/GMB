@@ -12,7 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { setActiveBusinessIdHeader } from '@/api/client';
 import { fetchBillingStatus, type FreeCrmUsage } from '@/api/endpoints/account';
-import { deleteWorkspace, fetchBusinesses, type Business } from '@/api/endpoints/businesses';
+import { deleteWorkspace, fetchBusinesses, rememberActiveBusiness, type Business } from '@/api/endpoints/businesses';
 import { useAuth } from '@/auth/AuthContext';
 
 const BUSINESS_KEY = 'active_business_id';
@@ -38,10 +38,12 @@ interface BusinessContextValue {
   activeBusinessId: string | null;
   activeBusiness: Business | null;
   /**
-   * True when the user has multiple businesses and no valid persisted or
-   * server-side default — the UI must show the picker before the tabs.
+   * True when the user has multiple businesses and hasn't picked one since
+   * signing in — the UI must show the picker before the tabs.
    */
   needsSelection: boolean;
+  /** The workspace used last time (server's activeBusinessId) — the picker's "Last used" hint. */
+  lastUsedBusinessId: string | null;
   /**
    * True when the signed-in user still has onboarding to finish — no
    * workspace yet, or a workspace whose post-payment intake is incomplete.
@@ -113,10 +115,11 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     };
   }, [isAuthenticated]);
 
-  // Once businesses load, validate the restored choice and default sensibly:
-  // stored id (if still owned) → server's activeBusinessId → auto-select when
-  // there is only one. With several businesses and no default, selection is
-  // left null and needsSelection makes the UI show the picker.
+  // Once businesses load, validate the restored choice: stored id (if still
+  // owned) → auto-select when there is only one. With several businesses the
+  // user is asked on every sign-in (the stored id is wiped on logout), so the
+  // selection stays null and needsSelection shows the picker, with the
+  // server's activeBusinessId marked "Last used" (same as the web).
   useEffect(() => {
     if (!restored || isFetching || businesses.length === 0) return;
     const owned = (id: string | null | undefined) =>
@@ -124,14 +127,12 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
 
     if (owned(activeBusinessId)) return;
 
-    let fallback: string | null = null;
-    if (owned(user?.activeBusinessId)) fallback = user!.activeBusinessId as string;
-    else if (businesses.length === 1) fallback = businesses[0]._id;
+    const fallback: string | null = businesses.length === 1 ? businesses[0]._id : null;
 
     setActiveBusinessId(fallback);
     setActiveBusinessIdHeader(fallback);
     if (fallback) void SecureStore.setItemAsync(BUSINESS_KEY, fallback).catch(() => {});
-  }, [restored, isFetching, businesses, activeBusinessId, user]);
+  }, [restored, isFetching, businesses, activeBusinessId]);
 
   const selectBusiness = useCallback(async (businessId: string) => {
     setActiveBusinessId((previous) => {
@@ -149,6 +150,8 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       predicate: (query) => query.queryKey.includes(businessId),
     });
     await SecureStore.setItemAsync(BUSINESS_KEY, businessId).catch(() => {});
+    // Best effort: saves the pick as "last used" for the next sign-in.
+    void rememberActiveBusiness(businessId).catch(() => {});
   }, [queryClient]);
 
   const deleteBusiness = useCallback(
@@ -215,6 +218,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       activeBusinessId,
       activeBusiness,
       needsSelection,
+      lastUsedBusinessId: user?.activeBusinessId ?? null,
       needsOnboarding: onboardingStep !== null,
       onboardingStep,
       freeCrm,

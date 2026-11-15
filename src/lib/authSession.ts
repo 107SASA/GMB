@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import Business from '@/models/Business';
 import User from '@/models/User';
+import {
+  resolveLoginWorkspace,
+  CHOOSE_WORKSPACE_COOKIE,
+  CHOOSE_WORKSPACE_COOKIE_OPTIONS,
+} from '@/lib/loginWorkspace';
 import { createSession, signSessionToken, SESSION_MAX_AGE_SECONDS } from '@/lib/session';
 
 /**
@@ -49,18 +53,13 @@ export async function finalizeLogin(
     { $set: { lastLoginAt: new Date(), failedLoginAttempts: 0 }, $unset: { accountLockedUntil: '' } }
   );
 
-  // Sync activeBusinessId cookie so client-side context loads the right business
-  let activeBusinessId = user.activeBusinessId ? String(user.activeBusinessId) : undefined;
-  if (!activeBusinessId) {
-    const business = await Business.findOne({ userId }).select('_id').lean() as any;
-    if (business) {
-      activeBusinessId = business._id.toString();
-      await User.updateOne({ _id: userId }, { $set: { activeBusinessId: business._id } });
-    }
-  }
+  // Pre-select the last-used workspace (falls back to a paid one, then the
+  // oldest) and sync the cookie so client-side context loads that business.
+  const { activeBusinessId, workspaceCount } = await resolveLoginWorkspace(user);
+  const isMobile = req.headers.get('x-client') === 'mobile';
 
+  const cookieStore = await cookies();
   if (activeBusinessId) {
-    const cookieStore = await cookies();
     cookieStore.set('activeBusinessId', activeBusinessId, {
       path: '/',
       httpOnly: true,
@@ -69,9 +68,16 @@ export async function finalizeLogin(
       maxAge: 60 * 60 * 24 * 30,
     });
   }
+  // 2+ workspaces on the web: ask which one to open (proxy.ts → /select-workspace).
+  // The apps show their own picker after login instead.
+  if (!isMobile && workspaceCount > 1) {
+    cookieStore.set(CHOOSE_WORKSPACE_COOKIE, '1', CHOOSE_WORKSPACE_COOKIE_OPTIONS);
+  } else {
+    cookieStore.delete(CHOOSE_WORKSPACE_COOKIE);
+  }
 
   // Mobile clients get the JWT in the body (no cookie support); web never does.
-  if (req.headers.get('x-client') === 'mobile') {
+  if (isMobile) {
     const token = await signSessionToken(userId, user.role, sessionEpoch);
     const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
     return NextResponse.json({ success: true, token, expiresAt }, { status: 200 });

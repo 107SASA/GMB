@@ -29,6 +29,8 @@ export const businessSchema = z.object({
   intakeCompleted: z.boolean().catch(false),
   googleConnected: z.boolean().catch(false),
   createdAt: z.string().nullable().optional(),
+  // Paid / trial / payment grace — the Pro/Free badge on the workspace picker.
+  planActive: z.boolean().catch(false),
 });
 export type Business = z.infer<typeof businessSchema>;
 
@@ -43,6 +45,15 @@ export async function fetchBusinesses(): Promise<Business[]> {
   return businessesResponseSchema
     .parse(data)
     .filter((b): b is Business => b !== null);
+}
+
+/**
+ * POST /api/business/all — saves the chosen workspace on the account as the
+ * "last used" one, so the picker after the next sign-in (on any device)
+ * highlights it via /api/auth/me's activeBusinessId.
+ */
+export async function rememberActiveBusiness(businessId: string): Promise<void> {
+  await api.post('/api/business/all', { businessId });
 }
 
 /**

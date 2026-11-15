@@ -6,6 +6,7 @@ import Business from '@/models/Business';
 import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
 import { isSessionEpochValid } from '@/lib/sessionEpoch';
 import { publicUrl } from '@/lib/publicUrl';
+import { CHOOSE_WORKSPACE_COOKIE, CHOOSE_WORKSPACE_PATH } from '@/lib/loginWorkspace';
 import { VIEW_AS_COOKIE, decodeViewAs } from '@/lib/adminViewAs';
 import AdminActionLog from '@/models/AdminActionLog';
 
@@ -191,6 +192,12 @@ export default async function proxy(request: NextRequest) {
     // A Growth Partner has no customer workspace — send them to their own area.
     if (user.role === 'GROWTH_PARTNER') {
       return NextResponse.redirect(publicUrl('/partner', request));
+    }
+
+    // Signed in with 2+ workspaces and hasn't picked one yet — ask first
+    // (cookie set at login, cleared by the pick; see lib/loginWorkspace.ts).
+    if (request.cookies.has(CHOOSE_WORKSPACE_COOKIE)) {
+      return NextResponse.redirect(publicUrl(CHOOSE_WORKSPACE_PATH, request));
     }
 
     if (!businessId) return NextResponse.next();

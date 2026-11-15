@@ -1,6 +1,6 @@
 import { Tabs, useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { Text, View } from 'react-native';
+import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
 
 import { useAuth } from '@/auth/AuthContext';
 import { useBusiness } from '@/business/BusinessContext';
@@ -11,19 +11,38 @@ import { useTheme } from '@/lib/theme';
 import { PendingCaptureRecovery } from '@/components/pending-capture-recovery';
 import { CardSyncRunner } from '@/components/card-sync-runner';
 
-/** Shown on first login when several businesses exist and none is chosen. */
+/**
+ * Shown after every sign-in when the account has several businesses (the
+ * stored choice is wiped on logout). Scrolls for agencies with many
+ * workspaces; on tablets the list is centred at a readable width.
+ */
 function SelectBusinessScreen() {
+  const { width } = useWindowDimensions();
+  const { businesses } = useBusiness();
+  const wide = width >= 700;
   return (
     <Screen safeBottom>
-      <ScreenTitle>Choose a business</ScreenTitle>
-      <View className="px-5 pb-4">
-        <Text className="font-sans text-sm leading-5 text-zinc-400">
-          Pick the business you want to work with. You can switch anytime from the More tab.
-        </Text>
-      </View>
-      <View className="px-5">
-        <BusinessSwitcher />
-      </View>
+      <ScrollView
+        contentContainerStyle={{
+          paddingBottom: 32,
+          width: '100%',
+          maxWidth: wide ? 560 : undefined,
+          alignSelf: 'center',
+          paddingTop: wide ? 32 : 0,
+        }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <ScreenTitle>Choose a workspace</ScreenTitle>
+        <View className="px-5 pb-4">
+          <Text className="font-sans text-sm leading-5 text-zinc-400">
+            You have {businesses.length} workspaces. Pick the one you want to open — you can switch anytime from
+            the More tab.
+          </Text>
+        </View>
+        <View className="px-5">
+          <BusinessSwitcher mode="picker" />
+        </View>
+      </ScrollView>
     </Screen>
   );
 }

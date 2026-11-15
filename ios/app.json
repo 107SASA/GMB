@@ -19,7 +19,8 @@
         "applinks:www.growwmatics.com"
       ],
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMotionUsageDescription": "Growwmatics AI does not use your phone's motion data."
       }
     },
     "plugins": [
@@ -62,7 +63,7 @@
           "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location when you take a photo or record a video in the app, so it records where it was taken.",
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
-          "motionUsagePermission": false
+          "motionUsagePermission": "Growwmatics AI does not use your phone's motion data."
         }
       ],
       "expo-web-browser",

@@ -3,11 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getApiErrorMessage } from '@/api/client';
 import { geotagLine, imageOriginLine, postPlanLine, postStatusView } from '@/api/endpoints/content';
-import { deletePost, fetchPost, publishPost, schedulePost } from '@/api/endpoints/scheduler';
+import { deletePost, fetchPost, GOOGLE_BUSINESS_URL, isPostNotLinkedError, publishPost, schedulePost } from '@/api/endpoints/scheduler';
 import { useBusiness } from '@/business/BusinessContext';
 import { useDateTimePicker } from '@/components/datetime-picker';
 import { EditPostModal } from '@/components/gbp/edit-post-modal';
@@ -15,7 +15,8 @@ import { Badge, BottomSheet, LoadingScreen, Screen, Skeleton, useConfirmSheet, u
 import { formatDateTime } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
-/** "⋮" bottom-sheet options menu — Edit / Reschedule / Publish now / Delete,
+/** "⋮" bottom-sheet options menu — Edit / Reschedule / Publish now / Delete
+ *  (a live post: Edit and Delete only, both applied on Google too),
  *  matching the app's existing bottom-sheet pattern (business switcher,
  *  EditPostModal) rather than Alert.alert, which gets cramped past 2-3
  *  buttons. Actions are the same mutations SchedulerPanel already has. */
@@ -56,15 +57,10 @@ function OptionsMenu({
   return (
     <BottomSheet visible={visible} onClose={onClose}>
         <View className="mb-2 self-center h-1 w-10 rounded-full bg-surface-overlay" />
-        {!isPublished && row('pencil-outline', 'Edit', onEdit)}
+        {row('pencil-outline', isPublished ? 'Edit (updates on Google)' : 'Edit', onEdit)}
         {!isPublished && row('calendar-outline', 'Reschedule', onReschedule)}
         {!isPublished && row('send-outline', 'Publish now', onPublishNow)}
-        {!isPublished && row('trash-outline', 'Delete', onDelete, true)}
-        {isPublished && (
-          <Text className="py-4 font-sans text-sm text-zinc-500">
-            This post is already live — published posts can&apos;t be edited, rescheduled, or deleted.
-          </Text>
-        )}
+        {row('trash-outline', isPublished ? 'Delete from Google' : 'Delete', onDelete, true)}
     </BottomSheet>
   );
 }
@@ -77,6 +73,8 @@ export default function PostDetailScreen() {
   const queryClient = useQueryClient();
   const picker = useDateTimePicker();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Width / height of the post image once it loads (4:3 until then).
+  const [imageAspect, setImageAspect] = useState(4 / 3);
   const [editing, setEditing] = useState(false);
   const info = useInfoSheet();
   const confirmSheet = useConfirmSheet();
@@ -116,7 +114,18 @@ export default function PostDetailScreen() {
       invalidate();
       router.back();
     },
-    onError: (err) => info.show('Error', getApiErrorMessage(err, 'Could not delete the post.')),
+    onError: (err) => {
+      if (isPostNotLinkedError(err)) {
+        confirmSheet.confirm({
+          title: 'Delete on Google',
+          message: getApiErrorMessage(err, 'This post can only be deleted on Google.'),
+          confirmLabel: 'Open Google',
+          onConfirm: () => void Linking.openURL(GOOGLE_BUSINESS_URL),
+        });
+        return;
+      }
+      info.show('Error', getApiErrorMessage(err, 'Could not delete the post.'));
+    },
   });
 
   if (post.isLoading) return <LoadingScreen />;
@@ -151,7 +160,18 @@ export default function PostDetailScreen() {
         </View>
 
         {p.imageUrl && (
-          <Image source={{ uri: p.imageUrl }} style={{ width: '100%', aspectRatio: 4 / 3 }} contentFit="cover" />
+          // The whole image, at its own shape: "cover" in a fixed 4:3 box cut
+          // off the sides of wide images (text on post graphics was lost).
+          // Very tall images are capped so the post text stays on screen.
+          <Image
+            source={{ uri: p.imageUrl }}
+            style={{ width: '100%', aspectRatio: imageAspect, backgroundColor: t.card }}
+            contentFit="contain"
+            onLoad={(e) => {
+              const { width, height } = e.source;
+              if (width > 0 && height > 0) setImageAspect(Math.min(2, Math.max(0.75, width / height)));
+            }}
+          />
         )}
 
         <View className="px-4 pt-4">
@@ -214,8 +234,10 @@ export default function PostDetailScreen() {
         }
         onDelete={() =>
           confirmSheet.confirm({
-            title: 'Delete post?',
-            message: 'This removes the post permanently.',
+            title: isPublished ? 'Delete from Google?' : 'Delete post?',
+            message: isPublished
+              ? 'This post is live. Deleting removes it from your Google Business Profile and from the app. This can\'t be undone.'
+              : 'This removes the post permanently.',
             confirmLabel: 'Delete',
             destructive: true,
             onConfirm: () => remove.mutate(),

@@ -14,6 +14,7 @@ import {
 } from '@/entitlements/entitlements';
 import { getAccountDeletionUrl, getPrivacyPolicyUrl } from '@/lib/support';
 import { useTheme, withAlpha, type Palette } from '@/lib/theme';
+import { LockedFeatureCard, PremiumBadge } from '@/components/locked';
 
 /**
  * The app's counterpart of the website sidebar: every section that doesn't
@@ -78,6 +79,14 @@ const MENU: { section: string; items: MenuItem[] }[] = [
 // (Sep 2026, owner's call) — reachable only via deep links now, not a nav
 // entry. Nothing else hidden is currently unreachable.
 
+/** "A, B and C" — at most three names, then "and more". */
+function listLabels(labels: string[]): string {
+  const names = labels.slice(0, 3);
+  if (labels.length > 3) return `${names.join(', ')} and more`;
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
 function MenuRow({ item, locked }: { item: MenuItem; locked: boolean }) {
   const router = useRouter();
   const t = useTheme();
@@ -104,8 +113,8 @@ function MenuRow({ item, locked }: { item: MenuItem; locked: boolean }) {
         <Ionicons name={item.icon} size={17} color={tint} />
       </View>
       <Text className="flex-1 font-sans-semibold text-base text-white">{item.label}</Text>
-      {locked && <Ionicons name="lock-closed" size={15} color={t.textFaint} />}
-      <Ionicons name="chevron-forward" size={16} color={t.textFaint} />
+      {locked && <PremiumBadge />}
+      <Ionicons name={locked ? 'lock-closed-outline' : 'chevron-forward'} size={locked ? 17 : 16} color={t.textFaint} />
     </Pressable>
   );
 }
@@ -142,6 +151,9 @@ export default function MoreScreen() {
   const t = useTheme();
   const [loggingOut, setLoggingOut] = useState(false);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const lockedLabels = MENU.flatMap(({ items }) => items)
+    .filter((item) => !item.superAdminOnly && item.surface && !modules[SURFACE_MODULES[item.surface]])
+    .map((item) => item.label);
 
   // Every other quasi-destructive action in the app (disconnect Google,
   // delete workspace, delete post, cancel appointment, reject reply)
@@ -230,6 +242,18 @@ export default function MoreScreen() {
               )}
             </View>
           </>
+        )}
+
+        {/* Something above is locked: one card that explains what more there is. */}
+        {lockedLabels.length > 0 && (
+          <View className="mt-6">
+            <LockedFeatureCard
+              hero
+              icon="ribbon-outline"
+              title="Unlock more growth tools"
+              body={`Get ${listLabels(lockedLabels)} for your business. Chat with us and we'll set it up.`}
+            />
+          </View>
         )}
 
         <SectionLabel>Session</SectionLabel>

@@ -706,6 +706,52 @@ export async function createLocalPost(
 }
 
 /**
+ * Changes the text of a post that is already live on the GBP. `postName` is
+ * Google's resource name saved at publish (Post.gbpPostName,
+ * "accounts/…/locations/…/localPosts/…"). Gated.
+ */
+export async function updateLocalPost(
+  businessId: string,
+  postName: string,
+  input: { summary: string }
+): Promise<{ liveWriteApplied: boolean }> {
+  if (!gbpWritesEnabled()) return { liveWriteApplied: false };
+  await dbConnect();
+
+  const accessToken = await getValidToken(businessId);
+  const res = await fetch(`${MYBUSINESS_V4_BASE}/${postName}?updateMask=summary`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ summary: input.summary }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw describeGoogleApiError('updateLocalPost', res.status, err);
+  }
+  return { liveWriteApplied: true };
+}
+
+/** Removes a live post from the GBP. Already gone on Google (404) counts as removed. Gated. */
+export async function deleteLocalPost(
+  businessId: string,
+  postName: string
+): Promise<{ liveWriteApplied: boolean }> {
+  if (!gbpWritesEnabled()) return { liveWriteApplied: false };
+  await dbConnect();
+
+  const accessToken = await getValidToken(businessId);
+  const res = await fetch(`${MYBUSINESS_V4_BASE}/${postName}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok && res.status !== 404) {
+    const err = await res.text();
+    throw describeGoogleApiError('deleteLocalPost', res.status, err);
+  }
+  return { liveWriteApplied: true };
+}
+
+/**
  * Posts (or updates) the owner's reply to a review on the live GBP. Gated.
  * `reviewName` must be the GBP review resource id — i.e. reviews sourced from the
  * GBP reviews API, NOT a SerpApi id (see the note in the review-reply route).

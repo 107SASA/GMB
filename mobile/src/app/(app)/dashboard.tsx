@@ -18,7 +18,7 @@ import { BrandingFooter } from '@/components/home/branding-footer';
 import { ImpactCard } from '@/components/home/impact-card';
 import { WeeklyOfferCard } from '@/components/home/weekly-offer-card';
 import { HomeStatList } from '@/components/home/stat-list';
-import { BillingBanner, LockedScreen } from '@/components/locked';
+import { BillingBanner, HomeLockedCards, LockedScreen } from '@/components/locked';
 import { GoogleAccessBanner } from '@/components/google-access-banner';
 import { Screen, Skeleton } from '@/components/ui';
 import { useSurfaceLocked } from '@/entitlements/entitlements';
@@ -216,6 +216,7 @@ export default function HomeScreen() {
         {/* Open fixes from the latest report + the once-per-report "fixes ready" sheet. */}
         <TaskChecklistCard />
         <WeeklyReviewsCard />
+        <HomeLockedCards />
         <View className="mx-4 mt-4">
           <AddCustomerCard />
         </View>

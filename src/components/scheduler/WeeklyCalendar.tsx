@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
+import { PostApiError, isPostNotLinked, openGoogleBusiness } from '@/lib/livePostClient';
 import {
   DndContext,
   DragEndEvent,
@@ -317,6 +318,17 @@ function PostDetailModal({
       })
     : null;
 
+  const isLive = post.status === 'published';
+
+  /** Older live post (no Google id): it can only be changed on Google itself. */
+  const showError = (err: unknown, fallback: string) => {
+    if (isPostNotLinked(err)) {
+      toast.error((err as Error).message, { action: { label: 'Open Google', onClick: openGoogleBusiness }, duration: 10000 });
+      return;
+    }
+    toast.error(friendlyClientMessage(err, fallback));
+  };
+
   const saveEdit = async () => {
     setSaving(true);
     try {
@@ -327,12 +339,13 @@ function PostDetailModal({
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error(j.error ?? 'Save failed');
+        throw new PostApiError(j.error ?? 'Save failed', j.code);
       }
       onEditSave(post._id, { title: editTitle, content: editContent });
       setMode('view');
+      if (isLive) toast.success('Updated on Google');
     } catch (err: any) {
-      toast.error(friendlyClientMessage(err, 'Failed to save'));
+      showError(err, 'Failed to save');
     } finally {
       setSaving(false);
     }
@@ -344,7 +357,7 @@ function PostDetailModal({
       await onDelete(post._id);
       onClose();
     } catch (err: any) {
-      toast.error(friendlyClientMessage(err, 'Failed to delete'));
+      showError(err, 'Failed to delete');
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -476,6 +489,11 @@ function PostDetailModal({
 
           {mode === 'edit' && (
             <div className="space-y-4">
+              {isLive && (
+                <p className="text-xs text-on-surface-variant bg-surface-container rounded-xl px-3 py-2">
+                  This post is live. Saving updates it on your Google Business Profile straight away.
+                </p>
+              )}
               <div>
                 <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
                   Title
@@ -538,13 +556,15 @@ function PostDetailModal({
         </div>
 
         {/* Footer actions */}
-        <div className="px-6 py-4 border-t border-outline-variant flex gap-2 justify-end">
+        <div className="px-4 sm:px-6 py-4 border-t border-outline-variant flex flex-wrap gap-2 justify-end">
           {mode === 'view' && (
             <>
-              {post.status !== 'published' && (
+              {(
                 confirmDelete ? (
                   <>
-                    <span className="text-sm text-on-error-container font-medium self-center mr-auto">Delete this post?</span>
+                    <span className="basis-full sm:basis-auto text-sm text-on-error-container font-medium self-center sm:mr-auto">
+                      {isLive ? 'Delete this live post from Google too? This can\'t be undone.' : 'Delete this post?'}
+                    </span>
                     <button
                       onClick={() => setConfirmDelete(false)}
                       className="px-4 py-2.5 text-sm font-semibold text-on-surface bg-surface-container hover:bg-surface-container-high rounded-xl transition-colors"
@@ -557,7 +577,7 @@ function PostDetailModal({
                       className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-white bg-error hover:bg-error rounded-xl transition-colors disabled:opacity-50"
                     >
                       <Trash2 className="w-4 h-4" />
-                      {deleting ? 'Deleting…' : 'Yes, Delete'}
+                      {deleting ? 'Deleting…' : isLive ? 'Yes, delete from Google' : 'Yes, Delete'}
                     </button>
                   </>
                 ) : (
@@ -566,7 +586,7 @@ function PostDetailModal({
                     className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-on-error-container bg-error-container hover:bg-error-container rounded-xl transition-colors mr-auto"
                   >
                     <Trash2 className="w-4 h-4" />
-                    Delete
+                    {isLive ? 'Delete from Google' : 'Delete'}
                   </button>
                 )
               )}
@@ -575,7 +595,7 @@ function PostDetailModal({
                 className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-on-surface bg-surface-container hover:bg-surface-container-high rounded-xl transition-colors"
               >
                 <Pencil className="w-4 h-4" />
-                Edit
+                {isLive ? 'Edit on Google' : 'Edit'}
               </button>
               {post.status !== 'published' && (
                 <button
@@ -610,7 +630,7 @@ function PostDetailModal({
                 className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary-container rounded-xl transition-colors disabled:opacity-50"
               >
                 <Check className="w-4 h-4" />
-                {saving ? 'Saving…' : 'Save Changes'}
+                {saving ? 'Saving…' : isLive ? 'Save & update on Google' : 'Save Changes'}
               </button>
             </>
           )}
@@ -883,7 +903,7 @@ export default function WeeklyCalendar({ posts, onPublish, onReschedule, onDataC
     const res = await fetch(`/api/scheduler/posts/${postId}`, { method: 'DELETE' });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      throw new Error(j.error ?? 'Delete failed');
+      throw new PostApiError(j.error ?? 'Delete failed', j.code);
     }
     setLocalPosts(prev => prev.filter(p => p._id !== postId));
     onDataChanged?.();

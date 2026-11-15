@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBusiness } from '@/context/BusinessContext';
 import { friendlyClientMessage } from '@/lib/errors/friendlyClientMessage';
+import { PostApiError, isPostNotLinked, openGoogleBusiness } from '@/lib/livePostClient';
 
 interface HistoryPost {
   _id: string;
@@ -91,6 +92,8 @@ export default function ContentHistoryTab() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
+  // Older live post with no Google id: it can only be edited on Google itself.
+  const [editNotLinked, setEditNotLinked] = useState(false);
 
   const [schedulingId, setSchedulingId] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState('');
@@ -100,7 +103,7 @@ export default function ContentHistoryTab() {
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+  const [rowError, setRowError] = useState<{ id: string; message: string; openGoogle?: boolean } | null>(null);
   const requestRef = useRef(0);
 
   const fetchPosts = async (pg: number, append: boolean) => {
@@ -162,6 +165,7 @@ export default function ContentHistoryTab() {
   const saveEdit = async (id: string) => {
     setSavingEdit(true);
     setEditError('');
+    setEditNotLinked(false);
     try {
       const res = await fetch(`/api/scheduler/posts/${id}`, {
         method: 'PATCH',
@@ -174,7 +178,7 @@ export default function ContentHistoryTab() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save changes');
+      if (!res.ok) throw new PostApiError(data.error || 'Failed to save changes', data.code);
 
       setPosts((prev) =>
         prev.map((p) =>
@@ -185,7 +189,8 @@ export default function ContentHistoryTab() {
       );
       setEditingId(null);
     } catch (err: any) {
-      setEditError(friendlyClientMessage(err));
+      setEditNotLinked(isPostNotLinked(err));
+      setEditError(isPostNotLinked(err) ? err.message : friendlyClientMessage(err));
     } finally {
       setSavingEdit(false);
     }
@@ -235,13 +240,13 @@ export default function ContentHistoryTab() {
     try {
       const res = await fetch(`/api/scheduler/posts/${id}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to delete post');
+      if (!res.ok) throw new PostApiError(data.error || 'Failed to delete post', data.code);
 
       setPosts((prev) => prev.filter((p) => p._id !== id));
       setTotal((t) => Math.max(0, t - 1));
       setConfirmDeleteId(null);
     } catch (err: any) {
-      setRowError({ id, message: friendlyClientMessage(err) });
+      setRowError({ id, message: isPostNotLinked(err) ? err.message : friendlyClientMessage(err), openGoogle: isPostNotLinked(err) });
     } finally {
       setDeletingId(null);
     }
@@ -364,14 +369,12 @@ export default function ContentHistoryTab() {
                 >
                   {expandedId === post._id ? 'Hide' : 'View'}
                 </button>
-                {!isPublished && (
-                  <button
-                    onClick={() => startEdit(post)}
-                    className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap"
-                  >
-                    Edit
-                  </button>
-                )}
+                <button
+                  onClick={() => startEdit(post)}
+                  className="text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors whitespace-nowrap"
+                >
+                  Edit
+                </button>
                 {!isPublished && (
                   <button
                     onClick={() => startSchedule(post)}
@@ -380,14 +383,12 @@ export default function ContentHistoryTab() {
                     Schedule
                   </button>
                 )}
-                {!isPublished && (
-                  <button
-                    onClick={() => { closeAllRowActions(); setConfirmDeleteId(post._id); }}
-                    className="text-sm font-medium text-error hover:text-on-error-container transition-colors whitespace-nowrap ml-auto"
-                  >
-                    Delete
-                  </button>
-                )}
+                <button
+                  onClick={() => { closeAllRowActions(); setConfirmDeleteId(post._id); }}
+                  className="text-sm font-medium text-error hover:text-on-error-container transition-colors whitespace-nowrap ml-auto"
+                >
+                  Delete
+                </button>
               </div>
 
               {expandedId === post._id && !isEditingRow && (
@@ -429,7 +430,7 @@ export default function ContentHistoryTab() {
                       className="w-full border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface h-28 resize-none focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1">CTA</label>
                       <input
@@ -448,10 +449,18 @@ export default function ContentHistoryTab() {
                       />
                     </div>
                   </div>
-                  {editError && <p className="text-xs text-error">{editError}</p>}
-                  <div className="flex gap-2 pt-1">
+                  {isPublished && (
+                    <p className="text-xs text-on-surface-variant">This post is live. Saving updates it on your Google Business Profile straight away.</p>
+                  )}
+                  {editError && (
+                    <p className="text-xs text-error">
+                      {editError}
+                      {editNotLinked && <button type="button" onClick={openGoogleBusiness} className="ml-1 font-semibold text-primary underline underline-offset-2 whitespace-nowrap">Open Google</button>}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2 pt-1">
                     <button
-                      onClick={() => { setEditingId(null); setEditError(''); }}
+                      onClick={() => { setEditingId(null); setEditError(''); setEditNotLinked(false); }}
                       className="px-4 py-1.5 text-sm border border-outline-variant rounded-lg hover:bg-surface-container transition-colors"
                     >
                       Cancel
@@ -461,7 +470,7 @@ export default function ContentHistoryTab() {
                       disabled={savingEdit}
                       className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary transition-colors disabled:opacity-60"
                     >
-                      {savingEdit ? 'Saving…' : 'Save Changes'}
+                      {savingEdit ? 'Saving…' : isPublished ? 'Save & update on Google' : 'Save Changes'}
                     </button>
                   </div>
                 </div>
@@ -513,11 +522,18 @@ export default function ContentHistoryTab() {
               {/* Delete confirmation */}
               {confirmDeleteId === post._id && (
                 <div className="px-5 pb-5 border-t border-outline-variant bg-error-container/50 pt-3 space-y-2">
-                  <p className="text-sm text-on-surface">Delete this generated content? This can't be undone.</p>
+                  <p className="text-sm text-on-surface">
+                    {isPublished
+                      ? "This post is live. Deleting removes it from your Google Business Profile too. This can't be undone."
+                      : "Delete this generated content? This can't be undone."}
+                  </p>
                   {rowError?.id === post._id && (
-                    <p className="text-xs text-error">{rowError.message}</p>
+                    <p className="text-xs text-error">
+                      {rowError.message}
+                      {rowError.openGoogle && <button type="button" onClick={openGoogleBusiness} className="ml-1 font-semibold text-primary underline underline-offset-2 whitespace-nowrap">Open Google</button>}
+                    </p>
                   )}
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => setConfirmDeleteId(null)}
                       className="px-4 py-1.5 text-sm border border-outline-variant rounded-lg hover:bg-surface-container transition-colors bg-surface-container-lowest"
@@ -529,7 +545,7 @@ export default function ContentHistoryTab() {
                       disabled={deletingId === post._id}
                       className="px-4 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-60"
                     >
-                      {deletingId === post._id ? 'Deleting…' : 'Delete Permanently'}
+                      {deletingId === post._id ? 'Deleting…' : isPublished ? 'Delete from Google' : 'Delete Permanently'}
                     </button>
                   </div>
                 </div>

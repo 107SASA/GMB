@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { z } from 'zod';
 import { api, businessHeaders } from '../client';
 import { contentPostSchema, parsePostList, type ContentPost } from './content';
@@ -63,7 +64,18 @@ export async function schedulePost(postId: string, scheduledDate: Date, business
   );
 }
 
-/** PATCH /api/scheduler/posts/[id] — edits a draft/scheduled post. */
+/** Google's page for the owner's profile — where a post we can't change is edited by hand. */
+export const GOOGLE_BUSINESS_URL = 'https://business.google.com/';
+
+/**
+ * A live post published before 30 Sep 2026 has no Google post id saved, so
+ * the server can't edit or delete it on Google (code POST_NOT_LINKED).
+ */
+export function isPostNotLinkedError(error: unknown): boolean {
+  return axios.isAxiosError(error) && (error.response?.data as { code?: string } | undefined)?.code === 'POST_NOT_LINKED';
+}
+
+/** PATCH /api/scheduler/posts/[id] — edits a post. A live post's new text goes to Google too. */
 export async function updatePost(
   postId: string,
   patch: { title?: string; content?: string; cta?: string; hashtags?: string[] },
@@ -72,7 +84,7 @@ export async function updatePost(
   await api.patch(`/api/scheduler/posts/${postId}`, patch, businessId ? businessHeaders(businessId) : undefined);
 }
 
-/** DELETE /api/scheduler/posts/[id] — published posts can't be deleted. */
+/** DELETE /api/scheduler/posts/[id] — a live post is removed from Google too. */
 export async function deletePost(postId: string, businessId?: string): Promise<void> {
   await api.delete(`/api/scheduler/posts/${postId}`, businessId ? businessHeaders(businessId) : undefined);
 }

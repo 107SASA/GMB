@@ -6,7 +6,7 @@ import WebsiteIntelligence from '@/models/WebsiteIntelligence';
 import { normalizeOrigin } from '@/services/intel/websiteExtract';
 import { listCategoryAttributes, readLocationAttributes, readLocationRaw, searchGbpCategories } from '@/lib/gbpClient';
 import { normalizeLocation } from '@/services/gbp/intelligence/normalize';
-import { PRODUCTS_SUPPORT, comparePin, draftDescription, haversineMeters, holidayReminders, validateDescription, type PinStatus } from '@/services/gbp/changes/policy';
+import { PRODUCTS_SUPPORT, chooseDescriptionSuggestion, comparePin, draftDescription, haversineMeters, holidayReminders, validateDescription, type PinStatus } from '@/services/gbp/changes/policy';
 import { calendarDate, holidayCalendarFor } from '@/services/gbp/changes/holidayCalendar';
 import { proposeServices, recommendCategories, suggestUnsetAttributes } from '@/services/gbp/changes/recommend';
 
@@ -114,13 +114,24 @@ export async function GET(req: Request) {
     const i = focusServices.findIndex((f) => f.toLowerCase() === svc.toLowerCase());
     return i === -1 ? focusServices.length : i;
   };
-  const description = draftDescription({
+  const template = draftDescription({
     name: loc?.title || ctx.business.name || '',
     category: loc?.primaryCategory?.displayName || ctx.business.category || '',
     city: loc?.address?.locality || ctx.business.city || '',
     services: [...services].sort((a, b) => focusRank(a) - focusRank(b)),
   });
-  const descriptionValidation = validateDescription(description, { tokens });
+  const competitorNames = [...new Set(competitors.map((c) => c.name).filter(Boolean))].slice(0, 20);
+  // The SEO plan's AI draft first; the fixed template only for an empty or
+  // very short description; nothing over a description that is already good.
+  const suggestion = chooseDescriptionSuggestion({
+    current: loc ? loc.description : null,
+    planDescription: await activePlanDescription(String(ctx.businessId)),
+    template,
+    tokens,
+    competitorNames,
+  });
+  const description = suggestion.text;
+  const descriptionValidation = description ? validateDescription(description, { tokens, competitorNames }) : null;
   const regionCode = loc?.address?.regionCode || ctx.business.country || null;
   const holidayList = holidayCalendarFor(regionCode);
   // Business has no top-level timezone field — fall back to the booking
@@ -177,9 +188,13 @@ export async function GET(req: Request) {
       // What Google shows now — the starting point when the owner writes their own.
       current: loc?.description || null,
       text: description,
+      // 'seo_plan' = the AI draft from the SEO plan, 'template' = the fixed
+      // fill-in-the-blanks text. null when nothing is suggested.
+      origin: suggestion.origin,
+      reason: suggestion.reason,
       validation: descriptionValidation,
       tokens,
-      competitorNames: [...new Set(competitors.map((c) => c.name).filter(Boolean))].slice(0, 20),
+      competitorNames,
     },
     // Regular hours as last synced ("HH:MM"), to pre-fill the hours form.
     // null = Google has no hours set.
@@ -230,5 +245,15 @@ async function focusServiceNames(businessId: string): Promise<string[]> {
     return Array.from(new Set(names));
   } catch {
     return [];
+  }
+}
+
+/** The active SEO plan's description draft, or null. */
+async function activePlanDescription(businessId: string): Promise<string | null> {
+  try {
+    const { getActiveSeoPlan } = await import('@/services/seoPlan/seoPlanService');
+    return (await getActiveSeoPlan(businessId))?.suggestedDescription?.trim() || null;
+  } catch {
+    return null;
   }
 }

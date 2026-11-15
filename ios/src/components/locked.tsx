@@ -7,6 +7,7 @@ import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { fetchFreeReport } from '@/api/endpoints/freeReport';
 import { useBusiness } from '@/business/BusinessContext';
 import { MODULE_NAMES, SURFACE_MODULES, useEntitlements, useSurfaceLocked, type SurfaceKey } from '@/entitlements/entitlements';
+import { AppHeader } from '@/components/app-header';
 import { FreeReportCard } from '@/components/free-report-card';
 import { LockedPreview, previewCopy, type LockedPreviewKind } from '@/components/locked-previews';
 import { Screen, useInfoSheet } from '@/components/ui';
@@ -143,7 +144,10 @@ function WhatsAppButton({ onPress }: { onPress: () => void }) {
         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 50, paddingHorizontal: 20 }}
       >
         <Ionicons name="logo-whatsapp" size={18} color="#ffffff" />
-        <Text className="font-sans-bold text-base" style={{ color: '#ffffff' }}>Chat with us on WhatsApp</Text>
+        {/* One line on every phone: shrinks a little on the narrowest screens instead of wrapping. */}
+        <Text className="font-sans-bold text-base" style={{ color: '#ffffff', flexShrink: 1 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+          Chat with us on WhatsApp
+        </Text>
       </LinearGradient>
     </Pressable>
   );
@@ -222,6 +226,14 @@ export function HomeLockedCards() {
   );
 }
 
+/** Header title per locked tab — the same title the unlocked tab shows. */
+const PREVIEW_HEADER: Partial<Record<LockedPreviewKind, string>> = {
+  performance: 'Performance',
+  posts: 'Posts',
+  reviews: 'Reviews',
+  profile: 'Business Profile',
+};
+
 /**
  * Free CRM tier (unpaid workspace): every tab except the CRM is locked.
  * The tab's sample screen (components/locked-previews.tsx) is drawn behind,
@@ -239,14 +251,17 @@ function FreeCrmLockedScreen({ moduleName, preview }: { moduleName: string; prev
   const report = useQuery({ queryKey: ['free-report', activeBusinessId], queryFn: fetchFreeReport, enabled: !!activeBusinessId && !!preview });
   const businessName = activeBusiness?.name || 'your business';
   const copy = preview ? previewCopy(preview, businessName) : null;
+  // The tab's own header stays (logo, business, Help, bell, menu) — only the content below is locked.
+  const headerTitle = preview ? PREVIEW_HEADER[preview] ?? moduleName : moduleName;
 
   return (
     <Screen>
-      <View style={{ flex: 1 }}>
+      <AppHeader title={preview === 'home' ? activeBusiness?.name ?? 'Home' : headerTitle} />
+      <View style={{ flex: 1, overflow: 'hidden' }}>
         {/* What this tab looks like when unlocked — a sample, blurred, not touchable, labelled "Sample preview". */}
         {preview && (
           <>
-            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 52, opacity: 0.55 }} testID="locked-preview">
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden', paddingHorizontal: 16, paddingTop: 16, opacity: 0.45 }} testID="locked-preview">
               <LockedPreview
                 kind={preview}
                 ctx={{ businessName, category: activeBusiness?.category ?? null, report: report.data?.report ?? null }}
@@ -254,34 +269,39 @@ function FreeCrmLockedScreen({ moduleName, preview }: { moduleName: string; prev
             </View>
             <LinearGradient
               pointerEvents="none"
-              colors={[withAlpha(t.bg, 0.05), withAlpha(t.bg, 0.55), withAlpha(t.bg, 0.92)]}
-              locations={[0, 0.4, 0.85]}
+              colors={[withAlpha(t.bg, 0.1), withAlpha(t.bg, 0.92), withAlpha(t.bg, 0.92), withAlpha(t.bg, 0.35)]}
+              locations={[0, 0.3, 0.75, 1]}
               style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
             />
           </>
         )}
 
-        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: preview && preview !== 'home' ? 'flex-end' : 'center', gap: 16, paddingHorizontal: 16, paddingVertical: 20 }}>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', gap: 16, paddingHorizontal: 20, paddingTop: 48, paddingBottom: 24 }}>
           {/* The free Google profile report (score, top fixes, full report) — Home only when previews are on. */}
-          {(!preview || preview === 'home') && <FreeReportCard />}
+          {!preview && <FreeReportCard />}
           <View
-            style={{
-              alignItems: 'center',
-              gap: 10,
-              borderRadius: 24,
-              borderWidth: 1,
-              borderColor: t.border,
-              backgroundColor: withAlpha(t.card, 0.97),
-              paddingHorizontal: 20,
-              paddingTop: 22,
-              paddingBottom: 18,
-              shadowColor: '#000',
-              shadowOpacity: 0.2,
-              shadowRadius: 20,
-              shadowOffset: { width: 0, height: 8 },
-              elevation: 6,
-            }}
+            style={
+              preview
+                ? { alignItems: 'center', gap: 10, paddingHorizontal: 8 }
+                : {
+                    alignItems: 'center',
+                    gap: 10,
+                    borderRadius: 24,
+                    borderWidth: 1,
+                    borderColor: t.border,
+                    backgroundColor: withAlpha(t.card, 0.97),
+                    paddingHorizontal: 20,
+                    paddingTop: 22,
+                    paddingBottom: 18,
+                  }
+            }
           >
+            {preview && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: t.border, backgroundColor: t.card, paddingHorizontal: 12, paddingVertical: 5, marginBottom: 6 }}>
+                <Ionicons name="eye-outline" size={13} color={t.textDim} />
+                <Text className="font-sans-semibold text-xs" style={{ color: t.textDim }}>Sample preview</Text>
+              </View>
+            )}
             <LockCircle />
             <Text className="mt-1 text-center font-display-bold text-xl" style={{ color: t.text }}>{copy?.title ?? moduleName}</Text>
             {copy && <Text className="text-center font-sans text-sm leading-5" style={{ color: t.textDim }}>{copy.body}</Text>}
@@ -291,19 +311,29 @@ function FreeCrmLockedScreen({ moduleName, preview }: { moduleName: string; prev
             <View style={{ alignSelf: 'stretch', marginTop: 6 }}>
               <WhatsAppButton onPress={contactUs} />
             </View>
-            <Pressable onPress={() => router.push('/leads')} hitSlop={8} accessibilityRole="button" style={{ paddingVertical: 6 }}>
-              <Text className="font-sans-bold text-sm" style={{ color: t.brandBright }}>Open CRM</Text>
+            <Pressable
+              onPress={() => router.push('/leads')}
+              accessibilityRole="button"
+              accessibilityLabel="Open CRM"
+              // No `className` on Pressable — see ui.tsx PrimaryButton.
+              style={{
+                alignSelf: 'stretch',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                minHeight: 50,
+                borderRadius: 999,
+                borderWidth: 1.5,
+                borderColor: t.brandBright,
+                backgroundColor: t.card,
+              }}
+            >
+              <Ionicons name="people-outline" size={18} color={t.brandBright} />
+              <Text className="font-sans-bold text-base" style={{ color: t.brandBright }}>Open CRM</Text>
             </Pressable>
           </View>
         </ScrollView>
-        {preview && (
-          <View pointerEvents="none" style={{ position: 'absolute', top: 12, left: 0, right: 0, alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, borderWidth: 1, borderColor: t.border, backgroundColor: withAlpha(t.card, 0.92), paddingHorizontal: 12, paddingVertical: 5 }}>
-              <Ionicons name="eye-outline" size={13} color={t.textDim} />
-              <Text className="font-sans-semibold text-xs" style={{ color: t.textDim }}>Sample preview</Text>
-            </View>
-          </View>
-        )}
       </View>
       {node}
     </Screen>

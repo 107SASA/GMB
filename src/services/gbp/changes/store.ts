@@ -17,7 +17,7 @@ import {
   updateLocationProfile,
   type GbpProfilePatch,
 } from '@/lib/gbpClient';
-import { canRollbackAttribute, canonicalFingerprint, classifyReadBack, idempotencyResult, locationGuard, openProposalKey, rollbackRecheck, staleFieldDecision } from './policy.ts';
+import { OTHER_LISTING_ERROR, canRollbackAttribute, canonicalFingerprint, classifyReadBack, idempotencyResult, locationGuard, openProposalKey, proposalsForOtherListing, rollbackRecheck, staleFieldDecision } from './policy.ts';
 import { applyAndVerify, approve, executionClaim, failClosed, markReverted, markUnresolved, markVerified, rollbackDecision, WriteNotAccepted, type ChangeRecord } from './machine.ts';
 
 export class ProposalConflictError extends Error {
@@ -284,6 +284,25 @@ export async function approveChange(id: string, actor: { userId: string; busines
 }
 
 /**
+ * After the workspace connects a different Google listing, close every open
+ * proposal (PROPOSED / APPROVED — nothing sent yet) made for the old one.
+ * Their Apply would always be refused by the location guard. BLOCKED frees
+ * the open-proposal key. Returns how many were closed.
+ */
+export async function closeProposalsForOtherListing(businessId: string, connectedLocationId: string | null): Promise<number> {
+  await dbConnect();
+  const open = await GbpProfileChange.find({ businessId, status: { $in: ['PROPOSED', 'APPROVED'] } })
+    .select('_id locationId').lean<Array<{ _id: unknown; locationId?: string }>>();
+  const ids = proposalsForOtherListing(open, connectedLocationId);
+  if (!ids.length) return 0;
+  const res = await GbpProfileChange.updateMany(
+    { _id: { $in: ids }, businessId, status: { $in: ['PROPOSED', 'APPROVED'] } },
+    { $set: { status: 'BLOCKED', error: OTHER_LISTING_ERROR } },
+  );
+  return res.modifiedCount ?? 0;
+}
+
+/**
  * The owner drops a proposal they don't want. Only PROPOSED or APPROVED
  * (nothing sent to Google yet); it becomes BLOCKED, which frees its
  * open-proposal key so the same change can be proposed again later.
@@ -459,8 +478,21 @@ export async function executeChange(id: string, actor: { userId: string; busines
     await claimed.save();
     return { ok: false as const, error, change: claimed };
   };
-  const guard = locationGuard(claimed.locationId, await connectedLocationId(actor.businessId));
-  if (!guard.ok) return handBack(guard.error);
+  const connected = await connectedLocationId(actor.businessId);
+  const guard = locationGuard(claimed.locationId, connected);
+  if (!guard.ok) {
+    // Another listing is connected now: this proposal can never apply, so
+    // close it instead of leaving an Apply button that always fails. With no
+    // listing connected, hand it back — reconnecting the same one fixes it.
+    if (proposalsForOtherListing([claimed], connected).length) {
+      const closed = failClosed(toRecord(claimed), 'BLOCKED', OTHER_LISTING_ERROR, now);
+      // Nothing was executed: keep the claim's timestamp out of the record.
+      closed.executedAt = pending.executedAt ? pending.executedAt.toISOString() : null;
+      await saveRecord(claimed, closed);
+      return { ok: false as const, error: OTHER_LISTING_ERROR, change: claimed };
+    }
+    return handBack(guard.error);
+  }
   // Writes were switched off after the check above.
   if (!fr5ProfileMutationAllowed()) return handBack(LIVE_WRITES_DISABLED, false);
   if (claimed.kind === 'attribute') {

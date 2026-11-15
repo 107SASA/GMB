@@ -59,6 +59,74 @@ export function draftDescription(input: { name: string; category: string; city: 
   return text.slice(0, DESCRIPTION_MAX);
 }
 
+/**
+ * A description is worth replacing only when it is missing, short, or its
+ * opening never names the category, city or a service. A long description
+ * that already leads with those is left alone: a suggestion would replace
+ * the owner's own detail with something more generic.
+ */
+export function isWeakDescription(current: string | null | undefined, tokens: string[]): boolean {
+  const value = String(current || '').trim();
+  if (value.length < DESCRIPTION_LEAD) return true;
+  const lead = value.slice(0, DESCRIPTION_LEAD).toLowerCase();
+  const usable = tokens.map((t) => String(t || '').trim().toLowerCase()).filter((t) => t.length >= 3);
+  return usable.length > 0 && !usable.some((t) => lead.includes(t));
+}
+
+export type DescriptionOrigin = 'seo_plan' | 'template';
+
+export interface DescriptionSuggestion {
+  text: string | null;
+  origin: DescriptionOrigin | null;
+  /** Why there is no suggestion (or why the template was used). */
+  reason: 'current_is_good' | 'plan' | 'template' | 'nothing_better';
+}
+
+const sameText = (a: string, b: string) => a.replace(/\s+/g, ' ').trim().toLowerCase() === b.replace(/\s+/g, ' ').trim().toLowerCase();
+
+/**
+ * Which description, if any, to offer. The SEO plan's AI draft comes first;
+ * the fixed template only fills an empty or very short description. Nothing
+ * is offered over a description that is already good.
+ */
+export function chooseDescriptionSuggestion(input: {
+  current: string | null | undefined;
+  planDescription: string | null | undefined;
+  template: string;
+  tokens: string[];
+  competitorNames?: string[];
+}): DescriptionSuggestion {
+  const current = String(input.current || '').trim();
+  if (!isWeakDescription(current, input.tokens)) return { text: null, origin: null, reason: 'current_is_good' };
+  const facts = { tokens: input.tokens, competitorNames: input.competitorNames };
+  const plan = String(input.planDescription || '').trim();
+  // "[confirm: …]" marks a fact the AI could not verify — never offered as-is.
+  if (plan && !/\[[^\]]*\]/.test(plan) && !sameText(plan, current) && validateDescription(plan, facts).valid) {
+    return { text: plan, origin: 'seo_plan', reason: 'plan' };
+  }
+  const template = String(input.template || '').trim();
+  if (template && template.length > current.length && !sameText(template, current) && validateDescription(template, facts).valid) {
+    return { text: template, origin: 'template', reason: 'template' };
+  }
+  return { text: null, origin: null, reason: 'nothing_better' };
+}
+
+/**
+ * Open proposals (nothing sent to Google yet) made for a listing other than
+ * the one connected now. They can never be applied: the location guard
+ * refuses them. Returns their ids.
+ */
+export function proposalsForOtherListing(
+  rows: Array<{ _id: unknown; locationId?: string | null }>,
+  connectedLocationId: string | null | undefined,
+): string[] {
+  const connected = locationKey(connectedLocationId);
+  if (!connected) return [];
+  return rows.filter((r) => locationKey(r.locationId) !== connected).map((r) => String(r._id));
+}
+
+export const OTHER_LISTING_ERROR = 'Made for a Google listing that is no longer connected. Nothing was sent to Google.';
+
 export function validateDescription(
   text: string,
   facts: { tokens: string[]; allowedNumbers?: string[]; competitorNames?: string[] } = { tokens: [] },

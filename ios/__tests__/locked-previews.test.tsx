@@ -17,6 +17,11 @@ const mockBusiness = {
 };
 
 jest.mock('@/business/BusinessContext', () => ({ useBusiness: () => mockBusiness }));
+// The real tab header stays above the lock — stubbed to its title here.
+jest.mock('@/components/app-header', () => {
+  const { Text } = require('react-native');
+  return { AppHeader: ({ title }: { title: string }) => <Text testID="app-header">{title}</Text> };
+});
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock('@/lib/support', () => ({ ACTIVATE_MESSAGE: 'help', getSupportWhatsAppLink: () => 'https://wa.me/1' }));
 jest.mock('@/components/onboarding/StepBusinessSearch', () => ({ StepBusinessSearch: () => null }));
@@ -69,28 +74,34 @@ describe('Free CRM lock screens with a sample preview', () => {
     expect(screen.getByText('Sample preview')).toBeTruthy();
     expect(screen.getByText(title)).toBeTruthy();
     expect(screen.getByTestId('locked-preview')).toBeTruthy();
+    expect(screen.getByTestId('app-header')).toBeTruthy();
     expect(screen.getByText('Chat with us on WhatsApp')).toBeTruthy();
     expect(screen.getByText(/Your plan includes the CRM and visiting-card scan/)).toBeTruthy();
     await waitFor(() => expect(allText()).not.toMatch(PURCHASE));
   });
 
-  it('every preview is a Growwmatics sample (logo in the corner); posts show sample posts', () => {
+  it('previews look like the real tabs; posts show sample posts', () => {
     const { unmount } = wrap(<LockedScreen surface="scheduler" preview="posts" />);
-    expect(screen.getByTestId('preview-logo')).toBeTruthy();
+    expect(screen.getByText('Upcoming Posts')).toBeTruthy();
     expect(screen.getByText('AI-Powered Automation Boosts a Growing Business')).toBeTruthy();
     expect(screen.getByText(/Shree Shop every week/)).toBeTruthy();
     unmount();
     wrap(<LockedScreen surface="dashboard" preview="performance" />);
-    expect(screen.getByTestId('preview-logo')).toBeTruthy();
     expect(screen.getByText('GBP Performance')).toBeTruthy();
   });
 
-  it('the free report card is on Home only', async () => {
-    const { unmount } = wrap(<LockedScreen surface="dashboard" preview="home" />);
-    await waitFor(() => expect(screen.getByText('Your free Google profile report')).toBeTruthy());
+  it('keeps each tab\'s own header title above the lock', () => {
+    const { unmount } = wrap(<LockedScreen surface="dashboard" preview="performance" />);
+    expect(screen.getByTestId('app-header').props.children).toBe('Performance');
     unmount();
-    wrap(<LockedScreen surface="reviews" preview="reviews" />);
-    await waitFor(() => expect(screen.queryByText('Your free Google profile report')).toBeNull());
+    wrap(<LockedScreen surface="dashboard" preview="home" />);
+    expect(screen.getByTestId('app-header').props.children).toBe('Shree Shop');
+  });
+
+  it('locked tabs show only the sample and the lock (no report card under it)', async () => {
+    wrap(<LockedScreen surface="dashboard" preview="home" />);
+    await waitFor(() => expect(screen.getByText('Unlock your Google dashboard')).toBeTruthy());
+    expect(screen.queryByText('Your free Google profile report')).toBeNull();
   });
 
   it('accounts that are not on the Free CRM tier keep the plain lock (no preview)', () => {

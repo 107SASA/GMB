@@ -2,7 +2,7 @@ import dbConnect from '@/lib/mongodb';
 import Business from '@/models/Business';
 import User from '@/models/User';
 import OwnerNotifyDigest from '@/models/OwnerNotifyDigest';
-import { sendOutboundMessage } from '@/services/whatsapp/send';
+import { sendOutboundMessage, type PreferredTemplate } from '@/services/whatsapp/send';
 import {
   isBillingOwnerEvent,
   ownerBusinessWhatsAppAllowed,
@@ -109,6 +109,8 @@ export interface NotifyOwnerInput {
   count?: number;
   /** weekly events: the ISO week being claimed (defaults to the current week). */
   weekKey?: string;
+  /** A dedicated approved template for when the 24h window is closed (else the generic one). */
+  template?: PreferredTemplate;
 }
 
 export type NotifyOwnerResult =
@@ -284,7 +286,7 @@ export async function notifyOwner(businessId: string, input: NotifyOwnerInput): 
       release = () => releaseWeeklySlot(businessId, weekKey, claim.previous);
     }
 
-    const res = await sendOutboundMessage(owner.phone, input.text, undefined, businessId, undefined, owner.businessName);
+    const res = await sendOutboundMessage(owner.phone, input.text, undefined, businessId, undefined, owner.businessName, input.template);
     if (res.success) {
       // The monthly summary takes priority: it was not checked against the
       // performance limit, but it counts toward it from now on.

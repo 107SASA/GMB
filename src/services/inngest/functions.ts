@@ -23,6 +23,7 @@ import {
   choosePrimaryReviewSend,
   chooseReviewTemplateRetry,
   generateReviewRequestToken,
+  greetingName,
   identicalReviewTemplateCapReached,
   REVIEW_REMINDER_1_DEFAULT,
   REVIEW_REMINDER_2_DEFAULT,
@@ -1294,7 +1295,7 @@ export const processReviewCampaign = inngest.createFunction(
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
     const trackLink = `${baseUrl}/api/campaigns/track/${reviewRequest._id}`;
     const templateVars: TemplateVars = {
-      name: customer.name || 'there',
+      name: greetingName(customer.name),
       service: customer.service || 'visit',
       business: businessName,
       link: trackLink,

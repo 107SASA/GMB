@@ -85,6 +85,19 @@ export const TEMPLATE_VARIABLE_MAX = 1024;
  * sentence after it.
  */
 export function notificationBodyForTemplate(body: string): { name: string; text: string } {
+  const { name, lines } = templateBodyLines(body);
+  return { name, text: flattenTemplateLines(lines) };
+}
+
+/** Joins lines into one template variable; a *bold heading* line is followed by " — ". */
+function flattenTemplateLines(kept: string[]): string {
+  return sanitizeWhatsAppTemplateVariable(
+    kept.map((l, i) => (i < kept.length - 1 && /^\*[^*]+\*$/.test(l) ? `${l} —` : l)).join(' ')
+  );
+}
+
+/** The message's non-empty lines with its greeting and "— Team Growwmatics AI" sign-off removed. */
+function templateBodyLines(body: string): { name: string; lines: string[] } {
   const lines = String(body ?? '').replace(/\r\n?/g, '\n').split('\n');
   let name = '';
   while (lines.length && !lines[0].trim()) lines.shift();
@@ -102,10 +115,48 @@ export function notificationBodyForTemplate(body: string): { name: string; text:
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
   if (lines.length && /^[—–-]\s*Team Growwmatics AI\.?$/i.test(lines[lines.length - 1].trim())) lines.pop();
   const kept = lines.map((l) => l.trim()).filter(Boolean);
-  const text = sanitizeWhatsAppTemplateVariable(
-    kept.map((l, i) => (i < kept.length - 1 && /^\*[^*]+\*$/.test(l) ? `${l} —` : l)).join(' ')
-  );
-  return { name: sanitizeWhatsAppTemplateVariable(name), text };
+  return { name: sanitizeWhatsAppTemplateVariable(name), lines: kept };
+}
+
+/** Placeholders of the owner-update template: {{1}} name, {{2}} message, {{3}} link. */
+export const OWNER_UPDATE_TEMPLATE_KEYS = ['1', '2', '3'] as const;
+
+/**
+ * Variables for the owner-update template, whose fixed text puts the message
+ * and the link on separate lines:
+ *   "Hi {{1}},\n\n{{2}}\n\n👉 Open: {{3}}\n\nIf you have any questions, simply
+ *    reply to this message.\n— Team Growwmatics AI"
+ * The message's first "Label: https://…" line (its main action — app-store
+ * lines come after it) becomes {{3}}
+ * and is removed from {{2}}; without one, `fallbackLink` is used. With neither,
+ * this refuses and the caller uses the plain notification template.
+ */
+export function ownerUpdateVariables(
+  name: string,
+  body: string,
+  fallbackLink: string | null
+): { ok: true; variables: Record<'1' | '2' | '3', string> } | { ok: false; error: string } {
+  const parsed = templateBodyLines(body);
+  const lines = [...parsed.lines];
+  let link: string | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(?:[^:]{0,60}:\s*)?(https?:\/\/\S+)$/);
+    if (m) {
+      link = m[1];
+      lines.splice(i, 1);
+      break;
+    }
+  }
+  link = link || fallbackLink;
+  const first = sanitizeWhatsAppTemplateVariable(name || parsed.name);
+  const text = flattenTemplateLines(lines);
+  if (!link) return { ok: false, error: 'Owner-update template needs a link ({{3}}).' };
+  if (!first) return { ok: false, error: 'Owner-update template variable {{1}} is empty.' };
+  if (!text) return { ok: false, error: 'Owner-update template variable {{2}} is empty.' };
+  if (text.length > NOTIFICATION_BODY_MAX) {
+    return { ok: false, error: `Owner-update template variable {{2}} is ${text.length} characters (max ${NOTIFICATION_BODY_MAX}).` };
+  }
+  return { ok: true, variables: { '1': first, '2': text, '3': sanitizeWhatsAppTemplateVariable(link) } };
 }
 
 /** Absolute app link for WhatsApp copy, or null when NEXT_PUBLIC_APP_URL / APP_URL is not an absolute URL. */

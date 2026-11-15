@@ -87,6 +87,22 @@
  *                     (src/services/whatsapp/send.ts) sends this directly, no
  *                     free-text attempt first. Falls back to plain text only
  *                     when this SID isn't configured (local/dev).
+ *  - ownerUpdate:     {{1}} name, {{2}} message, {{3}} link (UTILITY).
+ *                     Replaces `notification` for any closed-window send that
+ *                     has a link (all owner messages do). WhatsApp refuses
+ *                     line breaks inside a variable, so the line breaks live
+ *                     in the template text instead:
+ *                     "Hi {{1}},\n\n{{2}}\n\n👉 Open: {{3}}\n\nIf you have any
+ *                     questions, simply reply to this message.\n— Team
+ *                     Growwmatics AI". Unset → `notification` as before.
+ *  - performanceUpdate: 15-day Google performance update (UTILITY), one
+ *                     metric per line in the template text: {{1}} business
+ *                     name, {{2}} period, {{3}} total views, {{4}} search
+ *                     views, {{5}} Maps views, {{6}} calls, {{7}} website
+ *                     clicks, {{8}} direction requests — values like
+ *                     "40 (+21%)". See performanceUpdateVariables
+ *                     (services/lifecycle/performanceDigest.ts). Unset →
+ *                     ownerUpdate / notification.
  */
 /** Placeholders the notification send is allowed to pass. Not a live Twilio lookup. */
 export const NOTIFICATION_TEMPLATE_KEYS = ['1', '2'] as const;
@@ -101,4 +117,6 @@ export const WA_TEMPLATES = {
   welcomeCustomer: process.env.TWILIO_TEMPLATE_WELCOME_CUSTOMER || '',
   paymentReceived: process.env.TWILIO_TEMPLATE_PAYMENT_RECEIVED || '',
   loginOtp: process.env.TWILIO_TEMPLATE_LOGIN_OTP || '',
+  ownerUpdate: process.env.TWILIO_TEMPLATE_OWNER_UPDATE || '',
+  performanceUpdate: process.env.TWILIO_TEMPLATE_PERFORMANCE_UPDATE || '',
 } as const;

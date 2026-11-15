@@ -29,8 +29,10 @@ import { WA_TEMPLATES } from '@/lib/whatsappTemplates';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 import { logWhatsAppDiagnostic, redactPhone, templateConfigMissing } from '@/lib/whatsappDiagnostics';
 import {
+  appLink,
   buildNotificationVariables,
   notificationBodyForTemplate,
+  ownerUpdateVariables,
   outboundChannel,
   realInboundAtFromMessages,
   recipientFirstName,
@@ -140,6 +142,8 @@ async function recipientWindow(phone: string, leadId?: string): Promise<{ lastIn
   };
 }
 
+export type PreferredTemplate = { sid: string; variables: Record<string, string> };
+
 async function sendNotificationTemplate(
   phone: string,
   body: string,
@@ -156,6 +160,17 @@ async function sendNotificationTemplate(
   // recipient's first name from their lead/conversation.
   const forTemplate = notificationBodyForTemplate(body);
   const display = names.displayName || forTemplate.name;
+  // Preferred: the owner-update template keeps the message and its link on
+  // separate lines. Owner messages (displayName set) fall back to the
+  // dashboard link; anything without a link uses the notification template.
+  if (WA_TEMPLATES.ownerUpdate) {
+    const owner = ownerUpdateVariables(
+      display || names.personName || (await recipientWindow(phone, leadId)).name,
+      body,
+      names.displayName ? appLink('/dashboard') : null
+    );
+    if (owner.ok) return sendTemplateMessage(phone, WA_TEMPLATES.ownerUpdate, owner.variables, businessId);
+  }
   const built = display
     ? buildNotificationVariables(display, forTemplate.text, true)
     : buildNotificationVariables(names.personName || (await recipientWindow(phone, leadId)).name, forTemplate.text);
@@ -178,7 +193,9 @@ export async function sendOutboundMessage(
   businessId?: string,
   media?: OutboundMedia,
   /** {{1}} for the notification template when the window is closed (e.g. the business name for owner messages). */
-  recipientName?: string
+  recipientName?: string,
+  /** A dedicated approved template to use instead of the notification template when the window is closed. */
+  preferredTemplate?: PreferredTemplate
 ): Promise<SendResult> {
   await dbConnect();
 
@@ -194,6 +211,7 @@ export async function sendOutboundMessage(
       if (media?.url) {
         return { success: false, error: 'Image sends have no template fallback outside the 24h window.' };
       }
+      if (preferredTemplate) return sendTemplateMessage(phone, preferredTemplate.sid, preferredTemplate.variables, businessId);
       return sendNotificationTemplate(phone, body, leadId, businessId, { displayName: recipientName, personName: window.name });
     }
 
@@ -205,7 +223,9 @@ export async function sendOutboundMessage(
     // This is the documented WhatsApp channel switch, not a hidden substitute:
     // it is logged against the failed attempt, and its own failure is returned.
     if (!result.success && result.outsideWindow && result.isPlatformDefault && !media) {
-      const retry = await sendNotificationTemplate(phone, body, leadId, businessId, { displayName: recipientName, personName: window.name });
+      const retry = preferredTemplate
+        ? await sendTemplateMessage(phone, preferredTemplate.sid, preferredTemplate.variables, businessId)
+        : await sendNotificationTemplate(phone, body, leadId, businessId, { displayName: recipientName, personName: window.name });
       logWhatsAppDiagnostic({
         event: retry.success ? 'whatsapp_send_recovered' : 'whatsapp_send_failed',
         feature: 'free-text',

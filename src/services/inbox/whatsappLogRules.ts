@@ -29,6 +29,8 @@ const TEMPLATE_LABEL: Record<string, string> = {
   loginOtp: 'Login code',
   reviewRequest: 'Review request',
   reviewRequestUtility: 'Review request',
+  ownerUpdate: 'Update',
+  performanceUpdate: 'Performance update',
 };
 
 /**

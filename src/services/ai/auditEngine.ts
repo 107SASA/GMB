@@ -3,7 +3,7 @@ import { GROQ_MODEL } from '@/lib/aiModel';
 import { withGroqRetry } from '@/lib/groqRetry';
 import { qualifyCompletionInProse } from '@/lib/profileCompletion';
 import { describeEvidence, GROWWMATICS_CAPABILITIES, type Evidence, type Finding } from '@/services/audit/findings';
-import { allowedNumbersFrom, allReviewsReplied, hasGenericPlaceholder, isRedundantReplyTask, namesIdentityAttribute, assertsGbpContent, claimsCausation, claimsFabricatedOutcome, claimsUnsupportedCapability, groundItems, groundText, inventedClaimChecker, type ClaimContext } from '@/services/audit/validateAudit';
+import { advisesKeywordInName, allowedNumbersFrom, allReviewsReplied, hasGenericPlaceholder, isRedundantReplyTask, namesIdentityAttribute, assertsGbpContent, claimsCausation, claimsFabricatedOutcome, claimsUnsupportedCapability, groundItems, groundText, inventedClaimChecker, type ClaimContext } from '@/services/audit/validateAudit';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -77,6 +77,8 @@ export interface AuditAIInput {
   profileCompletionPending: number;
   /** The live Google Business Profile was read (connected audits only). */
   gbpRead?: boolean;
+  /** Free report: extra customer-facing guards (no keywords in the business name). */
+  freeReport?: boolean;
   /** Real business names, places and stated services AI text may mention. */
   claimContext?: ClaimContext;
 }
@@ -271,7 +273,8 @@ export function postProcessAIAudit(
       // A causal "why" (e.g. "contributing to lower rankings") is replaced by
       // the finding's own factual impact line (see below).
       why: claimsCausation(String(a.why || '')) || claimsFabricatedOutcome(String(a.why || '')) || (invented && invented(String(a.why || ''))) ? '' : qualify(String(a.why || '')),
-      recommendedAction: a.recommendedAction && !claimsUnsupportedCapability(String(a.recommendedAction)) ? String(a.recommendedAction) : undefined,
+      recommendedAction: a.recommendedAction && !claimsUnsupportedCapability(String(a.recommendedAction))
+        && !(input.freeReport && advisesKeywordInName(String(a.recommendedAction))) ? String(a.recommendedAction) : undefined,
     }));
   const groundedAssessments = groundItems(assessments as any[], ['why', 'recommendedAction'], allowed);
   groundedAssessments.dropped.forEach((d) => repairs.push(`dropped assessment ${d}`));
@@ -296,6 +299,7 @@ export function postProcessAIAudit(
       : claimsFabricatedOutcome(t) ? 'predicts an outcome'
       : invented && (t.match(/[^.!?]+[.!?]*/g) || [t]).some(invented) ? 'names a business or service not in the facts'
       : !input.gbpRead && assertsGbpContent(t) ? 'claims GBP content that was not read'
+      : input.freeReport && advisesKeywordInName(t) ? 'puts keywords in the business name (against Google guidelines)'
       : null;
     if (reason) repairs.push(`dropped ${what} (${reason}): ${t.slice(0, 80)}`);
     return !reason;

@@ -71,6 +71,18 @@ export interface FreeReportKeywords {
   areasUsed: string[];
 }
 
+const JUNK_AREA = /^(p\.?\s*o\.?|p\.?\s*s\.?|g\.?p\.?o\.?|post\s*office|ward\s*\d+|zone\s*\d+|[a-z]\s*block)$/i;
+
+/** Nearby locality names usable in a search phrase (no city, no post-office / ward noise), nearest first. */
+export function cleanNeighbourhoods(neighbourhoods: string[], city: string, max = 7): string[] {
+  const c = tidy(city || '').toLowerCase();
+  return neighbourhoods
+    // Locality only — a full address ("Dhapa, Kolkata, West Bengal, India") is not a search phrase.
+    .map((a) => tidy(String(a).split(',')[0]).replace(/\s*[,(]?\s*(p\.?\s*o\.?|post\s*office)\s*[)]?$/i, ''))
+    .filter((a) => a && a.length >= 3 && a.toLowerCase() !== c && !JUNK_AREA.test(a))
+    .slice(0, max);
+}
+
 export function buildFreeReportKeywords(
   business: any,
   neighbourhoods: string[] = [],
@@ -87,12 +99,7 @@ export function buildFreeReportKeywords(
   const city = tidy(business.city || '');
   const brand = brandToken(business.name || business.businessName || '');
 
-  const JUNK_AREA = /^(p\.?\s*o\.?|p\.?\s*s\.?|g\.?p\.?o\.?|post\s*office|ward\s*\d+|zone\s*\d+|[a-z]\s*block)$/i;
-  const areas = neighbourhoods
-    // Locality only — a full address ("Dhapa, Kolkata, West Bengal, India") is not a search phrase.
-    .map((a) => tidy(String(a).split(',')[0]).replace(/\s*[,(]?\s*(p\.?\s*o\.?|post\s*office)\s*[)]?$/i, ''))
-    .filter((a) => a && a.length >= 3 && a.toLowerCase() !== city.toLowerCase() && !JUNK_AREA.test(a))
-    .slice(0, 7);
+  const areas = cleanNeighbourhoods(neighbourhoods, city);
 
   const out: string[] = [];
   const seen = new Set<string>();

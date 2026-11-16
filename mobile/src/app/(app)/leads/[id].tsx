@@ -317,10 +317,14 @@ export default function LeadDetailScreen() {
 
   const stageConfig = stagesQuery.data;
   const currentGroup = lead.lifeCycleStage || 'initial';
-  const subOptions =
+  // A sub-stage named the same as its group (the default "Lost" under Lost)
+  // would show as a second, identical chip — the group chip already covers it.
+  const groupName = groupLabel(stageConfig, currentGroup).trim().toLowerCase();
+  const subOptions = (
     stageConfig && currentGroup !== 'initial'
       ? stageConfig[currentGroup as 'active' | 'converted' | 'closed'] ?? []
-      : [];
+      : []
+  ).filter((s) => s.name.trim().toLowerCase() !== groupName);
   const currentSubId =
     subOptions.find((s) => (lead.subStageId ? s.id === lead.subStageId : s.name === lead.subStage))?.id ?? null;
   const hasDealValue = typeof lead.deal?.value === 'number';

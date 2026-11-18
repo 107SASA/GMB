@@ -35,6 +35,16 @@ export const TRADE_SYNONYMS: string[][] = [
   ['kirana', 'grocery', 'groceries', 'provision', 'provisions'],
   ['bakery', 'bakers', 'baker', 'cake', 'cakes'],
   ['tailor', 'tailors', 'tailoring'],
+  // Google names one trade several ways ("Dentist" / "Dental clinic").
+  ['dentist', 'dentists', 'dental', 'orthodontist', 'orthodontists'],
+  ['salon', 'salons', 'parlour', 'parlours', 'parlor', 'beautician', 'beauty'],
+  ['gym', 'gyms', 'fitness'],
+  ['physiotherapy', 'physiotherapist', 'physiotherapists', 'physio'],
+  ['lawyer', 'lawyers', 'advocate', 'advocates', 'attorney', 'attorneys', 'legal'],
+  ['accountant', 'accountants', 'accounting', 'chartered'],
+  ['realtor', 'realtors', 'estate', 'property', 'properties'],
+  ['restaurant', 'restaurants', 'eatery', 'dhaba'],
+  ['hotel', 'hotels', 'lodge', 'lodging', 'resort', 'resorts'],
 ];
 
 /**
@@ -47,6 +57,8 @@ const GENERIC_WORDS = new Set([
   'wholesaler', 'wholesalers', 'wholesale', 'agency', 'agencies', 'enterprise', 'enterprises', 'trader', 'traders',
   'trading', 'company', 'service', 'services', 'business', 'establishment', 'point', 'interest', 'local', 'indian',
   'and', 'the', 'of', 'in', 'for', 'near', 'me', 'best', 'top', 'online', 'house', 'world', 'hub',
+  // Website menu words, not a trade ("Our Solutions", "Products").
+  'solution', 'solutions', 'product', 'products', 'our',
 ]);
 
 const words = (s: string | null | undefined): string[] =>
@@ -131,7 +143,18 @@ export interface CompetitorEvidence {
   keywords?: string[];
 }
 
-export function classifyCompetitor(c: CompetitorEvidence, profile: TradeProfile): TradeMatch {
+export interface ClassifyOptions {
+  /**
+   * The target's own Google category names its trade (Nov 2026: free-report
+   * customers were shown businesses of other trades as competitors). A
+   * competitor then has to show the trade in its Google categories — or, with
+   * only a generic / no category, in two independent sources. A different
+   * specific category never counts, whatever its name says.
+   */
+  strictCategory?: boolean;
+}
+
+export function classifyCompetitor(c: CompetitorEvidence, profile: TradeProfile, opts: ClassifyOptions = {}): TradeMatch {
   const t = profile.terms;
   const signals: string[] = [];
   const categories = [c.category, ...(c.additionalCategories || [])].filter(Boolean) as string[];
@@ -139,6 +162,10 @@ export function classifyCompetitor(c: CompetitorEvidence, profile: TradeProfile)
   const categoryHit = categories.map((cat) => ({ cat, term: mentions(cat, t) })).find((x) => x.term);
   if (categoryHit) {
     return { level: 'confirmed', counted: true, signals: [`Google category "${categoryHit.cat}"`] };
+  }
+  if (opts.strictCategory) {
+    const specific = categories.find((cat) => specificWords(cat).length > 0);
+    if (specific) return { level: 'unrelated', counted: false, signals: [`different Google category "${specific}"`] };
   }
 
   const nameTerm = mentions(c.name, t);
@@ -160,7 +187,7 @@ export function classifyCompetitor(c: CompetitorEvidence, profile: TradeProfile)
   const evidence = (nameTerm ? 1 : 0) + independent;
   if (evidence >= 2) return { level: 'confirmed', counted: true, signals };
   const tradeSearch = (c.keywords || []).find((k) => mentions(k, t));
-  if (evidence === 1 && tradeSearch) {
+  if (evidence === 1 && tradeSearch && !opts.strictCategory) {
     return { level: 'probable', counted: true, signals: [...signals, `shown by Google for "${tradeSearch}"`, `generic category "${c.category || 'none'}"`] };
   }
   return { level: 'unverified', counted: false, signals: signals.length ? signals : [`generic category "${c.category || 'none'}", no trade evidence`] };

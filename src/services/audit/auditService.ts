@@ -124,7 +124,9 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // v12 (Nov 2026): weak category + trade in the name ("Durva Fireworks" /
 // "Store") searched as "Fireworks Store"; only same-trade businesses count as
 // competitors; stored keywords used only after intake.
-const CACHE_LOGIC_VERSION = 12;
+// v13 (Nov 2026): competitors from the Google category — category searched
+// for competitors, same Google category required, Places fallback filtered.
+const CACHE_LOGIC_VERSION = 13;
 
 /** How recently a review sync must have refreshed Google's totals for the
  *  analysis window to count as synced (the Inngest pre-sync runs minutes
@@ -377,6 +379,31 @@ async function processAuditJobInner(auditId: string) {
       }
     }
 
+    // ── Competitor searches from the Google category (free report) ─────
+    // Competitors are local businesses in the same Google category. The
+    // keyword searches above follow the website's services, so the category
+    // itself is searched too ("dentist nashik", "dentist near me") — for
+    // competitors only: these never enter the ranking table or statistics.
+    const { specificWords } = require('./competitorRelevance');
+    const googleTradeCategory: string | null = categorySearchable && specificWords(resolvedCategory).length > 0
+      ? resolveCat(resolvedCategory, business.name, [resolvedCity, business.area, business.state]) || null
+      : null;
+    let competitorSearchObs: SearchObservation[] = cachedRank ? (cachedRank.competitorObservations || []) : [];
+    if (!cachedRank && audit.fastMode && googleTradeCategory && rankData && !rankData.fetchError) {
+      try {
+        const { fetchKeywordRankSnapshot } = require('./seoAnalyzer');
+        const phrase = toSearchPhrase(googleTradeCategory);
+        const city = String(resolvedCity || '').trim().toLowerCase();
+        const already = new Set(observations.map((o) => o.keyword.toLowerCase()));
+        const wanted = [city ? `${phrase} ${city}` : null, `${phrase} near me`]
+          .filter((k): k is string => !!k && !!phrase && !already.has(k));
+        const snapshot = await fetchKeywordRankSnapshot(businessForRankings, wanted, { kindOf: () => 'discovery' });
+        competitorSearchObs = snapshot.map((r: any) => r.observation);
+      } catch (csErr: any) {
+        console.warn('[auditService] competitor category search failed:', csErr?.message);
+      }
+    }
+
     // ── Branded searches ───────────────────────────────────────────────
     // A search containing the business's own name measures brand lookups,
     // not visibility — shown, but excluded from every statistic below.
@@ -433,11 +460,29 @@ async function processAuditJobInner(auditId: string) {
         gbpListedServices = (loc.services || []).map(serviceLabel).filter(Boolean);
       }
     } catch { /* no connected profile — Google's public listing is enough */ }
-    const tradeProfile = buildTradeProfile({ searchCategory, category: resolvedCategory, additionalCategories: gbpCategories });
+    // The trade comes from the business's Google categories (primary, the
+    // public listing's additional ones, a connected profile's). Website
+    // services decide it only when every Google category is vague ("Shop",
+    // "Service") — then every service searched counts, not just the first.
+    const listingCategories: string[] = publicProfileFromObservations(observations).additionalCategories || [];
+    const googleCategories = [resolvedCategory, ...listingCategories, ...gbpCategories];
+    const googleTradeKnown = googleCategories.some((c) => specificWords(c).length > 0);
+    const tradeProfile = googleTradeKnown
+      ? buildTradeProfile({
+          searchCategory: websiteSearchPhrase ? null : searchCategory,
+          category: resolvedCategory,
+          additionalCategories: [...listingCategories, ...gbpCategories],
+        })
+      : buildTradeProfile({
+          searchCategory,
+          category: resolvedCategory,
+          additionalCategories: websiteServices.slice(0, 6).map(toSearchPhrase),
+        });
+    const classifyOpts = { strictCategory: googleTradeKnown };
     const countedIn = (obs: SearchObservation[]) =>
       tradeProfile
         ? competitorsFromObservations(obs).filter((c) =>
-            classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, keywords: c.keywords }, tradeProfile).counted,
+            classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, keywords: c.keywords }, tradeProfile, classifyOpts).counted,
           ).length
         : Infinity; // trade unknown → no basis to judge "insufficient" → no expansion
 
@@ -533,7 +578,7 @@ async function processAuditJobInner(auditId: string) {
         // (reusing the searches above), selection of the month's targets.
         const { runKeywordPipeline } = require('../seo/keywordPipeline');
         const sameTrade = competitorsFromObservations(marketObs).filter((c) =>
-          !tradeProfile || classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, keywords: c.keywords }, tradeProfile).counted);
+          !tradeProfile || classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, keywords: c.keywords }, tradeProfile, classifyOpts).counted);
         const keywordResearch = await runKeywordPipeline({
           business,
           businessForRankings,
@@ -559,7 +604,7 @@ async function processAuditJobInner(auditId: string) {
     })();
 
     // ── Facts: competitors (real businesses observed above the target) ──
-    const competitorObs = [...marketObs, ...areaObs, ...(seoIntel ? [...seoIntel.trackedObs, ...seoIntel.serviceAreaObs] : [])];
+    const competitorObs = [...marketObs, ...areaObs, ...competitorSearchObs, ...(seoIntel ? [...seoIntel.trackedObs, ...seoIntel.serviceAreaObs] : [])];
     let competitorFacts: CompetitorFact[] = competitorsFromObservations(competitorObs);
     let aheadFacts = competitorsAhead(competitorObs);
 
@@ -570,7 +615,7 @@ async function processAuditJobInner(auditId: string) {
     const tradeBasis: string[] = tradeProfile?.basis ?? [];
     if (competitorFacts.length && tradeProfile) {
       const classify = (c: CompetitorFact, websiteText?: string) =>
-        classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, websiteText, keywords: c.keywords }, tradeProfile);
+        classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, websiteText, keywords: c.keywords }, tradeProfile, classifyOpts);
       competitorFacts.forEach((c) => { c.tradeMatch = classify(c); });
       // Generic-category businesses not yet confirmed: what their own website
       // says (≤5 sites, 2 pages, cached per domain — no paid API).
@@ -619,7 +664,10 @@ async function processAuditJobInner(auditId: string) {
         reviewCount:  0,
         googleTypes:  business.googleTypes,
       });
-      placesFallback = res.accepted || [];
+      // Same-trade check here too: a Places hit of another trade is not a
+      // competitor. None left → the report shows no competitors, not random ones.
+      placesFallback = (res.accepted || []).filter((c: any) =>
+        !tradeProfile || classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories }, tradeProfile, classifyOpts).counted);
       compEvidence = `${res.evidenceSource} (fallback — no ranking results available)`;
     } else if (cachedRank && competitorFacts.length === 0 && placesFallback.length) {
       compEvidence = 'Google Places search (fallback — no ranking results available)';
@@ -718,6 +766,7 @@ async function processAuditJobInner(auditId: string) {
             keywordTable,
             areasChecked,
             areaObservations: areaObs,
+            competitorObservations: competitorSearchObs,
             areaDiscovery,
             fetchedAt: new Date(),
             logicVersion: CACHE_LOGIC_VERSION,

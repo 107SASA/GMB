@@ -139,3 +139,35 @@ test('the profile also reads connected-GBP categories', () => {
   assert.ok(p.terms.includes('crackers'));
   assert.ok(p.basis.some((b) => b.includes('additional category')));
 });
+
+// ── Strict Google category (Nov 2026: free-report customers shown other trades) ─
+
+const dentist = buildTradeProfile({ category: 'Dentist' })!;
+const strict = { strictCategory: true };
+
+test('strict: same Google category counts, including another name for the trade', () => {
+  assert.equal(classifyCompetitor({ name: 'Smile Care', category: 'Dentist' }, dentist, strict).counted, true);
+  assert.equal(classifyCompetitor({ name: 'Smile Care', category: 'Dental clinic' }, dentist, strict).counted, true);
+  assert.equal(classifyCompetitor({ name: 'Smile Care', category: 'Clinic', additionalCategories: ['Orthodontist'] }, dentist, strict).counted, true);
+});
+
+test('strict: a different specific category never counts, even with the trade in its name and website', () => {
+  const m = classifyCompetitor(
+    { name: 'Dental Care Pharmacy', category: 'Pharmacy', websiteText: 'dental products and dentist supplies' },
+    dentist, strict,
+  );
+  assert.equal(m.counted, false);
+  assert.equal(m.level, 'unrelated');
+  // The old rule (not strict) let it through on name + website.
+  assert.equal(classifyCompetitor({ name: 'Dental Care Pharmacy', category: 'Pharmacy', websiteText: 'dentist supplies' }, dentist).counted, true);
+});
+
+test('strict: a generic category needs two sources, one name hit is not enough', () => {
+  assert.equal(classifyCompetitor({ name: 'Shree Dental', category: 'Store', keywords: ['dentist nashik'] }, dentist, strict).counted, false);
+  assert.equal(classifyCompetitor({ name: 'Shree Dental', category: 'Store', snippet: 'Dental clinic in Nashik' }, dentist, strict).counted, true);
+});
+
+test('website menu words are not a trade', () => {
+  assert.deepEqual(specificWords('Our Solutions'), []);
+  assert.deepEqual(specificWords('Products'), []);
+});

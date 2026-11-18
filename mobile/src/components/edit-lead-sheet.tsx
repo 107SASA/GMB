@@ -13,6 +13,9 @@ import { useTheme } from '@/lib/theme';
  * "Edit lead" — contact and visiting-card details. Cards saved automatically
  * (no confirmation) are fixed here; saving clears their "Check details" flag.
  * A phone / email that belongs to another lead is refused by the server.
+ * Email and City are only offered for visiting-card leads — that is the only
+ * place the lead screen shows them, so for other leads they looked like they
+ * did nothing after saving.
  */
 
 type Draft = {
@@ -82,10 +85,10 @@ export function EditLeadSheet({
       updateLead(lead._id, {
         name: d.name.trim() || lead.name,
         ...(phoneLocked ? {} : { phone: d.phone.trim() }),
-        email: d.email.trim(),
-        city: d.city.trim(),
         ...(isCard
           ? {
+              email: d.email.trim(),
+              city: d.city.trim(),
               businessCard: {
                 company: d.company.trim(),
                 designation: d.designation.trim(),
@@ -121,12 +124,12 @@ export function EditLeadSheet({
           {phoneLocked && <Text className="font-sans text-xs text-zinc-500">This number is linked to the WhatsApp chat, so it can't be changed.</Text>}
           {!phoneValid && <Text className="font-sans text-xs text-zinc-500">Enter a 10-digit number or use +country format.</Text>}
         </Labeled>
-        <Labeled label="Email">
-          <Field value={d.email} onChangeText={set('email')} placeholder="name@company.com" keyboardType="email-address" autoCapitalize="none" />
-          {!emailValid && <Text className="font-sans text-xs text-zinc-500">The email address looks wrong.</Text>}
-        </Labeled>
         {isCard && (
           <>
+            <Labeled label="Email">
+              <Field value={d.email} onChangeText={set('email')} placeholder="name@company.com" keyboardType="email-address" autoCapitalize="none" />
+              {!emailValid && <Text className="font-sans text-xs text-zinc-500">The email address looks wrong.</Text>}
+            </Labeled>
             <Labeled label="Company">
               <Field value={d.company} onChangeText={set('company')} placeholder="Company" />
             </Labeled>
@@ -139,15 +142,13 @@ export function EditLeadSheet({
             <Labeled label="Address">
               <Field value={d.address} onChangeText={set('address')} placeholder="Address" multiline className="min-h-16" textAlignVertical="top" />
             </Labeled>
+            <Labeled label="City">
+              <Field value={d.city} onChangeText={set('city')} placeholder="City" />
+            </Labeled>
+            <Labeled label="Where you met">
+              <EventPicker businessId={businessId} value={d.metAt} onChange={set('metAt')} />
+            </Labeled>
           </>
-        )}
-        <Labeled label="City">
-          <Field value={d.city} onChangeText={set('city')} placeholder="City" />
-        </Labeled>
-        {isCard && (
-          <Labeled label="Where you met">
-            <EventPicker businessId={businessId} value={d.metAt} onChange={set('metAt')} />
-          </Labeled>
         )}
 
         <ErrorText>{save.error ? getApiErrorMessage(save.error, 'Could not save the changes.') : null}</ErrorText>

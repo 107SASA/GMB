@@ -8,7 +8,6 @@ import {
   Animated,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -504,8 +503,10 @@ export function BottomSheet({
   const { height } = useWindowDimensions();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      {/* 'padding' on Android too: the app is edge-to-edge, so a Modal window is
+          never resized for the keyboard and fields near the bottom got covered. */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={{ flex: 1, justifyContent: 'flex-end' }}
       >
         <Pressable

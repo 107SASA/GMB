@@ -66,10 +66,9 @@ export function FreeReportCard() {
         <Text className="font-sans-semibold text-xs uppercase tracking-wider text-zinc-500">Your free Google profile report</Text>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>
           <Text className="font-display-bold text-white" style={{ fontSize: 40, lineHeight: 44 }}>
-            {report.score != null ? `${report.score}%` : '—'}
+            {report.score ?? '—'}
           </Text>
-          {/* The same number the report shows: profile completion of the fields Google shows publicly — not an overall score. */}
-          <Text className="mb-1 font-sans text-base text-zinc-400">profile complete</Text>
+          <Text className="mb-1 font-sans text-base text-zinc-400">/ 100</Text>
         </View>
         {report.topFixes.length > 0 && (
           <View style={{ gap: 6 }}>

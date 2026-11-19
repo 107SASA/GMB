@@ -249,22 +249,6 @@ export function claimsUnsupportedCapability(text: string): boolean {
 // ── Customer-facing plan hygiene ──────────────────────────────────────────
 // Each rule comes from a shipped report (Mulsetu, Nov 2026).
 
-/**
- * Advice to put keywords into the Google business NAME ("Update the GBP
- * title to include the exact phrase 'shop nashik'"). Google's guidelines
- * require the real-world name; keyword-stuffed names get profiles suspended.
- * A website page title is fine and is not matched.
- */
-export function advisesKeywordInName(text: string): boolean {
-  const t = String(text || '');
-  const nameField = /\b(?:(?:gbp|google|business|profile|listing|maps)\s+(?:profile\s+)?(?:title|name)|business\s+name|listing\s+name|profile\s+name)\b/i;
-  if (!nameField.test(t)) return false;
-  const cleaned = t.replace(/\b(?:page|website|site|meta|seo|post)\s+titles?\b/gi, ' ');
-  if (!nameField.test(cleaned)) return false;
-  // A keyword going in: "keyword", "phrase", "include", or a quoted search term.
-  return /\b(keywords?|phrases?|search terms?|includ\w*|insert)\b|["“][^"”]{3,}["”]/i.test(cleaned);
-}
-
 /** The model's unfilled placeholder: "[confirm: what is needed]", "[Owner to confirm: what is needed]". */
 const GENERIC_PLACEHOLDER = /\s*\[(?:owner to )?confirm:\s*what is needed\]/i;
 

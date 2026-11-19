@@ -220,13 +220,7 @@ async function processAuditJobInner(auditId: string) {
     const categorySearchable = !!resolveCat(resolvedCategory, business.name, [resolvedCity, business.area, business.state]);
     // Generic Google category (e.g. "Services") → search for the service the
     // website itself names, labelled 'website_service' in the report.
-    // Free report and in-app audit alike: a vague category on its own
-    // ("Shop", "Store", "Service", "Office") is not the trade when the
-    // website names real services — those are searched instead. (A trade
-    // category such as "Mobile phone shop" is not vague and is kept.)
-    const { isGenericCategory } = require('../seo/keywordResearch');
-    const vagueCategoryWithServices = websiteServices.length > 0 && isGenericCategory(resolvedCategory);
-    const websiteSearchTerm: string | null = !categorySearchable || vagueCategoryWithServices ? pickServiceForSearch(websiteServices) : null;
+    const websiteSearchTerm: string | null = !categorySearchable ? pickServiceForSearch(websiteServices) : null;
     // What is actually sent to Google ("AI & Automation" → "ai and automation").
     const websiteSearchPhrase: string | null = websiteSearchTerm ? toSearchPhrase(websiteSearchTerm) : null;
     const ownerTerms: string[] = [
@@ -261,21 +255,10 @@ async function processAuditJobInner(auditId: string) {
     const googlePlaceId: string | undefined = businessForRankings.googlePlaceId;
     const cacheable = !!audit.fastMode && !!googlePlaceId;
     let insightCache = cacheable ? await PlaceInsightCache.findOne({ googlePlaceId }) : null;
-    // What the searches were built from. A cached blob built from other terms
-    // (an older category guess, services the website no longer lists) is
-    // stale even inside the 7 days (Nov 2026: "Mulsetu" was served "shop
-    // nashik" searches from an earlier run after its website was read).
-    const rankSearchKey = JSON.stringify([
-      String(businessForRankings.category || '').toLowerCase(),
-      (businessForRankings.keywords || []).map((k: string) => String(k).toLowerCase()),
-      websiteServices.map((x) => x.toLowerCase()).sort(),
-      String(resolvedCity || '').toLowerCase(),
-    ]);
     const isRankFresh = (c: IPlaceInsightCache | null | undefined) =>
       !!(
         c?.rank &&
         c.rank.logicVersion === CACHE_LOGIC_VERSION &&
-        c.rank.searchKey === rankSearchKey &&
         Date.now() - new Date(c.rank.fetchedAt).getTime() < RANK_CACHE_TTL_MS
       );
     let rankCacheFresh = isRankFresh(insightCache);
@@ -327,40 +310,13 @@ async function processAuditJobInner(auditId: string) {
         const { fetchKeywordRankSnapshot } = require('./seoAnalyzer');
 
         const localities = await fetchNearbyLocalities(businessForRankings.coordinates, { limit: 8 });
-        // The website names services → keywords are built from them (each
-        // service × city / nearest areas / "near me") and the ones with the
-        // most searches are checked (seo/freeReportKeywords.ts). No website
-        // services → the category-based seeds, as before.
-        const fromServices = websiteServices.length
-          ? await (async () => {
-              const { freeReportCandidates, candidateVolumes, pickFreeReportChecks } = require('../seo/freeReportKeywords');
-              const { cleanNeighbourhoods } = require('./keywordSeeds');
-              const { fetchSearchVolumes } = require('./keywordVolumeClient');
-              const areas: string[] = cleanNeighbourhoods(localities.neighbourhoods, resolvedCity);
-              const candidates = freeReportCandidates({
-                businessName: business.name || '',
-                city: resolvedCity,
-                areas,
-                category: resolveCat(resolvedCategory, business.name, [resolvedCity, business.area, business.state]) || null,
-                websiteServices,
-              });
-              if (!candidates.length) return null;
-              // Same country lookup the keyword table makes below — it then reads these from the cache.
-              const vol = await fetchSearchVolumes(candidates.map((c: any) => c.keyword), { countryHint: business.country || '' })
-                .catch(() => new Map<string, number | null>());
-              const picked = pickFreeReportChecks(candidates, candidateVolumes(candidates, { country: vol }, new Date().toISOString()));
-              return { keywords: picked.map((k: any) => k.keyword as string), primaryKeyword: picked[0]?.keyword || '', areasUsed: areas };
-            })()
-          : null;
-        const seeded = fromServices ?? buildFreeReportKeywords(
+        const seeded = buildFreeReportKeywords(
           { ...businessForRankings, city: resolvedCity, category: websiteSearchPhrase || resolvedCategory },
           localities.neighbourhoods,
         );
-        if (!fromServices) {
-          // Up to 3 services the website states, searched city-wide (+3 tasks).
-          for (const kw of websiteServiceKeywords(websiteServices, resolvedCity, 3)) {
-            if (!seeded.keywords.some((k: string) => k.toLowerCase() === kw)) seeded.keywords.push(kw);
-          }
+        // Up to 3 services the website states, searched city-wide (+3 tasks).
+        for (const kw of websiteServiceKeywords(websiteServices, resolvedCity, 3)) {
+          if (!seeded.keywords.some((k: string) => k.toLowerCase() === kw)) seeded.keywords.push(kw);
         }
         areasChecked = seeded.areasUsed.length ? seeded.areasUsed : localities.neighbourhoods;
         const areaWords = areasChecked.map((a: string) => a.toLowerCase());
@@ -721,7 +677,6 @@ async function processAuditJobInner(auditId: string) {
             areaDiscovery,
             fetchedAt: new Date(),
             logicVersion: CACHE_LOGIC_VERSION,
-            searchKey: rankSearchKey,
           },
         };
       }
@@ -1011,18 +966,6 @@ async function processAuditJobInner(auditId: string) {
     const businessIntelligence = calculateBusinessIntelligence(
       business, competitorFacts, lifetimeCount, rankingFacts.overall, aheadFacts.count,
     );
-    // Free report: one review figure everywhere — the median of the same-trade
-    // businesses above you that the report shows ("Median of businesses above
-    // you: 53"), never a second average over a different list (Nov 2026:
-    // "average 78" next to "median 53" in one report).
-    if (audit.fastMode && reviewComparison && lifetimeCount != null) {
-      const median = reviewComparison.medianCompetitorReviewCount;
-      const gap = Math.max(0, median - lifetimeCount);
-      businessIntelligence.reviewGap = gap;
-      businessIntelligence.reviewGapImpact = gap > 0
-        ? `The median of ${reviewComparison.competitorsCompared} businesses above you is ${median} reviews; you have ${lifetimeCount}.`
-        : 'Your review count is at or above the median of the businesses above you.';
-    }
 
     // Headline score = profile completion % (see the Aug 2026 note on why
     // nothing else is blended into it).
@@ -1386,7 +1329,6 @@ async function processAuditJobInner(auditId: string) {
           profileCompletionFact: profileCompletion.completionPromptFact || '',
           profileCompletionPending: Number(profileCompletion.oauthPendingCount ?? profileCompletion.unknownCount ?? 0),
           gbpRead: !!gbpLive,
-          freeReport: !!audit.fastMode,
           claimContext: {
             businessNames: [business.name, ...competitorFacts.map((c) => c.name)],
             places: [resolvedCity, business.area, business.state, business.country, ...areasChecked].filter(Boolean),

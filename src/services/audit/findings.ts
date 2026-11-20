@@ -233,6 +233,8 @@ export interface FindingsInput {
   /** Where each profile field's value was read (default 'google_places'). A
    *  field read from the Google Business Profile API is 'gbp_api'. */
   fieldSources?: Record<string, EvidenceSource>;
+  /** Areas served, each searched from inside the area (areaVisibility.areaCoverage). */
+  areaCoverage?: { measured: number; visibleIn: number; missing: string[]; source: 'google' | 'website' } | null;
 }
 
 const pct = (r: number | null) => (r == null ? '—' : `${Math.round(r * 100)}%`);
@@ -461,6 +463,35 @@ export function buildEvidenceAndFindings(input: FindingsInput): { evidence: Evid
     }
   }
 
+  // ── Areas served: searched from inside each area ─────────────────────────
+  const cov = input.areaCoverage;
+  if (cov && cov.measured >= 2) {
+    const covEv = ev({
+      id: 'ranking.service_areas',
+      metric: 'service_area_coverage',
+      value: cov,
+      status: 'verified',
+      source: 'dataforseo',
+      confidence: 'high',
+    });
+    if (cov.missing.length > 0) {
+      findings.push({
+        id: 'ranking.service_areas.not_found',
+        category: 'ranking',
+        title: `Not found in ${cov.missing.length} of the ${cov.measured} areas ${cov.source === 'website' ? 'your website says you serve' : 'you serve'}`,
+        evidence: `Searched from inside each area; not in the top 20 in ${cov.missing.slice(0, 4).join(', ')}`,
+        evidenceIds: [covEv],
+        source: 'dataforseo',
+        severity: cov.missing.length / cov.measured >= 0.5 ? 'high' : 'medium',
+        confidence: 'high',
+        businessImpact: `Customers searching in ${cov.missing.slice(0, 3).join(', ')} are shown other businesses first.`,
+        actionability: 'indirectly_influenceable',
+        growwmaticsCapability: 'google_posts',
+        recommendedAction: 'Add these areas to the Google profile\'s service areas and description, post about work done there, and re-measure monthly.',
+      });
+    }
+  }
+
   // ── Competitors (facts only — no causation) ──────────────────────────────
   if (input.competitorsAhead.count > 0) {
     const compEv = ev({
@@ -682,6 +713,8 @@ export function describeEvidence(e: Evidence): string {
       return `Your website describes the business as: "${String(v).slice(0, 160)}"`;
     case 'website_booking_link':
       return `Your website has a booking page: ${v}`;
+    case 'service_area_coverage':
+      return `Areas served: in the top 20 in ${v.visibleIn} of ${v.measured}`;
     case 'website_service_areas':
       return `Your website mentions areas served: ${(v || []).slice(0, 5).join(', ')}`;
     case 'website_credentials':

@@ -292,11 +292,16 @@ export default function FreeReportView({ audit, pricing = {}, appMode = false }:
                     <div className="text-xs text-on-surface-variant mt-1">Verified issues found</div>
                   </div>
                   <div className="bg-surface-container rounded-xl p-4 text-center border border-outline-variant">
-                    <div className="font-heading text-2xl font-bold text-on-surface">{completion.pct != null ? `${completion.pct}%` : 'Unknown'}</div>
+                    {/* Unchecked fields are not "complete": "8 of 16 confirmed", never "100%" when half could not be read. */}
+                    <div className="font-heading text-2xl font-bold text-on-surface">
+                      {completion.pct == null ? 'Unknown' : completion.unknown > 0 ? `${completion.complete} of ${completion.known + completion.unknown}` : `${completion.pct}%`}
+                    </div>
                     <div className="text-xs text-on-surface-variant mt-1">
-                      {completion.pct != null
-                        ? `profile complete — ${completion.complete} of ${completion.known} fields we could check`
-                        : 'profile fields could not be checked'}
+                      {completion.pct == null
+                        ? 'profile fields could not be checked'
+                        : completion.unknown > 0
+                          ? `profile fields confirmed — ${completion.unknown} need a Google connection to check`
+                          : `profile complete — ${completion.complete} of ${completion.known} fields`}
                     </div>
                   </div>
                 </div>

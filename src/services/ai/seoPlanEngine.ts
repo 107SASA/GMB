@@ -33,6 +33,8 @@ export interface SeoPlanInput {
   neighbourhoods: string[];
   primaryKeyword: string;
   keywordTable: IKeywordTableRow[];
+  /** Searches run from inside an area served where the business was not in the top 5 (areaVisibility). */
+  areaGaps?: Array<{ keyword: string; area: string; mapsRank: number | null }>;
   /** Real businesses observed above the target (facts.ts), strongest first. */
   competitors: Array<{
     name: string;
@@ -189,13 +191,21 @@ function buildCompetitorLandscape(input: SeoPlanInput): ISeoPlanDraft['competito
 }
 
 function buildCriticalGap(input: SeoPlanInput): ISeoPlanDraft['criticalGap'] {
-  const weak = input.keywordTable
+  const local = input.keywordTable
     .filter((k) => (k.rankStatus ?? 'ok') === 'ok')
     .filter((k) => !k.found || (k.rank != null && k.rank > 5))
-    .slice(0, 5)
     .map((k) => ({ keyword: k.keyword, mapsRank: k.found ? k.rank ?? null : null }));
+  // Areas served come first: "not in the top 20 in Chandigarh" is the gap the
+  // owner can check on their own phone.
+  const areaRows = (input.areaGaps || []).map((g) => ({
+    keyword: g.keyword.toLowerCase().includes(g.area.toLowerCase()) ? g.keyword : `${g.keyword} (searched in ${g.area})`,
+    mapsRank: g.mapsRank,
+  }));
+  const weak = [...areaRows, ...local].filter((r, i, all) => all.findIndex((x) => x.keyword === r.keyword) === i).slice(0, 6);
   return {
-    intro: `We searched these phrases around ${input.city || 'your area'}. ${input.businessName} is not in the top 5 for them, so those searchers see other businesses first.`,
+    intro: areaRows.length
+      ? `We searched these phrases around ${input.city || 'your area'} and from inside the areas you serve. ${input.businessName} is not in the top 5 for them, so those searchers see other businesses first.`
+      : `We searched these phrases around ${input.city || 'your area'}. ${input.businessName} is not in the top 5 for them, so those searchers see other businesses first.`,
     rows: weak,
     closer: `Improve the listing with facts that are true of this business — its real services, area served and reviews. Don't invent anything and don't stuff keywords.`,
   };

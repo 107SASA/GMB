@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parseUnderstanding, cleanSearchTerm, isGrounded, evidenceStems, isUnderstandingReusable, inputsHash, type UnderstandingInput,
+  parseUnderstanding, cleanSearchTerm, isGrounded, evidenceStems, isUnderstandingReusable, inputsHash, searchCityName, type UnderstandingInput,
 } from '../../src/services/audit/businessUnderstanding';
 import { candidatesFromUnderstanding, pickRankChecks, cleanAreas } from '../../src/services/audit/understoodKeywords';
 
@@ -92,7 +92,7 @@ test('keywords: city and "near me" for each term, maker shapes for a manufacture
   assert.ok(!ks.some((k) => /\bbest\b/.test(k)));
 });
 
-test('rank checks: the most-searched first, one per term, area phrases only with searches', () => {
+test('rank checks: city phrases first (most-searched term first), areas only with searches, one "near me"', () => {
   const c = candidatesFromUnderstanding({ searchTerms: ['psychologist', 'counselling centre'], offered: 'services' }, { city: 'Bengaluru', areas: ['indiranagar'] });
   const vol = new Map<string, number | null>([
     ['psychologist bengaluru', 1900], ['psychologist near me', 22200], ['psychologist indiranagar', 90],
@@ -100,9 +100,31 @@ test('rank checks: the most-searched first, one per term, area phrases only with
   ]);
   const { picked, mainTerm } = pickRankChecks(c, vol);
   assert.equal(mainTerm, 'psychologist');
-  assert.deepEqual(picked.slice(0, 2).map((p) => p.keyword), ['psychologist near me', 'counselling centre near me']);
+  assert.deepEqual(picked.map((p) => p.keyword), ['psychologist bengaluru', 'counselling centre bengaluru', 'psychologist indiranagar', 'psychologist near me']);
   assert.ok(!picked.some((p) => p.keyword === 'counselling centre indiranagar'), 'an area phrase with no searches is not checked');
-  assert.ok(picked.length <= 6);
+});
+
+test('rank checks: a yoga studio is not checked on 6 "near me" phrases (Nov 2026, Mohali)', () => {
+  const terms = ['yoga classes', 'meditation classes', 'yoga studio', 'yoga training', 'online yoga', 'personal yoga'];
+  const c = candidatesFromUnderstanding({ searchTerms: terms, offered: 'services' }, { city: 'Mohali', areas: [] });
+  // Real nationwide volumes from the report; the city phrases had none.
+  const vol = new Map<string, number | null>([
+    ['yoga classes near me', 246000], ['meditation classes near me', 12100], ['yoga studio near me', 6600],
+    ['yoga training near me', 1300], ['online yoga near me', 40], ['personal yoga near me', 20],
+  ]);
+  const { picked, mainTerm } = pickRankChecks(c, vol);
+  assert.equal(picked.filter((p) => p.shape === 'near_me').length, 1);
+  assert.equal(picked[0].keyword, 'yoga classes mohali');
+  assert.ok(picked.some((p) => p.keyword === 'yoga classes near me'));
+  assert.equal(picked.length, 6);
+  assert.equal(mainTerm, 'yoga classes');
+});
+
+test('the city people search, not the district name in the address', () => {
+  assert.equal(searchCityName('Sahibzada Ajit Singh Nagar'), 'Mohali');
+  assert.equal(searchCityName('Gautam Buddh Nagar'), 'Noida');
+  assert.equal(searchCityName('Rangareddy District'), 'Hyderabad');
+  assert.equal(searchCityName('Nashik'), 'Nashik');
 });
 
 test('rank checks: with no volume at all, the city phrases still give 3 checks', () => {

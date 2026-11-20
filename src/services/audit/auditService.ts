@@ -136,6 +136,10 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // the Google category (the Nov 16 website-services keywords were reverted);
 // the category comes from the business's own Google listing (S0) before the
 // type saved at sign-up.
+// v16 (Nov 2026): city phrases are checked first and at most one "near me"
+// (a yoga studio got 6 "near me" checks, all #1); the city people type
+// ("Mohali", not "Sahibzada Ajit Singh Nagar"); a free report searches the
+// areas the website says it serves from inside each area.
 const CACHE_LOGIC_VERSION = REPORT_LOGIC_VERSION;
 
 /** How recently a review sync must have refreshed Google's totals for the
@@ -196,11 +200,13 @@ async function processAuditJobInner(auditId: string) {
     // Extract city from address if the city field was not explicitly set.
     // Indian address format: "..., Area, City, State PostalCode, Country"
     // → city is typically the 3rd segment from the end.
-    const resolvedCity = audit.city || business.city || (() => {
+    // The name customers type ("Mohali"), not the official district name
+    // Google writes in the address ("Sahibzada Ajit Singh Nagar").
+    const resolvedCity = require('./businessUnderstanding').searchCityName(audit.city || business.city || (() => {
       if (!business.address) return '';
       const parts = business.address.split(',').map((p: string) => p.trim()).filter(Boolean);
       return parts.length >= 3 ? (parts[parts.length - 3] || '') : (parts[parts.length - 1] || '');
-    })();
+    })());
     // ── S0: the business's real Google listing (docs/FREE_REPORT_REBUILD_PLAN.md) ─
     // The sign-up form saves Google Places' rough type ("Services",
     // "Manufacturer", "Medical Clinic"); the listing shows the category the
@@ -538,6 +544,21 @@ async function processAuditJobInner(auditId: string) {
         gbpDescription = String(loc.profile?.description || '') || null;
       }
     } catch { /* no connected profile — Google's public listing is enough */ }
+    // Areas searched one by one from their own location. A connected Google
+    // profile's service areas; for a free report (no connection) the places
+    // the business's own website says it serves ("Mohali, Chandigarh,
+    // Panchkula, Zirakpur") — Nov 2026: a free report searched only around
+    // the address and showed "#1 everywhere" for a studio claiming 4 cities.
+    let searchServiceAreas: Array<{ placeName: string | null; placeId: string | null }> = gbpServiceAreas;
+    let serviceAreaSource: 'google' | 'website' = 'google';
+    if (audit.fastMode && !gbpServiceAreas.length && websiteIntel?.serviceAreas?.length) {
+      const { websiteServiceAreaPlaces } = require('./areaDiscovery');
+      const fromSite = websiteServiceAreaPlaces(websiteIntel.serviceAreas.map((a: any) => String(a?.value || '')), resolvedCity);
+      if (fromSite.length) {
+        searchServiceAreas = fromSite;
+        serviceAreaSource = 'website';
+      }
+    }
     // The trade comes from the business's Google categories (primary, the
     // public listing's additional ones, a connected profile's). Website
     // services decide it only when every Google category is vague ("Shop",
@@ -624,16 +645,17 @@ async function processAuditJobInner(auditId: string) {
       : null;
     if (!cachedRank && pin && searchCategory && rankData && !rankData.fetchError) {
       try {
-        const { discoverCompetitorAreas } = require('./areaDiscovery');
+        const { discoverCompetitorAreas, AREA_DISCOVERY_LIMITS, WEBSITE_AREA_LIMITS } = require('./areaDiscovery');
         const { resolvePlacePoint } = require('./localities');
         const { fetchAreaObservations } = require('./seoAnalyzer');
         const res = await discoverCompetitorAreas(
-          { pin, searchTerm: understoodPick?.mainTerm || searchCategory, serviceAreas: gbpServiceAreas },
+          { pin, searchTerm: understoodPick?.mainTerm || searchCategory, serviceAreas: searchServiceAreas },
           {
             resolve: (a: any) => resolvePlacePoint(a, business.state || resolvedCity),
             search: (searches: any[]) => fetchAreaObservations(businessForRankings, searches),
             relevantCount: (obs: SearchObservation[]) => countedIn([...marketObs, ...obs]),
           },
+          serviceAreaSource === 'website' ? WEBSITE_AREA_LIMITS : AREA_DISCOVERY_LIMITS,
         );
         areaObs = res.observations;
         for (const x of res.searched as any[]) {
@@ -642,7 +664,8 @@ async function processAuditJobInner(auditId: string) {
           }
         }
         areaDiscovery = {
-          serviceAreasConfigured: gbpServiceAreas.length,
+          serviceAreasConfigured: searchServiceAreas.length,
+          serviceAreaSource,
           searched: res.searched.map((x: any) => ({ label: x.label, kind: x.kind, keyword: x.keyword, distanceKm: x.distanceKm, areaName: x.areaName, placeId: x.placeId ?? null })),
           skipped: res.skipped,
           expandedToKm: res.expandedToKm,
@@ -918,7 +941,7 @@ async function processAuditJobInner(auditId: string) {
     // service × area and the keyword table's) — the keyword table below then
     // reads them all from the 45-day cache.
     let volumes = new Map<string, number | null>();
-    if (gbpServiceAreas.length || seoIntel) {
+    if (searchServiceAreas.length || seoIntel) {
       const { fetchSearchVolumes } = require('./keywordVolumeClient');
       const phrases = [
         ...areaObs.map((o) => o.keyword),
@@ -927,11 +950,12 @@ async function processAuditJobInner(auditId: string) {
       ];
       volumes = await fetchSearchVolumes(phrases, { countryHint: business.country || '' }).catch(() => new Map());
     }
-    if (gbpServiceAreas.length) {
+    if (searchServiceAreas.length) {
       try {
         const { buildAreaVisibility } = require('./areaVisibility');
         areaVisibility = buildAreaVisibility({
-          serviceAreas: gbpServiceAreas,
+          source: serviceAreaSource,
+          serviceAreas: searchServiceAreas,
           discovery: areaDiscovery,
           areaObservations: areaObs,
           primaryObservations: marketObs,
@@ -1313,6 +1337,10 @@ async function processAuditJobInner(auditId: string) {
       keywordRows,
       website: websiteSignals ? { onListing: !!business.website, reachable: !!websiteSignals.reachable } : null,
       suspensionRisk,
+      areaCoverage: (() => {
+        const cov = require('./areaVisibility').areaCoverage(areaVisibility);
+        return cov ? { ...cov, source: serviceAreaSource } : null;
+      })(),
       // Fields read from the GBP API are labelled gbp_api, not google_places.
       fieldSources: intelApi
         ? intelApi.fieldSourcesFromSnapshot(gbpIntel)
@@ -1772,6 +1800,11 @@ async function processAuditJobInner(auditId: string) {
           // The month's first focus keyword leads the post themes / Q&A when researched.
           primaryKeyword: seoIntel?.keywordResearch?.keywordSet.find((k) => k.role === 'core')?.keyword || rankingFacts.primaryKeyword || keywordTable[0]?.keyword || '',
           keywordTable,
+          areaGaps: (areaVisibility?.areas || [])
+            .filter((a) => a.status === 'measured')
+            .flatMap((a) => a.searches
+              .filter((x) => x.status === 'ok' && (x.rank == null || x.rank > 5) && !/near me$/i.test(x.keyword))
+              .map((x) => ({ keyword: x.keyword, area: a.area, mapsRank: x.rank }))),
           competitors: competitorFacts.slice(0, 10).map((c) => ({
             name: c.name,
             mapsRank: c.averageObservedRank,

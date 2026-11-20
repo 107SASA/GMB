@@ -182,6 +182,34 @@ export function cityAliases(city: string): string[] {
   return CITY_ALIASES.find((g) => g.includes(c))?.filter((x) => x !== c) ?? [];
 }
 
+/**
+ * Official district names Google writes in addresses → the name people type
+ * (Nov 2026: a Mohali yoga studio's address said "Sahibzada Ajit Singh Nagar";
+ * every "<service> sahibzada ajit singh nagar" phrase had no searches, so the
+ * report checked only "near me" phrases and showed #1 everywhere).
+ */
+const COMMON_CITY_NAME: Record<string, string> = {
+  'sahibzada ajit singh nagar': 'Mohali', 'sas nagar': 'Mohali', 's.a.s. nagar': 'Mohali', 'sas nagar mohali': 'Mohali', 'ajitgarh': 'Mohali',
+  'gautam buddh nagar': 'Noida', 'gautam buddha nagar': 'Noida',
+  'rangareddy': 'Hyderabad', 'ranga reddy': 'Hyderabad', 'medchal-malkajgiri': 'Hyderabad', 'medchal malkajgiri': 'Hyderabad',
+  'bengaluru urban': 'Bengaluru', 'bangalore urban': 'Bengaluru',
+  'mumbai suburban': 'Mumbai', 'mumbai city': 'Mumbai',
+  'kamrup metropolitan': 'Guwahati', 'kamrup metro': 'Guwahati',
+  'ernakulam': 'Kochi', 'dakshina kannada': 'Mangaluru',
+  'new delhi': 'Delhi', 'south delhi': 'Delhi', 'north delhi': 'Delhi', 'east delhi': 'Delhi', 'west delhi': 'Delhi',
+  'central delhi': 'Delhi', 'south west delhi': 'Delhi', 'north west delhi': 'Delhi', 'north east delhi': 'Delhi',
+  'south east delhi': 'Delhi', 'shahdara': 'Delhi',
+  'sri potti sriramulu nellore': 'Nellore', 'ysr kadapa': 'Kadapa', 'ysr district': 'Kadapa',
+  'purba bardhaman': 'Bardhaman', 'paschim bardhaman': 'Asansol',
+};
+
+/** The city name customers type in a search ("Sahibzada Ajit Singh Nagar" → "Mohali"); unchanged when not an official-only name. */
+export function searchCityName(city: string): string {
+  const raw = String(city || '').trim();
+  const key = raw.toLowerCase().replace(/\s+district$/, '').replace(/\s+/g, ' ').trim();
+  return COMMON_CITY_NAME[key] ?? raw;
+}
+
 /** The distinctive words of a business name (for spotting brand searches). */
 export function brandWords(name: string): string[] {
   return words(name).filter((w) => w.length >= 3 && !STOP.has(w) && !/^(pvt|ltd|private|limited|llp|industries|enterprises|technologies)$/.test(w)).slice(0, 2);

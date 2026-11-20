@@ -53,6 +53,8 @@ export const AREA_DISCOVERY_LIMITS = {
   minRelevantCompetitors: 3,
   /** Hard cap on searches this module may add to one report (6 areas × 2 + one expansion ring). */
   maxSearches: 16,
+  /** Areas farther than this from the business are not searched (website-listed areas can be a whole state). */
+  maxDistanceKm: Infinity as number,
 };
 
 export type AreaDiscoveryLimits = typeof AREA_DISCOVERY_LIMITS;
@@ -96,6 +98,7 @@ export function planServiceAreaSearches(
     const label = `${a.name} (service area)`;
     // taken = the business + every area chosen so far.
     if (taken.length - 1 >= limits.maxServiceAreas) { skipped.push({ label, reason: 'service-area limit reached' }); continue; }
+    if (haversineKm(pin, a.point) > limits.maxDistanceKm) { skipped.push({ label, reason: `more than ${limits.maxDistanceKm} km from the business` }); continue; }
     const near = taken.find((p) => haversineKm(p, a.point) < limits.minSeparationKm);
     if (near) {
       skipped.push({ label, reason: near === pin ? 'already covered by the search around the business' : 'already covered by a nearby service area' });
@@ -107,6 +110,33 @@ export function planServiceAreaSearches(
     searches.push({ ...base, keyword: `${searchTerm.trim()} near me` });
   }
   return { searches, skipped };
+}
+
+/** Limits for areas read from the business's website (free report, no Google connection). */
+export const WEBSITE_AREA_LIMITS: AreaDiscoveryLimits = { ...AREA_DISCOVERY_LIMITS, maxServiceAreas: 4, maxDistanceKm: 60 };
+
+const NOT_A_PLACE = /^(india|all over india|pan india|nationwide|worldwide|online|everywhere|all areas|nearby areas|and more|more|tricity|ncr|delhi ncr)$/i;
+const STATE = /^(andhra pradesh|arunachal pradesh|assam|bihar|chhattisgarh|goa|gujarat|haryana|himachal pradesh|jharkhand|karnataka|kerala|madhya pradesh|maharashtra|manipur|meghalaya|mizoram|nagaland|odisha|punjab|rajasthan|sikkim|tamil nadu|telangana|tripura|uttar pradesh|uttarakhand|west bengal)$/i;
+
+/**
+ * "Mohali, Chandigarh, Panchkula & Zirakpur" (website claims) → separate
+ * places to search, without the business's own city (the ranking grid already
+ * searches it), states or "all over India". At most `max`, in the website's order.
+ */
+export function websiteServiceAreaPlaces(values: string[], ownCity: string, max = WEBSITE_AREA_LIMITS.maxServiceAreas): ServiceAreaPlace[] {
+  const own = new Set([String(ownCity || '').trim().toLowerCase()].filter(Boolean));
+  const out: string[] = [];
+  for (const v of values || []) {
+    for (const raw of String(v || '').split(/,|\/|&|\band\b|\||;|\n/i)) {
+      const name = raw.replace(/[()."']/g, ' ').replace(/\s+/g, ' ').trim();
+      const key = name.toLowerCase();
+      if (name.length < 3 || name.split(' ').length > 3 || /\d{3,}/.test(name)) continue;
+      if (NOT_A_PLACE.test(key) || STATE.test(key) || own.has(key) || out.some((o) => o.toLowerCase() === key)) continue;
+      out.push(name.replace(/\b\w/g, (c) => c.toUpperCase()));
+      if (out.length >= max) return out.map((placeName) => ({ placeName, placeId: null }));
+    }
+  }
+  return out.map((placeName) => ({ placeName, placeId: null }));
 }
 
 const DIRECTIONS: Array<{ name: string; dLat: number; dLng: number }> = [

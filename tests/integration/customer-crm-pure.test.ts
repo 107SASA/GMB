@@ -287,6 +287,11 @@ test('super-admin CRM untouched: no admin / sales-agent / nurture / lead-engine 
     'src/app/admin/leads/page.tsx', 'src/app/api/admin/leads/return-to-ai/route.ts',
     // "Assign to partner" card on a platform lead (tests/integration/growth-partner-assign.test.ts).
     'src/app/admin/leads/[id]/page.tsx', 'src/app/api/admin/crm/leads/[id]/partner/route.ts',
+    // One account per area (src/lib/accountArea.ts): staff login / invites only
+    // look at staff accounts, and the lead → owner lookup only at customer
+    // accounts, so the same email / phone can also be a customer or partner.
+    'src/app/api/admin/auth/route.ts', 'src/app/api/admin/invites/route.ts',
+    'src/app/api/admin/invites/accept/route.ts', 'src/app/api/admin/conversion/leads/[id]/route.ts',
   ]);
   const isGrowthPartnerAdmin = (f: string) =>
     f.startsWith('src/app/admin/growth-partners/') ||

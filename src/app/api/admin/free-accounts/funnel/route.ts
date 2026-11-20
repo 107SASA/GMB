@@ -6,6 +6,7 @@ import User from '@/models/User';
 import Business from '@/models/Business';
 import { requireSuperAdmin } from '@/lib/superAdminAuth';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
+import { areaFilter } from '@/lib/accountArea';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,7 @@ export async function GET(req: Request) {
 
     // Became paid: sign-ups in the window whose account now has a paid / trial workspace.
     const phones = [...new Set(signupLeads.map((l: any) => l.phone).filter(Boolean))];
-    const users: any[] = phones.length ? await User.find({ phone: { $in: phones } }).select('_id').lean() : [];
+    const users: any[] = phones.length ? await User.find({ phone: { $in: phones }, ...areaFilter('customer') }).select('_id').lean() : [];
     const becamePaid = users.length
       ? (await Business.distinct('userId', {
           userId: { $in: users.map((u) => u._id) },

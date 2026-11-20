@@ -6,6 +6,7 @@ import WhatsAppMessage from '@/models/WhatsAppMessage';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 import { WA_TEMPLATES } from '@/lib/whatsappTemplates';
 import { excludedTemplate, inboundText, outboundText } from '@/services/inbox/whatsappLogRules';
+import { areaFilter } from '@/lib/accountArea';
 
 /**
  * The record behind the full WhatsApp Inbox: every message on the GrowwMatics
@@ -81,7 +82,7 @@ async function upsertThread(input: {
   // The account behind the number, for the account purge and the Customer view.
   if (!thread.userId) {
     const { default: User } = await import('@/models/User');
-    const user: any = await User.findOne({ phone: input.phone }).select('_id activeBusinessId').lean();
+    const user: any = await User.findOne({ phone: input.phone, ...areaFilter('customer') }).select('_id activeBusinessId').lean();
     if (user) {
       thread.userId = user._id;
       thread.businessId = user.activeBusinessId;
@@ -148,7 +149,7 @@ async function ourNumber(phone: string, phoneKey: string, leadId: unknown): Prom
   const platformLead: any = await Lead.findOne({ phone, tenantId: PLATFORM }).select('_id').lean();
   if (platformLead) return { ok: true, leadId: platformLead._id };
   const { default: User } = await import('@/models/User');
-  if (await User.exists({ phone })) return { ok: true };
+  if (await User.exists({ phone, ...areaFilter('customer') })) return { ok: true };
   return { ok: false };
 }
 

@@ -17,6 +17,7 @@ import ScheduledAction from '@/models/ScheduledAction';
 import { PLATFORM_TENANT, deriveFunnelStage } from '@/lib/admin/conversionFunnel';
 import { computeScoreBand } from '@/services/nba/rules';
 import { crmDisplayName, crmStageLabel } from '@/lib/admin/platformCrm';
+import { areaFilter } from '@/lib/accountArea';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       ? await Business.findById(lead.businessId).select('name subscriptionStatus category city trialEndsAt trialCancelledAt').lean()
       : null;
     if (!business && phone) {
-      const owner: any = await User.findOne({ phone: { $in: phoneVariants(phone) } }).select('_id').lean();
+      const owner: any = await User.findOne({ phone: { $in: phoneVariants(phone) }, ...areaFilter('customer') }).select('_id').lean();
       if (owner) {
         const owned: any[] = await Business.find({ userId: owner._id }).select('name subscriptionStatus category city trialEndsAt trialCancelledAt').lean();
         const rank = (st?: string) => { const i = ['active', 'trial_active', 'past_due'].indexOf(st || ''); return i === -1 ? 9 : i; };

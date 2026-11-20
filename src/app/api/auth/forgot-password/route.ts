@@ -6,6 +6,7 @@ import { generateOTP, hashOTP } from '@/services/auth/otp';
 import { sendEmailOtp } from '@/services/email';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
+import { areaFilter, areaFromLoginContext } from '@/lib/accountArea';
 
 // How long a password-reset OTP remains valid.
 const OTP_EXPIRY_MINUTES = 10;
@@ -31,14 +32,20 @@ async function handlePOST(req: Request) {
       return NextResponse.json({ success: true, message: GENERIC_MESSAGE });
     }
 
-    const { email } = await req.json();
+    const { email, context } = await req.json();
 
     if (!email || typeof email !== 'string') {
       // Still generic — invalid input looks the same as "no such account".
       return NextResponse.json({ success: true, message: GENERIC_MESSAGE });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase().trim(), isDeleted: { $ne: true } });
+    const user = await User.findOne({
+      email: email.toLowerCase().trim(),
+      isDeleted: { $ne: true },
+      // Same email can have a customer, partner and staff account — reset the one
+      // for the login page the person came from (?context=partner|admin).
+      ...areaFilter(areaFromLoginContext(context)),
+    });
 
     if (user) {
       const now = Date.now();

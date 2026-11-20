@@ -1,6 +1,7 @@
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { normalizePhoneE164 } from '@/lib/phone';
+import { areaFilter } from '@/lib/accountArea';
 
 /**
  * Records that the account's phone number is proven to belong to whoever is
@@ -26,6 +27,6 @@ export async function markPhoneVerifiedBySender(rawPhone: string): Promise<void>
   const phone = normalizePhoneE164(rawPhone.replace(/^whatsapp:/i, ''));
   if (!phone) return;
   await dbConnect();
-  const user = await User.findOne({ phone, isPhoneVerified: { $ne: true } }).select('_id').lean<{ _id: unknown }>();
+  const user = await User.findOne({ phone, isPhoneVerified: { $ne: true }, ...areaFilter('customer') }).select('_id').lean<{ _id: unknown }>();
   if (user) await markPhoneVerified(user._id, 'whatsapp_inbound');
 }

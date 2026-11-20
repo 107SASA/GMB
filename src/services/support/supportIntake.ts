@@ -4,6 +4,7 @@ import Lead from '@/models/Lead';
 import User from '@/models/User';
 import { normalizePhoneE164, phoneDedupeKey } from '@/lib/phone';
 import { SUPPORT_MESSAGE } from '@/lib/whatsappCta';
+import { areaFilter } from '@/lib/accountArea';
 
 /**
  * Minimal support intake on the Growwmatics platform WhatsApp line (Segment 4A).
@@ -62,7 +63,7 @@ export function isExplicitSupportRequest(body: string | null | undefined): boole
 export async function identifySupportSender(phone: string): Promise<{ customer: boolean; match?: SupportMatch; senderVerified: boolean; userId?: unknown; businessId?: unknown }> {
   await dbConnect();
   const e164 = normalizePhoneE164(phone) || phone;
-  const user: any = await User.findOne({ phone: { $in: [...new Set([e164, phone])] } })
+  const user: any = await User.findOne({ phone: { $in: [...new Set([e164, phone])] }, ...areaFilter('customer') })
     .select('_id activeBusinessId isPhoneVerified').sort({ isPhoneVerified: -1 }).lean();
   if (user?.isPhoneVerified) return { customer: true, match: 'verified_user', senderVerified: true, userId: user._id, businessId: user.activeBusinessId };
   const { trialOrPaidForPhone } = await import('@/services/sales/preSalesPolicy');

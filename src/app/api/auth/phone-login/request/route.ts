@@ -8,6 +8,7 @@ import { sendOtpMessage } from '@/services/whatsapp/send';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
 import { isReviewerUser } from '@/lib/reviewerAccount';
+import { areaFilter } from '@/lib/accountArea';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,10 +47,10 @@ async function handlePOST(req: Request) {
     // Exact match first; fall back to a last-10-digits match for any legacy
     // record whose phone wasn't stored in strict E.164 (e.g. an older
     // shadow account created from a WhatsApp webhook payload).
-    let user = await User.findOne({ phone: normalized });
+    let user = await User.findOne({ phone: normalized, ...areaFilter('customer') });
     if (!user) {
       const dedupeKey = phoneDedupeKey(normalized);
-      if (dedupeKey) user = await User.findOne({ phone: { $regex: `${dedupeKey}$` } });
+      if (dedupeKey) user = await User.findOne({ phone: { $regex: `${dedupeKey}$` }, ...areaFilter('customer') });
     }
 
     if (!user) {

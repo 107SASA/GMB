@@ -8,6 +8,7 @@ import { sendOtpMessage } from '@/services/whatsapp/send';
 import { finalizeLogin } from '@/lib/authSession';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
+import { areaFilter } from '@/lib/accountArea';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,10 +49,10 @@ async function handlePOST(req: Request) {
       );
     }
 
-    let user = await User.findOne({ phone: normalized });
+    let user = await User.findOne({ phone: normalized, ...areaFilter('customer') });
     if (!user) {
       const dedupeKey = phoneDedupeKey(normalized);
-      if (dedupeKey) user = await User.findOne({ phone: { $regex: `${dedupeKey}$` } });
+      if (dedupeKey) user = await User.findOne({ phone: { $regex: `${dedupeKey}$` }, ...areaFilter('customer') });
     }
     if (!user) {
       return NextResponse.json({ success: false, error: GENERIC_ERROR }, { status: 400 });
@@ -124,7 +125,7 @@ export async function PUT(req: Request) {
       );
     }
 
-    const user = await User.findOne({ phone: normalized });
+    const user = await User.findOne({ phone: normalized, ...areaFilter('customer') });
     // Same generic response whether or not the account exists — don't let
     // this endpoint be used to probe for registered phone numbers.
     if (!user || user.isPhoneVerified) {

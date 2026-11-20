@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { verifyOTP } from '@/services/auth/otp';
 import { isQaTestingMode } from '@/lib/testingMode';
+import { areaFilter } from '@/lib/accountArea';
 
 const MAX_ATTEMPTS = 5;
 const GENERIC_ERROR = 'Invalid or expired code.';
@@ -16,7 +17,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: GENERIC_ERROR }, { status: 400 });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findOne({ email: email.toLowerCase(), ...areaFilter('customer') });
     if (!user) {
       return NextResponse.json({ success: false, error: GENERIC_ERROR }, { status: 400 });
     }

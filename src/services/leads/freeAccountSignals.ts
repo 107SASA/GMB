@@ -5,6 +5,8 @@
  * docs/FREE_ACCOUNT_REGISTRATION_PLAN.md §7
  */
 
+import { areaFilter } from '../../lib/accountArea.ts';
+
 export interface FreeAccountFacts {
   reportScore: number | null;
   scansThisMonth: number;
@@ -84,7 +86,7 @@ export async function syncFreeAccountSignals(now: Date = new Date(), limit = 500
   for (const p of prospects) {
     try {
       const phone = normalizePhoneE164(String(p.phone || '')) || p.phone;
-      const user: any = phone ? await User.findOne({ phone }).select('_id activeBusinessId businessIds lastSeenAt lastLoginAt').lean() : null;
+      const user: any = phone ? await User.findOne({ phone, ...areaFilter('customer') }).select('_id activeBusinessId businessIds lastSeenAt lastLoginAt').lean() : null;
       const businessId = user ? String(user.activeBusinessId ?? user.businessIds?.[0] ?? '') : '';
       const free = user && businessId ? await freeCrm.freeCrmAllowed(String(user._id), businessId) : false;
       if (!free) {

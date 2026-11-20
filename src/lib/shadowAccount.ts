@@ -10,6 +10,7 @@ import { isWorkspaceUnlocked } from '@/lib/workspaceAccess';
 import { isQaTestingMode } from '@/lib/testingMode';
 import { PLACEHOLDER_PERSON_NAME, usablePersonName } from '@/lib/personName';
 import { newBusinessReviewReplySettings } from '@/services/reviews/replyPipeline';
+import { areaFilter } from '@/lib/accountArea';
 
 /**
  * Shadow accounts: a real, unverified, passwordless User+Organization+Business
@@ -127,7 +128,7 @@ export async function provisionShadowAccount(
 
   const personName = usablePersonName(input.personName, input.businessData.name);
 
-  let user = await User.findOne({ phone: normalizedPhone });
+  let user = await User.findOne({ phone: normalizedPhone, ...areaFilter('customer') });
   let organization: any = null;
   let business: any = null;
   // Set inside the `if (user)` branch below; stays false for a brand-new
@@ -337,7 +338,7 @@ export async function findAccountForPhone(phone: string): Promise<{ user: any | 
   await dbConnect();
   const normalizedPhone = normalizePhoneE164(phone);
   if (!normalizedPhone) return { user: null, established: false };
-  const user = await User.findOne({ phone: normalizedPhone });
+  const user = await User.findOne({ phone: normalizedPhone, ...areaFilter('customer') });
   if (!user) return { user: null, established: false };
   const candidates = user.businessIds?.length ? await Business.find({ _id: { $in: user.businessIds } }).lean() : [];
   const established =

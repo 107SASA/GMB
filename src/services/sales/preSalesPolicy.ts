@@ -33,6 +33,7 @@ import {
   type SalesSendKind,
   type StaffAttendanceOutcome,
 } from '@/lib/preSalesRules';
+import { areaFilter } from '@/lib/accountArea';
 
 /**
  * Applies lib/preSalesRules.ts to live records. Every scheduled sales send
@@ -70,7 +71,7 @@ export async function trialOrPaidForPhone(phone: string | null | undefined, busi
   const ids: unknown[] = businessId ? [businessId] : [];
   const normalized = phone ? normalizePhoneE164(phone) || phone : null;
   const users: any[] = normalized
-    ? await User.find({ phone: { $in: [...new Set([normalized, phone])] } }).select('_id subscriptionPlan').lean()
+    ? await User.find({ phone: { $in: [...new Set([normalized, phone])] }, ...areaFilter('customer') }).select('_id subscriptionPlan').lean()
     : [];
   if (users.some((u) => workspaceStartedTrialOrPaid(null, u.subscriptionPlan))) return true;
   const or = [

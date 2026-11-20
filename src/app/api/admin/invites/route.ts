@@ -6,6 +6,7 @@ import User from '@/models/User';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 import { buildInviteLink, effectiveInviteStatus, normalizeInviteEmail } from '@/lib/admin/inviteLink';
+import { areaFilter } from '@/lib/accountArea';
 
 // GET - list all invites
 export async function GET() {
@@ -106,9 +107,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: roleChoice.error }, { status: 400 });
     }
 
-    if (await User.exists({ email })) {
+    // Only another staff account blocks this — a customer or partner on the same email is fine.
+    if (await User.exists({ email, ...areaFilter('staff') })) {
       return NextResponse.json(
-        { success: false, error: 'A user with this email already exists' },
+        { success: false, error: 'A staff account with this email already exists' },
         { status: 400 }
       );
     }
@@ -172,8 +174,8 @@ export async function PATCH(req: Request) {
     if (invite.status === 'accepted') {
       return NextResponse.json({ success: false, error: 'This invite was already accepted.' }, { status: 400 });
     }
-    if (await User.exists({ email: invite.email })) {
-      return NextResponse.json({ success: false, error: 'An account with this email already exists.' }, { status: 400 });
+    if (await User.exists({ email: invite.email, ...areaFilter('staff') })) {
+      return NextResponse.json({ success: false, error: 'A staff account with this email already exists.' }, { status: 400 });
     }
 
     const { rawToken, tokenHash } = newToken();

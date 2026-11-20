@@ -188,6 +188,9 @@ export default function FreeReportView({ audit, pricing = {}, appMode = false }:
   // Shown above the business but not in its trade (facts.otherBusinessesAhead) — context only.
   const otherAhead: number = facts && rankingStatus === 'ok' ? facts.competitorsAhead?.otherCount ?? 0 : 0;
   const competitorFacts: any[] = Array.isArray(d.competitors) ? d.competitors : [];
+  // Same-trade businesses ranked BELOW this one (AI-confirmed) — only stored
+  // when fewer than 3 confirmed competitors rank above. Never "ahead of you".
+  const similarNearby: any[] = rankingStatus === 'ok' && Array.isArray(facts?.similarNearby) ? facts.similarNearby : [];
 
   // ── Issues: verified findings (new) / stored checklist gaps (legacy) ──
   const issues: Array<{ title: string; evidence?: string; finding?: any }> = Array.isArray(d.findings)
@@ -290,7 +293,11 @@ export default function FreeReportView({ audit, pricing = {}, appMode = false }:
                   </div>
                   <div className="bg-surface-container rounded-xl p-4 text-center border border-outline-variant">
                     <div className="font-heading text-2xl font-bold text-on-surface">{completion.pct != null ? `${completion.pct}%` : 'Unknown'}</div>
-                    <div className="text-xs text-on-surface-variant mt-1">of checked profile fields complete</div>
+                    <div className="text-xs text-on-surface-variant mt-1">
+                      {completion.pct != null
+                        ? `profile complete — ${completion.complete} of ${completion.known} fields we could check`
+                        : 'profile fields could not be checked'}
+                    </div>
                   </div>
                 </div>
                 {!appMode && (
@@ -497,6 +504,42 @@ export default function FreeReportView({ audit, pricing = {}, appMode = false }:
                   Beat Your Competitors →
                 </Link>
               )}
+            </div>
+          )}
+
+          {/* ── Same-trade businesses ranked below you ──────────────── */}
+          {similarNearby.length > 0 && (
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-4 sm:p-6">
+              <SectionHeader title="Other businesses like yours nearby" icon="storefront" />
+              <p className="text-sm text-on-surface-variant -mt-3 mb-5">
+                {localCompetitors.length > 0 ? 'Few businesses of your trade ranked above you. ' : 'No business of your trade ranked above you in the searches we ran. '}
+                These {similarNearby.length > 1 ? 'are' : 'is'} in the same line of business and showed up <span className="font-semibold">below</span> {audit.businessName} — they are the ones to keep ahead of.
+              </p>
+              <div className="overflow-x-auto -mx-2">
+                <table className="w-full text-sm min-w-90">
+                  <thead>
+                    <tr className="text-left text-xs text-outline uppercase tracking-wide">
+                      <th className="px-2 py-2 font-medium">Business</th>
+                      <th className="px-2 py-2 font-medium">Rating</th>
+                      <th className="px-2 py-2 font-medium">Reviews</th>
+                      <th className="px-2 py-2 font-medium">Best position</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {similarNearby.slice(0, 5).map((c: any, i: number) => (
+                      <tr key={i} className="border-t border-outline-variant">
+                        <td className="px-2 py-3 font-medium text-on-surface">
+                          {c.name}
+                          {c.category && <div className="text-xs font-normal text-outline mt-0.5">{c.category}</div>}
+                        </td>
+                        <td className="px-2 py-3 text-primary">{c.rating != null ? `★ ${Number(c.rating).toFixed(1)}` : 'Unknown'}</td>
+                        <td className="px-2 py-3 text-secondary">{c.reviewCount ?? 'Unknown'}</td>
+                        <td className="px-2 py-3 font-semibold text-on-surface">#{c.bestPosition}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 

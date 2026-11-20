@@ -57,6 +57,8 @@ export interface IBusiness extends Document {
   userDefinedCategory?: string;
   googleAccountId?: string;
   googleTypes?: string[];
+  /** The business's own Google listing (services/audit/ownListing.ts), reused for 30 days. */
+  googleListing?: import('@/services/audit/ownListing').OwnListing;
   googleConnected: boolean;
   /**
    * What Google actually allows on the connected profile (set by the GBP
@@ -394,6 +396,16 @@ const BusinessSchema: Schema = new Schema(
     userDefinedCategory: { type: String },
     googleAccountId: { type: String },
     googleTypes: [{ type: String }],
+    // The business's own Google listing as Maps shows it (real primary +
+    // extra categories, description …), matched by Place ID — read before a
+    // report searches anything; reused for 30 days (services/audit/ownListing.ts).
+    googleListing: { type: Schema.Types.Mixed },
+    // What the business does, as the AI read it from the listing / website
+    // and the code checked it (services/audit/businessUnderstanding.ts).
+    businessUnderstanding: { type: Schema.Types.Mixed },
+    // The AI's same-trade verdict per competitor, for the last list judged
+    // (services/audit/competitorJudge.ts); reused while the list is the same.
+    competitorJudgement: { type: Schema.Types.Mixed },
     googleConnected: { type: Boolean, default: false },
     googleAccess: {
       type: new Schema(

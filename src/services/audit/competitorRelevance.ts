@@ -35,6 +35,20 @@ export const TRADE_SYNONYMS: string[][] = [
   ['kirana', 'grocery', 'groceries', 'provision', 'provisions'],
   ['bakery', 'bakers', 'baker', 'cake', 'cakes'],
   ['tailor', 'tailors', 'tailoring'],
+  // Google names one trade several ways ("Dentist" / "Dental clinic").
+  ['dentist', 'dentists', 'dental', 'orthodontist', 'orthodontists'],
+  ['salon', 'salons', 'parlour', 'parlours', 'parlor', 'beautician', 'beauty'],
+  ['gym', 'gyms', 'fitness'],
+  ['physiotherapy', 'physiotherapist', 'physiotherapists', 'physio'],
+  ['lawyer', 'lawyers', 'advocate', 'advocates', 'attorney', 'attorneys', 'legal'],
+  ['accountant', 'accountants', 'accounting', 'chartered'],
+  ['realtor', 'realtors', 'estate', 'property', 'properties'],
+  // No bare "food" here: "Food products supplier" (a cashew processor) is not a restaurant.
+  ['restaurant', 'restaurants', 'eatery', 'eateries', 'dhaba', 'takeaway', 'meal', 'mess', 'canteen', 'thali', 'biryani', 'caterer', 'caterers', 'catering', 'tiffin', 'cafe', 'cafes'],
+  ['hotel', 'hotels', 'lodge', 'lodging', 'resort', 'resorts'],
+  // Nov 2026: cashew processors listed as "Manufacturer" were shown steel and plastic factories.
+  ['cashew', 'cashews', 'kaju', 'cashewnut', 'cashewnuts'],
+  ['dryfruit', 'dryfruits', 'almond', 'almonds', 'pista', 'pistachio', 'pistachios', 'raisin', 'raisins', 'kishmish', 'walnut', 'walnuts'],
 ];
 
 /**
@@ -47,6 +61,14 @@ const GENERIC_WORDS = new Set([
   'wholesaler', 'wholesalers', 'wholesale', 'agency', 'agencies', 'enterprise', 'enterprises', 'trader', 'traders',
   'trading', 'company', 'service', 'services', 'business', 'establishment', 'point', 'interest', 'local', 'indian',
   'and', 'the', 'of', 'in', 'for', 'near', 'me', 'best', 'top', 'online', 'house', 'world', 'hub',
+  // Website menu words, not a trade ("Our Solutions", "Products").
+  'solution', 'solutions', 'product', 'products', 'our',
+  // The KIND of business, not what it makes or sells ("Manufacturer",
+  // "Exporter", "Food products supplier") — the product decides the trade.
+  'manufacturer', 'manufacturers', 'manufacturing', 'manufacture', 'maker', 'makers', 'producer', 'producers',
+  'production', 'exporter', 'exporters', 'export', 'exports', 'importer', 'importers', 'import', 'imports',
+  'factory', 'factories', 'industry', 'industries', 'industrial', 'processing', 'processor', 'processors',
+  'plant', 'unit', 'works', 'udyog', 'supplies', 'firm', 'warehouse', 'godown', 'food', 'foods',
 ]);
 
 const words = (s: string | null | undefined): string[] =>
@@ -100,6 +122,22 @@ export function buildTradeProfile(input: {
   return terms.size ? { terms: Array.from(terms), basis } : null;
 }
 
+/**
+ * A KNOWN trade (a TRADE_SYNONYMS group) named in free text — a description,
+ * the business name, a website title. Only listed trades count, so a random
+ * word in a description never becomes the trade. The group named most wins;
+ * null when no known trade is named.
+ */
+export function tradeFromText(texts: Array<string | null | undefined>): string | null {
+  const ws = new Set(texts.flatMap((t) => words(t)));
+  let best: { term: string; hits: number } | null = null;
+  for (const g of TRADE_SYNONYMS) {
+    const hits = g.filter((w) => ws.has(w)).length;
+    if (hits > 0 && (!best || hits > best.hits)) best = { term: g[0], hits };
+  }
+  return best?.term ?? null;
+}
+
 /** Singular form for matching ("plumbers" → "plumber", "bakeries" → "bakery"); short words untouched. */
 const singular = (w: string) =>
   w.length > 4 && w.endsWith('ies') ? `${w.slice(0, -3)}y` : w.length > 4 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w;
@@ -131,7 +169,18 @@ export interface CompetitorEvidence {
   keywords?: string[];
 }
 
-export function classifyCompetitor(c: CompetitorEvidence, profile: TradeProfile): TradeMatch {
+export interface ClassifyOptions {
+  /**
+   * The target's own Google category names its trade (Nov 2026: free-report
+   * customers were shown businesses of other trades as competitors). A
+   * competitor then has to show the trade in its Google categories — or, with
+   * only a generic / no category, in two independent sources. A different
+   * specific category never counts, whatever its name says.
+   */
+  strictCategory?: boolean;
+}
+
+export function classifyCompetitor(c: CompetitorEvidence, profile: TradeProfile, opts: ClassifyOptions = {}): TradeMatch {
   const t = profile.terms;
   const signals: string[] = [];
   const categories = [c.category, ...(c.additionalCategories || [])].filter(Boolean) as string[];
@@ -139,6 +188,10 @@ export function classifyCompetitor(c: CompetitorEvidence, profile: TradeProfile)
   const categoryHit = categories.map((cat) => ({ cat, term: mentions(cat, t) })).find((x) => x.term);
   if (categoryHit) {
     return { level: 'confirmed', counted: true, signals: [`Google category "${categoryHit.cat}"`] };
+  }
+  if (opts.strictCategory) {
+    const specific = categories.find((cat) => specificWords(cat).length > 0);
+    if (specific) return { level: 'unrelated', counted: false, signals: [`different Google category "${specific}"`] };
   }
 
   const nameTerm = mentions(c.name, t);
@@ -160,7 +213,7 @@ export function classifyCompetitor(c: CompetitorEvidence, profile: TradeProfile)
   const evidence = (nameTerm ? 1 : 0) + independent;
   if (evidence >= 2) return { level: 'confirmed', counted: true, signals };
   const tradeSearch = (c.keywords || []).find((k) => mentions(k, t));
-  if (evidence === 1 && tradeSearch) {
+  if (evidence === 1 && tradeSearch && !opts.strictCategory) {
     return { level: 'probable', counted: true, signals: [...signals, `shown by Google for "${tradeSearch}"`, `generic category "${c.category || 'none'}"`] };
   }
   return { level: 'unverified', counted: false, signals: signals.length ? signals : [`generic category "${c.category || 'none'}", no trade evidence`] };

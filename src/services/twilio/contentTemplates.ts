@@ -17,11 +17,20 @@ export type TemplateLookup =
     }
   | { ok: false; status: number; error: string };
 
-/** The template's text, whichever content type it was built as. */
-function bodyOf(types: Record<string, any> | undefined): string {
+/**
+ * The template's text, whichever content type it was built as. Most types
+ * keep it in `body`; a Card (photo/video + buttons) keeps it in `title`, with
+ * an optional `subtitle` WhatsApp shows as the footer.
+ */
+export function bodyOf(types: Record<string, any> | undefined): string {
   if (!types) return '';
   for (const type of Object.values(types)) {
     if (type && typeof type.body === 'string' && type.body.trim()) return type.body;
+  }
+  const card = types['twilio/card'];
+  if (card && typeof card.title === 'string' && card.title.trim()) {
+    const footer = typeof card.subtitle === 'string' ? card.subtitle.trim() : '';
+    return footer ? `${card.title}\n\n${footer}` : card.title;
   }
   return '';
 }

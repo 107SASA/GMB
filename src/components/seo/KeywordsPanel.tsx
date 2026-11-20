@@ -38,7 +38,10 @@ interface Data {
   gaps: Array<{ keyword: string; volumeText: string; competitor: string; competitorRank: number | null }>;
   searchTerms: Array<{ keyword: string; impressions: number }>;
   searchTermsMonth: string | null;
-  research: { candidates: number; withVolume: number; rankChecked: number; ranAt: string } | null;
+  research: {
+    candidates: number; withVolume: number; rankChecked: number; ranAt: string;
+    freeReportComparison?: Array<{ keyword: string; before?: number | null; after?: number | null; freeReportAt: string | null }>;
+  } | null;
   googleConnected: boolean;
 }
 
@@ -319,6 +322,32 @@ export default function KeywordsPanel() {
                     </table>
                   </div>
                 )}
+
+              {(data.research?.freeReportComparison?.length ?? 0) > 0 && (
+                <div>
+                  <h3 className="font-bold text-on-surface text-sm">Since your free report</h3>
+                  <p className="text-xs text-on-surface-variant mt-0.5 mb-3">
+                    The same searches as your free report{data.research!.freeReportComparison![0].freeReportAt ? ` (${new Date(data.research!.freeReportComparison![0].freeReportAt!).toLocaleDateString('en-IN')})` : ''}, checked again after you connected Google.
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b border-outline-variant"><Th>Search</Th><Th right>Free report</Th><Th right>Now</Th></tr></thead>
+                      <tbody className="divide-y divide-outline-variant">
+                        {data.research!.freeReportComparison!.map((r) => {
+                          const t = (v: number | null | undefined) => (v === undefined ? 'Not measured' : v === null ? 'Not in top 20' : `#${Math.round(v)}`);
+                          return (
+                            <tr key={r.keyword}>
+                              <td className="py-2.5 pr-4 text-on-surface">{r.keyword}</td>
+                              <td className="py-2.5 pr-4 text-right text-on-surface-variant whitespace-nowrap">{t(r.before)}</td>
+                              <td className="py-2.5 text-right font-bold text-on-surface whitespace-nowrap">{t(r.after)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <h3 className="font-bold text-on-surface text-sm">Competitors rank, you don’t</h3>

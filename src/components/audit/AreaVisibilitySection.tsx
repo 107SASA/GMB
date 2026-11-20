@@ -17,13 +17,15 @@ export default function AreaVisibilitySection({ areaVisibility, businessName }: 
       <div className="flex items-center gap-2 mb-2">
         <MaterialIcon name="travel_explore" size={20} className="text-primary" />
         <h2 className="font-heading text-lg sm:text-xl font-bold text-on-surface">
-          {view.source === 'website' ? 'Visibility in the areas you serve' : 'Competitors and visibility by service area'}
+          {view.source === 'website' ? 'Visibility in the areas you serve' : view.source === 'city' ? 'Visibility across your city' : 'Competitors and visibility by service area'}
         </h2>
       </div>
       {view.coverage && view.coverage.missing.length > 0 && (
         <div className="rounded-lg bg-error-container border border-error-container p-3 sm:p-4 mb-4">
           <p className="font-bold text-error">
-            {view.source === 'website' ? 'Your website lists' : 'You serve'} {view.coverage.measured} area{view.coverage.measured > 1 ? 's' : ''}, but {businessName} shows up in the top 20 in only {view.coverage.visibleIn}.
+            {view.source === 'city'
+              ? `Searched from the centre of ${view.coverage.missing.join(', ')}, ${businessName} is not in the top 20.`
+              : `${view.source === 'website' ? 'Your website lists' : 'You serve'} ${view.coverage.measured} area${view.coverage.measured > 1 ? 's' : ''}, but ${businessName} shows up in the top 20 in only ${view.coverage.visibleIn}.`}
           </p>
           <p className="text-sm text-on-surface-variant mt-1">
             Not found when customers search in: {view.coverage.missing.join(', ')}. Those customers are shown other businesses.
@@ -31,7 +33,7 @@ export default function AreaVisibilitySection({ areaVisibility, businessName }: 
         </div>
       )}
       <p className="text-sm text-on-surface-variant mb-5">
-        Real Google Maps searches run from inside each area {businessName} {view.source === 'website' ? 'says it serves on its website' : 'serves on Google'}. Position is where {businessName} appeared there;
+        Real Google Maps searches run from inside each area {businessName} {view.source === 'website' ? 'says it serves on its website' : view.source === 'city' ? 'serves (its city centre — the address is not shown on Google)' : 'serves on Google'}. Position is where {businessName} appeared there;
         monthly searches are Google Ads volume for the whole country (Google rarely reports a single town, so local phrases often show &ldquo;Not enough data&rdquo;).
         Only businesses in the same trade are listed.
       </p>

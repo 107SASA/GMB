@@ -136,6 +136,16 @@ const words = (s: unknown) => String(s ?? '').toLowerCase().normalize('NFKD').re
 /** A short stem, so "counselling" ~ "counselor", "psychologist" ~ "psychology". */
 const stem = (w: string) => (w.length > 6 ? w.slice(0, 6) : w.replace(/(ies|es|s)$/, ''));
 
+/** The word / stem rules evidenceStems uses — anything checked against the evidence must use these. */
+export const evidenceWords = words;
+export const evidenceStem = stem;
+
+/** Adds free text (a website's page text) to an evidence set. */
+export function addEvidenceText(set: Set<string>, text: string): Set<string> {
+  for (const w of words(text)) if (w.length >= 3) set.add(stem(w));
+  return set;
+}
+
 /** Every word the evidence contains, as stems. */
 export function evidenceStems(raw: UnderstandingInput): Set<string> {
   const i = normalizeInput(raw);

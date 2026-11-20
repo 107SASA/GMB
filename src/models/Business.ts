@@ -59,6 +59,16 @@ export interface IBusiness extends Document {
   googleTypes?: string[];
   /** The business's own Google listing (services/audit/ownListing.ts), reused for 30 days. */
   googleListing?: import('@/services/audit/ownListing').OwnListing;
+  /**
+   * The last free report's keyword shortlist with what it measured — the
+   * first connected audit re-checks the same keywords (before / after).
+   */
+  freeReportKeywords?: {
+    auditId: string;
+    at: string;
+    city: string;
+    keywords: Array<{ keyword: string; service: string | null; volume: number | null; rank: number | null; measured: boolean }>;
+  };
   googleConnected: boolean;
   /**
    * What Google actually allows on the connected profile (set by the GBP
@@ -406,6 +416,9 @@ const BusinessSchema: Schema = new Schema(
     // The AI's same-trade verdict per competitor, for the last list judged
     // (services/audit/competitorJudge.ts); reused while the list is the same.
     competitorJudgement: { type: Schema.Types.Mixed },
+    // The last free report's keyword shortlist + ranks; the first connected
+    // audit re-checks the same keywords (docs/FREE_REPORT_REBUILD_PLAN.md C.2 step 9).
+    freeReportKeywords: { type: Schema.Types.Mixed },
     googleConnected: { type: Boolean, default: false },
     googleAccess: {
       type: new Schema(

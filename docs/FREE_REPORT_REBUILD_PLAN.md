@@ -1,10 +1,11 @@
 # Free Report Rebuild
 
-Status (20 Nov 2026): **phases 0–4 built and tested on `dev`, not yet committed or live.** Next: commit (only the files in §A.3 — see §A.6 item 7), push to `dev`, run ~10 real free reports on `dev` and check them by hand (incl. `facts.timings`), then PR to `main`.
+Status (20 Nov 2026): **v15 live. v16 on `dev` (`6ebeaef`). Part C (v17) built locally, not committed: keyword shortlist, gap checks, test set script.** Next: commit to `dev`, run `scripts/free-report-testset.ts --pick` then `--run` against production data, check every report by hand, then PR to `main`.
 
-This file has two parts:
+This file has three parts:
 - **Part A — what was built** (start here next time): flow, files, settings, versions, test results, open items, how to check a report.
 - **Part B — the original plan** (§1–9): the evidence and reasoning behind it.
+- **Part C — keyword shortlist (next)**: every possible keyword → volume for all → shortlist → rank-check only the shortlist. Same system as the connected audit.
 
 ---
 
@@ -333,3 +334,70 @@ Each phase is its own commit, tested, and shown to you before the next one.
 5. Connected monthly audit: **not changed**, by the owner's decision for now.
 6. City-level volume + Google keyword ideas (+$0.18/report): **declined for now**.
 7. AI provider: **stay on Groq**, upgrade to the paid plan when it opens (§A.6 item 1).
+
+
+---
+
+# Part C — Keyword shortlist (agreed 20 Nov 2026, next to build)
+
+## C.1 Why
+- v15 picked rank checks by nationwide volume → "near me" always won (a Mohali yoga studio got 6 "near me" checks, all #1, report showed no gaps). v16 patched it (city first, max one "near me").
+- The free report and the connected audit pick keywords with **different systems**, so after connecting the owner cannot compare before / after.
+- Patches per business keep coming because **answer 2 ("served how", §3.2) is computed but not used** for where to search, and there is **no cross-trade test set**.
+
+## C.2 The flow (every business, every category — no category list in code)
+
+| Step | What | Cost |
+|---|---|---|
+| **1. Collect services** | Google: primary + extra categories (connected: also the profile's services list). Website: services it lists. | — |
+| **2. Google vs website gap** | Free: website services not covered by any Google category ("website offers meditation; no Meditation category"). Connected: website services missing from the profile's services. Shown as a finding. | — |
+| **3. All possible keywords** | From: Google categories, website services, AI search terms, **Google Ads keyword ideas**, **competitors' website keywords**. Each × city, × every area served, × "near me"; products + "shop", makers + "manufacturer / wholesaler". Typically 100–300. | ideas ~$0.09 |
+| **4. Volume for all** | One Google Ads task (≤ 700 phrases) for the country + the city where Google has data. No searches anywhere → dropped. | ~$0.09–0.18 |
+| **5. Shortlist ~10** | Main services first (most-searched city phrase each); area phrases with searches; ideas / competitor keywords **only if they match a service the business really offers**; **max one "near me"**; never "best/top" or a competitor's name. | — |
+| **6. Rank-check only the shortlist** | Around the address (by answer 2: storefront / hybrid). The main keyword also from inside each area served (service-area / hybrid, or areas listed on Google / website). Online businesses: city level, no "near me". ~15–20 Maps searches. | ~$0.04 |
+| **7. Competitors** | Same-trade only (S5 judge), from those searches; how many shortlist keywords each beats the owner on; reviews / rating. **Competitor keyword gap**: a keyword competitors' sites target, with real searches, that this business does not. | — |
+| **8. Show** | Shortlist with volume + rank; competitors; area misses ("you serve 4 areas, show up in 1"); Google-vs-website gaps; competitor keyword gaps. | — |
+| **9. Save** | The shortlist is saved on the business. The first connected audit starts from it (+ the owner's real Google search terms) and shows before / after on the same keywords. | — |
+
+Rule: **shortlist first, rank-check only the shortlist.** Volume is cheap (one task for hundreds of phrases); Maps rank checks are the cost.
+
+## C.3 Shared with the connected audit
+The connected audit's keyword pipeline (`src/services/seo/keywordPipeline.ts`) already does steps 3–6 with more sources. The free report runs the **same pipeline** with: no GBP search terms (connected only), no owner keywords (unless an optional "what do customers search to find you?" field is added to the form), and a rank-check cap of the shortlist (~10) instead of 50.
+
+## C.4 Also in this part
+- City from Google's own address data (locality), replacing the hand-written district-name list added in v16.
+- Answer 2 ("served how") decides where to search (§3.2 table) — today only the competitor judge uses it.
+
+## C.5 Build order
+1. **Test set**: ≥ 1 real business from each of Google's 19 groups + the 22 checked reports; a script that makes all reports on `dev` (no WhatsApp) and compares with the last run. Nothing goes to `main` without it.
+2. City from Google address data.
+3. Steps 1–2 (services + Google-vs-website gap).
+4. Steps 3–6 via the shared pipeline, free-report caps.
+5. Answer 2 decides where to search.
+6. Steps 7–9 (competitor keyword gap, display, save for the connected audit).
+7. Run the test set after each step; PR to `main` only when no report got worse.
+
+## C.6 What was built (20 Nov 2026, v17)
+
+| Step | Where | Notes |
+|---|---|---|
+| 1 Services | `freeReportShortlist.freeReportServices` | AI search terms, Google categories (never a kind-only one: "Manufacturer"), website services; "shop" / "manufacturer" / "wholesaler" shapes for products / makers |
+| 2 Google vs website | `websiteServicesNotOnGoogle` → finding `profile.website_services_gap` | Free: vs Google categories; connected: vs the profile's services list |
+| 3 Candidates | `freeReportCandidates` (on `seo/keywordResearch.buildCandidates`) | Google Ads ideas kept only when every offer word is in the business's own words (listing + website text); an idea with no place gets the city ("yoga" → "yoga mohali"); online businesses get no "near me" |
+| 4 Volume | `auditService` keyword block | Country + city (when Google Ads has the city) in one call each |
+| 5 Shortlist | `pickShortlist` | Main services' city phrases → areas with searches → one "near me" → best of the rest **with a place**; max 10 |
+| 6 Ranks | grid (main phrase, 3 points) + snapshot at the pin + area searches from inside each area | Service-area business with no areas listed: also its city centre |
+| 7 Competitors | category gap `categoriesCompetitorsUse` → `competitors.category_gap`; competitor keyword gap (top competitor's website, `FREE_REPORT_COMPETITOR_SITES`) → `keywords.competitor_gap` | Competitor keywords only when the business offers them; rank-checked, kept out of ranking statistics |
+| 9 Save | `Business.freeReportKeywords` → `keywordPipeline` re-checks them on the first connected plan → `SeoPlan.keywordResearch.freeReportComparison` → "Since your free report" table in `KeywordsPanel` | |
+
+Switches (env): `FREE_REPORT_KEYWORD_IDEAS=off`, `FREE_REPORT_CITY_VOLUME=off`, `FREE_REPORT_COMPETITOR_SITES=0..3` (default 1).
+
+**Cost per free report** goes from ~₹29 to ~₹50 (ideas + city volume + one competitor site, ~$0.09 each; volumes are cached 45 days).
+
+**Learned from live runs (YOGA SE HOGA, Mohali):**
+- Google's own city for the Mohali pin is "Sahibzada Ajit Singh Nagar" (Noida's pin → "Noida", Hyderabad's → "Hyderabad"). So Google's data alone does not fix official names; `searchCityName` keeps a list of official → common names. The saved city stays first; Google's city for the pin is used only when none is saved (risk: suburbs like "Bidhannagar" for Kolkata).
+- Google Ads has no "Mohali" location → no city-level volume for small cities; country volume is used.
+- "Chandigarh, Punjab" geocodes ~80 km away; a website area farther than 60 km is looked up again by name alone.
+- Real result: Mohali phrases #1; "yoga classes chandigarh" #11, Panchkula and Zirakpur not in the top 20 (searched from the studio) — the gaps the v15 report hid.
+
+**Test set:** `scripts/free-report-testset.ts --pick` (one recent business per industry group → `scripts/testset/businesses.json`, git-ignored), `--run` (new report per business with no WhatsApp / Inngest, summary + diff with the previous run). Each run adds a new latest report per business and costs ~₹50 each.

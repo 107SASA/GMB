@@ -55,8 +55,8 @@ export interface AreaVisibility {
 
 export interface AreaVisibilityFacts {
   version: number;
-  /** Where the areas came from: the connected Google profile, or (free report) the business's website. Absent = google. */
-  source?: 'google' | 'website';
+  /** Where the areas came from: the connected Google profile, (free report) the business's website, or its city centre. Absent = google. */
+  source?: 'google' | 'website' | 'city';
   /** Service areas configured on Google (before any were skipped). */
   configured: number;
   /** The business's own location — measured by the main ranking grid, kept separate. */
@@ -120,8 +120,8 @@ function competitorsIn(obs: SearchObservation[], counted: CompetitorFact[]): Are
 }
 
 export function buildAreaVisibility(input: {
-  /** 'website' = areas the website says it serves (free report); default 'google'. */
-  source?: 'google' | 'website';
+  /** 'website' = areas the website says it serves; 'city' = the city centre (free report); default 'google'. */
+  source?: 'google' | 'website' | 'city';
   /** Service areas configured on Google (GbpLocationSnapshot … serviceArea.places), or read from the website. */
   serviceAreas: Array<{ placeName: string | null; placeId: string | null }>;
   /** What areaDiscovery searched / skipped (stored as facts.areaDiscovery). */
@@ -171,7 +171,7 @@ export function buildAreaVisibility(input: {
       competitors: covered ? primaryCompetitors : [],
     });
   }
-  return { version: AREA_VISIBILITY_VERSION, ...(input.source === 'website' ? { source: 'website' as const } : {}), configured: input.serviceAreas.length, primary, areas };
+  return { version: AREA_VISIBILITY_VERSION, ...(input.source && input.source !== 'google' ? { source: input.source } : {}), configured: input.serviceAreas.length, primary, areas };
 }
 
 // ── Monthly comparison ───────────────────────────────────────────────────────
@@ -303,11 +303,11 @@ export function areaCoverage(av: AreaVisibilityFacts | null | undefined): { meas
   };
 }
 
-export function areaVisibilityView(av: AreaVisibilityFacts | null | undefined): { primary: AreaRowView; areas: AreaRowView[]; source: 'google' | 'website'; coverage: ReturnType<typeof areaCoverage> } | null {
+export function areaVisibilityView(av: AreaVisibilityFacts | null | undefined): { primary: AreaRowView; areas: AreaRowView[]; source: 'google' | 'website' | 'city'; coverage: ReturnType<typeof areaCoverage> } | null {
   if (!av || !Array.isArray(av.areas) || av.areas.length === 0) return null;
   const p = av.primary;
   return {
-    source: av.source === 'website' ? 'website' : 'google',
+    source: av.source === 'website' || av.source === 'city' ? av.source : 'google',
     coverage: areaCoverage(av),
     primary: rowView(p.label, '', null, p.searches, p.bestRank, p.searchesOk, []),
     areas: av.areas.map((a) => rowView(a.area, STATUS_TEXT[a.status](a.note), a.distanceKm, a.searches, a.bestRank, a.searchesOk, a.competitors)),

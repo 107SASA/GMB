@@ -57,7 +57,7 @@ export interface ILead extends Document {
   name: string;
   email?: string;
   phone?: string;
-  source: 'WhatsApp' | 'Website' | 'Manual' | 'Instagram' | 'Facebook' | 'Referral' | 'Demo Booking' | 'Google Business Profile' | 'Phone Call' | 'Contacts Import' | 'CSV Import' | 'Campaign Import' | 'Appointment' | 'Business Card';
+  source: 'WhatsApp' | 'Website' | 'Manual' | 'Instagram' | 'Facebook' | 'Referral' | 'Demo Booking' | 'Google Business Profile' | 'Phone Call' | 'Contacts Import' | 'CSV Import' | 'Campaign Import' | 'Appointment' | 'Business Card' | 'Event';
   leadType: 'Client Prospect' | 'Platform Prospect';
   status: 'active' | 'inactive';
   lifeCycleStage: 'initial' | 'active' | 'closed' | 'converted';
@@ -302,7 +302,9 @@ const LeadSchema: Schema = new Schema(
         // Platform (super admin CRM) capture channels.
         'Website Free Report', 'Website Demo Booking', 'WhatsApp Free Report',
         // Free account created in the app / on the website (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md).
-        'App Sign-up', 'Website Sign-up'],
+        'App Sign-up', 'Website Sign-up',
+        // Met in person at an event / expo (e.g. BTS 2026) — CRM add or CSV import.
+        'Event'],
       default: 'Manual'
     },
     leadType: {

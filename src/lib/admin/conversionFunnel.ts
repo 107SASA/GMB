@@ -29,9 +29,10 @@ export interface ResolvedRange {
   until: Date | null;
 }
 
+/** A bare day ("2026-11-17") is that day in India (IST), where the team works — not UTC. */
 const validDate = (v: string | null): Date | null => {
   if (!v) return null;
-  const d = new Date(v);
+  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T00:00:00+05:30` : v);
   return Number.isNaN(d.getTime()) ? null : d;
 };
 

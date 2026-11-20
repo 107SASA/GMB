@@ -46,6 +46,7 @@ before(async () => {
     followUps: await import('../../src/app/api/admin/crm/follow-ups/route'),
     followUpOne: await import('../../src/app/api/admin/crm/follow-ups/[id]/route'),
     subStages: await import('../../src/app/api/admin/crm/sub-stages/route'),
+    tags: await import('../../src/app/api/admin/crm/tags/route'),
     activity: await import('../../src/services/admin/platformCrmActivity'),
   };
   admin = await signInAsSuperAdmin('crm-admin@example.invalid');
@@ -213,6 +214,49 @@ test('bulk move and the stage filter', async (t) => {
   assert.ok(ids.every((id) => list.rows.some((r: any) => r._id === id)));
   assert.ok(list.rows.every((r: any) => r.currentStage === 'COLD'));
   assert.equal((await m.bulk.POST(jsonReq(`${BASE}/x`, 'POST', { ids, stage: 'NOPE' }))).status, 400);
+});
+
+test('tag filter: whole tag, any case; search finds a tag too; the tag list for the filter', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const bts = (await create({ name: 'Tag Expo', phone: phone(), tags: ['BTS2026', 'hot'] })).json.leadId;
+  const other = (await create({ name: 'Tag Other', phone: phone(), tags: ['BTS2026-old'] })).json.leadId;
+  const byTag = await pipeline('tag=bts2026');
+  assert.ok(byTag.rows.some((r: any) => r._id === bts));
+  assert.ok(!byTag.rows.some((r: any) => r._id === other), 'a longer tag is not the same tag');
+  assert.ok(byTag.rows.every((r: any) => r.tags.some((x: string) => x.toLowerCase() === 'bts2026')));
+  const bySearch = await pipeline('q=BTS2026');
+  assert.ok([bts, other].every((id) => bySearch.rows.some((r: any) => r._id === id)), 'search matches part of a tag');
+  const list = await m.tags.GET().then((r: Response) => r.json());
+  assert.ok(list.tags.includes('BTS2026') && list.tags.includes('hot'));
+});
+
+test('date filter: From / To are whole days in India time', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const make = async (name: string, at: string) => {
+    const id = (await create({ name, phone: phone(), tags: ['date-test'] })).json.leadId;
+    await m.Lead.collection.updateOne({ _id: new m.mongoose.Types.ObjectId(id) }, { $set: { createdAt: new Date(at) } });
+    return id;
+  };
+  const earlyIst = await make('Date Early', '2026-11-17T01:00:00+05:30'); // 16 Nov in UTC
+  const lateIst = await make('Date Late', '2026-11-17T23:30:00+05:30');
+  const nextDay = await make('Date Next', '2026-11-18T00:10:00+05:30');
+  const ids = (qs: string) => pipeline(`tag=date-test&${qs}`).then((j: any) => j.rows.map((r: any) => r._id));
+  const day = await ids('range=custom&from=2026-11-17&to=2026-11-17');
+  assert.deepEqual([earlyIst, lateIst].every((id) => day.includes(id)), true);
+  assert.ok(!day.includes(nextDay));
+  const fromOnly = await ids('range=custom&from=2026-11-18');
+  assert.deepEqual(fromOnly, [nextDay]);
+});
+
+test('Event source: from a CSV ("Event" or "Expo"), saved, and found by the Source filter', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  assert.equal(m.rules.parseCrmSource('event', 'CSV Import'), 'Event');
+  assert.equal(m.rules.parseCrmSource('Expo', 'CSV Import'), 'Event');
+  assert.equal(m.rules.parseCrmSource('BTS', 'CSV Import'), 'CSV Import');
+  const id = (await create({ name: 'Expo Visitor', phone: phone(), source: 'Event' })).json.leadId;
+  assert.equal((await m.Lead.findById(id).lean()).source, 'Event');
+  const list = await pipeline('source=Event');
+  assert.ok(list.rows.some((r: any) => r._id === id));
 });
 
 test('CSV import: new leads created, existing ones only filled in, duplicates and bad rows reported, stages only when asked', async (t) => {

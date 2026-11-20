@@ -51,14 +51,19 @@ export async function queryPipeline(p: URLSearchParams) {
   const minScore = Number(p.get('minScore'));
   if (Number.isFinite(minScore) && minScore > 0) and.push({ leadScore: { $gte: minScore } });
 
+  const escape = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // One tag, matched whole and ignoring case ("bts2026" finds "BTS2026").
+  const tag = (p.get('tag') || '').trim();
+  if (tag) and.push({ tags: new RegExp(`^${escape(tag)}$`, 'i') });
+
   const q = (p.get('q') || '').trim();
   if (q) {
-    const escape = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const digits = phoneSearchDigits(q);
     and.push({
       $or: [
         { name: new RegExp(escape(q), 'i') },
         { businessType: new RegExp(escape(q), 'i') },
+        { tags: new RegExp(escape(q), 'i') },
         ...(digits ? [{ phone: new RegExp(escape(digits)) }] : [{ phone: new RegExp(escape(q), 'i') }]),
       ],
     });

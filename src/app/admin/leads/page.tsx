@@ -98,10 +98,12 @@ export default function LeadsPipelinePage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const [team, setTeam] = useState<{ id: string; name: string }[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const view = sp.get('view') === 'board' ? 'board' : 'list';
 
   useEffect(() => {
     fetch('/api/admin/inbox/team').then((r) => r.json()).then((j) => setTeam(j?.team ?? j?.data ?? [])).catch(() => {});
+    fetch('/api/admin/crm/tags').then((r) => r.json()).then((j) => setTags(Array.isArray(j?.tags) ? j.tags : [])).catch(() => {});
   }, []);
 
   // Keep the search box in step with the URL (Clear all, back/forward).
@@ -118,6 +120,27 @@ export default function LeadsPipelinePage() {
     },
     [router, sp]
   );
+
+  // Several filters at once (a date range is range + from + to).
+  const setParams = useCallback(
+    (updates: Record<string, string>) => {
+      const next = new URLSearchParams(Array.from(sp.entries()));
+      for (const [key, value] of Object.entries(updates)) {
+        if (value) next.set(key, value);
+        else next.delete(key);
+      }
+      next.delete('page');
+      router.replace(`/admin/leads?${next.toString()}`);
+    },
+    [router, sp]
+  );
+
+  /** A From / To day: custom range while either is set, back to "All" when both are cleared. */
+  const setDay = (which: 'from' | 'to', value: string) => {
+    const from = which === 'from' ? value : val('from');
+    const to = which === 'to' ? value : val('to');
+    setParams({ range: from || to ? 'custom' : '', from, to });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -220,7 +243,7 @@ export default function LeadsPipelinePage() {
             <button onClick={() => setParam('view', '')} aria-pressed={view === 'list'} className={`px-2.5 py-1.5 ${view === 'list' ? 'bg-primary text-white' : ''}`} title="List"><LayoutList className="w-3.5 h-3.5" /></button>
             <button onClick={() => setParam('view', 'board')} aria-pressed={view === 'board'} className={`px-2.5 py-1.5 ${view === 'board' ? 'bg-primary text-white' : ''}`} title="Board"><Columns className="w-3.5 h-3.5" /></button>
           </div>
-          <RangePicker value={val('range') || 'all'} onChange={(v) => setParam('range', v === 'all' ? '' : v)} />
+          <RangePicker value={val('range') || 'all'} onChange={(v) => setParams({ range: v === 'all' ? '' : v, from: '', to: '' })} />
         </div>
       </div>
 
@@ -257,13 +280,27 @@ export default function LeadsPipelinePage() {
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && setParam('q', q)}
             onBlur={() => setParam('q', q)}
-            placeholder="Name, business or phone…"
+            placeholder="Name, business, phone or tag…"
             className="pl-8 pr-2 py-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest text-xs w-44"
           />
         </div>
         <Filter label="Agent" value={val('agent')} options={AGENTS} onChange={(v) => setParam('agent', v)} />
         <StageSelect value={val('crmStage')} onChange={(v) => setParam('crmStage', v)} includeAll="Stage: all" />
         <Filter label="Source" value={val('source')} options={[...CRM_SOURCES]} onChange={(v) => setParam('source', v)} />
+        <Filter
+          label="Tag"
+          value={val('tag')}
+          options={val('tag') && !tags.some((t) => t.toLowerCase() === val('tag').toLowerCase()) ? [val('tag'), ...tags] : tags}
+          onChange={(v) => setParam('tag', v)}
+        />
+        <label className="inline-flex items-center gap-1 text-xs text-on-surface-variant" title="Date the lead was added">
+          From
+          <input type="date" className={selectCls} value={val('from')} max={val('to') || undefined} onChange={(e) => setDay('from', e.target.value)} />
+        </label>
+        <label className="inline-flex items-center gap-1 text-xs text-on-surface-variant" title="Date the lead was added">
+          To
+          <input type="date" className={selectCls} value={val('to')} min={val('from') || undefined} onChange={(e) => setDay('to', e.target.value)} />
+        </label>
         <select className={selectCls} value={val('assigned')} onChange={(e) => setParam('assigned', e.target.value)}>
           <option value="">Assigned: anyone</option>
           <option value="none">Unassigned</option>
@@ -351,6 +388,15 @@ export default function LeadsPipelinePage() {
                         {r.name}
                       </Link>
                       <div className="text-xs text-outline">{[r.business && r.business !== r.name ? r.business : null, r.phone].filter(Boolean).join(' · ')}</div>
+                      {r.tags?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {r.tags.map((t) => (
+                            <button key={t} type="button" onClick={() => setParam('tag', t)} title={`Show leads tagged ${t}`} className="text-[10px] px-1.5 py-0.5 rounded bg-primary-fixed text-primary hover:underline">
+                              #{t}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {r.captureSources?.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-0.5">
                           {r.captureSources.map((s) => <span key={s} className="text-[10px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant">{s}</span>)}

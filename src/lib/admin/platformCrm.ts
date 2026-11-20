@@ -66,12 +66,16 @@ export const CRM_SOURCES = [
   'Website Free Report', 'Website Demo Booking', 'WhatsApp Free Report', 'App Sign-up', 'Website Sign-up',
   'WhatsApp', 'Website', 'Manual', 'Instagram', 'Facebook', 'Referral', 'Demo Booking',
   'Google Business Profile', 'Phone Call', 'Contacts Import', 'CSV Import', 'Campaign Import', 'Appointment',
+  'Event',
 ] as const;
 export type CrmSource = (typeof CRM_SOURCES)[number];
 
+/** Other words a CSV may use for a source ("Expo" → Event). */
+const SOURCE_ALIASES: Record<string, CrmSource> = { events: 'Event', expo: 'Event', exhibition: 'Event', 'trade show': 'Event' };
+
 export function parseCrmSource(text: unknown, fallback: CrmSource): CrmSource {
   const t = String(text ?? '').trim().toLowerCase();
-  return CRM_SOURCES.find((s) => s.toLowerCase() === t) ?? fallback;
+  return CRM_SOURCES.find((s) => s.toLowerCase() === t) ?? SOURCE_ALIASES[t] ?? fallback;
 }
 
 /**

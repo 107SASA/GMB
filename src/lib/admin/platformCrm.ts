@@ -117,8 +117,10 @@ export function normaliseCrmImportRow(raw: Record<string, unknown>): { ok: true;
   if (!phoneRaw) return { ok: false, error: 'phone is missing' };
   if (!phone) return { ok: false, error: `phone "${phoneRaw}" is not a valid number` };
   const business = get('business', 'business name', 'company', 'businesstype');
+  // Only the phone is required. With no name and no business, the lead is
+  // named by its phone number — usablePersonName() treats that as "no real
+  // name", so a later import / WhatsApp chat with a real name replaces it.
   const name = get('name', 'full name', 'contact name', 'lead name');
-  if (!name && !business) return { ok: false, error: 'name or business is required' };
   const email = get('email', 'email address', 'e-mail');
   if (email && !EMAIL_RE.test(email)) return { ok: false, error: `email "${email}" is not valid` };
   const stageText = get('stage', 'lead stage', 'status');
@@ -127,7 +129,7 @@ export function normaliseCrmImportRow(raw: Record<string, unknown>): { ok: true;
   return {
     ok: true,
     row: {
-      name: name || business,
+      name: name || business || phone,
       phone,
       email: email || undefined,
       businessType: business || undefined,

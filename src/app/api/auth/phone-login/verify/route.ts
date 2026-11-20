@@ -9,6 +9,7 @@ import { checkRateLimit, resetRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
 import { isReviewerUser, isReviewerOtp } from '@/lib/reviewerAccount';
 import { markPhoneVerified } from '@/services/auth/phoneVerification';
+import { areaFilter } from '@/lib/accountArea';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,10 +41,10 @@ async function handlePOST(req: Request) {
       );
     }
 
-    let user = await User.findOne({ phone: normalized });
+    let user = await User.findOne({ phone: normalized, ...areaFilter('customer') });
     if (!user) {
       const dedupeKey = phoneDedupeKey(normalized);
-      if (dedupeKey) user = await User.findOne({ phone: { $regex: `${dedupeKey}$` } });
+      if (dedupeKey) user = await User.findOne({ phone: { $regex: `${dedupeKey}$` }, ...areaFilter('customer') });
     }
 
     if (!user) {

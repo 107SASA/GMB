@@ -45,9 +45,6 @@ export interface IPlaceInsightCache extends Document {
     keywordTable?: any[];
     areasChecked?: string[];
     rankingsEvidence: string;
-    /** The search terms this blob was built from; a different key means the
-     *  business's services / category changed and the blob is not reused. */
-    searchKey?: string;
     /** Google Places competitors — only present when ranking found none
      *  (Places Text Search is a fallback since v8). */
     placesFallback?: any[];

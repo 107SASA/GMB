@@ -258,7 +258,7 @@ export default function ConsultantSections({
           <SectionBar num={S()} title="KEYWORD SEARCH VOLUME ANALYSIS — GOOGLE MAPS" />
           <Card>
             <p className="text-sm text-on-surface-variant mb-3">
-              Phrases people type around {city || 'your area'}. Rank is live Google Maps data measured from your area; demand is Google Ads monthly search volume. Google doesn&apos;t count an exact phrase that very few people type, so for those we show how many people search the service itself in your city or state. Nothing is ever guessed.
+              Phrases people type around {city || 'your area'}. Rank is live Google Maps data measured from your area; demand is Google Ads monthly search volume for the <span className="font-semibold">whole country</span>, not only {city || 'your city'} — use it to compare phrases, not as your local customer count. Google doesn&apos;t count an exact phrase that very few people type, so for those we show how many people search the service itself in your city or state. Nothing is ever guessed.
               {full && <> This table covers the report&apos;s main searches; every keyword we track for you — your own, this month&apos;s focus keywords and the competitors above you — is in <a href="/dashboard/seo-plan" className="text-primary font-semibold hover:underline">SEO Plan → Keywords</a>.</>}
             </p>
             <div className="flex flex-wrap items-center gap-2 mb-4 text-[11px]">
@@ -274,7 +274,7 @@ export default function ConsultantSections({
                 <thead>
                   <tr className="text-left text-xs text-outline uppercase tracking-wide">
                     <th className="px-2 py-2 font-medium">Keyword</th>
-                    {(showMapsVol || showSearchVol) && <th className="px-2 py-2 font-medium text-right">Search / mo</th>}
+                    {(showMapsVol || showSearchVol) && <th className="px-2 py-2 font-medium text-right">Searches / mo (nationwide)</th>}
                     {showMapsVol && <th className="px-2 py-2 font-medium text-right">Maps / mo ~</th>}
                     <th className="px-2 py-2 font-medium">Demand</th>
                     <th className="px-2 py-2 font-medium text-right">Maps Rank</th>

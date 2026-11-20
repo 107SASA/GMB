@@ -9,7 +9,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTradeProfile, classifyCompetitor, specificWords } from '../../src/services/audit/competitorRelevance';
+import { buildTradeProfile, classifyCompetitor, specificWords, tradeFromText } from '../../src/services/audit/competitorRelevance';
 import { resolveSearchCategory } from '../../src/services/audit/seoAnalyzer';
 import { buildFreeReportKeywords } from '../../src/services/audit/keywordSeeds';
 
@@ -170,4 +170,49 @@ test('strict: a generic category needs two sources, one name hit is not enough',
 test('website menu words are not a trade', () => {
   assert.deepEqual(specificWords('Our Solutions'), []);
   assert.deepEqual(specificWords('Products'), []);
+});
+
+test('food business from Google place types: restaurants count, other trades do not', () => {
+  const p = buildTradeProfile({ category: 'Local Business', additionalCategories: ['restaurant', 'meal takeaway', 'point of interest', 'establishment'] })!;
+  assert.ok(p, 'place types give a trade');
+  assert.equal(classifyCompetitor({ name: 'Hotel Annapurna', category: 'Indian restaurant' }, p, strict).counted, true);
+  assert.equal(classifyCompetitor({ name: 'Tiffin House', category: 'Fast food restaurant' }, p, strict).counted, true);
+  assert.equal(classifyCompetitor({ name: 'Om Hardware', category: 'Hardware store' }, p, strict).counted, false);
+  assert.equal(classifyCompetitor({ name: 'City Hospital', category: 'Hospital' }, p, strict).counted, false);
+});
+
+test('trade from a description: only a known trade, the most-named one wins', () => {
+  assert.equal(tradeFromText(['We serve fresh thali, biryani and tiffin in Nashik']), 'restaurant');
+  assert.equal(tradeFromText(['Durva Fireworks']), 'fireworks');
+  assert.equal(tradeFromText(['Welcome to our family run place, quality you can trust']), null);
+  assert.equal(tradeFromText([null, '', undefined]), null);
+});
+
+// ── Business-type categories (Nov 2026: cashew processors shown steel and plastic factories) ─
+
+test('a business-type category is searched with the product from the name', () => {
+  assert.equal(resolveSearchCategory('Manufacturer', 'Shree Cashew Industries', ['Nashik']), 'Cashew Manufacturer');
+  assert.equal(resolveSearchCategory('Food products supplier', 'Patil Cashews', ['Nashik']), 'Cashews supplier');
+  assert.equal(resolveSearchCategory('Wholesaler', 'Konkan Kaju Udyog', ['Nashik']), 'Kaju Wholesaler');
+  // Unchanged: a real category, and the original fireworks case.
+  assert.equal(resolveSearchCategory('Dentist', 'Smile Care', ['Nashik']), 'Dentist');
+  assert.equal(resolveSearchCategory('Store', 'Durva Fireworks', ['Janori']), 'Fireworks Store');
+});
+
+test('business-type words are not a trade', () => {
+  assert.deepEqual(specificWords('Manufacturer'), []);
+  assert.deepEqual(specificWords('Food products supplier'), []);
+  assert.deepEqual(specificWords('Exporter'), []);
+  assert.deepEqual(specificWords('Cashew processing unit'), ['cashew']);
+});
+
+test('cashew business: only cashew businesses count, never other factories or restaurants', () => {
+  const p = buildTradeProfile({ category: tradeFromText(['Shree Cashew Industries'])! })!;
+  const counted = (name: string, category: string) => classifyCompetitor({ name, category }, p).counted;
+  assert.equal(counted('Konkan Kaju', 'Cashew processing unit'), true);
+  assert.equal(counted('Goa Cashews', 'Cashew exporter'), true);
+  assert.equal(counted('Om Steel Works', 'Steel fabricator'), false);
+  assert.equal(counted('Raj Plastics', 'Plastic products manufacturer'), false);
+  assert.equal(counted('Sai Furniture', 'Furniture manufacturer'), false);
+  assert.equal(counted('Hotel Annapurna', 'Indian restaurant'), false);
 });

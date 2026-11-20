@@ -8,6 +8,7 @@ import AdminActionLog from '@/models/AdminActionLog';
 import { logLeadEvent } from '@/services/leadEvents';
 import { PLATFORM_TENANT } from '@/lib/admin/conversionFunnel';
 import { round2 } from '@/lib/partners/commissionRules';
+import { areaFilter } from '@/lib/accountArea';
 
 /**
  * Super admin: link a lead or a customer workspace to a Growth Partner by
@@ -69,7 +70,7 @@ async function workspacesForLead(lead: any): Promise<string[]> {
   if (lead.businessId) ids.add(String(lead.businessId));
   if (lead.phone) {
     const { phoneVariants } = await import('@/services/billing/customerActivation');
-    const users: any[] = await User.find({ phone: { $in: phoneVariants(lead.phone) } }).select('_id').lean();
+    const users: any[] = await User.find({ phone: { $in: phoneVariants(lead.phone) }, ...areaFilter('customer') }).select('_id').lean();
     if (users.length) {
       const owned: any[] = await Business.find({ userId: { $in: users.map((u) => u._id) } }).select('_id').lean();
       owned.forEach((b) => ids.add(String(b._id)));

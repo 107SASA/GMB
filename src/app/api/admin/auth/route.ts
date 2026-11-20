@@ -8,6 +8,7 @@ import { isQaTestingMode } from '@/lib/testingMode';
 import bcrypt from 'bcryptjs';
 import { checkDurableRateLimit, peekDurableRateLimit } from '@/lib/durableRateLimit';
 import { ADMIN_CODE_TTL_MINUTES, isAdminTwoStepEnabled, maskEmail, startAdminChallenge } from '@/lib/adminTwoStep';
+import { areaFilter } from '@/lib/accountArea';
 
 // Compared against when the email is unknown, so a wrong email takes as long
 // as a wrong password and response timing can't reveal which admins exist.
@@ -64,7 +65,8 @@ async function handlePOST(req: Request) {
       }
     }
 
-    const user = await User.findOne({ email: normalizedEmail });
+    // Staff account only — the same email may also have a customer or partner account.
+    const user = await User.findOne({ email: normalizedEmail, ...areaFilter('staff') });
     // Staff only: Super Admins and Content Studio team members (who land on /studio).
     const isStaff = user && (user.role === 'SUPER_ADMIN' || user.role === 'TEAM_MEMBER') && !(user as any).isDeleted;
     const hash = isStaff && user.passwordHash ? user.passwordHash : null;

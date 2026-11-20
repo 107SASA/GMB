@@ -5,6 +5,7 @@ import { generateOTP, hashOTP } from '@/services/auth/otp';
 import { sendEmailOtp } from '@/services/email';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
+import { areaFilter } from '@/lib/accountArea';
 
 export async function POST(req: Request) {
   try {
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true });
     }
 
-    const user = await User.findOne({ email: normalizedEmail });
+    const user = await User.findOne({ email: normalizedEmail, ...areaFilter('customer') });
 
     // Don't reveal whether the account exists or is already verified.
     if (!user || user.isEmailVerified) {

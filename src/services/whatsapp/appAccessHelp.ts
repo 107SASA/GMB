@@ -1,4 +1,5 @@
 import { APP_ACCESS_MESSAGE } from '../../lib/whatsappCta.ts';
+import { areaFilter } from '../../lib/accountArea.ts';
 
 /**
  * The mobile app's "workspace isn't active" screen opens WhatsApp with
@@ -51,7 +52,7 @@ export async function freeCrmContextForPhone(phone: string): Promise<{ free: boo
   ]);
   await dbConnect();
   const normalized = normalizePhoneE164(phone) || phone;
-  const user: any = await User.findOne({ phone: normalized }).select('_id activeBusinessId businessIds').lean();
+  const user: any = await User.findOne({ phone: normalized, ...areaFilter('customer') }).select('_id activeBusinessId businessIds').lean();
   const businessId = user?.activeBusinessId ?? user?.businessIds?.[0];
   if (!user || !businessId) return { free: false, reportUrl: null };
   const { freeCrmAllowed } = await import('@/lib/freeCrm');

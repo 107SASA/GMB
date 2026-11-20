@@ -6,6 +6,7 @@ import { hashOTP, verifyOTP } from '@/services/auth/otp';
 import { generateToken } from '@/services/auth/security';
 import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
+import { areaFilter, areaFromLoginContext } from '@/lib/accountArea';
 
 const MAX_ATTEMPTS = 5;
 const RESET_TOKEN_TTL_MINUTES = 10;
@@ -27,13 +28,19 @@ async function handlePOST(req: Request) {
       );
     }
 
-    const { email, otp } = await req.json();
+    const { email, otp, context } = await req.json();
 
     if (!email || !otp || typeof email !== 'string' || typeof otp !== 'string') {
       return NextResponse.json({ success: false, error: GENERIC_ERROR }, { status: 400 });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase().trim(), isDeleted: { $ne: true } });
+    const user = await User.findOne({
+      email: email.toLowerCase().trim(),
+      isDeleted: { $ne: true },
+      // Same email can have a customer, partner and staff account — reset the one
+      // for the login page the person came from (?context=partner|admin).
+      ...areaFilter(areaFromLoginContext(context)),
+    });
 
     // Don't reveal whether the account exists — same generic error either way.
     if (!user) {

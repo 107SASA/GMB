@@ -72,7 +72,10 @@ export interface SearchObservation {
   /** Other businesses in the top-20 window that were NOT above the target
    *  (identity + position only) — so a competitor's total appearances are
    *  measured, not just the searches where it beat the target. */
-  others?: Array<Pick<SearchResultItem, 'name' | 'placeId' | 'cid' | 'position'>>;
+  others?: Array<Pick<SearchResultItem, 'name' | 'placeId' | 'cid' | 'position'>
+    // Google's own fields too (same response, no extra cost) — so a same-trade
+    // business ranked below can be shown as "like yours nearby" (Nov 2026).
+    & Partial<Pick<SearchResultItem, 'category' | 'additionalCategories' | 'snippet' | 'rating' | 'reviewCount'>>>;
 }
 
 export interface BuildObservationInput {
@@ -119,7 +122,11 @@ export function buildObservation(input: BuildObservationInput): SearchObservatio
     .slice(0, LOCAL_PACK_WINDOW)
     .map((r, i) => ({ r, position: i + 1 }))
     .filter(({ r, position }) => position > aboveCount && position !== targetPosition && !!r.name && !(isTarget && isTarget(r)) && !isNonBusinessResult(r))
-    .map(({ r, position }) => ({ name: r.name, placeId: r.placeId, cid: r.cid, position }));
+    .map(({ r, position }) => ({
+      name: r.name, placeId: r.placeId, cid: r.cid, position,
+      category: r.category ?? null, additionalCategories: r.additionalCategories ?? null, snippet: r.snippet ?? null,
+      rating: r.rating ?? null, reviewCount: r.reviewCount ?? null,
+    }));
   return {
     keyword, kind, point, status: 'ok', found, rank: found ? (targetPosition as number) : null, ahead,
     ...(targetItem ? { target: { ...targetItem, position: targetPosition as number } } : {}),

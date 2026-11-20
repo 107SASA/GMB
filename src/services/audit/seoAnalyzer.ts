@@ -443,6 +443,12 @@ const WEAK_CATEGORY_VALUES = new Set([
   'educational institution', 'education', 'institution', 'institute',
   'school', 'academy', 'training centre', 'training center', 'point of interest',
   'store', 'shop', 'general contractor', 'contractor',
+  // The kind of business, not the product (Nov 2026: "Shree Cashew
+  // Industries", category "Manufacturer", was searched as "manufacturer
+  // nashik" and shown steel and plastic factories as competitors).
+  'manufacturer', 'manufacturing company', 'exporter', 'importer', 'supplier', 'wholesaler',
+  'distributor', 'dealer', 'factory', 'food products supplier', 'food manufacturer',
+  'food processing company', 'food producer', 'agricultural product wholesaler',
 ]);
 
 // Category anchor words that commonly appear IN an SMB name and describe what
@@ -471,9 +477,24 @@ const NON_TRADE_NAME_WORDS = new Set([
   'point', 'plaza', 'mall', 'complex', 'branch', 'outlet', 'emporium', 'bhandar', 'and',
 ]);
 
+/** Firm words a name can end in after its trade ("… Cashew Industries"). */
+const NAME_FIRM_ENDINGS = new Set([
+  'industries', 'industry', 'enterprises', 'enterprise', 'udyog', 'exports', 'export', 'exporters',
+  'traders', 'trading', 'company', 'products', 'foods', 'factory', 'works', 'group', 'agro', 'corporation',
+]);
+
 /** The trade a "{Brand} {Trade}" name ends in ("Durva Fireworks" → "Fireworks"); '' when it doesn't. */
 function nameTradeWord(cleanedWords: string[]): string {
   const ws = cleanedWords.filter((w) => !SELF_PRAISE_WORDS.has(w.toLowerCase()));
+  // A firm word at the end is skipped for the word before it — only when
+  // that word is a known trade: "Shree Cashew Industries" → "Cashew",
+  // "Konkan Kaju Udyog" → "Kaju", but "Shree Ganesh Traders" → '' (a brand).
+  let popped = false;
+  while (ws.length > 2 && NAME_FIRM_ENDINGS.has(ws[ws.length - 1].toLowerCase())) { ws.pop(); popped = true; }
+  if (popped) {
+    const { tradeFromText } = require('./competitorRelevance');
+    return tradeFromText([ws[ws.length - 1]]) ? ws[ws.length - 1] : '';
+  }
   if (ws.length < 2) return '';
   const last = ws[ws.length - 1];
   const l = last.toLowerCase();
@@ -580,7 +601,9 @@ export function resolveSearchCategory(
   // pharmacy, kirana and clothing store came back as a "competitor").
   if (catIsWeak) {
     const trade = nameTradeWord(words);
-    return trade ? `${trade} ${cat}` : cat;
+    // "Food products supplier" + "Patil Cashews" → "Cashews supplier".
+    const catWords = cat.split(/\s+/);
+    return trade ? `${trade} ${catWords.length > 1 ? catWords[catWords.length - 1] : cat}` : cat;
   }
 
   // Sep 2026: with no real category and nothing but the brand name left,
@@ -1188,7 +1211,10 @@ export function calculateBusinessIntelligence(
   const avgReviewCount = counts.length > 0
     ? Math.round(counts.reduce((acc: number, n: number) => acc + n, 0) / counts.length)
     : 0;
-  const reviewGap = reviewCount != null && avgReviewCount > reviewCount ? avgReviewCount - reviewCount : 0;
+  // No gap from fewer than 2 competitors — the same rule as the text below
+  // (Nov 2026: "Hula Global" showed a gap of 171 from ONE boutique next to
+  // "Not enough competitor review data to compare").
+  const reviewGap = reviewCount != null && counts.length >= 2 && avgReviewCount > reviewCount ? avgReviewCount - reviewCount : 0;
 
   // Position needs ranking evidence across several searches (Sep 2026):
   // "Market Leader" used to mean nothing more than "more reviews than the

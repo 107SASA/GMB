@@ -3,6 +3,7 @@ import { securityLogged, emailSubject } from '@/services/security/securityLog';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import { finalizeLogin } from '@/lib/authSession';
+import { areaFilter } from '@/lib/accountArea';
 import { checkRateLimit, resetRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
 import { toFriendlyMessage } from '@/lib/errors/friendlyMessage';
@@ -39,7 +40,12 @@ async function handlePOST(req: Request) {
       );
     }
 
-    const user = await User.findOne({ email: normalizedEmail });
+    // The customer account for this email. Only when there is none, fall back
+    // to the same person's partner/staff account so that (after the password
+    // check) finalizeLogin can point them to the right login page.
+    const user =
+      (await User.findOne({ email: normalizedEmail, ...areaFilter('customer') })) ??
+      (await User.findOne({ email: normalizedEmail }));
 
     if (!user) {
       return NextResponse.json({ success: false, error: 'Invalid credentials' }, { status: 401 });

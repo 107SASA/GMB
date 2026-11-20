@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import SecurityEvent, { type SecurityOutcome, type SecuritySeverity } from '@/models/SecurityEvent';
 import { getClientIp } from '@/lib/rateLimit';
 import { normalizePhoneE164 } from '@/lib/phone';
+import { areaFilter, areaOfRole } from '@/lib/accountArea';
 
 /**
  * Writes the security log (models/SecurityEvent.ts). Never throws and never
@@ -147,7 +148,12 @@ export function securityLogged<C = unknown>(
         try {
           const { default: User } = await import('@/models/User');
           const u: any = subject.includes('@')
-            ? await User.findOne({ email: subject }).select('_id role').lean()
+            ? await User.findOne({
+                email: subject,
+                // One email can have a customer, partner and staff account —
+                // link the event to the account of the area that was used.
+                ...(opts.role ? areaFilter(areaOfRole(opts.role)) : {}),
+              }).select('_id role').lean()
             : null;
           userId = u?._id;
         } catch { /* ignore */ }

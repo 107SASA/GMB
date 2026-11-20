@@ -6,6 +6,7 @@ import GrowthPartner from '@/models/GrowthPartner';
 import PartnerInvite from '@/models/PartnerInvite';
 import { validatePasswordStrength } from '@/lib/passwordPolicy';
 import { partnerLoginPhone } from '@/lib/partners/partnerRules';
+import { areaFilter } from '@/lib/accountArea';
 
 /**
  * Growth Partner account creation from the approval email link.
@@ -64,11 +65,13 @@ export async function acceptPartnerInvite(token: unknown, password: unknown) {
   if (!r.ok) return r;
   const { invite, partner } = r;
 
-  if (await User.exists({ email: invite.email })) {
+  // Only an existing partner login blocks this. The same person's customer or
+  // staff account on this email is a separate account and stays untouched.
+  if (await User.exists({ email: invite.email, ...areaFilter('partner') })) {
     return {
       ok: false as const,
       status: 409,
-      error: 'An account with this email already exists. Please contact us to link it.',
+      error: 'Your partner account already exists. Please sign in.',
     };
   }
 

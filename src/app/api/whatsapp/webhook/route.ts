@@ -19,6 +19,7 @@ import { SUPPORT_MESSAGE } from '@/lib/whatsappCta';
 import { createOrUpdateCustomerLead, PLATFORM_TENANT } from '@/services/crm/customerLeads';
 import { handleInboundOptOut, isOptOutKeyword } from '@/services/messaging/inboundOptOut';
 import { recordInbound } from '@/services/inbox/whatsappLog';
+import { areaFilter } from '@/lib/accountArea';
 
 export const dynamic = 'force-dynamic';
 
@@ -592,7 +593,7 @@ async function processPlatformInbound({ phone, profileName, body }: PlatformInbo
   // always route to support, even if their wording doesn't match the
   // support keywords below (a real customer should never see the "want a
   // free report or a demo?" menu meant for prospects).
-  const existingUser = await User.findOne({ phone: normalizePhoneE164(phone) || phone, isPhoneVerified: true })
+  const existingUser = await User.findOne({ phone: normalizePhoneE164(phone) || phone, isPhoneVerified: true, ...areaFilter('customer') })
     .select('_id activeBusinessId')
     .lean() as any;
 

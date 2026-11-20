@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { isQaTestingMode } from '@/lib/testingMode';
+import { areaFilter } from '@/lib/accountArea';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
       const { default: User } = await import('@/models/User');
       const { default: Business } = await import('@/models/Business');
       const norm = normalizePhoneE164(String(body.phone)) || String(body.phone);
-      const user = await User.findOne({ phone: norm }).select('_id').lean() as any;
+      const user = await User.findOne({ phone: norm, ...areaFilter('customer') }).select('_id').lean() as any;
       if (!user) {
         return NextResponse.json(
           { error: `No User with phone ${norm}. Create a shadow user first (testkit "pay" command seeds one).` },

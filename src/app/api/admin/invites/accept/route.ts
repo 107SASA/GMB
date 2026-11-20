@@ -9,6 +9,7 @@ import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
 import { validatePasswordStrength } from '@/lib/passwordPolicy';
 import { normalizePhoneE164 } from '@/lib/phone';
+import { areaFilter } from '@/lib/accountArea';
 
 async function handlePOST(req: Request) {
   try {
@@ -84,16 +85,18 @@ async function handlePOST(req: Request) {
     }
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email: invite.email });
+    // Only another staff account blocks this — the same person's customer or
+    // partner account on this email / mobile number is a separate account.
+    const existingUser = await User.findOne({ email: invite.email, ...areaFilter('staff') });
     if (existingUser) {
       return NextResponse.json(
-        { success: false, error: 'An account with this email already exists' },
+        { success: false, error: 'A staff account with this email already exists' },
         { status: 400 }
       );
     }
-    if (await User.exists({ phone: normalizedPhone })) {
+    if (await User.exists({ phone: normalizedPhone, ...areaFilter('staff') })) {
       return NextResponse.json(
-        { success: false, error: 'This mobile number is already used by another account' },
+        { success: false, error: 'This mobile number is already used by another staff account' },
         { status: 400 }
       );
     }

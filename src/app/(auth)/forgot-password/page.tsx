@@ -55,7 +55,7 @@ function ForgotPasswordForm() {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ email: email.trim(), context }),
       });
       const data = await res.json();
 
@@ -79,7 +79,7 @@ function ForgotPasswordForm() {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ email: email.trim(), context }),
       });
       const data = await res.json();
       toast.success(data.message || GENERIC_MESSAGE);
@@ -99,7 +99,7 @@ function ForgotPasswordForm() {
       const res = await fetch('/api/auth/verify-reset-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), otp }),
+        body: JSON.stringify({ email: email.trim(), otp, context }),
       });
       const data = await res.json();
 

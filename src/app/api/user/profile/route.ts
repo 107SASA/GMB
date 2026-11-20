@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import Business from '@/models/Business';
 import { requireClient } from '@/lib/auth';
+import { areaFilter } from '@/lib/accountArea';
 import { phoneDedupeKey } from '@/lib/phone';
 import { usablePersonName } from '@/lib/personName';
 import { syncPlatformLeadName } from '@/services/leads/platformProspectEntry';
@@ -67,7 +68,7 @@ export async function PATCH(req: Request) {
     if (!emailStr || !EMAIL_REGEX.test(emailStr)) {
       return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
     }
-    const existing = await User.findOne({ email: emailStr, _id: { $ne: auth.userId } }).lean();
+    const existing = await User.findOne({ email: emailStr, _id: { $ne: auth.userId }, ...areaFilter('customer') }).lean();
     if (existing) {
       return NextResponse.json({ error: 'An account with this email already exists.' }, { status: 400 });
     }
@@ -97,7 +98,7 @@ export async function PATCH(req: Request) {
           { status: 400 }
         );
       }
-      const existing = await User.findOne({ phone: phoneStr, _id: { $ne: auth.userId } }).lean();
+      const existing = await User.findOne({ phone: phoneStr, _id: { $ne: auth.userId }, ...areaFilter('customer') }).lean();
       if (existing) {
         return NextResponse.json({ error: 'Phone number already in use.' }, { status: 400 });
       }

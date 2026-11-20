@@ -43,8 +43,12 @@ export const TRADE_SYNONYMS: string[][] = [
   ['lawyer', 'lawyers', 'advocate', 'advocates', 'attorney', 'attorneys', 'legal'],
   ['accountant', 'accountants', 'accounting', 'chartered'],
   ['realtor', 'realtors', 'estate', 'property', 'properties'],
-  ['restaurant', 'restaurants', 'eatery', 'dhaba'],
+  // No bare "food" here: "Food products supplier" (a cashew processor) is not a restaurant.
+  ['restaurant', 'restaurants', 'eatery', 'eateries', 'dhaba', 'takeaway', 'meal', 'mess', 'canteen', 'thali', 'biryani', 'caterer', 'caterers', 'catering', 'tiffin', 'cafe', 'cafes'],
   ['hotel', 'hotels', 'lodge', 'lodging', 'resort', 'resorts'],
+  // Nov 2026: cashew processors listed as "Manufacturer" were shown steel and plastic factories.
+  ['cashew', 'cashews', 'kaju', 'cashewnut', 'cashewnuts'],
+  ['dryfruit', 'dryfruits', 'almond', 'almonds', 'pista', 'pistachio', 'pistachios', 'raisin', 'raisins', 'kishmish', 'walnut', 'walnuts'],
 ];
 
 /**
@@ -59,6 +63,12 @@ const GENERIC_WORDS = new Set([
   'and', 'the', 'of', 'in', 'for', 'near', 'me', 'best', 'top', 'online', 'house', 'world', 'hub',
   // Website menu words, not a trade ("Our Solutions", "Products").
   'solution', 'solutions', 'product', 'products', 'our',
+  // The KIND of business, not what it makes or sells ("Manufacturer",
+  // "Exporter", "Food products supplier") — the product decides the trade.
+  'manufacturer', 'manufacturers', 'manufacturing', 'manufacture', 'maker', 'makers', 'producer', 'producers',
+  'production', 'exporter', 'exporters', 'export', 'exports', 'importer', 'importers', 'import', 'imports',
+  'factory', 'factories', 'industry', 'industries', 'industrial', 'processing', 'processor', 'processors',
+  'plant', 'unit', 'works', 'udyog', 'supplies', 'firm', 'warehouse', 'godown', 'food', 'foods',
 ]);
 
 const words = (s: string | null | undefined): string[] =>
@@ -110,6 +120,22 @@ export function buildTradeProfile(input: {
   add(input.category, 'Google category');
   for (const c of input.additionalCategories || []) add(c, 'additional category');
   return terms.size ? { terms: Array.from(terms), basis } : null;
+}
+
+/**
+ * A KNOWN trade (a TRADE_SYNONYMS group) named in free text — a description,
+ * the business name, a website title. Only listed trades count, so a random
+ * word in a description never becomes the trade. The group named most wins;
+ * null when no known trade is named.
+ */
+export function tradeFromText(texts: Array<string | null | undefined>): string | null {
+  const ws = new Set(texts.flatMap((t) => words(t)));
+  let best: { term: string; hits: number } | null = null;
+  for (const g of TRADE_SYNONYMS) {
+    const hits = g.filter((w) => ws.has(w)).length;
+    if (hits > 0 && (!best || hits > best.hits)) best = { term: g[0], hits };
+  }
+  return best?.term ?? null;
 }
 
 /** Singular form for matching ("plumbers" → "plumber", "bakeries" → "bakery"); short words untouched. */

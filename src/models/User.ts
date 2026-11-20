@@ -189,19 +189,16 @@ const NotificationPreferencesSchema = new Schema(
 const UserSchema: Schema = new Schema(
   {
     fullName: { type: String, required: true },
+    // Unique per role, not globally — see the compound indexes below.
     email: {
       type: String,
       required: true,
-      unique: true,
-      index: true,
       lowercase: true,
       trim: true,
     },
     phone: {
       type: String,
       required: true,
-      unique: true,
-      index: true,
       trim: true,
     },
     passwordHash: { type: String },
@@ -289,5 +286,17 @@ const UserSchema: Schema = new Schema(
   },
   { timestamps: true }
 );
+
+/**
+ * Email and phone are unique PER ROLE, not across the whole platform: one
+ * person can have a customer account, a Growth Partner account and a staff
+ * account on the same email / mobile number (see src/lib/accountArea.ts).
+ * These replace the old global `email_1` / `phone_1` unique indexes — after
+ * deploying, run `npx tsx scripts/sync-indexes.ts --apply` so production
+ * drops the old ones and builds these (autoIndex is off in production).
+ * Both still start with email / phone, so lookups by those alone stay indexed.
+ */
+UserSchema.index({ email: 1, role: 1 }, { unique: true, name: 'email_role_unique' });
+UserSchema.index({ phone: 1, role: 1 }, { unique: true, name: 'phone_role_unique' });
 
 export default mongoose.models.User || mongoose.model<IUser>('User', UserSchema);

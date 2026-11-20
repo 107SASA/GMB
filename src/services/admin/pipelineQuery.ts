@@ -6,6 +6,7 @@ import { phoneDedupeKey } from '@/lib/phone';
 import { phoneVariants } from '@/services/billing/customerActivation';
 import { crmDisplayName } from '@/lib/admin/platformCrm';
 import { loadLeadRows, type LeadRow } from '@/services/admin/conversionReport';
+import { areaFilter } from '@/lib/accountArea';
 
 /**
  * The Leads & Pipeline query — every filter applied before paging. Shared by
@@ -137,7 +138,7 @@ async function linkedWorkspaces(rows: LeadRow[]): Promise<Map<string, Workspace>
   // manual lead may be "8485860323" while the account has "+918485860323").
   const phones = rows.map((r) => r.lead.phone).filter(Boolean);
   const variants = [...new Set(phones.flatMap((p: string) => phoneVariants(p)))];
-  const users: any[] = variants.length ? await User.find({ phone: { $in: variants } }).select('_id phone').lean() : [];
+  const users: any[] = variants.length ? await User.find({ phone: { $in: variants }, ...areaFilter('customer') }).select('_id phone').lean() : [];
   const businesses: any[] = await Business.find({
     $or: [{ _id: { $in: bizIds } }, { userId: { $in: users.map((u) => u._id) } }],
   })

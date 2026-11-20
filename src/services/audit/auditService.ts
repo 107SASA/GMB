@@ -5,12 +5,14 @@ import Business from '../../models/Business';
 import Review from '../../models/Review';
 import PlaceInsightCache, { claimInsightRefresh, waitForInsightRefresh, IPlaceInsightCache } from '../../models/PlaceInsightCache';
 import { generateAIAudit, type AuditAIResult } from '../ai/auditEngine';
+import { REPORT_LOGIC_VERSION } from './reportLogicVersion';
 import {
   buildReviewFacts,
   compareReviews,
   competitorsAhead,
   AROUND_ADDRESS,
   competitorsFromObservations,
+  competitorKey,
   compareCompetitors,
   brandPhrase,
   publicProfileFromObservations,
@@ -126,12 +128,23 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // competitors; stored keywords used only after intake.
 // v13 (Nov 2026): competitors from the Google category — category searched
 // for competitors, same Google category required, Places fallback filtered.
-const CACHE_LOGIC_VERSION = 13;
+// v14 (Nov 2026): trade fallback chain (place types → description → name →
+// website); no trade known → no competitors shown in the free report.
+// v15 (Nov 2026): business-type categories ("Manufacturer", "Food products
+// supplier", "Wholesaler") are not a trade — the product from the name is
+// ("Shree Cashew Industries" → "cashew manufacturer"); keyword logic back to
+// the Google category (the Nov 16 website-services keywords were reverted);
+// the category comes from the business's own Google listing (S0) before the
+// type saved at sign-up.
+const CACHE_LOGIC_VERSION = REPORT_LOGIC_VERSION;
 
 /** How recently a review sync must have refreshed Google's totals for the
  *  analysis window to count as synced (the Inngest pre-sync runs minutes
  *  before this job). */
 const RECENT_SYNC_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+/** Values that are not a business category at all. */
+const PLACEHOLDER_CATEGORY = /^(local business|business|establishment|point of interest|manufacturer|supplier|wholesaler|exporter|services?|company|store|shop)$/i;
 
 /**
  * Runs one audit inside a provider meter, so auditData.providerUsage holds the
@@ -188,7 +201,44 @@ async function processAuditJobInner(auditId: string) {
       const parts = business.address.split(',').map((p: string) => p.trim()).filter(Boolean);
       return parts.length >= 3 ? (parts[parts.length - 3] || '') : (parts[parts.length - 1] || '');
     })();
-    const resolvedCategory = audit.userDefinedCategory || business.userDefinedCategory || business.category || 'Local Business';
+    // ── S0: the business's real Google listing (docs/FREE_REPORT_REBUILD_PLAN.md) ─
+    // The sign-up form saves Google Places' rough type ("Services",
+    // "Manufacturer", "Medical Clinic"); the listing shows the category the
+    // owner chose ("Mental health service"). Read it first — one Maps search,
+    // matched by Place ID only, saved on the business for 30 days.
+    const { getOwnListing, ownListingCategory, ownListingAsPublicProfile } = require('./ownListing');
+    // The website read does not depend on the listing — start it now and run
+    // both at once (speed: the two used to run one after the other).
+    const websiteIntelPromise: Promise<any> = business.website
+      ? getWebsiteIntelligence(business.website, { maxPages: 6 }).catch((wiErr: any) => {
+          console.warn('[auditService] website intelligence failed:', wiErr?.message);
+          return null;
+        })
+      : Promise.resolve(null);
+    const stageStart = Date.now();
+    const own = await getOwnListing(business, { city: resolvedCity });
+    const timings: Record<string, number> = { ownListingMs: Date.now() - stageStart };
+    const ownListing: import('./ownListing').OwnListing | null = own.listing;
+    if (own.fetched && ownListing) {
+      await Business.updateOne({ _id: business._id }, { $set: { googleListing: ownListing } })
+        .catch((e: any) => console.warn('[auditService] could not save googleListing:', e?.message));
+    }
+    // Order: the owner's own choice (intake / settings) → the real Google
+    // listing → the type saved at sign-up → Google place types → "Local Business".
+    const storedCategory: string = audit.userDefinedCategory || business.category || '';
+    const typeCategory: string = (() => {
+      try { return require('../google/places').deriveCategory(Array.isArray(business.googleTypes) ? business.googleTypes : []) || ''; } catch { return ''; }
+    })();
+    const categoryChoice: { category: string; source: string } = ownListingCategory({
+      listing: ownListing,
+      ownerConfirmed: business.userDefinedCategory || null,
+      stored: storedCategory || null,
+      fromPlaceTypes: typeCategory || null,
+    });
+    const resolvedCategory: string = categoryChoice.category;
+    if (categoryChoice.source === 'google_listing' && storedCategory && storedCategory !== resolvedCategory) {
+      console.log(`[auditService] category from the Google listing: "${resolvedCategory}" (sign-up saved "${storedCategory}")`);
+    }
 
     const {
       calculateProfileCompletion,
@@ -209,32 +259,60 @@ async function processAuditJobInner(auditId: string) {
     // terms when Google lists only a generic category. Every item is a
     // SOURCE_CLAIM (what the site says) with its page URL. A failed crawl
     // never fails the report.
-    let websiteIntel: any = null;
-    if (business.website) {
-      try {
-        websiteIntel = await getWebsiteIntelligence(business.website, { maxPages: 6 });
-      } catch (wiErr: any) {
-        console.warn('[auditService] website intelligence failed:', wiErr?.message);
-      }
-    }
+    // Started above, alongside the listing lookup.
+    const websiteStart = Date.now();
+    const websiteIntel: any = await websiteIntelPromise;
+    timings.websiteWaitMs = Date.now() - websiteStart;
     const websiteServices: string[] = (websiteIntel?.services || []).map((c: any) => String(c.value));
     const { resolveSearchCategory: resolveCat } = require('./seoAnalyzer');
     const categorySearchable = !!resolveCat(resolvedCategory, business.name, [resolvedCity, business.area, business.state]);
     // Generic Google category (e.g. "Services") → search for the service the
     // website itself names, labelled 'website_service' in the report.
-    // Free report and in-app audit alike: a vague category on its own
-    // ("Shop", "Store", "Service", "Office") is not the trade when the
-    // website names real services — those are searched instead. (A trade
-    // category such as "Mobile phone shop" is not vague and is kept.)
-    const { isGenericCategory } = require('../seo/keywordResearch');
-    const vagueCategoryWithServices = websiteServices.length > 0 && isGenericCategory(resolvedCategory);
-    const websiteSearchTerm: string | null = !categorySearchable || vagueCategoryWithServices ? pickServiceForSearch(websiteServices) : null;
+    const websiteSearchTerm: string | null = !categorySearchable ? pickServiceForSearch(websiteServices) : null;
     // What is actually sent to Google ("AI & Automation" → "ai and automation").
     const websiteSearchPhrase: string | null = websiteSearchTerm ? toSearchPhrase(websiteSearchTerm) : null;
     const ownerTerms: string[] = [
       ...String(business.services || '').split(/[,;\n]+/).map((x: string) => x.trim()),
       ...(business.intakeCompleted && Array.isArray(business.keywords) ? business.keywords : []),
     ].filter(Boolean);
+
+    // ── S1: what the business does (free report; docs/FREE_REPORT_REBUILD_PLAN.md) ─
+    // The AI reads the Google listing first, the website only when there is
+    // one; every answer is checked against that evidence and saved on the
+    // business (same inputs → same answer). Low confidence or no answer →
+    // the category rules below, as before.
+    let understanding: import('./businessUnderstanding').Understanding | null = null;
+    let understandingError: string | null = null;
+    let understandingReused = false;
+    if (audit.fastMode) {
+      const { understandBusiness } = require('./businessUnderstanding');
+      const input: import('./businessUnderstanding').UnderstandingInput = {
+        name: business.name || '',
+        city: resolvedCity,
+        area: business.area || '',
+        primaryCategory: resolvedCategory,
+        additionalCategories: ownListing?.additionalCategories || [],
+        placeTypes: Array.isArray(business.googleTypes) ? business.googleTypes : [],
+        googleDescription: ownListing?.snippet ?? null,
+        ownerDescription: business.description || null,
+        // Only a found listing can say the address is hidden.
+        addressShown: ownListing ? !!ownListing.address : null,
+        websiteTitle: websiteIntel && websiteIntel.status !== 'failed' ? websiteIntel.title ?? null : null,
+        websiteDescription: websiteIntel && websiteIntel.status !== 'failed' ? websiteIntel.description?.value ?? null : null,
+        websiteServices,
+      };
+      const uStart = Date.now();
+      const u = await understandBusiness(input, { saved: (business as any).businessUnderstanding ?? null });
+      timings.understandingMs = Date.now() - uStart;
+      understandingError = u.error;
+      understandingReused = u.reused;
+      if (u.understanding && !u.reused) {
+        await Business.updateOne({ _id: business._id }, { $set: { businessUnderstanding: u.understanding } })
+          .catch((e: any) => console.warn('[auditService] could not save businessUnderstanding:', e?.message));
+      }
+      if (u.understanding && u.understanding.confidence !== 'low') understanding = u.understanding;
+      if (u.error) console.warn('[auditService] business understanding unavailable — category rules used:', u.error);
+    }
 
     const businessForRankings = {
       ...businessObj,
@@ -263,21 +341,10 @@ async function processAuditJobInner(auditId: string) {
     const googlePlaceId: string | undefined = businessForRankings.googlePlaceId;
     const cacheable = !!audit.fastMode && !!googlePlaceId;
     let insightCache = cacheable ? await PlaceInsightCache.findOne({ googlePlaceId }) : null;
-    // What the searches were built from. A cached blob built from other terms
-    // (an older category guess, services the website no longer lists) is
-    // stale even inside the 7 days (Nov 2026: "Mulsetu" was served "shop
-    // nashik" searches from an earlier run after its website was read).
-    const rankSearchKey = JSON.stringify([
-      String(businessForRankings.category || '').toLowerCase(),
-      (businessForRankings.keywords || []).map((k: string) => String(k).toLowerCase()),
-      websiteServices.map((x) => x.toLowerCase()).sort(),
-      String(resolvedCity || '').toLowerCase(),
-    ]);
     const isRankFresh = (c: IPlaceInsightCache | null | undefined) =>
       !!(
         c?.rank &&
         c.rank.logicVersion === CACHE_LOGIC_VERSION &&
-        c.rank.searchKey === rankSearchKey &&
         Date.now() - new Date(c.rank.fetchedAt).getTime() < RANK_CACHE_TTL_MS
       );
     let rankCacheFresh = isRankFresh(insightCache);
@@ -294,6 +361,34 @@ async function processAuditJobInner(auditId: string) {
     }
     const cachedRank: any = rankCacheFresh ? insightCache!.rank : null;
     if (cachedRank) meter('rankCacheHit', 1, 'rank_blob_reused (7 days)');
+
+    // ── S2 + S3: keywords from the understood offerings, picked by real volume ─
+    // One volume lookup for every candidate; the most-searched phrases are
+    // rank-checked and the most-searched term becomes the main ranking phrase.
+    // Only when the ranking is not reused from the 7-day cache.
+    let understoodPick: { picked: import('./understoodKeywords').PickedKeyword[]; mainTerm: string | null; areas: string[] } | null = null;
+    let nearbyLocalities: { neighbourhoods: string[] } | null = null;
+    if (!cachedRank && audit.fastMode && understanding) {
+      const kStart = Date.now();
+      try {
+        const { fetchNearbyLocalities } = require('./localities');
+        const { cleanAreas, candidatesFromUnderstanding, pickRankChecks } = require('./understoodKeywords');
+        const { fetchSearchVolumes } = require('./keywordVolumeClient');
+        nearbyLocalities = await fetchNearbyLocalities(businessForRankings.coordinates, { limit: 8 });
+        const areas: string[] = cleanAreas(nearbyLocalities?.neighbourhoods || [], resolvedCity);
+        const candidates = candidatesFromUnderstanding(understanding, { city: resolvedCity, areas });
+        const volumes = await fetchSearchVolumes(candidates.map((c: any) => c.keyword), { countryHint: business.country || '' });
+        const pick = pickRankChecks(candidates, volumes);
+        if (pick.mainTerm && pick.picked.length) {
+          understoodPick = { ...pick, areas };
+          // The grid's main phrase: "<most-searched term> <city>".
+          (businessForRankings as any).keywords = [pick.mainTerm];
+        }
+      } catch (kwErr: any) {
+        console.warn('[auditService] understood keywords failed — category keywords used:', kwErr?.message);
+      }
+      timings.keywordVolumeMs = Date.now() - kStart;
+    }
 
     // ── Ranking (DataForSEO) ───────────────────────────────────────────
     // 5 keywords × 9 grid points for a full audit; 1 keyword × ≤3 points in
@@ -328,38 +423,16 @@ async function processAuditJobInner(auditId: string) {
         const { buildFreeReportKeywords } = require('./keywordSeeds');
         const { fetchKeywordRankSnapshot } = require('./seoAnalyzer');
 
-        const localities = await fetchNearbyLocalities(businessForRankings.coordinates, { limit: 8 });
-        // The website names services → keywords are built from them (each
-        // service × city / nearest areas / "near me") and the ones with the
-        // most searches are checked (seo/freeReportKeywords.ts). No website
-        // services → the category-based seeds, as before.
-        const fromServices = websiteServices.length
-          ? await (async () => {
-              const { freeReportCandidates, candidateVolumes, pickFreeReportChecks } = require('../seo/freeReportKeywords');
-              const { cleanNeighbourhoods } = require('./keywordSeeds');
-              const { fetchSearchVolumes } = require('./keywordVolumeClient');
-              const areas: string[] = cleanNeighbourhoods(localities.neighbourhoods, resolvedCity);
-              const candidates = freeReportCandidates({
-                businessName: business.name || '',
-                city: resolvedCity,
-                areas,
-                category: resolveCat(resolvedCategory, business.name, [resolvedCity, business.area, business.state]) || null,
-                websiteServices,
-              });
-              if (!candidates.length) return null;
-              // Same country lookup the keyword table makes below — it then reads these from the cache.
-              const vol = await fetchSearchVolumes(candidates.map((c: any) => c.keyword), { countryHint: business.country || '' })
-                .catch(() => new Map<string, number | null>());
-              const picked = pickFreeReportChecks(candidates, candidateVolumes(candidates, { country: vol }, new Date().toISOString()));
-              return { keywords: picked.map((k: any) => k.keyword as string), primaryKeyword: picked[0]?.keyword || '', areasUsed: areas };
-            })()
-          : null;
-        const seeded = fromServices ?? buildFreeReportKeywords(
-          { ...businessForRankings, city: resolvedCity, category: websiteSearchPhrase || resolvedCategory },
-          localities.neighbourhoods,
-        );
-        if (!fromServices) {
-          // Up to 3 services the website states, searched city-wide (+3 tasks).
+        const localities = nearbyLocalities ?? await fetchNearbyLocalities(businessForRankings.coordinates, { limit: 8 });
+        // Understood business → the picked phrases (S2/S3). Otherwise the
+        // category seeds as before, plus up to 3 website services city-wide.
+        const seeded = understoodPick
+          ? { keywords: understoodPick.picked.map((k) => k.keyword), primaryKeyword: understoodPick.picked[0]?.keyword || '', areasUsed: understoodPick.areas }
+          : buildFreeReportKeywords(
+              { ...businessForRankings, city: resolvedCity, category: websiteSearchPhrase || resolvedCategory },
+              localities.neighbourhoods,
+            );
+        if (!understoodPick) {
           for (const kw of websiteServiceKeywords(websiteServices, resolvedCity, 3)) {
             if (!seeded.keywords.some((k: string) => k.toLowerCase() === kw)) seeded.keywords.push(kw);
           }
@@ -385,9 +458,12 @@ async function processAuditJobInner(auditId: string) {
     // itself is searched too ("dentist nashik", "dentist near me") — for
     // competitors only: these never enter the ranking table or statistics.
     const { specificWords } = require('./competitorRelevance');
-    const googleTradeCategory: string | null = categorySearchable && specificWords(resolvedCategory).length > 0
-      ? resolveCat(resolvedCategory, business.name, [resolvedCity, business.area, business.state]) || null
-      : null;
+    // The phrase must name a trade: "Manufacturer" alone is not searched, the
+    // name's product is ("Shree Cashew Industries" → "cashew manufacturer").
+    // An understood business searches its most-searched term (S1–S3).
+    const tradeSearchPhrase: string = understoodPick?.mainTerm
+      || (categorySearchable ? resolveCat(resolvedCategory, business.name, [resolvedCity, business.area, business.state]) || '' : '');
+    const googleTradeCategory: string | null = specificWords(tradeSearchPhrase).length > 0 ? tradeSearchPhrase : null;
     let competitorSearchObs: SearchObservation[] = cachedRank ? (cachedRank.competitorObservations || []) : [];
     if (!cachedRank && audit.fastMode && googleTradeCategory && rankData && !rankData.fetchError) {
       try {
@@ -449,6 +525,7 @@ async function processAuditJobInner(auditId: string) {
     let gbpServiceAreas: Array<{ placeName: string | null; placeId: string | null }> = [];
     // Services listed on the Google profile; null = the profile was not read.
     let gbpListedServices: string[] | null = null;
+    let gbpDescription: string | null = null;
     try {
       const GbpLocationSnapshot = require('../../models/GbpLocationSnapshot').default;
       const snap: any = await GbpLocationSnapshot.findOne({ businessId: business._id }).select('sections.location').lean();
@@ -458,33 +535,85 @@ async function processAuditJobInner(auditId: string) {
       if (loc) {
         const { serviceLabel } = require('../gbp/intelligence/normalize');
         gbpListedServices = (loc.services || []).map(serviceLabel).filter(Boolean);
+        gbpDescription = String(loc.profile?.description || '') || null;
       }
     } catch { /* no connected profile — Google's public listing is enough */ }
     // The trade comes from the business's Google categories (primary, the
     // public listing's additional ones, a connected profile's). Website
     // services decide it only when every Google category is vague ("Shop",
     // "Service") — then every service searched counts, not just the first.
-    const listingCategories: string[] = publicProfileFromObservations(observations).additionalCategories || [];
+    const listingView = ownListingAsPublicProfile(publicProfileFromObservations(observations), ownListing);
+    const listingCategories: string[] = [
+      listingView.category,
+      ...(listingView.additionalCategories || []),
+      ...(ownListing?.additionalCategories || []),
+      // Google Places types of the listing ("meal_takeaway" → "meal takeaway");
+      // "point_of_interest" / "establishment" carry no trade and drop out.
+      ...(Array.isArray(business.googleTypes) ? business.googleTypes : []).map((t: string) => String(t).replace(/_/g, ' ')),
+    ].filter((c): c is string => !!c);
     const googleCategories = [resolvedCategory, ...listingCategories, ...gbpCategories];
     const googleTradeKnown = googleCategories.some((c) => specificWords(c).length > 0);
+    // Fallback order — the first source that names a trade decides it:
+    //   1. Google categories (primary, listing, place types, connected profile)
+    //   2. a description: connected profile, Google listing, the owner's
+    //   3. the business name ("Durva Fireworks")
+    //   4. the website's title / description
+    //   5. the website's services (as searched)
+    //   none → the free report shows no competitors (below).
+    // 2–4 only accept a KNOWN trade (tradeFromText), never a random word.
+    const { tradeFromText } = require('./competitorRelevance');
+    const listingSnippet = observations.find((o) => o.status === 'ok' && o.target)?.target?.snippet ?? ownListing?.snippet ?? null;
+    const textTrade = (source: string, texts: Array<string | null | undefined>) => {
+      const term = tradeFromText(texts);
+      const p = term ? buildTradeProfile({ category: term }) : null;
+      if (p) p.basis = [`${source}: ${term}`];
+      return p;
+    };
     const tradeProfile = googleTradeKnown
       ? buildTradeProfile({
           searchCategory: websiteSearchPhrase ? null : searchCategory,
           category: resolvedCategory,
           additionalCategories: [...listingCategories, ...gbpCategories],
         })
-      : buildTradeProfile({
+      : (understanding
+          ? (() => {
+              const p = buildTradeProfile({ category: understanding!.searchTerms[0], additionalCategories: understanding!.searchTerms.slice(1, 4) });
+              if (p) p.basis = [`understood from the listing: ${understanding!.trade}`];
+              return p;
+            })()
+          : null)
+        ?? textTrade('description', [gbpDescription, listingSnippet, business.description])
+        ?? textTrade('business name', [business.name])
+        ?? textTrade('website', [websiteIntel?.title, websiteIntel?.description?.value])
+        ?? buildTradeProfile({
           searchCategory,
           category: resolvedCategory,
           additionalCategories: websiteServices.slice(0, 6).map(toSearchPhrase),
         });
     const classifyOpts = { strictCategory: googleTradeKnown };
+    // "Enough real competitors found, or search further out?" For an
+    // understood business (free report) this counts only businesses whose
+    // Google category is one the AI named as the same trade, or the business's
+    // own categories — exact names, no word matching (Nov 2026: "health" made
+    // a women's clinic count for a psychologist, so the search stopped early).
+    // The final list is still decided by the AI judge (S5).
+    const sameTradeNames = new Set(
+      (understanding
+        ? [...understanding.sameTradeCategories, resolvedCategory, ...(ownListing?.additionalCategories || [])]
+        : [])
+        .map((c) => String(c || '').trim().toLowerCase())
+        .filter((c) => c && !PLACEHOLDER_CATEGORY.test(c)),
+    );
     const countedIn = (obs: SearchObservation[]) =>
-      tradeProfile
+      understanding && sameTradeNames.size
         ? competitorsFromObservations(obs).filter((c) =>
-            classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, keywords: c.keywords }, tradeProfile, classifyOpts).counted,
+            [c.category, ...(c.additionalCategories || [])].some((x) => sameTradeNames.has(String(x || '').trim().toLowerCase())),
           ).length
-        : Infinity; // trade unknown → no basis to judge "insufficient" → no expansion
+        : tradeProfile
+          ? competitorsFromObservations(obs).filter((c) =>
+              classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, keywords: c.keywords }, tradeProfile, classifyOpts).counted,
+            ).length
+          : Infinity; // trade unknown → no basis to judge "insufficient" → no expansion
 
     let areaObs: SearchObservation[] = cachedRank ? (cachedRank.areaObservations || []) : [];
     let areaDiscovery: any = cachedRank ? (cachedRank.areaDiscovery || null) : null;
@@ -499,7 +628,7 @@ async function processAuditJobInner(auditId: string) {
         const { resolvePlacePoint } = require('./localities');
         const { fetchAreaObservations } = require('./seoAnalyzer');
         const res = await discoverCompetitorAreas(
-          { pin, searchTerm: searchCategory, serviceAreas: gbpServiceAreas },
+          { pin, searchTerm: understoodPick?.mainTerm || searchCategory, serviceAreas: gbpServiceAreas },
           {
             resolve: (a: any) => resolvePlacePoint(a, business.state || resolvedCity),
             search: (searches: any[]) => fetchAreaObservations(businessForRankings, searches),
@@ -612,7 +741,23 @@ async function processAuditJobInner(auditId: string) {
     // Google shows every kind of business for a search; the rest are kept as
     // "other businesses shown above you", never counted (competitorRelevance.ts).
     let otherBusinessesAhead: Array<{ name: string; category: string | null; level: string; signals: string[]; foundIn: string[] }> = [];
+    // How competitors were decided: 'ai' / 'reused' (S5 judge) or 'rules (…)'.
+    let competitorJudgeUsed: string = 'rules';
+    // Same-trade businesses ranked BELOW this one (AI-confirmed), shown only
+    // when fewer than 3 confirmed competitors rank above — never counted as "ahead".
+    let similarNearby: Array<{ name: string; category: string | null; rating: number | null; reviewCount: number | null; bestPosition: number; searches: number; reason: string }> = [];
     const tradeBasis: string[] = tradeProfile?.basis ?? [];
+    // Free report with no trade known from Google OR the website: nobody can
+    // be shown as a competitor (Nov 2026: a food business was shown every
+    // business above it because nothing was filtered). Listed as "other
+    // businesses" only.
+    if (competitorFacts.length && !tradeProfile && audit.fastMode) {
+      otherBusinessesAhead = competitorFacts.slice(0, 40).map((c) => ({
+        name: c.name, category: c.category, level: 'unverified', signals: ['trade of this business unknown'], foundIn: c.foundIn || [],
+      }));
+      competitorFacts = [];
+      aheadFacts = { ...aheadFacts, count: 0, names: [] };
+    }
     if (competitorFacts.length && tradeProfile) {
       const classify = (c: CompetitorFact, websiteText?: string) =>
         classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories, snippet: c.snippet, websiteText, keywords: c.keywords }, tradeProfile, classifyOpts);
@@ -627,6 +772,69 @@ async function processAuditJobInner(auditId: string) {
         const text = [intel.title, intel.description?.value, ...(intel.services || []).map((s: any) => s.value)].filter(Boolean).join(' . ');
         c.tradeMatch = classify(c, text);
       });
+      // ── S5: the AI judges each business against what this one does ──
+      // (free report, understood business). Replaces the word-matching
+      // verdict; the rules above stay only if the AI fails. Judged: the 40 seen
+      // above the target most often; the rest are not shown as competitors.
+      if (audit.fastMode && understanding) {
+        const { judgeCompetitors, MAX_JUDGED, MAX_BELOW_JUDGED } = require('./competitorJudge');
+        const ordered = [...competitorFacts].sort((a, b) =>
+          (b.foundIn?.length || 0) - (a.foundIn?.length || 0) || b.searchesAhead - a.searchesAhead);
+        const target = {
+          name: business.name || '', trade: understanding.trade, offerings: understanding.offerings.map((o) => o.name),
+          primaryCategory: resolvedCategory, additionalCategories: ownListing?.additionalCategories || [],
+          servedHow: understanding.servedHow, city: resolvedCity,
+        };
+        const candidates = ordered.slice(0, MAX_JUDGED - MAX_BELOW_JUDGED).map((c) => ({
+          key: c.key, name: c.name, category: c.category, additionalCategories: c.additionalCategories || [], snippet: c.snippet || null,
+        }));
+        // Businesses Google showed BELOW this one in the same searches — judged
+        // in the same call, shown as "like yours nearby" when fewer than 3
+        // confirmed competitors rank above (no extra search, no extra cost).
+        const aheadKeys = new Set(competitorFacts.map((c) => c.key));
+        const belowMap = new Map<string, { key: string; name: string; category: string | null; additionalCategories: string[]; snippet: string | null; rating: number | null; reviewCount: number | null; bestPosition: number; searches: number }>();
+        for (const o of competitorObs) {
+          if (o.status !== 'ok') continue;
+          for (const r of o.others || []) {
+            const key = competitorKey(r as any);
+            if (aheadKeys.has(key) || !r.name) continue;
+            const e = belowMap.get(key) || { key, name: r.name, category: r.category ?? null, additionalCategories: r.additionalCategories || [], snippet: r.snippet ?? null, rating: r.rating ?? null, reviewCount: r.reviewCount ?? null, bestPosition: r.position, searches: 0 };
+            e.searches++;
+            e.bestPosition = Math.min(e.bestPosition, r.position);
+            belowMap.set(key, e);
+          }
+        }
+        const below = [...belowMap.values()].sort((a, b) => b.searches - a.searches || a.bestPosition - b.bestPosition).slice(0, MAX_BELOW_JUDGED);
+        candidates.push(...below.map((b) => ({ key: b.key, name: b.name, category: b.category, additionalCategories: b.additionalCategories, snippet: b.snippet })));
+        const jStart = Date.now();
+        const j = await judgeCompetitors(target, candidates, { saved: (business as any).competitorJudgement ?? null });
+        timings.competitorJudgeMs = Date.now() - jStart;
+        if (j.judgements) {
+          if (j.saved && !j.reused) {
+            await Business.updateOne({ _id: business._id }, { $set: { competitorJudgement: j.saved } })
+              .catch((e: any) => console.warn('[auditService] could not save competitorJudgement:', e?.message));
+          }
+          const levelOf = { yes: 'confirmed', no: 'unrelated', unsure: 'unverified' } as const;
+          competitorFacts.forEach((c) => {
+            const v = j.judgements!.get(c.key);
+            c.tradeMatch = v
+              ? { level: levelOf[v.verdict as 'yes' | 'no' | 'unsure'], counted: v.verdict === 'yes', signals: [`AI: ${v.reason}`] }
+              : { level: 'unverified', counted: false, signals: ['not judged (seen above you less often)'] };
+          });
+          const confirmedAbove = competitorFacts.filter((c) => c.tradeMatch?.counted).length;
+          if (confirmedAbove < 3) {
+            similarNearby = below
+              .filter((b) => j.judgements!.get(b.key)?.verdict === 'yes')
+              .sort((a, b) => a.bestPosition - b.bestPosition)
+              .slice(0, 5)
+              .map((b) => ({ name: b.name, category: b.category, rating: b.rating, reviewCount: b.reviewCount, bestPosition: b.bestPosition, searches: b.searches, reason: j.judgements!.get(b.key)!.reason }));
+          }
+          competitorJudgeUsed = j.reused ? 'reused' : 'ai';
+        } else {
+          console.warn('[auditService] competitor judge unavailable — word-matching result kept:', j.error);
+          competitorJudgeUsed = `rules (${j.error})`;
+        }
+      }
       otherBusinessesAhead = competitorFacts
         .filter((c) => !c.tradeMatch!.counted)
         .slice(0, 40)
@@ -667,7 +875,9 @@ async function processAuditJobInner(auditId: string) {
       // Same-trade check here too: a Places hit of another trade is not a
       // competitor. None left → the report shows no competitors, not random ones.
       placesFallback = (res.accepted || []).filter((c: any) =>
-        !tradeProfile || classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories }, tradeProfile, classifyOpts).counted);
+        tradeProfile
+          ? classifyCompetitor({ name: c.name, category: c.category, additionalCategories: c.additionalCategories }, tradeProfile, classifyOpts).counted
+          : !audit.fastMode);
       compEvidence = `${res.evidenceSource} (fallback — no ranking results available)`;
     } else if (cachedRank && competitorFacts.length === 0 && placesFallback.length) {
       compEvidence = 'Google Places search (fallback — no ranking results available)';
@@ -770,7 +980,6 @@ async function processAuditJobInner(auditId: string) {
             areaDiscovery,
             fetchedAt: new Date(),
             logicVersion: CACHE_LOGIC_VERSION,
-            searchKey: rankSearchKey,
           },
         };
       }
@@ -895,7 +1104,7 @@ async function processAuditJobInner(auditId: string) {
     // Public listing fields come free with the ranking results. Website
     // research is selective: only the 3 competitors seen above the target
     // most often, 2 pages each, cached per domain (HTTP only — no paid API).
-    const publicProfile = publicProfileFromObservations(observations);
+    const publicProfile = ownListingAsPublicProfile(publicProfileFromObservations(observations), ownListing);
     // Up to 5 candidates in parallel (some sites fail DNS/TLS); the first 3
     // that answer, in order of how often they were above the target, are used.
     const candidates = competitorFacts.filter((c) => c.source === 'dataforseo' && c.website).slice(0, 5);
@@ -1060,18 +1269,6 @@ async function processAuditJobInner(auditId: string) {
     const businessIntelligence = calculateBusinessIntelligence(
       business, competitorFacts, lifetimeCount, rankingFacts.overall, aheadFacts.count,
     );
-    // Free report: one review figure everywhere — the median of the same-trade
-    // businesses above you that the report shows ("Median of businesses above
-    // you: 53"), never a second average over a different list (Nov 2026:
-    // "average 78" next to "median 53" in one report).
-    if (audit.fastMode && reviewComparison && lifetimeCount != null) {
-      const median = reviewComparison.medianCompetitorReviewCount;
-      const gap = Math.max(0, median - lifetimeCount);
-      businessIntelligence.reviewGap = gap;
-      businessIntelligence.reviewGapImpact = gap > 0
-        ? `The median of ${reviewComparison.competitorsCompared} businesses above you is ${median} reviews; you have ${lifetimeCount}.`
-        : 'Your review count is at or above the median of the businesses above you.';
-    }
 
     // Headline score = profile completion % (see the Aug 2026 note on why
     // nothing else is blended into it).
@@ -1256,7 +1453,19 @@ async function processAuditJobInner(auditId: string) {
       // The GBP service list is never read by any code path — so the website's
       // services become a verification step, never "your GBP is missing X".
       const servicesStatus = profileCompletion.checklist.find((c: any) => c.field === 'Services Listed')?.status;
-      if (websiteServices.length && servicesStatus === 'Missing') {
+      // The services named in these findings: the real offerings the AI
+      // checked against the evidence (S1) — not raw website headings (Nov 2026:
+      // "list the 25 services your website describes" were "Follow Us",
+      // "Before", "P1.25"…). Without an understanding, menu text, product
+      // codes and sentences are filtered out.
+      const realServices: string[] = understanding?.offerings.length
+        ? understanding.offerings.map((o) => o.name)
+        : websiteServices.filter((s) => {
+            const t = String(s).trim();
+            return /\p{L}{3,}/u.test(t) && t.split(/\s+/).length <= 6 && !/[.:;!?]$/.test(t) &&
+              !/^(follow us|before|after|search|home|about( us)?|contact( us)?|faqs?|blog|gallery|products?|services?|our services|our products|read more|learn more|with \w+)$/i.test(t);
+          });
+      if (realServices.length && servicesStatus === 'Missing') {
         // GBP Intelligence read the service list and it is empty, while the
         // website names services → a real, specific opportunity. It replaces
         // the generic "no services listed" finding (same fact, less useful).
@@ -1265,8 +1474,8 @@ async function processAuditJobInner(auditId: string) {
         findings.push({
           id: 'website.services.missing_on_gbp',
           category: 'profile',
-          title: `Your website lists ${websiteServices.length} service${websiteServices.length === 1 ? '' : 's'}; your Google profile lists none`,
-          evidence: `Google Business Profile services: none · Website (${websiteIntel.services[0]?.sourceUrl}): ${websiteServices.slice(0, 5).join(', ')}${websiteServices.length > 5 ? '…' : ''}`,
+          title: `Your website lists ${realServices.length} service${realServices.length === 1 ? '' : 's'}; your Google profile lists none`,
+          evidence: `Google Business Profile services: none · Website (${websiteIntel.services[0]?.sourceUrl}): ${realServices.slice(0, 5).join(', ')}${realServices.length > 5 ? '…' : ''}`,
           evidenceIds: ['gbp.services', 'website.services'],
           source: 'gbp_api',
           severity: 'medium',
@@ -1274,15 +1483,15 @@ async function processAuditJobInner(auditId: string) {
           businessImpact: 'Google matches listings to searches partly by the services listed on them.',
           actionability: 'directly_fixable',
           growwmaticsCapability: 'update_services',
-          recommendedAction: `Add the services you really offer to the Google profile — your website already names: ${websiteServices.slice(0, 5).join(', ')}.`,
+          recommendedAction: `Add the services you really offer to the Google profile — your website already names: ${realServices.slice(0, 5).join(', ')}.`,
         });
-      } else if (websiteServices.length && servicesStatus !== 'Complete') {
+      } else if (realServices.length && servicesStatus !== 'Complete') {
         findings.push({
           id: 'website.services.verify_on_gbp',
           verificationOnly: true,
           category: 'website',
-          title: `Check your Google profile lists the ${websiteServices.length} service${websiteServices.length === 1 ? '' : 's'} your website describes`,
-          evidence: `Website (${websiteIntel.services[0]?.sourceUrl}): ${websiteServices.slice(0, 5).join(', ')}${websiteServices.length > 5 ? '…' : ''}`,
+          title: `Check your Google profile lists the ${realServices.length} service${realServices.length === 1 ? '' : 's'} you offer`,
+          evidence: `${understanding?.offerings.length ? 'From your Google listing and website' : `Website (${websiteIntel.services[0]?.sourceUrl})`}: ${realServices.slice(0, 5).join(', ')}${realServices.length > 5 ? '…' : ''}`,
           evidenceIds: ['website.services'],
           source: 'website',
           severity: 'low',
@@ -1290,7 +1499,7 @@ async function processAuditJobInner(auditId: string) {
           businessImpact: 'Google matches listings to searches partly by the services listed on them; this report could not read your Google service list.',
           actionability: 'directly_fixable',
           growwmaticsCapability: null,
-          recommendedAction: `Verify whether your Google Business Profile service list includes: ${websiteServices.slice(0, 5).join(', ')}.`,
+          recommendedAction: `Verify whether your Google Business Profile service list includes: ${realServices.slice(0, 5).join(', ')}.`,
         });
       }
     }
@@ -1361,7 +1570,8 @@ async function processAuditJobInner(auditId: string) {
       reviewComparison,
       profileFields: fieldStates,
       suspensionRisk,
-      keywordOpportunities: opportunities.map((o) => ({ keyword: o.keyword, demand: o.volumeBand, searchVolume: o.searchVolume, found: o.found, rank: o.rank })),
+      // searchVolume is Google Ads' monthly volume for the WHOLE COUNTRY — never local customers.
+      keywordOpportunities: opportunities.map((o) => ({ keyword: o.keyword, demand: o.volumeBand, searchVolumeNationwide: o.searchVolume, found: o.found, rank: o.rank })),
       // SOURCE_CLAIMs — what the business's website says (not verified).
       websiteClaims: websiteIntel && websiteIntel.status !== 'failed'
         ? {
@@ -1435,7 +1645,6 @@ async function processAuditJobInner(auditId: string) {
           profileCompletionFact: profileCompletion.completionPromptFact || '',
           profileCompletionPending: Number(profileCompletion.oauthPendingCount ?? profileCompletion.unknownCount ?? 0),
           gbpRead: !!gbpLive,
-          freeReport: !!audit.fastMode,
           claimContext: {
             businessNames: [business.name, ...competitorFacts.map((c) => c.name)],
             places: [resolvedCity, business.area, business.state, business.country, ...areasChecked].filter(Boolean),
@@ -1813,6 +2022,20 @@ async function processAuditJobInner(auditId: string) {
         publicProfile,
         competitorComparison,
         websiteSearchTerm,
+        // Which category the report searched with, and why (S0) — for checking a customer's report.
+        category: { used: resolvedCategory, source: categoryChoice.source, signup: storedCategory || null, googleListing: ownListing?.category ?? null },
+        // What the AI understood (S1) and which keywords it led to (S2/S3).
+        understanding: understanding
+          ? {
+              trade: understanding.trade, industry: understanding.industry, servedHow: understanding.servedHow, offered: understanding.offered,
+              offerings: understanding.offerings, searchTerms: understanding.searchTerms, confidence: understanding.confidence,
+              reused: understandingReused, keywordsPicked: understoodPick?.picked ?? null, mainTerm: understoodPick?.mainTerm ?? null,
+            }
+          : { used: false, reason: understandingError || 'low confidence — category rules used' },
+        competitorJudge: competitorJudgeUsed,
+        similarNearby,
+        // Milliseconds per new free-report step (S0 listing, website wait, S1, S2/S3, S5) — for checking report speed.
+        timings,
         // Live GBP field values (connected audits) — the monthly report diffs
         // these between audits to find verified profile changes.
         gbpProfile: gbpLive
@@ -1960,6 +2183,9 @@ async function processAuditJobInner(auditId: string) {
         { call: 'groqCall', paid: usage.groqCall || 0, used: !aiFailure, detail: aiFailure ? 'AI failed — deterministic report only' : 'narrative + consultant sections' },
       ].filter((r) => r.paid > 0),
     };
+
+    // Which rules made this report — a free report is reused only while they are current.
+    auditData.logicVersion = REPORT_LOGIC_VERSION;
 
     // ── AI status + data-quality record (for debugging a customer report) ─
     const consultantFailed: string[] = seoPlanDraft?.failed || [];

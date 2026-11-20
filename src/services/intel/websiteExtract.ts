@@ -331,7 +331,23 @@ export function planFromSitemap(xml: string, homeUrl: string, already: string[],
 
 const PHONE_RE = /(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{2,5}\)?[\s-]?)\d{3,5}[\s-]?\d{3,5}/g;
 const SOCIAL_RE = /(facebook\.com|instagram\.com|linkedin\.com|youtube\.com|twitter\.com|x\.com|pinterest\.com|t\.me)\//i;
-const BOOKING_RE = /(calendly\.com|book|appointment|schedule|reserv|wa\.me|api\.whatsapp\.com|practo|zocdoc|setmore|simplybook)/i;
+/**
+ * A real booking / appointment link on a website.
+ *
+ * Nov 2026: the old pattern matched "book" anywhere, so every Facebook link
+ * ("face-book.com", incl. share links) and every WhatsApp chat button counted
+ * as a booking page — 10 of 22 free reports told the owner "your website has
+ * a booking page". Now: social and chat links never count, and "book" must be
+ * a whole word ("Book now", "/booking"), not part of "facebook" or "ebook".
+ */
+const BOOKING_SERVICE_RE = /(calendly\.com|practo\.com|zocdoc\.com|setmore\.com|simplybook\.|booksy\.com|fresha\.com|appointy\.com|acuityscheduling\.com)/i;
+const NOT_BOOKING_HOST_RE = /(facebook\.com|fb\.com|fb\.me|instagram\.com|linkedin\.com|youtube\.com|youtu\.be|twitter\.com|x\.com|pinterest\.com|t\.me|wa\.me|whatsapp\.com)/i;
+const BOOKING_WORD_RE = /(^|[^a-z])(book|booking|bookings|book-now|booknow|appointments?|reserve|reservations?)([^a-z]|$)/i;
+export function isBookingLink(href: string, label: string): boolean {
+  if (!/^https?:/i.test(href) || NOT_BOOKING_HOST_RE.test(href)) return false;
+  if (BOOKING_SERVICE_RE.test(href)) return true;
+  return BOOKING_WORD_RE.test(href) || BOOKING_WORD_RE.test(label);
+}
 const CREDENTIAL_RE = /\b(certified|accredited|licen[cs]ed|registered with|iso\s?\d{3,5}|award(ed|s)?|affiliated|approved by|recogni[sz]ed by|since \d{4}|established in \d{4}|\d{1,2}\+? years (of )?experience)\b/i;
 /** Offers / promotions the site states (SOURCE_CLAIM — never shown as a GBP offer). */
 const OFFER_RE = /\b(\d{1,2}\s?% off|discount|free trial|free demo|free consultation|special offer|limited[- ]time|combo offer|scholarship|emi available)\b/i;
@@ -453,7 +469,7 @@ export function extractWebsiteFacts(pages: Array<ExtractedPage & { kind: PageKin
       if (/^tel:/i.test(l.href)) phones.push({ value: decodeURIComponent(l.href.replace(/^tel:/i, '')).trim(), sourceUrl: p.url });
       else if (/^mailto:/i.test(l.href)) emails.push({ value: l.href.replace(/^mailto:/i, '').split('?')[0].trim(), sourceUrl: p.url });
       else if (SOCIAL_RE.test(l.href) && !/\/(share|sharer|intent)/i.test(l.href)) social.push({ value: l.href, sourceUrl: p.url });
-      else if (BOOKING_RE.test(`${l.href} ${l.label}`) && /^https?:/i.test(l.href) && /book|appointment|schedule|reserv|wa\.me|whatsapp|calendly/i.test(`${l.href} ${l.label}`)) {
+      else if (isBookingLink(l.href, l.label || '')) {
         booking.push({ value: l.href, sourceUrl: p.url });
       }
     }

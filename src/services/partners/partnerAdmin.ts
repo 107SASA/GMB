@@ -17,6 +17,7 @@ import {
   sendApplicationApprovedEmail,
   sendApplicationRejectedEmail,
 } from '@/services/partners/partnerEmails';
+import { areaFilter } from '@/lib/accountArea';
 
 /**
  * Super admin actions on Growth Partner applications and partners.
@@ -102,8 +103,10 @@ export async function approveApplication(
   if (!app) return fail(404, 'Application not found');
   if (app.status !== 'pending') return fail(409, `This application is already ${app.status}.`);
 
-  if (await User.exists({ email: app.email })) {
-    return fail(409, 'This email already has a Growwmatics AI account. Ask the applicant to apply with a different email.');
+  // A customer or staff account on the same email is fine — the partner
+  // account is separate. Only an existing partner login blocks this.
+  if (await User.exists({ email: app.email, ...areaFilter('partner') })) {
+    return fail(409, 'This email already has a Growth Partner login.');
   }
   if (await GrowthPartner.exists({ email: app.email })) {
     return fail(409, 'A Growth Partner with this email already exists.');

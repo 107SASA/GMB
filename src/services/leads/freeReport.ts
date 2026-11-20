@@ -3,6 +3,7 @@ import Audit from '@/models/Audit';
 import { createPendingAuditAndDispatch } from '@/lib/startAudit';
 import { checkDurableRateLimit } from '@/lib/durableRateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
+import { REPORT_LOGIC_VERSION } from '@/services/audit/reportLogicVersion';
 
 /**
  * Start (or reuse) the free Google-profile report for a workspace — shared by
@@ -37,6 +38,9 @@ export async function startOrReuseFreeReport(
       businessId: business._id,
       status: 'COMPLETED',
       createdAt: { $gte: new Date(Date.now() - REUSE_MAX_AGE_MS) },
+      // Only a report made by the current rules (Nov 2026: customers who asked
+      // again kept getting a report with the wrong competitors).
+      'auditData.logicVersion': REPORT_LOGIC_VERSION,
     })
       .sort({ createdAt: -1 })
       .lean();

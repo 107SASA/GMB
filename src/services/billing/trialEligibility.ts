@@ -14,6 +14,7 @@ import {
   type SettleDeps,
   type TrialIneligibleReason,
 } from '@/lib/billing/trialClaims';
+import { areaFilter } from '@/lib/accountArea';
 
 /**
  * Server-side gate for the one-free-trial-per-verified-phone rule. Checkout
@@ -59,7 +60,7 @@ export async function checkTrialEligibility(
   let phonePaid = { userPlans: [] as string[], subscriptions: [] as any[], workspaces: [] as any[] };
   if (phoneKey) {
     // Every account on this phone — a second account must not reset history.
-    const accounts = await User.find({ phone: { $in: storedPhoneVariants(phoneKey) } })
+    const accounts = await User.find({ phone: { $in: storedPhoneVariants(phoneKey) }, ...areaFilter('customer') })
       .select('_id subscriptionPlan')
       .lean<Array<{ _id: unknown; subscriptionPlan?: string }>>();
     const ids = accounts.map((a) => a._id);

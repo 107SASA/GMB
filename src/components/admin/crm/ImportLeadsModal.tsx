@@ -59,7 +59,7 @@ export function ImportLeadsModal({ onClose, onImported }: { onClose: () => void;
             <Download className="w-3.5 h-3.5" /> Download sample CSV
           </button>
           <div className="text-xs text-on-surface-variant bg-surface border border-outline-variant rounded-xl p-3 leading-relaxed">
-            <strong className="text-on-surface">Columns:</strong> phone <span className="text-error">*</span>, name or business <span className="text-error">*</span>,
+            <strong className="text-on-surface">Columns:</strong> phone <span className="text-error">*</span> (the only required column), name, business,
             email, city, source (e.g. Referral, Phone Call), stage (e.g. New, Qualifying, Demo scheduled, Customer, Lost), tags (separated by ;), notes.
             A phone already in the CRM is matched — its empty fields are filled, never overwritten.
           </div>

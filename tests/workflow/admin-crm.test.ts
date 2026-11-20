@@ -83,7 +83,10 @@ test('pure: stages, CSV rows and display names', (t) => {
   assert.equal(ok.row.source, 'Referral');
   assert.deepEqual(ok.row.tags, ['a', 'b']);
   assert.match(r.normaliseCrmImportRow({ name: 'x' }).error, /phone is missing/);
-  assert.match(r.normaliseCrmImportRow({ phone: '9876543210' }).error, /name or business/);
+  // Only the phone is required — a row with no name / business is named by its number.
+  const phoneOnly = r.normaliseCrmImportRow({ phone: '9876543210' });
+  assert.equal(phoneOnly.ok, true);
+  assert.equal(phoneOnly.row.name, '+919876543210');
   assert.match(r.normaliseCrmImportRow({ phone: '9876543210', name: 'x', stage: 'banana' }).error, /not a CRM stage/);
   // The sample CSV the page offers is itself importable.
   const lines = r.CRM_CSV_TEMPLATE.trim().split('\n');

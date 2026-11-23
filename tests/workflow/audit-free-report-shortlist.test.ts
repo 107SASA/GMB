@@ -31,7 +31,7 @@ function run(opts: {
   const city = new Map(candidates.map((c) => [c.keyword, opts.cityVol?.[c.keyword] ?? null]));
   const volumes = new Map(candidates.map((c) => [c.id, volumeOf(c.keyword, { country, city, ideaVolume: c.sources.includes('google_ideas') ? c.ideaVolume : undefined }, '2026-11-20')]));
   const scored = scoreCandidates({ candidates, volumes, ranks: new Map(), competitors: new Map(), ourReviews: null });
-  return { candidates, shortlist: pickShortlist(scored, { city: opts.city.toLowerCase(), areas: opts.areas || [], servedHow: opts.servedHow, categories: opts.categories }) };
+  return { candidates, shortlist: pickShortlist(scored, { city: opts.city.toLowerCase(), areas: opts.areas || [], servedHow: opts.servedHow, categories: opts.categories, primaryCategory: opts.categories?.[0] ?? null }) };
 }
 
 test('yoga studio (Mohali, Nov 2026): city phrases first, one "near me", areas served, grounded ideas only', () => {
@@ -201,4 +201,16 @@ test('restaurant: dish searches kept, unrelated dishes dropped', () => {
   const ks = candidates.map((c) => c.keyword);
   assert.ok(ks.includes('biryani near me'), ks.join(' | '));
   assert.ok(!ks.includes('pizza near me'));
+});
+
+test('office furniture store (Surat, live v21): the primary category is the main keyword, not the broader, more searched "furniture store"', () => {
+  const { shortlist } = run({
+    terms: ['chair manufacturer', 'office chairs', 'furniture store', 'sofa shop', 'plastic chairs'],
+    categories: ['Office furniture store', 'Sofa store'], offered: 'both', city: 'Surat',
+    ideas: [{ keyword: 'office furniture surat', volume: 320 }],
+    evidenceText: 'CHAIR WORLD office furniture store office chairs plastic chairs sofa furniture chair manufacturer',
+    country: { 'furniture store surat': 1900, 'office chairs surat': 260, 'office furniture surat': 320, 'sofa shop surat': 480 },
+  });
+  assert.equal(shortlist[0].keyword, 'office furniture surat', shortlist.map((k) => k.keyword).join(' | '));
+  assert.ok(shortlist.some((k) => k.keyword === 'furniture store surat'), 'the broader phrase is still checked');
 });

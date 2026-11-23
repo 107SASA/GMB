@@ -167,6 +167,13 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // "Wholesale jeweler") and is dropped; categories that do not fit no longer
 // order the shortlist (they made the wrong trade the main keyword, so the
 // map and reach check measured another trade); keywords in Indian spelling.
+// v22 (Nov 2026, live CHAIR WORLD): the primary Google category's own offer
+// is the MAIN keyword (map + reach check) even when a broader phrase has more
+// searches ("office furniture surat", not "furniture store surat"); "office"
+// is no longer a place word ("office furniture" is a product). Reach check
+// (live Pooja Enterprises): skips only places the main keyword was already
+// searched from (competitor-discovery rings use another phrase), and
+// ranking.reach needs ≥ 2 measured places, never one search.
 const CACHE_LOGIC_VERSION = REPORT_LOGIC_VERSION;
 
 /** How recently a review sync must have refreshed Google's totals for the
@@ -489,7 +496,7 @@ async function processAuditJobInner(auditId: string) {
         // Categories that do not fit are not evidence of what the business sells.
         const fittingCategories = [resolvedCategory, ...(ownListing?.additionalCategories || [])]
           .filter((c) => !categoryMismatch.some((m) => m.category === c));
-        const shortlist = pickShortlist(scored, { city: resolvedCity, areas, servedHow: understanding.servedHow, categories: fittingCategories });
+        const shortlist = pickShortlist(scored, { city: resolvedCity, areas, servedHow: understanding.servedHow, categories: fittingCategories, primaryCategory: resolvedCategory });
         if (shortlist.length) {
           const city = resolvedCity.toLowerCase();
           const shapeOf = (k: string): 'city' | 'near_me' | 'area' => (/\bnear me\b/.test(k) ? 'near_me' : city && k.includes(city) ? 'city' : 'area');
@@ -857,7 +864,11 @@ async function processAuditJobInner(auditId: string) {
           offered: understanding?.offered,
           city: resolvedCity,
           cityCentre,
-          covered: [...observations, ...areaObs].map((o) => o.point).filter((x): x is { lat: number; lng: number } => !!x?.lat && !!x?.lng),
+          // Places the main keyword was already searched from: around the
+          // business and the areas it serves. Competitor-discovery rings use
+          // another phrase, so they do not stand in for a reach search.
+          covered: [...observations.map((o) => o.point), ...searchedAreas.map((a) => a.point)]
+            .filter((x): x is { lat: number; lng: number } => !!x?.lat && !!x?.lng),
         });
         reachObs = reachPlaces.length ? await fetchAreaObservations(businessForRankings, reachPlaces) : [];
       } catch (reachErr: any) {

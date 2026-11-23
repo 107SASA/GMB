@@ -191,7 +191,8 @@ function headOf(service: string): string | null {
  */
 const VENUE = new Set([
   'restaurant', 'cafe', 'café', 'hotel', 'dhaba', 'clinic', 'hospital', 'salon', 'parlour', 'parlor', 'studio',
-  'gym', 'academy', 'school', 'institute', 'boutique', 'lab', 'laboratory', 'agency', 'firm', 'office', 'outlet',
+  // Not "office": it is often the product ("office furniture", "office chairs").
+  'gym', 'academy', 'school', 'institute', 'boutique', 'lab', 'laboratory', 'agency', 'firm', 'outlet',
 ].map((w) => evidenceStem(w)));
 
 /**
@@ -323,6 +324,12 @@ export function pickShortlist(
     city: string; areas: string[]; servedHow?: string | null; limits?: Partial<typeof FREE_SHORTLIST_LIMITS>;
     /** The Google categories: a service named by one comes first when Google has no numbers. */
     categories?: Array<string | null | undefined>;
+    /**
+     * The primary Google category: its own offer is the MAIN keyword (map + reach
+     * check), even when a broader phrase has more searches ("office furniture",
+     * not "furniture store", for an office furniture store).
+     */
+    primaryCategory?: string | null;
   },
 ): ScoredKeyword[] {
   const L = { ...FREE_SHORTLIST_LIMITS, ...(opts.limits || {}) };
@@ -382,6 +389,18 @@ export function pickShortlist(
   const cityPhrases = (g: string) =>
     pool.filter((k) => groupOf(k) === g && isCity(k)).sort((a, b) => searches(b) - searches(a) || own(a) - own(b) || a.keyword.length - b.keyword.length);
   const cityPhraseOf = (g: string) => cityPhrases(g).find((k) => !picked.some((p) => p.id === k.id));
+
+  // The primary category's own offer goes first: exactly its words, else a
+  // group holding all of them ("office furniture" for "Office furniture store").
+  if (opts.primaryCategory && !isGenericCategory(opts.primaryCategory)) {
+    const key = serviceGroupKey(opts.primaryCategory);
+    const words = key.split(' ').filter(Boolean);
+    const main = words.length
+      ? groupOrder.find((g) => g === key && cityPhrases(g).length)
+        ?? groupOrder.find((g) => words.every((w) => g.split(' ').includes(w)) && cityPhrases(g).length)
+      : undefined;
+    if (main) groupOrder.splice(groupOrder.indexOf(main), 1), groupOrder.unshift(main);
+  }
 
   groupOrder.slice(0, L.mainServices).forEach((g) => add(cityPhraseOf(g)));
   byScore.filter((k) => isArea(k) && hasSearches(k)).slice(0, L.maxAreaPhrases).forEach(add);

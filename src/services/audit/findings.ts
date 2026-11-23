@@ -550,7 +550,8 @@ export function buildEvidenceAndFindings(input: FindingsInput): { evidence: Evid
   }
 
   // ── Reach: where the business stops showing up for its main keyword ─────
-  if (input.reach && input.reach.weakIn.length > 0) {
+  // Never from one search: at least 2 measured places farther away.
+  if (input.reach && input.reach.weakIn.length > 0 && input.reach.points.filter((p) => p.status === 'ok').length >= 2) {
     const r = input.reach;
     const measured = r.points.filter((p) => p.status === 'ok');
     const weak = measured.filter((p) => r.weakIn.includes(p.label));

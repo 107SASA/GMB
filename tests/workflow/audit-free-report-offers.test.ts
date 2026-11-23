@@ -166,3 +166,43 @@ test('categories that do not fit: one issue naming them and what the business do
   assert.match(f!.evidence, /What you do: wholesale jewellery tools and consumables/);
   assert.equal(f!.growwmaticsCapability, 'update_categories');
 });
+
+// ── Live run v20 (23 Nov 2026): the AI's first term was the wrong trade ────
+
+test('an offer that is a category that does not fit, in other words, is dropped ("jewelry wholesale" = "Wholesale jeweler")', () => {
+  const names = freeReportServices({
+    aiTerms: ['jewelry wholesale', 'jewelry tools', 'jewelry equipment', 'jewelry plating'],
+    categories: ['Jewelry equipment supplier', 'Goldsmith', 'Wholesale jeweler'],
+    websiteServices: [], offered: 'products',
+    excludeCategories: ['Goldsmith', 'Wholesale jeweler'], country: 'India',
+  }).map((s) => s.name);
+  assert.ok(!names.some((n) => /wholesale/.test(n)), names.join(' | '));
+  assert.ok(!names.includes('goldsmith'));
+  assert.ok(names.includes('jewellery tools'), `kept, in Indian spelling: ${names.join(' | ')}`);
+  assert.ok(names.includes('jewellery equipment supplier'));
+  assert.ok(!names.some((n) => /jewelry/.test(n)), 'US spelling not used in India');
+});
+
+test('outside India the spelling is left as written; a fitting category is never dropped', () => {
+  const names = freeReportServices({ aiTerms: ['jewelry tools'], categories: [], websiteServices: [], country: 'United States' }).map((s) => s.name);
+  assert.deepEqual(names, ['jewelry tools']);
+  const yoga = freeReportServices({ aiTerms: ['yoga classes'], categories: ['Yoga studio'], websiteServices: [], excludeCategories: ['Gym'] }).map((s) => s.name);
+  assert.deepEqual(yoga, ['yoga classes', 'yoga studio']);
+});
+
+test('replay (v21): the wrong-trade rule drops only the same words, never a main service that shares one', () => {
+  const names = freeReportServices({
+    aiTerms: ['yoga classes', 'meditation classes', 'yoga studio'], categories: ['Yoga studio', 'Fitness center', 'Yoga instructor'],
+    websiteServices: [], offered: 'services', excludeCategories: ['Fitness center', 'Yoga instructor'], country: 'India',
+  }).map((s) => s.name);
+  assert.ok(names.includes('yoga classes'), names.join(' | '));
+  assert.ok(!names.includes('yoga instructor') && !names.includes('fitness centre'), names.join(' | '));
+  const jw = freeReportServices({
+    aiTerms: ['jewelry tools', 'wholesale jewellery shop', 'goldsmith', 'goldsmith supplies'], categories: [], websiteServices: [], offered: 'products',
+    excludeCategories: ['Wholesale jeweler', 'Goldsmith'], country: 'India',
+    families: [{ name: 'rhodium services', covers: ['RODHIUM BATH'] }],
+  }).map((s) => s.name);
+  assert.ok(!jw.some((n) => /wholesale|^goldsmith$/.test(n)), jw.join(' | '));
+  assert.ok(jw.includes('goldsmith supplies'));
+  assert.ok(jw.includes('rhodium') && !jw.some((n) => /services/.test(n)), `a product family has no "services": ${jw.join(' | ')}`);
+});

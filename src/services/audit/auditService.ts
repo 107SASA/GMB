@@ -162,6 +162,11 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // searched farther away (shop: ~3–10 km; service-area / hybrid: + city
 // centre; maker / wholesaler: + city centre and ~25 km; online: city centre,
 // ~15 / ~30 km), shown as "How far you reach", finding ranking.reach.
+// v21 (Nov 2026, live run on v20): an offer whose words are all in a
+// category that does not fit is that wrong trade ("jewelry wholesale" =
+// "Wholesale jeweler") and is dropped; categories that do not fit no longer
+// order the shortlist (they made the wrong trade the main keyword, so the
+// map and reach check measured another trade); keywords in Indian spelling.
 const CACHE_LOGIC_VERSION = REPORT_LOGIC_VERSION;
 
 /** How recently a review sync must have refreshed Google's totals for the
@@ -450,6 +455,7 @@ async function processAuditJobInner(auditId: string) {
           families: understanding.families || [],
           evidence: understandingEvidence,
           excludeCategories: categoryMismatch.map((c: any) => c.category),
+          country: business.country || null,
         });
         const place = { city: resolvedCity, area: business.area, state: business.state, country: business.country };
         const country = business.country || '';
@@ -480,7 +486,10 @@ async function processAuditJobInner(auditId: string) {
           ideaVolume: c.sources.includes('google_ideas') ? c.ideaVolume : undefined,
         }, measuredAt)]));
         const scored = scoreCandidates({ candidates, volumes, ranks: new Map(), competitors: new Map(), ourReviews: null });
-        const shortlist = pickShortlist(scored, { city: resolvedCity, areas, servedHow: understanding.servedHow, categories: [resolvedCategory, ...(ownListing?.additionalCategories || [])] });
+        // Categories that do not fit are not evidence of what the business sells.
+        const fittingCategories = [resolvedCategory, ...(ownListing?.additionalCategories || [])]
+          .filter((c) => !categoryMismatch.some((m) => m.category === c));
+        const shortlist = pickShortlist(scored, { city: resolvedCity, areas, servedHow: understanding.servedHow, categories: fittingCategories });
         if (shortlist.length) {
           const city = resolvedCity.toLowerCase();
           const shapeOf = (k: string): 'city' | 'near_me' | 'area' => (/\bnear me\b/.test(k) ? 'near_me' : city && k.includes(city) ? 'city' : 'area');

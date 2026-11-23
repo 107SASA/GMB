@@ -28,7 +28,8 @@ import {
 export const WEBSITE_INTEL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // v7: per-page on-page SEO facts (pageSeo) for the website SEO checks.
 // v8 (Nov 2026): Facebook / WhatsApp links are no longer "booking pages" (isBookingLink).
-export const WEBSITE_INTEL_LOGIC_VERSION = 8;
+// v9 (Nov 2026): shop / checkout text ("Estimated total", "Add to cart", prices) is never a service.
+export const WEBSITE_INTEL_LOGIC_VERSION = 9;
 
 export interface WebsiteIntelOptions {
   maxPages?: number;

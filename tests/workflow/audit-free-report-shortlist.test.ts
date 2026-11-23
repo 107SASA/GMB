@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   freeReportServices, freeReportCandidates, pickShortlist, groundedInBusiness,
-  websiteServicesNotOnGoogle, categoriesCompetitorsUse,
+  websiteServicesNotOnGoogle, categoriesCompetitorsUse, keepsAServiceHead, serviceGroupKey,
 } from '../../src/services/audit/freeReportShortlist';
 import { addEvidenceText } from '../../src/services/audit/businessUnderstanding';
 import { volumeOf } from '../../src/services/seo/keywordMeasure';
@@ -31,7 +31,7 @@ function run(opts: {
   const city = new Map(candidates.map((c) => [c.keyword, opts.cityVol?.[c.keyword] ?? null]));
   const volumes = new Map(candidates.map((c) => [c.id, volumeOf(c.keyword, { country, city, ideaVolume: c.sources.includes('google_ideas') ? c.ideaVolume : undefined }, '2026-11-20')]));
   const scored = scoreCandidates({ candidates, volumes, ranks: new Map(), competitors: new Map(), ourReviews: null });
-  return { candidates, shortlist: pickShortlist(scored, { city: opts.city.toLowerCase(), areas: opts.areas || [], servedHow: opts.servedHow }) };
+  return { candidates, shortlist: pickShortlist(scored, { city: opts.city.toLowerCase(), areas: opts.areas || [], servedHow: opts.servedHow, categories: opts.categories }) };
 }
 
 test('yoga studio (Mohali, Nov 2026): city phrases first, one "near me", areas served, grounded ideas only', () => {
@@ -129,4 +129,76 @@ test('connected audit re-checks the free report keywords on its first plan', () 
   const candidates = [cand('yoga classes mohali'), cand('yoga classes chandigarh')];
   const checks = planRankChecks({ candidates, preScored: [], previous: [], carried: ['kw:yoga-classes-chandigarh'], limits: { core: 0, rotating: 0, explore: 0 } });
   assert.deepEqual(checks.map((c) => c.keyword), ['yoga classes chandigarh']);
+});
+
+// ── Every keyword keeps what the business sells (Nov 2026) ─────────────────
+
+test('jewellery tools supplier (Bengaluru, real report): no "goldsmith near me", one keyword per product before second shapes', () => {
+  const { candidates, shortlist } = run({
+    terms: ['jewellery tools', 'goldsmith supplies', 'jewellery equipment', 'plating solutions', 'rodium bath', 'abrasives for jewellery', 'jewellery consumables', 'abrasives'],
+    categories: ['Jewelry equipment supplier'], offered: 'products', city: 'Bengaluru',
+    ideas: [{ keyword: 'goldsmith near me', volume: 720 }, { keyword: 'goldsmith tools', volume: 90 }, { keyword: 'jewellery tools near me', volume: null }],
+    evidenceText: 'Modern Jewellery tools. Jewelry equipment supplier. Goldsmith supplies, goldsmith tools, plating solutions, rodium bath, abrasives, adhesives, air scriber, jewellery consumables.',
+  });
+  const ks = shortlist.map((k) => k.keyword);
+  assert.ok(!candidates.some((c) => c.keyword === 'goldsmith near me'), 'a goldsmith is another trade');
+  assert.ok(candidates.some((c) => c.keyword === 'goldsmith tools bengaluru'), 'keeps "tools" → kept');
+  assert.equal(ks.filter((k) => /near me/.test(k)).length, 1, ks.join(' | '));
+  assert.ok(ks.some((k) => /^(jewellery tools|goldsmith supplies|jewellery equipment|jewelry equipment supplier) near me$/.test(k)), ks.join(' | '));
+  assert.ok(ks.includes('jewellery consumables bengaluru'), `every product line gets a slot: ${ks.join(' | ')}`);
+  // "jewellery tools" and "jewellery tools shop" are one offer: the shop shape only after every other product.
+  const shop = ks.indexOf('jewellery tools shop bengaluru');
+  if (shop >= 0) assert.ok(shop > ks.indexOf('jewellery consumables bengaluru'), ks.join(' | '));
+  // The Google category's offer first; a word found once on one page after the connected ones.
+  assert.match(ks[0], /equipment/);
+  assert.ok(ks.includes('plating solutions bengaluru'), `a product with no other keyword is checked before second shapes: ${ks.join(' | ')}`);
+  assert.ok(ks.indexOf('abrasives for jewellery bengaluru') > ks.indexOf('goldsmith supplies bengaluru'), '"for jewellery" does not make abrasives the category\'s offer');
+  if (ks.includes('rodium bath bengaluru')) assert.ok(ks.indexOf('rodium bath bengaluru') > ks.indexOf('jewellery consumables bengaluru'), ks.join(' | '));
+  assert.ok(shortlist.length <= 10);
+});
+
+test('a Google idea must keep the service\'s main word (repair, dentist, restaurant, salon, yoga)', () => {
+  const svc = (...names: string[]) => names.map((name) => ({ name }));
+  assert.ok(!keepsAServiceHead('ac near me', svc('ac repair', 'ac installation'), []), '"ac near me" is an AC shop');
+  assert.ok(keepsAServiceHead('split ac repair near me', svc('ac repair'), []));
+  assert.ok(keepsAServiceHead('dentist near me', svc('Dentist', 'root canal treatment'), []));
+  assert.ok(keepsAServiceHead('biryani near me', svc('biryani restaurant'), []), 'the dish, not "restaurant", is the main word');
+  assert.ok(keepsAServiceHead('beauty parlour near me', svc('beauty salon', 'bridal makeup'), []));
+  assert.ok(!keepsAServiceHead('bridal near me', svc('bridal makeup'), []), '"bridal" alone could be a dress shop');
+  assert.ok(keepsAServiceHead('yoga near me', svc('yoga classes'), []), '"classes" is a kind word');
+  assert.ok(keepsAServiceHead('cashew wholesaler mangaluru', svc('cashew'), ['mangaluru']));
+});
+
+test('same offer, different words: one group (spelling, "shop", "supplier", the venue word)', () => {
+  assert.equal(serviceGroupKey('Jewelry equipment supplier'), serviceGroupKey('jewellery equipment'));
+  assert.equal(serviceGroupKey('jewellery tools shop'), serviceGroupKey('jewellery tools'));
+  assert.equal(serviceGroupKey('yoga studio'), serviceGroupKey('yoga classes'));
+  assert.notEqual(serviceGroupKey('abrasives for jewellery'), serviceGroupKey('jewellery tools'));
+});
+
+test('salon with many services: each service checked once before any second shape', () => {
+  const { shortlist } = run({
+    terms: ['beauty salon', 'bridal makeup', 'hair spa', 'keratin treatment', 'nail art', 'facial'],
+    categories: ['Beauty salon'], offered: 'services', city: 'Pune',
+    ideas: [{ keyword: 'bridal makeup near me', volume: 9900 }, { keyword: 'bridal near me', volume: 20000 }],
+    evidenceText: 'Glow beauty salon Pune. Bridal makeup, hair spa, keratin treatment, nail art, facial, bridal packages.',
+    country: { 'bridal makeup near me': 9900, 'hair spa pune': 320 },
+  });
+  const ks = shortlist.map((k) => k.keyword);
+  for (const s of ['beauty salon pune', 'bridal makeup pune', 'hair spa pune', 'keratin treatment pune', 'nail art pune', 'facial pune']) {
+    assert.ok(ks.includes(s), `${s} missing: ${ks.join(' | ')}`);
+  }
+  assert.ok(!ks.includes('bridal near me'));
+  assert.ok(ks.includes('bridal makeup near me'));
+});
+
+test('restaurant: dish searches kept, unrelated dishes dropped', () => {
+  const { candidates } = run({
+    terms: ['biryani restaurant', 'north indian restaurant'], categories: ['North Indian restaurant'], city: 'Hyderabad',
+    ideas: [{ keyword: 'biryani near me', volume: 90000 }, { keyword: 'pizza near me', volume: 50000 }],
+    evidenceText: 'Paradise biryani house. North Indian restaurant. Chicken biryani, mutton biryani, tandoori.',
+  });
+  const ks = candidates.map((c) => c.keyword);
+  assert.ok(ks.includes('biryani near me'), ks.join(' | '));
+  assert.ok(!ks.includes('pizza near me'));
 });

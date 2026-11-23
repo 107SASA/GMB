@@ -13,4 +13,4 @@
  * Kept in its own file so the lead flow can read it without loading the
  * whole audit engine.
  */
-export const REPORT_LOGIC_VERSION = 17;
+export const REPORT_LOGIC_VERSION = 18;

@@ -146,6 +146,12 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // Google service gap, competitor category gap, competitor keyword gap;
 // service-area businesses also searched from the city centre; the shortlist
 // is saved for the first connected audit (before / after).
+// v18 (Nov 2026): every shortlisted keyword keeps what the business sells —
+// a Google idea must keep a service's main word ("goldsmith near me" is not
+// "goldsmith supplies"); same-offer services ("jewellery tools" / "… shop" /
+// "Jewelry …") are one group, each group checked once before second shapes;
+// with no Google numbers, the Google category's offer first and a service
+// named once, connected to nothing, last.
 const CACHE_LOGIC_VERSION = REPORT_LOGIC_VERSION;
 
 /** How recently a review sync must have refreshed Google's totals for the
@@ -457,7 +463,7 @@ async function processAuditJobInner(auditId: string) {
           ideaVolume: c.sources.includes('google_ideas') ? c.ideaVolume : undefined,
         }, measuredAt)]));
         const scored = scoreCandidates({ candidates, volumes, ranks: new Map(), competitors: new Map(), ourReviews: null });
-        const shortlist = pickShortlist(scored, { city: resolvedCity, areas, servedHow: understanding.servedHow });
+        const shortlist = pickShortlist(scored, { city: resolvedCity, areas, servedHow: understanding.servedHow, categories: [resolvedCategory, ...(ownListing?.additionalCategories || [])] });
         if (shortlist.length) {
           const city = resolvedCity.toLowerCase();
           const shapeOf = (k: string): 'city' | 'near_me' | 'area' => (/\bnear me\b/.test(k) ? 'near_me' : city && k.includes(city) ? 'city' : 'area');

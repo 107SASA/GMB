@@ -11,7 +11,7 @@ import {
   primaryCategoryDoesNotFit, moreSpecificCategory, categoryLowDemand, photosVsCompetitors,
 } from '../../src/services/audit/freeReportShortlist';
 import { addEvidenceText } from '../../src/services/audit/businessUnderstanding';
-import { buildEvidenceAndFindings } from '../../src/services/audit/findings';
+import { buildEvidenceAndFindings, describeEvidence } from '../../src/services/audit/findings';
 import { buildReviewFacts, summarizeRankings, suspensionRiskHeuristic } from '../../src/services/audit/facts';
 
 // ── Primary category that does not fit ────────────────────────────────────
@@ -127,4 +127,26 @@ test('findings: each new issue appears only with its proof; not-claimed is never
     .find((f) => f.id === 'profile.photos_vs_competitors')!;
   assert.equal(ph.title, 'You have 12 photos — businesses above you have about 150');
   assert.equal(ph.growwmaticsCapability, 'photo_uploads');
+});
+
+test('evidence lines (Strengths / Areas to Improve) are sentences, never raw data (live v23 showed JSON)', () => {
+  const { evidence } = buildEvidenceAndFindings({
+    ...base,
+    listingClaimed: false,
+    primaryCategoryMismatch: { category: 'Jewelry store', trade: 'tools', reason: '', better: 'Jewelry equipment supplier' },
+    categoryTooBroad: { category: 'Restaurant', suggest: 'Biryani restaurant', competitors: ['A'] },
+    categoryLowDemand: { categoryKeyword: 'x supplier pune', categoryVolume: null, betterKeyword: 'x pune', betterVolume: 90 },
+    photosVsCompetitors: { own: 12, median: 150, competitors: 3 },
+    offersNotOnGoogle: { offered: 'products', offers: [{ name: 'plating solutions', covers: [], keyword: 'plating solutions bengaluru' }] },
+    categoryMismatch: { trade: 't', categories: [{ category: 'Goldsmith', reason: '' }] },
+    reach: { keyword: 'yoga classes mohali', top3WithinKm: null, weakIn: ['~6 km east', '~6 km west'], points: [
+      { label: '~6 km east', distanceKm: 6, status: 'ok', rank: null, shownFirst: 'YoKalp' },
+      { label: '~6 km west', distanceKm: 6, status: 'ok', rank: 4, shownFirst: 'X' }] },
+  } as any);
+  const lines = evidence.map(describeEvidence);
+  for (const l of lines) assert.ok(!/[{}\[\]"]\w+":/.test(l) && !l.includes('{"'), `raw data shown: ${l}`);
+  assert.ok(lines.includes('"yoga classes mohali" searched farther away: ~6 km east not in top 20, ~6 km west #4'), lines.join('\n'));
+  assert.ok(lines.includes('Google listing is not claimed by an owner'));
+  // An unknown object metric shows only its label, never JSON.
+  assert.equal(describeEvidence({ id: 'x', metric: 'some_new_metric', value: { a: 1 }, status: 'verified', source: 'dataforseo', confidence: 'high' } as any), 'some new metric');
 });

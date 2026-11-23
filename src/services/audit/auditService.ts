@@ -178,6 +178,10 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // that does not fit (AI v3 + code check; the main keyword then follows what
 // the business does), category phrase nobody searches, category too broad vs
 // competitors above, listing not claimed, far fewer photos than competitors.
+// v24 (Nov 2026, live YOGA SE HOGA): keyword ideas are grounded in the
+// owner's own words only, never Google's automatic place types ("fitness
+// gyms near me" passed for a yoga studio through the type "gym"); every
+// v19–v23 proof has a readable line (raw data was shown in Areas to Improve).
 const CACHE_LOGIC_VERSION = REPORT_LOGIC_VERSION;
 
 /** How recently a review sync must have refreshed Google's totals for the
@@ -358,7 +362,9 @@ async function processAuditJobInner(auditId: string) {
         websiteDescription: websiteIntel && websiteIntel.status !== 'failed' ? websiteIntel.description?.value ?? null : null,
         websiteServices,
       };
-      understandingEvidence = require('./businessUnderstanding').evidenceStems(input);
+      // The owner's own words only: Google's automatic place types ("gym" on a
+      // yoga studio, "store", "health") must not ground keyword ideas.
+      understandingEvidence = require('./businessUnderstanding').evidenceStems({ ...input, placeTypes: [] });
       // The website's page text too ("power yoga" in a class schedule, not only the services list).
       require('./businessUnderstanding').addEvidenceText(understandingEvidence, String(websiteIntel?.fr4Signals?.textSample || ''));
       const uStart = Date.now();

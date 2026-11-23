@@ -214,3 +214,18 @@ test('office furniture store (Surat, live v21): the primary category is the main
   assert.equal(shortlist[0].keyword, 'office furniture surat', shortlist.map((k) => k.keyword).join(' | '));
   assert.ok(shortlist.some((k) => k.keyword === 'furniture store surat'), 'the broader phrase is still checked');
 });
+
+test('yoga studio with "Fitness center" (live v23): "near me" is for yoga, not "fitness gyms near me"', () => {
+  const { shortlist, candidates } = run({
+    terms: ['yoga classes', 'meditation classes', 'yoga studio'],
+    categories: ['Yoga studio', 'Fitness center', 'Meditation center'], city: 'Mohali',
+    ideas: [{ keyword: 'fitness gyms near me', volume: 368000 }, { keyword: 'yoga classes near me', volume: 246000 }],
+    // The owner's own words only — no Google place type "gym".
+    evidenceText: 'YOGA SE HOGA yoga studio fitness center meditation center yoga classes meditation',
+    country: { 'fitness gyms near me': 368000, 'yoga classes near me': 246000, 'yoga classes mohali': 210 },
+  });
+  const ks = shortlist.map((k) => k.keyword);
+  assert.ok(!candidates.some((c) => /gyms/.test(c.keyword)), '"gyms" is not the owner\'s word');
+  assert.equal(ks.filter((k) => /near me/.test(k)).length, 1, ks.join(' | '));
+  assert.ok(ks.includes('yoga classes near me'), ks.join(' | '));
+});

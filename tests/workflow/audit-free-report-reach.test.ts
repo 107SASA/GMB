@@ -93,3 +93,13 @@ test('finding: a strong business that drops out farther away gets an honest issu
   const none = buildEvidenceAndFindings({ ...base, reach: { ...reach, weakIn: [] } } as any).findings;
   assert.ok(!none.some((x) => x.id === 'ranking.reach'));
 });
+
+test('finding needs at least 2 measured places (live Pooja Enterprises: 1 place only → no claim)', () => {
+  const one = {
+    keyword: 'cleaning products bengaluru', top3WithinKm: null, weakIn: ['~10 km south'],
+    points: [{ label: '~10 km south', distanceKm: 10, status: 'ok' as const, rank: null, shownFirst: 'CareClean' }],
+  };
+  assert.ok(!buildEvidenceAndFindings({ ...base, reach: one } as any).findings.some((x) => x.id === 'ranking.reach'));
+  const two = { ...one, points: [...one.points, { label: '~6 km east', distanceKm: 6, status: 'unavailable' as const, rank: null, shownFirst: null }] };
+  assert.ok(!buildEvidenceAndFindings({ ...base, reach: two } as any).findings.some((x) => x.id === 'ranking.reach'), 'an unmeasured place does not count');
+});

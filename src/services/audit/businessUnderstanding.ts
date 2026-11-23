@@ -87,6 +87,8 @@ export interface Understanding {
   families?: OfferFamily[];
   /** The AI's view of each extra Google category on the listing. Missing on answers saved before v2. */
   categoryFit?: CategoryFit[];
+  /** The AI's view of the PRIMARY category (v3): does it describe what the business does? */
+  primaryFit?: { fits: 'yes' | 'no' | 'unsure'; reason: string; better: string | null } | null;
   confidence: 'high' | 'medium' | 'low';
   inputsHash: string;
   createdAt: string;
@@ -98,7 +100,8 @@ const OFFERED: Offered[] = ['services', 'products', 'both', 'made_to_order'];
 export const UNDERSTANDING_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /** Bump when the prompt or the checks change, so saved answers are rebuilt. */
 // v2 (Nov 2026): offer families (website items grouped as customers search, spelling fixed) + extra-category fit.
-export const UNDERSTANDING_VERSION = 2;
+// v3 (Nov 2026): primary-category fit + a better Google category when it does not fit.
+export const UNDERSTANDING_VERSION = 3;
 
 const clip = (s: unknown, n: number) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
@@ -148,6 +151,7 @@ Answer with JSON only, exactly these keys:
  "searchTerms": ["what a customer types into Google to find this kind of business, 1-4 words, WITHOUT any city, area, 'near me', 'best' or the business name"]  (max 8; the business's MAIN line of work first, side services last),
  "sameTradeCategories": ["Google Business Profile category names a direct competitor would have"]  (max 8),
  "families": [{"name": "what customers type for a GROUP of the items in websiteServices / the categories, 1-4 words, e.g. 'Chicken dum biryani' + 'Mutton biryani' → 'biryani'", "covers": ["the exact websiteServices items or categories it groups"]}]  (max 8, main line first; you may correct the spelling of a word that is misspelt in the evidence, e.g. 'rodhium' → 'rhodium', but never add a product, treatment or dish the evidence does not show),
+ "primaryFit": {"fits": "yes" | "no" | "unsure", "reason": "short", "better": "only when fits is no: the real Google Business Profile category that describes this business, else null"}  (about primaryCategory; "no" only when the business clearly does something else — e.g. a shop selling tools TO jewellers listed as "Jewelry store"),
  "categoryFit": [{"category": "one of additionalCategories, exactly as written", "fits": "yes" | "no" | "unsure", "reason": "short: why it does or does not describe what this business does"}]  (one per additionalCategories item; "no" only when the business clearly does not do that — e.g. a shop selling tools TO goldsmiths is not a "Goldsmith"),
  "confidence": "high" | "medium" | "low"
 }`;
@@ -310,6 +314,13 @@ export function parseUnderstanding(rawJson: any, input: UnderstandingInput, meta
     offerings, searchTerms: terms, sameTradeCategories, confidence,
     families: checkFamilies(rawJson.families, i, stems),
     categoryFit: checkCategoryFit(rawJson.categoryFit, i),
+    primaryFit: i.primaryCategory && rawJson.primaryFit && typeof rawJson.primaryFit === 'object'
+      ? {
+          fits: ['yes', 'no', 'unsure'].includes(rawJson.primaryFit.fits) ? rawJson.primaryFit.fits : 'unsure',
+          reason: clip(rawJson.primaryFit.reason, 160),
+          better: rawJson.primaryFit.fits === 'no' ? (clip(rawJson.primaryFit.better, 80) || null) : null,
+        }
+      : null,
     inputsHash: inputsHash(input), createdAt: meta.now.toISOString(), model: meta.model,
   };
 }

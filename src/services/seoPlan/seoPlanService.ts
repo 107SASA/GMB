@@ -83,7 +83,7 @@ interface UpsertInput {
     keywordSet: any[];
     changes: any[];
     gaps: any[];
-    research: { candidates: number; withVolume: number; rankChecked: number };
+    research: { candidates: number; withVolume: number; rankChecked: number; freeReportComparison?: any[] };
   };
   /** False when the audit's ranking data was unavailable: keywords are carried over, never replaced by an empty set. */
   rankingComplete?: boolean;
@@ -193,7 +193,16 @@ export async function upsertSeoPlanFromAudit(input: UpsertInput): Promise<ISeoPl
     keywordSet,
     keywordSetChanges: freshKeywords ? freshKeywords.changes : [],
     competitorGaps: freshKeywords ? freshKeywords.gaps : prev?.competitorGaps || [],
-    keywordResearch: freshKeywords ? { ...freshKeywords.research, ranAt: new Date() } : prev?.keywordResearch,
+    // The free report → first connected audit comparison stays on later plans.
+    keywordResearch: freshKeywords
+      ? {
+          ...freshKeywords.research,
+          ranAt: new Date(),
+          ...(freshKeywords.research.freeReportComparison || prev?.keywordResearch?.freeReportComparison
+            ? { freeReportComparison: freshKeywords.research.freeReportComparison || prev?.keywordResearch?.freeReportComparison }
+            : {}),
+        }
+      : prev?.keywordResearch,
     focus: tracking ? planFocus(tracking.serviceVisibility, tracking.matrix) : prev?.focus,
     serviceAreas: tracking ? tracking.serviceAreas : prev?.serviceAreas || [],
     history: tracking?.history ?? undefined,

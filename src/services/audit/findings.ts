@@ -233,6 +233,14 @@ export interface FindingsInput {
   /** Where each profile field's value was read (default 'google_places'). A
    *  field read from the Google Business Profile API is 'gbp_api'. */
   fieldSources?: Record<string, EvidenceSource>;
+  /** Areas served, each searched from inside the area (areaVisibility.areaCoverage). */
+  areaCoverage?: { measured: number; visibleIn: number; missing: string[]; source: 'google' | 'website' | 'city' } | null;
+  /** Website services not covered on Google: by any Google category (free report) or the profile's services list (connected). */
+  serviceGap?: { missing: string[]; against: 'categories' | 'gbp_services' } | null;
+  /** Google categories used by ≥ 2 same-trade competitors ranked above, not by this business. */
+  categoryGap?: Array<{ category: string; competitors: string[] }> | null;
+  /** Keywords a competitor's website targets (real searches, offered by this business) with this business's Maps rank. */
+  competitorKeywordGaps?: Array<{ keyword: string; volume: number | null; competitor: string; yourRank: number | null; measured: boolean }> | null;
 }
 
 const pct = (r: number | null) => (r == null ? '—' : `${Math.round(r * 100)}%`);
@@ -461,6 +469,124 @@ export function buildEvidenceAndFindings(input: FindingsInput): { evidence: Evid
     }
   }
 
+  // ── Google vs website: services the website lists that Google doesn't show ─
+  if (input.serviceGap && input.serviceGap.missing.length > 0) {
+    const g = input.serviceGap;
+    const onCategories = g.against === 'categories';
+    const gapEv = ev({
+      id: 'profile.website_services_gap',
+      metric: 'website_services_not_on_google',
+      value: g,
+      status: 'verified',
+      source: onCategories ? 'google_places' : 'gbp_api',
+      confidence: onCategories ? 'medium' : 'high',
+    });
+    findings.push({
+      id: 'profile.website_services_gap',
+      category: 'profile',
+      title: onCategories
+        ? `${g.missing.length} service${g.missing.length > 1 ? 's' : ''} on your website ${g.missing.length > 1 ? 'are' : 'is'} not covered by your Google categories`
+        : `${g.missing.length} service${g.missing.length > 1 ? 's' : ''} on your website ${g.missing.length > 1 ? 'are' : 'is'} missing from your Google profile`,
+      evidence: `On your website, not on Google: ${g.missing.slice(0, 5).join(', ')}`,
+      evidenceIds: [gapEv],
+      source: onCategories ? 'google_places' : 'gbp_api',
+      severity: 'medium',
+      confidence: onCategories ? 'medium' : 'high',
+      businessImpact: 'Google matches searches to what the profile shows; services only on the website are easier to miss.',
+      actionability: 'directly_fixable',
+      growwmaticsCapability: onCategories ? 'update_categories' : 'update_services',
+      recommendedAction: onCategories
+        ? 'Add a matching Google category (where one exists) or list these as services on the profile.'
+        : 'List these services on the Google profile.',
+    });
+  }
+
+  // ── Categories the competitors above use and this business doesn't ───────
+  if (input.categoryGap && input.categoryGap.length > 0) {
+    const cg = input.categoryGap;
+    const catEv = ev({
+      id: 'competitors.category_gap',
+      metric: 'competitor_categories_missing',
+      value: cg,
+      status: 'verified',
+      source: 'dataforseo',
+      confidence: 'high',
+    });
+    findings.push({
+      id: 'competitors.category_gap',
+      category: 'competitors',
+      title: `Competitors above you use ${cg.length > 1 ? 'categories' : 'a category'} you don't: ${cg.map((c) => c.category).join(', ')}`,
+      evidence: cg.map((c) => `"${c.category}": ${c.competitors.slice(0, 3).join(', ')}`).join('; '),
+      evidenceIds: [catEv],
+      source: 'dataforseo',
+      severity: 'medium',
+      confidence: 'high',
+      businessImpact: 'Categories decide which searches Google shows a listing for.',
+      actionability: 'directly_fixable',
+      growwmaticsCapability: 'update_categories',
+      recommendedAction: 'Add the category only if it is true of the business.',
+    });
+  }
+
+  // ── Keywords competitors' websites target, where this business is weak ──
+  const ckGaps = (input.competitorKeywordGaps || []).filter((g) => g.measured && (g.yourRank == null || g.yourRank > 10));
+  if (ckGaps.length > 0) {
+    const ckEv = ev({
+      id: 'keywords.competitor_gap',
+      metric: 'competitor_keyword_gaps',
+      value: ckGaps,
+      status: 'verified',
+      source: 'dataforseo',
+      confidence: 'high',
+    });
+    const rankText = (r: number | null) => (r == null ? 'not in the top 20' : `#${r}`);
+    findings.push({
+      id: 'keywords.competitor_gap',
+      category: 'keywords',
+      title: `Competitors target ${ckGaps.length === 1 ? 'a search' : `${ckGaps.length} searches`} you are weak on`,
+      evidence: ckGaps.map((g) => `"${g.keyword}"${g.volume ? ` (${g.volume.toLocaleString('en-IN')} searches/month)` : ''} — ${g.competitor}'s website targets it; you are ${rankText(g.yourRank)}`).join('; '),
+      evidenceIds: [ckEv],
+      source: 'dataforseo',
+      severity: 'medium',
+      confidence: 'high',
+      businessImpact: 'Customers searching these phrases are shown the competitor first.',
+      actionability: 'indirectly_influenceable',
+      growwmaticsCapability: 'google_posts',
+      recommendedAction: 'Mention this service in the profile description and posts, then re-measure.',
+    });
+  }
+
+  // ── Areas served: searched from inside each area ─────────────────────────
+  const cov = input.areaCoverage;
+  if (cov && cov.measured >= 2) {
+    const covEv = ev({
+      id: 'ranking.service_areas',
+      metric: 'service_area_coverage',
+      value: cov,
+      status: 'verified',
+      source: 'dataforseo',
+      confidence: 'high',
+    });
+    if (cov.missing.length > 0) {
+      findings.push({
+        id: 'ranking.service_areas.not_found',
+        category: 'ranking',
+        title: cov.source === 'city'
+          ? `Not in the top 20 when customers search from the centre of ${cov.missing.join(', ')}`
+          : `Not found in ${cov.missing.length} of the ${cov.measured} areas ${cov.source === 'website' ? 'your website says you serve' : 'you serve'}`,
+        evidence: `Searched from inside each area; not in the top 20 in ${cov.missing.slice(0, 4).join(', ')}`,
+        evidenceIds: [covEv],
+        source: 'dataforseo',
+        severity: cov.missing.length / cov.measured >= 0.5 ? 'high' : 'medium',
+        confidence: 'high',
+        businessImpact: `Customers searching in ${cov.missing.slice(0, 3).join(', ')} are shown other businesses first.`,
+        actionability: 'indirectly_influenceable',
+        growwmaticsCapability: 'google_posts',
+        recommendedAction: 'Add these areas to the Google profile\'s service areas and description, post about work done there, and re-measure monthly.',
+      });
+    }
+  }
+
   // ── Competitors (facts only — no causation) ──────────────────────────────
   if (input.competitorsAhead.count > 0) {
     const compEv = ev({
@@ -682,6 +808,14 @@ export function describeEvidence(e: Evidence): string {
       return `Your website describes the business as: "${String(v).slice(0, 160)}"`;
     case 'website_booking_link':
       return `Your website has a booking page: ${v}`;
+    case 'website_services_not_on_google':
+      return `On your website, not on Google: ${(v?.missing || []).slice(0, 5).join(', ')}`;
+    case 'competitor_categories_missing':
+      return `Categories competitors above you use: ${(v || []).map((x: any) => x.category).join(', ')}`;
+    case 'competitor_keyword_gaps':
+      return `Competitor keywords you are weak on: ${(v || []).map((g: any) => `"${g.keyword}"`).join(', ')}`;
+    case 'service_area_coverage':
+      return `Areas served: in the top 20 in ${v.visibleIn} of ${v.measured}`;
     case 'website_service_areas':
       return `Your website mentions areas served: ${(v || []).slice(0, 5).join(', ')}`;
     case 'website_credentials':

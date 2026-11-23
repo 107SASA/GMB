@@ -136,6 +136,16 @@ const words = (s: unknown) => String(s ?? '').toLowerCase().normalize('NFKD').re
 /** A short stem, so "counselling" ~ "counselor", "psychologist" ~ "psychology". */
 const stem = (w: string) => (w.length > 6 ? w.slice(0, 6) : w.replace(/(ies|es|s)$/, ''));
 
+/** The word / stem rules evidenceStems uses — anything checked against the evidence must use these. */
+export const evidenceWords = words;
+export const evidenceStem = stem;
+
+/** Adds free text (a website's page text) to an evidence set. */
+export function addEvidenceText(set: Set<string>, text: string): Set<string> {
+  for (const w of words(text)) if (w.length >= 3) set.add(stem(w));
+  return set;
+}
+
 /** Every word the evidence contains, as stems. */
 export function evidenceStems(raw: UnderstandingInput): Set<string> {
   const i = normalizeInput(raw);
@@ -180,6 +190,34 @@ const CITY_ALIASES: string[][] = [
 export function cityAliases(city: string): string[] {
   const c = String(city || '').toLowerCase().trim();
   return CITY_ALIASES.find((g) => g.includes(c))?.filter((x) => x !== c) ?? [];
+}
+
+/**
+ * Official district names Google writes in addresses → the name people type
+ * (Nov 2026: a Mohali yoga studio's address said "Sahibzada Ajit Singh Nagar";
+ * every "<service> sahibzada ajit singh nagar" phrase had no searches, so the
+ * report checked only "near me" phrases and showed #1 everywhere).
+ */
+const COMMON_CITY_NAME: Record<string, string> = {
+  'sahibzada ajit singh nagar': 'Mohali', 'sas nagar': 'Mohali', 's.a.s. nagar': 'Mohali', 'sas nagar mohali': 'Mohali', 'ajitgarh': 'Mohali',
+  'gautam buddh nagar': 'Noida', 'gautam buddha nagar': 'Noida',
+  'rangareddy': 'Hyderabad', 'ranga reddy': 'Hyderabad', 'medchal-malkajgiri': 'Hyderabad', 'medchal malkajgiri': 'Hyderabad',
+  'bengaluru urban': 'Bengaluru', 'bangalore urban': 'Bengaluru',
+  'mumbai suburban': 'Mumbai', 'mumbai city': 'Mumbai',
+  'kamrup metropolitan': 'Guwahati', 'kamrup metro': 'Guwahati',
+  'ernakulam': 'Kochi', 'dakshina kannada': 'Mangaluru',
+  'new delhi': 'Delhi', 'south delhi': 'Delhi', 'north delhi': 'Delhi', 'east delhi': 'Delhi', 'west delhi': 'Delhi',
+  'central delhi': 'Delhi', 'south west delhi': 'Delhi', 'north west delhi': 'Delhi', 'north east delhi': 'Delhi',
+  'south east delhi': 'Delhi', 'shahdara': 'Delhi',
+  'sri potti sriramulu nellore': 'Nellore', 'ysr kadapa': 'Kadapa', 'ysr district': 'Kadapa',
+  'purba bardhaman': 'Bardhaman', 'paschim bardhaman': 'Asansol',
+};
+
+/** The city name customers type in a search ("Sahibzada Ajit Singh Nagar" → "Mohali"); unchanged when not an official-only name. */
+export function searchCityName(city: string): string {
+  const raw = String(city || '').trim();
+  const key = raw.toLowerCase().replace(/\s+district$/, '').replace(/\s+/g, ' ').trim();
+  return COMMON_CITY_NAME[key] ?? raw;
 }
 
 /** The distinctive words of a business name (for spotting brand searches). */

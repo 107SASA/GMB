@@ -74,11 +74,25 @@ export function candidatesFromUnderstanding(u: Pick<Understanding, 'searchTerms'
   return out;
 }
 
+/** At most this many "near me" phrases per report (see pickRankChecks). */
+export const MAX_NEAR_ME = 1;
+
 /**
- * The phrases to rank-check: those with real searches, the most-searched
- * first, one per term before any term gets a second. An area phrase is used
- * only when Google reports searches for it. When fewer than 3 phrases have
- * volume, "<term> <city>" fills up to 3 (shown as "too few searches").
+ * The phrases to rank-check.
+ *
+ * Volumes are nationwide, so "<term> near me" always out-searches
+ * "<term> <city>" — and a "near me" search run at the business's own pin
+ * nearly always puts it #1. Picking by volume alone (Nov 2026) gave a yoga
+ * studio 6 "near me" phrases, all #1, and a report with no gaps while two
+ * studios ranked above it on "yoga classes mohali". So:
+ *  1. "<term> <city>" for each term, most-searched term first (a term's
+ *     demand = its best phrase's volume), even when Google has no number for
+ *     the exact city phrase — that is the search that shows real competition;
+ *  2. up to 2 area / shop / maker phrases that have real searches;
+ *  3. at most MAX_NEAR_ME "near me" phrase (the most-searched);
+ *  then more city phrases, then other phrases with volume, up to `max`.
+ * Without a city, phrases with volume are taken most-searched first (still at
+ * most MAX_NEAR_ME "near me" while anything else is left).
  */
 export function pickRankChecks(
   candidates: KeywordCandidate[],
@@ -86,27 +100,38 @@ export function pickRankChecks(
   max = MAX_RANK_CHECKS,
 ): { picked: PickedKeyword[]; mainTerm: string | null } {
   const vol = (k: string) => volumes.get(k.toLowerCase()) ?? null;
-  const withVolume = candidates
-    .map((c) => ({ ...c, volume: vol(c.keyword) }))
-    .filter((c) => (c.volume ?? 0) > 0)
-    .sort((a, b) => (b.volume! - a.volume!) || candidates.indexOf(a) - candidates.indexOf(b));
+  const all: PickedKeyword[] = candidates.map((c) => ({ ...c, volume: vol(c.keyword) }));
+  const termOrderAll = Array.from(new Set(candidates.map((c) => c.term)));
+  const termDemand = new Map<string, number>();
+  for (const c of all) termDemand.set(c.term, Math.max(termDemand.get(c.term) ?? 0, c.volume ?? 0));
+  const byTermDemand = [...termOrderAll].sort((a, b) => (termDemand.get(b)! - termDemand.get(a)!) || termOrderAll.indexOf(a) - termOrderAll.indexOf(b));
+  const byVolume = (xs: PickedKeyword[]) =>
+    xs.filter((c) => (c.volume ?? 0) > 0).sort((a, b) => (b.volume! - a.volume!) || all.indexOf(a) - all.indexOf(b));
+
   const picked: PickedKeyword[] = [];
-  const usedTerm = new Set<string>();
-  for (const c of withVolume) {
-    if (picked.length >= max) break;
-    if (usedTerm.has(c.term)) continue;
-    usedTerm.add(c.term);
-    picked.push(c);
-  }
-  for (const c of withVolume) {
-    if (picked.length >= max) break;
-    if (!picked.includes(c)) picked.push(c);
-  }
-  if (picked.length < 3) {
-    for (const c of candidates) {
-      if (picked.length >= 3) break;
-      if (c.shape === 'city' && !picked.some((p) => p.keyword === c.keyword)) picked.push({ ...c, volume: vol(c.keyword) });
-    }
+  const add = (c: PickedKeyword | undefined) => {
+    if (c && picked.length < max && !picked.some((p) => p.keyword === c.keyword)) picked.push(c);
+  };
+  const cityOf = (t: string) => all.find((c) => c.term === t && c.shape === 'city');
+  const cityPhrases = byTermDemand.map(cityOf).filter((c): c is PickedKeyword => !!c);
+  const extras = byVolume(all.filter((c) => c.shape === 'area' || c.shape === 'shop' || c.shape === 'maker'));
+  const nearMe = byVolume(all.filter((c) => c.shape === 'near_me'));
+
+  if (cityPhrases.length) {
+    // Reserve room for the extras and the one "near me" phrase.
+    const reserve = Math.min(2, extras.length) + Math.min(MAX_NEAR_ME, nearMe.length);
+    const firstCity = Math.max(Math.min(3, cityPhrases.length), max - reserve);
+    cityPhrases.slice(0, firstCity).forEach(add);
+    extras.slice(0, 2).forEach(add);
+    nearMe.slice(0, MAX_NEAR_ME).forEach(add);
+    cityPhrases.forEach(add);
+    extras.forEach(add);
+  } else {
+    const rest = byVolume(all.filter((c) => c.shape !== 'near_me'));
+    rest.slice(0, max - Math.min(MAX_NEAR_ME, nearMe.length)).forEach(add);
+    nearMe.slice(0, MAX_NEAR_ME).forEach(add);
+    // Nothing else left → more "near me" rather than an empty report.
+    nearMe.forEach(add);
   }
   // The main ranking phrase: of the business's 3 MAIN terms (the AI lists the
   // most important first), the one with the most searches — so a side service

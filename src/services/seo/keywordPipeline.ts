@@ -60,6 +60,12 @@ export interface KeywordPipelineResult {
   observations: SearchObservation[];
   /** Estimated list-price spend of this run, recorded against the monthly budget. */
   spentUsd: number;
+  /**
+   * First connected plan only: the free report's keywords with their rank
+   * then (`before`) and now (`after`); null = not in the top 20, undefined =
+   * not measured. Null when there was no free report or a plan already existed.
+   */
+  freeReportComparison?: Array<{ keyword: string; before: number | null | undefined; after: number | null | undefined; freeReportAt: string | null }> | null;
 }
 
 const COMPETITOR_SITES = 3;
@@ -92,6 +98,10 @@ export async function runKeywordPipeline(input: KeywordPipelineInput): Promise<K
     const b = input.business;
     const ownerKeywords: string[] = b.intakeCompleted && Array.isArray(b.keywords) ? b.keywords.slice(0, KEYWORD_LIMITS.maxOwnerKeywords) : [];
     const ownerCompetitors: string[] = Array.isArray(b.intake?.competitorNames) ? b.intake.competitorNames : [];
+    // The free report's shortlist (Business.freeReportKeywords): researched
+    // again and, on the first connected plan, rank-checked — before / after.
+    const freeKeywords: Array<{ keyword: string; rank: number | null; measured: boolean }> =
+      Array.isArray(b.freeReportKeywords?.keywords) ? b.freeReportKeywords.keywords.filter((k: any) => k?.keyword) : [];
     const cityCode = await cityAdsLocationCode(input.place);
     const country = input.place.country || '';
 
@@ -125,7 +135,10 @@ export async function runKeywordPipeline(input: KeywordPipelineInput): Promise<K
       competitorKeywords: siteKeywords.flatMap((list, i) => list.map((k) => ({ keyword: k.keyword, competitor: sites[i].name, volume: k.volume }))),
       competitorNames: [...input.competitors.map((c) => c.name), ...ownerCompetitors],
       ownerRemoved: input.ownerRemoved,
-      previousKeywords: Array.isArray(b.legacyKeywords) ? b.legacyKeywords : [],
+      previousKeywords: [
+        ...(Array.isArray(b.legacyKeywords) ? b.legacyKeywords : []),
+        ...freeKeywords.map((k) => k.keyword),
+      ],
     });
     if (!candidates.length) {
       if (businessId) await recordKeywordSpend(businessId, spent, now);
@@ -157,7 +170,10 @@ export async function runKeywordPipeline(input: KeywordPipelineInput): Promise<K
 
     // ── S4 rank checks (reuse what this audit already searched; fit the budget) ─
     const preScored = scoreCandidates({ candidates, volumes, ranks: new Map(), competitors: new Map(), ourReviews: null });
-    const planned = planRankChecks({ candidates, preScored, previous: input.previous });
+    const carried = input.previous.length === 0
+      ? freeKeywords.map((k) => candidates.find((c) => c.keyword === String(k.keyword).toLowerCase().trim())?.id).filter((x): x is string => !!x)
+      : [];
+    const planned = planRankChecks({ candidates, preScored, previous: input.previous, carried });
     const existing = groupByKeyword(input.existingObservations);
     const covered = (c: { keyword: string; points: number }) => (existing.get(obsKey(c.keyword))?.length ?? 0) >= c.points;
     const toFetch = fitChecksToBudget(planned.filter((c) => !covered(c)), Math.max(0, left), MAPS_SEARCH_USD);
@@ -178,6 +194,20 @@ export async function runKeywordPipeline(input: KeywordPipelineInput): Promise<K
       .map((o) => o.target?.reviewCount)
       .find((n): n is number => typeof n === 'number') ?? null;
 
+    // Before / after: each free-report keyword's rank then and now.
+    const freeReportComparison = freeKeywords.length && input.previous.length === 0
+      ? freeKeywords.map((k) => {
+          const c = candidates.find((x) => x.keyword === String(k.keyword).toLowerCase().trim());
+          const now = c ? ranks.get(c.id) : undefined;
+          return {
+            keyword: k.keyword,
+            before: k.measured ? k.rank : undefined,
+            after: now && now.status === 'measured' ? now.avg : undefined,
+            freeReportAt: b.freeReportKeywords?.at ?? null,
+          };
+        })
+      : null;
+
     // ── S6 select ─────────────────────────────────────────────────────────
     const built = buildKeywordSet({ candidates, volumes, ranks, competitors, ourReviews, previous: input.previous, now });
     if (businessId) await recordKeywordSpend(businessId, spent, now);
@@ -192,6 +222,7 @@ export async function runKeywordPipeline(input: KeywordPipelineInput): Promise<K
       },
       observations: fetched,
       spentUsd: Math.round(spent * 10_000) / 10_000,
+      freeReportComparison,
     };
   } catch (err: any) {
     console.warn('[keywordPipeline] skipped:', err?.message);

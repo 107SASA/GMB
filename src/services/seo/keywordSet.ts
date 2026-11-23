@@ -46,6 +46,8 @@ export function planRankChecks(input: {
   /** Candidates scored with volume only (rank not measured yet). */
   preScored: ScoredKeyword[];
   previous: PlanKeyword[];
+  /** Keyword ids measured by the free report — re-checked on the first connected plan (before / after). */
+  carried?: string[];
   limits?: Partial<{ core: number; rotating: number; maxRankChecked: number; explore: number; points: { core: number; rotating: number; owner: number; explore: number } }>;
 }): RankCheck[] {
   const L = { ...KEYWORD_LIMITS, ...(input.limits || {}) };
@@ -77,6 +79,8 @@ export function planRankChecks(input: {
 
   // Owner keywords are never skipped for exploration: reserve their room first.
   for (const c of input.candidates) if (c.owner) push(c.id, 'owner', P.owner);
+  // The free report's keywords, so the owner sees before / after on the same searches.
+  for (const id of input.carried || []) push(id, 'owner', P.owner);
 
   let explored = 0;
   for (const k of ranked) if (explored < L.explore && push(k.id, 'explore', P.explore)) explored++;

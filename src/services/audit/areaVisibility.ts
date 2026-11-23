@@ -55,6 +55,8 @@ export interface AreaVisibility {
 
 export interface AreaVisibilityFacts {
   version: number;
+  /** Where the areas came from: the connected Google profile, (free report) the business's website, or its city centre. Absent = google. */
+  source?: 'google' | 'website' | 'city';
   /** Service areas configured on Google (before any were skipped). */
   configured: number;
   /** The business's own location — measured by the main ranking grid, kept separate. */
@@ -118,7 +120,9 @@ function competitorsIn(obs: SearchObservation[], counted: CompetitorFact[]): Are
 }
 
 export function buildAreaVisibility(input: {
-  /** Service areas configured on Google (GbpLocationSnapshot … serviceArea.places). */
+  /** 'website' = areas the website says it serves; 'city' = the city centre (free report); default 'google'. */
+  source?: 'google' | 'website' | 'city';
+  /** Service areas configured on Google (GbpLocationSnapshot … serviceArea.places), or read from the website. */
   serviceAreas: Array<{ placeName: string | null; placeId: string | null }>;
   /** What areaDiscovery searched / skipped (stored as facts.areaDiscovery). */
   discovery: { searched: Array<{ label: string; kind: string; areaName?: string; placeId?: string | null; distanceKm?: number }>; skipped: Array<{ label: string; reason: string }> } | null;
@@ -167,7 +171,7 @@ export function buildAreaVisibility(input: {
       competitors: covered ? primaryCompetitors : [],
     });
   }
-  return { version: AREA_VISIBILITY_VERSION, configured: input.serviceAreas.length, primary, areas };
+  return { version: AREA_VISIBILITY_VERSION, ...(input.source && input.source !== 'google' ? { source: input.source } : {}), configured: input.serviceAreas.length, primary, areas };
 }
 
 // ── Monthly comparison ───────────────────────────────────────────────────────
@@ -285,10 +289,26 @@ const STATUS_TEXT: Record<AreaStatus, (note: string | null) => string> = {
 };
 
 /** Display rows for every report variant and the PDF; null when the audit has no area data. */
-export function areaVisibilityView(av: AreaVisibilityFacts | null | undefined): { primary: AreaRowView; areas: AreaRowView[] } | null {
+/** "You serve 4 areas but show up in 1": the address counts as one, plus every area measured on its own. */
+export function areaCoverage(av: AreaVisibilityFacts | null | undefined): { measured: number; visibleIn: number; missing: string[] } | null {
+  if (!av || !Array.isArray(av.areas)) return null;
+  const own = av.areas.filter((a) => a.status === 'measured' && a.searchesOk > 0);
+  if (!own.length) return null;
+  const primaryOk = (av.primary?.searchesOk ?? 0) > 0;
+  const missing = own.filter((a) => a.bestRank == null).map((a) => a.area);
+  return {
+    measured: own.length + (primaryOk ? 1 : 0),
+    visibleIn: own.length - missing.length + (primaryOk && av.primary.bestRank != null ? 1 : 0),
+    missing,
+  };
+}
+
+export function areaVisibilityView(av: AreaVisibilityFacts | null | undefined): { primary: AreaRowView; areas: AreaRowView[]; source: 'google' | 'website' | 'city'; coverage: ReturnType<typeof areaCoverage> } | null {
   if (!av || !Array.isArray(av.areas) || av.areas.length === 0) return null;
   const p = av.primary;
   return {
+    source: av.source === 'website' || av.source === 'city' ? av.source : 'google',
+    coverage: areaCoverage(av),
     primary: rowView(p.label, '', null, p.searches, p.bestRank, p.searchesOk, []),
     areas: av.areas.map((a) => rowView(a.area, STATUS_TEXT[a.status](a.note), a.distanceKm, a.searches, a.bestRank, a.searchesOk, a.competitors)),
   };

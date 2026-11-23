@@ -73,7 +73,11 @@ export interface ISeoPlan extends Document {
   /** Keywords competitors rank for and the business doesn't. */
   competitorGaps: CompetitorGap[];
   /** What the research covered, for transparency and debugging. */
-  keywordResearch?: { candidates: number; withVolume: number; rankChecked: number; ranAt: Date };
+  keywordResearch?: {
+    candidates: number; withVolume: number; rankChecked: number; ranAt: Date;
+    /** Free report keywords: rank then (before) and at the first connected audit (after). */
+    freeReportComparison?: Array<{ keyword: string; before: number | null | undefined; after: number | null | undefined; freeReportAt: string | null }>;
+  };
   /** Services and areas to push this month (services/seo/planMemory.ts planFocus). */
   focus?: { services: any[]; areas: any[] };
   /** Verified service areas measured in the source audit (allowed post locations). */

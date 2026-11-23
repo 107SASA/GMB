@@ -64,3 +64,6 @@ crm-migration-backup-*.jsonl
 # Local tool settings and test-run output — never committed
 .claude/
 tmp-*-check/
+
+# Free report test set: real customer businesses and results — never committed
+scripts/testset/

@@ -110,6 +110,60 @@ export function groundedInBusiness(phrase: string, evidence: Set<string>, places
   return ws.length > 0 && ws.every((w) => evidence.has(evidenceStem(w)));
 }
 
+/** US / UK spellings of the same word, so "jewelry" and "jewellery" are one service. */
+const SPELLING: Record<string, string> = {
+  jewelry: 'jewellery', jeweler: 'jeweller', jewelers: 'jewellers', center: 'centre', centers: 'centres',
+  theater: 'theatre', color: 'colour', colors: 'colours', aluminum: 'aluminium', tire: 'tyre', tires: 'tyres',
+};
+/** A word in one comparable form: one spelling, one stem. */
+const norm = (w: string) => evidenceStem(SPELLING[w] || w);
+const offerStems = (phrase: string, places: string[] = []) => offerWords(phrase, places).map(norm);
+
+/**
+ * The service's main word: its last offer word ("tools" in "jewellery tools",
+ * "repair" in "ac repair", "yoga" in "yoga classes" — "classes" is a kind word).
+ */
+function headOf(service: string): string | null {
+  // "abrasives for jewellery" sells abrasives: the words after "for" say who it is for.
+  const before = offerStems(` ${tidy(service)} `.split(/ (?:for|of) /)[0]);
+  const ws = before.length ? before : offerStems(service);
+  const offer = ws.filter((w) => !VENUE.has(w));
+  const pick = offer.length ? offer : ws;
+  return pick.length ? pick[pick.length - 1] : null;
+}
+
+/**
+ * Words that name the place, not what is offered: the main word of "biryani
+ * restaurant" is "biryani", of "dental clinic" "dental", of "beauty salon"
+ * "beauty" (a service that is only "restaurant" keeps it).
+ */
+const VENUE = new Set([
+  'restaurant', 'cafe', 'café', 'hotel', 'dhaba', 'clinic', 'hospital', 'salon', 'parlour', 'parlor', 'studio',
+  'gym', 'academy', 'school', 'institute', 'boutique', 'lab', 'laboratory', 'agency', 'firm', 'office', 'outlet',
+].map((w) => evidenceStem(w)));
+
+/**
+ * A Google idea names one of the business's services only when it keeps that
+ * service's main word. All its words being the business's own is not enough:
+ * "goldsmith near me" (people who want a goldsmith) shares a word with
+ * "goldsmith supplies" but drops "supplies" and so is another trade; "ac near
+ * me" is not "ac repair". "goldsmith tools", "yoga near me", "power yoga" keep it.
+ */
+export function keepsAServiceHead(phrase: string, services: Array<{ name: string }>, places: string[]): boolean {
+  const ws = new Set(offerStems(phrase, places));
+  return services.some((s) => {
+    const head = headOf(s.name);
+    return !!head && ws.has(head);
+  });
+}
+
+/** One key for services that are the same offer ("jewellery tools" / "jewellery tools shop" / "Jewelry tools supplier"). */
+export function serviceGroupKey(service: string): string {
+  const ws = offerStems(service);
+  const offer = ws.filter((w) => !VENUE.has(w));
+  return [...new Set(offer.length ? offer : ws)].sort().join(' ');
+}
+
 /**
  * Step 2 — services the website lists that no Google category covers
  * ("Meditation classes" on the site; categories "Yoga studio", "Yoga
@@ -158,7 +212,7 @@ export function freeReportCandidates(input: {
   const city = tidy(input.city);
   const hasPlace = (k: string) => NEAR_ME.test(k) || places.some((p) => p && ` ${tidy(k)} `.includes(` ${tidy(p)} `));
   const ideas = (input.ideas || [])
-    .filter((i) => groundedInBusiness(i.keyword, input.evidence, places))
+    .filter((i) => groundedInBusiness(i.keyword, input.evidence, places) && keepsAServiceHead(i.keyword, input.services, places))
     .map((i) => (hasPlace(i.keyword) || !city ? i : { keyword: `${tidy(i.keyword)} ${city}`, volume: null }));
   const all = buildCandidates({
     businessName: input.businessName,
@@ -193,7 +247,11 @@ const inPlace = (k: ScoredKeyword, place: string) => !!place && ` ${k.keyword} `
  */
 export function pickShortlist(
   scored: ScoredKeyword[],
-  opts: { city: string; areas: string[]; servedHow?: string | null; limits?: Partial<typeof FREE_SHORTLIST_LIMITS> },
+  opts: {
+    city: string; areas: string[]; servedHow?: string | null; limits?: Partial<typeof FREE_SHORTLIST_LIMITS>;
+    /** The Google categories: a service named by one comes first when Google has no numbers. */
+    categories?: Array<string | null | undefined>;
+  },
 ): ScoredKeyword[] {
   const L = { ...FREE_SHORTLIST_LIMITS, ...(opts.limits || {}) };
   const maxNearMe = opts.servedHow === 'online' ? 0 : L.maxNearMe;
@@ -211,24 +269,61 @@ export function pickShortlist(
     picked.push(k);
   };
 
-  // Service order: by the best demand among its keywords, then evidence order.
-  const svcOrder: string[] = [];
-  for (const k of [...pool].sort((a, b) => searches(b) - searches(a) || pool.indexOf(a) - pool.indexOf(b))) {
-    if (k.serviceId && !svcOrder.includes(k.serviceId)) svcOrder.push(k.serviceId);
-  }
-  // A service's city phrase: the most searched; on a tie the service's own
-  // wording ("meditation classes mohali") over a Google idea ("class meditation mohali").
-  const own = (k: ScoredKeyword) => (k.service && k.keyword.startsWith(`${k.service} `) ? 0 : 1);
-  const cityPhraseOf = (svc: string) =>
-    [...pool].filter((k) => k.serviceId === svc && isCity(k)).sort((a, b) => searches(b) - searches(a) || own(a) - own(b) || a.keyword.length - b.keyword.length)[0];
+  // Services that are the same offer ("jewellery tools", "jewellery tools
+  // shop", "Jewelry tools supplier") form one group: every group gets one
+  // keyword before any group gets a second shape of the same offer.
+  const groupOf = (k: ScoredKeyword) => (k.service ? serviceGroupKey(k.service) || k.serviceId : null);
+  const groupFirst = new Map<string, number>();
+  const groupDemand = new Map<string, number>();
+  pool.forEach((k, i) => {
+    const g = groupOf(k);
+    if (!g) return;
+    if (!groupFirst.has(g)) groupFirst.set(g, i);
+    groupDemand.set(g, Math.max(groupDemand.get(g) ?? 0, searches(k)));
+  });
+  const groups = [...groupFirst.keys()];
+  const evidenceOrder = [...groups].sort((a, b) => groupFirst.get(a)! - groupFirst.get(b)!);
+  // When Google has no numbers, order by how sure we are the business sells it:
+  //  1. a service whose main word a Google category names;
+  //  2. the business's first two services, and services connected to others
+  //     (sharing a word: "abrasives for jewellery" with "jewellery tools");
+  //  3. a service mentioned on its own, nowhere else ("rodium bath").
+  const catStems = new Set((opts.categories || []).filter((c): c is string => !!c && !isGenericCategory(c)).flatMap((c) => offerStems(c)));
+  const headOfGroup = (g: string) => {
+    const k = pool.find((x) => groupOf(x) === g);
+    return k?.service ? headOf(k.service) : null;
+  };
+  const tier = (g: string) => {
+    const head = headOfGroup(g);
+    if (head && catStems.has(head)) return 0;
+    const stems = g.split(' ');
+    const connected = groups.some((o) => o !== g && o.split(' ').some((w) => stems.includes(w)));
+    return evidenceOrder.indexOf(g) < 2 || connected ? 1 : 2;
+  };
+  const groupOrder = [...groups].sort((a, b) =>
+    (groupDemand.get(b) ?? 0) - (groupDemand.get(a) ?? 0) || tier(a) - tier(b) || groupFirst.get(a)! - groupFirst.get(b)!);
 
-  svcOrder.slice(0, L.mainServices).forEach((s) => add(cityPhraseOf(s)));
+  // A group's city phrase: the most searched; on a tie the service's own
+  // wording ("meditation classes mohali") over a Google idea ("class meditation
+  // mohali"), then the shortest ("jewellery tools bengaluru" over "… shop …").
+  const own = (k: ScoredKeyword) => (k.service && k.keyword.startsWith(`${k.service} `) ? 0 : 1);
+  const cityPhrases = (g: string) =>
+    pool.filter((k) => groupOf(k) === g && isCity(k)).sort((a, b) => searches(b) - searches(a) || own(a) - own(b) || a.keyword.length - b.keyword.length);
+  const cityPhraseOf = (g: string) => cityPhrases(g).find((k) => !picked.some((p) => p.id === k.id));
+
+  groupOrder.slice(0, L.mainServices).forEach((g) => add(cityPhraseOf(g)));
   byScore.filter((k) => isArea(k) && hasSearches(k)).slice(0, L.maxAreaPhrases).forEach(add);
+  // "near me": the most searched one whose service is among the main ones.
+  const mainGroups = new Set(groupOrder.slice(0, L.mainServices));
+  byScore.filter((k) => isNear(k) && mainGroups.has(groupOf(k) || '')).forEach(add);
   byScore.filter(isNear).forEach(add);
   // Only phrases tied to a place: a country-wide "yoga" searched from the
   // business's own pin says nothing about local competition.
   byScore.filter((k) => (isCity(k) || isArea(k)) && hasSearches(k)).forEach(add);
-  svcOrder.forEach((s) => add(cityPhraseOf(s)));
+  // Then one phrase for every service not checked yet, then second shapes ("… shop …").
+  const checked = () => new Set(picked.map(groupOf));
+  groupOrder.filter((g) => !checked().has(g)).forEach((g) => add(cityPhraseOf(g)));
+  groupOrder.forEach((g) => add(cityPhraseOf(g)));
   return picked;
 }
 

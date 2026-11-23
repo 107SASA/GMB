@@ -498,3 +498,22 @@ Each step: unit tests → commit to `dev` → test set on the droplet → owner 
 2. Nearby large cities for wholesalers / makers / online businesses: include (proposed) or city only.
 3. Category-mismatch finding: show to the business owner (proposed), or only to the sales team.
 4. Families per report: max 8 (proposed).
+
+
+---
+
+# Part E — More true, fixable issues (agreed 23 Nov 2026, v23)
+
+Owner's goal: show every problem that is **true, measured and fixable** — a reason to buy, and a promise the platform can keep. Never a guess, never one search, never "not measured" shown as a problem.
+
+| Issue | Shown when (every category, same rule) | Data |
+|---|---|---|
+| `profile.primary_category_mismatch` | The AI says the primary category does not describe what the business does, **and** the category's main word is the main word of none of its offerings / search terms (code check). The main keyword then follows what the business does, not the wrong category. A better category is suggested only from the AI's same-trade Google categories. | AI understanding v3 (`primaryFit`) |
+| `keywords.category_low_demand` | Google has no / under 10 monthly searches for the primary category's phrase, and one of the business's own offers has ≥ 50. | volumes already looked up |
+| `profile.category_too_broad` | A same-trade competitor ranked above uses a category with all the words of the business's primary category plus more ("Biryani restaurant" vs "Restaurant"), and the extra words are in the business's own words. | competitors' categories |
+| `profile.not_claimed` | Google reports the listing as not claimed. | own listing `isClaimed` |
+| `profile.photos_vs_competitors` | The business has under a third of the median photos of ≥ 2 same-trade competitors ranked above, and under 50 photos. | `totalPhotos` (own + competitors, from Maps results) |
+
+Not possible in a free report (no Google connection): unanswered reviews, posts — shown after connecting.
+
+**Built (23 Nov 2026, v23):** `businessUnderstanding` v3 (`primaryFit`); `freeReportShortlist` `primaryCategoryDoesNotFit`, `moreSpecificCategory`, `categoryLowDemand`, `photosVsCompetitors`; findings `profile.not_claimed` (owner action — no platform capability claimed), `profile.primary_category_mismatch`, `profile.category_too_broad` (the same category is not repeated in `competitors.category_gap`), `keywords.category_low_demand`, `profile.photos_vs_competitors`; competitors now carry `totalPhotos`. A primary category that does not fit is excluded from keywords and is not the main keyword. Known limit: the code overrules an AI "no" only when the category's main word is the main word of something sold ("Dental clinic" with only "dental implants" relies on the AI). Tests: `tests/workflow/audit-free-report-listing-issues.test.ts`.

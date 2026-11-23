@@ -249,6 +249,12 @@ export interface FindingsInput {
   offersNotOnGoogle?: { offered: 'services' | 'products' | 'both' | 'made_to_order' | null; offers: Array<{ name: string; covers: string[]; keyword: string }> } | null;
   /** Extra Google categories on the listing that do not fit what the business does (AI + code check). */
   categoryMismatch?: { trade: string; categories: Array<{ category: string; reason: string }> } | null;
+  /** Part E (v23) — all measured, all fixable on the Google profile. */
+  primaryCategoryMismatch?: { category: string; trade: string; reason: string; better: string | null } | null;
+  categoryLowDemand?: { categoryKeyword: string; categoryVolume: number | null; betterKeyword: string; betterVolume: number } | null;
+  categoryTooBroad?: { category: string; suggest: string; competitors: string[] } | null;
+  listingClaimed?: boolean | null;
+  photosVsCompetitors?: { own: number; median: number; competitors: number } | null;
   /** The main keyword searched farther from the business (reachCheck.ts). */
   reach?: {
     keyword: string;
@@ -583,6 +589,102 @@ export function buildEvidenceAndFindings(input: FindingsInput): { evidence: Evid
     });
   }
 
+  // ── Part E: the listing itself ──────────────────────────────────────────
+  if (input.listingClaimed === false) {
+    const clEv = ev({ id: 'profile.not_claimed', metric: 'listing_claimed', value: false, status: 'verified', source: 'google_places', confidence: 'high' });
+    findings.push({
+      id: 'profile.not_claimed',
+      category: 'profile',
+      title: 'Your Google listing is not claimed by you',
+      evidence: 'Google shows this listing as unclaimed (no verified owner).',
+      evidenceIds: [clEv],
+      source: 'google_places',
+      severity: 'high',
+      confidence: 'high',
+      businessImpact: 'Without a verified owner you cannot reply to reviews, post updates or correct details — and anyone can suggest changes to your listing.',
+      actionability: 'directly_fixable',
+      // The owner claims it on Google; the platform cannot do this for them.
+      growwmaticsCapability: null,
+      recommendedAction: 'Claim and verify the listing on Google Business Profile, then connect it here.',
+    });
+  }
+
+  if (input.primaryCategoryMismatch) {
+    const m = input.primaryCategoryMismatch;
+    const pmEv = ev({ id: 'profile.primary_category_mismatch', metric: 'primary_category_fit', value: m, status: 'verified', source: 'google_places', confidence: 'medium' });
+    findings.push({
+      id: 'profile.primary_category_mismatch',
+      category: 'profile',
+      title: `Your main Google category "${m.category}" doesn't match what you do`,
+      evidence: `Main category: ${m.category}. What you do: ${m.trade}.${m.better ? ` A closer category: "${m.better}".` : ''}`,
+      evidenceIds: [pmEv],
+      source: 'google_places',
+      severity: 'high',
+      confidence: 'medium',
+      businessImpact: 'The main category decides which searches Google shows you for most — today it shows you to people looking for something else.',
+      actionability: 'directly_fixable',
+      growwmaticsCapability: 'update_categories',
+      recommendedAction: m.better ? `Change the main category to "${m.better}" (if it describes you) on your Google profile.` : 'Change the main category on your Google profile to the one that describes what you do.',
+    });
+  }
+
+  if (input.categoryTooBroad) {
+    const t = input.categoryTooBroad;
+    const tbEv = ev({ id: 'profile.category_too_broad', metric: 'more_specific_category', value: t, status: 'verified', source: 'dataforseo', confidence: 'high' });
+    findings.push({
+      id: 'profile.category_too_broad',
+      category: 'profile',
+      title: `Your main category "${t.category}" is broad — competitors above you use "${t.suggest}"`,
+      evidence: `"${t.suggest}": ${t.competitors.slice(0, 3).join(', ')}`,
+      evidenceIds: [tbEv],
+      source: 'dataforseo',
+      severity: 'medium',
+      confidence: 'high',
+      businessImpact: 'A specific category tells Google exactly what you offer, so you are shown for the searches that matter.',
+      actionability: 'directly_fixable',
+      growwmaticsCapability: 'update_categories',
+      recommendedAction: `Use "${t.suggest}" as your main or an extra category, if it is what you offer.`,
+    });
+  }
+
+  if (input.categoryLowDemand) {
+    const d = input.categoryLowDemand;
+    const ldEv = ev({ id: 'keywords.category_low_demand', metric: 'category_phrase_demand', value: d, status: 'verified', source: 'dataforseo', confidence: 'high' });
+    findings.push({
+      id: 'keywords.category_low_demand',
+      category: 'keywords',
+      title: `Few people search "${d.categoryKeyword}" — your customers search "${d.betterKeyword}"`,
+      evidence: `"${d.categoryKeyword}": ${d.categoryVolume == null ? 'no Google search numbers' : `${d.categoryVolume} searches/month`}; "${d.betterKeyword}": ${d.betterVolume.toLocaleString('en-IN')} searches/month.`,
+      evidenceIds: [ldEv],
+      source: 'dataforseo',
+      severity: 'medium',
+      confidence: 'high',
+      businessImpact: 'Google matches your profile to the words customers type; the words you use are rarely searched.',
+      actionability: 'indirectly_influenceable',
+      growwmaticsCapability: 'google_posts',
+      recommendedAction: `Use "${d.betterKeyword.replace(/\s+\S+$/, '')}" in your profile description, services and posts.`,
+    });
+  }
+
+  if (input.photosVsCompetitors) {
+    const p = input.photosVsCompetitors;
+    const phEv = ev({ id: 'profile.photos_vs_competitors', metric: 'photos_vs_competitors', value: p, status: 'verified', source: 'dataforseo', confidence: 'high' });
+    findings.push({
+      id: 'profile.photos_vs_competitors',
+      category: 'profile',
+      title: `You have ${p.own} photos — businesses above you have about ${p.median}`,
+      evidence: `Your listing: ${p.own} photos. Median of ${p.competitors} same-trade businesses ranked above you: ${p.median}.`,
+      evidenceIds: [phEv],
+      source: 'dataforseo',
+      severity: 'medium',
+      confidence: 'high',
+      businessImpact: 'Listings with more recent photos get more clicks and calls; customers compare before they choose.',
+      actionability: 'directly_fixable',
+      growwmaticsCapability: 'photo_uploads',
+      recommendedAction: 'Add real photos of your shop, products and work every week.',
+    });
+  }
+
   // ── Extra Google categories that do not fit what the business does ───────
   if (input.categoryMismatch && input.categoryMismatch.categories.length > 0) {
     const m = input.categoryMismatch;
@@ -612,8 +714,11 @@ export function buildEvidenceAndFindings(input: FindingsInput): { evidence: Evid
   }
 
   // ── Categories the competitors above use and this business doesn't ───────
-  if (input.categoryGap && input.categoryGap.length > 0) {
-    const cg = input.categoryGap;
+  // Not repeated when "your category is too broad" already names it.
+  const tooBroad = input.categoryTooBroad?.suggest.toLowerCase();
+  const gapRows = (input.categoryGap || []).filter((c) => c.category.toLowerCase() !== tooBroad);
+  if (gapRows.length > 0) {
+    const cg = gapRows;
     const catEv = ev({
       id: 'competitors.category_gap',
       metric: 'competitor_categories_missing',

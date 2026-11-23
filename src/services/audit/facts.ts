@@ -247,6 +247,8 @@ export interface CompetitorFact {
   hasHours: boolean | null;
   bookingUrl: string | null;
   isClaimed: boolean | null;
+  /** Photos on the competitor's Google listing (Maps results), when Google returned it. */
+  totalPhotos?: number | null;
   top3Count: number;
   /** Valid searches where it appeared in the top 20 at all (above or below the target). */
   appearances: number | null;
@@ -362,6 +364,7 @@ export function competitorsFromObservations(observations: SearchObservation[]): 
         hasHours: typeof e.item.hasHours === 'boolean' ? e.item.hasHours : null,
         bookingUrl: e.item.bookingUrl || null,
         isClaimed: typeof e.item.isClaimed === 'boolean' ? e.item.isClaimed : null,
+        totalPhotos: typeof e.item.totalPhotos === 'number' ? e.item.totalPhotos : null,
         snippet: e.item.snippet || null,
         appearances: new Set([...e.searches, ...(seenBelow.get(key) || [])]).size,
         relevance: competitorRelevance(e.searches.size, tested),

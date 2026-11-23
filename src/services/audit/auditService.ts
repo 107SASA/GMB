@@ -174,6 +174,10 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // (live Pooja Enterprises): skips only places the main keyword was already
 // searched from (competitor-discovery rings use another phrase), and
 // ranking.reach needs ≥ 2 measured places, never one search.
+// v23 (Nov 2026, plan Part E): more true, fixable issues — primary category
+// that does not fit (AI v3 + code check; the main keyword then follows what
+// the business does), category phrase nobody searches, category too broad vs
+// competitors above, listing not claimed, far fewer photos than competitors.
 const CACHE_LOGIC_VERSION = REPORT_LOGIC_VERSION;
 
 /** How recently a review sync must have refreshed Google's totals for the
@@ -425,6 +429,8 @@ async function processAuditJobInner(auditId: string) {
     // Only when the ranking is not reused from the 7-day cache.
     // Extra Google categories that do not fit what the business does (finding profile.category_mismatch).
     let categoryMismatch: Array<{ category: string; reason: string }> = [];
+    // The primary category does not describe the business (finding profile.primary_category_mismatch).
+    let primaryMismatch: { category: string; reason: string; better: string | null } | null = null;
     let understoodPick: {
       picked: import('./understoodKeywords').PickedKeyword[];
       mainTerm: string | null;
@@ -454,6 +460,7 @@ async function processAuditJobInner(auditId: string) {
         const areas: string[] = Array.from(new Set([...servedAreas, ...cleanAreas(nearbyLocalities?.neighbourhoods || [], resolvedCity)]));
         const { categoriesThatDoNotFit } = require('./freeReportShortlist');
         categoryMismatch = categoriesThatDoNotFit(understanding.categoryFit, understanding);
+        primaryMismatch = require('./freeReportShortlist').primaryCategoryDoesNotFit(understanding.primaryFit, resolvedCategory, understanding);
         const services = freeReportServices({
           aiTerms: understanding.searchTerms,
           categories: [resolvedCategory, ...(ownListing?.additionalCategories || [])],
@@ -461,7 +468,7 @@ async function processAuditJobInner(auditId: string) {
           offered: understanding.offered,
           families: understanding.families || [],
           evidence: understandingEvidence,
-          excludeCategories: categoryMismatch.map((c: any) => c.category),
+          excludeCategories: [...categoryMismatch.map((c: any) => c.category), ...(primaryMismatch ? [primaryMismatch.category] : [])],
           country: business.country || null,
         });
         const place = { city: resolvedCity, area: business.area, state: business.state, country: business.country };
@@ -496,7 +503,12 @@ async function processAuditJobInner(auditId: string) {
         // Categories that do not fit are not evidence of what the business sells.
         const fittingCategories = [resolvedCategory, ...(ownListing?.additionalCategories || [])]
           .filter((c) => !categoryMismatch.some((m) => m.category === c));
-        const shortlist = pickShortlist(scored, { city: resolvedCity, areas, servedHow: understanding.servedHow, categories: fittingCategories, primaryCategory: resolvedCategory });
+        // A primary category that does not fit is neither evidence nor the main keyword.
+        const shortlist = pickShortlist(scored, {
+          city: resolvedCity, areas, servedHow: understanding.servedHow,
+          categories: fittingCategories.filter((c) => c !== primaryMismatch?.category),
+          primaryCategory: primaryMismatch ? null : resolvedCategory,
+        });
         if (shortlist.length) {
           const city = resolvedCity.toLowerCase();
           const shapeOf = (k: string): 'city' | 'near_me' | 'area' => (/\bnear me\b/.test(k) ? 'near_me' : city && k.includes(city) ? 'city' : 'area');
@@ -1615,6 +1627,24 @@ async function processAuditJobInner(auditId: string) {
       })(),
       categoryMismatch: categoryMismatch.length && understanding ? { trade: understanding.trade, categories: categoryMismatch } : null,
       reach: reachFacts,
+      // Part E (v23): the listing itself.
+      listingClaimed: audit.fastMode ? (ownListing?.isClaimed ?? null) : null,
+      primaryCategoryMismatch: primaryMismatch && understanding ? { ...primaryMismatch, trade: understanding.trade } : null,
+      categoryLowDemand: !primaryMismatch && understoodPick
+        ? require('./freeReportShortlist').categoryLowDemand(understoodPick.shortlist, resolvedCategory)
+        : null,
+      ...(() => {
+        const above = competitorFacts.filter((c: any) => c.searchesAhead > 0 && (!c.tradeMatch || c.tradeMatch.level === 'confirmed'));
+        const sl = require('./freeReportShortlist');
+        return {
+          categoryTooBroad: (() => {
+            if (primaryMismatch || !audit.fastMode) return null;
+            const r = sl.moreSpecificCategory(resolvedCategory, above, understandingEvidence);
+            return r ? { category: resolvedCategory, suggest: r.category, competitors: r.competitors } : null;
+          })(),
+          photosVsCompetitors: audit.fastMode ? sl.photosVsCompetitors(ownListing?.totalPhotos ?? null, above) : null,
+        };
+      })(),
       serviceGap: (() => {
         if (!websiteServices.length) return null;
         const { websiteServicesNotOnGoogle } = require('./freeReportShortlist');

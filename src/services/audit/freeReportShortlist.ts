@@ -446,3 +446,89 @@ export function categoriesCompetitorsUse(
     .sort((a, b) => b.competitors.length - a.competitors.length || a.category.localeCompare(b.category))
     .slice(0, max);
 }
+
+// ── Part E: more true, fixable issues (pure; v23) ──────────────────────────
+
+/**
+ * The primary category does not describe what the business does: the AI said
+ * "no", and the category's main word is the main word of none of its
+ * offerings, families or search terms (the same check as extra categories).
+ * The suggested category is kept only when it is a real, specific name.
+ */
+export function primaryCategoryDoesNotFit(
+  fit: { fits: string; reason?: string; better?: string | null } | null | undefined,
+  primaryCategory: string | null | undefined,
+  sells: { offerings?: Array<{ name: string }>; families?: Array<{ name: string }>; searchTerms?: string[] },
+): { category: string; reason: string; better: string | null } | null {
+  if (!fit || !primaryCategory) return null;
+  const hit = categoriesThatDoNotFit([{ category: primaryCategory, fits: fit.fits, reason: fit.reason }], sells)[0];
+  if (!hit) return null;
+  const better = fit.better && !isGenericCategory(fit.better) && tidy(fit.better) !== tidy(primaryCategory) ? fit.better.trim() : null;
+  return { category: primaryCategory, reason: hit.reason, better };
+}
+
+/**
+ * A same-trade competitor ranked above uses a category with every word of the
+ * business's primary category plus more ("Biryani restaurant" for
+ * "Restaurant"), and the extra words are the business's own (it offers that).
+ */
+export function moreSpecificCategory(
+  primaryCategory: string | null | undefined,
+  competitorsAbove: Array<{ name: string; category: string | null; additionalCategories?: string[] | null }>,
+  evidence: Set<string> | null | undefined,
+): { category: string; competitors: string[] } | null {
+  if (!primaryCategory || !evidence) return null;
+  const own = new Set(evidenceWords(primaryCategory).map((w) => evidenceStem(SPELLING[w] || w)));
+  if (!own.size) return null;
+  const by = new Map<string, { category: string; competitors: string[] }>();
+  for (const c of competitorsAbove || []) {
+    for (const cat of [c.category, ...(c.additionalCategories || [])]) {
+      if (!cat || isGenericCategory(cat)) continue;
+      const ws = evidenceWords(cat).map((w) => evidenceStem(SPELLING[w] || w));
+      const extra = ws.filter((w) => !own.has(w));
+      if (!extra.length || ![...own].every((w) => ws.includes(w))) continue;
+      if (!extra.every((w) => evidence.has(w))) continue;
+      const row = by.get(tidy(cat)) ?? { category: cat, competitors: [] };
+      if (!row.competitors.includes(c.name)) row.competitors.push(c.name);
+      by.set(tidy(cat), row);
+    }
+  }
+  return [...by.values()].sort((a, b) => b.competitors.length - a.competitors.length)[0] ?? null;
+}
+
+/**
+ * Google has (almost) no searches for the primary category's own phrase,
+ * while one of the business's own offers has real searches: the owner should
+ * use the words customers type. Unknown volumes are never compared.
+ */
+export function categoryLowDemand(
+  shortlist: ScoredKeyword[],
+  primaryCategory: string | null | undefined,
+  limits = { lowBelow: 10, betterAtLeast: 50 },
+): { categoryKeyword: string; categoryVolume: number | null; betterKeyword: string; betterVolume: number } | null {
+  if (!primaryCategory || isGenericCategory(primaryCategory) || !shortlist.length) return null;
+  const key = serviceGroupKey(primaryCategory);
+  const groupOf = (k: ScoredKeyword) => (k.service ? serviceGroupKey(k.service) : '');
+  const cat = shortlist.find((k) => groupOf(k) === key && !NEAR_ME.test(k.keyword));
+  if (!cat) return null;
+  const catVol = cat.volume.city ?? cat.volume.country ?? null;
+  if (catVol != null && catVol >= limits.lowBelow) return null;
+  const better = shortlist
+    .filter((k) => groupOf(k) !== key && !NEAR_ME.test(k.keyword))
+    .map((k) => ({ k, v: k.volume.city ?? k.volume.country ?? 0 }))
+    .filter((x) => x.v >= limits.betterAtLeast)
+    .sort((a, b) => b.v - a.v)[0];
+  return better ? { categoryKeyword: cat.keyword, categoryVolume: catVol, betterKeyword: better.k.keyword, betterVolume: better.v } : null;
+}
+
+/** Far fewer photos than the same-trade businesses ranked above (≥ 2 with a count). */
+export function photosVsCompetitors(
+  own: number | null | undefined,
+  competitorsAbove: Array<{ name: string; totalPhotos?: number | null }>,
+): { own: number; median: number; competitors: number } | null {
+  if (typeof own !== 'number') return null;
+  const counts = competitorsAbove.map((c) => c.totalPhotos).filter((n): n is number => typeof n === 'number').sort((a, b) => a - b);
+  if (counts.length < 2) return null;
+  const median = counts.length % 2 ? counts[(counts.length - 1) / 2] : Math.round((counts[counts.length / 2 - 1] + counts[counts.length / 2]) / 2);
+  return own < 50 && own * 3 < median ? { own, median, competitors: counts.length } : null;
+}

@@ -73,6 +73,8 @@ export function freeReportServices(input: {
   evidence?: Set<string> | null;
   /** Extra Google categories that do not fit what the business does — never used as an offer. */
   excludeCategories?: string[];
+  /** The business's country: in India keywords use Indian (UK) spelling ("jewellery", "centre"). */
+  country?: string | null;
 }): VerifiedService[] {
   const families = input.families || [];
   // Spelling the family fixed ("rodhium" → "rhodium"), applied to every phrase.
@@ -98,9 +100,20 @@ export function freeReportServices(input: {
 
   const out: VerifiedService[] = [];
   const seen = new Set<string>();
+  // An offer with exactly the words of a category that does not fit is that
+  // same wrong trade in other words ("jewelry wholesale" = "Wholesale jeweler").
+  // Same words only: "yoga classes" shares "yoga" with "Yoga instructor" and stays.
+  const wrongTrades = [...excluded].map((c) => new Set(offerWords(c, []).map((w) => evidenceStem(SPELLING[w] || w))))
+    .filter((set) => set.size > 0);
+  const isWrongTrade = (phrase: string) => {
+    const ws = offerWords(phrase, []).map((w) => evidenceStem(SPELLING[w] || w));
+    const own = new Set(ws);
+    return own.size > 0 && wrongTrades.some((set) => set.size === own.size && [...own].every((w) => set.has(w)));
+  };
+  const india = !input.country || /^(in|ind|india)$/i.test(String(input.country).trim());
   const add = (name: string, source: VerifiedService['source']) => {
-    const n = tidy(name);
-    if (!n || n.split(' ').length > 6) return;
+    const n = india ? indianSpelling(tidy(name)) : tidy(name);
+    if (!n || n.split(' ').length > 6 || isWrongTrade(n)) return;
     const id = serviceId(n);
     if (seen.has(id)) return;
     seen.add(id);
@@ -108,8 +121,10 @@ export function freeReportServices(input: {
   };
   const terms = (input.aiTerms || []).map((t) => tidy(fixWords(t, true))).filter(Boolean);
   terms.forEach((t) => add(t, 'category'));
-  // Families: the website's items as customers search for them.
-  for (const f of families) add(f.name, 'website');
+  // Families: the website's items as customers search for them. A product
+  // seller's family is never "… services" ("rhodium services" → "rhodium").
+  const sellsProducts = input.offered === 'products' || input.offered === 'made_to_order';
+  for (const f of families) add(sellsProducts ? f.name.replace(/\s+services?\b/g, '').trim() : f.name, 'website');
   // A category that only names a kind of business ("Manufacturer",
   // "Wholesaler", "Store") is never a keyword on its own; nor is one that
   // does not fit what the business does ("Goldsmith" on a tool supplier).
@@ -147,6 +162,11 @@ const SPELLING: Record<string, string> = {
   jewelry: 'jewellery', jeweler: 'jeweller', jewelers: 'jewellers', center: 'centre', centers: 'centres',
   theater: 'theatre', color: 'colour', colors: 'colours', aluminum: 'aluminium', tire: 'tyre', tires: 'tyres',
 };
+/** US → Indian (UK) spelling, word by word: Indian customers search "jewellery", "centre", "colour". */
+export function indianSpelling(phrase: string): string {
+  return String(phrase || '').split(' ').map((w) => SPELLING[w] || w).join(' ');
+}
+
 /** A word in one comparable form: one spelling, one stem. */
 const norm = (w: string) => evidenceStem(SPELLING[w] || w);
 const offerStems = (phrase: string, places: string[] = []) => offerWords(phrase, places).map(norm);

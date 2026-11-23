@@ -419,6 +419,32 @@ export default function FreeReportView({ audit, pricing = {}, appMode = false }:
                 </div>
               )}
 
+              {facts?.reach?.points?.length > 0 && (
+                <div className="mt-5">
+                  <div className="text-xs font-semibold text-on-surface mb-1">How far you reach</div>
+                  <p className="text-xs text-on-surface-variant mb-2">
+                    &quot;{facts.reach.keyword}&quot; searched from farther away
+                    {facts.reach.top3WithinKm != null ? <> · top 3 up to ~{facts.reach.top3WithinKm} km</> : null}
+                  </p>
+                  <div className="space-y-2">
+                    {facts.reach.points.map((p: any) => {
+                      const v: RankValue = p.status !== 'ok' ? { state: 'unavailable', rank: null }
+                        : p.rank != null ? { state: 'found', rank: p.rank } : { state: 'not_found', rank: null };
+                      return (
+                        <div key={p.label} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1 text-sm">
+                          <span className="text-on-surface-variant basis-full sm:basis-auto sm:flex-1 min-w-0 truncate">
+                            {p.label}
+                            {p.shownFirst && <span className="text-xs text-outline"> · {p.shownFirst} shown first</span>}
+                          </span>
+                          <div className="flex-1 sm:flex-none sm:w-28"><RankBar value={v} /></div>
+                          <span className="text-xs font-bold text-on-surface shrink-0 sm:w-20 text-right">{rankLabel(v)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {facts && brandRows.length > 0 && (
                 <div className="mt-5">
                   <div className="text-xs font-semibold text-on-surface mb-2">

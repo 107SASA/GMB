@@ -51,6 +51,9 @@ export interface IPlaceInsightCache extends Document {
     /** Competitor-discovery searches in GBP service areas / wider rings (areaDiscovery.ts). */
     areaObservations?: any[];
     areaDiscovery?: any;
+    /** Reach check (free report): the main keyword searched farther away (reachCheck.ts). */
+    reachPlaces?: any[];
+    reachObservations?: any[];
     fetchedAt: Date;
     /** Which build of the keyword/competitor-resolution logic produced this
      *  entry — see CACHE_LOGIC_VERSION in auditService.ts. A mismatch means

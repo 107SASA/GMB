@@ -158,6 +158,10 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // categories that do not fit what the business does are not keywords and
 // are shown (profile.category_mismatch); offers whose keyword was searched
 // and not found → offers.not_on_google.
+// v20 (Nov 2026, plan Part D step 5): reach check — the main keyword also
+// searched farther away (shop: ~3–10 km; service-area / hybrid: + city
+// centre; maker / wholesaler: + city centre and ~25 km; online: city centre,
+// ~15 / ~30 km), shown as "How far you reach", finding ranking.reach.
 const CACHE_LOGIC_VERSION = REPORT_LOGIC_VERSION;
 
 /** How recently a review sync must have refreshed Google's totals for the
@@ -825,6 +829,33 @@ async function processAuditJobInner(auditId: string) {
       }
     }
 
+    // ── Reach check (free report; plan Part D step 5) ───────────────────
+    // The main keyword also searched farther away (by how the business
+    // serves / what it offers), so "#1 next to the shop" is not the whole
+    // story. Kept out of the ranking statistics and competitor counts.
+    let reachPlaces: import('./reachCheck').ReachPlace[] = cachedRank ? (cachedRank.reachPlaces || []) : [];
+    let reachObs: SearchObservation[] = cachedRank ? (cachedRank.reachObservations || []) : [];
+    if (!cachedRank && audit.fastMode && pin && understoodPick?.picked?.[0]?.keyword && rankData && !rankData.fetchError) {
+      try {
+        const { planReachSearches } = require('./reachCheck');
+        const { resolvePlacePoint } = require('./localities');
+        const { fetchAreaObservations } = require('./seoAnalyzer');
+        const cityCentre = resolvedCity ? await resolvePlacePoint({ placeId: null, placeName: resolvedCity }, business.state || null).catch(() => null) : null;
+        reachPlaces = planReachSearches({
+          pin,
+          keyword: understoodPick.picked[0].keyword,
+          servedHow: understanding?.servedHow,
+          offered: understanding?.offered,
+          city: resolvedCity,
+          cityCentre,
+          covered: [...observations, ...areaObs].map((o) => o.point).filter((x): x is { lat: number; lng: number } => !!x?.lat && !!x?.lng),
+        });
+        reachObs = reachPlaces.length ? await fetchAreaObservations(businessForRankings, reachPlaces) : [];
+      } catch (reachErr: any) {
+        console.warn('[auditService] reach check failed:', reachErr?.message);
+      }
+    }
+
     // ── SEO intelligence (full audits only): stable tracked keywords per
     // service, and service × area searches. The free report is unchanged.
     // Kept out of the business's headline ranking statistics; used for
@@ -1199,6 +1230,8 @@ async function processAuditJobInner(auditId: string) {
             competitorObservations: competitorSearchObs,
             competitorKeywordGaps,
             areaDiscovery,
+            reachPlaces,
+            reachObservations: reachObs,
             fetchedAt: new Date(),
             logicVersion: CACHE_LOGIC_VERSION,
           },
@@ -1519,6 +1552,17 @@ async function processAuditJobInner(auditId: string) {
       rank: k.rank ?? null,
     }));
     const descriptionReadable = fieldStates['Business Description'] && fieldStates['Business Description'] !== 'unknown';
+    // Reach check facts: same-trade businesses (confirmed competitors) named first where shown.
+    const reachFacts: import('./reachCheck').ReachFacts | null = reachPlaces.length
+      ? (() => {
+          const confirmed = new Set(competitorFacts
+            .filter((c: any) => !c.tradeMatch || c.tradeMatch.level === 'confirmed')
+            .map((c: any) => String(c.name || '').toLowerCase()));
+          return require('./reachCheck').buildReachFacts(reachPlaces[0].keyword, reachPlaces, reachObs, {
+            sameTrade: (name: string) => confirmed.has(String(name || '').toLowerCase()),
+          });
+        })()
+      : null;
     const { evidence, findings: builtFindings } = buildEvidenceAndFindings({
       fields: fieldStates,
       descriptionLength: descriptionReadable ? String(gbpLive?.description ?? business.description ?? '').length : null,
@@ -1550,6 +1594,7 @@ async function processAuditJobInner(auditId: string) {
         return offers.length ? { offered: understanding?.offered ?? null, offers } : null;
       })(),
       categoryMismatch: categoryMismatch.length && understanding ? { trade: understanding.trade, categories: categoryMismatch } : null,
+      reach: reachFacts,
       serviceGap: (() => {
         if (!websiteServices.length) return null;
         const { websiteServicesNotOnGoogle } = require('./freeReportShortlist');
@@ -2274,6 +2319,7 @@ async function processAuditJobInner(auditId: string) {
         otherBusinessesAhead,
         ...(areaDiscovery ? { areaDiscovery, areaSearches: areaObs } : {}),
         ...(areaVisibility ? { areaVisibility } : {}),
+        ...(reachFacts ? { reach: reachFacts } : {}),
         ...(tracking ? { tracking } : {}),
         reviews: reviewFacts,
         reviewComparison,

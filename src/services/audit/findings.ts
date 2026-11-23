@@ -249,6 +249,13 @@ export interface FindingsInput {
   offersNotOnGoogle?: { offered: 'services' | 'products' | 'both' | 'made_to_order' | null; offers: Array<{ name: string; covers: string[]; keyword: string }> } | null;
   /** Extra Google categories on the listing that do not fit what the business does (AI + code check). */
   categoryMismatch?: { trade: string; categories: Array<{ category: string; reason: string }> } | null;
+  /** The main keyword searched farther from the business (reachCheck.ts). */
+  reach?: {
+    keyword: string;
+    points: Array<{ label: string; distanceKm: number; status: 'ok' | 'unavailable'; rank: number | null; shownFirst: string | null }>;
+    top3WithinKm: number | null;
+    weakIn: string[];
+  } | null;
 }
 
 const pct = (r: number | null) => (r == null ? '—' : `${Math.round(r * 100)}%`);
@@ -539,6 +546,39 @@ export function buildEvidenceAndFindings(input: FindingsInput): { evidence: Evid
       recommendedAction: products
         ? 'Add these products to the Products section of your Google profile with photos, and post about them regularly.'
         : 'List these services on your Google profile and post about them regularly.',
+    });
+  }
+
+  // ── Reach: where the business stops showing up for its main keyword ─────
+  if (input.reach && input.reach.weakIn.length > 0) {
+    const r = input.reach;
+    const measured = r.points.filter((p) => p.status === 'ok');
+    const weak = measured.filter((p) => r.weakIn.includes(p.label));
+    const reachEv = ev({
+      id: 'ranking.reach',
+      metric: 'main_keyword_rank_by_distance',
+      value: r,
+      status: 'verified',
+      source: 'dataforseo',
+      confidence: 'high',
+    });
+    const where = (p: { label: string; rank: number | null; shownFirst: string | null }) =>
+      `${p.label}: ${p.rank == null ? 'not in the top 20' : `#${p.rank}`}${p.shownFirst ? ` (${p.shownFirst} shown first)` : ''}`;
+    findings.push({
+      id: 'ranking.reach',
+      category: 'ranking',
+      title: r.top3WithinKm != null
+        ? `You lead near your business, but drop out farther away for "${r.keyword}"`
+        : `Customers away from your business don't see you for "${r.keyword}"`,
+      evidence: `${r.top3WithinKm != null ? `Top 3 up to ~${r.top3WithinKm} km. ` : ''}${weak.map(where).join('; ')}`,
+      evidenceIds: [reachEv],
+      source: 'dataforseo',
+      severity: weak.length * 2 >= measured.length ? 'high' : 'medium',
+      confidence: 'high',
+      businessImpact: 'Google shows the nearest strong listings first; beyond a few km, customers searching for what you do are shown other businesses.',
+      actionability: 'indirectly_influenceable',
+      growwmaticsCapability: 'google_posts',
+      recommendedAction: 'Strengthen the profile Google ranks by distance: more recent reviews, regular posts naming the areas you serve, and photos — then re-measure.',
     });
   }
 

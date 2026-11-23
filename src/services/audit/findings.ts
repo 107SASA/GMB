@@ -1037,6 +1037,26 @@ export function describeEvidence(e: Evidence): string {
       return `Your website states: ${(v || []).slice(0, 3).join('; ')}`;
     case 'suspension_risk_heuristic':
       return `Suspension-risk check: ${v.level}${v.reasons?.length ? ` — ${v.reasons[0]}` : ''}`;
+    // ── v19–v23 ──
+    case 'main_keyword_rank_by_distance': {
+      const pts = (v?.points || []).filter((p: any) => p.status === 'ok');
+      const where = pts.map((p: any) => `${p.label} ${p.rank == null ? 'not in top 20' : `#${p.rank}`}`).join(', ');
+      return `"${v?.keyword}" searched farther away: ${where || 'not measured'}`;
+    }
+    case 'offers_not_found_on_google':
+      return `Not in the top 20 for what you sell: ${(v || []).slice(0, 4).map((o: any) => `"${o.keyword}"`).join(', ')}`;
+    case 'categories_not_matching_business':
+      return `Extra categories that don't match what you do: ${(v?.categories || []).map((c: any) => c.category).join(', ')}`;
+    case 'listing_claimed':
+      return v === false ? 'Google listing is not claimed by an owner' : 'Google listing is claimed';
+    case 'primary_category_fit':
+      return `Main category "${v?.category}" doesn't match what you do${v?.better ? ` (closer: "${v.better}")` : ''}`;
+    case 'more_specific_category':
+      return `Competitors above you use "${v?.suggest}" (your main category: "${v?.category}")`;
+    case 'category_phrase_demand':
+      return `"${v?.categoryKeyword}": ${v?.categoryVolume == null ? 'no search numbers' : `${v.categoryVolume}/month`}; "${v?.betterKeyword}": ${v?.betterVolume}/month`;
+    case 'photos_vs_competitors':
+      return `${v?.own} photos on your listing; businesses above you: about ${v?.median}`;
     default:
       if (e.metric.startsWith('gbp:')) {
         const label = `Google Business Profile ${e.metric.slice('gbp:'.length).replace(/_/g, ' ')}`;
@@ -1047,7 +1067,9 @@ export function describeEvidence(e: Evidence): string {
         const field = e.metric.slice('profile_field:'.length);
         return `${field}: ${e.status === 'verified' ? 'present' : e.status === 'verified_missing' ? 'missing' : 'could not be checked'}`;
       }
-      return `${e.metric.replace(/_/g, ' ')}: ${Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)}`;
+      // Never raw data in front of a customer: an object without its own line shows only its label.
+      if (v != null && typeof v === 'object' && !Array.isArray(v)) return e.metric.replace(/_/g, ' ');
+      return `${e.metric.replace(/_/g, ' ')}: ${Array.isArray(v) ? v.map((x: any) => (x && typeof x === 'object' ? x.keyword || x.name || x.category || '' : String(x))).filter(Boolean).join(', ') : String(v)}`;
   }
 }
 

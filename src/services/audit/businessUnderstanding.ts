@@ -53,6 +53,24 @@ export interface Offering {
   source: string;
 }
 
+/**
+ * A group of the business's items the way customers search for them:
+ * "RODHIUM BATH" + "RODHIUM PEN" → "rhodium plating solution";
+ * "Chicken dum biryani" + "Mutton biryani" → "biryani".
+ */
+export interface OfferFamily {
+  name: string;
+  /** The website items / categories it groups (each one really in the evidence). */
+  covers: string[];
+}
+
+/** Does one of the listing's own extra Google categories fit what the business does? */
+export interface CategoryFit {
+  category: string;
+  fits: 'yes' | 'no' | 'unsure';
+  reason: string;
+}
+
 export interface Understanding {
   industry: Industry | null;
   servedHow: ServedHow;
@@ -65,6 +83,10 @@ export interface Understanding {
   searchTerms: string[];
   /** Google categories that count as the same trade (checked in phase 3). */
   sameTradeCategories: string[];
+  /** The website's items grouped the way customers search (max 8). Missing on answers saved before v2. */
+  families?: OfferFamily[];
+  /** The AI's view of each extra Google category on the listing. Missing on answers saved before v2. */
+  categoryFit?: CategoryFit[];
   confidence: 'high' | 'medium' | 'low';
   inputsHash: string;
   createdAt: string;
@@ -75,7 +97,8 @@ const SERVED: ServedHow[] = ['storefront', 'service_area', 'hybrid', 'online'];
 const OFFERED: Offered[] = ['services', 'products', 'both', 'made_to_order'];
 export const UNDERSTANDING_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /** Bump when the prompt or the checks change, so saved answers are rebuilt. */
-export const UNDERSTANDING_VERSION = 1;
+// v2 (Nov 2026): offer families (website items grouped as customers search, spelling fixed) + extra-category fit.
+export const UNDERSTANDING_VERSION = 2;
 
 const clip = (s: unknown, n: number) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
@@ -124,6 +147,8 @@ Answer with JSON only, exactly these keys:
  "offerings": [{"name": "real product or service, 1-4 words, as customers say it", "source": "google category | description | website | name"}]  (most important first, max 6),
  "searchTerms": ["what a customer types into Google to find this kind of business, 1-4 words, WITHOUT any city, area, 'near me', 'best' or the business name"]  (max 8; the business's MAIN line of work first, side services last),
  "sameTradeCategories": ["Google Business Profile category names a direct competitor would have"]  (max 8),
+ "families": [{"name": "what customers type for a GROUP of the items in websiteServices / the categories, 1-4 words, e.g. 'Chicken dum biryani' + 'Mutton biryani' → 'biryani'", "covers": ["the exact websiteServices items or categories it groups"]}]  (max 8, main line first; you may correct the spelling of a word that is misspelt in the evidence, e.g. 'rodhium' → 'rhodium', but never add a product, treatment or dish the evidence does not show),
+ "categoryFit": [{"category": "one of additionalCategories, exactly as written", "fits": "yes" | "no" | "unsure", "reason": "short: why it does or does not describe what this business does"}]  (one per additionalCategories item; "no" only when the business clearly does not do that — e.g. a shop selling tools TO goldsmiths is not a "Goldsmith"),
  "confidence": "high" | "medium" | "low"
 }`;
 }
@@ -283,8 +308,76 @@ export function parseUnderstanding(rawJson: any, input: UnderstandingInput, meta
     industry, servedHow, offered,
     trade: clip(rawJson.trade, 100) || offerings[0]?.name || terms[0] || '',
     offerings, searchTerms: terms, sameTradeCategories, confidence,
+    families: checkFamilies(rawJson.families, i, stems),
+    categoryFit: checkCategoryFit(rawJson.categoryFit, i),
     inputsHash: inputsHash(input), createdAt: meta.now.toISOString(), model: meta.model,
   };
+}
+
+/** Letters apart (adjacent swaps count once): "rodhium" → "rhodium" is 2, "jewelery" → "jewellery" is 1. */
+export function editDistance(a: string, b: string): number {
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[a.length][b.length];
+}
+
+/** A spelling fix of a word in the evidence: same first letter, ≥ 5 letters, at most 2 apart ("rodhium" → "rhodium", never "bath" → "bathroom"). */
+export function isSpellingFixOf(word: string, evidenceWord: string): boolean {
+  if (word === evidenceWord || word.length < 5 || evidenceWord.length < 5) return false;
+  if (word[0] !== evidenceWord[0]) return false;
+  return editDistance(word, evidenceWord) <= 2 && Math.abs(word.length - evidenceWord.length) <= 2;
+}
+
+/** Words a family name may add that name a kind of offer, not a new product ("python batch" → "python course"). */
+const FAMILY_KIND_WORDS = new Set(['course', 'courses', 'class', 'classes', 'training', 'service', 'services', 'repair', 'shop', 'store',
+  'supplier', 'suppliers', 'dealer', 'dealers', 'solution', 'solutions', 'products', 'equipment', 'tools', 'treatment']);
+
+/**
+ * The AI's families, checked: each covers ≥ 1 item really in the evidence,
+ * and every word of its name is the business's own, a kind word, or a
+ * spelling fix of a word in what it covers. Anything else is dropped.
+ */
+export function checkFamilies(raw: unknown, i: UnderstandingInput, stems: Set<string>): OfferFamily[] {
+  const known = new Map<string, string>();
+  for (const x of [...i.websiteServices, i.primaryCategory || '', ...i.additionalCategories]) {
+    const k = clip(x, 80).toLowerCase();
+    if (k) known.set(k, clip(x, 80));
+  }
+  const out: OfferFamily[] = [];
+  for (const f of Array.isArray(raw) ? raw : []) {
+    const name = clip((f as any)?.name, 60).toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/g, ' ').trim();
+    if (!name || name.split(' ').length > 5 || out.some((o) => o.name === name)) continue;
+    const covers = (Array.isArray((f as any)?.covers) ? (f as any).covers : [])
+      .map((c: unknown) => known.get(clip(c, 80).toLowerCase()))
+      .filter((c: string | undefined): c is string => !!c);
+    if (!covers.length) continue;
+    const coverWords = covers.flatMap((c: string) => words(c));
+    const ok = words(name).filter((w) => w.length >= 3).every((w) =>
+      stems.has(stem(w)) || FAMILY_KIND_WORDS.has(w) || STOP.has(w) || coverWords.some((cw: string) => isSpellingFixOf(w, cw)));
+    if (!ok) continue;
+    out.push({ name, covers: [...new Set(covers)] as string[] });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+/** The AI's view of each extra category — only categories really on the listing. */
+export function checkCategoryFit(raw: unknown, i: UnderstandingInput): CategoryFit[] {
+  const own = new Map(i.additionalCategories.map((c) => [c.toLowerCase(), c]));
+  const out: CategoryFit[] = [];
+  for (const r of Array.isArray(raw) ? raw : []) {
+    const category = own.get(clip((r as any)?.category, 80).toLowerCase());
+    if (!category || out.some((o) => o.category === category)) continue;
+    const fits = ['yes', 'no', 'unsure'].includes((r as any)?.fits) ? (r as any).fits : 'unsure';
+    out.push({ category, fits, reason: clip((r as any)?.reason, 160) });
+  }
+  return out;
 }
 
 /** A saved answer that can be reused: same inputs, same version, under 30 days old. */

@@ -152,6 +152,12 @@ const NARRATIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Groq-authored narrat
 // "Jewelry …") are one group, each group checked once before second shapes;
 // with no Google numbers, the Google category's offer first and a service
 // named once, connected to nothing, last.
+// v19 (Nov 2026, plan Part D steps 1–4): shop / checkout text is never a
+// website service; website items grouped into offer families as customers
+// search (spelling fixed only when the word is on the site); extra Google
+// categories that do not fit what the business does are not keywords and
+// are shown (profile.category_mismatch); offers whose keyword was searched
+// and not found → offers.not_on_google.
 const CACHE_LOGIC_VERSION = REPORT_LOGIC_VERSION;
 
 /** How recently a review sync must have refreshed Google's totals for the
@@ -401,6 +407,8 @@ async function processAuditJobInner(auditId: string) {
     // "near me") → one volume lookup for all → a shortlist of ~10 → only the
     // shortlist is rank-checked. Same building blocks as the connected audit.
     // Only when the ranking is not reused from the 7-day cache.
+    // Extra Google categories that do not fit what the business does (finding profile.category_mismatch).
+    let categoryMismatch: Array<{ category: string; reason: string }> = [];
     let understoodPick: {
       picked: import('./understoodKeywords').PickedKeyword[];
       mainTerm: string | null;
@@ -428,11 +436,16 @@ async function processAuditJobInner(auditId: string) {
           ? websiteServiceAreaPlaces(websiteIntel.serviceAreas.map((a: any) => String(a?.value || '')), resolvedCity).map((a: any) => String(a.placeName))
           : [];
         const areas: string[] = Array.from(new Set([...servedAreas, ...cleanAreas(nearbyLocalities?.neighbourhoods || [], resolvedCity)]));
+        const { categoriesThatDoNotFit } = require('./freeReportShortlist');
+        categoryMismatch = categoriesThatDoNotFit(understanding.categoryFit, understanding);
         const services = freeReportServices({
           aiTerms: understanding.searchTerms,
           categories: [resolvedCategory, ...(ownListing?.additionalCategories || [])],
           websiteServices,
           offered: understanding.offered,
+          families: understanding.families || [],
+          evidence: understandingEvidence,
+          excludeCategories: categoryMismatch.map((c: any) => c.category),
         });
         const place = { city: resolvedCity, area: business.area, state: business.state, country: business.country };
         const country = business.country || '';
@@ -1522,6 +1535,21 @@ async function processAuditJobInner(auditId: string) {
       website: websiteSignals ? { onListing: !!business.website, reachable: !!websiteSignals.reachable } : null,
       suspensionRisk,
       competitorKeywordGaps,
+      offersNotOnGoogle: (() => {
+        const fams = understanding?.families || [];
+        if (!fams.length || !understoodPick) return null;
+        const rankOf = new Map(rankingFacts.byKeyword.map((k: any) => [k.keyword.toLowerCase(), k]));
+        const offers: Array<{ name: string; covers: string[]; keyword: string }> = [];
+        for (const f of fams) {
+          // The family's checked keywords: measured, and the business in none of them.
+          const checked = understoodPick.shortlist.filter((k: any) => k.service === f.name)
+            .map((k: any) => ({ keyword: k.keyword, r: rankOf.get(k.keyword.toLowerCase()) as any }))
+            .filter((x: any) => x.r && x.r.status !== 'unavailable' && (x.r.testedCount ?? 0) > 0);
+          if (checked.length && checked.every((x: any) => !x.r.foundCount)) offers.push({ name: f.name, covers: f.covers, keyword: checked[0].keyword });
+        }
+        return offers.length ? { offered: understanding?.offered ?? null, offers } : null;
+      })(),
+      categoryMismatch: categoryMismatch.length && understanding ? { trade: understanding.trade, categories: categoryMismatch } : null,
       serviceGap: (() => {
         if (!websiteServices.length) return null;
         const { websiteServicesNotOnGoogle } = require('./freeReportShortlist');

@@ -21,7 +21,7 @@
  */
 import { buildCandidates, isGenericCategory } from '../seo/keywordResearch.ts';
 import { serviceId, words } from '../seo/ids.ts';
-import { evidenceStem, evidenceWords } from './businessUnderstanding.ts';
+import { evidenceStem, evidenceWords, isSpellingFixOf, type OfferFamily } from './businessUnderstanding.ts';
 import type { VerifiedService } from '../seo/trackedKeywords.ts';
 import type { KeywordCandidate, ScoredKeyword } from '../seo/keywordTypes.ts';
 
@@ -67,7 +67,35 @@ export function freeReportServices(input: {
   categories: Array<string | null | undefined>;
   websiteServices: string[];
   offered?: 'services' | 'products' | 'both' | 'made_to_order' | null;
+  /** The website's items grouped as customers search (checked by businessUnderstanding). */
+  families?: OfferFamily[];
+  /** Stems of the business's own words: a word not among them may be a misspelling to fix. */
+  evidence?: Set<string> | null;
+  /** Extra Google categories that do not fit what the business does — never used as an offer. */
+  excludeCategories?: string[];
 }): VerifiedService[] {
+  const families = input.families || [];
+  // Spelling the family fixed ("rodhium" → "rhodium"), applied to every phrase.
+  const familyWords = [...new Set(families.flatMap((f) => evidenceWords(f.name)))];
+  const fixes = new Map<string, string>();
+  for (const f of families) {
+    for (const cw of f.covers.flatMap((c) => evidenceWords(c))) {
+      const fw = familyWords.find((w) => isSpellingFixOf(w, cw));
+      if (fw) fixes.set(cw, fw);
+    }
+  }
+  const fixWords = (phrase: string, aiWritten: boolean) => evidenceWords(phrase).map((w) => {
+    if (fixes.has(w)) return fixes.get(w)!;
+    // A word the AI wrote that is not the business's own ("rodium") snaps to the family's spelling.
+    if (aiWritten && input.evidence && !input.evidence.has(evidenceStem(w))) {
+      const fw = familyWords.find((x) => isSpellingFixOf(x, w));
+      if (fw) return fw;
+    }
+    return w;
+  }).join(' ');
+  const covered = new Set(families.flatMap((f) => f.covers.map((c) => tidy(c))));
+  const excluded = new Set((input.excludeCategories || []).map((c) => tidy(c)));
+
   const out: VerifiedService[] = [];
   const seen = new Set<string>();
   const add = (name: string, source: VerifiedService['source']) => {
@@ -78,12 +106,16 @@ export function freeReportServices(input: {
     seen.add(id);
     out.push({ id, name: n, source, state: 'VERIFIED' } as VerifiedService);
   };
-  const terms = (input.aiTerms || []).map(tidy).filter(Boolean);
+  const terms = (input.aiTerms || []).map((t) => tidy(fixWords(t, true))).filter(Boolean);
   terms.forEach((t) => add(t, 'category'));
+  // Families: the website's items as customers search for them.
+  for (const f of families) add(f.name, 'website');
   // A category that only names a kind of business ("Manufacturer",
-  // "Wholesaler", "Store") is never a keyword on its own.
-  for (const c of input.categories || []) if (c && !isGenericCategory(c) && offerWords(c, []).length) add(c, 'category');
-  for (const s of input.websiteServices || []) add(s, 'website');
+  // "Wholesaler", "Store") is never a keyword on its own; nor is one that
+  // does not fit what the business does ("Goldsmith" on a tool supplier).
+  for (const c of input.categories || []) if (c && !isGenericCategory(c) && offerWords(c, []).length && !excluded.has(tidy(c))) add(c, 'category');
+  // Website items a family covers are searched as that family.
+  for (const s of input.websiteServices || []) if (!covered.has(tidy(s))) add(fixWords(s, false), 'website');
   for (const t of terms.slice(0, 2)) {
     if (input.offered === 'made_to_order' && !MAKER_WORD.test(t)) { add(`${t} manufacturer`, 'category'); add(`${t} wholesaler`, 'category'); }
     if ((input.offered === 'products' || input.offered === 'both') && !SHOP_WORD.test(t)) add(`${t} shop`, 'category');
@@ -155,6 +187,26 @@ export function keepsAServiceHead(phrase: string, services: Array<{ name: string
     const head = headOf(s.name);
     return !!head && ws.has(head);
   });
+}
+
+/**
+ * Extra Google categories that do not fit what the business does: the AI
+ * said "no", and the category's main word is the main word of none of the
+ * business's offerings, families or search terms ("Goldsmith" on a shop
+ * selling goldsmith supplies — "supplies" is what it sells). The primary
+ * category is never passed here.
+ */
+export function categoriesThatDoNotFit(
+  fit: Array<{ category: string; fits: string; reason?: string }> | null | undefined,
+  sells: { offerings?: Array<{ name: string }>; families?: Array<{ name: string }>; searchTerms?: string[] },
+): Array<{ category: string; reason: string }> {
+  const heads = new Set([
+    ...(sells.offerings || []).map((o) => o.name), ...(sells.families || []).map((f) => f.name), ...(sells.searchTerms || []),
+  ].map((x) => headOf(x)).filter((h): h is string => !!h));
+  return (fit || [])
+    .filter((f) => f.fits === 'no' && !isGenericCategory(f.category))
+    .filter((f) => { const h = headOf(f.category); return !!h && !heads.has(h); })
+    .map((f) => ({ category: f.category, reason: f.reason || '' }));
 }
 
 /** One key for services that are the same offer ("jewellery tools" / "jewellery tools shop" / "Jewelry tools supplier"). */

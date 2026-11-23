@@ -241,6 +241,14 @@ export interface FindingsInput {
   categoryGap?: Array<{ category: string; competitors: string[] }> | null;
   /** Keywords a competitor's website targets (real searches, offered by this business) with this business's Maps rank. */
   competitorKeywordGaps?: Array<{ keyword: string; volume: number | null; competitor: string; yourRank: number | null; measured: boolean }> | null;
+  /**
+   * The business's own offers (families from its website / categories) whose
+   * keyword was searched and did not show the business in the top 20. Only
+   * measured searches — never "not measured".
+   */
+  offersNotOnGoogle?: { offered: 'services' | 'products' | 'both' | 'made_to_order' | null; offers: Array<{ name: string; covers: string[]; keyword: string }> } | null;
+  /** Extra Google categories on the listing that do not fit what the business does (AI + code check). */
+  categoryMismatch?: { trade: string; categories: Array<{ category: string; reason: string }> } | null;
 }
 
 const pct = (r: number | null) => (r == null ? '—' : `${Math.round(r * 100)}%`);
@@ -498,6 +506,67 @@ export function buildEvidenceAndFindings(input: FindingsInput): { evidence: Evid
       recommendedAction: onCategories
         ? 'Add a matching Google category (where one exists) or list these as services on the profile.'
         : 'List these services on the Google profile.',
+    });
+  }
+
+  // ── The business's own offers Google does not show it for ───────────────
+  if (input.offersNotOnGoogle && input.offersNotOnGoogle.offers.length > 0) {
+    const o = input.offersNotOnGoogle;
+    const products = o.offered === 'products' || o.offered === 'made_to_order';
+    const offEv = ev({
+      id: 'offers.not_on_google',
+      metric: 'offers_not_found_on_google',
+      value: o.offers,
+      status: 'verified',
+      source: 'dataforseo',
+      confidence: 'high',
+    });
+    const names = o.offers.map((x) => x.name);
+    findings.push({
+      id: 'offers.not_on_google',
+      category: 'keywords',
+      title: `Google doesn't show you for ${names.length === 1 ? `"${names[0]}"` : `${names.length} things you sell`}`,
+      evidence: o.offers.map((x) => `"${x.keyword}": not in the top 20${x.covers.length ? ` (on your website: ${x.covers.slice(0, 3).join(', ')})` : ''}`).join('; '),
+      evidenceIds: [offEv],
+      source: 'dataforseo',
+      severity: 'high',
+      confidence: 'high',
+      businessImpact: products
+        ? 'Customers searching for these products are shown other suppliers — your Google profile does not tell Google you sell them.'
+        : 'Customers searching for these services are shown other businesses — your Google profile does not tell Google you offer them.',
+      actionability: 'directly_fixable',
+      growwmaticsCapability: products ? 'google_posts' : 'update_services',
+      recommendedAction: products
+        ? 'Add these products to the Products section of your Google profile with photos, and post about them regularly.'
+        : 'List these services on your Google profile and post about them regularly.',
+    });
+  }
+
+  // ── Extra Google categories that do not fit what the business does ───────
+  if (input.categoryMismatch && input.categoryMismatch.categories.length > 0) {
+    const m = input.categoryMismatch;
+    const cats = m.categories.map((c) => `"${c.category}"`);
+    const misEv = ev({
+      id: 'profile.category_mismatch',
+      metric: 'categories_not_matching_business',
+      value: m,
+      status: 'verified',
+      source: 'google_places',
+      confidence: 'medium',
+    });
+    findings.push({
+      id: 'profile.category_mismatch',
+      category: 'profile',
+      title: `Your Google profile lists ${cats.join(' and ')}, which ${m.categories.length > 1 ? "don't" : "doesn't"} match what you do`,
+      evidence: `Your profile's extra ${m.categories.length > 1 ? 'categories' : 'category'}: ${m.categories.map((c) => c.category).join(', ')}. What you do: ${m.trade}.`,
+      evidenceIds: [misEv],
+      source: 'google_places',
+      severity: 'medium',
+      confidence: 'medium',
+      businessImpact: 'Google shows a listing for the searches its categories match, so these can show you to people looking for something you do not offer — and take attention from what you do.',
+      actionability: 'directly_fixable',
+      growwmaticsCapability: 'update_categories',
+      recommendedAction: 'Review these categories on your Google profile and keep only the ones that describe your business.',
     });
   }
 

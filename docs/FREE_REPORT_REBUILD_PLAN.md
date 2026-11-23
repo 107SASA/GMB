@@ -401,3 +401,100 @@ Switches (env): `FREE_REPORT_KEYWORD_IDEAS=off`, `FREE_REPORT_CITY_VOLUME=off`, 
 - Real result: Mohali phrases #1; "yoga classes chandigarh" #11, Panchkula and Zirakpur not in the top 20 (searched from the studio) — the gaps the v15 report hid.
 
 **Test set:** `scripts/free-report-testset.ts --pick` (one recent business per industry group → `scripts/testset/businesses.json`, git-ignored), `--run` (new report per business with no WhatsApp / Inngest, summary + diff with the previous run). Each run adds a new latest report per business and costs ~₹50 each.
+
+
+---
+
+# Part D — Honest gaps for strong businesses too (proposed 23 Nov 2026, not built)
+
+## D.1 Why
+Live case: **Modern Jewellery tools** (Bengaluru, "Jewelry equipment supplier", 1,002 reviews, profile 100% complete). The v18 report is accurate and looks perfect: #1 for almost every keyword. A strong business reading it sees no reason to buy. Four real gaps were hidden:
+
+1. **Every check is made from next to the shop.** The map is 3 points 1.5 km apart (`seoAnalyzer.reducedGridPoints`); the other keywords are searched from the pin. Being #1 at your own door says nothing about customers 5–10 km away or in other cities — which is where a wholesaler's (or a clinic's, a coaching centre's) customers are.
+2. **Website product names are used as keywords as written.** "PLATING SOLUTIONS PEN", "RODHIUM BATH" (sic) are shop product names, not what anyone searches ("rhodium plating solution", "plating pen").
+3. **Whole product lines are invisible on Google** (every plating product: Not found) — but the report shows this only as a few lines in a list, not as the finding it is.
+4. **Extra Google categories that do not fit** ("Goldsmith", "Wholesale jeweler" on a tool supplier) are treated as things the business sells: they take keyword slots ("goldsmith near me", Not found) and are never flagged as a problem.
+
+Plus a bug: shop text "Estimated total" (from the cart) was read as a product.
+
+**Principle (unchanged): never invent a problem.** A strong business gets "you are winning here" **and** the real gaps — reach, product lines, categories — all measured, nothing guessed.
+
+## D.2 The five changes — same rules for every category
+
+Every rule uses only the 3 answers of §3.2 (industry, served how, offered) and the business's own evidence. No category, trade or product list in code.
+
+### 1. Website reader: shop and checkout text is never an offer
+- Add to the "not a service" rules: cart / checkout / price text in any shop builder (Shopify, WooCommerce, Wix, Dukaan, Instamojo): "estimated total", "subtotal", "total", "checkout", "add to cart", "buy now", "quantity", "sold out", "in stock", "wishlist", "compare", "quick view", "view cart", "my account", "track order", "shipping", "returns", "coupon", and labels that are only a price ("₹1,250", "Rs. 499").
+- Where: `services/intel/websiteExtract.ts` (`NOT_A_SERVICE`, `looksLikeServiceName`).
+- Tests: saved home / product pages of each shop builder; a restaurant menu page; a clinic treatments page.
+
+### 2. Offer families: group the website's items the way customers search
+Websites list items (products, menu dishes, treatments, courses, packages); customers search for the **family**.
+
+| Kind (answer 3) | Website items | Family searched |
+|---|---|---|
+| products | RODHIUM BATH, RODHIUM PEN | rhodium plating solution, rhodium pen |
+| products | PLATING SOLUTIONS SILVER / BATH / PEN | silver plating solution, plating pen |
+| services (salon) | Men's haircut, Kids haircut, Hair spa (60 min) | haircut, hair spa |
+| services (clinic) | RCT single sitting, Root canal re-treatment | root canal treatment |
+| food | Chicken dum biryani, Mutton biryani | biryani |
+| education | Python batch (Jan), Advanced Python | python course |
+| made-to-order | W240 cashew, W320 cashew, Cashew splits | cashew (+ manufacturer / wholesaler shapes) |
+
+- **How:** the existing AI step (S1, `businessUnderstanding`) also returns `families: [{ name, covers: [website items] }]` (max 8, main line first). Same call, no extra cost.
+- **Grounding rules (checked in code, not trusted):** every family must cover ≥ 1 real website item or Google category; its words must come from those items, except a **spelling fix** of a word that appears there ("rodhium" → "rhodium": accepted only when the two words are one or two letters apart); a family that adds a new product word is dropped.
+- The keyword shortlist (Part C step 1) uses **families** instead of raw website items. No AI answer → raw items as today.
+- Where: `businessUnderstanding.ts` (prompt + checks), `freeReportShortlist.freeReportServices`.
+
+### 3. Finding: "Offers Google doesn't connect to you"
+- For each family that was **rank-checked and not in the top 20** (never for "not measured"): one finding listing those families with their website items as evidence.
+- Fix steps by answer 3: products → add them to the Google profile's **Products** section + posts with photos; services → add them to the profile's **Services** + posts; a family that matches a real Google category the business doesn't have → suggest that category (only if it exists in Google's category list, §3.1).
+- Wording example: *"Your website sells rhodium, silver and gold plating solutions and plating pens. Google does not show you for any plating search in Bengaluru — your Google profile doesn't mention them."*
+- Where: `findings.ts` (new code `offers.not_on_google`), shown in "Issues we verified".
+
+### 4. Extra Google categories that don't fit what the business does
+- The **primary category is always used.**
+- Each **extra** category is judged against what the business does: the S1 AI already returns `sameTradeCategories`; it now also returns, for each of the listing's own extra categories, `fits: yes | no | unsure` with a one-line reason. Checked in code: "no" stands only when the category's main word appears in none of the offerings, families or search terms.
+- **fits = no** → not used for keywords; shown as finding `profile.category_mismatch`: *"Your profile also lists 'Goldsmith' and 'Wholesale jeweler'. You sell jewellery tools and consumables, so these show you to people looking for a goldsmith or jewellery, not your customers. Review them."*
+- **unsure** → used as today, no finding. AI failed → used as today.
+- Examples it must get right: yoga studio + "Yoga instructor" → fits; dental clinic + "Cosmetic dentist" → fits; salon + "Spa" → fits only if spa services are on the site; tool supplier + "Goldsmith" → no.
+
+### 5. Reach check: where the business stops showing up
+The main keyword (shortlist #1) is also searched farther away, by answer 2:
+
+| Served how | Extra searches of the main keyword | Points |
+|---|---|---|
+| storefront | named localities at ~3, ~6 and ~10 km in different directions (from the nearby-localities lookup already used for areas) | 4–6 |
+| service-area / hybrid | every area served (Google / website, as today) + the city centre; + 2 localities at ~6–10 km if fewer than 4 areas | 4–6 |
+| wholesale / maker / trader (answer 3 = made-to-order, or a trade that sells to businesses) | the city centre + 2–3 nearest large cities in the state (one Geocoding lookup, cached) | 4–6 |
+| online / remote | city level + 2–3 large cities (no local points) | 3–4 |
+
+- Shown as a new block under "Google Search Ranking": **"How far you reach"** — each place with distance and position, e.g. *"Nagarathpete (your shop) #1 · Jayanagar 6 km #4 · Whitefield 14 km not in top 20 · Mysuru not in top 20"*, plus one sentence: *"You lead within ~6 km; beyond that, customers see …"* (the competitors shown there, same-trade only).
+- Finding `ranking.reach` only when a place with real searches shows the business outside the top 10.
+- Cost: 4–6 Maps searches × $0.002 ≈ **$0.01 (₹1) per report**.
+- Where: `auditService` ranking block (after the shortlist snapshot), `areaVisibility` / `AreaVisibilitySection` for display.
+
+## D.3 Tests (every category, before `main`)
+1. **Unit tests per combination** of answer 2 × answer 3 with fixed AI answers: shop with SKUs, salon menu, clinic treatments, restaurant menu, coaching courses, maker / wholesaler, service-area cleaner, online agency — each with and without a website.
+2. **Saved website fixtures** for the shop-text filter (Shopify, WooCommerce, Wix, Dukaan) and menus / treatment lists.
+3. **AI-failure tests:** no families, a family with an invented product, a wrong spelling "fix" ("bath" → "bathroom") → dropped; extra-category judge missing → today's behaviour.
+4. **Test set** (`scripts/free-report-testset.ts`): ≥ 1 business per industry group + Modern Jewellery tools + YOGA SE HOGA + CHAIR WORLD; compare with the previous run. Nothing goes to `main` if any report lost a correct keyword or gained a wrong one.
+
+## D.4 Build order
+| Step | What | Version |
+|---|---|---|
+| 1 | Shop / checkout text filter | v19 (with step 2) |
+| 2 | Offer families + spelling fix | v19 |
+| 3 | "Offers Google doesn't connect to you" finding | v19 |
+| 4 | Extra-category fit + mismatch finding | v20 |
+| 5 | Reach check + "How far you reach" block | v21 |
+
+Each step: unit tests → commit to `dev` → test set on the droplet → owner checks → `main`.
+
+**Built (23 Nov 2026, v19): steps 1–4 together** — owner chose the proposals in D.5. Shop text: `websiteExtract` `SHOP_UI` / `PRICE_ONLY` (website reading v9). Families + extra-category fit: one AI call (`businessUnderstanding` v2: `families`, `categoryFit`; `checkFamilies`, `checkCategoryFit`). Keywords: `freeReportServices` (families replace covered items, spelling fixes), `categoriesThatDoNotFit` (a "no" stands only when the category's main word is not the main word of anything sold). Findings: `offers.not_on_google`, `profile.category_mismatch`. Tests: `tests/workflow/audit-free-report-offers.test.ts`. Known limit: a spelling fix is any word 1–2 letters from a word on the site with the same first letter ("paints"/"prints" would pass) — only ever inside a family that covers a real website item. Step 5 (reach check) not built yet.
+
+## D.5 Decisions needed
+1. Reach check points per report: 4–6 (proposed) or more.
+2. Nearby large cities for wholesalers / makers / online businesses: include (proposed) or city only.
+3. Category-mismatch finding: show to the business owner (proposed), or only to the sales team.
+4. Families per report: max 8 (proposed).

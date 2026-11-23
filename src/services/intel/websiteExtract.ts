@@ -250,6 +250,15 @@ const CTA_START = /^\s*(explore|discover|view|see|check|hire|join|enrol+|enroll|
 /** Section / nav labels that are not a service on their own. */
 const GENERIC_LABEL = /^\s*(our \s*)?(courses?|programs?|programmes?|placements?|interviews?|events?|upcoming events|products?|solutions?|careers?|clients?|partners?|resources?|features?|pricing|plans?|reviews?|awards?|achievements?|locations?|branches?|workshops?|webinars?|industries|technologies|process|overview|highlights|categories|more)\s*$/i;
 
+/**
+ * Online-shop and checkout text from any shop builder (Shopify, WooCommerce,
+ * Wix, Dukaan, Instamojo): "Estimated total" was read as a product (Nov 2026).
+ * Whole labels only — "Total body checkup" and "Shipping services" stay.
+ */
+const SHOP_UI = /^\s*(estimated total|sub ?total|grand total|total|order total|cart total|checkout|proceed to checkout|add to (cart|bag|basket)|buy (it )?now|quantity|qty|sold out|in stock|out of stock|wish ?list|compare|quick ?view|view (cart|bag|basket)|your (cart|bag|basket)( is empty)?|my account|track (your )?order|shipping( (policy|information|info|& returns|and returns))?|returns?( (policy|& exchanges|and exchanges))?|refund policy|coupon( code)?|apply coupon|regular price|sale price|unit price|price|tax included|taxes included|continue shopping)\s*$/i;
+/** A label that is only a price: "₹1,250", "Rs. 499", "INR 2,000.00", "$12". */
+const PRICE_ONLY = /^\s*(₹|rs\.?|inr|\$|usd)?\s*[\d,]+(\.\d+)?\s*(₹|rs\.?|inr|\/-)?\s*$/i;
+
 /** A bare "Services" / "Our services" nav label — but "SEO Services" is a real service. */
 const SERVICES_NAV = /^\s*(our\s+|all\s+|view\s+)?services\s*$/i;
 
@@ -266,6 +275,7 @@ export function looksLikeServiceName(t: string): boolean {
   if (s.split(/\s+/).length > 7) return false;
   if (/[?!|©@]|https?:|\d{5,}/.test(s)) return false;
   if (NOT_A_SERVICE.test(s) || SERVICES_NAV.test(s) || CTA_START.test(s) || GENERIC_LABEL.test(s)) return false;
+  if (SHOP_UI.test(s) || PRICE_ONLY.test(s)) return false;
   return /[a-z]/i.test(s);
 }
 

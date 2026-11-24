@@ -5891,3 +5891,17 @@ export const accountHardPurgeCron = inngest.createFunction(
     return summary;
   }
 );
+
+// Products autopilot: for workspaces with "keep my products fresh" on, posts
+// the product that has gone longest without a post — at most one a week.
+// Posts are created 'scheduled' and published by the normal post pipeline.
+export const productAutopilotCron = inngest.createFunction(
+  { id: "product-autopilot-cron", retries: 1, triggers: [{ cron: "30 5 * * *" }] }, // daily ~11:00 IST
+  async ({ step }) => {
+    const result = await step.run("schedule-product-posts", async () => {
+      const { runProductAutopilot } = await import("@/services/products/productPosts");
+      return runProductAutopilot();
+    });
+    return { success: true, ...result };
+  }
+);

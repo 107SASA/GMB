@@ -128,6 +128,12 @@ export interface GbpLocationData {
     hasVoiceOfMerchant: boolean | null;
     canOperateLocalPost: boolean | null;
     canModifyServiceList: boolean | null;
+    /** Google allows a food menu on this listing (restaurants, cafés, hotels with a restaurant). */
+    canHaveFoodMenus: boolean | null;
+    /** Hotel / lodging details can be edited (Lodging API). */
+    canOperateLodgingData: boolean | null;
+    /** Health-provider details can be edited. */
+    canOperateHealthData: boolean | null;
     duplicateLocation: string | null;
   };
 }

@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Loader2, ArrowLeft, Bot, User, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Loader2, ArrowLeft, Bot, User, CheckCircle2, AlertTriangle, Flame, RefreshCw, Eye } from 'lucide-react';
 import { OwnershipBadge, ScoreBar, RelTime } from '@/components/admin/conversion/primitives';
 import { LeadCrmPanel } from '@/components/admin/crm/LeadCrmPanel';
 import { LeadActivityPanel } from '@/components/admin/crm/LeadActivityPanel';
@@ -164,6 +164,27 @@ export default function LeadDetailPage() {
             <p className="text-xs text-outline mt-1">
               {l.source ? `Source: ${l.source} · ` : ''}Created <RelTime date={l.createdAt} />
             </p>
+            {l.business?.freeReport && (l.business.freeReport.requests > 0 || l.business.freeReport.views > 0) && (() => {
+              const fr = l.business.freeReport;
+              const hot = fr.requests >= 2 || fr.views >= 2;
+              return (
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  {hot && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-error-container text-on-error-container">
+                      <Flame className="w-3 h-3" /> Hot lead
+                    </span>
+                  )}
+                  <span title="Times they asked for the free report" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-surface-container text-on-surface-variant">
+                    <RefreshCw className="w-3 h-3" /> Free report asked {fr.requests}×
+                    {fr.lastRequestedAt && <span className="font-normal text-outline">· last <RelTime date={fr.lastRequestedAt} /></span>}
+                  </span>
+                  <span title="Times they opened the finished report (max 1 per 30 min)" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-surface-container text-on-surface-variant">
+                    <Eye className="w-3 h-3" /> Viewed {fr.views}×
+                    {fr.lastViewedAt && <span className="font-normal text-outline">· last <RelTime date={fr.lastViewedAt} /></span>}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-primary-fixed text-primary">{l.funnelStage}</span>

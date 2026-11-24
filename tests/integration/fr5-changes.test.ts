@@ -34,7 +34,7 @@ import {
   withGbpUtm,
 } from '../../src/services/gbp/changes/policy.ts';
 import { applyAndVerify, approve, executionClaim, failClosed, markReverted, rollbackDecision, type ChangeRecord } from '../../src/services/gbp/changes/machine.ts';
-import { proposeServices, recommendCategories, suggestUnsetAttributes } from '../../src/services/gbp/changes/recommend.ts';
+import { proposeServices, recommendCategories, sameService, suggestUnsetAttributes } from '../../src/services/gbp/changes/recommend.ts';
 import { calendarDate, holidayCalendarFor } from '../../src/services/gbp/changes/holidayCalendar.ts';
 
 const base = (): ChangeRecord => ({
@@ -557,4 +557,119 @@ test('service area: removing the last area is refused with a message the owner c
   assert.equal(r.valid, false);
   assert.deepEqual(r.violations.map((v) => v.code), ['empty']);
   assert.match(r.violations[0].message, /at least one service area.*Add the new area first/);
+});
+
+test('main category follows the competitors ranking ABOVE the business, never a different trade', () => {
+  const row = (name: string, primaryCategory: string, keyword: string, position: number, ownPosition: number | null) =>
+    ({ name, primaryCategory, additionalCategories: [], keyword, position, ownPosition });
+  const catalog = [
+    { name: 'categories/gcid:dentist', displayName: 'Dentist' },
+    { name: 'categories/gcid:cosmetic_dentist', displayName: 'Cosmetic dentist' },
+  ];
+
+  // Dental clinic at #4: three of the four ahead use "Dentist" (same trade, other wording).
+  const dental = recommendCategories({
+    businessName: 'Smile Care',
+    currentPrimary: { name: 'categories/gcid:dental_clinic', displayName: 'Dental clinic' },
+    currentAdditional: [],
+    competitors: [
+      row('A', 'Dentist', 'dentist in pune', 1, 4),
+      row('B', 'Dentist', 'dentist in pune', 2, 4),
+      row('C', 'Cosmetic dentist', 'dentist in pune', 3, 4),
+      row('D', 'Dentist', 'root canal pune', 1, null), // not in results → everyone is ahead
+      row('E', 'Dentist', 'dentist in pune', 6, 4),    // BELOW the business → ignored
+      row('A', 'Dentist', 'root canal pune', 2, null), // same competitor again → one vote
+    ],
+    services: [],
+    catalog,
+  });
+  assert.equal(dental.primary?.categoryName, 'categories/gcid:dentist');
+  assert.equal(dental.primary?.outrankers?.count, 3);
+  assert.equal(dental.primary?.outrankers?.total, 4);
+  assert.equal(dental.primary?.risk, 'high');
+  assert.equal(dental.primary?.autoApply, false);
+  assert.match(dental.primary!.reason, /3 of the 4 businesses ranking above you/);
+
+  // Business already ranks #1 → nobody is above it, no suggestion.
+  const leader = recommendCategories({
+    businessName: 'Smile Care',
+    currentPrimary: { name: 'categories/gcid:dental_clinic', displayName: 'Dental clinic' },
+    currentAdditional: [],
+    competitors: [row('A', 'Dentist', 'dentist in pune', 2, 1), row('B', 'Dentist', 'dentist in pune', 3, 1), row('C', 'Dentist', 'dentist in pune', 4, 1)],
+    services: [],
+    catalog,
+  });
+  assert.equal(leader.primary, null);
+
+  // Unrelated trade ranking above (a bakery's pack full of cafés) → not suggested.
+  const bakery = recommendCategories({
+    businessName: 'Rolls & Buns',
+    currentPrimary: { name: 'categories/gcid:bakery', displayName: 'Bakery' },
+    currentAdditional: [],
+    competitors: [row('A', 'Cafe', 'bakery near me', 1, null), row('B', 'Cafe', 'bakery near me', 2, null), row('C', 'Cafe', 'bakery near me', 3, null)],
+    services: ['Custom cakes'],
+    catalog: [{ name: 'categories/gcid:cafe', displayName: 'Cafe' }],
+  });
+  assert.equal(bakery.primary, null);
+
+  // …but suggested when it is already one of their own secondary categories (a swap).
+  const salon = recommendCategories({
+    businessName: 'Glow',
+    currentPrimary: { name: 'categories/gcid:spa', displayName: 'Spa' },
+    currentAdditional: [{ name: 'categories/gcid:beauty_salon', displayName: 'Beauty salon' }],
+    competitors: [row('A', 'Beauty salon', 'salon in nashik', 1, 7), row('B', 'Beauty salon', 'salon in nashik', 2, 7), row('C', 'Beauty salon', 'salon in nashik', 3, 7), row('D', 'Hair salon', 'salon in nashik', 4, 7)],
+    services: [],
+    catalog: [],
+  });
+  assert.equal(salon.primary?.categoryName, 'categories/gcid:beauty_salon');
+  assert.equal(salon.primary?.confidence, 'high');
+  assert.equal(salon.additional.some((c) => c.displayName === 'Beauty salon'), false);
+
+  // Two backers only, or no clear majority → no suggestion.
+  const weak = recommendCategories({
+    businessName: 'Smile Care',
+    currentPrimary: { name: 'categories/gcid:dental_clinic', displayName: 'Dental clinic' },
+    currentAdditional: [],
+    competitors: [row('A', 'Dentist', 'k', 1, null), row('B', 'Dentist', 'k', 2, null), row('C', 'Orthodontist', 'k', 3, null), row('D', 'Cosmetic dentist', 'k', 4, null), row('E', 'Dental clinic', 'k', 5, null)],
+    services: [],
+    catalog,
+  });
+  assert.equal(weak.primary, null);
+});
+
+test('services: same-service matching is strict, and Google\'s own services are written only from Google\'s list', () => {
+  assert.equal(sameService('Teeth whitening', 'Teeth Whitening Treatment'), true);
+  assert.equal(sameService('AC repair', 'AC Repairs & Service'), true);
+  assert.equal(sameService('Hair cut', 'Hair colouring'), false);
+  assert.equal(sameService('Bridal makeup', 'Makeup'), true);
+
+  const cat = 'categories/gcid:dentist';
+  const plan = proposeServices({
+    existing: ['Root canal treatment'],
+    existingTypeIds: ['job_type_id:dental_cleaning'],
+    verified: ['Teeth whitening treatment', 'Smile makeover', 'Root canal'],
+    googleServices: [
+      { serviceTypeId: 'job_type_id:teeth_whitening', displayName: 'Teeth whitening', categoryName: cat },
+      { serviceTypeId: 'job_type_id:dental_cleaning', displayName: 'Dental cleaning', categoryName: cat },
+      { serviceTypeId: 'job_type_id:dental_implants', displayName: 'Dental implants', categoryName: cat },
+    ],
+    category: 'Dentist', city: 'Pune', canModify: true,
+  });
+  const names = plan.items.map((i) => `${i.name}|${i.kind}|${i.preselected}`);
+  assert.deepEqual(names, [
+    'Teeth whitening|google|true',
+    'Smile makeover|custom|true',
+    'Dental implants|google|false',
+  ]);
+
+  const types = new Map([['job_type_id:teeth_whitening', cat]]);
+  const ok = buildServiceWrite({ existing: [], additions: [{ name: 'Teeth whitening', serviceTypeId: 'job_type_id:teeth_whitening' }], categoryName: cat, googleServiceTypes: types });
+  assert.equal(ok.valid, true);
+  assert.deepEqual(ok.items, [{ structuredServiceItem: { serviceTypeId: 'job_type_id:teeth_whitening' } }]);
+  const forged = buildServiceWrite({ existing: [], additions: [{ name: 'X', serviceTypeId: 'job_type_id:made_up' }], categoryName: cat, googleServiceTypes: types });
+  assert.equal(forged.valid, false);
+  const unreadable = buildServiceWrite({ existing: [], additions: [{ name: 'Teeth whitening', serviceTypeId: 'job_type_id:teeth_whitening' }], categoryName: cat, googleServiceTypes: null });
+  assert.equal(unreadable.valid, false, 'Google list unreadable → refused, not guessed');
+  const dup = buildServiceWrite({ existing: [{ structuredServiceItem: { serviceTypeId: 'job_type_id:teeth_whitening' } }], additions: [{ name: 'Teeth whitening', serviceTypeId: 'job_type_id:teeth_whitening' }], categoryName: cat, googleServiceTypes: types });
+  assert.equal(dup.valid, false);
 });

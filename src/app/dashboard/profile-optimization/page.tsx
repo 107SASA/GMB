@@ -24,6 +24,7 @@ import {
   statusInfo,
 } from '@/app/dashboard/profile-optimization/presentation';
 import { attributeBatchRequestId } from '@/app/dashboard/profile-optimization/requestId';
+import RichProfileSections from '@/components/gbp/RichProfileSections';
 
 interface ChangeRow {
   _id: string;
@@ -48,6 +49,8 @@ interface CategoryRec {
   competitors?: string[];
   services?: string[];
   risk?: string;
+  confidence?: string;
+  outrankers?: { count: number; total: number; keywords: string[] };
 }
 
 type Action = 'apply' | 'rollback' | 'discard';
@@ -138,6 +141,8 @@ export default function ProfileOptimizationPage() {
   const [descDraft, setDescDraft] = useState<string | null>(null);
   const [skippedCategories, setSkippedCategories] = useState<string[]>([]);
   const [skippedServices, setSkippedServices] = useState<string[]>([]);
+  // Google's other services for the category start unticked; these are the ones the owner ticked.
+  const [pickedServices, setPickedServices] = useState<string[]>([]);
   const [ownServices, setOwnServices] = useState('');
   // Name, phone, website — moved here from the Google Profile tab (one place to edit).
   const [details, setDetails] = useState({ title: '', phone: '', website: '' });
@@ -233,7 +238,7 @@ export default function ProfileOptimizationPage() {
     await load();
   });
 
-  const propose = (body: object) => run(async () => {
+  const propose = (body: object, onSaved?: () => void) => run(async () => {
     const res = await fetch('/api/gbp/changes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -250,7 +255,9 @@ export default function ProfileOptimizationPage() {
       setDescDraft(null);
       setOwnServices('');
       setSkippedServices([]);
+      setPickedServices([]);
       setSkippedCategories([]);
+      onSaved?.();
     }
     await load();
   });
@@ -612,8 +619,19 @@ export default function ProfileOptimizationPage() {
             <Panel section="categories" title="Categories" hint={addable.length ? `${addable.length} to add` : 'Nothing to add'}>
               {categories?.primary && (
                 <div className="space-y-1 text-sm">
-                  <p>Main category: <strong>{categories.primary.displayName}</strong></p>
-                  {categories.primary.risk === 'high' && <p className="text-xs text-on-surface-variant">Changing the main category can change where you appear in search.</p>}
+                  <p>Suggested main category: <strong>{categories.primary.displayName}</strong></p>
+                  <p className="text-xs text-on-surface-variant">{categories.primary.reason}</p>
+                  {(categories.primary.competitors?.length ?? 0) > 0 && (
+                    <p className="text-xs text-on-surface-variant">Ranking above you: {categories.primary.competitors!.join(', ')}</p>
+                  )}
+                  {categories.primary.risk === 'high' && (
+                    <p className="text-xs text-on-surface-variant">
+                      Changing the main category can change where you appear in search. Your current main category stays on the profile as a secondary category.
+                    </p>
+                  )}
+                  {!categories.primary.executable && (
+                    <p className="text-xs text-on-surface-variant">Google didn’t confirm this category name, so it can’t be applied from here.</p>
+                  )}
                   {categories.primary.executable && categories.primary.categoryName && (
                     <button disabled={busy} className={btnOutline} onClick={() => propose({ kind: 'primary_category', proposed: { primaryCategory: { name: categories.primary.categoryName } }, source: 'recommendation' })}>Use as main category</button>
                   )}
@@ -717,51 +735,66 @@ export default function ProfileOptimizationPage() {
             </Panel>
           )}
 
-          <Panel section="services" title="Services" hint={recs.services?.items?.length ? `${recs.services.items.length} to add` : 'Add your own'}>
+          <Panel section="services" title="Services" hint={(() => { const n = (recs.services?.items || []).filter((x: any) => x.preselected !== false).length; return n ? `${n} to add` : 'Add your own'; })()}>
             {recs.services?.blocked ? (
               <p className="text-sm">{recs.services.reason}</p>
             ) : (() => {
               const suggested: any[] = recs.services?.items || [];
+              const ready = suggested.filter((x) => x.preselected !== false);
+              const more = suggested.filter((x) => x.preselected === false);
+              const isOn = (x: any) => (x.preselected === false ? pickedServices.includes(x.name) : !skippedServices.includes(x.name));
+              const toggle = (x: any) => {
+                if (x.preselected === false) setPickedServices(pickedServices.includes(x.name) ? pickedServices.filter((n) => n !== x.name) : [...pickedServices, x.name]);
+                else setSkippedServices(skippedServices.includes(x.name) ? skippedServices.filter((n) => n !== x.name) : [...skippedServices, x.name]);
+              };
               const own = ownServices.split(/[,;\n]+/).map((x) => x.trim()).filter((x) => x.length >= 2);
               const chosen = [
-                ...suggested.filter((x) => !skippedServices.includes(x.name)).map((x) => ({ name: x.name, description: x.description })),
+                ...suggested.filter(isOn).map((x) => ({ name: x.name, description: x.description, ...(x.serviceTypeId ? { serviceTypeId: x.serviceTypeId } : {}) })),
                 ...own.filter((n) => !suggested.some((x) => x.name.toLowerCase() === n.toLowerCase())).map((name) => ({ name })),
               ];
+              const chip = (x: any) => {
+                const on = isOn(x);
+                return (
+                  <li key={x.serviceTypeId || x.name}>
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      title={x.keywordRationale}
+                      onClick={() => toggle(x)}
+                      className={`rounded-full border px-3 py-1 text-xs ${on ? 'border-primary bg-primary-fixed/40 text-on-surface' : 'border-outline-variant text-on-surface-variant'}`}
+                    >{on ? '✓ ' : '+ '}{x.name}</button>
+                  </li>
+                );
+              };
               return (
                 <>
-                  {suggested.length > 0 && (
+                  {ready.length > 0 && (
                     <>
-                      <p className="text-xs text-on-surface-variant">From your website and your answers — tap to leave out any you don’t offer.</p>
-                      <ul className="flex flex-wrap gap-2">
-                        {suggested.map((x) => {
-                          const off = skippedServices.includes(x.name);
-                          return (
-                            <li key={x.name}>
-                              <button
-                                type="button"
-                                aria-pressed={!off}
-                                onClick={() => setSkippedServices(off ? skippedServices.filter((n) => n !== x.name) : [...skippedServices, x.name])}
-                                className={`rounded-full border px-3 py-1 text-xs ${off ? 'border-outline-variant text-on-surface-variant line-through' : 'border-primary text-on-surface'}`}
-                              >{off ? '' : '✓ '}{x.name}</button>
-                            </li>
-                          );
-                        })}
-                      </ul>
+                      <p className="text-xs text-on-surface-variant">Ready to add — from what you told us, your website and Google’s own list for your category. Tap any you don’t offer to leave it out.</p>
+                      <ul className="flex flex-wrap gap-2">{ready.map(chip)}</ul>
+                    </>
+                  )}
+                  {more.length > 0 && (
+                    <>
+                      <p className="text-xs text-on-surface-variant mt-2">More services Google lists for your category — tap the ones you offer.</p>
+                      <ul className="flex flex-wrap gap-2">{more.map(chip)}</ul>
                     </>
                   )}
                   <label className="block text-xs text-on-surface-variant">
-                    Add your own services (separate with commas)
+                    Anything missing? Add it here (separate with commas)
                     <input className={`${input} mt-1 w-full`} value={ownServices} onChange={(e) => setOwnServices(e.target.value)} placeholder="e.g. CRM development, IT consulting" />
                   </label>
                   <button
                     disabled={busy || chosen.length === 0}
                     className={btnOutline}
-                    onClick={() => propose({ kind: 'services', proposed: { additions: chosen }, source: own.length || chosen.length !== suggested.length ? 'owner' : 'recommendation' })}
+                    onClick={() => propose({ kind: 'services', proposed: { additions: chosen }, source: own.length || pickedServices.length || skippedServices.length ? 'owner' : 'recommendation' })}
                   >Add {chosen.length} service{chosen.length === 1 ? '' : 's'}</button>
                 </>
               );
             })()}
           </Panel>
+
+          <RichProfileSections recs={recs} busy={busy} propose={propose} setMessage={setMessage} Panel={Panel} />
 
           <Panel section="hours" title="Opening hours" hint={changedDays ? `${changedDays} changed` : reminders.length ? `${reminders.length} holiday${reminders.length === 1 ? '' : 's'} to set` : ''}>
             <p className="text-xs text-on-surface-variant">Your hours on Google now. Change a day or tick Closed — days you don’t change stay as they are.</p>

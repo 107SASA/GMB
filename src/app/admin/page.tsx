@@ -2,7 +2,28 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Users, Building2, DollarSign, BrainCircuit, UserPlus, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { Users, Building2, DollarSign, BrainCircuit, UserPlus, CheckCircle, XCircle, AlertTriangle, Flame, RefreshCw, Eye } from 'lucide-react';
+
+interface HotLead {
+  businessId: string;
+  businessName: string;
+  city: string | null;
+  ownerName: string | null;
+  phone: string | null;
+  leadId: string | null;
+  subscriptionStatus: string | null;
+  requests: number;
+  views: number;
+  lastActivityAt: string;
+}
+
+function timeAgo(iso: string): string {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
 
 interface DashboardData {
   totalUsers: number;
@@ -23,6 +44,8 @@ interface DashboardData {
     createdAt: string;
     subscriptionPlan?: string;
   }>;
+  hotLeads: HotLead[];
+  hotLeadsTotal: number;
 }
 
 function SkeletonCard() {
@@ -69,9 +92,10 @@ export default function AdminRootPage() {
           load('Revenue', '/api/admin/revenue'),
           load('AI usage', '/api/admin/ai-usage?range=1'),
           load('System health', '/api/admin/system-health'),
+          load('Hot leads', '/api/admin/hot-report-leads'),
         ]);
         setFailed(results.filter((r) => !r.ok).map((r) => r.name));
-        const [stats, revenue, ai, health] = results.map((r) => r.json);
+        const [stats, revenue, ai, health, hot] = results.map((r) => r.json);
 
         setData({
           totalUsers: stats.data?.stats?.totalUsers ?? 0,
@@ -86,6 +110,8 @@ export default function AdminRootPage() {
           failedJobs24h: health.data?.jobs?.failedJobs24h ?? 0,
           messageBacklog: health.data?.messages?.messageBacklog ?? 0,
           recentSignups: stats.data?.recentSignups ?? [],
+          hotLeads: hot.data?.leads ?? [],
+          hotLeadsTotal: hot.data?.total ?? 0,
         });
       } finally {
         setLoading(false);
@@ -231,7 +257,8 @@ export default function AdminRootPage() {
           </div>
         </div>
 
-        {/* Platform Health — takes 1/3 width */}
+        {/* Right column — Platform Health + Hot leads, 1/3 width */}
+        <div className="flex flex-col gap-6">
         <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6">
           <h2 className="font-semibold text-on-surface mb-1">Platform Health</h2>
           <p className="text-xs text-outline mb-5">Real-time system status</p>
@@ -294,6 +321,82 @@ export default function AdminRootPage() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Hot leads — asked for the free report again / kept opening it */}
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow overflow-hidden flex-1">
+          <div className="px-6 pt-6 pb-3">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-on-surface flex items-center gap-2">
+                <Flame className="w-4 h-4 text-error" /> Hot Leads
+              </h2>
+              {!loading && !failed.includes('Hot leads') && (data?.hotLeadsTotal ?? 0) > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-error-container text-on-error-container">
+                  {data?.hotLeadsTotal}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-outline mt-0.5">Asked for the free report 2+ times, or opened it 2+ times</p>
+          </div>
+
+          {loading ? (
+            <div className="px-6 pb-6 space-y-3 animate-pulse">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-10 bg-surface-container-high rounded" />
+              ))}
+            </div>
+          ) : failed.includes('Hot leads') ? (
+            <p className="px-6 pb-6 text-sm text-outline">Couldn&apos;t load hot leads.</p>
+          ) : (data?.hotLeads ?? []).length === 0 ? (
+            <p className="px-6 pb-6 text-sm text-outline">No repeat requests or views yet.</p>
+          ) : (
+            <ul className="divide-y divide-outline-variant border-t border-outline-variant">
+              {data?.hotLeads.map((lead) => {
+                const row = (
+                  <div className="px-6 py-3 hover:bg-surface transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-on-surface truncate">{lead.businessName}</p>
+                        <p className="text-xs text-outline truncate">
+                          {[lead.ownerName, lead.phone, lead.city].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                      <span className="text-xs text-outline whitespace-nowrap">{timeAgo(lead.lastActivityAt)}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      <span
+                        title="Times they asked for the free report"
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          lead.requests >= 2 ? 'bg-error-container text-on-error-container' : 'bg-surface-container text-on-surface-variant'
+                        }`}
+                      >
+                        <RefreshCw className="w-3 h-3" /> {lead.requests}× asked
+                      </span>
+                      <span
+                        title="Times they opened the finished report (max 1 per 30 min)"
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          lead.views >= 2 ? 'bg-primary-fixed text-primary' : 'bg-surface-container text-on-surface-variant'
+                        }`}
+                      >
+                        <Eye className="w-3 h-3" /> {lead.views} views
+                      </span>
+                      {(lead.subscriptionStatus === 'active' || lead.subscriptionStatus === 'trial_active') && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-secondary-container/40 text-on-secondary-container">
+                          {lead.subscriptionStatus === 'active' ? 'Paid' : 'Trial'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+                return (
+                  <li key={lead.businessId}>
+                    {lead.leadId ? <Link href={`/admin/leads/${lead.leadId}`}>{row}</Link> : row}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
         </div>
       </div>
     </div>

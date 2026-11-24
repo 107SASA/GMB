@@ -9,6 +9,12 @@ import User from '@/models/User';
 import { fr5ProfileMutationAllowed } from '@/lib/gbpSafety';
 import { logProfileActivity } from '@/lib/logProfileActivity';
 import {
+  getFoodMenus,
+  getLodging,
+  listPlaceActionLinks,
+  setPlaceActionLink,
+  updateFoodMenus,
+  updateLodging,
   mirrorVerifiedProfile,
   patchLocationAttributes,
   patchLocationRaw,
@@ -17,6 +23,7 @@ import {
   updateLocationProfile,
   type GbpProfilePatch,
 } from '@/lib/gbpClient';
+import { flattenLodging, nestLodging, type LodgingValue } from './richSections.ts';
 import { OTHER_LISTING_ERROR, canRollbackAttribute, canonicalFingerprint, classifyReadBack, idempotencyResult, locationGuard, openProposalKey, proposalsForOtherListing, rollbackRecheck, staleFieldDecision } from './policy.ts';
 import { applyAndVerify, approve, executionClaim, failClosed, markReverted, markUnresolved, markVerified, rollbackDecision, WriteNotAccepted, type ChangeRecord } from './machine.ts';
 
@@ -92,6 +99,9 @@ const ACTIVITY_FIELDS: Record<string, string[]> = {
   services: ['services'],
   hours: ['regularHours', 'specialHours'],
   service_area: ['serviceArea'],
+  food_menu: ['foodMenu'],
+  lodging: ['lodging'],
+  place_action: ['placeActionLinks'],
 };
 
 /** Profile fields a change touches, as logged on ProfileActivity (an attribute is "attribute:<id>"). */
@@ -352,6 +362,20 @@ async function connectedLocationId(businessId: string): Promise<string | null> {
 }
 
 async function readKind(businessId: string, kind: string, proposed: unknown): Promise<unknown> {
+  if (kind === 'food_menu') {
+    const menus = await getFoodMenus(businessId);
+    return { menus: menus.menus };
+  }
+  if (kind === 'lodging') {
+    const paths = Object.keys((proposed as Record<string, unknown>) || {});
+    return flattenLodging(await getLodging(businessId, paths.join(',')), paths);
+  }
+  if (kind === 'place_action') {
+    const type = String((proposed as { placeActionType?: string })?.placeActionType || '');
+    const own = (await listPlaceActionLinks(businessId))
+      .find((l) => l.placeActionType === type && l.isEditable && l.providerType !== 'AGGREGATOR_3P');
+    return { placeActionType: type, uri: own?.uri ?? null };
+  }
   if (kind === 'attribute') {
     const name = String((proposed as { name?: string })?.name || '');
     const raw = await readLocationAttributes(businessId);
@@ -377,6 +401,12 @@ async function writeKind(businessId: string, kind: string, proposed: any) {
   if (kind === 'services') return patchLocationRaw(businessId, 'serviceItems', { serviceItems: proposed });
   if (kind === 'hours') return patchLocationRaw(businessId, 'regularHours,specialHours', proposed);
   if (kind === 'service_area') return patchLocationRaw(businessId, 'serviceArea', { serviceArea: proposed });
+  if (kind === 'food_menu') return updateFoodMenus(businessId, { menus: Array.isArray(proposed?.menus) ? proposed.menus : [] });
+  if (kind === 'lodging') {
+    const fields = (proposed || {}) as Record<string, LodgingValue>;
+    return updateLodging(businessId, Object.keys(fields).join(','), nestLodging(fields));
+  }
+  if (kind === 'place_action') return setPlaceActionLink(businessId, String(proposed?.placeActionType || ''), proposed?.uri ?? null);
   return { liveWriteApplied: false, googleBody: { error: 'This change kind cannot be written.' } };
 }
 

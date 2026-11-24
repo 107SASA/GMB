@@ -55,6 +55,7 @@ export const PURGE_TARGETS: PurgeTarget[] = [
   { model: 'ReviewReply', by: { businessId: 'businessId' }, category: 'a', what: 'review reply drafts and audit rows' },
   { model: 'Post', by: { businessId: 'businessId' }, category: 'a', what: 'Google posts and drafts' },
   { model: 'GbpMediaAsset', by: { businessId: 'businessId' }, category: 'a', what: 'uploaded photos / videos (records; files deleted separately)' },
+  { model: 'Product', by: { businessId: 'businessId' }, category: 'a', what: 'products and their photos (posted on Google as product posts)' },
   { model: 'GbpLocationSnapshot', by: { businessId: 'businessId' }, category: 'a', what: 'Google Business Profile snapshot (listing details, change history, health)' },
   { model: 'ShowcaseAsset', by: { businessId: 'businessId' }, category: 'a', what: 'success-story uploads' },
   { model: 'Testimonial', by: { businessId: 'businessId' }, category: 'a', what: 'testimonials submitted' },
@@ -155,6 +156,7 @@ export const businessStoragePrefixes = (businessId: string) =>
 export const STORAGE_URL_FIELDS: Array<{ model: string; field: string }> = [
   { model: 'GbpMediaAsset', field: 'url' },
   { model: 'Post', field: 'imageUrl' },
+  { model: 'Product', field: 'imageUrl' },
   { model: 'ShowcaseAsset', field: 'url' },
   { model: 'Testimonial', field: 'photoUrl' },
 ];

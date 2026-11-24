@@ -101,6 +101,20 @@ function FreeReportResultContent() {
     };
   }, [auditId]);
 
+  // One "viewed" ping per page load once the finished report is on screen —
+  // feeds the super-admin "Hot leads" card. Fire-and-forget.
+  const viewCounted = useRef(false);
+  useEffect(() => {
+    if (!auditId || audit?.status !== 'COMPLETED' || viewCounted.current) return;
+    viewCounted.current = true;
+    fetch('/api/free-report/viewed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: auditId }),
+      keepalive: true,
+    }).catch(() => {});
+  }, [auditId, audit?.status]);
+
   if (error) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">

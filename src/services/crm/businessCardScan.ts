@@ -92,19 +92,23 @@ function thinkingConfig(model: string) {
   return /^gemini-2\./.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: 'minimal' };
 }
 
+/** What to ask of the photos. Defaults: the visiting-card read. */
+interface VisionSpec { prompt: string; schema: unknown; maxOutputTokens: number; timeoutMs?: number }
+const CARD_SPEC: VisionSpec = { prompt: CARD_PROMPT, schema: CARD_RESPONSE_SCHEMA, maxOutputTokens: 1024 };
+
 /** One call; if the model rejects our "thinking off" setting, retry once without it. */
-async function callGemini(model: string, images: CardImage[], apiKey: string) {
+async function callGemini(model: string, images: CardImage[], apiKey: string, spec: VisionSpec = CARD_SPEC) {
   try {
-    return await callGeminiOnce(model, images, apiKey, true);
+    return await callGeminiOnce(model, images, apiKey, true, spec);
   } catch (e) {
     if (e instanceof GeminiHttpError && e.status === 400 && /thinking/i.test(e.message)) {
-      return callGeminiOnce(model, images, apiKey, false);
+      return callGeminiOnce(model, images, apiKey, false, spec);
     }
     throw e;
   }
 }
 
-async function callGeminiOnce(model: string, images: CardImage[], apiKey: string, withThinkingConfig: boolean) {
+async function callGeminiOnce(model: string, images: CardImage[], apiKey: string, withThinkingConfig: boolean, spec: VisionSpec = CARD_SPEC) {
   const res = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -114,19 +118,19 @@ async function callGeminiOnce(model: string, images: CardImage[], apiKey: string
           role: 'user',
           parts: [
             ...images.map((img) => ({ inline_data: { mime_type: img.mimeType, data: img.data.toString('base64') } })),
-            { text: CARD_PROMPT },
+            { text: spec.prompt },
           ],
         },
       ],
       generationConfig: {
         temperature: 0,
-        maxOutputTokens: 1024,
+        maxOutputTokens: spec.maxOutputTokens,
         responseMimeType: 'application/json',
-        responseSchema: CARD_RESPONSE_SCHEMA,
+        responseSchema: spec.schema,
         ...(withThinkingConfig ? { thinkingConfig: thinkingConfig(model) } : {}),
       },
     }),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(spec.timeoutMs ?? 30_000),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -204,4 +208,43 @@ export async function scanBusinessCard(
   }
   if (!best) throw lastError ?? new Error('Card scan failed');
   return best;
+}
+
+/**
+ * Reads photos into JSON with the same model choice as the card scanner
+ * (newest Flash-Lite, stronger Flash as the fallback when the read is empty
+ * or fails). Used by the menu and product photo readers.
+ */
+export async function readPhotosAsJson(
+  images: CardImage[],
+  spec: VisionSpec & { promptType: string; isWeak?: (parsed: unknown) => boolean },
+  ctx: { userId: string; businessId: string },
+): Promise<{ parsed: unknown; model: string }> {
+  const apiKey = geminiApiKey();
+  if (!apiKey) throw new Error('Photo reading is not configured (set GEMINI_API_KEY).');
+  const models = await resolveModels(apiKey);
+  let best: { parsed: unknown; model: string } | null = null;
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < models.length; attempt++) {
+    const model = models[attempt];
+    const started = Date.now();
+    try {
+      const r = await callGemini(model, images, apiKey, spec);
+      void logAIUsage({
+        userId: ctx.userId, businessId: ctx.businessId, promptType: attempt === 0 ? spec.promptType : `${spec.promptType}_retry`,
+        aiModel: model, promptTokens: r.promptTokens, completionTokens: r.completionTokens,
+        status: r.parsed ? 'success' : 'partial', durationMs: Date.now() - started,
+      });
+      best = { parsed: r.parsed, model };
+      if (r.parsed && !(spec.isWeak?.(r.parsed) ?? false)) break;
+    } catch (e: any) {
+      lastError = e;
+      void logAIUsage({
+        userId: ctx.userId, businessId: ctx.businessId, promptType: spec.promptType, aiModel: model,
+        status: 'failed', errorMessage: String(e?.message ?? e).slice(0, 500), durationMs: Date.now() - started,
+      });
+    }
+  }
+  if (best) return best;
+  throw lastError ?? new Error('The photo could not be read.');
 }

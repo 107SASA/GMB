@@ -53,12 +53,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     // The workspace this lead signed up with: its own businessId, else one
     // owned by an account on the same phone (platform prospects rarely have a businessId).
     let business: any = lead.businessId
-      ? await Business.findById(lead.businessId).select('name subscriptionStatus category city trialEndsAt trialCancelledAt').lean()
+      ? await Business.findById(lead.businessId).select('name subscriptionStatus category city trialEndsAt trialCancelledAt freeReportRequestCount freeReportViewCount freeReportLastRequestedAt freeReportLastViewedAt').lean()
       : null;
     if (!business && phone) {
       const owner: any = await User.findOne({ phone: { $in: phoneVariants(phone) }, ...areaFilter('customer') }).select('_id').lean();
       if (owner) {
-        const owned: any[] = await Business.find({ userId: owner._id }).select('name subscriptionStatus category city trialEndsAt trialCancelledAt').lean();
+        const owned: any[] = await Business.find({ userId: owner._id }).select('name subscriptionStatus category city trialEndsAt trialCancelledAt freeReportRequestCount freeReportViewCount freeReportLastRequestedAt freeReportLastViewedAt').lean();
         const rank = (st?: string) => { const i = ['active', 'trial_active', 'past_due'].indexOf(st || ''); return i === -1 ? 9 : i; };
         business = owned.sort((a, b) => rank(a.subscriptionStatus) - rank(b.subscriptionStatus))[0] ?? null;
       }
@@ -128,7 +128,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         createdAt: lead.createdAt,
         updatedAt: lead.updatedAt,
         business: business
-          ? { name: business.name, subscriptionStatus: business.subscriptionStatus ?? null, category: business.category ?? null, city: business.city ?? null }
+          ? {
+              name: business.name, subscriptionStatus: business.subscriptionStatus ?? null, category: business.category ?? null, city: business.city ?? null,
+              // Buying-intent signals — same counters as the overview's "Hot leads" card.
+              freeReport: {
+                requests: business.freeReportRequestCount ?? 0,
+                views: business.freeReportViewCount ?? 0,
+                lastRequestedAt: business.freeReportLastRequestedAt ?? null,
+                lastViewedAt: business.freeReportLastViewedAt ?? null,
+              },
+            }
           : null,
         businessName: business?.name ?? lead.businessType ?? null,
         displayName: crmDisplayName({ name: lead.name, businessType: business?.name ?? lead.businessType, phone }),

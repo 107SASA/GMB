@@ -1,5 +1,6 @@
 import dbConnect from '@/lib/mongodb';
 import Audit from '@/models/Audit';
+import Business from '@/models/Business';
 import { createPendingAuditAndDispatch } from '@/lib/startAudit';
 import { checkDurableRateLimit } from '@/lib/durableRateLimit';
 import { isQaTestingMode } from '@/lib/testingMode';
@@ -33,6 +34,12 @@ export async function startOrReuseFreeReport(
   opts: { reuse?: boolean } = {}
 ): Promise<FreeReportStart> {
   await dbConnect();
+  // Asking again is a buying signal (super-admin "Hot leads"), counted even
+  // when the old report is reused or the daily cap blocks a new one.
+  await Business.updateOne(
+    { _id: business._id },
+    { $inc: { freeReportRequestCount: 1 }, $set: { freeReportLastRequestedAt: new Date() } }
+  ).catch((err) => console.warn('[free-report] request count failed:', (err as Error)?.message));
   if (opts.reuse !== false) {
     const existingAudit: any = await Audit.findOne({
       businessId: business._id,

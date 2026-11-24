@@ -71,11 +71,12 @@ test('/review/{token}?src=wa uses the path token and still redirects to Google',
     buildGoogleReviewUrl({ placeId: PLACE_ID, name: 'Mulsetu' }),
     `https://search.google.com/local/writereview?placeid=${PLACE_ID}`
   );
-  const route = readFileSync(new URL('../../src/app/review/[token]/route.ts', import.meta.url), 'utf8');
+  const page = readFileSync(new URL('../../src/app/review/[token]/page.tsx', import.meta.url), 'utf8');
   const redirect = readFileSync(new URL('../../src/lib/reviewRedirect.ts', import.meta.url), 'utf8');
   assert.match(redirect, /extractReviewToken/);
-  assert.match(route, /handleReviewRedirectByToken/);
-  assert.match(route, /302/);
+  assert.match(page, /findReviewRequestByToken/);
+  assert.match(page, /resolveClickedRedirect/);
+  assert.match(page, /redirect\(GENERIC_REVIEW_REDIRECT\)/);
   const click = applyClick({ clicked: false, clickCount: 0 });
   assert.equal(click.setClickedAt, true);
   assert.equal(click.incrementCampaignClicked, true);
@@ -153,9 +154,10 @@ test('GET /review/{validToken}?src=wa Location is the write-review URL', () => {
   assert.equal(repeat.clickCount, 2);
   assert.equal(repeat.markReviewReceived, false);
 
-  const route = readFileSync(new URL('../../src/app/review/[token]/route.ts', import.meta.url), 'utf8');
+  // The page sends the customer on to the write-review URL that resolveClickedRedirect returns.
+  const route = readFileSync(new URL('../../src/app/review/[token]/page.tsx', import.meta.url), 'utf8');
   const redirect = readFileSync(new URL('../../src/lib/reviewRedirect.ts', import.meta.url), 'utf8');
-  assert.match(route, /NextResponse\.redirect\(url, 302\)/);
+  assert.match(route, /reviewUrl = await resolveClickedRedirect/);
   assert.match(redirect, /buildGoogleReviewUrl/);
   assert.equal(redirect.includes('googleMapsUrl ||'), false);
   assert.equal(route.includes('maps.google'), false);
@@ -484,15 +486,14 @@ test('the review worker reads the persisted global policy and passes the click t
   assert.doesNotMatch(dashboard, /No campaigns yet/);
 });
 
-test('old redirect routes stay, and the new route is token based', () => {
+test('old redirect routes stay, and the review page is token based', () => {
   const go = readFileSync(new URL('../../src/app/go/[id]/route.ts', import.meta.url), 'utf8');
   const track = readFileSync(new URL('../../src/app/api/campaigns/track/[requestId]/route.ts', import.meta.url), 'utf8');
-  const review = readFileSync(new URL('../../src/app/review/[token]/route.ts', import.meta.url), 'utf8');
+  const review = readFileSync(new URL('../../src/app/review/[token]/page.tsx', import.meta.url), 'utf8');
   assert.match(go, /handleReviewRedirect\(/);
   assert.doesNotMatch(go, /handleReviewRedirectByToken/);
   assert.match(track, /handleReviewRedirect\(/);
-  assert.match(review, /handleReviewRedirectByToken/);
-  assert.match(review, /302/);
+  assert.match(review, /findReviewRequestByToken/);
 });
 
 test('web and mobile read the same review-request endpoint', () => {

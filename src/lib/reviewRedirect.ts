@@ -17,7 +17,11 @@ export interface ReviewLinkVisit {
   userAgent?: string | null;
 }
 
-async function resolveClickedRedirect(reviewRequest: {
+/**
+ * Records a tap on a review link (not for previews) and returns the business's
+ * Google write-review URL. Used by the redirects and by the /review/[token] page.
+ */
+export async function resolveClickedRedirect(reviewRequest: {
   clicked?: boolean;
   clickCount?: number;
   clickedAt?: Date;
@@ -63,11 +67,15 @@ export async function handleReviewRedirect(requestId: string, visit: ReviewLinkV
  * a generic Google URL and does not describe why.
  */
 export async function handleReviewRedirectByToken(token: string, visit: ReviewLinkVisit = {}): Promise<string> {
-  const reviewToken = extractReviewToken(token);
-  if (!isSafeReviewToken(reviewToken)) return GENERIC_REVIEW_REDIRECT;
-
-  await dbConnect();
-  const reviewRequest = await ReviewRequest.findOne({ token: reviewToken });
+  const reviewRequest = await findReviewRequestByToken(token);
   if (!reviewRequest) return GENERIC_REVIEW_REDIRECT;
   return resolveClickedRedirect(reviewRequest, visit);
+}
+
+/** The ReviewRequest behind a public /review/{token} path, or null. */
+export async function findReviewRequestByToken(token: string) {
+  const reviewToken = extractReviewToken(token);
+  if (!isSafeReviewToken(reviewToken)) return null;
+  await dbConnect();
+  return ReviewRequest.findOne({ token: reviewToken });
 }

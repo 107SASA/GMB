@@ -50,6 +50,19 @@ export interface IReviewRequest extends Document {
   errorMessage?: string;
   /** Why status is 'Failed' — kept so older readers still see a reason string. */
   failedReason?: string;
+  /**
+   * What the customer did on the /review/[token] page (lib/reviewAssist.ts).
+   * `rating` is the star they tapped on our page — not the Google review's
+   * rating, which stays in the top-level `rating`.
+   */
+  assist?: {
+    rating?: number;
+    picked?: string[];
+    drafts?: number;
+    lastDraftAt?: Date;
+    feedback?: string;
+    feedbackAt?: Date;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -107,7 +120,20 @@ const ReviewRequestSchema = new Schema(
     failedAt: { type: Date },
     errorCode: { type: String, index: true },
     errorMessage: { type: String },
-    failedReason: { type: String }
+    failedReason: { type: String },
+    assist: {
+      type: new Schema(
+        {
+          rating: { type: Number, min: 1, max: 5 },
+          picked: { type: [String], default: undefined },
+          drafts: { type: Number },
+          lastDraftAt: { type: Date },
+          feedback: { type: String },
+          feedbackAt: { type: Date },
+        },
+        { _id: false }
+      ),
+    },
   },
   { timestamps: true }
 );

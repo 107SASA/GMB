@@ -329,12 +329,12 @@ test('a link-preview fetch is not a click: the reminder still goes; a real tap s
   assert.equal(pr.clickCount || 0, 0);
   assert.equal(await count(previewed.phone), 2, 'request + reminder');
 
-  // The real route passes the request's user agent through.
+  // The /review/[token] page records the open the same way, with the visitor's user agent.
   const tapped = await recipient();
   const req: any = await m.ReviewRequest.findOne({ customerId: tapped.customerId }).lean();
-  const route = await import('../../src/app/review/[token]/route');
-  const res = await route.GET(new Request(`http://localhost/review/${req.token}?src=wa`, { headers: { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) Safari/604.1' } }), { params: Promise.resolve({ token: req.token }) });
-  assert.equal(res.status, 302);
+  const found: any = await m.redirect.findReviewRequestByToken(`${req.token}?src=wa`);
+  const url = await m.redirect.resolveClickedRedirect(found, { method: 'GET', userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) Safari/604.1' });
+  assert.match(url, /^https:\/\/search\.google\.com\/local\/writereview\?placeid=/);
   assert.equal((await m.ReviewRequest.findById(req._id).lean()).clicked, true);
 });
 

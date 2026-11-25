@@ -2,17 +2,10 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import MessageQueue from '@/models/MessageQueue';
 import Conversation from '@/models/Conversation';
-import ReviewRequest from '@/models/ReviewRequest';
-import Campaign from '@/models/Campaign';
-import Business from '@/models/Business';
-import Customer from '@/models/Customer';
 import { validateTwilioSignature } from '@/lib/twilioSignature';
 import { classifyTwilioError, logWhatsAppDiagnostic } from '@/lib/whatsappDiagnostics';
-import {
-  chooseReviewTemplateRetry,
-  interpretTwilioStatus,
-  readTimestamps,
-} from '@/lib/reviewRequestFlow';
+import { interpretTwilioStatus } from '@/lib/reviewRequestFlow';
+import { applyReviewDeliveryStatus, retryReviewViaTwilio } from '@/services/reviews/reviewDeliveryStatus';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,72 +33,8 @@ export const dynamic = 'force-dynamic';
  * free-text send can still fall back to a template once.
  */
 
-async function retryAsApprovedTemplate(
-  r: { _id: any; businessId: any; customerId: any; token?: string },
-  failedSid: string,
-  errorCode?: string
-): Promise<boolean> {
-  try {
-    const originalLog = await MessageQueue.findOne({ 'payload.sid': failedSid })
-      .select('payload.contentSid')
-      .lean<{ payload?: { contentSid?: string } }>();
-    const alreadyTemplate = !!originalLog?.payload?.contentSid;
-
-    const [business, customer] = await Promise.all([
-      Business.findById(r.businessId).select('name placeId').lean<{ name?: string; placeId?: string }>(),
-      Customer.findById(r.customerId).select('name phone').lean<{ name?: string; phone?: string }>(),
-    ]);
-    if (!customer?.phone) return false;
-
-    const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
-    const choice = chooseReviewTemplateRetry({
-      errorCode,
-      alreadyTemplate,
-      utilitySid: WA_TEMPLATES.reviewRequestUtility,
-      legacySid: WA_TEMPLATES.reviewRequest,
-      token: r.token || '',
-      placeId: business?.placeId || '',
-      customerName: customer.name || 'there',
-      businessName: business?.name || 'our business',
-    });
-    if (choice.mode === 'none') return false;
-
-    const { sendTemplateMessage } = await import('@/services/twilio/client');
-    // A review request: not one of our chats, kept out of the WhatsApp Inbox.
-    const { withWhatsAppSendContext } = await import('@/services/inbox/whatsappLog');
-    const retry = await withWhatsAppSendContext({ exclude: 'review-request' }, () =>
-      sendTemplateMessage(customer.phone!, choice.contentSid, choice.variables, r.businessId.toString()));
-    if (!retry.success) return false;
-
-    await ReviewRequest.updateOne(
-      { _id: r._id },
-      {
-        status: 'Sent',
-        lastMessageSid: retry.sid,
-        templateSid: choice.contentSid,
-        $unset: { failedReason: '', errorCode: '', errorMessage: '', failedAt: '' },
-        $push: {
-          messageSids: retry.sid,
-          messageHistory: {
-            sid: retry.sid,
-            templateSid: choice.contentSid,
-            templateKind: choice.mode,
-            stage: 'retry',
-            sentAt: new Date(),
-            status: 'Sent',
-          },
-        },
-      }
-    );
-    return true;
-  } catch (e) {
-    console.error('[twilio-status-webhook] async template retry failed:', e);
-    return false;
-  }
-}
-
 /**
- * Same idea as retryAsApprovedTemplate, for everything that ISN'T a review
+ * Same idea as retryReviewViaTwilio (services/reviews/reviewDeliveryStatus.ts), for everything that ISN'T a review
  * request — OTP logins, AI-agent conversation replies, anything sent via
  * sendOutboundMessage as free text. Retries via the generic
  * `growwmatics_notification` template, reusing the original message body as
@@ -199,109 +128,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const affected = interpreted.kind === 'ignore'
-      ? []
-      : await ReviewRequest.find({
-          $or: [{ lastMessageSid: messageSid }, { messageSids: messageSid }],
-        }).select('_id businessId customerId campaignId followUpStage status lastMessageSid deliveredAt readAt token');
+    // Review requests (shared with Meta's status webhook).
+    const reviewMatches = await applyReviewDeliveryStatus(
+      messageSid,
+      interpreted,
+      (r) => retryReviewViaTwilio(r, messageSid, interpreted.kind === 'failed' ? interpreted.errorCode : undefined),
+      now
+    );
 
-    for (const r of affected as any[]) {
-      const isLatest = !r.lastMessageSid || r.lastMessageSid === messageSid;
-      const historySet: Record<string, unknown> = {};
-
-      if (interpreted.kind === 'delivered') {
-        if (!isLatest || r.status === 'Failed' || r.status === 'Read' || r.status === 'Cancelled') {
-          historySet['messageHistory.$[entry].status'] = 'Delivered';
-          await ReviewRequest.updateOne(
-            { _id: r._id },
-            { $set: historySet },
-            { arrayFilters: [{ 'entry.sid': messageSid }] }
-          );
-          continue;
-        }
-        await ReviewRequest.updateOne(
-          { _id: r._id, status: { $in: ['Sent', 'Delivered'] } },
-          {
-            $set: {
-              status: 'Delivered',
-              ...(r.deliveredAt ? {} : { deliveredAt: now }),
-              'messageHistory.$[entry].status': 'Delivered',
-            },
-          },
-          { arrayFilters: [{ 'entry.sid': messageSid }] }
-        );
-      } else if (interpreted.kind === 'read') {
-        if (!isLatest || r.status === 'Failed' || r.status === 'Cancelled') {
-          await ReviewRequest.updateOne(
-            { _id: r._id },
-            { $set: { 'messageHistory.$[entry].status': 'Read' } },
-            { arrayFilters: [{ 'entry.sid': messageSid }] }
-          );
-          continue;
-        }
-        const stamps = readTimestamps(now, r.deliveredAt);
-        await ReviewRequest.updateOne(
-          { _id: r._id, status: { $in: ['Sent', 'Delivered', 'Read'] } },
-          {
-            $set: {
-              status: 'Read',
-              readAt: r.readAt || stamps.readAt,
-              deliveredAt: r.deliveredAt || stamps.deliveredAt,
-              'messageHistory.$[entry].status': 'Read',
-            },
-          },
-          { arrayFilters: [{ 'entry.sid': messageSid }] }
-        );
-      } else if (interpreted.kind === 'failed') {
-        const retried = isLatest && r.status === 'Sent'
-          ? await retryAsApprovedTemplate(r, messageSid, interpreted.errorCode)
-          : false;
-
-        if (retried) continue;
-
-        if (isLatest && r.status === 'Sent') {
-          await ReviewRequest.updateOne(
-            { _id: r._id },
-            {
-              $set: {
-                status: 'Failed',
-                failedReason: interpreted.failedReason,
-                errorCode: interpreted.errorCode,
-                errorMessage: interpreted.errorMessage,
-                failedAt: now,
-                automationStatus: 'Stopped',
-                'messageHistory.$[entry].status': 'Failed',
-                'messageHistory.$[entry].errorCode': interpreted.errorCode,
-                'messageHistory.$[entry].errorMessage': interpreted.errorMessage,
-                'messageHistory.$[entry].failedAt': now,
-              },
-            },
-            { arrayFilters: [{ 'entry.sid': messageSid }] }
-          );
-          if (r.campaignId && r.followUpStage === 0) {
-            await Campaign.findByIdAndUpdate(r.campaignId, { $inc: { delivered: -1 } });
-          }
-          if (r.followUpStage === 0) {
-            await Customer.findByIdAndUpdate(r.customerId, { reviewStatus: 'Failed' });
-          }
-        } else {
-          await ReviewRequest.updateOne(
-            { _id: r._id },
-            {
-              $set: {
-                'messageHistory.$[entry].status': 'Failed',
-                'messageHistory.$[entry].errorCode': interpreted.errorCode,
-                'messageHistory.$[entry].errorMessage': interpreted.errorMessage,
-                'messageHistory.$[entry].failedAt': now,
-              },
-            },
-            { arrayFilters: [{ 'entry.sid': messageSid }] }
-          );
-        }
-      }
-    }
-
-    if (!affected.length && interpreted.kind === 'failed' && interpreted.errorCode === '63016') {
+    if (!reviewMatches && interpreted.kind === 'failed' && interpreted.errorCode === '63016') {
       await retryGenericAsNotificationTemplate(messageSid);
     }
 

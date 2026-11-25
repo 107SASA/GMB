@@ -300,8 +300,11 @@ test('customer review request: the same template goes out at most twice per requ
   assert.equal(identicalReviewTemplateCapReached([{ templateSid: sid, status: 'Delivered' }, { templateSid: sid, status: 'Sent' }], sid), true);
   assert.equal(identicalReviewTemplateCapReached([{ templateSid: sid, status: 'Read' }, { templateSid: sid, status: 'Failed' }], sid), false, 'a failed send is not a delivered copy');
   assert.equal(identicalReviewTemplateCapReached([{ templateSid: sid }, { templateSid: sid }], ''), false, 'free-text reminders are not capped here');
+  // The Twilio utility SID and the Meta template (meta:<name>) carry the same text — counted together.
+  assert.equal(identicalReviewTemplateCapReached([{ templateSid: sid, status: 'Read' }, { templateSid: 'meta:review', status: 'Sent' }], [sid, 'meta:review']), true);
+  assert.equal(identicalReviewTemplateCapReached([{ templateSid: 'meta:review', status: 'Read' }], [sid, 'meta:review']), false);
   const jobs = src('services/inngest/functions.ts');
-  assert.match(jobs, /identicalReviewTemplateCapReached\(req\?\.messageHistory, nextTemplateSid\)/);
+  assert.match(jobs, /identicalReviewTemplateCapReached\(req\?\.messageHistory, nextTemplateSids\)/);
 });
 
 test('payment: one WhatsApp per charge from billingWhatsApp — no invoice/welcome templates, none from activation itself', () => {

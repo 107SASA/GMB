@@ -100,7 +100,8 @@ export async function remindersDueToday(businessId: string, now = new Date()): P
   const first = await ReviewRequest.countDocuments({ ...open, followUpStage: 0, sentAt: window(policy.initialFollowUpDelayDays) });
   // With the utility template a customer gets the same approved text at most
   // twice — the second reminder never sends, so it reserves nothing.
-  if (policy.maximumFollowUps < 2 || WA_TEMPLATES.reviewRequestUtility.trim()) return first;
+  const { reviewUtilityTemplateRefs } = await import('@/services/whatsapp/metaReview');
+  if (policy.maximumFollowUps < 2 || reviewUtilityTemplateRefs(WA_TEMPLATES.reviewRequestUtility).length) return first;
   const second = await ReviewRequest.countDocuments({
     ...open,
     followUpStage: 1,

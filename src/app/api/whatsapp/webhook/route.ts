@@ -1133,14 +1133,31 @@ async function applyMetaStatus(status: any) {
   if (['delivered', 'read', 'failed'].includes(state)) {
     await Conversation.updateMany({ twilioSid: wamid }, { messageStatus: state });
   }
-  if (state === 'failed') {
-    const reason = status?.errors?.[0]?.message || status?.errors?.[0]?.title || 'Delivery failed';
+  const { interpretMetaStatus } = await import('@/lib/reviewRequestFlow');
+  const interpreted = interpretMetaStatus(status);
+  const now = new Date();
+  if (interpreted.kind === 'failed') {
     await MessageQueue.updateMany(
       { 'payload.sid': wamid },
-      { status: 'FAILED', failedReason: reason }
+      { status: 'FAILED', failedReason: interpreted.failedReason, errorCode: interpreted.errorCode }
     );
-    console.error(`[meta-webhook] message ${wamid} failed: ${reason}`);
+    console.error(`[meta-webhook] message ${wamid} failed: ${interpreted.failedReason}`);
+  } else if (interpreted.kind === 'delivered') {
+    await MessageQueue.updateMany({ 'payload.sid': wamid, deliveredAt: { $exists: false } }, { $set: { deliveredAt: now } });
+  } else if (interpreted.kind === 'read') {
+    await MessageQueue.updateMany({ 'payload.sid': wamid, readAt: { $exists: false } }, { $set: { readAt: now } });
+    await MessageQueue.updateMany({ 'payload.sid': wamid, deliveredAt: { $exists: false } }, { $set: { deliveredAt: now } });
   }
+
+  // Review requests sent through Meta: Sent → Delivered → Read / Failed, and a
+  // failed one is resent once through Twilio (services/reviews/reviewDeliveryStatus.ts).
+  const { applyReviewDeliveryStatus, retryReviewViaTwilio } = await import('@/services/reviews/reviewDeliveryStatus');
+  await applyReviewDeliveryStatus(
+    wamid,
+    interpreted,
+    (r) => retryReviewViaTwilio(r, wamid, interpreted.kind === 'failed' ? interpreted.errorCode : undefined, { fromMeta: true }),
+    now
+  );
 }
 
 /**

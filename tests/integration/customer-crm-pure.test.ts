@@ -406,7 +406,11 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
       'serveReportDuringBooking', 'isBookingReply', 'startReportOrAsk', 'startReportFromFacts',
       // + the report lead picks their exact Google listing from a short list
       //   (the website dropdown, over WhatsApp) before the report starts.
-      'continueReportIntake', 'offerProfileChoices', 'profileNotFound', 'continueProfilePick'],
+      'continueReportIntake', 'offerProfileChoices', 'profileNotFound', 'continueProfilePick',
+      // + review requests over Meta (Nov 2026, not CRM): Meta delivery receipts
+      //   update the review request, and a failed one is resent through Twilio
+      //   (services/reviews/reviewDeliveryStatus.ts).
+      'applyMetaStatus'],
   };
   for (const [file, ok] of Object.entries(allowed)) {
     const head = atHead(file);

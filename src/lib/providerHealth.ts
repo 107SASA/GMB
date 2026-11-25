@@ -114,6 +114,9 @@ export async function getProviderHealth(): Promise<ProviderHealth[]> {
     process.env.META_WHATSAPP_ACCESS_TOKEN && process.env.META_WHATSAPP_PHONE_NUMBER_ID
   );
 
+  const { reviewWhatsAppProvider } = await import('@/services/whatsapp/metaReview');
+  const reviewsOnMeta = reviewWhatsAppProvider() === 'meta';
+
   // SerpApi runs live; the rest are cheap synchronous config checks.
   const serpapi = await serpApiHealth();
 
@@ -148,9 +151,14 @@ export async function getProviderHealth(): Promise<ProviderHealth[]> {
         ? `Sent to ${process.env.ADMIN_EMAIL} when a demo is booked.`
         : 'ADMIN_EMAIL is not set — new demo bookings are never announced to anyone. Check /admin/demo-bookings manually, or set ADMIN_EMAIL.',
     }),
-    configured('whatsapp', 'WhatsApp (Meta Cloud API)', 'Owner WhatsApp AI agent & notifications', metaConfigured, 'https://developers.facebook.com/apps', {
+    configured('whatsapp', 'WhatsApp (Meta Cloud API)', 'Review requests now; the rest of WhatsApp later (Twilio until then)', metaConfigured, 'https://developers.facebook.com/apps', {
       status: metaConfigured ? 'ok' : 'warning',
-      detail: metaConfigured ? 'Meta Cloud API configured.' : 'Meta keys empty — WhatsApp falls back to Twilio (or is inactive).',
+      detail: !metaConfigured
+        ? 'Meta keys empty — all WhatsApp goes through Twilio.'
+        : [
+            reviewsOnMeta ? 'Review requests: Meta (Twilio fallback).' : 'Review requests: Twilio (set REVIEW_WHATSAPP_PROVIDER=meta and META_TEMPLATE_REVIEW_REQUEST).',
+            (process.env.WHATSAPP_PROVIDER || '').trim().toLowerCase() === 'meta' ? 'Everything else: Meta.' : 'Everything else: Twilio.',
+          ].join(' '),
     }),
   ];
 }

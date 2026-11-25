@@ -1163,6 +1163,18 @@ async function sendReviewRequestToCustomer(
     }
   }
 
+  // Meta first when review requests are switched to Meta (services/whatsapp/metaReview.ts).
+  // Any refusal from Meta falls through to the unchanged Twilio path below.
+  const { reviewWhatsAppProvider, sendReviewRequestViaMeta } = await import('@/services/whatsapp/metaReview');
+  if (reviewWhatsAppProvider() === 'meta' && vars.token) {
+    const viaMeta = await sendReviewRequestViaMeta(phone, { name: vars.name, business: vars.business, token: vars.token });
+    if (viaMeta.success) {
+      if (business?.userId) await incrementUsage(businessId, 'whatsappMessages');
+      return { success: true, sid: viaMeta.sid, templateSid: viaMeta.templateSid, templateKind: 'utility' };
+    }
+    console.warn(`[reviewCampaign] Meta refused the review request (${viaMeta.errorCode || 'no code'}: ${viaMeta.error}) — sending through Twilio`);
+  }
+
   const { sendOutboundMessage: sendViaTwilio, sendTemplateMessage } = await import('@/services/twilio/client');
   const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
 
@@ -1453,8 +1465,10 @@ export const processReviewCampaign = inngest.createFunction(
       // approved copy (sendReviewRequest). A customer gets it at most twice —
       // the first request and one reminder — never a third identical message.
       const { WA_TEMPLATES } = await import('@/lib/whatsappTemplates');
-      const nextTemplateSid = req?.token ? WA_TEMPLATES.reviewRequestUtility.trim() : '';
-      if (identicalReviewTemplateCapReached(req?.messageHistory, nextTemplateSid)) {
+      // The Twilio and Meta review templates carry the same text, so they count together.
+      const { reviewUtilityTemplateRefs } = await import('@/services/whatsapp/metaReview');
+      const nextTemplateSids = req?.token ? reviewUtilityTemplateRefs(WA_TEMPLATES.reviewRequestUtility) : [];
+      if (identicalReviewTemplateCapReached(req?.messageHistory, nextTemplateSids)) {
         console.log(`[reviewCampaign] reminder ${stage} skipped for request ${reviewRequest._id}: same template already sent twice`);
         return false;
       }

@@ -10,9 +10,10 @@
  *     (META_WHATSAPP_ACCESS_TOKEN + META_WHATSAPP_PHONE_NUMBER_ID) every send
  *     fails visibly with PROVIDER_CONFIG_MISSING. It never switches to
  *     Twilio behind the operator's back.
- *  3. Unset: Meta when configured (a business whose whatsappConfig.provider
- *     is 'twilio' still goes through Twilio), else Twilio — the selection is
- *     logged once so it is never invisible.
+ *  3. Unset: Twilio — even when the Meta keys are present. Those keys are
+ *     set for review requests (services/whatsapp/metaReview.ts,
+ *     REVIEW_WHATSAPP_PROVIDER) and must not move every other send to Meta.
+ *     Moving the rest of WhatsApp to Meta is an explicit WHATSAPP_PROVIDER=meta.
  *
  * Meta 24h-window handling: business-initiated messages (campaigns,
  * reminders, follow-ups) are rejected by Meta with a re-engagement error
@@ -51,14 +52,14 @@ let autoProviderLogged = false;
 async function resolveProvider(businessId?: string): Promise<'meta' | 'twilio' | 'unconfigured'> {
   const explicit = (process.env.WHATSAPP_PROVIDER || '').trim().toLowerCase();
   if (explicit === 'twilio') return 'twilio';
-  if (!getMetaConfig()) {
-    if (explicit === 'meta') return 'unconfigured';
+  if (explicit !== 'meta') {
     if (!autoProviderLogged) {
       autoProviderLogged = true;
-      console.warn('[whatsapp] WHATSAPP_PROVIDER is not set and Meta is not configured — sending through Twilio. Set WHATSAPP_PROVIDER to make this explicit.');
+      console.warn('[whatsapp] WHATSAPP_PROVIDER is not set — sending through Twilio. Set WHATSAPP_PROVIDER to make this explicit.');
     }
     return 'twilio';
   }
+  if (!getMetaConfig()) return 'unconfigured';
   if (businessId) {
     try {
       const business = await Business.findById(businessId).select('whatsappConfig.provider').lean() as any;

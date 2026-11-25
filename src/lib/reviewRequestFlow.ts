@@ -220,14 +220,44 @@ export const REVIEW_REMINDER_2_DEFAULT =
  */
 export const MAX_IDENTICAL_REVIEW_TEMPLATE_SENDS = 2;
 
-/** True when `contentSid` already went out MAX_IDENTICAL_REVIEW_TEMPLATE_SENDS times on this request (failed sends don't count). */
+/**
+ * True when the same approved text already went out MAX_IDENTICAL_REVIEW_TEMPLATE_SENDS
+ * times on this request (failed sends don't count). `contentSid` may list several
+ * references for that one text — the Twilio SID and the Meta template (meta:<name>).
+ */
 export function identicalReviewTemplateCapReached(
   history: Array<{ templateSid?: string | null; status?: string | null }> | null | undefined,
-  contentSid: string | null | undefined
+  contentSid: string | string[] | null | undefined
 ): boolean {
-  if (!contentSid) return false;
-  const sent = (history || []).filter((entry) => entry.templateSid === contentSid && entry.status !== 'Failed').length;
+  const refs = (Array.isArray(contentSid) ? contentSid : [contentSid]).filter((ref): ref is string => !!ref);
+  if (!refs.length) return false;
+  const sent = (history || []).filter((entry) => !!entry.templateSid && refs.includes(entry.templateSid) && entry.status !== 'Failed').length;
   return sent >= MAX_IDENTICAL_REVIEW_TEMPLATE_SENDS;
+}
+
+/**
+ * A Meta delivery receipt (webhook `statuses[]` entry) in the same terms as
+ * interpretTwilioStatus. Meta reports sent | delivered | read | failed.
+ */
+export function interpretMetaStatus(status: {
+  status?: string | null;
+  errors?: Array<{ code?: number | string; title?: string; message?: string; error_data?: { details?: string } }> | null;
+} | null | undefined):
+  | { kind: 'ignore' }
+  | { kind: 'delivered' }
+  | { kind: 'read' }
+  | { kind: 'failed'; errorCode?: string; errorMessage: string; failedReason: string } {
+  const state = String(status?.status || '').toLowerCase();
+  if (state === 'read') return { kind: 'read' };
+  if (state === 'delivered') return { kind: 'delivered' };
+  if (state === 'failed') {
+    const err = status?.errors?.[0];
+    const code = err?.code != null && String(err.code).trim() ? String(err.code).trim() : undefined;
+    const text = (err?.error_data?.details || err?.message || err?.title || '').trim();
+    const errorMessage = text || (code ? `Meta error ${code}` : 'Delivery failed');
+    return { kind: 'failed', errorCode: code, errorMessage, failedReason: errorMessage };
+  }
+  return { kind: 'ignore' };
 }
 
 /**

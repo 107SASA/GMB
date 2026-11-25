@@ -27,6 +27,10 @@ interface InsightsData {
     totalWebsiteClicks: number;
     totalDirectionRequests: number;
     totalConversations: number;
+    totalBookings?: number;
+    totalFoodOrders?: number;
+    totalMenuClicks?: number;
+    totalInteractions?: number;
   };
   changes?: {
     views: number | null;
@@ -36,6 +40,18 @@ interface InsightsData {
     websiteClicks: number | null;
     directionRequests: number | null;
     conversations: number | null;
+    bookings?: number | null;
+    foodOrders?: number | null;
+    menuClicks?: number | null;
+    interactions?: number | null;
+  };
+  available?: { bookings: boolean; foodOrders: boolean; menuClicks: boolean };
+  viewBreakdown?: {
+    daysCounted: number;
+    searchMobile: number;
+    searchDesktop: number;
+    mapsMobile: number;
+    mapsDesktop: number;
   };
   timeSeries?: {
     date: string;
@@ -291,7 +307,10 @@ export default function InsightsPage() {
     );
   }
 
-  const { summary, changes, timeSeries = [], searchData, googleEmail, needsSync, lastSyncAt, monthComparison } = data;
+  const { summary, changes, timeSeries = [], searchData, googleEmail, needsSync, lastSyncAt, monthComparison, available, viewBreakdown } = data;
+  const breakdownTotal = viewBreakdown
+    ? viewBreakdown.searchMobile + viewBreakdown.searchDesktop + viewBreakdown.mapsMobile + viewBreakdown.mapsDesktop
+    : 0;
   // Sum of Google Ads monthly searches across your measured keywords (each keyword once).
   const targetSearches = Array.from(new Map((kwData?.rows || []).map((r) => [r.keyword.toLowerCase(), r.volume ?? 0])).values())
     .reduce((a, b) => a + b, 0);
@@ -369,15 +388,19 @@ export default function InsightsPage() {
         </div>
 
         {/* Metrics row — every metric we fetch from Google */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-8">
           {[
+            { label: 'Profile Interactions', icon: '⚡', value: summary?.totalInteractions ?? 0, change: changes?.interactions },
             { label: 'Total Views', icon: '👁', value: summary?.totalViews ?? 0, change: changes?.views },
             { label: 'Search Views', icon: '🔍', value: summary?.totalSearchViews ?? 0, change: changes?.searchViews },
             { label: 'Maps Views', icon: '📍', value: summary?.totalMapsViews ?? 0, change: changes?.mapsViews },
             { label: 'Call Clicks', icon: '📞', value: summary?.totalCallClicks ?? 0, change: changes?.callClicks },
             { label: 'Website Clicks', icon: '🌐', value: summary?.totalWebsiteClicks ?? 0, change: changes?.websiteClicks },
             { label: 'Directions', icon: '🗺', value: summary?.totalDirectionRequests ?? 0, change: changes?.directionRequests },
-            { label: 'Conversations', icon: '💬', value: summary?.totalConversations ?? 0, change: changes?.conversations },
+            { label: 'Messages', icon: '💬', value: summary?.totalConversations ?? 0, change: changes?.conversations },
+            ...(available?.bookings ? [{ label: 'Bookings', icon: '📅', value: summary?.totalBookings ?? 0, change: changes?.bookings }] : []),
+            ...(available?.foodOrders ? [{ label: 'Food Orders', icon: '🛍', value: summary?.totalFoodOrders ?? 0, change: changes?.foodOrders }] : []),
+            ...(available?.menuClicks ? [{ label: 'Menu Clicks', icon: '📖', value: summary?.totalMenuClicks ?? 0, change: changes?.menuClicks }] : []),
           ].map((card) => (
             <div
               key={card.label}
@@ -394,6 +417,37 @@ export default function InsightsPage() {
             </div>
           ))}
         </div>
+
+        {/* How people found you — Google's platform and device split */}
+        {viewBreakdown && breakdownTotal > 0 && (
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant card-shadow p-6 mb-6">
+            <h2 className="text-base font-semibold text-on-surface mb-1">How people found you</h2>
+            <p className="text-xs text-outline mb-5">
+              Profile views by where and on what device{viewBreakdown.daysCounted < timeSeries.length ? ` · based on ${viewBreakdown.daysCounted} of ${timeSeries.length} days` : ''}
+            </p>
+            <div className="space-y-3">
+              {[
+                { label: 'Google Search – mobile', value: viewBreakdown.searchMobile, color: '#0a8a3e' },
+                { label: 'Google Maps – mobile', value: viewBreakdown.mapsMobile, color: '#2563a8' },
+                { label: 'Google Search – desktop', value: viewBreakdown.searchDesktop, color: '#c2760a' },
+                { label: 'Google Maps – desktop', value: viewBreakdown.mapsDesktop, color: '#7c3aed' },
+              ].map((row) => {
+                const pct = Math.round((row.value / breakdownTotal) * 100);
+                return (
+                  <div key={row.label}>
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span className="text-on-surface">{row.label}</span>
+                      <span className="text-on-surface-variant tabular-nums">{row.value.toLocaleString()} · {pct}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-surface-container overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: row.color }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Charts row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">

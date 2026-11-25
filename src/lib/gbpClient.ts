@@ -142,15 +142,23 @@ export async function getValidToken(businessId: string): Promise<string> {
   return newAccessToken;
 }
 
-interface DailyMetricPoint {
+export interface DailyMetricPoint {
   date: string; // "YYYY-MM-DD"
   views: number;
   viewsMaps: number;
   viewsSearch: number;
+  /** The four platform x device lines Google's Performance report shows. */
+  viewsSearchMobile: number;
+  viewsSearchDesktop: number;
+  viewsMapsMobile: number;
+  viewsMapsDesktop: number;
   callClicks: number;
   websiteClicks: number;
   directionRequests: number;
   conversations: number;
+  bookings: number;
+  foodOrders: number;
+  menuClicks: number;
 }
 
 // GBP API returns time series per metric; we pivot into per-day rows.
@@ -181,6 +189,9 @@ export async function fetchDailyMetrics(
     'WEBSITE_CLICKS',
     'BUSINESS_DIRECTION_REQUESTS',
     'BUSINESS_CONVERSATIONS',
+    'BUSINESS_BOOKINGS',
+    'BUSINESS_FOOD_ORDERS',
+    'BUSINESS_FOOD_MENU_CLICKS',
   ];
 
   const params = new URLSearchParams();
@@ -223,10 +234,17 @@ export async function fetchDailyMetrics(
             views: 0,
             viewsMaps: 0,
             viewsSearch: 0,
+            viewsSearchMobile: 0,
+            viewsSearchDesktop: 0,
+            viewsMapsMobile: 0,
+            viewsMapsDesktop: 0,
             callClicks: 0,
             websiteClicks: 0,
             directionRequests: 0,
             conversations: 0,
+            bookings: 0,
+            foodOrders: 0,
+            menuClicks: 0,
           };
         }
         const value = Number(dv.value ?? 0);
@@ -236,11 +254,24 @@ export async function fetchDailyMetrics(
           case 'BUSINESS_IMPRESSIONS_MOBILE_SEARCH':
             row.viewsSearch += value;
             row.views += value;
+            if (metric.includes('MOBILE')) row.viewsSearchMobile += value;
+            else row.viewsSearchDesktop += value;
             break;
           case 'BUSINESS_IMPRESSIONS_DESKTOP_MAPS':
           case 'BUSINESS_IMPRESSIONS_MOBILE_MAPS':
             row.viewsMaps += value;
             row.views += value;
+            if (metric.includes('MOBILE')) row.viewsMapsMobile += value;
+            else row.viewsMapsDesktop += value;
+            break;
+          case 'BUSINESS_BOOKINGS':
+            row.bookings += value;
+            break;
+          case 'BUSINESS_FOOD_ORDERS':
+            row.foodOrders += value;
+            break;
+          case 'BUSINESS_FOOD_MENU_CLICKS':
+            row.menuClicks += value;
             break;
           case 'CALL_CLICKS':
             row.callClicks += value;

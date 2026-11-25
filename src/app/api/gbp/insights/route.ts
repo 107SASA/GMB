@@ -8,6 +8,9 @@ import GBPKeyword from '@/models/GBPKeyword';
 
 const VALID_RANGES = [7, 14, 28, 90] as const;
 
+// Google's "Profile interactions": every action a viewer took on the profile.
+const INTERACTION_FIELDS = ['callClicks', 'conversations', 'bookings', 'directionRequests', 'websiteClicks', 'foodOrders', 'menuClicks'] as const;
+
 function pctChange(current: number, previous: number): number | null {
   if (previous === 0) return null;
   return Math.round(((current - previous) / previous) * 100);
@@ -76,6 +79,10 @@ export async function GET(request: NextRequest) {
     totalWebsiteClicks: sumField(currentRows, 'websiteClicks'),
     totalDirectionRequests: sumField(currentRows, 'directionRequests'),
     totalConversations: sumField(currentRows, 'conversations'),
+    totalBookings: sumField(currentRows, 'bookings'),
+    totalFoodOrders: sumField(currentRows, 'foodOrders'),
+    totalMenuClicks: sumField(currentRows, 'menuClicks'),
+    totalInteractions: INTERACTION_FIELDS.reduce((a, f) => a + sumField(currentRows, f), 0),
   };
 
   const prevSummary = {
@@ -86,6 +93,10 @@ export async function GET(request: NextRequest) {
     websiteClicks: sumField(prevRows, 'websiteClicks'),
     directionRequests: sumField(prevRows, 'directionRequests'),
     conversations: sumField(prevRows, 'conversations'),
+    bookings: sumField(prevRows, 'bookings'),
+    foodOrders: sumField(prevRows, 'foodOrders'),
+    menuClicks: sumField(prevRows, 'menuClicks'),
+    interactions: INTERACTION_FIELDS.reduce((a, f) => a + sumField(prevRows, f), 0),
   };
 
   const changes = {
@@ -99,7 +110,35 @@ export async function GET(request: NextRequest) {
       prevSummary.directionRequests
     ),
     conversations: pctChange(summary.totalConversations, prevSummary.conversations),
+    bookings: pctChange(summary.totalBookings, prevSummary.bookings),
+    foodOrders: pctChange(summary.totalFoodOrders, prevSummary.foodOrders),
+    menuClicks: pctChange(summary.totalMenuClicks, prevSummary.menuClicks),
+    interactions: pctChange(summary.totalInteractions, prevSummary.interactions),
   };
+
+  // Google's "how people found you" split. Days stored before the split was
+  // synced have the totals but zero in all four, so the split only counts
+  // days that carry it — and says how many those are.
+  const splitRows = currentRows.filter((r: any) =>
+    (r.viewsSearchMobile ?? 0) + (r.viewsSearchDesktop ?? 0) + (r.viewsMapsMobile ?? 0) + (r.viewsMapsDesktop ?? 0) > 0);
+  const viewBreakdown = {
+    daysCounted: splitRows.length,
+    searchMobile: sumField(splitRows, 'viewsSearchMobile'),
+    searchDesktop: sumField(splitRows, 'viewsSearchDesktop'),
+    mapsMobile: sumField(splitRows, 'viewsMapsMobile'),
+    mapsDesktop: sumField(splitRows, 'viewsMapsDesktop'),
+  };
+
+  // Bookings / food orders / menu clicks only exist for some profiles (booking
+  // buttons, food menus). Show them once Google has reported any in 6 months.
+  const sixMonthsBack = new Date(now);
+  sixMonthsBack.setMonth(sixMonthsBack.getMonth() - 6);
+  const optionalHas = async (field: string) =>
+    !!(await GBPInsights.exists({ businessId: ctx.businessId, date: { $gte: sixMonthsBack }, [field]: { $gt: 0 } }));
+  const [hasBookings, hasFoodOrders, hasMenuClicks] = await Promise.all([
+    optionalHas('bookings'), optionalHas('foodOrders'), optionalHas('menuClicks'),
+  ]);
+  const available = { bookings: hasBookings, foodOrders: hasFoodOrders, menuClicks: hasMenuClicks };
 
   // --- Time series for chart ---
   const timeSeries = currentRows.map((r: any) => ({
@@ -108,6 +147,10 @@ export async function GET(request: NextRequest) {
     callClicks: r.callClicks ?? 0,
     websiteClicks: r.websiteClicks ?? 0,
     directionRequests: r.directionRequests ?? 0,
+    conversations: r.conversations ?? 0,
+    bookings: r.bookings ?? 0,
+    foodOrders: r.foodOrders ?? 0,
+    menuClicks: r.menuClicks ?? 0,
   }));
 
   // --- Last 6 months, monthly totals — the Performance tab's trend chart.
@@ -189,7 +232,10 @@ export async function GET(request: NextRequest) {
     ['callClicks', 'Call Clicks'],
     ['websiteClicks', 'Website Clicks'],
     ['directionRequests', 'Directions'],
-    ['conversations', 'Conversations'],
+    ['conversations', 'Messages'],
+    ...(available.bookings ? [['bookings', 'Bookings'] as [string, string]] : []),
+    ...(available.foodOrders ? [['foodOrders', 'Food orders'] as [string, string]] : []),
+    ...(available.menuClicks ? [['menuClicks', 'Menu clicks'] as [string, string]] : []),
   ];
   const monthComparison = {
     thisMonthLabel: startOfThisMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
@@ -278,6 +324,8 @@ export async function GET(request: NextRequest) {
     googleEmail: tokenDoc?.googleEmail ?? null,
     summary,
     changes,
+    available,
+    viewBreakdown,
     impact,
     monthComparison,
     monthlyTrend,

@@ -4803,7 +4803,7 @@ export const gbpSyncWorker = inngest.createFunction(
     const metrics = await step.run("sync-gbp-data", async () => {
       const { default: dbConnect } = await import("@/lib/mongodb");
       const { default: GBPTokenModel } = await import("@/models/GBPToken");
-      const { default: GBPInsightsModel } = await import("@/models/GBPInsights");
+      const { default: GBPInsightsModel, insightMetricValues } = await import("@/models/GBPInsights");
       const { default: GBPKeywordModel } = await import("@/models/GBPKeyword");
       const { fetchDailyMetrics, fetchSearchKeywords, GBPAuthError } =
         await import("@/lib/gbpClient");
@@ -4856,13 +4856,7 @@ export const gbpSyncWorker = inngest.createFunction(
                 businessId,
                 organizationId: tokenDoc.organizationId,
                 date: new Date(d.date),
-                views: d.views,
-                viewsMaps: d.viewsMaps,
-                viewsSearch: d.viewsSearch,
-                callClicks: d.callClicks,
-                websiteClicks: d.websiteClicks,
-                directionRequests: d.directionRequests,
-                conversations: d.conversations,
+                ...insightMetricValues(d),
                 syncedAt: now,
               },
             },

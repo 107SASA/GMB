@@ -42,12 +42,18 @@ export async function GET(req: Request) {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const page = Math.min(Math.max(1, Number(p.get('page')) || 1), totalPages);
     const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
+    // What happened last with each lead on this page (message / call / note).
+    const { lastTouchForLeads } = await import('@/services/admin/lastTouch');
+    const touches = await lastTouchForLeads(pageRows.map((r) => r.lead)).catch((err) => {
+      console.warn('[admin/conversion/pipeline] last-touch lookup failed:', err?.message);
+      return new Map();
+    });
 
     return NextResponse.json({
       success: true,
       range,
       segment,
-      rows: pageRows.map((r) => toRow(r, workspaces.get(String(r.lead._id)))),
+      rows: pageRows.map((r) => ({ ...toRow(r, workspaces.get(String(r.lead._id))), lastTouch: touches.get(String(r.lead._id)) ?? null })),
       pagination: { page, pageSize, total, totalPages },
     });
   } catch (error: any) {

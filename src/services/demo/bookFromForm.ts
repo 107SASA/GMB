@@ -31,6 +31,10 @@ export async function bookDemoSlotFromForm(input: {
   budget?: string;
   date: string; // YYYY-MM-DD in the demo timezone
   time: string; // HH:mm
+  /** 'admin' = a super admin booked it on the customer's behalf. Default 'form'. */
+  channel?: 'form' | 'admin';
+  /** Free-text note for the calendar event (admin bookings). */
+  note?: string;
 }): Promise<FormSlotOutcome> {
   await dbConnect();
   const { config } = await loadSchedule();
@@ -44,8 +48,11 @@ export async function bookDemoSlotFromForm(input: {
     email: input.email || undefined,
     company: input.businessName,
     challenges: input.budget ? `Monthly marketing budget: ${input.budget}` : undefined,
-    channel: 'form' as const,
+    channel: input.channel || 'form',
   };
+  const bookedVia = input.channel === 'admin'
+    ? `Booked by our team on the customer's behalf.${input.note ? `\nNote: ${input.note}` : ''}`
+    : 'Booked from the website demo form.';
 
   try {
     const created = await bookDemoOnCalendar({
@@ -55,7 +62,7 @@ export async function bookDemoSlotFromForm(input: {
       dateLabel,
       timeLabel,
       title: `Growwmatics AI Demo — ${input.businessName || input.name}`,
-      description: `Lead: ${input.name}\nBusiness: ${input.businessName || ''}\nPhone: ${input.phone}\nBooked from the website demo form.`,
+      description: `Lead: ${input.name}\nBusiness: ${input.businessName || ''}\nPhone: ${input.phone}\n${bookedVia}`,
       start: startUtc,
       durationMinutes,
       attendeeEmail: input.email,

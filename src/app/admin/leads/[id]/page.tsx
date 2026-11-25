@@ -19,6 +19,8 @@ import { Loader2, ArrowLeft, Bot, User, CheckCircle2, AlertTriangle, Flame, Refr
 import { OwnershipBadge, ScoreBar, RelTime } from '@/components/admin/conversion/primitives';
 import { LeadCrmPanel } from '@/components/admin/crm/LeadCrmPanel';
 import { LeadActivityPanel } from '@/components/admin/crm/LeadActivityPanel';
+import { BookDemoPanel } from '@/components/admin/crm/BookDemoPanel';
+import { hrefWithFilters } from '@/lib/admin/filterMemory';
 import { LeadPartnerCard } from '@/components/admin/partners/LeadPartnerCard';
 
 interface Detail {
@@ -93,6 +95,9 @@ export default function LeadDetailPage() {
   const [returning, setReturning] = useState(false);
   const [returnMsg, setReturnMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [convoTab, setConvoTab] = useState<string | null>(null);
+  // Back to the list with the filters that were set there (read after mount — storage is browser-only).
+  const [backHref, setBackHref] = useState('/admin/leads');
+  useEffect(() => { setBackHref(hrefWithFilters('/admin/leads', 'leads')); }, []);
   const [team, setTeam] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
     fetch('/api/admin/inbox/team').then((r) => r.json()).then((j) => setTeam(j?.team ?? [])).catch(() => {});
@@ -146,7 +151,7 @@ export default function LeadDetailPage() {
 
   return (
     <div className="space-y-5 max-w-5xl">
-      <Link href="/admin/leads" className="inline-flex items-center gap-1 text-sm text-on-surface-variant hover:text-primary">
+      <Link href={backHref} className="inline-flex items-center gap-1 text-sm text-on-surface-variant hover:text-primary">
         <ArrowLeft className="w-4 h-4" /> Back to pipeline
       </Link>
 
@@ -227,6 +232,12 @@ export default function LeadDetailPage() {
         notes={[...d.timeline].reverse().filter((e) => e.type === 'NOTE_ADDED').map((e) => ({ text: e.payload?.text || '', at: e.at, by: e.actorName ?? null }))}
       />
       <LeadPartnerCard leadId={l._id} onChanged={load} />
+      <BookDemoPanel
+        leadId={l._id}
+        leadEmail={l.email}
+        upcoming={d.demos.find((dm) => ['Pending', 'Confirmed'].includes(dm.status) && dm.startUtc && new Date(dm.startUtc).getTime() > Date.now()) ?? null}
+        onBooked={load}
+      />
       <LeadActivityPanel
         leadId={l._id}
         team={team}

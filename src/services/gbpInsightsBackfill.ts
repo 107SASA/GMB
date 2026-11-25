@@ -1,6 +1,6 @@
 import dbConnect from '@/lib/mongodb';
 import GBPToken from '@/models/GBPToken';
-import GBPInsights from '@/models/GBPInsights';
+import GBPInsights, { insightMetricValues } from '@/models/GBPInsights';
 import { fetchDailyMetrics } from '@/lib/gbpClient';
 
 // Matches the Performance tab's "Last 6 Months Trends" chart — no point
@@ -15,6 +15,10 @@ const BACKFILL_MONTHS = 6;
 // retry of the whole function (next sync) just re-fetches everything again
 // since historyBackfilledAt is only set after every chunk succeeds.
 const CHUNK_DAYS = 80;
+
+// Bump when fetchDailyMetrics gains metrics: every business backfills once more.
+// v2: bookings, food orders, menu clicks, mobile/desktop view split.
+const BACKFILL_VERSION = 2;
 
 /**
  * One-time backfill of ~6 months of GBPInsights history for a business,
@@ -33,8 +37,10 @@ export async function backfillGbpInsightsIfNeeded(
   organizationId: string
 ): Promise<void> {
   await dbConnect();
-  const tokenDoc = await GBPToken.findOne({ businessId }).select('historyBackfilledAt');
-  if (!tokenDoc || tokenDoc.historyBackfilledAt) return;
+  const tokenDoc = await GBPToken.findOne({ businessId }).select('historyBackfilledAt historyBackfillVersion');
+  if (!tokenDoc) return;
+  // Re-run once when new metrics are added, so their history fills too.
+  if (tokenDoc.historyBackfilledAt && (tokenDoc.historyBackfillVersion ?? 1) >= BACKFILL_VERSION) return;
 
   const now = new Date();
   // Same "yesterday, not today" convention as the regular sync — Google's
@@ -60,13 +66,7 @@ export async function backfillGbpInsightsIfNeeded(
               businessId,
               organizationId,
               date: new Date(p.date),
-              views: p.views,
-              viewsMaps: p.viewsMaps,
-              viewsSearch: p.viewsSearch,
-              callClicks: p.callClicks,
-              websiteClicks: p.websiteClicks,
-              directionRequests: p.directionRequests,
-              conversations: p.conversations,
+              ...insightMetricValues(p as any),
               syncedAt: now,
             },
           },
@@ -85,5 +85,5 @@ export async function backfillGbpInsightsIfNeeded(
   // fetchDailyMetrics call throws, this line is never reached, so the next
   // sync (nightly or manual) retries the whole backfill from scratch rather
   // than getting stuck half-done and marked complete.
-  await GBPToken.updateOne({ businessId }, { $set: { historyBackfilledAt: now } });
+  await GBPToken.updateOne({ businessId }, { $set: { historyBackfilledAt: now, historyBackfillVersion: BACKFILL_VERSION } });
 }

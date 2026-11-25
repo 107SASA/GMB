@@ -16,9 +16,11 @@
  * routes are left in place in the DB/codebase but no longer linked here.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { loadFilters, saveFilters } from '@/lib/admin/filterMemory';
+import type { LastTouch } from '@/services/admin/lastTouch';
 import { Loader2, Users, Search, ChevronLeft, ChevronRight, ArrowUpDown, Plus, Upload, Download, LayoutList, Columns, Layers, CalendarClock, MessageCircle } from 'lucide-react';
 import { SubStagesModal } from '@/components/admin/crm/SubStagesModal';
 import { FollowUpsPanel } from '@/components/admin/crm/FollowUpsPanel';
@@ -31,7 +33,6 @@ import { LeadBoard } from '@/components/admin/crm/LeadBoard';
 import {
   OwnershipBadge,
   StageBadge,
-  ScoreBar,
   RelTime,
   RangePicker,
 } from '@/components/admin/conversion/primitives';
@@ -52,6 +53,7 @@ interface Row {
   nextActionAt: string | null;
   nurtureStatus: string;
   lastActivityAt: string | null;
+  lastTouch?: LastTouch | null;
   ownership: string;
   partner?: { id: string; code: string | null; name: string } | null;
   freeAccount?: {
@@ -109,6 +111,24 @@ export default function LeadsPipelinePage() {
   // Keep the search box in step with the URL (Clear all, back/forward).
   useEffect(() => { setQ(sp.get('q') ?? ''); }, [sp]);
 
+  // Remember the filters for this tab. Arriving on a bare /admin/leads (the
+  // lead page's Back link, the sidebar) brings the last filters back; any
+  // link that carries its own filters (KPI cards) wins. Clear all resets.
+  const restored = useRef(false);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (!restored.current) {
+      restored.current = true;
+      const saved = loadFilters('leads');
+      if (!sp.toString() && saved) {
+        router.replace(`/admin/leads?${saved}`);
+        return; // load runs once the restored URL arrives
+      }
+    }
+    setReady(true);
+    saveFilters('leads', sp.toString());
+  }, [sp, router]);
+
   // Filter state is the URL — so KPI-card deep links (?agent=SALES) work.
   const setParam = useCallback(
     (key: string, value: string) => {
@@ -165,7 +185,7 @@ export default function LeadsPipelinePage() {
     }
   }, [sp, view]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (ready) load(); }, [load, ready]);
 
   /** One lead's stage, from the table or the board. */
   const changeStage = async (id: string, stage: string) => {
@@ -325,7 +345,7 @@ export default function LeadsPipelinePage() {
           {[15, 30, 45, 60, 75].map((s) => <option key={s} value={s}>Score ≥ {s}</option>)}
         </select>
         {Array.from(sp.keys()).some((key) => !['page', 'sort'].includes(key)) && (
-          <button onClick={() => { setQ(''); router.replace('/admin/leads'); }} className="text-xs font-medium text-primary hover:underline ml-1">
+          <button onClick={() => { setQ(''); saveFilters('leads', ''); router.replace('/admin/leads'); }} className="text-xs font-medium text-primary hover:underline ml-1">
             Clear all
           </button>
         )}
@@ -370,7 +390,7 @@ export default function LeadsPipelinePage() {
                   <th className="text-left px-3 py-2.5">Owner</th>
                   <th className="text-left px-3 py-2.5">Stage</th>
                   <th className="text-left px-3 py-2.5">Intent</th>
-                  <SortableTh label="Score" active={sort.startsWith('leadScore')} dir={sort.split(':')[1]} onClick={() => toggleSort('leadScore')} />
+                  <th className="text-left px-3 py-2.5 min-w-[16rem]">Last conversation / call</th>
                   <th className="text-left px-3 py-2.5">Next best action</th>
                   <th className="text-left px-3 py-2.5">Nurture</th>
                   <th className="text-left px-3 py-2.5">Demo</th>
@@ -438,7 +458,7 @@ export default function LeadsPipelinePage() {
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-xs text-on-surface-variant">{r.intent || '—'}</td>
-                    <td className="px-3 py-2.5"><ScoreBar score={r.leadScore} /></td>
+                    <td className="px-3 py-2.5 align-top"><LastTouchCell touch={r.lastTouch ?? null} /></td>
                     <td className="px-3 py-2.5 text-xs text-on-surface-variant">{r.nextBestAction || '—'}</td>
                     <td className="px-3 py-2.5">
                       <span className={`text-xs font-medium ${r.nurtureStatus === 'OPTED_OUT' ? 'text-error' : r.nurtureStatus === 'ACTIVE' ? 'text-on-surface-variant' : 'text-warning-text'}`}>
@@ -553,5 +573,29 @@ function SortableTh({ label, active, dir, onClick }: { label: string; active: bo
         {active && <span className="text-[10px]">{dir === 'asc' ? '↑' : '↓'}</span>}
       </button>
     </th>
+  );
+}
+
+/** The latest message / call / note with a lead, so the table answers "where did we leave it?". */
+function LastTouchCell({ touch }: { touch: LastTouch | null }) {
+  if (!touch) return <span className="text-xs text-outline">No conversation yet</span>;
+  let head: string;
+  const body = touch.text;
+  if (touch.kind === 'message') {
+    head = touch.by === 'lead' ? '💬 They said' : touch.by === 'team' ? '💬 Team replied' : '🤖 AI said';
+  } else if (touch.kind === 'call') {
+    head = `📞 ${touch.direction === 'inbound' ? 'They called' : 'We called'}${touch.outcome ? ` · ${touch.outcome}` : ''}`;
+  } else {
+    head = '📝 Note';
+  }
+  return (
+    <div className="max-w-xs text-xs">
+      <div className="flex items-center gap-1.5 whitespace-nowrap">
+        <span className={`font-semibold ${touch.kind === 'message' && touch.by === 'lead' ? 'text-primary' : 'text-on-surface'}`}>{head}</span>
+        <span className="text-outline">· <RelTime date={touch.at} /></span>
+      </div>
+      {body && <p className="text-on-surface-variant line-clamp-2 mt-0.5" title={touch.text}>{body}</p>}
+      {touch.kind !== 'message' && touch.by && <p className="text-outline mt-0.5">by {touch.by}</p>}
+    </div>
   );
 }

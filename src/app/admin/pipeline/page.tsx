@@ -15,7 +15,9 @@
  * Data: GET /api/admin/conversion/overview.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { loadFilters, saveFilters } from '@/lib/admin/filterMemory';
 import Link from 'next/link';
 import { Loader2, TrendingUp, ArrowRight } from 'lucide-react';
 import { KpiCard, Funnel, RangePicker, RelTime } from '@/components/admin/conversion/primitives';
@@ -39,7 +41,25 @@ function pctLabel(m?: Metric) {
 }
 
 export default function ConversionOverviewPage() {
-  const [range, setRange] = useState('all');
+  const router = useRouter();
+  const sp = useSearchParams();
+  const range = sp.get('range') || 'all';
+  const setRange = (v: string) => router.replace(v === 'all' ? '/admin/pipeline' : `/admin/pipeline?range=${encodeURIComponent(v)}`);
+  // Same as Leads: coming back to a bare /admin/pipeline brings the last range back.
+  const restored = useRef(false);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (!restored.current) {
+      restored.current = true;
+      const saved = loadFilters('pipeline');
+      if (!sp.toString() && saved) {
+        router.replace(`/admin/pipeline?${saved}`);
+        return;
+      }
+    }
+    setReady(true);
+    saveFilters('pipeline', sp.toString());
+  }, [sp, router]);
   const [ov, setOv] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +80,7 @@ export default function ConversionOverviewPage() {
     }
   }, [range]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (ready) load(); }, [load, ready]);
 
   const k = ov?.kpis ?? {};
   const seg = ov?.segments ?? {};

@@ -15,10 +15,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Loader2, ArrowLeft, Bot, User, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Loader2, ArrowLeft, Bot, User, CheckCircle2, AlertTriangle, Flame, RefreshCw, Eye } from 'lucide-react';
 import { OwnershipBadge, ScoreBar, RelTime } from '@/components/admin/conversion/primitives';
 import { LeadCrmPanel } from '@/components/admin/crm/LeadCrmPanel';
 import { LeadActivityPanel } from '@/components/admin/crm/LeadActivityPanel';
+import { BookDemoPanel } from '@/components/admin/crm/BookDemoPanel';
+import { hrefWithFilters } from '@/lib/admin/filterMemory';
 import { LeadPartnerCard } from '@/components/admin/partners/LeadPartnerCard';
 
 interface Detail {
@@ -93,6 +95,9 @@ export default function LeadDetailPage() {
   const [returning, setReturning] = useState(false);
   const [returnMsg, setReturnMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [convoTab, setConvoTab] = useState<string | null>(null);
+  // Back to the list with the filters that were set there (read after mount — storage is browser-only).
+  const [backHref, setBackHref] = useState('/admin/leads');
+  useEffect(() => { setBackHref(hrefWithFilters('/admin/leads', 'leads')); }, []);
   const [team, setTeam] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
     fetch('/api/admin/inbox/team').then((r) => r.json()).then((j) => setTeam(j?.team ?? [])).catch(() => {});
@@ -146,7 +151,7 @@ export default function LeadDetailPage() {
 
   return (
     <div className="space-y-5 max-w-5xl">
-      <Link href="/admin/leads" className="inline-flex items-center gap-1 text-sm text-on-surface-variant hover:text-primary">
+      <Link href={backHref} className="inline-flex items-center gap-1 text-sm text-on-surface-variant hover:text-primary">
         <ArrowLeft className="w-4 h-4" /> Back to pipeline
       </Link>
 
@@ -164,6 +169,27 @@ export default function LeadDetailPage() {
             <p className="text-xs text-outline mt-1">
               {l.source ? `Source: ${l.source} · ` : ''}Created <RelTime date={l.createdAt} />
             </p>
+            {l.business?.freeReport && (l.business.freeReport.requests > 0 || l.business.freeReport.views > 0) && (() => {
+              const fr = l.business.freeReport;
+              const hot = fr.requests >= 2 || fr.views >= 2;
+              return (
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  {hot && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-error-container text-on-error-container">
+                      <Flame className="w-3 h-3" /> Hot lead
+                    </span>
+                  )}
+                  <span title="Times they asked for the free report" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-surface-container text-on-surface-variant">
+                    <RefreshCw className="w-3 h-3" /> Free report asked {fr.requests}×
+                    {fr.lastRequestedAt && <span className="font-normal text-outline">· last <RelTime date={fr.lastRequestedAt} /></span>}
+                  </span>
+                  <span title="Times they opened the finished report (max 1 per 30 min)" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-surface-container text-on-surface-variant">
+                    <Eye className="w-3 h-3" /> Viewed {fr.views}×
+                    {fr.lastViewedAt && <span className="font-normal text-outline">· last <RelTime date={fr.lastViewedAt} /></span>}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-primary-fixed text-primary">{l.funnelStage}</span>
@@ -206,6 +232,12 @@ export default function LeadDetailPage() {
         notes={[...d.timeline].reverse().filter((e) => e.type === 'NOTE_ADDED').map((e) => ({ text: e.payload?.text || '', at: e.at, by: e.actorName ?? null }))}
       />
       <LeadPartnerCard leadId={l._id} onChanged={load} />
+      <BookDemoPanel
+        leadId={l._id}
+        leadEmail={l.email}
+        upcoming={d.demos.find((dm) => ['Pending', 'Confirmed'].includes(dm.status) && dm.startUtc && new Date(dm.startUtc).getTime() > Date.now()) ?? null}
+        onBooked={load}
+      />
       <LeadActivityPanel
         leadId={l._id}
         team={team}

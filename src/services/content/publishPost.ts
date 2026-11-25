@@ -24,7 +24,7 @@ export type PublishOutcome =
   /** holdOnAccessRefused: Google refused access (401/403) — left 'scheduled', business marked blocked. */
   | { outcome: 'held'; reason: string };
 
-export async function publishPost(postId: string, opts: { allowFrom?: string[]; businessId?: string; holdOnAccessRefused?: boolean; deps?: { writesEnabled?: () => boolean; createLocalPost?: (businessId: string, input: { summary: string; mediaUrl?: string }) => Promise<{ liveWriteApplied: boolean; postName?: string }> } } = {}): Promise<PublishOutcome> {
+export async function publishPost(postId: string, opts: { allowFrom?: string[]; businessId?: string; holdOnAccessRefused?: boolean; deps?: { writesEnabled?: () => boolean; createLocalPost?: (businessId: string, input: { summary: string; mediaUrl?: string; cta?: { actionType: 'LEARN_MORE' | 'BOOK' | 'ORDER' | 'SHOP' | 'SIGN_UP' | 'CALL'; url?: string } }) => Promise<{ liveWriteApplied: boolean; postName?: string }> } } = {}): Promise<PublishOutcome> {
   await dbConnect();
   const { default: Post } = await import('@/models/Post');
   const allowFrom = opts.allowFrom ?? ['scheduled'];
@@ -45,7 +45,13 @@ export async function publishPost(postId: string, opts: { allowFrom?: string[]; 
   const summary = (await import('@/services/content/livePost')).buildPostSummary(claim);
   let res: { liveWriteApplied: boolean; postName?: string };
   try {
-    res = await create(String(claim.businessId), { summary, mediaUrl: claim.imageUrl || undefined });
+    // Product posts carry Google's button (Order / Shop / Learn more / Call).
+    const gbpCta = claim.contentMeta?.gbpCta;
+    const cta = gbpCta && ['LEARN_MORE', 'BOOK', 'ORDER', 'SHOP', 'SIGN_UP', 'CALL'].includes(gbpCta.actionType)
+      && (gbpCta.actionType === 'CALL' || /^https:\/\//i.test(String(gbpCta.url || '')))
+      ? { actionType: gbpCta.actionType, ...(gbpCta.actionType === 'CALL' ? {} : { url: String(gbpCta.url) }) }
+      : undefined;
+    res = await create(String(claim.businessId), { summary, mediaUrl: claim.imageUrl || undefined, ...(cta ? { cta } : {}) });
   } catch (err: any) {
     const reason = String(err?.message || 'Failed to publish to Google Business Profile.').slice(0, 500);
     // Scheduled publishing: a refusal of ACCESS (not of this post) means the
@@ -77,6 +83,11 @@ export async function publishPost(postId: string, opts: { allowFrom?: string[]; 
     $set: { status: 'published', publishedAt: now, liveWriteApplied: true, ...(res.postName ? { gbpPostName: res.postName } : {}) },
     $unset: { failureReason: 1 },
   });
+  if (claim.contentMeta?.productId) {
+    const { noteProductPostPublished } = await import('@/services/products/productPosts');
+    await noteProductPostPublished({ _id: claim._id, contentMeta: claim.contentMeta, publishedAt: now })
+      .catch((err: any) => console.warn('[products] could not record the published post:', err?.message));
+  }
   return { outcome: 'published', postName: res.postName };
 }
 

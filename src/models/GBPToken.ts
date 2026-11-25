@@ -22,6 +22,8 @@ export interface IGBPToken extends Document {
    * re-run) on every sync once set, so this never repeats for a business.
    */
   historyBackfilledAt?: Date | null;
+  /** Which metric set the backfill ran with (see BACKFILL_VERSION). */
+  historyBackfillVersion?: number | null;
   keywordSync?: { checkedAt: Date; months: Array<{ year: number; month: number; count: number; error?: string }> } | null;
   /**
    * Refresh-token health (FR-3.4). Set by getValidToken (lib/gbpClient.ts):
@@ -64,6 +66,7 @@ const GBPTokenSchema = new Schema<IGBPToken>(
     connectedAt: { type: Date, default: Date.now },
     lastSyncAt: { type: Date, default: null },
     historyBackfilledAt: { type: Date, default: null },
+    historyBackfillVersion: { type: Number, default: null },
     /** Last search-keyword sync: months asked for, terms returned, Google errors (shown on the dashboard). */
     keywordSync: { type: Schema.Types.Mixed, default: null },
     authStatus: { type: Schema.Types.Mixed, default: null },

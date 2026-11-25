@@ -29,7 +29,61 @@ const KIND_LABEL: Record<string, string> = {
   hours: 'Opening hours',
   service_area: 'Service area',
   attribute: 'Attribute',
+  food_menu: 'Menu',
+  lodging: 'Hotel details',
+  place_action: 'Booking / order button',
 };
+
+const LODGING_LABEL: Record<string, string> = {
+  'policies.checkinTime': 'Check-in time',
+  'policies.checkoutTime': 'Check-out time',
+  'services.twentyFourHourFrontDesk': '24-hour front desk',
+  'policies.smokeFreeProperty': 'Smoke-free property',
+  'connectivity.freeWifi': 'Free Wi-Fi',
+  'parking.freeParking': 'Free parking',
+  'parking.valetParkingAvailable': 'Valet parking',
+  'transportation.airportShuttle': 'Airport shuttle',
+  'foodAndDrink.restaurant': 'Restaurant',
+  'foodAndDrink.breakfastAvailable': 'Breakfast available',
+  'foodAndDrink.freeBreakfast': 'Free breakfast',
+  'foodAndDrink.roomService': 'Room service',
+  'foodAndDrink.bar': 'Bar',
+  'pools.pool': 'Swimming pool',
+  'wellness.fitnessCenter': 'Gym / fitness centre',
+  'wellness.spa': 'Spa',
+  'services.fullServiceLaundry': 'Laundry service',
+  'families.kidsFriendly': 'Family / kid friendly',
+  'pets.petsAllowed': 'Pets allowed',
+  'accessibility.mobilityAccessible': 'Wheelchair accessible',
+};
+
+const BUTTON_LABEL: Record<string, string> = {
+  APPOINTMENT: 'Book an appointment',
+  ONLINE_APPOINTMENT: 'Book an online appointment',
+  DINING_RESERVATION: 'Reserve a table',
+  FOOD_ORDERING: 'Order food',
+  FOOD_DELIVERY: 'Order delivery',
+  FOOD_TAKEOUT: 'Order takeaway',
+  SHOP_ONLINE: 'Shop online',
+  SOLOPRENEUR_APPOINTMENT: 'Book with me',
+};
+
+function menuLines(v: any): string {
+  const lines: string[] = [];
+  for (const menu of Array.isArray(v?.menus) ? v.menus : []) {
+    for (const s of menu?.sections || []) {
+      const items = (s?.items || []).map((it: any) => {
+        const name = String(it?.labels?.[0]?.displayName || '').trim();
+        const p = it?.attributes?.price;
+        const price = p ? `${p.currencyCode === 'INR' ? '₹' : `${p.currencyCode || ''} `}${Number(p.units || 0) + Number(p.nanos || 0) / 1e9}` : '';
+        const veg = (it?.attributes?.dietaryRestriction || []).includes('VEGETARIAN') ? ' (veg)' : '';
+        return `${name}${price ? ` ${price}` : ''}${veg}`;
+      });
+      lines.push(`${String(s?.labels?.[0]?.displayName || 'Menu')} (${items.length}): ${items.slice(0, 6).join(', ')}${items.length > 6 ? ` +${items.length - 6} more` : ''}`);
+    }
+  }
+  return lines.length ? lines.join('\n') : 'No menu';
+}
 
 export function kindLabel(kind: string): string {
   return KIND_LABEL[kind] || 'Profile change';
@@ -172,6 +226,14 @@ export function formatValue(kind: string, value: unknown, attributeNames?: Recor
       const name = String(v.name || attr?.name || '');
       return `${attributeLabel(name, attributeNames)}: ${attributeValueText(attr)}`;
     }
+    case 'food_menu':
+      return menuLines(v);
+    case 'lodging': {
+      const rows = Object.entries(v as Record<string, unknown>).map(([k, x]) => `${LODGING_LABEL[k] || k}: ${x === true ? 'Yes' : x === false ? 'No' : x == null ? 'Not set' : String(x)}`);
+      return rows.length ? rows.join('\n') : 'Not set';
+    }
+    case 'place_action':
+      return `${BUTTON_LABEL[String(v?.placeActionType)] || 'Button'}: ${v?.uri || 'Not set'}`;
     default:
       return flatText(v);
   }

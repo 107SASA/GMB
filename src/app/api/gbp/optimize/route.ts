@@ -4,11 +4,12 @@ import GbpLocationSnapshot from '@/models/GbpLocationSnapshot';
 import Audit from '@/models/Audit';
 import WebsiteIntelligence from '@/models/WebsiteIntelligence';
 import { normalizeOrigin } from '@/services/intel/websiteExtract';
-import { listCategoryAttributes, readLocationAttributes, readLocationRaw, searchGbpCategories } from '@/lib/gbpClient';
-import { normalizeLocation } from '@/services/gbp/intelligence/normalize';
+import { getCategoryServiceTypes, getFoodMenus, getLodging, listCategoryAttributes, listPlaceActionLinks, listPlaceActionTypes, readLocationAttributes, readLocationRaw, searchGbpCategories } from '@/lib/gbpClient';
+import { normalizeLocation, serviceLabel } from '@/services/gbp/intelligence/normalize';
 import { PRODUCTS_SUPPORT, chooseDescriptionSuggestion, comparePin, draftDescription, haversineMeters, holidayReminders, validateDescription, type PinStatus } from '@/services/gbp/changes/policy';
 import { calendarDate, holidayCalendarFor } from '@/services/gbp/changes/holidayCalendar';
-import { proposeServices, recommendCategories, suggestUnsetAttributes } from '@/services/gbp/changes/recommend';
+import { LODGING_FIELDS, PLACE_ACTION_LABEL, flattenLodging, foodMenusToDraft, suggestLodgingFromText, type PlaceActionType } from '@/services/gbp/changes/richSections';
+import { outrankerPrimaryTally, proposeServices, recommendCategories, suggestUnsetAttributes } from '@/services/gbp/changes/recommend';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,13 +43,25 @@ export async function GET(req: Request) {
   const audit = await Audit.findOne({ businessId: ctx.businessId, status: 'COMPLETED' }).sort({ createdAt: -1 })
     .select('auditData.fr4.competitorBenchmark auditData.facts').lean();
   const keywords = ((audit as any)?.auditData?.fr4?.competitorBenchmark?.keywords || []) as any[];
+  // Keyword + positions travel with each row so the main-category advice can
+  // use only the competitors that actually rank above this business.
   const competitors = keywords.flatMap((k) => (k.competitors || []).map((c: any) => ({
     name: c.name,
+    placeId: c.placeId ?? null,
     primaryCategory: c.primaryCategory,
     additionalCategories: c.additionalCategories || [],
+    keyword: k.keyword,
+    position: typeof c.position === 'number' ? c.position : null,
+    ownPosition: typeof k.ownPosition === 'number' ? k.ownPosition : null,
   })));
-  const services: string[] = (loc?.services || []).map((s: any) => s.displayName).filter(Boolean);
-  const displayNames = new Set<string>();
+  // Google's predefined services carry only an id — named from it so they
+  // count as "already on the profile" (they were missed before).
+  const services: string[] = (loc?.services || []).map((s: any) => serviceLabel(s)).filter(Boolean);
+  const existingTypeIds: string[] = (loc?.services || []).filter((s: any) => s.kind === 'structured' && s.id).map((s: any) => s.id);
+  // Outranking competitors' main categories are looked up first, so the
+  // main-category suggestion resolves to a Google category id.
+  const businessLabel = loc?.title || ctx.business.name || '';
+  const displayNames = new Set<string>(outrankerPrimaryTally(competitors, businessLabel).tally.slice(0, 3).map((t) => t.label));
   for (const c of competitors) {
     if (c.primaryCategory) displayNames.add(c.primaryCategory);
     for (const extra of c.additionalCategories || []) displayNames.add(extra);
@@ -92,15 +105,33 @@ export async function GET(req: Request) {
   // task opened an empty page.
   const ownerServices = String(ctx.business.services || '').split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
   let websiteServices: string[] = [];
+  let intel: any = null;
   try {
     const origin = normalizeOrigin(String(ctx.business.website || ''));
     if (origin) {
-      const intel: any = await WebsiteIntelligence.findOne({ origin }).select('services').lean();
+      intel = await WebsiteIntelligence.findOne({ origin })
+        .select('services bookingLinks differentiators headings description metaDescription title')
+        .lean();
       websiteServices = (intel?.services || []).map((c: any) => String(c?.value || '').trim()).filter(Boolean);
     }
   } catch { /* no stored website read — owner services only */ }
+  // Google's own service list for every category on the listing (Phase 1 of
+  // the products & services plan). Null when Google can't be read — then only
+  // the owner's / website's services are offered.
+  let googleServices: Awaited<ReturnType<typeof getCategoryServiceTypes>> = null;
+  if (loc?.primaryCategory?.name) {
+    try {
+      googleServices = await getCategoryServiceTypes(
+        String(ctx.businessId),
+        [loc.primaryCategory.name, ...(loc.additionalCategories || []).map((c: any) => c.name)],
+        loc?.address?.regionCode || 'IN',
+      );
+    } catch { googleServices = null; }
+  }
   const servicePlan = proposeServices({
     existing: services,
+    existingTypeIds,
+    googleServices,
     verified: [...new Map([...ownerServices, ...websiteServices].filter((x) => x.length >= 3 && x.length <= 120).map((x) => [x.toLowerCase(), x])).values()],
     category: loc?.primaryCategory?.displayName || ctx.business.category || '',
     city: loc?.address?.locality || ctx.business.city || '',
@@ -168,13 +199,33 @@ export async function GET(req: Request) {
     }
   }
 
+  // Menu, hotel details and booking buttons — only for listings Google allows
+  // them on (Location.metadata flags / Place Actions per location).
+  const rich = loc
+    ? await richSectionsFor(String(ctx.businessId), loc, {
+        ownerText: [ctx.business.description, ctx.business.services, loc?.description].filter(Boolean).join('\n'),
+        intel,
+        website: loc?.websiteUri || ctx.business.website || null,
+      })
+    : { foodMenu: null, lodging: null, buttons: null };
   return NextResponse.json({
     success: true,
     writes: false,
+    foodMenu: rich.foodMenu,
+    lodging: rich.lodging,
+    buttons: rich.buttons,
     // false until the Google profile is connected and synced once — the
     // recommendations below are then mostly empty.
     connected: !!loc,
     products: PRODUCTS_SUPPORT,
+    // What Google allows on this listing — decides which sections are shown
+    // (services, food menu, hotel details, health details). Null = not known yet.
+    capabilities: {
+      services: loc?.metadata?.canModifyServiceList ?? null,
+      foodMenu: loc?.metadata?.canHaveFoodMenus ?? null,
+      lodging: loc?.metadata?.canOperateLodgingData ?? null,
+      health: loc?.metadata?.canOperateHealthData ?? null,
+    },
     categories,
     attributes,
     services: servicePlan,
@@ -256,4 +307,70 @@ async function activePlanDescription(businessId: string): Promise<string | null>
   } catch {
     return null;
   }
+}
+
+/** Which button a business most likely wants first, by what Google offers. */
+const BUTTON_ORDER: PlaceActionType[] = ['APPOINTMENT', 'DINING_RESERVATION', 'FOOD_ORDERING', 'FOOD_DELIVERY', 'FOOD_TAKEOUT', 'SHOP_ONLINE', 'ONLINE_APPOINTMENT', 'SOLOPRENEUR_APPOINTMENT'];
+
+async function richSectionsFor(
+  businessId: string,
+  loc: any,
+  src: { ownerText: string; intel: any; website: string | null },
+) {
+  const meta = loc?.metadata || {};
+  const [foodMenu, lodging, buttons] = await Promise.all([
+    // Food menu: the current Google menu as an editable draft.
+    meta.canHaveFoodMenus === true
+      ? getFoodMenus(businessId)
+          .then((m) => ({ allowed: true, current: foodMenusToDraft(m), readable: true }))
+          .catch(() => ({ allowed: true, current: null, readable: false }))
+      : Promise.resolve(null),
+    // Hotel details: current values + amenities their own text / website mention (pre-ticked).
+    meta.canOperateLodgingData === true
+      ? getLodging(businessId, LODGING_FIELDS.map((f) => f.path).join(','))
+          .then((raw) => {
+            const current = flattenLodging(raw, LODGING_FIELDS.map((f) => f.path));
+            const text = [
+              src.ownerText,
+              src.intel?.description?.value, src.intel?.metaDescription, src.intel?.title,
+              ...(src.intel?.differentiators || []).map((c: any) => c?.value),
+              ...(src.intel?.headings || []).map((c: any) => c?.value),
+              ...(src.intel?.services || []).map((c: any) => c?.value),
+            ].filter(Boolean).join('\n');
+            return {
+              allowed: true,
+              readable: true,
+              fields: LODGING_FIELDS.map(({ path, label, group, type }) => ({ path, label, group, type })),
+              current,
+              suggested: suggestLodgingFromText(text, current),
+            };
+          })
+          .catch(() => ({ allowed: true, readable: false, fields: [], current: {}, suggested: [] as string[] }))
+      : Promise.resolve(null),
+    // Booking / order buttons: the types Google offers here, what is set, a link to suggest.
+    Promise.all([listPlaceActionTypes(businessId).catch(() => null), listPlaceActionLinks(businessId).catch(() => null)])
+      .then(([types, links]) => {
+        if (!types || !types.length) return null;
+        const bookingLinks: string[] = (src.intel?.bookingLinks || [])
+          .map((c: any) => String(c?.value || c?.sourceUrl || '').trim())
+          .filter((u: string) => /^https:\/\//i.test(u));
+        const allowed = types.map((t) => t.placeActionType).filter((t): t is PlaceActionType => t in PLACE_ACTION_LABEL);
+        return {
+          readable: !!links,
+          types: [...allowed].sort((a, b) => BUTTON_ORDER.indexOf(a) - BUTTON_ORDER.indexOf(b)).map((type) => {
+            const mine = (links || []).find((l) => l.placeActionType === type && l.isEditable && l.providerType !== 'AGGREGATOR_3P');
+            const partner = (links || []).find((l) => l.placeActionType === type && l.providerType === 'AGGREGATOR_3P');
+            return {
+              placeActionType: type,
+              label: PLACE_ACTION_LABEL[type],
+              current: mine?.uri || null,
+              partner: partner ? partner.uri : null,
+              // Their website's own booking / order page; for shops, the website itself.
+              suggested: mine ? null : bookingLinks[0] || (type === 'SHOP_ONLINE' && src.website && /^https:/i.test(src.website) ? src.website : null),
+            };
+          }),
+        };
+      }),
+  ]);
+  return { foodMenu, lodging, buttons };
 }

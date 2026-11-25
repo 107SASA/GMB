@@ -18,7 +18,11 @@ Module._load = function (request: string, ...rest: any[]) {
   if (/lib[\\/]gbpClient(\.ts)?$/.test(request)) {
     // No Google calls in this test: live reads fail → the route uses the snapshot.
     const fail = async () => { throw new Error('offline'); };
-    return { readLocationAttributes: fail, readLocationRaw: fail, listCategoryAttributes: fail, searchGbpCategories: fail };
+    return {
+      readLocationAttributes: fail, readLocationRaw: fail, listCategoryAttributes: fail, searchGbpCategories: fail,
+      getCategoryServiceTypes: async () => { if (!ctx.googleServices) throw new Error('offline'); return ctx.googleServices; },
+      getFoodMenus: fail, getLodging: fail, listPlaceActionTypes: fail, listPlaceActionLinks: fail,
+    };
   }
   return origLoad.call(this, request, ...rest);
 };
@@ -70,4 +74,31 @@ test('Services section suggests the owner\'s and the website\'s services that Go
   const names = json.services.items.map((s: any) => s.name);
   assert.deepEqual(names, ['Website Development', 'AI & Automation', 'Mobile App Development'], 'ERP is already on Google; duplicates merged');
   assert.equal(json.services.blocked, false);
+});
+
+test('Google\'s own services for the category: matching ones ticked, the rest offered unticked, existing ones skipped', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const cat = 'categories/gcid:software_company';
+  ctx.googleServices = [
+    { serviceTypeId: 'job_type_id:website_development', displayName: 'Website development', categoryName: cat },
+    { serviceTypeId: 'job_type_id:erp', displayName: 'ERP', categoryName: cat },
+    { serviceTypeId: 'job_type_id:cloud_migration', displayName: 'Cloud migration', categoryName: cat },
+  ];
+  try {
+    const res = await m.route.GET(new Request('http://t/api/gbp/optimize'));
+    const json = await res.json();
+    assert.equal(res.status, 200, JSON.stringify(json).slice(0, 300));
+    const byName = new Map(json.services.items.map((s: any) => [s.name, s]));
+    const web: any = byName.get('Website development');
+    assert.equal(web?.kind, 'google');
+    assert.equal(web?.serviceTypeId, 'job_type_id:website_development');
+    assert.equal(web?.preselected, true, 'the owner offers it → ticked');
+    assert.equal(byName.has('Website Development'), false, 'not suggested twice in two spellings');
+    assert.equal((byName.get('AI & Automation') as any)?.kind, 'custom');
+    assert.equal((byName.get('Cloud migration') as any)?.preselected, false, 'Google-only service → unticked');
+    assert.equal(byName.has('ERP'), false, 'already on the profile');
+    assert.equal(json.capabilities.services, true);
+  } finally {
+    ctx.googleServices = null;
+  }
 });

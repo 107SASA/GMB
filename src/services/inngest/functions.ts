@@ -4803,7 +4803,7 @@ export const gbpSyncWorker = inngest.createFunction(
     const metrics = await step.run("sync-gbp-data", async () => {
       const { default: dbConnect } = await import("@/lib/mongodb");
       const { default: GBPTokenModel } = await import("@/models/GBPToken");
-      const { default: GBPInsightsModel } = await import("@/models/GBPInsights");
+      const { default: GBPInsightsModel, insightMetricValues } = await import("@/models/GBPInsights");
       const { default: GBPKeywordModel } = await import("@/models/GBPKeyword");
       const { fetchDailyMetrics, fetchSearchKeywords, GBPAuthError } =
         await import("@/lib/gbpClient");
@@ -4856,13 +4856,7 @@ export const gbpSyncWorker = inngest.createFunction(
                 businessId,
                 organizationId: tokenDoc.organizationId,
                 date: new Date(d.date),
-                views: d.views,
-                viewsMaps: d.viewsMaps,
-                viewsSearch: d.viewsSearch,
-                callClicks: d.callClicks,
-                websiteClicks: d.websiteClicks,
-                directionRequests: d.directionRequests,
-                conversations: d.conversations,
+                ...insightMetricValues(d),
                 syncedAt: now,
               },
             },
@@ -5889,5 +5883,19 @@ export const accountHardPurgeCron = inngest.createFunction(
     const summary = { mode, billing, accounts: results.length, purged: results.filter((r) => r.complete && !r.refused).length, refused: results.filter((r) => r.refused).length, withErrors: results.filter((r) => r.errors > 0).length, billingExpired };
     console.log("[account-purge]", JSON.stringify(summary));
     return summary;
+  }
+);
+
+// Products autopilot: for workspaces with "keep my products fresh" on, posts
+// the product that has gone longest without a post — at most one a week.
+// Posts are created 'scheduled' and published by the normal post pipeline.
+export const productAutopilotCron = inngest.createFunction(
+  { id: "product-autopilot-cron", retries: 1, triggers: [{ cron: "30 5 * * *" }] }, // daily ~11:00 IST
+  async ({ step }) => {
+    const result = await step.run("schedule-product-posts", async () => {
+      const { runProductAutopilot } = await import("@/services/products/productPosts");
+      return runProductAutopilot();
+    });
+    return { success: true, ...result };
   }
 );

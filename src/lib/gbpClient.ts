@@ -142,15 +142,23 @@ export async function getValidToken(businessId: string): Promise<string> {
   return newAccessToken;
 }
 
-interface DailyMetricPoint {
+export interface DailyMetricPoint {
   date: string; // "YYYY-MM-DD"
   views: number;
   viewsMaps: number;
   viewsSearch: number;
+  /** The four platform x device lines Google's Performance report shows. */
+  viewsSearchMobile: number;
+  viewsSearchDesktop: number;
+  viewsMapsMobile: number;
+  viewsMapsDesktop: number;
   callClicks: number;
   websiteClicks: number;
   directionRequests: number;
   conversations: number;
+  bookings: number;
+  foodOrders: number;
+  menuClicks: number;
 }
 
 // GBP API returns time series per metric; we pivot into per-day rows.
@@ -181,6 +189,9 @@ export async function fetchDailyMetrics(
     'WEBSITE_CLICKS',
     'BUSINESS_DIRECTION_REQUESTS',
     'BUSINESS_CONVERSATIONS',
+    'BUSINESS_BOOKINGS',
+    'BUSINESS_FOOD_ORDERS',
+    'BUSINESS_FOOD_MENU_CLICKS',
   ];
 
   const params = new URLSearchParams();
@@ -223,10 +234,17 @@ export async function fetchDailyMetrics(
             views: 0,
             viewsMaps: 0,
             viewsSearch: 0,
+            viewsSearchMobile: 0,
+            viewsSearchDesktop: 0,
+            viewsMapsMobile: 0,
+            viewsMapsDesktop: 0,
             callClicks: 0,
             websiteClicks: 0,
             directionRequests: 0,
             conversations: 0,
+            bookings: 0,
+            foodOrders: 0,
+            menuClicks: 0,
           };
         }
         const value = Number(dv.value ?? 0);
@@ -236,11 +254,24 @@ export async function fetchDailyMetrics(
           case 'BUSINESS_IMPRESSIONS_MOBILE_SEARCH':
             row.viewsSearch += value;
             row.views += value;
+            if (metric.includes('MOBILE')) row.viewsSearchMobile += value;
+            else row.viewsSearchDesktop += value;
             break;
           case 'BUSINESS_IMPRESSIONS_DESKTOP_MAPS':
           case 'BUSINESS_IMPRESSIONS_MOBILE_MAPS':
             row.viewsMaps += value;
             row.views += value;
+            if (metric.includes('MOBILE')) row.viewsMapsMobile += value;
+            else row.viewsMapsDesktop += value;
+            break;
+          case 'BUSINESS_BOOKINGS':
+            row.bookings += value;
+            break;
+          case 'BUSINESS_FOOD_ORDERS':
+            row.foodOrders += value;
+            break;
+          case 'BUSINESS_FOOD_MENU_CLICKS':
+            row.menuClicks += value;
             break;
           case 'CALL_CLICKS':
             row.callClicks += value;
@@ -574,6 +605,43 @@ export async function searchGbpCategories(businessId: string, displayName: strin
   }
   const catalog = await fullCategoryCatalog(accessToken, regionCode);
   return catalog ? exactCategoryMatches(catalog, displayName) : [];
+}
+
+export interface GoogleServiceType { serviceTypeId: string; displayName: string; categoryName: string }
+
+// Google's predefined services per category rarely change — kept for a day.
+const serviceTypeCache = new Map<string, { at: number; types: GoogleServiceType[] }>();
+
+/**
+ * Google's predefined services ("structured" services) for the listing's
+ * categories — categories:batchGet with view FULL. Null when Google can't be
+ * read; an empty list means the categories have none.
+ */
+export async function getCategoryServiceTypes(businessId: string, categoryNames: string[], regionCode = 'IN'): Promise<GoogleServiceType[] | null> {
+  const names = [...new Set(categoryNames.filter((n) => typeof n === 'string' && n.startsWith('categories/')))].slice(0, 10);
+  if (!names.length) return [];
+  const key = `${regionCode}|${[...names].sort().join(',')}`;
+  const cached = serviceTypeCache.get(key);
+  if (cached && Date.now() - cached.at < CATALOG_TTL_MS) return cached.types;
+  const accessToken = await getValidToken(businessId);
+  const query = new URLSearchParams({ languageCode: 'en', regionCode, view: 'FULL' });
+  for (const n of names) query.append('names', n);
+  const res = await fetch(`${BIZINFO_BASE}/categories:batchGet?${query}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) {
+    console.warn(`[gbp] categories:batchGet failed: ${res.status} ${(await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 300)}`);
+    return null;
+  }
+  const data: any = await res.json().catch(() => ({}));
+  const types: GoogleServiceType[] = [];
+  for (const c of data?.categories || []) {
+    for (const t of c?.serviceTypes || []) {
+      if (typeof t?.serviceTypeId === 'string' && typeof t?.displayName === 'string') {
+        types.push({ serviceTypeId: t.serviceTypeId, displayName: t.displayName, categoryName: String(c.name || '') });
+      }
+    }
+  }
+  serviceTypeCache.set(key, { at: Date.now(), types });
+  return types;
 }
 
 export async function readLocationAttributes(businessId: string): Promise<any> {
@@ -921,4 +989,156 @@ export async function listLocationMedia(businessId: string): Promise<GbpMediaIte
   } while (pageToken);
 
   return items;
+}
+
+// ─── Food menu (v4), hotel details (Lodging v1), booking buttons (Place Actions v1) ─
+// Reads are always allowed; writes are gated by GBP_LIVE_WRITES_ENABLED like
+// every other profile write. Callers: services/gbp/changes/store.ts.
+
+const LODGING_BASE = 'https://mybusinesslodging.googleapis.com/v1';
+const PLACE_ACTIONS_BASE = 'https://mybusinessplaceactions.googleapis.com/v1';
+
+async function v1LocationFor(businessId: string): Promise<{ location: string; accessToken: string }> {
+  const accessToken = await getValidToken(businessId);
+  await dbConnect();
+  const tokenDoc = await GBPToken.findOne({ businessId });
+  if (!tokenDoc?.locationId) throw new Error('No GBP location linked to this business');
+  return { location: v1Location(tokenDoc.locationId), accessToken };
+}
+
+/** The listing's food menu ({ name, menus }). `menus` is empty when there is none. */
+export async function getFoodMenus(businessId: string): Promise<{ name: string; menus: any[] }> {
+  const { name, accessToken } = await v4LocationName(businessId);
+  const res = await fetch(`${MYBUSINESS_V4_BASE}/${name}/foodMenus`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (res.status === 404) return { name: `${name}/foodMenus`, menus: [] };
+  if (!res.ok) throw describeGoogleApiError('getFoodMenus', res.status, await res.text());
+  const data: any = await res.json();
+  return { name: data?.name || `${name}/foodMenus`, menus: Array.isArray(data?.menus) ? data.menus : [] };
+}
+
+/** Replaces the whole food menu. Gated. */
+export async function updateFoodMenus(businessId: string, body: { menus: unknown[] }): Promise<{ liveWriteApplied: boolean; googleBody: unknown }> {
+  if (!gbpWritesEnabled()) return { liveWriteApplied: false, googleBody: null };
+  const { name, accessToken } = await v4LocationName(businessId);
+  const resource = `${name}/foodMenus`;
+  const res = await fetch(`${MYBUSINESS_V4_BASE}/${resource}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: resource, menus: body.menus }),
+  });
+  const googleBody = await res.json().catch(() => null);
+  if (!res.ok) throw describeGoogleApiError('updateFoodMenus', res.status, JSON.stringify(googleBody || {}));
+  return { liveWriteApplied: true, googleBody };
+}
+
+/** Hotel details for the given field paths (readMask), e.g. "pools.pool,policies.checkinTime". */
+export async function getLodging(businessId: string, readMask: string): Promise<any> {
+  const { location, accessToken } = await v1LocationFor(businessId);
+  const res = await fetch(`${LODGING_BASE}/${location}/lodging?readMask=${encodeURIComponent(readMask || '*')}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (res.status === 404) return {};
+  if (!res.ok) throw describeGoogleApiError('getLodging', res.status, await res.text());
+  return res.json();
+}
+
+/** Updates only the masked hotel-detail fields. `metadata.updateTime` is required by Google. Gated. */
+export async function updateLodging(businessId: string, updateMask: string, body: Record<string, unknown>): Promise<{ liveWriteApplied: boolean; googleBody: unknown }> {
+  if (!gbpWritesEnabled()) return { liveWriteApplied: false, googleBody: null };
+  const { location, accessToken } = await v1LocationFor(businessId);
+  const name = `${location}/lodging`;
+  const res = await fetch(`${LODGING_BASE}/${name}?updateMask=${encodeURIComponent(`${updateMask},metadata.updateTime`)}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, name, metadata: { updateTime: new Date().toISOString() } }),
+  });
+  const googleBody = await res.json().catch(() => null);
+  if (!res.ok) throw describeGoogleApiError('updateLodging', res.status, JSON.stringify(googleBody || {}));
+  return { liveWriteApplied: true, googleBody };
+}
+
+export interface PlaceActionLinkRow {
+  name: string;
+  placeActionType: string;
+  uri: string;
+  providerType: string | null;
+  isEditable: boolean;
+  isPreferred: boolean;
+}
+
+/** Booking / order button types Google offers for this listing (null = could not read). */
+export async function listPlaceActionTypes(businessId: string): Promise<Array<{ placeActionType: string; displayName: string }> | null> {
+  const { location, accessToken } = await v1LocationFor(businessId);
+  const out: Array<{ placeActionType: string; displayName: string }> = [];
+  let pageToken = '';
+  for (let page = 0; page < 5; page++) {
+    const q = new URLSearchParams({ languageCode: 'en', pageSize: '50', filter: `location=${location}`, ...(pageToken ? { pageToken } : {}) });
+    const res = await fetch(`${PLACE_ACTIONS_BASE}/placeActionTypeMetadata?${q}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) {
+      console.warn(`[gbp] placeActionTypeMetadata failed: ${res.status} ${(await res.text().catch(() => '')).slice(0, 300)}`);
+      return null;
+    }
+    const data: any = await res.json();
+    for (const m of data?.placeActionTypeMetadata || []) {
+      if (m?.placeActionType) out.push({ placeActionType: String(m.placeActionType), displayName: String(m.displayName || m.placeActionType) });
+    }
+    pageToken = data?.nextPageToken || '';
+    if (!pageToken) break;
+  }
+  return out;
+}
+
+/** Booking / order buttons on the listing (ours and partners'). */
+export async function listPlaceActionLinks(businessId: string): Promise<PlaceActionLinkRow[]> {
+  const { location, accessToken } = await v1LocationFor(businessId);
+  const out: PlaceActionLinkRow[] = [];
+  let pageToken = '';
+  for (let page = 0; page < 5; page++) {
+    const q = new URLSearchParams({ pageSize: '50', ...(pageToken ? { pageToken } : {}) });
+    const res = await fetch(`${PLACE_ACTIONS_BASE}/${location}/placeActionLinks?${q}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) throw describeGoogleApiError('listPlaceActionLinks', res.status, await res.text());
+    const data: any = await res.json();
+    for (const l of data?.placeActionLinks || []) {
+      out.push({
+        name: String(l?.name || ''),
+        placeActionType: String(l?.placeActionType || ''),
+        uri: String(l?.uri || ''),
+        providerType: l?.providerType ? String(l.providerType) : null,
+        isEditable: l?.isEditable === true,
+        isPreferred: l?.isPreferred === true,
+      });
+    }
+    pageToken = data?.nextPageToken || '';
+    if (!pageToken) break;
+  }
+  return out;
+}
+
+/**
+ * Sets (or with uri null, removes) this business's own button of one type:
+ * edits our editable link if there is one, otherwise creates it. Partner
+ * (aggregator) links are never touched. Gated.
+ */
+export async function setPlaceActionLink(businessId: string, placeActionType: string, uri: string | null): Promise<{ liveWriteApplied: boolean; googleBody: unknown }> {
+  if (!gbpWritesEnabled()) return { liveWriteApplied: false, googleBody: null };
+  const { location, accessToken } = await v1LocationFor(businessId);
+  const links = await listPlaceActionLinks(businessId);
+  const own = links.find((l) => l.placeActionType === placeActionType && l.isEditable && l.providerType !== 'AGGREGATOR_3P');
+  const headers = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
+  let res: Response;
+  if (uri === null) {
+    if (!own) return { liveWriteApplied: true, googleBody: null };
+    res = await fetch(`${PLACE_ACTIONS_BASE}/${own.name}`, { method: 'DELETE', headers });
+  } else if (own) {
+    res = await fetch(`${PLACE_ACTIONS_BASE}/${own.name}?updateMask=uri,isPreferred`, {
+      method: 'PATCH', headers, body: JSON.stringify({ uri, placeActionType, isPreferred: true }),
+    });
+  } else {
+    res = await fetch(`${PLACE_ACTIONS_BASE}/${location}/placeActionLinks`, {
+      method: 'POST', headers, body: JSON.stringify({ uri, placeActionType, isPreferred: true }),
+    });
+  }
+  const googleBody = await res.json().catch(() => null);
+  if (!res.ok) throw describeGoogleApiError('setPlaceActionLink', res.status, JSON.stringify(googleBody || {}));
+  return { liveWriteApplied: true, googleBody };
 }

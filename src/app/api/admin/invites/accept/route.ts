@@ -142,6 +142,21 @@ async function handlePOST(req: Request) {
     });
   } catch (error: any) {
     console.error('Accept Invite Error:', error);
+    // Duplicate key from the database. The app checks above only look at staff
+    // accounts, so this means a unique index still spans every area (old global
+    // email_1 / phone_1 not yet replaced by scripts/sync-indexes.ts) or a race.
+    if (error?.code === 11000) {
+      const field = Object.keys(error.keyPattern ?? error.keyValue ?? {})[0];
+      return NextResponse.json(
+        {
+          success: false,
+          error: field === 'phone'
+            ? 'This mobile number is already registered on another account. Please use a different number or contact support.'
+            : 'This email is already registered on another account. Please contact support.',
+        },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
       { success: false, error: 'Failed to accept invite' },
       { status: 500 }

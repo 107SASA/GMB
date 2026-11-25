@@ -214,6 +214,9 @@ export function normalizeLocation(raw: any): GbpLocationData {
       hasVoiceOfMerchant: typeof meta.hasVoiceOfMerchant === 'boolean' ? meta.hasVoiceOfMerchant : null,
       canOperateLocalPost: typeof meta.canOperateLocalPost === 'boolean' ? meta.canOperateLocalPost : null,
       canModifyServiceList: typeof meta.canModifyServiceList === 'boolean' ? meta.canModifyServiceList : null,
+      canHaveFoodMenus: typeof meta.canHaveFoodMenus === 'boolean' ? meta.canHaveFoodMenus : null,
+      canOperateLodgingData: typeof meta.canOperateLodgingData === 'boolean' ? meta.canOperateLodgingData : null,
+      canOperateHealthData: typeof meta.canOperateHealthData === 'boolean' ? meta.canOperateHealthData : null,
       duplicateLocation: str(meta.duplicateLocation),
     },
   };

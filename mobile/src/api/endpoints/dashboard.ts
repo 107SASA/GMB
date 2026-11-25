@@ -57,6 +57,28 @@ const gbpInsightsSchema = z.object({
       totalWebsiteClicks: z.number().catch(0),
       totalDirectionRequests: z.number().catch(0),
       totalConversations: z.number().catch(0),
+      totalBookings: z.number().catch(0),
+      totalFoodOrders: z.number().catch(0),
+      totalMenuClicks: z.number().catch(0),
+      totalInteractions: z.number().catch(0),
+    })
+    .optional(),
+  // Optional metrics appear once Google has reported any (booking buttons, menus).
+  available: z
+    .object({
+      bookings: z.boolean().catch(false),
+      foodOrders: z.boolean().catch(false),
+      menuClicks: z.boolean().catch(false),
+    })
+    .optional(),
+  // Google's "how people found you" split (Search/Maps x mobile/desktop).
+  viewBreakdown: z
+    .object({
+      daysCounted: z.number().catch(0),
+      searchMobile: z.number().catch(0),
+      searchDesktop: z.number().catch(0),
+      mapsMobile: z.number().catch(0),
+      mapsDesktop: z.number().catch(0),
     })
     .optional(),
   changes: z
@@ -66,6 +88,10 @@ const gbpInsightsSchema = z.object({
       websiteClicks: z.number().nullable().catch(null),
       directionRequests: z.number().nullable().catch(null),
       conversations: z.number().nullable().catch(null),
+      bookings: z.number().nullable().catch(null),
+      foodOrders: z.number().nullable().catch(null),
+      menuClicks: z.number().nullable().catch(null),
+      interactions: z.number().nullable().catch(null),
     })
     .optional(),
   timeSeries: z

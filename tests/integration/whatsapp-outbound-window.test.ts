@@ -106,8 +106,9 @@ test('G a WhatsApp failure does not roll back a confirmed Calendar booking', () 
   assert.equal(kept.calendarEventId, 'evt-1');
   assert.equal(kept.rollback, false);
   assert.equal(kept.whatsappDelivered, false);
-  const route = fs.readFileSync(new URL('../../src/app/api/leads/book-demo/route.ts', import.meta.url), 'utf8');
-  const finish = route.slice(route.indexOf('async function finishConfirmedBooking'), route.length);
+  // Shared by the website form and the super-admin "book on their behalf" flow.
+  const source = fs.readFileSync(new URL('../../src/services/demo/finishConfirmedBooking.ts', import.meta.url), 'utf8');
+  const finish = source.slice(source.indexOf('async function finishConfirmedBooking'), source.length);
   assert.equal(finish.includes('deleteCalendarEvent'), false);
   assert.ok(finish.includes('releaseDemoConfirmationSend'));
   assert.match(finish, /booking is still confirmed/);

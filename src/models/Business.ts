@@ -170,6 +170,17 @@ export interface IBusiness extends Document {
   /** Free account without a report: "get your free report" push nudges sent (max 2). */
   freeReportNudgeCount?: number;
   freeReportNudgedAt?: Date;
+  /**
+   * Buying-intent signals for the super-admin "Hot leads" card: how often the
+   * owner asked for their free report (reused ones count too) and opened the
+   * finished report (at most one view per 30 min — /api/free-report/viewed).
+   */
+  freeReportRequestCount?: number;
+  freeReportLastRequestedAt?: Date;
+  freeReportViewCount?: number;
+  freeReportLastViewedAt?: Date;
+  /** Products: post one product to Google every week automatically (services/products/productPosts.ts). */
+  productAutoPost?: boolean;
   // ADDITIVE — per-workspace subscription gate. Each workspace (Business) must
   // have its own active subscription before its dashboard is accessible. New
   // workspaces default to 'trialing' + freeAuditUsed:false, so they get exactly
@@ -502,6 +513,12 @@ const BusinessSchema: Schema = new Schema(
     // Free account without a report: "get your free report" push nudges sent (max 2 — freeAccountSignals.ts).
     freeReportNudgeCount: { type: Number },
     freeReportNudgedAt: { type: Date },
+    // Free report intent signals (see IBusiness above).
+    freeReportRequestCount: { type: Number },
+    freeReportLastRequestedAt: { type: Date },
+    freeReportViewCount: { type: Number },
+    freeReportLastViewedAt: { type: Date },
+    productAutoPost: { type: Boolean },
     // ADDITIVE — per-workspace subscription gate (see IBusiness above).
     subscriptionStatus: {
       type: String,

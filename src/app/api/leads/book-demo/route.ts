@@ -319,7 +319,8 @@ async function fileDemoRequest(lead: any, input: DemoRequestInput): Promise<Form
   // a freshly-created thread — if the prospect already has an active booking
   // conversation, they're mid-flow and shouldn't be interrupted.
   if (outcome?.status === 'confirmed') {
-    await finishConfirmedBooking({ lead, booking, convo, outcome, phone, inngest, setLeadOwnership, logLeadEvent });
+    const { finishConfirmedBooking } = await import('@/services/demo/finishConfirmedBooking');
+    await finishConfirmedBooking({ lead, booking, convo, outcome, phone, actor: 'book-demo-form', channel: 'website-form' });
     return outcome;
   }
 
@@ -329,71 +330,4 @@ async function fileDemoRequest(lead: any, input: DemoRequestInput): Promise<Form
       .catch((err: any) => console.warn('[book-demo] inngest booking/agent.reply dispatch failed:', err?.message));
   }
   return outcome;
-}
-
-/**
- * Everything the WhatsApp booking agent does after it confirms a slot, for a
- * demo confirmed straight from the form: ownership -> DEMO_SCHEDULED, reminders,
- * admin/customer email, and a WhatsApp confirmation with the Meet link.
- */
-async function finishConfirmedBooking(ctx: {
-  lead: any; booking: any; convo: any; phone: string;
-  outcome: Extract<FormSlotOutcome, { status: 'confirmed' }>;
-  inngest: any; setLeadOwnership: any; logLeadEvent: any;
-}): Promise<void> {
-  const { lead, booking, convo, outcome, phone, inngest, setLeadOwnership, logLeadEvent } = ctx;
-
-  convo.status = 'booked';
-  convo.bookedAt = new Date();
-  convo.bookingId = booking._id;
-  const { demoConfirmationText } = await import('@/lib/whatsappOutbound');
-  const confirmation = demoConfirmationText({
-    whenLabel: outcome.whenLabel,
-    meetingLink: outcome.meetingLink,
-    timezone: booking.timezone,
-  });
-  await convo.save();
-
-  await setLeadOwnership(lead._id, 'DEMO', 'demo-scheduled', 'book-demo-form', 'DEMO_SCHEDULED').catch((err: any) =>
-    console.warn('[book-demo] DEMO_SCHEDULED ownership failed:', err?.message)
-  );
-
-  // After ownership: setLeadOwnership cancels pending actions on a stage change.
-  try {
-    const { scheduleDemoReminders } = await import('@/services/inngest/functions');
-    booking.reminderActionIds = await scheduleDemoReminders(lead._id, booking, outcome.startUtc, outcome.durationMinutes);
-    await booking.save();
-  } catch (err: any) {
-    console.warn('[book-demo] scheduling reminders failed:', err?.message);
-  }
-
-  await logLeadEvent(
-    'DEMO_SCHEDULED',
-    { date: booking.date, timeSlot: booking.timeSlot, bookingId: booking._id, meetingLink: outcome.meetingLink, channel: 'website-form' },
-    'book-demo-form',
-    { leadId: lead._id, phone, conversationType: 'booking', conversationId: convo._id }
-  );
-
-  await inngest
-    .send({ name: 'demo/booked', data: { bookingId: String(booking._id) } })
-    .catch((err: any) => console.warn('[book-demo] demo/booked dispatch failed:', err?.message));
-
-  try {
-    const { claimDemoConfirmationSend, releaseDemoConfirmationSend } = await import('@/services/demo/confirmationClaim');
-    const claim = await claimDemoConfirmationSend(booking._id);
-    if (claim === 'skip') return;
-    const { sendOutboundMessage } = await import('@/services/whatsapp/send');
-    const sent = await sendOutboundMessage(phone, confirmation, String(lead._id));
-    if (!sent.success) {
-      await releaseDemoConfirmationSend(booking._id);
-      console.warn('[book-demo] WhatsApp confirmation failed (booking is still confirmed):', sent.error);
-      return;
-    }
-    convo.messages.push({ role: 'agent', text: confirmation, at: new Date() });
-    await convo.save();
-  } catch (err: any) {
-    const { releaseDemoConfirmationSend } = await import('@/services/demo/confirmationClaim');
-    await releaseDemoConfirmationSend(booking._id).catch(() => {});
-    console.warn('[book-demo] WhatsApp confirmation failed (booking is still confirmed):', err?.message);
-  }
 }

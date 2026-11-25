@@ -4,13 +4,14 @@ import { requireBusinessContext } from '@/lib/tenant';
 import GbpProfileChange from '@/models/GbpProfileChange';
 import { closeProposalsForOtherListing, createProposal, locationIdFor, ProposalConflictError } from '@/services/gbp/changes/store';
 import { buildAttributeWrite, buildServiceWrite, canonicalFingerprint, mergeRegularHours, mergeSpecialHours, toGoogleHours, validateBusinessName, validateDescription, validateRegularHours, validateServiceArea, validateSpecialHours, withGbpUtm, type HoursPeriodIn, type SpecialHourIn } from '@/services/gbp/changes/policy';
-import { listCategoryAttributes, readLocationAttributes, readLocationRaw } from '@/lib/gbpClient';
+import { getCategoryServiceTypes, getFoodMenus, getLodging, listCategoryAttributes, listPlaceActionLinks, listPlaceActionTypes, readLocationAttributes, readLocationRaw } from '@/lib/gbpClient';
+import { LODGING_FIELDS, buildFoodMenuWrite, buildLodgingWrite, flattenLodging, validatePlaceAction, type LodgingValue } from '@/services/gbp/changes/richSections';
 import GbpLocationSnapshot from '@/models/GbpLocationSnapshot';
 import { requireWorkspacePlan } from '@/lib/planGate';
 
 export const dynamic = 'force-dynamic';
 
-const KINDS = ['description', 'title', 'phone', 'website', 'categories', 'primary_category', 'services', 'hours', 'service_area', 'attribute'] as const;
+const KINDS = ['description', 'title', 'phone', 'website', 'categories', 'primary_category', 'services', 'hours', 'service_area', 'attribute', 'food_menu', 'lodging', 'place_action'] as const;
 
 const bodySchema = z.object({
   kind: z.enum(KINDS),
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
       live = await readLocationRaw(ctx.businessId, 'categories');
       before = live?.categories ?? null;
     } else if (kind === 'services') {
-      live = await readLocationRaw(ctx.businessId, 'serviceItems,metadata,categories');
+      live = await readLocationRaw(ctx.businessId, 'serviceItems,metadata,categories,storefrontAddress');
       before = live?.serviceItems ?? [];
     } else if (kind === 'hours') {
       live = await readLocationRaw(ctx.businessId, 'regularHours,specialHours');
@@ -90,6 +91,19 @@ export async function POST(req: Request) {
     } else if (kind === 'service_area') {
       live = await readLocationRaw(ctx.businessId, 'serviceArea');
       before = live?.serviceArea ?? null;
+    } else if (kind === 'food_menu') {
+      // Only listings Google allows a menu on (restaurants, cafés…).
+      live = await readLocationRaw(ctx.businessId, 'metadata');
+      before = { menus: (await getFoodMenus(ctx.businessId)).menus };
+    } else if (kind === 'lodging') {
+      live = await readLocationRaw(ctx.businessId, 'metadata');
+      const paths = Object.keys((proposed as Record<string, unknown>) || {}).filter((p) => LODGING_FIELDS.some((f) => f.path === p));
+      before = paths.length ? flattenLodging(await getLodging(ctx.businessId, paths.join(',')), paths) : {};
+    } else if (kind === 'place_action') {
+      const type = String((proposed as { placeActionType?: string })?.placeActionType || '');
+      const own = (await listPlaceActionLinks(ctx.businessId)).find((l) => l.placeActionType === type && l.isEditable && l.providerType !== 'AGGREGATOR_3P');
+      before = { placeActionType: type, uri: own?.uri ?? null };
+      live = { allowedTypes: (await listPlaceActionTypes(ctx.businessId).catch(() => null))?.map((t) => t.placeActionType) ?? null };
     } else if (kind === 'attribute') {
       const name = String((parsed.data.proposed as { name?: string })?.name || '');
       const attrs = await readLocationAttributes(ctx.businessId);
@@ -198,7 +212,11 @@ export async function POST(req: Request) {
       validation = { valid: false, violations: [{ code: 'category', message: 'Every category must be a Google category resource. Display names are not accepted.' }] };
     } else {
       const seen = new Set<string>();
-      const extras = [...liveExtras, ...incomingExtras].filter((c) => {
+      // A new main category keeps the old one as a secondary category (it
+      // used to be dropped silently). Google allows up to 9 secondary ones.
+      const oldPrimary = kind === 'primary_category' ? live?.categories?.primaryCategory : null;
+      const keepOld = oldPrimary?.name && oldPrimary.name !== primaryName && liveExtras.length < 9 ? [{ name: oldPrimary.name }] : [];
+      const extras = [...keepOld, ...liveExtras, ...incomingExtras].filter((c) => {
         const name = c?.name;
         if (!name || name === primaryName || seen.has(name) || !String(name).startsWith('categories/')) return false;
         seen.add(name);
@@ -209,6 +227,28 @@ export async function POST(req: Request) {
         additionalCategories: extras,
       };
     }
+  } else if (kind === 'food_menu') {
+    if (live?.metadata?.canHaveFoodMenus !== true) {
+      validation = { valid: false, violations: [{ code: 'food_menu', message: 'Google doesn’t allow a menu on this listing.' }] };
+    } else {
+      const built = buildFoodMenuWrite((proposed as any)?.draft ?? proposed, { existing: before, currency: (proposed as any)?.draft?.currency });
+      validation = { valid: built.valid, violations: built.violations };
+      if (built.foodMenus) proposed = built.foodMenus;
+    }
+  } else if (kind === 'lodging') {
+    if (live?.metadata?.canOperateLodgingData !== true) {
+      validation = { valid: false, violations: [{ code: 'lodging', message: 'Google doesn’t allow hotel details on this listing.' }] };
+    } else {
+      const built = buildLodgingWrite((proposed as Record<string, unknown>) || {}, (before as Record<string, LodgingValue>) || {});
+      validation = { valid: built.valid, violations: built.violations };
+      proposed = built.fields;
+      // Compare only the fields that change.
+      before = Object.fromEntries(Object.keys(built.fields).map((k) => [k, (before as Record<string, LodgingValue>)?.[k] ?? null]));
+    }
+  } else if (kind === 'place_action') {
+    const checked = validatePlaceAction(proposed as any, live?.allowedTypes ?? null);
+    validation = { valid: checked.valid, violations: checked.violations };
+    if (checked.value) proposed = checked.value;
   } else if (kind === 'services') {
     if (live?.metadata?.canModifyServiceList === false) {
       validation = { valid: false, violations: [{ code: 'services', message: 'Google says this service list cannot be modified.' }] };
@@ -216,10 +256,19 @@ export async function POST(req: Request) {
       const additions = Array.isArray((proposed as any)?.additions)
         ? (proposed as any).additions
         : Array.isArray(proposed) ? proposed : [];
+      // Google's own services are checked against Google's list for the
+      // listing's categories, read now — never trusted from the request.
+      let googleServiceTypes: Map<string, string> | null = null;
+      if (additions.some((x: any) => x?.serviceTypeId)) {
+        const cats = [live?.categories?.primaryCategory?.name, ...((live?.categories?.additionalCategories || []).map((c: any) => c?.name))].filter(Boolean);
+        const types = await getCategoryServiceTypes(String(ctx.businessId), cats, live?.storefrontAddress?.regionCode || 'IN').catch(() => null);
+        googleServiceTypes = types ? new Map(types.map((t) => [t.serviceTypeId, t.categoryName])) : null;
+      }
       const built = buildServiceWrite({
         existing: Array.isArray(before) ? before : [],
         additions,
         categoryName: live?.categories?.primaryCategory?.name || null,
+        googleServiceTypes,
       });
       validation = { valid: built.valid, violations: built.violations };
       if (built.valid) proposed = built.items;

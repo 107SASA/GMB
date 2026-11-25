@@ -47,7 +47,37 @@ export interface Recommendations {
   connected?: boolean;
   categories?: { primary?: CategoryRec | null; additional?: CategoryRec[] };
   attributes?: { available?: boolean; suggestions?: Array<{ name: string; displayName?: string; valueType: string }> };
-  services?: { items?: Array<{ name: string; description?: string }>; blocked?: boolean; reason?: string };
+  services?: {
+    items?: Array<{
+      name: string;
+      description?: string;
+      /** 'google' = one of Google's own services for the category; 'custom' = the owner's wording. */
+      kind?: 'google' | 'custom';
+      serviceTypeId?: string;
+      /** Ticked by default (backed by what the owner / their website offer). False = Google's other services, unticked. */
+      preselected?: boolean;
+      keywordRationale?: string;
+    }>;
+    blocked?: boolean;
+    reason?: string;
+  };
+  /** Food menu (only when Google allows one on this listing). */
+  foodMenu?: { allowed: boolean; readable: boolean; current: MenuDraft | null } | null;
+  /** Hotel details (lodging listings only). */
+  lodging?: {
+    allowed: boolean;
+    readable: boolean;
+    fields: Array<{ path: string; label: string; group: string; type: 'bool' | 'time' }>;
+    current: Record<string, boolean | string | null>;
+    suggested: string[];
+  } | null;
+  /** Booking / order buttons Google offers for this listing. */
+  buttons?: {
+    readable: boolean;
+    types: Array<{ placeActionType: string; label: string; current: string | null; partner: string | null; suggested: string | null }>;
+  } | null;
+  /** What Google allows on this listing. Null = not known yet. */
+  capabilities?: { services: boolean | null; foodMenu: boolean | null; lodging: boolean | null; health: boolean | null };
   description?: { current?: string | null; text?: string; validation?: { valid?: boolean }; tokens?: string[]; competitorNames?: string[] };
   hours?: {
     status?: string;
@@ -130,4 +160,65 @@ export function resolveServiceAreas(
   queries: string[],
 ): Promise<{ error?: string; results?: Array<{ places?: Array<{ placeId: string; placeName: string; address: string | null }> }> }> {
   return post('/api/gbp/service-area/resolve', { queries });
+}
+
+// ─── Menu, products ──────────────────────────────────────────────────────────
+
+export interface MenuItem { name: string; description?: string; price: number | null; veg?: boolean | null; spice?: 'MILD' | 'MEDIUM' | 'HOT' | null; serves?: number | null }
+export interface MenuDraft { currency: string; sections: Array<{ name: string; items: MenuItem[] }> }
+export type UploadPhoto = { uri: string; mimeType: string; fileName: string };
+
+function photoForm(photos: UploadPhoto[]): FormData {
+  const form = new FormData();
+  // React Native's FormData accepts this {uri,name,type} shape in place of a Blob.
+  for (const p of photos) form.append('photos', { uri: p.uri, name: p.fileName, type: p.mimeType } as unknown as Blob);
+  return form;
+}
+
+async function postForm<T>(url: string, form: FormData, timeout: number): Promise<T> {
+  try {
+    const { data } = await api.post<T>(url, form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout });
+    return data;
+  } catch (err) {
+    const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+    const data = axios.isAxiosError(err) ? (err.response?.data as { error?: unknown } | undefined) : undefined;
+    if (status && status !== 401 && typeof data?.error === 'string') return { success: false, error: data.error } as T;
+    throw err;
+  }
+}
+
+/** POST /api/gbp/menu/scan — AI reads the menu photos; returns the menu to check (nothing saved). */
+export function scanMenu(photos: UploadPhoto[]) {
+  return postForm<{ success: boolean; error?: string; draft?: MenuDraft; found?: number; added?: number; missingPrices?: number }>('/api/gbp/menu/scan', photoForm(photos), 120_000);
+}
+
+export type ProductButton = 'ORDER' | 'SHOP' | 'LEARN_MORE' | 'CALL';
+export interface ProductDraft { imageUrl: string | null; name: string; category: string; description: string; price: number | null; button: ProductButton; buttonUrl: string; source: string }
+export interface ProductRow { _id: string; name: string; price: number | null; imageUrl?: string; lastPostedAt?: string; scheduledPostAt?: string }
+export interface Posting { scheduled: number; skipped: number; first: string | null }
+
+export async function fetchProducts(): Promise<{ products: ProductRow[]; autoPost: boolean; website: string | null }> {
+  const { data } = await api.get('/api/products');
+  return { products: data?.products || [], autoPost: !!data?.autoPost, website: data?.website || null };
+}
+
+/** POST /api/products/scan — uploads the photos and reads each product with AI. */
+export function scanProducts(photos: UploadPhoto[]) {
+  return postForm<{ success: boolean; error?: string; drafts?: Array<Omit<ProductDraft, 'button' | 'buttonUrl'>>; unread?: number }>('/api/products/scan', photoForm(photos), 120_000);
+}
+
+export function saveProducts(items: ProductDraft[], postToGoogle: boolean) {
+  return post<{ success: boolean; error?: string; products?: ProductRow[]; posting?: Posting | null }>('/api/products', { items, post: postToGoogle });
+}
+
+export function postProducts(ids: string[] | 'all') {
+  return post<{ success: boolean; error?: string; posting?: Posting }>('/api/products/post', { ids });
+}
+
+export function setProductAutoPost(autoPost: boolean) {
+  return post<{ success: boolean }>('/api/products/post', { autoPost });
+}
+
+export async function removeProduct(id: string): Promise<void> {
+  await api.delete(`/api/products/${id}`);
 }

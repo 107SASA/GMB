@@ -32,6 +32,38 @@ function fmtRank(rank: number | null): string {
   return rank == null ? '—' : rank.toFixed(1);
 }
 
+function ViewBreakdown({ data }: { data?: { searchMobile: number; searchDesktop: number; mapsMobile: number; mapsDesktop: number } }) {
+  const t = useTheme();
+  if (!data) return null;
+  const rows = [
+    { label: 'Search – mobile', value: data.searchMobile },
+    { label: 'Maps – mobile', value: data.mapsMobile },
+    { label: 'Search – desktop', value: data.searchDesktop },
+    { label: 'Maps – desktop', value: data.mapsDesktop },
+  ];
+  const total = rows.reduce((a, r) => a + r.value, 0);
+  if (total <= 0) return null;
+  return (
+    <View className="mt-3 rounded-card border border-surface-border bg-surface-raised px-4 py-4">
+      <Text className="font-sans text-sm text-zinc-400">How people found you</Text>
+      {rows.map((r) => {
+        const pct = Math.round((r.value / total) * 100);
+        return (
+          <View key={r.label} className="mt-3">
+            <View className="flex-row justify-between">
+              <Text className="font-sans text-sm" style={{ color: t.text }}>{r.label}</Text>
+              <Text className="font-sans text-sm text-zinc-400">{r.value.toLocaleString()} · {pct}%</Text>
+            </View>
+            <View className="mt-1 h-2 overflow-hidden rounded-full bg-surface-border">
+              <View className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: t.brandBright }} />
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function StatCard({ label, value }: { label: string; value: string | number }) {
   const t = useTheme();
   return (
@@ -389,11 +421,26 @@ export function PerformanceTab() {
       {gbp.isLoading ? (
         <Skeleton className="mt-3 h-24" />
       ) : (
-        <View className="mt-3 flex-row gap-3">
-          <StatCard label="Views" value={gbp.data?.summary?.totalViews ?? '—'} />
-          <StatCard label="Calls" value={gbp.data?.summary?.totalCallClicks ?? '—'} />
-          <StatCard label="Directions" value={gbp.data?.summary?.totalDirectionRequests ?? '—'} />
-        </View>
+        <>
+          <View className="mt-3 flex-row gap-3">
+            <StatCard label="Interactions" value={gbp.data?.summary?.totalInteractions ?? '—'} />
+            <StatCard label="Views" value={gbp.data?.summary?.totalViews ?? '—'} />
+            <StatCard label="Calls" value={gbp.data?.summary?.totalCallClicks ?? '—'} />
+          </View>
+          <View className="mt-3 flex-row gap-3">
+            <StatCard label="Directions" value={gbp.data?.summary?.totalDirectionRequests ?? '—'} />
+            <StatCard label="Website" value={gbp.data?.summary?.totalWebsiteClicks ?? '—'} />
+            <StatCard label="Messages" value={gbp.data?.summary?.totalConversations ?? '—'} />
+          </View>
+          {(gbp.data?.available?.bookings || gbp.data?.available?.foodOrders || gbp.data?.available?.menuClicks) && (
+            <View className="mt-3 flex-row gap-3">
+              {gbp.data?.available?.bookings && <StatCard label="Bookings" value={gbp.data?.summary?.totalBookings ?? 0} />}
+              {gbp.data?.available?.foodOrders && <StatCard label="Food orders" value={gbp.data?.summary?.totalFoodOrders ?? 0} />}
+              {gbp.data?.available?.menuClicks && <StatCard label="Menu clicks" value={gbp.data?.summary?.totalMenuClicks ?? 0} />}
+            </View>
+          )}
+          <ViewBreakdown data={gbp.data?.viewBreakdown} />
+        </>
       )}
 
       {/* Latest Google Rank */}

@@ -45,6 +45,7 @@ import {
   useConfirmSheet,
   useInfoSheet,
 } from '@/components/ui';
+import RichSections from '@/components/profile-optimization/RichSections';
 import { openGoogleConnect } from '@/lib/connectGoogle';
 import {
   actionResultText,
@@ -319,6 +320,8 @@ export default function ProfileOptimizationScreen() {
   const [descDraft, setDescDraft] = useState<string | null>(null);
   const [skippedCategories, setSkippedCategories] = useState<string[]>([]);
   const [skippedServices, setSkippedServices] = useState<string[]>([]);
+  // Google's other services for the category start unticked; these are the ones the owner ticked.
+  const [pickedServices, setPickedServices] = useState<string[]>([]);
   const [ownServices, setOwnServices] = useState('');
   const [bulkBool, setBulkBool] = useState<Record<string, boolean | undefined>>({});
 
@@ -399,7 +402,7 @@ export default function ProfileOptimizationScreen() {
     else notify('Didn’t pass our checks', `This change was saved as “Not applied”.${json.change?.error ? ` ${json.change.error}` : ''}`, false);
   };
 
-  const propose = (key: string, body: object) => run(key, async () => {
+  const propose = (key: string, body: object, onSaved?: () => void) => run(key, async () => {
     const json = await proposeChange(body);
     showProposeResult(json);
     // Saved for approval: close the owner's editor (a rejected one stays open to fix).
@@ -407,7 +410,9 @@ export default function ProfileOptimizationScreen() {
       setDescDraft(null);
       setOwnServices('');
       setSkippedServices([]);
+      setPickedServices([]);
       setSkippedCategories([]);
+      onSaved?.();
     }
     await reload();
   });
@@ -695,6 +700,7 @@ export default function ProfileOptimizationScreen() {
     .filter((p): p is { placeId: string; placeName?: string | null } => !!p?.placeId)
     .map((p) => ({ placeId: p.placeId, placeName: p.placeName || 'Area' }));
   const serviceItems = recs?.services?.items || [];
+  const readyServiceCount = serviceItems.filter((x) => x.preselected !== false).length;
   const firstOpen = DAYS.find((d) => !hours[d]?.closed && TIME.test(hours[d]?.open) && TIME.test(hours[d]?.close));
   const setDay = (day: string, next: Partial<DayHours>) => {
     const row = hours[day] || { open: '', close: '', closed: false };
@@ -809,9 +815,12 @@ export default function ProfileOptimizationScreen() {
                 <Panel section="categories" title="Categories" icon="pricetags" hint={addable.length ? `${plural(addable.length, 'category', 'categories')} to add` : 'Nothing to add'} count={addable.length}>
                   {!!categories?.primary && (
                     <View className="gap-2">
-                      <Hint>Main category</Hint>
+                      <Hint>Suggested main category</Hint>
                       <Text className="font-sans-bold text-base text-white">{categories.primary.displayName}</Text>
-                      {categories.primary.risk === 'high' && <Hint>Changing the main category can change where you appear in search.</Hint>}
+                      {!!categories.primary.reason && <Hint>{categories.primary.reason}</Hint>}
+                      {(categories.primary.competitors?.length ?? 0) > 0 && <Hint>{`Ranking above you: ${categories.primary.competitors!.join(', ')}`}</Hint>}
+                      {categories.primary.risk === 'high' && <Hint>Changing the main category can change where you appear in search. Your current main category stays on the profile as a secondary category.</Hint>}
+                      {!categories.primary.executable && <Hint>Google didn’t confirm this category name, so it can’t be applied from here.</Hint>}
                       {categories.primary.executable && !!categories.primary.categoryName && (
                         <SecondaryButton
                           title={busyKey === 'primary' ? 'Saving…' : 'Use as main category'}
@@ -930,44 +939,58 @@ export default function ProfileOptimizationScreen() {
                 </Panel>
               )}
 
-              <Panel section="services" title="Services" icon="construct" hint={recs.services?.blocked ? 'Can’t be changed' : serviceItems.length ? `${plural(serviceItems.length, 'service')} to add` : 'Add your own'} count={serviceItems.length}>
+              <Panel section="services" title="Services" icon="construct" hint={recs.services?.blocked ? 'Can’t be changed' : readyServiceCount ? `${plural(readyServiceCount, 'service')} to add` : 'Add your own'} count={readyServiceCount}>
                 {recs.services?.blocked ? (
                   <Hint>{recs.services.reason}</Hint>
                 ) : (() => {
+                  const ready = serviceItems.filter((x) => x.preselected !== false);
+                  const more = serviceItems.filter((x) => x.preselected === false);
+                  const isOn = (x: (typeof serviceItems)[number]) => (x.preselected === false ? pickedServices.includes(x.name) : !skippedServices.includes(x.name));
+                  const toggle = (x: (typeof serviceItems)[number]) => {
+                    if (x.preselected === false) setPickedServices(pickedServices.includes(x.name) ? pickedServices.filter((n) => n !== x.name) : [...pickedServices, x.name]);
+                    else setSkippedServices(skippedServices.includes(x.name) ? skippedServices.filter((n) => n !== x.name) : [...skippedServices, x.name]);
+                  };
                   const own = ownServices.split(/[,;\n]+/).map((x) => x.trim()).filter((x) => x.length >= 2);
                   const chosen = [
-                    ...serviceItems.filter((x) => !skippedServices.includes(x.name)).map((x) => ({ name: x.name, description: x.description })),
+                    ...serviceItems.filter(isOn).map((x) => ({ name: x.name, description: x.description, ...(x.serviceTypeId ? { serviceTypeId: x.serviceTypeId } : {}) })),
                     ...own.filter((n) => !serviceItems.some((x) => x.name.toLowerCase() === n.toLowerCase())).map((name) => ({ name })),
                   ];
                   return (
                     <>
-                      {serviceItems.length > 0 && (
+                      {ready.length > 0 && (
                         <>
-                          <Hint>From your website and your answers — untick any you don’t offer</Hint>
+                          <Hint>Ready to add — from what you told us, your website and Google’s list for your category. Untick any you don’t offer</Hint>
                           <View className="gap-1">
-                            {serviceItems.map((x) => (
-                              <CheckRow
-                                key={x.name}
-                                label={x.name}
-                                checked={!skippedServices.includes(x.name)}
-                                onPress={() => setSkippedServices(skippedServices.includes(x.name) ? skippedServices.filter((n) => n !== x.name) : [...skippedServices, x.name])}
-                              />
+                            {ready.map((x) => (
+                              <CheckRow key={x.serviceTypeId || x.name} label={x.name} checked={isOn(x)} onPress={() => toggle(x)} />
                             ))}
                           </View>
                         </>
                       )}
-                      <Hint>Add your own services (separate with commas)</Hint>
+                      {more.length > 0 && (
+                        <>
+                          <Hint>More services Google lists for your category — tick the ones you offer</Hint>
+                          <View className="gap-1">
+                            {more.map((x) => (
+                              <CheckRow key={x.serviceTypeId || x.name} label={x.name} checked={isOn(x)} onPress={() => toggle(x)} />
+                            ))}
+                          </View>
+                        </>
+                      )}
+                      <Hint>Anything missing? Add it here (separate with commas)</Hint>
                       <Field value={ownServices} onChangeText={setOwnServices} placeholder="e.g. CRM development, IT consulting" />
                       <PrimaryButton
                         title={`Add ${plural(chosen.length, 'service')}`}
                         loading={busyKey === 'services'}
                         disabled={busy || chosen.length === 0}
-                        onPress={() => propose('services', { kind: 'services', proposed: { additions: chosen }, source: own.length || chosen.length !== serviceItems.length ? 'owner' : 'recommendation' })}
+                        onPress={() => propose('services', { kind: 'services', proposed: { additions: chosen }, source: own.length || pickedServices.length || skippedServices.length ? 'owner' : 'recommendation' })}
                       />
                     </>
                   );
                 })()}
               </Panel>
+
+              <RichSections recs={recs} busy={busy} propose={propose} notify={notify} Panel={Panel} CheckRow={CheckRow} Hint={Hint} />
 
               <Panel
                 section="hours"

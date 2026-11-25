@@ -292,6 +292,9 @@ test('super-admin CRM untouched: no admin / sales-agent / nurture / lead-engine 
     // accounts, so the same email / phone can also be a customer or partner.
     'src/app/api/admin/auth/route.ts', 'src/app/api/admin/invites/route.ts',
     'src/app/api/admin/invites/accept/route.ts', 'src/app/api/admin/conversion/leads/[id]/route.ts',
+    // "Hot leads" on the admin overview: free-report requests / views counted
+    // on the business (read-only card + endpoint). No CRM behaviour changes.
+    'src/app/admin/page.tsx', 'src/app/api/admin/hot-report-leads/route.ts',
   ]);
   const isGrowthPartnerAdmin = (f: string) =>
     f.startsWith('src/app/admin/growth-partners/') ||
@@ -355,6 +358,9 @@ test('super-admin CRM untouched in SHARED files: every platform block identical 
       // + a list / button send that falls back to the same choices as text is
       //   now logged with its Twilio reason (lib/whatsappDiagnostics.ts).
       'sendButtonsOrText', 'presentSlots',
+      // + products autopilot (Nov 2026, not CRM): weekly Google product post
+      //   for workspaces that turned it on (services/products/productPosts.ts).
+      'productAutopilotCron',
       // + free accounts (docs/FREE_ACCOUNT_REGISTRATION_PLAN.md, not the platform CRM's
       //   behaviour): daily free-account usage / "needs a call" sync, the 90-day
       //   clean-up of never-verified shadow accounts (dry run by default), and the

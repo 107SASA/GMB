@@ -4,6 +4,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { canonicalFoodMenus, canonicalLodging, canonicalPlaceAction } from './richSections.ts';
 
 export const DESCRIPTION_MAX = 750;
 export const DESCRIPTION_LEAD = 250;
@@ -434,8 +435,14 @@ export function validateServiceArea(input: {
  */
 export function buildServiceWrite(input: {
   existing: unknown[];
-  additions: Array<{ name?: string; description?: string }>;
+  additions: Array<{ name?: string; description?: string; serviceTypeId?: string; categoryName?: string }>;
   categoryName: string | null;
+  /**
+   * Google's predefined services for the listing's categories (id → category).
+   * A predefined service is written only when its id is in here; null = the
+   * list could not be read, so predefined services are refused, not guessed.
+   */
+  googleServiceTypes?: Map<string, string> | null;
 }): { valid: boolean; violations: Violation[]; items: unknown[] } {
   const violations: Violation[] = [];
   const category = input.categoryName && input.categoryName.startsWith('categories/') ? input.categoryName : null;
@@ -443,13 +450,33 @@ export function buildServiceWrite(input: {
     violations.push({ code: 'category', message: 'Services need the listing’s Google primary category. It was not available, so nothing was invented.' });
   }
   const seen = new Set<string>();
+  const seenTypeIds = new Set<string>();
   for (const item of input.existing) {
     const label = (item as any)?.freeFormServiceItem?.label?.displayName || (item as any)?.structuredServiceItem?.description || '';
     if (label) seen.add(String(label).trim().toLowerCase());
+    const typeId = (item as any)?.structuredServiceItem?.serviceTypeId;
+    if (typeId) seenTypeIds.add(String(typeId));
   }
   const items = [...input.existing];
   for (const add of input.additions) {
     const name = String(add?.name || '').trim();
+    const typeId = String(add?.serviceTypeId || '').trim();
+    if (typeId) {
+      // One of Google's own services for this listing's categories.
+      if (seenTypeIds.has(typeId)) {
+        violations.push({ code: 'duplicate', message: `${name || 'This service'} is already on the service list.` });
+        continue;
+      }
+      if (!input.googleServiceTypes?.has(typeId)) {
+        violations.push({ code: 'service_type', message: `${name || 'A service'} is not one of Google’s services for this listing’s categories.` });
+        continue;
+      }
+      seenTypeIds.add(typeId);
+      if (name) seen.add(name.toLowerCase());
+      const description = String(add.description || '').trim().slice(0, 300);
+      items.push({ structuredServiceItem: { serviceTypeId: typeId, ...(description ? { description } : {}) } });
+      continue;
+    }
     if (!name) {
       violations.push({ code: 'name', message: 'A service is missing its name.' });
       continue;
@@ -762,6 +789,9 @@ export function canonicalValue(kind: string, value: unknown): unknown {
   if (kind === 'attribute') return canonicalAttribute(value);
   if (kind === 'services') return canonicalServices(value);
   if (kind === 'service_area') return canonicalServiceArea(value);
+  if (kind === 'food_menu') return canonicalFoodMenus(value);
+  if (kind === 'lodging') return canonicalLodging(value);
+  if (kind === 'place_action') return canonicalPlaceAction(value);
   return value ?? null;
 }
 

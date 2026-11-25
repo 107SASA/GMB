@@ -16,8 +16,9 @@ const DemoBookingSchema = new mongoose.Schema({
   date:         { type: String, required: true },
   timeSlot:     { type: String, required: true },
   status:       { type: String, default: 'Pending', enum: ['Pending', 'Confirmed', 'Completed', 'Cancelled', 'No Show', 'Rescheduled'] },
-  // How the booking came in — website form vs the WhatsApp booking agent.
-  channel:      { type: String, default: 'form', enum: ['form', 'whatsapp'] },
+  // How the booking came in — website form, the WhatsApp booking agent, or a
+  // super admin booking on the customer's behalf (e.g. after a phone call).
+  channel:      { type: String, default: 'form', enum: ['form', 'whatsapp', 'admin'] },
 
   // --- Google Calendar integration (Phase 6) --------------------------------
   // Set once createDemoEvent() succeeds (services/calendar/googleCalendar.ts)
